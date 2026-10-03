@@ -10175,6 +10175,18 @@
           },
           "evidence": {
             "$ref": "#/components/schemas/FindingEvidence"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
           }
         },
         "required": [
@@ -10182,7 +10194,8 @@
           "rule",
           "label",
           "affected",
-          "evidence"
+          "evidence",
+          "refused"
         ],
         "title": "ExclusionProposal",
         "type": "object"

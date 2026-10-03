@@ -93,6 +93,26 @@ def log_signature(m: dict[str, Any], values: np.ndarray) -> dict[str, Any] | Non
 QUANTUM_TOLERANCE = 0.02   # a value within this of a whole number of its sample's count quantum
 QUANTUM_SHARE = 0.99       # of a sample's non-zero values that must be whole multiples
 QUANTUM_SAMPLES = 0.9      # of samples that must read that way
+# A count scaled by a library size times a composition factor sums near one million: TMM factors
+# on the two public matrices the acceptance tests read run 0.64–1.22 (GSE60450, totals 0.82–1.56
+# million) and 0.47–1.25 (GSE147507, 78 samples, totals 0.80–2.14 million). A quarter to four
+# million keeps twice that margin either side; rounded non-expression data (servings a day to two
+# decimals, which are "whole multiples" of 0.01) sum to tens, and are not counts (audit WP14 repair:
+# a 130-item FFQ read as TMM-scaled CPM and was hinted genomics).
+SCALED_SUM_RANGE = (0.25e6, 4.0e6)
+
+# voom's log-CPM (limma, voom.R: ``y <- t(log2(t(counts+0.5)/(lib.size+1)*1e6))``) carries its
+# counts exactly: within a sample, 2^y × (lib.size + 1) / 10^6 − 0.5 is a whole count. A sample's
+# smallest value is its smallest count k0 (0 for any gene not seen), so lib.size + 1 =
+# (k0 + 0.5) × 10^6 / 2^min, and every count follows. Read on the small counts (≤ 50), where the
+# rounding of the values to four decimals moves a count by under 0.01. A library-size or
+# back-sum threshold cannot do this: one shallow library moves voom's back-sum by
+# 0.5 × genes / library size, 14–17% on GSE147507 (audit WP14 repair).
+VOOM_MAX_COUNT = 50.0
+VOOM_TOLERANCE = 0.05
+VOOM_SHARE = 0.99
+VOOM_MIN_VALUES = 20
+VOOM_K0 = range(0, 6)
 
 
 def scaled_counts(values: np.ndarray) -> dict[str, Any] | None:
@@ -121,7 +141,42 @@ def scaled_counts(values: np.ndarray) -> dict[str, Any] | None:
         deviations.append(abs(float(np.nansum(row)) - LIBRARY) / LIBRARY)
     if not deviations or good / len(deviations) < QUANTUM_SAMPLES or max(deviations) < 1e-3:
         return None
+    totals = np.nansum(values, axis=1)
+    if np.nanmin(totals) < SCALED_SUM_RANGE[0] or np.nanmax(totals) > SCALED_SUM_RANGE[1]:
+        return None
     return {"max_deviation": max(deviations)}
+
+
+def voom_reading(values: np.ndarray) -> dict[str, Any] | None:
+    """The library sizes a voom log-CPM matrix implies, or None when the values are not voom's
+    (see :data:`VOOM_MAX_COUNT`'s note). ``exact`` says whether each sample's recovered counts sum
+    to its library size, as voom's default ``lib.size = colSums(counts)`` makes them."""
+    libraries, exact, good, read = [], 0, 0, 0
+    for row in values:
+        x = row[np.isfinite(row)]
+        if len(x) < VOOM_MIN_VALUES:
+            continue
+        read += 1
+        low = float(x.min())
+        with np.errstate(over="ignore"):
+            ratio = np.power(2.0, x - low)
+        for k0 in VOOM_K0:
+            counts = (k0 + 0.5) * ratio - 0.5
+            small = counts[counts <= VOOM_MAX_COUNT]
+            if len(small) < VOOM_MIN_VALUES:
+                break
+            whole = np.abs(small - np.round(small)) <= VOOM_TOLERANCE
+            if float(np.mean(whole)) >= VOOM_SHARE:
+                good += 1
+                library = (k0 + 0.5) * LIBRARY / 2.0 ** low - 1.0
+                libraries.append(library)
+                if abs(float(np.sum(np.round(counts))) - library) <= 0.01 * library:
+                    exact += 1
+                break
+    if not read or good < QUANTUM_SAMPLES * read:
+        return None
+    return {"libraries": [float(min(libraries)), float(max(libraries))],
+            "exact": exact == good, "n_samples": good}
 
 
 def shallow_counts(m: dict[str, Any]) -> bool:
@@ -188,7 +243,17 @@ def card(df: pd.DataFrame) -> dict[str, Any] | None:
     sig = log_signature(m, values)
     if sig is None:
         return legacy
-    if sig["key"] == LOG_CPM:
+    voom = None if m["all_integral"] else voom_reading(values)
+    if voom is not None:
+        lo, hi = voom["libraries"]
+        sig = {**sig, "key": LOG_CPM, "offset": 0.0}
+        label = "log2 CPM with a prior count (voom-style log-CPM)"
+        because = (f"Within each sample, 2 to the power of each value, scaled by the library size "
+                   f"its smallest value implies, is a whole count plus one half: limma's voom "
+                   f"log-CPM, log2((count + 0.5) / (library size + 1) × 10^6), with libraries of "
+                   f"{lo:,.0f} to {hi:,.0f} reads.")
+        confidence, ask = "high", False
+    elif sig["key"] == LOG_CPM:
         label = (f"log2(CPM or TPM + {sig['offset']:g})" if sig["offset"] else
                  "log2 CPM with a prior count (voom-style log-CPM)")
         because = (f"Raised to the power 2{' minus ' + format(sig['offset'], 'g') if sig['offset'] else ''}, "
@@ -315,5 +380,5 @@ CLOSED_COUNT_MODEL = ("A count model of differential expression (DESeq2, edgeR) 
                       "counts' variance cannot be recovered from log values.")
 CLOSED_RELOG = "A further log transform is ruled out: these values are already on a log scale."
 
-__all__ = ["LOG_CPM", "LOG_TMM", "LOG_UNKNOWN", "card", "findings", "log_signature",
-           "shallow_counts"]
+__all__ = ["LOG_CPM", "LOG_TMM", "LOG_UNKNOWN", "SCALED_SUM_RANGE", "card", "findings",
+           "log_signature", "shallow_counts", "voom_reading"]

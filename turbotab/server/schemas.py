@@ -378,6 +378,9 @@ class ExclusionProposal(Model):
     label: str
     affected: int
     evidence: FindingEvidence
+    # Audit IN-07: why the screen is refused (it would remove more than half the rows that hold
+    # energy, which says the unit is wrong, not the people); None when it may be chosen.
+    refused: str | None = None
 
 
 class MethodVerdict(Model):

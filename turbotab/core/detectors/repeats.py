@@ -12,11 +12,16 @@ says nothing about what the order means".
 
 This reading keeps the legacy one's measurements and changes what it may state:
 
-* **Spacing is weak evidence.** It decides only where nothing points the other way.
+* **Spacing is weak evidence.** It never states a reading alone (audit WP14 repair: a pre/post
+  design whose blood pressure fell 10 mmHg within every person, visits 10 ± 4 days apart, was
+  stated "repeats, close together and irregular"). Records close together are asked about; only
+  same-day records, or recalls under the dietary lens, state repeats.
 * **Time-point evidence**: a measured value that trends within units (Spearman ρ with the order
   of at least 0.5 in absolute value, in the same direction in at least 70% of units with three or
-  more records), or a column naming a treatment, arm, period or phase that changes within units
-  (a crossover). Either one turns a "repeats" reading into a question.
+  more records), or, with two records per unit, a change in the same direction in at least 70% of
+  units that a two-sided sign test puts below 1%; or a column naming a treatment, arm, period or
+  phase that changes within units (a crossover). Either one turns a "repeats" reading into a
+  question.
 * **Replicate evidence under the dietary lens**: an index or a name that says the rows are
   recalls (``recall_number``, ``recall``, ``day_of_recall``, ``24h``). Recalls are replicates
   of usual intake (NUTRITION_PACK), so a recall index without dates is stated as repeats; recalls
@@ -37,6 +42,7 @@ import pandas as pd
 TREND_RHO = 0.5          # within-unit |Spearman ρ| a measured value must reach …
 TREND_UNITS = 0.7        # … in the same direction in this share of units with ≥ 3 records
 TREND_MIN_RECORDS = 3
+PAIRED_SIGN_P = 0.01     # two records per unit: the sign test's two-sided p a change must reach
 _PERIOD = re.compile(r"(?:^|_)(?:treatment|treat|trt|arm|period|phase|condition|intervention|"
                      r"regimen|sequence|diet_period|allocation)(?:$|_)", re.I)
 _RECALL = re.compile(r"(?:^|_)(?:recall|recalls|recall_number|recall_no|recall_day|24h|24hr|"
@@ -48,8 +54,17 @@ def _order_column(df: pd.DataFrame, reading: dict[str, Any]) -> str | None:
     return spacing.get("column") or reading.get("replicate_index")
 
 
+def _orders_rows(column: str) -> bool:
+    """A column whose name says it orders or dates the rows (``recall_number``, ``visit``,
+    ``visit_id``): it rises within units by construction, so it is no measured trend."""
+    from turbotab.core.recognizers import id_kind, reads_as_time
+
+    return reads_as_time(column) or id_kind(column) == "visit"
+
+
 def trend(df: pd.DataFrame, unit: str, order: str | None) -> dict[str, Any] | None:
-    """A measured column that rises or falls within units along ``order``, or None."""
+    """A measured column that rises or falls within units along ``order``, or None. Columns that
+    order or date the rows themselves are not measurements and are skipped."""
     from scipy import stats
 
     if order is None or order not in df.columns:
@@ -62,23 +77,46 @@ def trend(df: pd.DataFrame, unit: str, order: str | None) -> dict[str, Any] | No
     best = None
     for c in df.columns:
         if c in (unit, order) or not pd.api.types.is_numeric_dtype(df[c]) \
-                or pd.api.types.is_bool_dtype(df[c]):
+                or pd.api.types.is_bool_dtype(df[c]) or _orders_rows(str(c)):
             continue
-        rhos = []
+        rhos, changes = [], []
         for _, block in pd.DataFrame({"k": key, "v": df[c], "u": df[unit]}).dropna().groupby("u"):
-            if len(block) < TREND_MIN_RECORDS or block["v"].nunique() < 2 or block["k"].nunique() < 2:
+            if block["v"].nunique() < 2 or block["k"].nunique() < 2:
+                continue
+            if len(block) == 2:  # two records: the change from the first to the second
+                first, second = block.sort_values("k")["v"].to_numpy(dtype=float)
+                changes.append(second - first)
+                continue
+            if len(block) < TREND_MIN_RECORDS:
                 continue
             rho = stats.spearmanr(block["k"], block["v"])[0]
             if np.isfinite(rho):
                 rhos.append(rho)
-        if len(rhos) < 5:
-            continue
-        rhos_a = np.array(rhos)
-        sign = np.sign(np.median(rhos_a))
-        share = float(np.mean((np.abs(rhos_a) >= TREND_RHO) & (np.sign(rhos_a) == sign)))
-        if sign != 0 and share >= TREND_UNITS and (best is None or share > best["share"]):
-            best = {"column": str(c), "share": share, "direction": "falls" if sign < 0 else "rises",
-                    "median_rho": float(np.median(rhos_a)), "n_units": len(rhos)}
+        found = None
+        if len(rhos) >= 5 and len(rhos) >= len(changes):
+            rhos_a = np.array(rhos)
+            sign = np.sign(np.median(rhos_a))
+            share = float(np.mean((np.abs(rhos_a) >= TREND_RHO) & (np.sign(rhos_a) == sign)))
+            if sign != 0 and share >= TREND_UNITS:
+                found = {"column": str(c), "share": share,
+                         "direction": "falls" if sign < 0 else "rises",
+                         "median_rho": float(np.median(rhos_a)), "n_units": len(rhos)}
+        elif len(changes) >= 5:
+            d = np.array(changes)
+            d = d[d != 0]
+            if len(d) >= 5:
+                k = int((d > 0).sum())
+                sign = 1.0 if k * 2 > len(d) else -1.0 if k * 2 < len(d) else 0.0
+                share = float(max(k, len(d) - k) / len(d))
+                p = float(stats.binomtest(k, len(d), 0.5).pvalue)
+                if sign != 0 and share >= TREND_UNITS and p < PAIRED_SIGN_P:
+                    # The median ρ of a two-record unit is ±1: the direction, said as a ρ.
+                    found = {"column": str(c), "share": share,
+                             "direction": "falls" if sign < 0 else "rises",
+                             "median_rho": float(sign), "n_units": int(len(d)),
+                             "paired": True, "sign_test_p": p}
+        if found and (best is None or found["share"] > best["share"]):
+            best = found
     return best
 
 
@@ -102,6 +140,10 @@ def recall_evidence(df: pd.DataFrame, reading: dict[str, Any]) -> str | None:
     if spacing.get("column") and _RECALL.search(str(spacing["column"])):
         return str(spacing["column"])
     return next((str(c) for c in df.columns if _RECALL.search(str(c))), None)
+
+
+def _p(p: float) -> str:
+    return "< 0.001" if p < 0.001 else f"= {p:.3f}"
 
 
 def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) -> dict[str, Any]:
@@ -140,7 +182,12 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
                                      "same-week replicates both follow")
         elif gaps["median_days"] < repeats._SCHEDULE_MIN_DAYS:
             evidence.append(spaced + ", close together and irregular")
-            reading, stated = repeats.REPEATS, True
+            if recalls:
+                # Recalls days apart are the textbook replicates of usual intake (NUTRITION_PACK):
+                # the name, not the spacing, states it.
+                reading, stated = repeats.REPEATS, True
+                evidence.append(f"under the dietary lens `{recalls}` reads as a recall number, "
+                                f"and recalls are repeated measures of usual intake")
         else:
             evidence.append(spaced + ", which fits unscheduled encounters as well as repeats")
     elif index:
@@ -150,7 +197,11 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
             reading, stated = repeats.REPEATS, True
             evidence.append(f"under the dietary lens `{recalls}` reads as a recall number, and "
                             f"recalls are repeated measures of usual intake")
-    if moving:
+    if moving and moving.get("paired"):
+        evidence.append(f"`{moving['column']}` {moving['direction']} from a unit's first record to "
+                        f"its second in {moving['share']:.0%} of {moving['n_units']} units (sign "
+                        f"test p {_p(moving['sign_test_p'])})")
+    elif moving:
         evidence.append(f"`{moving['column']}` {moving['direction']} within units (Spearman ρ "
                         f"{moving['median_rho']:+.2f} at the median; {moving['share']:.0%} of "
                         f"{moving['n_units']} units)")

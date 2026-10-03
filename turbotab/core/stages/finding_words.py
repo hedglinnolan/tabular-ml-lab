@@ -179,14 +179,19 @@ def _number_format(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> 
 
 
 # "Too numerous to count" is a count above the plate's countable range, a right-censored value
-# (audit IN-23, ledger #9). FDA Bacteriological Analytical Manual, ch. 3 (Aerobic Plate Count,
-# 2001): "When number of CFU per plate exceeds 250, for all dilutions, record the counts as too
-# numerous to count (TNTC) for all but the plate closest to 250"; for crowded plates, "Estimate the
-# APC as greater than 100 times the highest dilution plated, times the area of the plate." The
-# legacy reading (turbotab/clinical.py) counts TNTC among measurement failures routed to missing,
-# which deletes exactly the highest values; this restates its table from the cells.
+# (audit IN-23, ledger #9). FDA Bacteriological Analytical Manual, ch. 3, Aerobic Plate Count,
+# January 2026 edition (fda.gov/media/191248), read 2026-10-03: "March 2025: The suitable colony
+# counting range updated from 25-250 to 15-300 per plate"; "Maximum likelihood (ML) is used to
+# estimate the Poisson mean APC (CFU/ml) using the plates for which exact counts are available and
+# the too numerous to count (TNTC) plates"; "If a count of visible colonies is available, then this
+# is the lower bound. If not, then the lower bound is a threshold above which inhibition is
+# suspected for colonies of the target microbe" ("e.g. 300 colonies"). The 2001 edition's 250 is
+# superseded. The legacy reading (turbotab/clinical.py) counts TNTC among measurement failures
+# routed to missing, which deletes exactly the highest values; this restates its table from the
+# cells.
 _ABOVE_COUNTABLE = re.compile(r"\btntc\b|too\s+numerous", re.I)
-TNTC_SOURCE = "FDA Bacteriological Analytical Manual, ch. 3"
+TNTC_SOURCE = "FDA Bacteriological Analytical Manual, ch. 3, January 2026 edition"
+TNTC_RANGE = "15–300 colonies per plate"
 
 
 def _tntc_count(fc: FindingContext, column: str | None) -> tuple[int, int]:
@@ -235,9 +240,10 @@ def _censored(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice
                 "routes to missing." if any(r[5] for r in rows) else "")
     f["detail"] = (
         ". ".join(parts) + ". TNTC, too numerous to count, means more than the method's countable "
-        "range (over 250 colonies per plate in the " + TNTC_SOURCE + "), so the count is above "
-        "that limit: a right-censored value at the laboratory's upper count limit, not a missing "
-        "one." + failures + " TurboTab has not substituted a number for any of them.")
+        "range (" + TNTC_RANGE + " in the " + TNTC_SOURCE + ", which estimates a count with TNTC "
+        "plates read as lower bounds), so the count is above that limit: a right-censored value at "
+        "the laboratory's upper count limit, not a missing one." + failures + " TurboTab has not "
+        "substituted a number for any of them.")
     kinds = (["below detection"] if any(r[1] for r in rows) else []) + ["too numerous to count"]
     censored = sum(1 for r in rows if r[1] or r[3])  # the legacy title counted TNTC as a failure
     return Voice(f"{listing(cols, limit=2)} {plural(n, 'carries', 'carry')} censored values, "
@@ -293,18 +299,37 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
     if reading is None:
         return
     f["energy_unit"] = reading["unit"]
-    if reading["unit"] != "kj":
-        return
-    from turbotab.core.stages.proposals import KCAL_PER_KJ
+    from turbotab.core.stages.proposals import KCAL_PER_KJ, MOST_ROWS
 
     try:
         from turbotab.packs import _PLAUSIBLE_KCAL as kcal  # the detector's own range
     except ImportError:  # pragma: no cover - the legacy pack always defines it
         kcal = (500.0, 5000.0)
-    low, high = kcal[0] * KCAL_PER_KJ, kcal[1] * KCAL_PER_KJ
+    factor = KCAL_PER_KJ if reading["unit"] == "kj" else 1.0
+    low, high = kcal[0] * factor, kcal[1] * factor
     s = pd.to_numeric(fc.frame[col], errors="coerce")
     below, above = int((s < low).sum()), int((s > high).sum())
-    n = below + above
+    n, present = below + above, int(s.notna().sum())
+    if present and n > MOST_ROWS * present:
+        # Audit IN-07's remedy: a screen that would remove more than half the rows says the unit is
+        # wrong, not the people (a child's day in kJ, an athlete's, a weekly total). The count is
+        # not an implausible-intake count; the unit is asked first.
+        word = "kJ" if reading["unit"] == "kj" else "kcal"
+        p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word,
+                  "unit_question": True, "n_present": present})
+        f["severity"] = "warning"
+        f["title"] = f"The unit of `{col}` is in question"
+        f["detail"] = (
+            f"{reading['sentence']} Read in {word}, {n:,} of {present:,} rows ({n / present:.0%}) "
+            f"fall outside {low:,.0f}–{high:,.0f} {word} a day ({below:,} below, {above:,} above). "
+            f"When a screen would remove more than half the rows, the unit is the likelier error, "
+            f"not the people: a child's intake in kJ, an athlete's, or a weekly total all look "
+            f"like this. The intake screens refuse to remove more than half the rows; say what "
+            f"unit {tick(col)} is in first. Observed range {float(s.min()):,.0f} to "
+            f"{float(s.max()):,.0f}, median {float(s.median()):,.0f}.")
+        return
+    if reading["unit"] != "kj":
+        return
     p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": "kJ"})
     f["title"] = (f"{n:,} {'record reports' if n == 1 else 'records report'} an implausible daily "
                   f"intake" if n else "No record reports an implausible daily intake, read in kJ")
@@ -321,6 +346,11 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
     lo, hi = p.get("minimum"), p.get("maximum")
     if n is None or lo is None or hi is None:
         return Voice(finish(f["title"]), "exclusions", "Choose an exclusion rule")
+    if p.get("unit_question"):
+        return Voice(f"{count(n)} of {count(p.get('n_present') or fc.n_rows)} rows fall outside "
+                     f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} {p.get('unit')} a day: check "
+                     f"{tick(col)}'s unit before excluding anyone.", "exclusions",
+                     "Check the unit first")
     if p.get("unit") == "kJ":
         if not n:
             return Voice(f"Read in kJ, every row of {tick(col)} is within "
@@ -333,15 +363,25 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
                  f"or above {tick(number(hi))} a day.", "exclusions", "Choose an exclusion rule")
 
 
+TANGLED_R = 0.3  # the weakest correlation the energy finding calls nutrients "tangled" with energy
+
+
 def _energy(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     energy = p.get("energy_column") or (f["affected_columns"] or [None])[0]
     rs = energy_correlations(fc.frame, energy, target=fc.target)
     lever = ("energy_adjustment", "Adjust for energy")
     if rs:
-        best = max(rs, key=lambda c: abs(rs[c]))
-        return Voice(f"{tick(best)} correlates {rs[best]:.2f} with {tick(energy)} across all "
-                     f"{count(fc.n_rows)} rows: nutrient effects are tangled with total energy.",
-                     *lever)
+        best = max(rs, key=lambda c: rs[c])
+        r = rs[best]
+        # Only a correlation the data show is called tangling (audit WP13/WP15 repair: the summary
+        # read "correlates -0.04 … tangled with total energy" whatever r was). r ≥ 0.3 is a
+        # moderate correlation or more; anything weaker is stated as it is.
+        if r >= TANGLED_R:
+            return Voice(f"{tick(best)} correlates {r:.2f} with {tick(energy)} across all "
+                         f"{count(fc.n_rows)} rows: nutrient effects are tangled with total "
+                         f"energy.", *lever)
+        return Voice(f"{tick(best)} correlates only {r:.2f} with {tick(energy)}; adjusting still "
+                     f"makes each effect a swap at fixed energy.", *lever)
     # Audit IN-20 (ledger #87): adjusting changes the question, it does not just remove a confounder.
     return Voice(f"{tick(energy)} is total energy: adjusting for it makes each nutrient's effect a "
                  f"swap at fixed energy.", *lever)
@@ -388,35 +428,67 @@ NHANES_WEIGHTING_EVIDENCE = {
 }
 
 
+# NHANES OGTT_I (2015–2016) documentation, read 2026-10-03: "WTSOG2YR - OGTT Subsample MEC Weight";
+# "Specific sample weights for this subsample are included in this data file and should be used
+# when analyzing these data."
+OGTT_QUOTE = ("\"Specific sample weights for this subsample are included in this data file and "
+              "should be used when analyzing these data.\" (NHANES OGTT_I documentation)")
+_SUBSAMPLE_WORDS = {
+    "fasting subsample": ("fasting subsample weight", "the morning fasting subsample"),
+    "oral glucose tolerance test subsample": (
+        "OGTT subsample weight", "the oral glucose tolerance test subsample, drawn from the "
+                                 "fasting subsample"),
+}
+
+
 def restate_survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> None:
     """The weight NHANES's least-common-denominator rule names for this table's variables
     (audit IN-19): the legacy finding always said the dietary day-1 weight, even beside fasting
-    analytes whose subsample weight (``WTSAF2YR``) is the smaller sample. The NHANES weighting
-    tutorial: "You must use the weight of the smallest subpopulation that includes all the
-    variables you want to include in your analysis.\""""
+    analytes whose subsample weight (``WTSAF2YR``) is the smaller sample, or OGTT analytes whose
+    weight (``WTSOG2YR``) is smaller still. The NHANES weighting tutorial: "You must use the
+    weight of the smallest subpopulation that includes all the variables you want to include in
+    your analysis." A subsample weight whose analytes TurboTab cannot tell (``WTSA2YR``…) leaves
+    the choice to the user: the finding says so and is never SETTLED."""
     from turbotab.core.recognizers import NHANES_LCD_QUOTE, least_common_denominator
 
     lcd = least_common_denominator(fc.columns)
-    if lcd is None or not lcd["because"] or lcd["sample"] in ("dietary day 1", "dietary days 1 and 2"):
+    if lcd is None:
         return
+    others = list(lcd.get("other_subsamples") or [])
+    unsure = (f" {listing(others, limit=3)} {plural(len(others), 'is a subsample weight', 'are subsample weights')} "
+              f"whose analytes TurboTab cannot tell from the names: if any variable in the "
+              f"analysis was measured on that subsample, its weight is the smaller one and the "
+              f"rule names it instead.") if others else ""
+    if lcd["sample"] not in _SUBSAMPLE_WORDS or not lcd["because"]:
+        if others:
+            p.update({"other_subsamples": others})
+            f["detail"] = (f.get("detail") or "").rstrip() + unsure
+            f["evidence"] = dict(NHANES_WEIGHTING_EVIDENCE)
+        return
+    weight_words, sample_words = _SUBSAMPLE_WORDS[lcd["sample"]]
     because = [c for c in lcd["because"] if c != fc.target][:4] or lcd["because"][:4]
     if fc.target in lcd["because"]:
         because = [fc.target, *[c for c in because if c != fc.target]][:4]
     measured = (f"{listing(because, limit=4)} {plural(len(because), 'was', 'were')} measured on "
-                f"the morning fasting subsample, the smallest sample among this table's variables")
+                f"{sample_words}, the smallest sample among this table's variables")
+    cdc = f" CDC: {OGTT_QUOTE}" if lcd["sample"] != "fasting subsample" else ""
     if lcd["use"]:
-        p.update({"use": [lcd["use"]], "not": list(lcd["not"]), "sample": lcd["sample"]})
-        f["title"] = f"Use the fasting subsample weight, {tick(lcd['use'])}"
-        f["detail"] = (f"{measured}, so the analysis takes its weight, {tick(lcd['use'])}, not "
-                       f"{listing(lcd['not'], limit=4)}. NCHS: {NHANES_LCD_QUOTE}")
+        p.update({"use": [lcd["use"]], "not": list(lcd["not"]), "sample": lcd["sample"],
+                  "other_subsamples": others})
+        f["title"] = f"Use the {weight_words}, {tick(lcd['use'])}"
+        f["detail"] = (f"{measured}, so the analysis takes its weight, {tick(lcd['use'])}"
+                       + (f", not {listing(lcd['not'], limit=4)}" if lcd["not"] else "")
+                       + f". NCHS: {NHANES_LCD_QUOTE}{cdc}{unsure}")
     else:
         p.update({"use": [], "not": list(lcd["not"]), "sample": lcd["sample"],
-                  "missing": lcd["missing"]})
-        f["title"] = f"The fasting subsample weight is not in this table"
+                  "missing": lcd["missing"], "other_subsamples": others})
+        f["title"] = f"The {weight_words} is not in this table"
         f["detail"] = (f"{measured}, so the analysis needs its weight, {tick(lcd['missing'])}, "
-                       f"which this table does not carry; {listing(lcd['not'], limit=4)} "
-                       f"describe{'s' if len(lcd['not']) == 1 else ''} a larger sample. NCHS: "
-                       f"{NHANES_LCD_QUOTE}")
+                       f"which this table does not carry"
+                       + (f"; {listing(lcd['not'], limit=4)} describe"
+                          f"{'s' if len(lcd['not']) == 1 else ''} a larger sample" if lcd["not"]
+                          else "")
+                       + f". NCHS: {NHANES_LCD_QUOTE}{cdc}{unsure}")
     f["affected_columns"] = list(dict.fromkeys([*([lcd["use"]] if lcd["use"] else []), *because]))
     f["evidence"] = dict(NHANES_WEIGHTING_EVIDENCE)
 
@@ -425,12 +497,19 @@ def _survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
     restate_survey_weights(f, p, fc)
     use = [str(w) for w in p.get("use") or []]
     avoid = [str(w) for w in p.get("not") or []]
-    if p.get("sample") == "fasting subsample":
+    sample = p.get("sample")
+    if sample in _SUBSAMPLE_WORDS:
+        which = "Fasting analytes" if sample == "fasting subsample" else "OGTT analytes"
         if not use:
-            return Voice(f"Fasting analytes need {tick(p.get('missing'))}, which this table lacks; "
-                         f"{listing(avoid)} describe a larger sample.", "roles", "Mark design columns")
-        return Voice(f"Fasting analytes set the weight: {listing(use)}, not {listing(avoid)}; as "
-                     f"design columns none becomes a predictor.", "roles", "Mark design columns")
+            larger = f"; {listing(avoid)} describe a larger sample" if avoid else ""
+            return Voice(f"{which} need {tick(p.get('missing'))}, which this table lacks{larger}.",
+                         "roles", "Mark design columns")
+        rather = f", not {listing(avoid)}" if avoid else ""
+        return Voice(f"{which} set the weight: {listing(use)}{rather}; as design columns none "
+                     f"becomes a predictor.", "roles", "Mark design columns")
+    if p.get("other_subsamples") and not use:
+        return Voice(f"{listing(p['other_subsamples'], limit=2)} weight a subsample: which weight "
+                     f"applies depends on the variables you analyze.", "roles", "Mark design columns")
     if avoid:
         text = (f"Dietary analyses use {listing(use)}, not {listing(avoid)}; as design columns "
                 f"neither becomes a predictor.")
@@ -438,6 +517,40 @@ def _survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
         text = (f"Dietary analyses use {listing(use)}; as a design column it does not become a "
                 f"predictor.")
     return Voice(text, "roles", "Mark design columns")
+
+
+def weight_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The survey-weights finding where the legacy reader has none (audit WP13 repair): it knows
+    only the 2-year dietary weights' names, so a 2017–March 2020 pre-pandemic table (``WTDRD1PP``,
+    ``WTMECPRP``, ``WTSAFPRP``) with a fasting analyte got no weights finding at all. Built as the
+    legacy pack builds its own, then restated by the least-common-denominator rule."""
+    if "dietary" not in fc.lens or any(family(f["id"]) == "pack::dietary::survey_weights"
+                                       for f in legacy):
+        return []
+    from turbotab.core.recognizers import least_common_denominator
+
+    lcd = least_common_denominator(fc.columns)
+    if lcd is None or not (lcd["use"] or lcd["missing"] or lcd.get("other_subsamples")):
+        return []
+    from turbotab import packs
+    from turbotab.core.stages.findings import pack_finding
+
+    use = [lcd["use"]] if lcd["use"] else []
+    raw = packs._finding(
+        "pack::dietary::survey_weights", "warning",
+        f"Use the {lcd['sample'] or 'survey'} weight" if use else "Which survey weight applies",
+        (f"This table carries {listing([*use, *lcd['not']], limit=4)}." if use or lcd["not"]
+         else "This table carries NHANES subsample weights."),
+        ("Unweighted or wrongly-weighted estimates are biased toward the oversampled groups, "
+         "because NHANES deliberately oversamples specific race, age and income groups — so an "
+         "unweighted mean is not a US-population mean."),
+        confidence="high", pack=packs.DIETARY, marker="convention",
+        evidence=packs.Evidence(status=packs.CONVENTION_STATUS, source=NUT01),
+        columns=use or list(lcd.get("other_subsamples") or []),
+        params={"use": use, "not": list(lcd["not"]), "sample": lcd["sample"],
+                "other_subsamples": list(lcd.get("other_subsamples") or [])})
+    finding = pack_finding(raw)
+    return [speak(finding, raw, fc)]
 
 
 def _lonely_psu(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
@@ -645,7 +758,10 @@ def settle_groups(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # ── data the summaries cite ──────────────────────────────────────────────────
 
 def energy_correlations(frame: pd.DataFrame, energy: str | None, *, target: str | None = None) -> dict[str, float]:
-    """Pearson r of each energy-bearing nutrient column with the energy column."""
+    """Pearson r of each energy-bearing nutrient column with the energy column: the columns the
+    name reads as one and the values corroborate (:func:`turbotab.core.recognizers.intake_check`;
+    a yes/no ``lipid_disorder`` or a ``dxa_fat_g`` at 25,000 g is no nutrient here)."""
+    from turbotab.core.recognizers import intake_check
     from turbotab.core.stages.proposals import energy_bearing
 
     if not energy or energy not in frame.columns:
@@ -657,6 +773,9 @@ def energy_correlations(frame: pd.DataFrame, energy: str | None, *, target: str 
         if c in (energy, target) or not energy_bearing(c):
             continue
         if not pd.api.types.is_numeric_dtype(frame[c]):
+            continue
+        check = intake_check(c, frame[c], energy=e)
+        if check is not None and not check.corroborated:
             continue
         r = e.corr(pd.to_numeric(frame[c], errors="coerce"))
         if r is not None and not math.isnan(r):
@@ -914,7 +1033,9 @@ def energy_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> lis
     have = {family(f["id"]) for f in legacy}
     info = {c: {"dtype": "numeric" if pd.api.types.is_numeric_dtype(fc.frame[c]) else "text"}
             for c in fc.columns if c != fc.target}
-    energy = energy_column(info, {})
+    from turbotab.core.stages.proposals import _with_medians
+
+    energy = energy_column(_with_medians(info, fc.frame), {})
     if energy is None or energy == _PACK_ENERGY_ALIAS or _PACK_ENERGY_ALIAS in fc.names:
         return []
     alias = fc.frame.rename(columns={energy: _PACK_ENERGY_ALIAS})
@@ -960,6 +1081,7 @@ def own_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> list[d
             taken.update(f.get("affected_columns") or [])
     found = identifier_findings(fc, taken) + flag_findings(fc) + design_findings(fc) + cycle_findings(fc)
     found += energy_findings(fc, legacy)
+    found += weight_findings(fc, legacy)
     for f in found:
         f["title"] = finish(f["title"])
         f["summary"] = finish(f["summary"])

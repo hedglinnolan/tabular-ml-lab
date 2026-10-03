@@ -57,13 +57,15 @@ from typing import Any, Iterable, Literal, Mapping, Sequence
 # ── words ─────────────────────────────────────────────────────────────────────
 
 _CASE = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+_KJ = re.compile(r"(?<![A-Za-z])kJ(?![a-z])")
 
 
 def tokens(name: Any) -> list[str]:
     """The words of a column name, lowercased: split at separators and at a lower-to-upper case
     change (``TotalKcal``, ``ParticipantID``), never inside a run of capitals or after a digit
     (``DR1TKCAL``, ``WTSAF2YR`` and ``USUBJID`` stay one word)."""
-    spaced = _CASE.sub("_", str(name))
+    # The kilojoule's own spelling, ``kJ``, is one word (``Energy_kJ``), not a case change.
+    spaced = _CASE.sub("_", _KJ.sub("KJ", str(name)))
     return [t for t in re.split(r"[^a-z0-9]+", spaced.lower()) if t]
 
 
@@ -177,9 +179,23 @@ _QUALIFIED_PARTS: dict[str, dict[str, str]] = {
 # What else a nutrient word can be, by macronutrient: body composition, a specimen, a lab test, a
 # behavior. Any of these words in the name and the nutrient reading is withdrawn.
 _SPECIMEN = {"serum", "plasma", "blood", "urine", "urinary", "rbc", "erythrocyte", "csf", "saliva",
-             "salivary", "tissue", "adipose", "breastmilk", "fecal", "faecal", "stool"}
+             "salivary", "tissue", "adipose", "breastmilk", "fecal", "faecal", "stool", "breath"}
+# Words that make the column about something other than an amount eaten: a score or a test, a
+# medication, a diagnosis or a lab panel (``lipid_disorder``, ``lipid_panel_done``), a behavior or
+# a supplement's use (``protein_supplement_use``, ``alcohol_abstainer``), an enzyme
+# (``alcohol_dehydrogenase``), a body scan (``dxa_fat_g``), a parenteral infusion
+# (``lipid_emulsion_ml``), a vitamin class (``fat_soluble_vit_d``) or a clinical syndrome
+# (``protein_energy_wasting``). Names are one signal of three (NUTRITION_PACK §01); the values are
+# read too (:func:`intake_check`).
 _NOT_AN_INTAKE = {"score", "scale", "index", "test", "meds", "med", "medication", "medications",
-                  "drug", "drugs", "rx", "therapy", "lowering", "id", "ids", "code", "flag"}
+                  "drug", "drugs", "rx", "therapy", "lowering", "id", "ids", "code", "flag",
+                  "disorder", "disorders", "disease", "diseases", "panel", "done", "profile",
+                  "clinic", "allergy", "allergic", "intolerance", "intolerant", "supplement",
+                  "supplements", "supplementation", "supp", "suppl", "use", "user", "users",
+                  "usage", "abstainer", "abstainers", "abstinence", "abstinent", "dehydrogenase",
+                  "enzyme", "oxidase", "synthase", "dxa", "dexa", "scan", "mri", "emulsion",
+                  "infusion", "intralipid", "parenteral", "tpn", "soluble", "wasting",
+                  "restriction", "restricted", "oxidation"}
 _MACRO_DENY: dict[str, set[str]] = {
     "fat": {"mass", "body", "bodyfat", "free", "lean", "liver", "hepatic", "visceral",
             "subcutaneous", "trunk", "android", "gynoid", "area", "volume", "fraction",
@@ -189,7 +205,7 @@ _MACRO_DENY: dict[str, set[str]] = {
     "alcohol": {"use", "disorder", "dependence", "abuse", "audit", "drinker", "drinkers",
                 "drinking", "drinks", "drink", "frequency", "freq", "status", "history", "ever",
                 "never", "current", "former", "binge", "problem", "problems", "withdrawal",
-                "days"},
+                "days", "units", "unit", "glasses"},
     "fiber": {"muscle", "nerve", "optic", "type"},
 }
 # Food words: a food or a food group in grams is an intake but not a nutrient, so it carries no
@@ -216,7 +232,11 @@ _OTHER_DENY = {"hdl", "ldl", "vldl", "nonhdl", "deficiency", "status"}
 # A name with these words beside "protein" names the serum test, not the intake: NHANES LBXSTP is
 # "Total protein (g/dL)" while dietary protein is ``DR1TPROT`` "Protein (gm)". An intake unit
 # (``total_protein_g``) restores the dietary reading.
-_LAB_QUALIFIERS = {"protein": {"total"}, "cholesterol": {"total"}}
+_LAB_QUALIFIERS = {"protein": {"total", "tot"}, "cholesterol": {"total", "tot"}}
+# A diet named by what it restricts or favors (``low_carb_diet``, ``LowFatDiet``,
+# ``high_protein_diet``) is a dietary pattern or a trial arm, not an amount of the nutrient.
+_DIET_PATTERN_TAILS = {"diet", "diets", "pattern", "group", "arm"}
+_SUPPLEMENT = {"supplement", "supplements", "supplementation", "supp", "suppl"}
 
 
 @dataclass(frozen=True)
@@ -301,9 +321,14 @@ def read_nutrient(name: Any) -> NutrientReading | None:
         what, macro, part = _INFOODS[joined]
         return NutrientReading(raw, what, macro, part, "infoods")
     present = set(words)
-    if present & (_SPECIMEN | _NOT_AN_INTAKE) or concentration_unit(raw):
-        return None
     unit = _intake_unit(raw)
+    # A supplement's amount in an intake unit is an intake (``protein_supplement_g``); without one
+    # the name says the supplement is taken (``protein_supplement_use``).
+    denied = _NOT_AN_INTAKE - (_SUPPLEMENT if unit else set())
+    if present & (_SPECIMEN | denied) or concentration_unit(raw):
+        return None
+    if len(words) > 1 and words[-1] in _DIET_PATTERN_TAILS:
+        return None
     found: dict[str, str | None] = {}
     for w in words:
         if w in _PART_WORDS:
@@ -364,10 +389,125 @@ def is_nutrient(name: Any) -> bool:
         return True
 
 
+# ── corroboration by the values ───────────────────────────────────────────────
+
+# NUTRITION_PACK §01: "match on three signals jointly, never names alone". A name read as an
+# energy-bearing macronutrient is corroborated by a second signal and contradicted by values that
+# no intake shows. The FAO general Atwater factors (kcal/g) turn a median amount into energy, and
+# NUTRITION_PACK §02's loosest screen in circulation (sex-neutral 500–5,000 kcal a day) bounds a
+# day's energy: a column whose median alone would carry more is no day's intake in grams (a DXA
+# total fat of 25,000 g would be 225,000 kcal).
+ATWATER_KCAL_PER_G = {"protein": 4.0, "carbohydrate": 4.0, "fat": 9.0, "alcohol": 7.0, "fiber": 2.0}
+MAX_DAY_KCAL = 5_000.0
+# With no unit and no codebook, the name is one signal; under an energy column the second is that
+# the column rises with total energy, as an energy source must on average (audit IN-01: "require a
+# nutrient to correlate positively with energy before it becomes a default adjustment target").
+# One-sided Fisher z test of r > 0 at 1%: an unrelated column passes 1 time in 100.
+CORRELATION_Z = 2.326
+
+
+@dataclass(frozen=True)
+class IntakeCheck:
+    """Whether a column the name reads as an energy-bearing nutrient reads as a day's intake by its
+    values too, and why (one sentence's clause, naming the signal that decided)."""
+
+    corroborated: bool
+    why: str
+    r: float | None = None
+
+
+def _fmt(v: float) -> str:
+    return f"{v:,.0f}" if abs(v) >= 100 else f"{v:,.3g}"
+
+
+def intake_check(name: Any, values: Any, *, energy: Any = None) -> IntakeCheck | None:
+    """The values' verdict on a column :func:`read_nutrient` reads as an energy-bearing
+    macronutrient, or None when the name reads as none (nothing to corroborate).
+
+    Contradicted, whatever the name: two values only (a yes/no, ``lipid_disorder``), negative
+    values (no amount eaten is), or a median that would carry more than a day's energy as that
+    macronutrient (``dxa_fat_g`` at 25,000 g). Corroborated: a codebook variable (``DR1TFAT``,
+    ``PROCNT``) or an intake unit in the name (``fat_g``, ``alc_kcal``) beside values nothing
+    contradicts; with the name alone, a column that rises with ``energy`` (one-sided test of
+    r > 0 at 1%). With the name alone and no energy column there is no second signal, and the
+    reading stands only as the name's, said so."""
+    import numpy as np
+    import pandas as pd
+
+    try:
+        reading = read_nutrient(name)
+    except AmbiguousNutrient:
+        return None
+    if reading is None or reading.macro is None:
+        return None
+    x = pd.to_numeric(pd.Series(values), errors="coerce")
+    present = x[np.isfinite(x.to_numpy(dtype=float))]
+    if len(present) < 3:
+        return IntakeCheck(True, "too few values to judge, so the name decides")
+    distinct = np.unique(present.to_numpy(dtype=float))
+    if len(distinct) <= 2:
+        shown = " and ".join(f"`{_fmt(v)}`" for v in distinct)
+        return IntakeCheck(False, f"it holds only {shown}, a yes/no, not an amount eaten")
+    if float(present.min()) < 0:
+        return IntakeCheck(False, "it holds negative values, which no amount eaten has")
+    from turbotab.core.methods.energy import unit_of
+
+    unit = unit_of(name)
+    if unit == "unmarked" and set(tokens(name)) & {"g", "gram", "grams"}:
+        unit = "grams"  # ``protein_g_day``: grams, then a time
+    median = float(present.median())
+    if unit == "kcal":
+        day_kcal = median
+    elif unit in ("grams", "unmarked"):
+        day_kcal = median * ATWATER_KCAL_PER_G[reading.macro]
+    else:
+        day_kcal = None
+    if day_kcal is not None and day_kcal > MAX_DAY_KCAL:
+        return IntakeCheck(False, f"its median, `{_fmt(median)}`, would carry `{_fmt(day_kcal)}` "
+                                  f"kcal a day as {reading.macro}, more than any day's intake")
+    if reading.source in ("nhanes", "infoods"):
+        return IntakeCheck(True, "a codebook variable whose documentation states the unit")
+    if unit in ("grams", "kcal", "kj"):
+        return IntakeCheck(True, "its name and its unit agree, and its values fit a day's intake")
+    if energy is None:
+        return IntakeCheck(True, "only its name says it is an intake; there is no energy column "
+                                 "to check it against")
+    e = pd.to_numeric(pd.Series(energy), errors="coerce").reindex(x.index)
+    both = pd.DataFrame({"x": x, "e": e}).dropna()
+    n = len(both)
+    r = float(both["x"].corr(both["e"])) if n >= 4 else float("nan")
+    if not math.isfinite(r):
+        return IntakeCheck(False, "only its name says it is an intake, and it cannot be compared "
+                                  "with total energy")
+    z = math.atanh(max(min(r, 0.999999), -0.999999)) * math.sqrt(max(n - 3, 1))
+    if z >= CORRELATION_Z:
+        return IntakeCheck(True, f"it rises with total energy (r = {r:.2f})", r)
+    return IntakeCheck(False, f"only its name says it is an intake: it has no unit and does not "
+                              f"rise with total energy (r = {r:.2f})", r)
+
+
 # ── total energy ──────────────────────────────────────────────────────────────
 
 _ENERGY_WORDS = {"energy", "kcal", "kcals", "kj", "calories", "calorie", "kilocalories",
-                 "kilocalorie", "kilojoules", "kilojoule", "enerc", "ener"}
+                 "kilocalorie", "kilojoules", "kilojoule", "enerc", "ener", "tei"}
+# The words a total-energy-intake name may carry beside its energy word: what the total is
+# (``total``, ``daily``, ``intake``), where it was reported (``dietary``, ``ffq``, ``recall``),
+# a summary (``mean``, ``usual``), an occasion (``baseline``, ``day1``, ``w2``) and a unit. Any
+# other word says the energy is something else (audit WP13 repair): spent (``exercise_kcal``,
+# ``activity_energy_kcal``, ``PAEE_kj``, ``steps_kcal``, ``met_kcal``), felt
+# (``sf36_energy_fatigue``, ``phq9_energy``, ``little_energy``, ``energy_level_score``), a
+# requirement, a goal, a share or a food's. An allow-list, so a word nobody listed is not read as
+# intake by default.
+_ENERGY_COMPANIONS = {
+    "total", "tot", "daily", "day", "days", "d", "per", "intake", "intakes", "ei", "dietary",
+    "diet", "food", "foods", "reported", "report", "self", "mean", "avg", "average", "usual",
+    "habitual", "estimated", "est", "ffq", "recall", "recalls", "24h", "24hr", "baseline", "bl",
+    "followup", "fu", "en", "consumed", "consumption", "value", "raw", "all", "weekly", "week",
+    "wk",
+}
+_OCCASION = re.compile(r"^(?:\d+|(?:day|d|r|recall|w|wave|wk|week|v|visit|y|yr|year|t|time|m|"
+                       r"month|bl|fu|tp|p|period)\d+|\d+(?:d|day|days|h|hr|hrs|y|yr|yrs|m|mo|w|"
+                       r"wk))$")
 # An expenditure, a requirement, a basal rate or a goal is energy, but not intake.
 _NOT_INTAKE_ENERGY = {"expenditure", "expend", "expended", "tee", "ree", "bmr", "rmr", "pal",
                       "burn", "burned", "burnt", "basal", "resting", "requirement",
@@ -379,9 +519,10 @@ _PER_DENOMINATOR = {"kg", "g", "1000", "1000kcal", "mj", "bw", "kgbw", "m2"}
 
 def reads_as_total_energy(name: Any) -> bool:
     """Whether a column's name reads as total energy intake (``energy_kcal``, ``DR2TKCAL``,
-    ``TotalKcal``, ``ENERC_KCAL``, ``energy_kj``). Not a macronutrient's own energy (``alc_kcal``,
-    ``protein_kcal``, ``kcal_from_fat``), not a share of energy, and not an expenditure, a
-    requirement or a goal."""
+    ``TotalKcal``, ``ENERC_KCAL``, ``energy_kj``, ``energy_intake``). Not a macronutrient's own
+    energy (``alc_kcal``, ``protein_kcal``, ``kcal_from_fat``), not a share of energy, and not an
+    expenditure, a requirement, a goal or a questionnaire item: every word beside the energy word
+    must be one a total intake's name carries (:data:`_ENERGY_COMPANIONS`)."""
     raw = str(name)
     code = _NHANES_PREFIX.match(raw.upper()) if re.fullmatch(r"[A-Za-z0-9]+", raw) else None
     if code is not None:
@@ -397,10 +538,41 @@ def reads_as_total_energy(name: Any) -> bool:
     for i, w in enumerate(words[:-1]):
         if w == "per" and words[i + 1] in _PER_DENOMINATOR:
             return False
+    if "per" in words and not any(w == "per" and i + 1 < len(words) and words[i + 1] in
+                                  {"day", "d", "week", "wk"} for i, w in enumerate(words)):
+        return False
+    if any(w not in _ENERGY_WORDS and w not in _ENERGY_COMPANIONS and not _OCCASION.match(w)
+           for w in words):
+        return False
     try:
         return read_nutrient(raw) is None
     except AmbiguousNutrient:
         return False
+
+
+# The values' check on a total-energy name: a population's median day of energy lies inside
+# NUTRITION_PACK §02's loosest screen (sex-neutral 500–5,000 kcal a day) read in kcal at its floor
+# and in kJ at its ceiling (5,000 × 4.184 = 20,920 kJ). A median of 50 (an SF-36 vitality score)
+# or of 2 (a PHQ-9 item) is no day's energy in either unit.
+ENERGY_MEDIAN_RANGE = (500.0, 5_000.0 * 4.184)
+
+
+def energy_median_contradicts(median: Any) -> str | None:
+    """Why a total-energy column's median says it is not a day's energy intake, or None."""
+    try:
+        m = float(median)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(m):
+        return None
+    lo, hi = ENERGY_MEDIAN_RANGE
+    if m < lo:
+        return (f"its median, `{_fmt(m)}`, is below {lo:,.0f}, no day's energy intake in kcal or "
+                f"kJ")
+    if m > hi:
+        return (f"its median, `{_fmt(m)}`, is above {hi:,.0f}, no day's energy intake in kcal or "
+                f"kJ")
+    return None
 
 
 def energy_unit(name: Any) -> Literal["kcal", "kj"] | None:
@@ -505,6 +677,11 @@ def id_kind(name: Any) -> IdKind | None:
         return "cluster"
     if core and core <= _VISIT_WORDS and tail:
         return "visit"
+    # ``arm_id``, ``group_id``, ``diet_id``: the label of what a study compares, not a record's
+    # name (audit WP13 repair: an RCT's arm coded 1/2 was proposed "identifier", "Names each
+    # unit; 2 units"); :func:`study_group` reads it.
+    if tail and core and core <= _STUDY_GROUP_WORDS:
+        return None
     if joined in _RECORD_JOINED:
         return "record"
     if tail and len(words) > 1 and words[-1] in {"id", "ids", "uid", "uuid", "guid"}:
@@ -542,15 +719,36 @@ _ACQUISITION_PHRASES: dict[tuple[str, ...], str] = {
 }
 
 
+# The only words that may stand before an acquisition word: what was acquired and how
+# (``extraction_batch``, ``lcms_run_order``, ``elisa_plate``, ``sample_well``). Any other word
+# makes the phrase something else: ``insulin_injection`` and ``steroid_injection`` are a
+# treatment, ``sleep_well`` and ``eat_well`` an answer, ``potato_chip`` a food, ``morning_run`` an
+# activity (audit WP13 repair). The acquisition columns are matched as whole names (IN-02).
+_ACQUISITION_QUALIFIERS = {
+    "sample", "samples", "extraction", "extract", "analysis", "analytical", "assay", "lab",
+    "laboratory", "lc", "ms", "gc", "nmr", "lcms", "gcms", "uplc", "hplc", "elisa", "pcr", "qpcr",
+    "array", "microarray", "seq", "sequencing", "library", "lib", "prep", "preparation",
+    "processing", "measurement", "acquisition", "acq", "instrument", "machine", "plate", "well",
+    "batch", "run", "storage", "box", "kit", "lot", "reagent", "shipment", "tmt", "itraq", "dna",
+    "rna", "metabolomics", "lipidomics", "proteomics", "omics", "pos", "neg", "positive",
+    "negative", "ion", "mode", "injection", "inj", "chip", "lane", "flowcell", "ms1", "ms2",
+    "original", "raw", "qc",
+}
+
+
 def acquisition_kind(name: Any) -> str | None:
     """``batch``, ``plate``, ``well``, ``run_order``, ``run``, ``plex`` or ``polarity`` when the
-    column records how samples were acquired; None otherwise."""
+    column records how samples were acquired; None otherwise. The name is the acquisition phrase,
+    optionally after words naming what was acquired (:data:`_ACQUISITION_QUALIFIERS`) and before an
+    identifier word or a number."""
     words = tokens(name)
-    while words and words[-1] in _ID_TAILS:
+    while words and (words[-1] in _ID_TAILS or words[-1].isdigit()):
         words = words[:-1]
     for size in (2, 1):
         if len(words) >= size and tuple(words[-size:]) in _ACQUISITION_PHRASES:
-            return _ACQUISITION_PHRASES[tuple(words[-size:])]
+            before = words[:-size]
+            if all(w in _ACQUISITION_QUALIFIERS or w.isdigit() for w in before):
+                return _ACQUISITION_PHRASES[tuple(words[-size:])]
     return None
 
 
@@ -565,9 +763,17 @@ _STUDY_GROUP_WORDS = {"treatment", "treatments", "arm", "arms", "group", "groups
 
 def study_group(name: Any) -> bool:
     """The name says the column is a study's arm or comparison group (``treatment``, ``arm``,
-    ``diet_group``, ``condition``, ``phenotype``)."""
+    ``diet_group``, ``condition``, ``phenotype``, ``arm_id``)."""
     words = tokens(name)
+    while len(words) > 1 and words[-1] in _ID_TAILS:
+        words = words[:-1]
     return bool(words) and words[-1] in _STUDY_GROUP_WORDS and not is_identifier(name)
+
+
+def has_id_tail(name: Any) -> bool:
+    """The name ends in an identifier word (``arm_id``, ``group_no``)."""
+    words = tokens(name)
+    return len(words) > 1 and words[-1] in _ID_TAILS
 
 
 # ── time and rates ────────────────────────────────────────────────────────────
@@ -659,7 +865,12 @@ _SURVEY_WEIGHT_WORDS = {"pweight", "sampweight", "sampwt", "survwt", "svywt", "w
 _SURVEY_CONTEXT = {"survey", "sampling", "sample", "design", "svy", "probability", "inverse"}
 _BODY_WORDS = {"birth", "body", "bw", "baby", "infant", "newborn", "fetal", "gestational",
                "maternal", "pregnancy", "gain", "loss", "change", "kg", "lb", "lbs", "g", "grams",
-               "gram", "oz", "ideal", "target", "current", "usual", "self", "reported"}
+               "gram", "oz", "ideal", "target", "current", "usual", "self", "reported",
+               # A mass unit or a specimen makes a weight something weighed (audit WP13 repair:
+               # ``sample_weight_mg``, a tissue mass, was proposed "A sampling weight").
+               "mg", "ug", "mcg", "ng", "milligram", "milligrams", "microgram", "micrograms",
+               "tissue", "biopsy", "specimen", "wet", "dry", "organ", "tumor", "tumour", "liver",
+               "brain", "muscle", "fresh", "net", "gross"}
 NHANES_WEIGHT_PREFIX = ("WTDR", "WTMEC", "WTINT", "WTSA", "WTSB", "WTSOG", "WTSAF", "WTSH",
                         "WTSCD", "WTSPO", "WTSVOC", "WTSHM", "WTFSM", "WTSSB")
 
@@ -704,20 +915,33 @@ NHANES_LCD_QUOTE = ("\"A good rule of thumb is to use 'the least common denomina
                     "'least common denominator.'\"")
 
 # The weights from the widest sample to the smallest: interview, examination, dietary day 1, both
-# dietary days, then the morning fasting subsample (which is drawn from the examined sample).
+# dietary days, the morning fasting subsample (drawn from the examined sample), and the oral
+# glucose tolerance test subsample (drawn from the fasting one). Each name as the CDC codebooks
+# spell it, read 2026-10-03: the 2-year and 4-year names (DR1TOT_L "WTDRD1 - Dietary day one sample
+# weight", "WTDR2D - Dietary two-day sample weight"; GLU_L "WTSAF2YR - Fasting Subsample 2 Year MEC
+# Weight"; DRXTOT_B "WTDR4YR - Dietary day one 4-Year sample weight"), the 2017-March 2020
+# pre-pandemic names (P_DEMO "WTINTPRP - Full sample interview weight", "WTMECPRP - Full sample MEC
+# exam weight"; P_DR1TOT "WTDRD1PP - Dietary day one sample weight", "WTDR2DPP - Dietary two-day
+# sample weight"; P_GLU "WTSAFPRP - Fasting Subsample Weight") and the OGTT subsample's (OGTT_I
+# "WTSOG2YR - OGTT Subsample MEC Weight": "Specific sample weights for this subsample are included
+# in this data file and should be used when analyzing these data.").
 WEIGHT_TIERS: tuple[tuple[str, str, int], ...] = (
-    (r"^WTINT(2YR|4YR)?$", "interview", 0),
-    (r"^WTMEC(2YR|4YR)?$", "examination", 1),
-    (r"^WTDRD1$", "dietary day 1", 2),
-    (r"^WTDR2D$", "dietary days 1 and 2", 3),
-    (r"^WTSAF(2YR|4YR)?$", "fasting subsample", 4),
+    (r"^WTINT(2YR|4YR|PRP)?$", "interview", 0),
+    (r"^WTMEC(2YR|4YR|PRP)?$", "examination", 1),
+    (r"^(WTDRD1(PP)?|WTDR4YR)$", "dietary day 1", 2),
+    (r"^WTDR2D(PP)?$", "dietary days 1 and 2", 3),
+    (r"^WTSAF(2YR|4YR|PRP)?$", "fasting subsample", 4),
+    (r"^WTSOG(2YR|4YR|PRP)?$", "oral glucose tolerance test subsample", 5),
 )
 # Laboratory variables measured on the morning fasting subsample (NHANES GLU, TRIGLY and INS
 # files: fasting glucose LBXGLU/LBDGLUSI, triglycerides LBXTR/LBDTRSI, LDL LBDLDL/LBDLDLSI, insulin
 # LBXIN/LBDINSI), which the tutorial says take the fasting weight.
 FASTING_ANALYTES = re.compile(r"^(LBXGLU|LBDGLUSI|LBXTR|LBDTRSI|LBDLDL|LBDLDLSI|LBDLDLM|LBDLDLN|"
                               r"LBXIN|LBDINSI|LBXAPB|LBDAPBSI)$")
+# The OGTT file's analytes (OGTT_I: "LBXGLT - Two Hour Glucose (OGTT) (mg/dL)", and its SI twin).
+OGTT_ANALYTES = re.compile(r"^(LBXGLT|LBDGLTSI)$")
 _DIETARY_VARIABLE = re.compile(r"^(DR1T|DR2T|DR1I|DR2I|DR1_|DR2_|DRXT|DBQ|DBD)")
+_SUBSAMPLE = {4: "fasting subsample", 5: "oral glucose tolerance test subsample"}
 
 
 def weight_tier(name: Any) -> tuple[str, int] | None:
@@ -729,33 +953,58 @@ def weight_tier(name: Any) -> tuple[str, int] | None:
     return None
 
 
+def other_subsample_weight(name: Any) -> bool:
+    """An NHANES subsample weight whose sample TurboTab does not know (``WTSA2YR``, ``WTSB2YR``,
+    ``WTSH2YR``, ``WTSVOC2Y``…): the weight of whichever analytes that file holds."""
+    raw = str(name).upper()
+    return (bool(re.fullmatch(r"[A-Z0-9]+", raw)) and raw.startswith(NHANES_WEIGHT_PREFIX)
+            and weight_tier(raw) is None)
+
+
+def _expected(rank: int, prepandemic: bool) -> str:
+    if prepandemic:
+        return {5: "WTSOG2YR", 4: "WTSAFPRP", 3: "WTDR2DPP", 2: "WTDRD1PP"}[rank]
+    return {5: "WTSOG2YR", 4: "WTSAF2YR", 3: "WTDR2D", 2: "WTDRD1"}[rank]
+
+
 def least_common_denominator(columns: Sequence[str]) -> dict[str, Any] | None:
     """The NHANES weight the least-common-denominator rule names for these columns, or None when
     the table carries no NHANES weight.
 
-    The weight follows the smallest sample whose variables are present: a fasting analyte with
-    ``WTSAF2YR`` in the table names the fasting weight; dietary variables name the dietary weight;
-    otherwise the examination weight. ``components`` says which variables set it."""
+    The weight follows the smallest sample whose variables are present: an OGTT analyte names the
+    OGTT subsample weight; a fasting analyte names the fasting weight; dietary variables name the
+    dietary weight; otherwise the examination weight. ``because`` says which variables set it.
+    ``other_subsamples`` lists subsample weights whose analytes TurboTab cannot tell
+    (``WTSA2YR``…): when any is present the rule cannot be applied from the names alone, and the
+    choice is the user's (``settled`` False)."""
     weights = {}
     for c in columns:
         tier = weight_tier(c)
         if tier is not None:
             weights.setdefault(tier[1], (str(c), tier[0]))
-    if not weights:
+    others = [str(c) for c in columns if other_subsample_weight(c)]
+    if not weights and not others:
         return None
+    prepandemic = any(str(w).upper().endswith(("PRP", "PP")) for w, _ in weights.values())
+    ogtt = [str(c) for c in columns if OGTT_ANALYTES.match(str(c).upper())]
     fasting = [str(c) for c in columns if FASTING_ANALYTES.match(str(c).upper())]
     dietary = [str(c) for c in columns if _DIETARY_VARIABLE.match(str(c).upper())]
     wanted, because = None, []
-    if fasting:
+    if ogtt:
+        wanted, because = 5, ogtt
+    elif fasting:
         wanted, because = 4, fasting
     elif dietary:
         wanted, because = 2, dietary
+    base = {"other_subsamples": others, "settled": not others}
     if wanted is None:
+        if not weights:
+            return {"use": None, "sample": None, "because": [], "not": [], "missing": None, **base}
         rank = 1 if 1 in weights else min(weights)
         name, label = weights[rank]
         return {"use": name, "sample": label, "because": [], "not": [w for r, (w, _) in
                                                                sorted(weights.items()) if r != rank],
-                "missing": None}
+                "missing": None, **base}
     # Both dietary days are a smaller sample than day 1: prefer it when the table has it and both
     # days' variables are present.
     if wanted == 2 and 3 in weights and any(str(c).upper().startswith(("DR2T", "DR2I", "DR2_"))
@@ -764,18 +1013,20 @@ def least_common_denominator(columns: Sequence[str]) -> dict[str, Any] | None:
     if wanted in weights:
         name, label = weights[wanted]
         return {"use": name, "sample": label, "because": because,
-                "not": [w for r, (w, _) in sorted(weights.items()) if r != wanted], "missing": None}
-    label = {4: "fasting subsample", 2: "dietary day 1", 3: "dietary days 1 and 2"}[wanted]
-    expected = {4: "WTSAF2YR", 2: "WTDRD1", 3: "WTDR2D"}[wanted]
+                "not": [w for r, (w, _) in sorted(weights.items()) if r != wanted], "missing": None,
+                **base}
+    label = {5: _SUBSAMPLE[5], 4: _SUBSAMPLE[4], 2: "dietary day 1", 3: "dietary days 1 and 2"}[wanted]
     return {"use": None, "sample": label, "because": because,
-            "not": [w for _, (w, _) in sorted(weights.items())], "missing": expected}
+            "not": [w for _, (w, _) in sorted(weights.items())],
+            "missing": _expected(wanted, prepandemic), **base}
 
 
 __all__ = [
     "AmbiguousNutrient", "ENERGY_PRIOR_SOURCE", "codebook_unit", "FASTING_ANALYTES", "IdKind", "KCAL_PRIOR",
     "KJ_PRIOR", "MACROS", "NHANES_LCD_QUOTE", "NHANES_WEIGHTING_SOURCE", "NutrientReading",
-    "acquisition_kind", "concentration_unit", "energy_unit", "energy_unit_by_magnitude",
-    "id_kind", "is_identifier", "is_nutrient", "is_rate", "least_common_denominator",
+    "ATWATER_KCAL_PER_G", "ENERGY_MEDIAN_RANGE", "IntakeCheck", "OGTT_ANALYTES",
+    "acquisition_kind", "concentration_unit", "energy_median_contradicts", "energy_unit",
+    "energy_unit_by_magnitude", "has_id_tail", "id_kind", "intake_check", "other_subsample_weight", "is_identifier", "is_nutrient", "is_rate", "least_common_denominator",
     "names_a_person", "nutrient_role", "read_nutrient", "reads_as_measurement",
     "reads_as_survey_weight", "reads_as_time", "reads_as_total_energy", "study_group", "tokens",
     "weight_tier",

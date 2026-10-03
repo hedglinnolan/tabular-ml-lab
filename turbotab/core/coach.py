@@ -546,7 +546,16 @@ def card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, u
         e = pd.to_numeric(frame[energy], errors="coerce")
         below, above = int(((e < low) & base).sum()), int(((e > high) & base).sum())
         word = "kJ" if unit == "kj" else "kcal"
-        if below:
+        present = int((e.notna() & base).sum())
+        from turbotab.core.stages.proposals import MOST_ROWS
+
+        if present and below + above > MOST_ROWS * present:
+            # Most rows outside a day's plausible intake is a unit question, not misreporting
+            # (audit IN-07: "`764` rows above `5,000` kcal: likely over-reporting").
+            line = note(f"{count(below + above)} of {count(present)} rows outside "
+                        f"{value(round(low))}–{value(round(high))} {word}: check the unit",
+                        "column", energy)
+        elif below:
             line = note(f"{count(below)} {'row' if below == 1 else 'rows'} below {value(round(low))} "
                         f"{word}: likely under-reporting", "column", energy)
         elif above:

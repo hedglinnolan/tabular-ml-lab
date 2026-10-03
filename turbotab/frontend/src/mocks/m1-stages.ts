@@ -397,10 +397,19 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
         },
       ]);
     }
+    const energyValues = findColumn(ds, energy)?.values ?? [];
+    let present = 0;
+    for (let i = 0; i < ds.nRows; i++)
+      if (base[i] && typeof energyValues[i] === "number") present += 1;
     for (const [key, label, rule] of screens) {
       let affected = 0;
       for (let i = 0; i < ds.nRows; i++) if (base[i] && ruleExcludes(ds, rule, i)) affected += 1;
-      exclusions.push({ key, label, rule, affected, evidence: { ...EXCLUSION_EVIDENCE } });
+      // As the server's proposals: a screen that would remove most rows asks the unit (audit IN-07).
+      const refused =
+        present && affected > present / 2
+          ? `Refused: it would remove \`${fmt(affected)}\` of \`${fmt(present)}\` rows; check the unit of \`${energy}\` first.`
+          : null;
+      exclusions.push({ key, label, rule, affected, evidence: { ...EXCLUSION_EVIDENCE }, refused });
     }
   }
   const applicability: Record<string, { ok: boolean; reason: string }> = {};
@@ -821,7 +830,11 @@ const COST_PER_MILLION_CELLS: Record<FamilyKey, number> = {
 
 /** The server's `cost.duration` + `cost.say`: a fit's length, naming the width or length only
  * when the fit is long enough for that to matter (NOTEWORTHY_SECONDS). */
-function cost(seconds: number, n: number, p: number): { estimate_seconds: number; estimate: string } {
+function cost(
+  seconds: number,
+  n: number,
+  p: number,
+): { estimate_seconds: number; estimate: string } {
   const about = (k: number, unit: string) => `about ${k} ${unit}${k === 1 ? "" : "s"}`;
   const text =
     seconds < 1

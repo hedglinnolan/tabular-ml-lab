@@ -1393,6 +1393,75 @@ def _exclusions_are_ranges_on_numbers(decision: SetExclusions, ctx: Any) -> None
                 )
 
 
+# ── an intake screen never removes most rows (audit IN-07) ───────────────────
+# "Refuse a screen that would remove more than half the rows, with a units exit": a kJ energy
+# column read as kcal lost 764–989 of 800–1,000 rows to the 500–5,000 kcal screen. The exits are
+# the same rule read in kJ, or as a weekly total, when that reading keeps most rows.
+
+_UNIT_READINGS = (("in kJ", 4.184), ("as a weekly total", 7.0))
+
+
+def _scaled_rule(rule: Any, factor: float, words: str) -> Any:
+    def scale(v: float | None) -> float | None:
+        return None if v is None else round(float(v) * factor, 1)
+
+    update: dict[str, Any] = {"low": scale(rule.low), "high": scale(rule.high),
+                              "reason": f"{rule.reason}, read {words}"}
+    if rule.by is not None:
+        update["by"] = rule.by.model_copy(update={"ranges": {
+            k: (scale(lo), scale(hi)) for k, (lo, hi) in rule.by.ranges.items()}})
+    return rule.model_copy(update=update)
+
+
+def _screens_keep_most_rows(decision: SetExclusions, ctx: Any) -> None:
+    import pandas as pd
+
+    from turbotab.core.recognizers import reads_as_total_energy
+    from turbotab.core.stages.proposals import MOST_ROWS, rule_excludes
+
+    opener = _ctx(ctx, "store")
+    try:
+        store = opener() if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no data to check: nothing is refused for it
+        store = None
+    if store is None:
+        return
+    state = _state(ctx)
+    roles = (getattr(state, "roles", None) or {}) if state is not None else {}
+    names = set(store.columns)
+    for i, rule in enumerate(decision.rules):
+        column = rule.column
+        if column not in names or not (roles.get(column) == "energy"
+                                       or reads_as_total_energy(column)):
+            continue
+        reads = [c for c in as_rule(rule).reads() if c in names]
+        if len(reads) < len(as_rule(rule).reads()):
+            continue
+        frame = store.materialize(reads)
+        present = pd.to_numeric(frame[column], errors="coerce").notna()
+        n = int(present.sum())
+        removed = int((rule_excludes(frame, rule) & present).sum())
+        if not n or removed <= MOST_ROWS * n:
+            continue
+        exits: list[dict[str, Any]] = []
+        if not isinstance(rule, GoldbergRule):
+            for words, factor in _UNIT_READINGS:
+                scaled = _scaled_rule(rule, factor, words)
+                if int((rule_excludes(frame, scaled) & present).sum()) <= MOST_ROWS * n:
+                    rules = list(decision.rules)
+                    rules[i] = scaled
+                    exits.append({"label": f"Read `{column}` {words}",
+                                  "decision": SetExclusions(rules=rules)})
+        exits.append({"label": f"Drop the rule on `{column}`",
+                      "decision": _rule_without(decision, i)})
+        raise Refusal(
+            "screen_removes_most_rows",
+            f"The rule on `{column}` would remove {removed:,} of {n:,} rows ({removed / n:.0%}). An "
+            f"intake screen removes the implausible few; one that removes most rows says the bounds "
+            f"are not in `{column}`'s unit. Check the unit first.",
+            exits=exits)
+
+
 # ── no eligibility rule on the outcome (audit RO-01) ─────────────────────────
 # Keeping rows by the outcome's own value selects on the value the model explains: with a true
 # fiber slope of −0.25, a `bmi 18.5–30` rule on a `bmi` outcome gave −0.092 (−0.104, −0.080),
@@ -2396,6 +2465,7 @@ register_validator("set_missing", _missing_fits_the_purpose)
 register_validator("set_missing", _non_detections_are_not_filled_by_the_median)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
+register_validator("set_exclusions", _screens_keep_most_rows)
 # first: a rule on the outcome is refused for that reason, whatever else is wrong with its bounds
 register_validator("set_exclusions", _exclusions_leave_the_outcome_alone, first=True)
 register_validator("set_target", _new_outcome_has_no_rule)

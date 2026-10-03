@@ -3524,6 +3524,11 @@ export interface components {
             /** Affected */
             affected: number;
             evidence: components["schemas"]["FindingEvidence"];
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
         };
         /** ExclusionRule */
         ExclusionRule: {

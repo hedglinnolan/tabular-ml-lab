@@ -20,8 +20,14 @@ A value is read as a code only when the data leave room for no other reading:
   A decaying count tail (children, admissions, drinks) does not pass: its top values are rare,
   so a gap above them says nothing.
 * **It recurs.** At least two rows hold it.
-* **A negative code in a column of non-negative values** is never a real observation, whatever
-  the distance (the -9 in a 0–100 score).
+* **A negative code in a column of non-negative values** needs only a smaller gap: at least one
+  unused value between it and the smallest real value (the -9 in a 0–100 score). A -1 one step
+  below a column's 0 is adjacent to the answers and is read as one of them (an integer change
+  score; audit WP14 repair: -1 was flagged in 13–69% of clean change-score columns).
+* **A code next to the answers is rarer than they are.** A near code (one unused value between it
+  and the top answer) must hold under half the count the answers predict at that unused value: a
+  days-per-week item heaped at 7 holds 7 as often as its top answers, so it is the scale's end
+  rather than a code (audit WP14 repair).
 
 Columns that describe the survey design (strata, PSUs, weights) are not read: NHANES stratum
 ``999`` is a real stratum that another finding already reads as one (H19).
@@ -47,6 +53,7 @@ MIN_COUNT = 2             # rows that must hold a code
 FAR_SPACINGS = 10.0       # a far code is at least this many typical spacings beyond the rest …
 FAR_RANGE = 0.5           # … and at least this share of the rest's range
 NEAR_EXPECTED = 5.0       # count expected at the unused next value, for a gap to mean a scale end
+NEAR_RARITY = 0.5         # past one unused value, a code holds under half that expected count
 
 #: The codes the NHANES codebooks define: 7/9 ("Refused", "Don't know") and their wider repdigits.
 NHANES_CODES = frozenset({7.0, 9.0, 77.0, 99.0, 777.0, 999.0, 7777.0, 9999.0, 77777.0, 99999.0,
@@ -123,6 +130,8 @@ def read(series: pd.Series) -> dict[str, Any] | None:
             kind = far
         elif coded and gap >= 2 * spacing and _top_is_populated(rest, count):
             kind = near
+            if gap < 3 * spacing and count[v] >= NEAR_RARITY * _expected_next(rest, count):
+                continue  # one unused value, and the "code" nearly as common as an answer
         else:
             continue
         for w in block[j:]:
@@ -146,7 +155,9 @@ def read(series: pd.Series) -> dict[str, Any] | None:
         for v in sorted(block):
             if count[v] < MIN_COUNT:
                 continue
-            if lo >= 0 or (lo - v) >= max(FAR_SPACINGS * spacing, FAR_RANGE * (hi - lo)):
+            gap = lo - v
+            if (lo >= 0 and gap >= 2 * spacing) \
+                    or gap >= max(FAR_SPACINGS * spacing, FAR_RANGE * (hi - lo)):
                 flagged[v] = int(count[v])
                 far.append(v)
 
@@ -159,17 +170,23 @@ def read(series: pd.Series) -> dict[str, Any] | None:
             "coded": coded, "n": int(len(x))}
 
 
-def _top_is_populated(rest: np.ndarray, count: dict[float, int]) -> bool:
-    """Whether a value just above the top answer would be expected at least ``NEAR_EXPECTED``
-    times, extrapolating the per-step decay across the top three answers (never growing): one
-    noisy count at the top of a decaying tail does not make it look like a scale end."""
+def _expected_next(rest: np.ndarray, count: dict[float, int]) -> float:
+    """The count expected at the value just above the top answer, extrapolating the per-step
+    decay across the top three answers (never growing)."""
     ordered = np.sort(rest)
     c = [float(count.get(float(v), 0)) for v in ordered[-3:]]
     c_top = c[-1]
     if len(c) == 1:
-        return c_top >= NEAR_EXPECTED
+        return c_top
     ratio = min(1.0, (c_top / c[0]) ** (1.0 / (len(c) - 1))) if c[0] else 1.0
-    return c_top * ratio >= NEAR_EXPECTED
+    return c_top * ratio
+
+
+def _top_is_populated(rest: np.ndarray, count: dict[float, int]) -> bool:
+    """Whether a value just above the top answer would be expected at least ``NEAR_EXPECTED``
+    times (:func:`_expected_next`): one noisy count at the top of a decaying tail does not make it
+    look like a scale end."""
+    return _expected_next(rest, count) >= NEAR_EXPECTED
 
 
 def findings(frame: pd.DataFrame) -> list[dict[str, Any]]:
@@ -194,8 +211,12 @@ def findings(frame: pd.DataFrame) -> list[dict[str, Any]]:
         if below:
             where.append(f"below every other value (the smallest is {_num(reading['real_low'])})")
         how = []
-        if any(v in reading["far"] for v in values):
+        far_codes = [v for v in values if v in reading["far"]]
+        if any(v > 0 or reading["real_low"] < 0 for v in far_codes):
             how.append("far beyond the rest, with nothing between")
+        if any(v < 0 <= reading["real_low"] for v in far_codes):
+            how.append("negative in a column whose every other value is zero or more, with an "
+                       "unused value between")
         if reading["near"]:
             how.append("past an unused value at the top of a coded question whose top answer is "
                        "common, which is where a scale ends and its codes begin")

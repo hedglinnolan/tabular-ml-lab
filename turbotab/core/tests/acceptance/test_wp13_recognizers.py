@@ -756,3 +756,419 @@ def test_6_fasting_analytes_name_the_fasting_subsample_weight(tmp_path):
     no_lab = state.model_copy(update={"target": "DR1TKCAL",
                                       "roles": {k: v for k, v in roles.items() if k != "LBXTR"}})
     assert offered(no_lab)[0]["decision"]["weight"] == "WTDRD1"
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Repair round (2026-10-03): the independent verifier's variants of each test's failure class.
+# Its probes (verify-intelligence/probes/wp13_names.py, wp13_roles.py, wp13_energy.py,
+# wp13_kj.py, wp13_weights.py) are replayed draw for draw where they built a table.
+# ═════════════════════════════════════════════════════════════════════════════
+
+_NUTRIENT_REASONS = ("A nutrient that carries energy: an exposure under the dietary lens.",
+                     "A nutrient intake: an exposure under the dietary lens.")
+# The verifier's names that were read as energy-bearing nutrients (1a's failure class), each with
+# values such a column holds: a yes/no flag, a lab value, an enzyme activity, an infusion volume, a
+# DXA fat mass in grams.
+VERIFIER_NOT = ["lipid_disorder", "lipid_panel_done", "protein_supplement_use",
+                "fiber_supplement_use", "low_carb_diet", "alcohol_dehydrogenase", "BreathAlcohol",
+                "alcohol_abstainer", "tot_protein", "TotProt", "fat_soluble_vit_d",
+                "lipid_emulsion_ml", "dxa_fat_g"]
+# Names the name alone reads as a macronutrient, so only the values can say otherwise: NHANES's
+# DXA file labels DXDTOFAT "Total Fat (g)" (DXX_J codebook, read 2026-10-03), a body fat mass in
+# grams; a drinker yes/no named ``alcohol``; and ``protein`` with no unit, unrelated to intake.
+CORROBORATION_ONLY = ["total_fat_g", "alcohol", "protein"]
+
+
+def _adv_diet(folder: Path) -> Path:
+    """probes/wp13_roles.py's ``adv_diet`` table (``default_rng(2026)``, n = 400), draw for draw,
+    with the rest of the verifier's names and the corroboration-only names appended from a stream
+    of their own (``default_rng(13_2026)``)."""
+    rng = np.random.default_rng(2026)
+    n = 400
+    P = rng.normal(80, 20, n).clip(20); C = rng.normal(250, 60, n).clip(50)
+    F = rng.normal(75, 20, n).clip(15)
+    E = (4 * P + 4 * C + 9 * F).round(0)
+    df = pd.DataFrame({
+        "participant_id": np.arange(n),
+        "energy_intake": E, "protein_g": P.round(1), "carb_g": C.round(1), "fat_g": F.round(1),
+        "exercise_kcal": rng.gamma(3, 120, n).round(0),
+        "sf36_energy_fatigue": rng.integers(0, 101, n),
+        "lipid_disorder": rng.integers(0, 2, n),
+        "protein_supplement_use": rng.integers(0, 2, n),
+        "dxa_fat_g": rng.normal(25000, 8000, n).round(0),
+        "BreathAlcohol": rng.exponential(0.01, n).round(3),
+        "insulin_injection": rng.integers(0, 2, n),
+        "arm_id": rng.integers(1, 3, n),
+        "group_id": rng.integers(1, 3, n),
+        "sample_weight_mg": rng.normal(30, 5, n).round(1),
+        "age": rng.integers(30, 70, n), "sex": rng.choice(["F", "M"], n),
+        "hba1c": rng.normal(5.6, .5, n).round(1)})
+    extra = np.random.default_rng(13_2026)
+    df["lipid_panel_done"] = extra.integers(0, 2, n)
+    df["fiber_supplement_use"] = extra.integers(0, 2, n)
+    df["low_carb_diet"] = extra.integers(0, 2, n)
+    df["alcohol_dehydrogenase"] = extra.lognormal(2.0, 0.4, n).round(2)
+    df["alcohol_abstainer"] = extra.integers(0, 2, n)
+    df["tot_protein"] = extra.normal(7.1, 0.5, n).round(1)
+    df["TotProt"] = extra.normal(7.1, 0.5, n).round(1)
+    df["fat_soluble_vit_d"] = extra.normal(24, 8, n).clip(4).round(1)
+    df["lipid_emulsion_ml"] = extra.normal(250, 40, n).round(0)
+    df["total_fat_g"] = extra.normal(25000, 8000, n).clip(5000).round(0)
+    df["alcohol"] = extra.integers(0, 2, n)
+    df["protein"] = extra.normal(7.1, 0.5, n).round(1)
+    df["steroid_injection"] = extra.integers(0, 2, n)
+    for name in ("sleep_well", "feel_well", "eat_well"):
+        df[name] = extra.integers(0, 2, n)
+    return _write(df, folder, "adv_diet.csv")
+
+
+def test_1f_the_values_corroborate_a_name_or_withdraw_it(tmp_path):
+    """Verifier, test 1: the fix was a deny-list; the audit (IN-01) asked for corroboration by
+    unit, magnitude or correlation with energy ("require a nutrient to correlate positively with
+    energy before it becomes a default adjustment target"). NUTRITION_PACK §01: "match on three
+    signals jointly, never names alone".
+
+    The corroboration-only names are read as a macronutrient by their name alone, so only their
+    values can withdraw them. Expected, each by a path of its own: ``total_fat_g``'s median × 9
+    kcal/g (FAO) is above 5,000 kcal, the loosest screen in circulation (NUTRITION_PACK §02);
+    ``alcohol`` holds two values (NumPy); ``protein`` has no unit and SciPy's one-sided Pearson
+    test of r > 0 against energy is not significant at 1%. The energy-bearing nutrients the roles,
+    the proposals and the energy finding use are exactly the three gram macronutrients the
+    fixture built energy from."""
+    from scipy import stats
+
+    from turbotab.core.recognizers import read_nutrient
+    from turbotab.core.stages.findings import findings_stage
+    from turbotab.core.stages.proposals import build_proposals
+
+    path = _adv_diet(tmp_path)
+    frame = pd.read_csv(path)
+    for name in CORROBORATION_ONLY:
+        assert read_nutrient(name) is not None, name  # the name alone would make it a nutrient
+    # Not a blanket deny: a supplement's amount in grams is an intake; a supplement's use is not.
+    assert read_nutrient("protein_supplement_g").macro == "protein"
+    assert read_nutrient("protein_supplement_use") is None
+    assert float(frame["total_fat_g"].median()) * ATWATER["fat"] > 5_000
+    assert len(np.unique(frame["alcohol"])) == 2
+    test = stats.pearsonr(frame["protein"], frame["energy_intake"], alternative="greater")
+    assert test.pvalue > 0.01, test
+    # A real bare-named intake is corroborated the same way (the positive control): grams of
+    # protein, named ``protein``, rise with the energy they make up.
+    from turbotab.core.recognizers import intake_check
+
+    control = stats.pearsonr(frame["protein_g"], frame["energy_intake"], alternative="greater")
+    assert control.pvalue < 0.01
+    assert intake_check("protein", frame["protein_g"], energy=frame["energy_intake"]).corroborated
+
+    for purpose in ("inference", "prediction"):
+        roles = _roles(path, lens=["dietary"], target="hba1c", purpose=purpose)
+        for name in VERIFIER_NOT + CORROBORATION_ONLY:
+            assert roles[name]["reason"] not in _NUTRIENT_REASONS, (name, roles[name])
+            assert roles[name]["proposed"] != "energy", (name, roles[name])
+        for name in CORROBORATION_ONLY:
+            assert roles[name]["reason"].startswith("Named like"), (name, roles[name])
+        for name in ("protein_g", "carb_g", "fat_g"):
+            assert roles[name]["reason"] == _NUTRIENT_REASONS[0], (name, roles[name])
+    roles = _roles(path, lens=["dietary"], target="hba1c", purpose="inference")
+    columns = [{"name": c, "dtype": "numeric" if frame[c].dtype.kind in "if" else "categorical",
+                "n_unique": int(frame[c].nunique()), "n_missing": 0} for c in frame.columns]
+    proposed = {c: p["proposed"] for c, p in roles.items()}
+    for given in (proposed, {}):
+        out = build_proposals(frame, columns, lens=["dietary"], target="hba1c", roles=given)
+        assert out["energy"]["energy_column"] == "energy_intake"
+        assert out["energy"]["nutrients"] == ["protein_g", "carb_g", "fat_g"], given
+    found = Ingested(path, tmp_path / "f").run(
+        findings_stage, ProjectState(lens=["dietary"], target="hba1c"))["findings"]
+    energy = next(f for f in found if f["id"] == "pack::dietary::energy_adjustment")
+    assert energy["affected_columns"] == ["energy_intake", "protein_g", "carb_g", "fat_g"]
+
+
+ENERGY_YES = ["energy_kcal", "Energy", "energy", "TotalEnergy", "total_energy_kcal",
+              "EnergyIntake_kJ", "kcal", "Calories", "calories_day", "daily_kcal", "kcal_d",
+              "DR1TKCAL", "DRXTKCAL", "ENERC_KJ", "energy_intake", "TEI", "tei_kcal", "kcal_total",
+              "en_kcal", "Energy_kJ", "kj", "KJ_day"]
+# Energy spent, needed, felt or eaten as a share: the verifier's list (probes/wp13_names.py).
+ENERGY_NO = ["energy_expenditure_kcal", "TEE_kcal", "kcal_burned", "activity_energy_kcal",
+             "physical_activity_energy", "PAEE_kj", "energy_level_score", "little_energy",
+             "phq9_energy", "energy_fatigue", "sf36_energy_fatigue", "low_energy",
+             "energy_balance", "energy_density", "kcal_per_kg", "energy_requirement", "EER_kcal",
+             "kcal_from_fat", "protein_kcal", "alc_kcal", "energy_drinks", "energy_drink_servings",
+             "fat_energy_pct", "energy_adjusted_fat", "resting_energy", "energy_score",
+             "vitality_energy", "energy_wasting", "EnergyExpenditure", "kcal_goal",
+             "energy_cost_walking", "exercise_kcal", "steps_kcal", "met_kcal"]
+
+
+def test_1g_only_energy_eaten_is_total_energy_intake(tmp_path):
+    """Verifier, test 1(b): energy expenditure (``exercise_kcal``, ``PAEE_kj``…) and questionnaire
+    items (``sf36_energy_fatigue``, ``phq9_energy``…) read as total energy, and ``energy_column``
+    ranked any "kcal" name first, so ``exercise_kcal`` became "Total energy intake", the
+    implausible-intake finding counted it, and an SF-36 score became the energy column. Expected:
+    the verifier's two lists; on its tables the intake is the energy column and nothing else is
+    counted as intake; a column named ``energy`` holding a 0–100 score (median below 500, no day's
+    energy in kcal or kJ by the pack's loosest screen) is no energy column."""
+    from turbotab.core.recognizers import reads_as_total_energy
+    from turbotab.core.stages.findings import findings_stage
+
+    for name in ENERGY_YES:
+        assert reads_as_total_energy(name), name
+    for name in ENERGY_NO:
+        assert not reads_as_total_energy(name), name
+
+    path = _adv_diet(tmp_path)
+    roles = _roles(path, lens=["dietary"], target="hba1c", purpose="inference")
+    assert roles["energy_intake"]["proposed"] == "energy"
+    assert roles["exercise_kcal"]["proposed"] != "energy"
+    assert roles["sf36_energy_fatigue"]["proposed"] != "energy"
+
+    # probes/wp13_energy.py (``default_rng(7)``, n = 300), draw for draw: A has energy_kcal after
+    # exercise_kcal; B has an SF-36 energy/fatigue score and a PHQ-9 item and no intake.
+    rng = np.random.default_rng(7)
+    n = 300
+    P = rng.normal(80, 20, n).clip(20); C = rng.normal(250, 60, n).clip(50)
+    F = rng.normal(75, 20, n).clip(15)
+    E = (4 * P + 4 * C + 9 * F).round(0)
+    a = pd.DataFrame({"id": np.arange(n), "exercise_kcal": rng.gamma(3, 120, n).round(0),
+                      "energy_kcal": E, "protein_g": P.round(1), "carb_g": C.round(1),
+                      "fat_g": F.round(1), "bmi": rng.normal(27, 4, n)})
+    b = pd.DataFrame({"id": np.arange(n), "protein_g": P.round(1), "fat_g": F.round(1),
+                      "energy_fatigue": rng.integers(0, 101, n),
+                      "phq9_little_energy": rng.integers(0, 4, n), "bmi": rng.normal(27, 4, n)})
+    pa = _write(a, tmp_path, "a.csv")
+    assert _roles(pa, lens=["dietary"], target="bmi")["energy_kcal"]["proposed"] == "energy"
+    found = Ingested(pa, tmp_path / "a").run(findings_stage, ProjectState(lens=["dietary"]))
+    for f in found["findings"]:
+        if f["id"].startswith(("pack::dietary::implausible", "pack::dietary::energy")):
+            assert "exercise_kcal" not in f["affected_columns"], f
+    pb = _write(b, tmp_path, "b.csv")
+    found = Ingested(pb, tmp_path / "b").run(findings_stage, ProjectState(lens=["dietary"]))
+    assert not [f for f in found["findings"] if f["id"].startswith(
+        ("pack::dietary::implausible", "pack::dietary::energy_adjustment"))]
+
+    score = pd.DataFrame({"energy": np.random.default_rng(8).integers(0, 101, n),
+                          "protein_g": P.round(1), "bmi": rng.normal(27, 4, n)})
+    assert float(score["energy"].median()) < 500
+    roles = _roles(_write(score, tmp_path, "score.csv"), lens=["dietary"], target="bmi")
+    assert roles["energy"]["proposed"] != "energy"
+
+
+def test_1h_the_energy_finding_says_tangled_only_when_the_data_do(tmp_path):
+    """Verifier, test 1 and WP15 test 3: the summary read "`protein_g` correlates -0.04 with
+    `energy_fatigue` …: nutrient effects are tangled with total energy" whatever r was. Expected:
+    "tangled" only at r ≥ 0.3 (pandas' Pearson r, computed here); a weaker r is stated as it is."""
+    from turbotab.core.stages.findings import findings_stage
+
+    rng = np.random.default_rng(31)
+    n = 300
+    P = rng.normal(80, 20, n).clip(20); C = rng.normal(250, 60, n).clip(50)
+    F = rng.normal(75, 20, n).clip(15)
+    grams = {"protein_g": P.round(1), "carb_g": C.round(1), "fat_g": F.round(1)}
+    tangled = pd.DataFrame({"energy_kcal": (4 * P + 4 * C + 9 * F).round(0), **grams,
+                            "age": rng.integers(20, 70, n)})
+    loose = pd.DataFrame({"energy_kcal": rng.normal(2100, 450, n).round(0), **grams,
+                          "age": rng.integers(20, 70, n)})
+    largest = {}
+    for name, frame in (("tangled", tangled), ("loose", loose)):
+        rs = {c: float(frame[c].corr(frame["energy_kcal"])) for c in grams}
+        best = max(rs, key=rs.get)
+        r = largest[name] = rs[best]
+        path = _write(frame, tmp_path, f"{name}.csv")
+        found = Ingested(path, tmp_path / name).run(findings_stage, ProjectState(lens=["dietary"]))
+        f = next(x for x in found["findings"] if x["id"] == "pack::dietary::energy_adjustment")
+        assert f"`{best}` correlates {'only ' if r < 0.3 else ''}{r:.2f}" in f["summary"], (r, f["summary"])
+        assert ("tangled" in f["summary"]) == (r >= 0.3), (r, f["summary"])
+    assert largest["tangled"] >= 0.3 and largest["loose"] < 0.3
+
+
+def test_2d_the_verifiers_arms_treatments_and_wells_stay_what_they_are(tmp_path):
+    """Verifier, test 2: ``arm_id`` and ``group_id`` coded 1/2 were proposed "identifier" ("Names
+    each unit; 2 units"); ``insulin_injection`` and ``steroid_injection`` were read as run order and
+    excluded under prediction; ``sleep_well``, ``feel_well`` and ``eat_well`` as a plate well;
+    ``sample_weight_mg``, a tissue mass, as "A sampling weight". Expected: each is a predictor, never
+    an identifier, an acquisition column or a design weight; a ``group_id`` naming 40 groups is a
+    cluster, not an arm. The count of distinct values is NumPy's."""
+    path = _adv_diet(tmp_path)
+    frame = pd.read_csv(path)
+    assert frame["arm_id"].nunique() == 2 and frame["group_id"].nunique() == 2
+    for lens in (["dietary"], ["clinical"], ["metabolomics"], []):
+        for purpose in ("inference", "prediction", None):
+            roles = _roles(path, lens=lens, target="hba1c", purpose=purpose)
+            for name in ("arm_id", "group_id"):
+                assert roles[name]["proposed"] == "exposure", (lens, purpose, roles[name])
+                assert "Names each unit" not in roles[name]["reason"]
+            for name in ("insulin_injection", "steroid_injection", "sleep_well", "feel_well",
+                         "eat_well"):
+                assert roles[name]["kind"] != "acquisition", (lens, purpose, name, roles[name])
+                assert roles[name]["proposed"] in PREDICTOR_ROLES, (lens, purpose, name, roles[name])
+            assert roles["sample_weight_mg"]["proposed"] != "design", (lens, roles["sample_weight_mg"])
+            assert "sampling weight" not in roles["sample_weight_mg"]["reason"]
+    rng = np.random.default_rng(40)
+    clusters = pd.DataFrame({"group_id": rng.integers(1, 41, 400), "y": rng.normal(0, 1, 400),
+                             "age": rng.integers(30, 70, 400)})
+    assert clusters["group_id"].nunique() == 40
+    roles = _roles(_write(clusters, tmp_path, "groups.csv"), lens=["clinical"], target="y")
+    assert roles["group_id"]["proposed"] == "cluster", roles["group_id"]
+    # A run order and a well take many values: one holding two is a yes/no, whatever its name.
+    binary = pd.DataFrame({"well": rng.integers(0, 2, 200), "run_order": rng.integers(0, 2, 200),
+                           "y": rng.normal(0, 1, 200)})
+    roles = _roles(_write(binary, tmp_path, "binary.csv"), lens=["metabolomics"], target="y")
+    assert roles["well"]["kind"] != "acquisition" and roles["run_order"]["kind"] != "acquisition"
+
+
+def _kj_cases():
+    """probes/wp13_kj.py (``default_rng(11)``, n = 600), draw for draw: children's intakes in kJ
+    (median about 6,100 kJ, below the adult kJ band), athletes' in kJ (about 12,200), and a weekly
+    kcal total; each with sodium and glucose beside it."""
+    rng = np.random.default_rng(11)
+    n = 600
+    cases = {
+        "children_kj": np.clip(rng.normal(1450, 350, n), 500, None) * KCAL_PER_KJ,
+        "athletes_kj": np.clip(rng.normal(2900, 500, n), 900, None) * KCAL_PER_KJ,
+        "adult_kj_name_energy": np.clip(rng.normal(2100, 500, n), 600, None) * KCAL_PER_KJ,
+        "weekly_kcal": np.clip(rng.normal(2100, 500, n), 600, None) * 7,
+    }
+    out = {}
+    for label, e in cases.items():
+        out[label] = pd.DataFrame({"energy": e.round(0), "sodium_mg": rng.normal(3000, 800, n),
+                                   "glucose": rng.normal(100, 10, n)})
+    return out
+
+
+def test_5c_a_screen_that_would_remove_most_rows_is_refused_with_a_units_exit(tmp_path):
+    """Verifier, test 5: outside the pack's adult kJ band the prior abstains, kcal is assumed, and
+    the IN-07 failure returned: children's kJ intakes lost 463 of 600 rows ("likely over-reporting"),
+    athletes' 600 of 600, a weekly total 596 of 600. The audit's IN-07 remedy: "refuse a screen
+    that would remove more than half the rows, with a units exit".
+
+    Expected, from NumPy counts on the fixtures: each screen whose count is more than half the rows
+    is refused with a sentence naming the unit; the coach line names the unit, never misreporting;
+    the finding asks about the unit instead of counting implausible intakes; ``set_exclusions`` with
+    the 500–5,000 kcal rule is refused, and its exits are the same rule read in kJ (bounds × 4.184)
+    or as a weekly total (× 7), offered only where NumPy says that reading keeps most rows."""
+    from turbotab.core.stages.findings import findings_stage
+    from turbotab.core.stages.proposals import build_proposals
+
+    for label, frame in _kj_cases().items():
+        e = frame["energy"]
+        columns = [{"name": c, "dtype": "numeric", "n_unique": int(frame[c].nunique()),
+                    "n_missing": 0} for c in frame.columns]
+        out = build_proposals(frame, columns, lens=["dietary"], target="glucose")
+        unit = out["energy_unit"]["unit"]
+        factor = KCAL_PER_KJ if unit == "kj" else 1.0
+        for screen in out["exclusions"]:
+            lo, hi = {"sex_neutral_500_5000": (500, 5000),
+                      "sex_neutral_500_3500": (500, 3500)}[screen["key"]]
+            removed = int(((e < lo * factor) | (e > hi * factor)).sum())
+            assert screen["affected"] == removed
+            if removed > len(e) / 2:
+                assert screen["refused"] and "check the unit of `energy`" in screen["refused"]
+            else:
+                assert screen["refused"] is None
+        outside = int(((e < 500 * factor) | (e > 5000 * factor)).sum())
+        coach = (out["coach"].get("exclusions") or {}).get("text", "")
+        path = _write(frame, tmp_path, f"{label}.csv")
+        found = Ingested(path, tmp_path / label).run(findings_stage,
+                                                     ProjectState(lens=["dietary"]))["findings"]
+        f = next(x for x in found if x["id"] == "pack::dietary::implausible_intake")
+        if outside > len(e) / 2:
+            assert label != "adult_kj_name_energy"
+            assert "check the unit" in coach and "reporting" not in coach, coach
+            assert f["title"] == "The unit of `energy` is in question.", f["title"]
+            assert "records report" not in f["title"]
+            assert f"{outside:,} of {len(e):,} rows" in f["detail"]
+        else:
+            assert label == "adult_kj_name_energy" and unit == "kj"
+            assert "reporting" not in coach or outside == 0
+
+    store_frame = _kj_cases()["children_kj"]
+
+    class _Store:
+        columns = list(store_frame.columns)
+        n_rows = len(store_frame)
+
+        def materialize(self, cols, rows=None):
+            return store_frame[list(cols)]
+
+    rule = d.ExclusionRule(column="energy", low=500, high=5000, reason="implausible intakes")
+    state = ProjectState(lens=["dietary"], target="glucose", roles={"energy": "energy"})
+    with pytest.raises(d.Refusal) as refused:
+        d.validate(d.SetExclusions(rules=[rule]), {"state": state, "store": lambda: _Store()})
+    assert refused.value.code == "screen_removes_most_rows"
+    e = store_frame["energy"]
+    kept_kj = int(((e >= 500 * KCAL_PER_KJ) & (e <= 5000 * KCAL_PER_KJ)).sum())
+    kept_week = int(((e >= 500 * 7) & (e <= 5000 * 7)).sum())
+    labels = [x["label"] for x in refused.value.exits]
+    assert ("Read `energy` in kJ" in labels) == (kept_kj >= len(e) / 2)
+    assert ("Read `energy` as a weekly total" in labels) == (kept_week >= len(e) / 2)
+    kj_exit = next(x for x in refused.value.exits if x["label"] == "Read `energy` in kJ")
+    bounds = kj_exit["decision"]["rules"][0]
+    assert (bounds["low"], bounds["high"]) == (round(500 * KCAL_PER_KJ, 1), round(5000 * KCAL_PER_KJ, 1))
+    d.validate(kj_exit["decision"], {"state": state, "store": lambda: _Store()})  # accepted
+
+
+def test_6b_pre_pandemic_and_ogtt_weights_follow_the_rule(tmp_path):
+    """Verifier, test 6: WEIGHT_TIERS knew only the 2-year and 4-year names. With the 2017–March
+    2020 pre-pandemic names a fasting-glucose outcome got no weights finding and the survey
+    question offered WTDRD1PP first; with the OGTT subsample the finding said "Use the dietary
+    weights" (SETTLED).
+
+    Source check, the CDC codebooks (read 2026-10-03): P_GLU "WTSAFPRP - Fasting Subsample Weight";
+    P_DEMO "WTMECPRP - Full sample MEC exam weight"; P_DR1TOT "WTDRD1PP - Dietary day one sample
+    weight"; OGTT_I "WTSOG2YR - OGTT Subsample MEC Weight", "LBXGLT - Two Hour Glucose (OGTT)
+    (mg/dL)", and "Specific sample weights for this subsample are included in this data file and
+    should be used when analyzing these data." The OGTT was given to the fasting subsample, so its
+    sample is the smallest. probes/wp13_weights.py's tables (``default_rng(66)``, n = 300)."""
+    from turbotab.core.stages.findings import findings_stage
+    from turbotab.core.survey import offered
+
+    rng = np.random.default_rng(66)
+    n = 300
+    base = {"SEQN": np.arange(n), "DR1TKCAL": rng.normal(2000, 400, n).round(0),
+            "LBXGLU": rng.normal(100, 12, n).round(0), "LBXTR": rng.normal(120, 40, n).round(0),
+            "SDMVSTRA": rng.integers(1, 15, n), "SDMVPSU": rng.integers(1, 3, n)}
+    tables = {}
+    for label, weights in {"prepandemic": ["WTDRD1PP", "WTMECPRP", "WTSAFPRP"],
+                           "ogtt": ["WTDRD1", "WTMEC2YR", "WTSOG2YR"]}.items():
+        df = pd.DataFrame(base)
+        if label == "ogtt":
+            df = df.drop(columns=["LBXGLU", "LBXTR"])
+            df["LBXGLT"] = rng.normal(120, 30, n).round(0)
+        for c in weights:
+            df[c] = rng.uniform(5000, 90000, n).round(1)
+        tables[label] = (df, weights)
+
+    def weights_finding(frame: pd.DataFrame, name: str) -> dict:
+        path = _write(frame, tmp_path, f"{name}.csv")
+        found = Ingested(path, tmp_path / name).run(
+            findings_stage, ProjectState(lens=["dietary"]))["findings"]
+        return next(f for f in found if f["id"] == "pack::dietary::survey_weights")
+
+    f = weights_finding(tables["prepandemic"][0], "prepandemic")
+    assert f["title"] == "Use the fasting subsample weight, `WTSAFPRP`."
+    assert f["evidence"]["status"] == "CONVENTION"
+    assert "`LBXGLU` and `LBXTR` were measured on the morning fasting subsample" in f["detail"]
+    f = weights_finding(tables["ogtt"][0], "ogtt")
+    assert f["title"] == "Use the OGTT subsample weight, `WTSOG2YR`."
+    assert f["evidence"]["status"] == "CONVENTION"
+    assert ("Specific sample weights for this subsample are included in this data file and "
+            "should be used when analyzing these data.") in f["detail"]
+    assert "dietary weights" not in f["title"]
+    missing = tables["ogtt"][0].drop(columns=["WTSOG2YR"])
+    f = weights_finding(missing, "ogtt_missing")
+    assert f["title"] == "The OGTT subsample weight is not in this table."
+    assert "`WTSOG2YR`" in f["detail"]
+    missing = tables["prepandemic"][0].drop(columns=["WTSAFPRP"])
+    f = weights_finding(missing, "pp_missing")
+    assert "`WTSAFPRP`" in f["detail"]  # the cycle's own name, not the 2-year one
+
+    # The survey question offers the rule's weight first.
+    for label, target in (("prepandemic", "LBXGLU"), ("ogtt", "LBXGLT")):
+        frame, weights = tables[label]
+        roles = {c: "design" for c in weights + ["SDMVSTRA", "SDMVPSU"]}
+        roles.update({"SEQN": "identifier", "DR1TKCAL": "energy"})
+        state = ProjectState(lens=["dietary"], target=target, roles=roles, purpose="inference")
+        assert offered(state)[0]["decision"]["weight"] == weights[-1], label
+
+    # A subsample weight whose analytes TurboTab cannot tell leaves the choice to the user.
+    other = tables["ogtt"][0].drop(columns=["LBXGLT", "WTSOG2YR"]).assign(WTSA2YR=50000.0)
+    f = weights_finding(other, "other")
+    assert "`WTSA2YR`" in f["detail"] and f["evidence"]["status"] != "SETTLED"

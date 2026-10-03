@@ -95,9 +95,11 @@ def build_graph() -> Graph:
             # profile 2 (WP14): lens hints need positive evidence (turbotab.core.detectors.lenses).
             # profile 3 (integration): the dietary hint reads total energy by the one recognizer
             # (audit IN-08: DR2TKCAL, ENERC_KCAL, TotalKcal …).
+            # profile 4 (repair round): a wide table hints genomics only by a library-size
+            # signature, never by "log-scale, normalization not recoverable" (IN-13).
             Stage(
                 "profile",
-                3,
+                4,
                 ("oriented",),
                 (),
                 profile_stage,
@@ -115,9 +117,13 @@ def build_graph() -> Graph:
             # findings 7 (WP13 + WP14 + WP15 merged): all of the above in one stage.
             # findings 8 (integration): under the genomics lens an expression matrix the data-type
             # card reads keeps its wide shape (IN-14); outcome names by the one tokenizer.
+            # findings 9 (repair round): nutrients corroborated by their values, total energy read
+            # as intake only, a screen that would remove most rows asks the unit, the OGTT and
+            # pre-pandemic NHANES weights, codes beside the answers, ages by whole words, voom, and
+            # the current BAM edition.
             Stage(
                 "findings",
-                8,
+                9,
                 ("oriented",),
                 ("lens", "target"),
                 findings_stage,
@@ -130,7 +136,9 @@ def build_graph() -> Graph:
             # structure 5 (WP13): the grain question never suggests a measurement as the unit.
             # structure 5 (WP14): repeats are stated only when unambiguous.
             # structure 6 (WP13 + WP14 merged): both of the above in one stage.
-            Stage("structure", 6, ("oriented",),
+            # structure 7 (repair round): spacing alone never states repeats; a two-record change
+            # is time-point evidence (IN-12).
+            Stage("structure", 7, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             Stage("working", 2, ("oriented", "findings", "structure"),
@@ -150,7 +158,9 @@ def build_graph() -> Graph:
             # ── M1 (each reads the working table) ──
             # roles 2 (WP13): whole-token recognizers; a study's arms are exposures, a site or
             # household a cluster, and a batch's proposed role follows the declared purpose.
-            Stage("roles", 2, ("working",), ("lens", "target", "purpose"), roles_stage,
+            # roles 3 (repair round): a nutrient name the values contradict is no nutrient; an arm
+            # named ``arm_id`` is an exposure; acquisition and survey-weight names read whole.
+            Stage("roles", 3, ("working",), ("lens", "target", "purpose"), roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -165,7 +175,9 @@ def build_graph() -> Graph:
             # (Willett 2013, NHS/HPFS); an energy-related outcome's DISPUTED note on the energy card.
             # proposals 8 (WP13 + WP15 merged): both of the above in one stage.
             # proposals 9 (integration): the energy card reads the outcome by the one tokenizer.
-            Stage("proposals", 9, ("working", "roles"), ("lens", "roles", "target", "purpose"),
+            # proposals 10 (repair round): the energy column is intake by name and median; nutrients
+            # are corroborated; a screen removing most rows is refused (IN-07).
+            Stage("proposals", 10, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             Stage("cohort", 2, ("working", "target_info"),
@@ -199,7 +211,8 @@ def build_graph() -> Graph:
             # design 10 (audit WP15, IN-25): the lineage attributes each operation to the columns it
             # touched, marks pass-throughs kept, and names the geometric mean under log.
             # design 11 (WP13 + WP15 merged): both of the above in one stage.
-            Stage("design", 11, ("working", "split", "target_info"),
+            # design 12 (repair round): total energy read as intake only (no expenditure or score).
+            Stage("design", 12, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,

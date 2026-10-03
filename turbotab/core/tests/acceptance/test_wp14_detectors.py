@@ -883,3 +883,281 @@ def test_9_discrete_data_get_resolution_aligned_bins_and_both_histograms_agree(t
             per_bin = np.histogram(grid, edges)[0]
             assert len(set(per_bin[:-1].tolist())) == 1 and per_bin[-1] <= per_bin[0], name
             assert edges[0] == pytest.approx(values.min() - step / 2), name
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Repair round (2026-10-03): the independent verifier's variants of each test's failure class,
+# replayed draw for draw from its probes (verify-intelligence/probes/wp14_codes.py, wp14_change.py,
+# wp14_repeats.py, wp14_lenses.py, api_ffq2.py, api_mri.py, wp14_geo.py).
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+def _verifier_generators(rng: np.random.Generator) -> dict:
+    """probes/wp14_codes.py's twelve clean generators: answers and counts whose top or bottom
+    value is real, never a code (their support is the generator's own)."""
+    def heap_sbp(n):
+        x = rng.normal(128, 17, n)
+        m = rng.random(n) < 0.3
+        x[m] = np.round(x[m] / 10) * 10
+        return np.round(x)
+    return {
+        "days/week 0-7 heaped at 7": lambda n: rng.choice(8, n, p=[.30, .08, .12, .15, .08, .12, .03, .12]),
+        "days/week active-only 1-7": lambda n: rng.choice(np.arange(1, 8), n, p=[.10, .18, .25, .12, .17, .05, .13]),
+        "integer change N(2.5,1.2)": lambda n: np.round(rng.normal(2.5, 1.2, n)),
+        "integer change N(3,1.4)": lambda n: np.round(rng.normal(3, 1.4, n)),
+        "Apgar 1-min": lambda n: rng.choice(np.arange(3, 11), n, p=[.01, .02, .03, .06, .12, .40, .33, .03]),
+        "SBP digit preference": heap_sbp,
+        "pain NRS 0-10 floor": lambda n: rng.choice(11, n, p=np.array([30, 8, 9, 9, 7, 9, 6, 7, 6, 3, 6]) / 100),
+        "sleep hours 4-10": lambda n: rng.choice(np.arange(4, 11), n, p=[.04, .12, .28, .33, .17, .05, .01]),
+        "cigs/day heaped": lambda n: rng.choice([0, 1, 2, 3, 5, 10, 15, 20, 25, 30, 40], n,
+                                                p=[.70, .02, .02, .02, .04, .07, .03, .06, .01, .02, .01]),
+        "household size 1-9": lambda n: np.minimum(1 + rng.poisson(1.8, n), 12),
+        "fruit servings/day 0-9": lambda n: rng.poisson(2.2, n),
+        "eGFR integer": lambda n: np.round(np.clip(rng.normal(88, 22, n), 5, 140)),
+    }
+
+
+def test_2d_the_verifiers_clean_generators_stay_under_one_percent():
+    """Verifier, test 2: an integer change score whose only negative value is −1 had −1 flagged in
+    13–69% of columns, because "a negative code in a column of non-negative values is never a real
+    observation" ignored that −1 is adjacent to 0; a days-per-week item heaped at 7 had 7 flagged.
+    Expected (§5's bound, at §5's sizes): every one of the verifier's twelve generators, seed
+    20261003, 200 replicates, is flagged at most 1% of the time at n = 100, 300 and 1,000. At
+    n = 50, below §5's grid, the heaped days item stays near 2% (see the deviations)."""
+    rng = np.random.default_rng(20261003)
+    rates = {}
+    for name, draw in _verifier_generators(rng).items():
+        for n in (50, 100, 300, 1000):
+            hits = sum(codes.read(pd.Series(draw(n))) is not None for _ in range(200))
+            rates[(name, n)] = hits / 200
+    over = {k: v for k, v in rates.items() if k[1] >= 100 and v > 0.01}
+    assert not over, over
+    assert max(v for k, v in rates.items() if k[1] == 50) <= 0.03, rates
+
+
+def test_2e_a_minus_one_beside_zero_is_an_answer_and_real_codes_still_read():
+    """probes/wp14_change.py (``default_rng(38)``, n = 300): an integer change score holding −1 and
+    0. Expected: no code; a −9 two steps or more below a non-negative column's smallest value, and
+    a −1 below a 1–5 scale (0 unused between), are still read as codes (the gap is NumPy's)."""
+    rng = np.random.default_rng(38)
+    change = pd.Series(np.round(rng.normal(2.5, 1.2, 300)).astype(int))
+    assert (change == -1).sum() >= 1 and (change == 0).any()
+    assert codes.read(change) is None
+    rng = np.random.default_rng(39)
+    score = rng.integers(0, 101, 300).astype(float)
+    score[:6] = -9
+    found = codes.read(pd.Series(score))
+    assert found is not None and found["values"] == {-9.0: 6}
+    real = score[score != -9]
+    assert real.min() - (-9) >= 2  # an unused value lies between
+    likert = rng.integers(1, 6, 300).astype(float)
+    likert[:5] = -1
+    found = codes.read(pd.Series(likert))
+    assert found is not None and found["values"] == {-1.0: 5}
+    f = codes.findings(pd.DataFrame({"x": likert}))[0]
+    assert "far beyond the rest" not in f["detail"]  # −1 is two steps below 1, not far
+
+
+def _peds(age_name: str | None, seed: int = 4) -> pd.DataFrame:
+    """H-skeptic/h7.py's 300 children aged 2–10 (``default_rng(4)``) with a 0.2 kg weight, the age
+    column named as the verifier named it (or absent)."""
+    rng = np.random.default_rng(seed)
+    n = 300
+    age = rng.integers(2, 11, n)
+    wt = (8 + 2.6 * age + rng.normal(0, 2.5, n)).round(1)
+    wt[:1] = [0.2]
+    frame = pd.DataFrame({"weight_kg": wt})
+    if age_name:
+        frame[age_name] = age
+    return frame
+
+
+@pytest.mark.parametrize("age_name", ["child_age", "age_child", "age_at_visit", "AgeAtExam",
+                                      "visit_age"])
+def test_4g_an_age_named_for_its_occasion_still_judges_children_by_z_scores(age_name, tmp_path):
+    """Verifier, test 4: with ``child_age``, ``age_child``, ``age_at_visit``, ``AgeAtExam`` or
+    ``visit_age``, 300 children aged 2–10 were read against adult bands ("299 adult values outside
+    47.2–157.4 kg … must be kept"). CLINICAL_SURVEY_PACK §A1.2: "Pediatric and growth data: never
+    apply adult bounds". Expected: every row is a child (the fixture's ages, 2–10), no adult row is
+    read, and the CDC modified z-scores flag exactly the rows the test's own LMS computation flags."""
+    frame = _peds(age_name)
+    reading = plausibility.read(frame)
+    assert reading["n_children"] == len(frame)
+    weight = next(e for e in reading["columns"] if e["column"] == "weight_kg")
+    assert weight["n_adult_rows_read"] == 0 and weight["n_outside_central_98"] == 0
+    months = frame[age_name].to_numpy() * 12 + 6.0
+    wt = frame["weight_kg"].to_numpy()
+    by_hand = [i for i in range(len(frame))
+               if all(not -5 <= _cdc_modified_z(wt[i], months[i], s, "weight") <= 8 for s in (1, 2))]
+    assert weight["children"]["rows"] == by_hand
+    f = next(x for x in run_findings(frame, tmp_path, ["clinical"], age_name)
+             if x["id"] == "pack::clinical::impossible_vs_extreme")
+    assert "adult values" not in f["detail"] and "adult limits are not applied" in f["detail"]
+
+
+def test_4h_without_an_age_column_no_child_is_called_an_unusual_adult(tmp_path):
+    """Verifier, test 4: with no age column the detail said both "Set aside rather than judged …
+    children are judged by age-specific z-scores, never by adult limits" and "299 adult values
+    outside 47.2–157.4 kg … must be kept". Expected: the adult percentiles are not read (no adult
+    row is known), the any-age limits still catch the 0.2 kg weight, and the detail does not
+    contradict itself."""
+    frame = _peds(None)
+    reading = plausibility.read(frame)
+    weight = next(e for e in reading["columns"] if e["column"] == "weight_kg")
+    assert weight["n_outside_central_98"] == 0 and weight["n_adult_rows_read"] == 0
+    assert weight["impossible_tier"] == "any_age" and weight["n_impossible"] == 1
+    f = next(x for x in run_findings(frame, tmp_path, ["clinical"], "no_age")
+             if x["id"] == "pack::clinical::impossible_vs_extreme")
+    assert "adult values" not in f["detail"]
+    assert "Set aside rather than judged" not in f["detail"]
+    assert "Not judged by adult percentiles" in f["detail"]
+    # A woman's age at diagnosis or a mother's age is not the participant's age.
+    for other in ("mother_age", "age_at_diagnosis", "gestational_age"):
+        assert plausibility.age_column(_peds(other)) is None, other
+
+
+def _prepost(spacing: int, jitter: int, seed: int = 8) -> pd.DataFrame:
+    """probes/api_drive.py's ``prepost`` table (``default_rng(8)``): 40 people, two visits
+    ``spacing`` ± ``jitter`` days apart, systolic pressure 10 mmHg lower at the second (noise SD
+    5)."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for pid in range(40):
+        start = pd.Timestamp("2024-01-01") + pd.Timedelta(days=int(rng.integers(0, 60)))
+        for j in range(2):
+            rows.append({"pid": pid,
+                         "date": (start + pd.Timedelta(days=spacing * j + int(rng.integers(-jitter, jitter + 1)))).date().isoformat(),
+                         "age": 50 + pid % 20, "sbp": 130 - 10 * j + rng.normal(0, 5)})
+    return pd.DataFrame(rows)
+
+
+def test_6d_a_two_visit_change_and_close_irregular_visits_are_asked():
+    """Verifier, test 6: trend evidence needed three records per unit, so a pre/post design whose
+    pressure fell 10 mmHg within every person (paired t ≈ 9) was stated "repeats" from spacing
+    alone ("close together and irregular"), and the repeat-kind question was skipped; under the
+    dietary lens 7 ± 3 and 14 ± 6 days were stated too. IN-12's remedy: "ask unless the evidence is
+    unambiguous; treat spacing as weak evidence". Expected: asked under both lenses, the change
+    named as evidence; the reference is SciPy's paired t-test and sign test on the fixture."""
+    from scipy import stats
+
+    for spacing, jitter, lens in ((10, 4, ["clinical"]), (7, 3, ["dietary"]), (14, 6, ["dietary"])):
+        frame = _prepost(spacing, jitter)
+        first = frame.groupby("pid")["sbp"].first().to_numpy()
+        second = frame.groupby("pid")["sbp"].last().to_numpy()
+        t = stats.ttest_rel(second, first)
+        sign = stats.binomtest(int((second < first).sum()), len(first), 0.5)
+        assert t.statistic < -5 and sign.pvalue < 0.01
+        reading = repeat_reading.read(frame, "pid", lens)
+        assert reading["stated"] is False and reading["reading"] in (None, "time_points"), reading
+        assert not (reading["stated"] and reading["reading"] == "repeats")
+        assert reading["trend"] and reading["trend"]["column"] == "sbp"
+        assert reading["trend"]["direction"] == "falls"
+        if not reading["stated"]:
+            assert _gate(reading) is None  # the repeat-kind question is asked
+    # Spacing alone, with nothing changing, is asked too; recalls under the dietary lens and
+    # same-day records are still stated (6c).
+    rng = np.random.default_rng(81)
+    flat = _prepost(10, 4).assign(sbp=lambda f: 125 + rng.normal(0, 5, len(f)))
+    reading = repeat_reading.read(flat, "pid", ["clinical"])
+    assert reading["stated"] is False and reading["trend"] is None
+
+
+def test_7d_wide_tables_that_are_not_assays_get_no_genomics_hint_and_no_contradiction():
+    """Verifier, test 7: the genomics log-expression and scaled-CPM signatures accepted any wide
+    table of floats under 25: a 130-item FFQ in servings a day was hinted "genomics … TMM- or
+    median-of-ratios-scaled CPM", and under its own dietary lens drew a critical "The lens you chose
+    and the table disagree"; a 300-ROI MRI thickness panel the same under the clinical lens.
+    probes/api_ffq2.py (``default_rng(3)``) and api_mri.py (``default_rng(1)``), draw for draw.
+    Expected: no genomics hint and no contradiction. Each FFQ sample's values sum to tens (NumPy),
+    nowhere near the million a counts-per-million scale sums to."""
+    rng = np.random.default_rng(3)
+    n = 400
+    ffq = pd.DataFrame({"participant_id": [f"P{i:04d}" for i in range(n)],
+                        "age": rng.integers(40, 75, n), "sex": rng.choice(["F", "M"], n),
+                        "hba1c": rng.normal(5.7, .6, n).round(1),
+                        **{f"ffq_item_{i:03d}_serv_day": rng.gamma(0.8, 0.6, n).round(2)
+                           for i in range(130)}})
+    rng = np.random.default_rng(1)
+    n = 200
+    mri = pd.DataFrame({"subject": [f"S{i:03d}" for i in range(n)], "age": rng.integers(55, 85, n),
+                        "sex": rng.choice(["F", "M"], n), "mmse": rng.integers(18, 31, n),
+                        **{f"roi{i:03d}_thickness_mm": rng.normal(2.5, .3, n).round(3)
+                           for i in range(300)}})
+    totals = ffq.filter(like="ffq_item").sum(axis=1)
+    assert totals.max() < 1_000
+    for frame, lens in ((ffq, ["dietary"]), (mri, ["clinical"])):
+        assert "genomics" not in [h["lens"] for h in lenses.hints(frame)]
+        assert lenses.contradiction_finding(frame, lens) is None
+
+
+@pytest.fixture(scope="module")
+def gse147507():
+    """GEO GSE147507 (Blanco-Melo et al. 2020; 78 human samples), the authors' raw read counts as
+    published at https://ftp.ncbi.nlm.nih.gov/geo/series/GSE147nnn/GSE147507/suppl/
+    GSE147507_RawReadCounts_Human.tsv.gz (downloaded 2026-10-03, SHA-256 9a5db634…44a5); the
+    verifier's seeded subset of 5,000 of its 21,797 genes (``default_rng(147507)``,
+    ``choice(21797, 5000, replace=False)``, sorted), samples in rows. Its shallowest library holds
+    14,694 reads."""
+    raw = pd.read_csv(HERE / "GSE147507_RawReadCounts_Human_5000.tsv.gz", sep="\t", index_col=0)
+    counts = raw.to_numpy(dtype=float).T
+    return counts, [f"g_{g}" for g in raw.index]
+
+
+def test_8d_the_genomics_card_holds_on_a_second_public_matrix(gse147507):
+    """Verifier, test 8: the LOG_EXACT threshold was fitted on one matrix, and on GSE147507 voom's
+    log-CPM read as "log2 TMM-scaled CPM" (medium, not asked), because one shallow library moves
+    the back-transformed sum by 0.5 × genes / library size. Expected, on the closed-form scalings
+    of the second matrix: raw counts, CPM, log2(CPM + 1) (offset 1), TMM-scaled CPM (rnanorm's TMM)
+    and a binomially thinned copy read as before; voom's log-CPM exactly as limma writes it
+    (``log2((counts+0.5)/(lib.size+1)*1e6)``), with ``lib.size`` the column sums or the column sums
+    times the TMM factors, reads as voom-style log-CPM, its libraries recovered from the values."""
+    from rnanorm import TMM
+
+    counts, genes = gse147507
+    lib = counts.sum(1, keepdims=True)
+    assert lib.min() == 14_694
+    genes_n = counts.shape[1]
+    assert 0.5 * genes_n / lib.min() > 0.05  # the back-sum the old threshold read: > 5% off
+    keys = lambda m: genomics.card(_frame(m, genes))["classification"]["keys"]  # noqa: E731
+    assert keys(counts) == ["raw_counts"]
+    assert keys(counts / lib * 1e6) == ["cpm_or_tpm"]
+    log_cpm = genomics.card(_frame(np.log2(counts / lib * 1e6 + 1), genes))
+    assert log_cpm["classification"]["keys"] == [genomics.LOG_CPM]
+    assert log_cpm["classification"]["offset"] == 1.0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        factors = TMM().fit(counts).get_norm_factors(counts)
+    assert np.isfinite(factors).all()
+    tmm_cpm = counts / (lib * factors[:, None]) * 1e6
+    assert keys(tmm_cpm) == ["tmm_scaled_cpm"]
+    totals = tmm_cpm.sum(axis=1)
+    assert genomics.SCALED_SUM_RANGE[0] <= totals.min() and totals.max() <= genomics.SCALED_SUM_RANGE[1]
+    for size in (lib, lib * factors[:, None]):
+        voom = np.log2((counts + 0.5) / (size + 1) * 1e6)
+        card = genomics.card(_frame(voom, genes))
+        c = card["classification"]
+        assert c["keys"] == [genomics.LOG_CPM] and c["offset"] == 0.0
+        assert c["label"] == "log2 CPM with a prior count (voom-style log-CPM)"
+        assert c["confidence"] == "high"
+        f = genomics.findings(_frame(voom, genes))[0]
+        assert "voom" in f["detail"]
+    shallow = np.random.default_rng(0).binomial(counts.astype(int), 0.01).astype(float)
+    assert shallow.max() < 1e4
+    assert keys(shallow) == ["raw_counts"]
+
+
+def test_8e_the_voom_reading_is_exact_and_not_a_threshold(gse60450):
+    """The voom reading recovers counts, so it says nothing on a log matrix that is not voom's:
+    log2(TPM + 1) of GSE60450 keeps its offset-1 reading, and a log-normal matrix of the same
+    shape (no counts behind it) is not read as voom."""
+    counts, length, genes = gse60450
+    rpk = counts / length[None, :] * 1e3
+    tpm = rpk / rpk.sum(1, keepdims=True) * 1e6
+    assert genomics.voom_reading(np.round(np.log2(tpm + 1), 4)) is None
+    noise = np.random.default_rng(5).normal(5, 2, counts.shape)
+    assert genomics.voom_reading(np.round(noise, 4)) is None
+    lib = counts.sum(1, keepdims=True)
+    voom = np.round(np.log2((counts + 0.5) / (lib + 1) * 1e6), 4)
+    found = genomics.voom_reading(voom)
+    assert found is not None and found["exact"]
+    assert found["libraries"][0] == pytest.approx(lib.min(), rel=1e-3)
+    assert found["libraries"][1] == pytest.approx(lib.max(), rel=1e-3)

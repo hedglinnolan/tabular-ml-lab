@@ -250,16 +250,19 @@ REPAIRS = {
                 "interval holds the central 95% of healthy people and is for annotation only. "
                 "The bounds themselves are institution-specific.",
                 "CONVENTION", CLIN_A12),
-        # Audit IN-23 (ledger #9, WRONG for TNTC). FDA Bacteriological Analytical Manual, ch. 3:
-        # "When number of CFU per plate exceeds 250, for all dilutions, record the counts as too
-        # numerous to count (TNTC)"; crowded plates are estimated "as greater than 100 times the
-        # highest dilution plated". A count above the range is right-censored, not missing.
+        # Audit IN-23 (ledger #9, WRONG for TNTC). FDA Bacteriological Analytical Manual, ch. 3,
+        # January 2026 edition: "March 2025: The suitable colony counting range updated from
+        # 25-250 to 15-300 per plate"; the count is estimated by maximum likelihood "using the
+        # plates for which exact counts are available and the too numerous to count (TNTC)
+        # plates", where "If a count of visible colonies is available, then this is the lower
+        # bound." A count above the range is right-censored, not missing.
         section("Too many to count is a value",
                 "TNTC, too numerous to count, means a plate held more colonies than its countable "
-                "range, over 250 per plate in FDA's Bacteriological Analytical Manual: the count "
-                "is above that limit, right-censored like a result above the upper limit of "
-                "quantitation, not missing. QNS, quantity not sufficient, and a hemolyzed specimen "
-                "are measurement failures with no value: treat those as missing.",
+                "range, 15–300 per plate in FDA's Bacteriological Analytical Manual (2026 "
+                "edition), which reads such a plate as a lower bound: the count is above that "
+                "limit, right-censored like a result above the upper limit of quantitation, not "
+                "missing. QNS, quantity not sufficient, and a hemolyzed specimen are measurement "
+                "failures with no value: treat those as missing.",
                 "SETTLED", CLIN_A13),
     ]},
     "evidence": None,

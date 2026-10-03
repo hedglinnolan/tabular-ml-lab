@@ -156,10 +156,13 @@ and `negative`).
 
 > *"`TNTC`, too numerous to count, is a count above the method's countable range: right-censored at
 > the laboratory's upper count limit, like `>ULOQ`, not missing. FDA's Bacteriological Analytical
-> Manual (ch. 3, Aerobic Plate Count): "When number of CFU per plate exceeds 250, for all dilutions,
-> record the counts as too numerous to count (TNTC) for all but the plate closest to 250", and for
-> crowded plates, "Estimate the APC as greater than 100 times the highest dilution plated, times the
-> area of the plate." Treating TNTC as missing deletes exactly the highest values. `QNS` (quantity not
+> Manual (ch. 3, Aerobic Plate Count, January 2026 edition): "March 2025: The suitable colony
+> counting range updated from 25-250 to 15-300 per plate"; the count is estimated by maximum
+> likelihood "using the plates for which exact counts are available and the too numerous to count
+> (TNTC) plates", and "If a count of visible colonies is available, then this is the lower bound."
+> (The January 2001 edition put the limit at 250: "When number of CFU per plate exceeds 250, for all
+> dilutions, record the counts as too numerous to count (TNTC)".) Treating TNTC as missing deletes
+> exactly the highest values. `QNS` (quantity not
 > sufficient), `hemolyzed` and similar marks are measurement failures with no value: treat those as
 > missing, not as extreme values."* **[SETTLED]** *(Until 2026-10-03 this read "`TNTC` and `QNS` are
 > not censoring at a detection limit — they are measurement failures. Treat them as missing". Audit

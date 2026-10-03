@@ -159,10 +159,14 @@ _BANNA = ("Banna et al. 2017, Front Nutr 4:45, quoting Willett, Nutritional Epid
           "allowable range of 800–4,000 kcal/day for men may be used\"")
 _PAN = ("Pan et al. 2011, AJCN 94:1088 (PMC3173026), NHS, NHS II and HPFS: \"daily energy intake "
         "<800 or >4200 kcal/d for men and <500 or >3500 kcal/d for women\"")
-_BAM = ("FDA Bacteriological Analytical Manual, ch. 3, Aerobic Plate Count: \"When number of CFU "
-        "per plate exceeds 250, for all dilutions, record the counts as too numerous to count "
-        "(TNTC) for all but the plate closest to 250\"; \"Estimate the APC as greater than 100 "
-        "times the highest dilution plated, times the area of the plate.\"")
+# The current edition (repair round: the verifier extracted the 2025 and 2026 PDFs, and the 250
+# limit is the January 2001 edition's). FDA BAM ch. 3, Aerobic Plate Count, January 2026 edition
+# (fda.gov/media/191248), read 2026-10-03.
+_BAM = ("FDA Bacteriological Analytical Manual, ch. 3, Aerobic Plate Count, January 2026 edition: "
+        "\"March 2025: The suitable colony counting range updated from 25-250 to 15-300 per "
+        "plate\"; \"Maximum likelihood (ML) is used to estimate the Poisson mean APC (CFU/ml) using "
+        "the plates for which exact counts are available and the too numerous to count (TNTC) "
+        "plates\"; \"If a count of visible colonies is available, then this is the lower bound.\"")
 
 RECHECK: dict[int, dict[str, Any]] = {
     4: dict(where=lambda: taught("lens") + taught("models"),
@@ -625,9 +629,41 @@ def test_3_energy_related_outcomes_are_read_by_whole_tokens(name, kind):
 @pytest.mark.parametrize("name", [
     "fat_g", "sfa_g", "WTMEC2YR", "WTDRD1", "sampling_weight", "survey_weight", "birth_weight",
     "ldl", "glucose", "hba1c", "fatigue_score", "carbohydrate_g", "sbp", "crp",
+    "hip_fracture", "total_fat_g", "trunk_flexion", "sample_weight_mg",
 ])
 def test_3_other_outcomes_are_not(name):
     assert energy_related(name) is None
+
+
+# Repair round: the verifier's spellings that pushed no dispute. Each names what the pack's list
+# (NUTRITION_PACK §04: "weight, BMI, adiposity, diabetes"; the audit adds waist) already holds:
+# BMI written out or run together, the paediatric BMI z-scores (CDC: "BMI-for-age z-score"),
+# visceral and trunk fat (adiposity by site), hip circumference (a body-size measure beside waist),
+# weight loss, and gestational weight gain.
+VERIFIER_RELATED = [("body_mass_index", "BMI"), ("BodyMassIndex", "BMI"), ("bmiz", "BMI"),
+                    ("zbmi", "BMI"), ("BMIz", "BMI"), ("visceral_fat", "adiposity"),
+                    ("trunk_fat", "adiposity"), ("hip_circumference", "hip size"),
+                    ("weightloss_kg", "body weight"), ("GWG", "body weight")]
+
+
+@pytest.mark.parametrize("name, kind", VERIFIER_RELATED)
+def test_3b_the_verifiers_energy_related_spellings_push_the_dispute(name, kind):
+    """Verifier, test 3: ``energy_related()`` missed these, so no dispute was pushed. Expected: each
+    is read, the energy card carries the DISPUTED note (``build_proposals``, as the card is built),
+    and the energy finding carries the DISPUTED badge."""
+    assert energy_related(name) == kind
+    frame = _dietary().rename(columns={"bmi": name})
+    roles = {"energy_kcal": "energy", "protein_g": "exposure", "carbohydrate_g": "exposure",
+             "fat_g": "exposure", "sex": "covariate", "age": "covariate", "pid": "identifier",
+             "ldl": "covariate"}
+    card = build_proposals(frame, _columns(frame), lens=["dietary"], target=name, roles=roles,
+                           purpose="inference")["energy"]
+    assert card["outcome_dispute"] and card["outcome_dispute"]["evidence"]["status"] == "DISPUTED"
+    assert card["notes"] == [f"`{name}` reads as {kind}: energy may be on its causal path and a "
+                             f"collider, so adjusting for it is disputed."]
+    found = [f for f in _findings(frame, ["dietary"], name)
+             if f["id"].startswith("pack::dietary::energy_adjustment")]
+    assert found and found[0]["evidence"]["status"] == "DISPUTED"
 
 
 # ── 4 · Density plus energy carries Tomova's caveat; "unbiased in direction" is qualified;
@@ -697,9 +733,9 @@ def test_4_the_inference_table_carries_its_measurement_error_line(tmp_path):
 
 
 def test_4_tntc_is_right_censored_in_the_finding_on_the_sample_labs():
-    """FDA BAM ch. 3: "When number of CFU per plate exceeds 250, for all dilutions, record the
-    counts as too numerous to count (TNTC)"; crowded plates are estimated "as greater than 100
-    times the highest dilution plated". On ``clinical_labs.csv`` the censored-values finding counts
+    """FDA BAM ch. 3 (January 2026 edition, ``_BAM``): TNTC plates enter the count as lower bounds,
+    above the countable range of 15–300 colonies per plate. On ``clinical_labs.csv`` the
+    censored-values finding counts
     each column's TNTC cells as right-censored and its QNS cells as failures; the counts are
     pandas' over the file's own cells."""
     frame = pd.read_csv(SAMPLES / "clinical_labs.csv")
@@ -736,11 +772,27 @@ def test_4_a_column_with_only_tntc_and_qns_is_not_titled_as_failures():
 
 
 def test_4_tntc_in_the_teaching_and_the_pack():
+    """Verifier, test 4: the sentence cited "over 250 per plate", the January 2001 edition. The
+    current edition (January 2026; quoted in ``_BAM``) counts 15–300 colonies per plate and reads
+    a TNTC plate as a lower bound in its maximum-likelihood count. The teaching, the finding and
+    the pack name the current range and the edition, and no longer the superseded 250."""
     body = section("repairs", "Too many to count is a value").body
-    assert "right-censored" in body and "over 250 per plate" in body
+    assert "right-censored" in body and "15–300 per plate" in body and "2026 edition" in body
+    assert "lower bound" in body and "250" not in body
     pack = read_pack("CLINICAL_SURVEY_PACK.md")
-    assert "record the counts as too numerous to count (TNTC)" in pack
+    assert "updated from 25-250 to 15-300 per plate" in pack
+    assert "If a count of visible colonies is available, then this is the lower bound." in pack
+    assert "(The January 2001 edition put the limit at 250" in pack  # named as the old edition
     assert '> *"`TNTC` and `QNS` are not censoring at a detection limit' not in pack
+    from turbotab.core.stages import finding_words
+
+    assert finding_words.TNTC_RANGE == "15–300 colonies per plate"
+    assert finding_words.TNTC_SOURCE.endswith("January 2026 edition")
+    frame = pd.read_csv(SAMPLES / "clinical_labs.csv")
+    found = [f for f in _findings(frame, ["clinical"], "readmitted")
+             if f["id"].startswith("pack::clinical::censored_values")]
+    assert "15–300 colonies per plate" in found[0]["detail"] and "250" not in found[0]["detail"]
+    assert "lower bounds" in found[0]["detail"]
 
 
 # ── 5 · The temporal methods sentence describes what was drawn ───────────────

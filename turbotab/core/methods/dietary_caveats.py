@@ -28,6 +28,8 @@ corrected (the ``calibration`` stage corrects energy-adjusted exposures when ask
 """
 from __future__ import annotations
 
+import re
+
 from typing import Iterable, Sequence
 
 from turbotab.core.voice import count, listing, plural, tick
@@ -63,6 +65,22 @@ _KIND_BY_TOKEN = {
 # Two tokens that name adiposity together: ``fat_mass_kg``, ``body_fat_pct``, ``percent_fat``.
 _PAIRS = {("fat", "mass"): "adiposity", ("body", "fat"): "adiposity", ("percent", "fat"): "adiposity",
           ("pct", "fat"): "adiposity", ("fat", "pct"): "adiposity", ("fat", "percent"): "adiposity"}
+# Adiposity sites named with "fat" or "adipose" (audit WP15 repair: ``visceral_fat`` and
+# ``trunk_fat`` pushed no dispute), and hip circumference, an adiposity measure as waist is.
+_PAIRS.update({(site, w): "adiposity" for site in ("visceral", "trunk", "android", "gynoid",
+                                                    "abdominal", "liver", "hepatic")
+               for w in ("fat", "adipose", "adiposity")})
+_PAIRS.update({("hip", w): "hip size" for w in ("circumference", "circ", "cm", "girth")})
+# Spellings that run words together, read on the name's joined words (``BodyMassIndex``,
+# ``body_mass_index``; the paediatric BMI z-scores ``bmiz``, ``zbmi``, ``BMIz``; ``weightloss_kg``;
+# gestational weight gain ``GWG``).
+_JOINED = (
+    (re.compile(r"bodymassindex|bmiz|zbmi|bmisds?|bmipct|bmipercentile|bmicentile"), "BMI"),
+    (re.compile(r"weightloss|weightgain|weightchange|^gwg|gestationalweightgain"), "body weight"),
+    (re.compile(r"fatmass|bodyfat|visceralfat|trunkfat|androidfat|gynoidfat"), "adiposity"),
+    (re.compile(r"waistcirc|waisthip|waisttohip|waistheight"), "waist size"),
+    (re.compile(r"hipcirc"), "hip size"),
+)
 # A "weight" that is not the participant's body: a survey's sampling weight, or a birth weight.
 _NOT_BODY = {"sample", "sampling", "survey", "svy", "design", "birth", "pweight", "probability"}
 
@@ -88,6 +106,10 @@ def energy_related(outcome: str | None) -> str | None:
     for a, b in zip(tokens, tokens[1:]):
         if (a, b) in _PAIRS:
             return _PAIRS[(a, b)]
+    joined = "".join(tokens)
+    for pattern, kind in _JOINED:
+        if pattern.search(joined) and not (kind == "body weight" and _NOT_BODY & set(tokens)):
+            return kind
     for t in tokens:
         kind = _KIND_BY_TOKEN.get(t)
         if kind == "body weight" and _NOT_BODY & set(tokens):

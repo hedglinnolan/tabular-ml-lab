@@ -147,8 +147,13 @@ def hints(df: pd.DataFrame | None) -> list[dict[str, str]]:
         genomic = f"{vocabulary:.0%} of the labels are gene identifiers"
         metabolomic = None
     elif len(numeric) >= MIN_WIDE and not found and not metabolomic:
+        # The data-type reading hints genomics only where it is specific to expression data: a
+        # library-size signature (CPM, TPM, scaled counts summing near a million, voom). "Log-scale,
+        # normalization not recoverable" is any wide table of floats under 25, such as an MRI
+        # thickness panel (audit WP14 repair), and hints nothing.
         card = genomics.card(df)
-        if card and card.get("read"):
+        keys = (card or {}).get("classification", {}).get("keys") or []
+        if card and card.get("read") and keys and keys[0] != genomics.LOG_UNKNOWN:
             genomic = (f"{len(numeric):,} measurement columns read as "
                        f"{card['classification']['label']}, an expression matrix")
     if genomic:

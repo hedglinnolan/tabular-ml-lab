@@ -104,10 +104,12 @@ def test_each_screen_is_offered_with_its_badge_and_none_is_chosen(nhanes):
     for p in artifact["exclusions"][:len(KEYS)]:
         assert p["evidence"] == {"status": "CONVENTION",
                                  "source": "research/NUTRITION_PACK.md#02 · Implausible intake exclusions"}
-        assert set(p) == {"key", "rule", "label", "affected", "evidence"}  # no "selected", no default
+        # no "selected", no default; "refused" only names a screen that would remove most rows
+        assert set(p) == {"key", "rule", "label", "affected", "evidence", "refused"}
+        assert p["refused"] is None
         ExclusionRule.model_validate(p["rule"])
     goldberg = artifact["exclusions"][-1]
-    assert set(goldberg) == {"key", "rule", "label", "affected", "evidence"}
+    assert set(goldberg) == {"key", "rule", "label", "affected", "evidence", "refused"}
     assert goldberg["evidence"]["status"] == "CONVENTION" and "Black 2000" in goldberg["evidence"]["source"]
     rule = GoldbergRule.model_validate(goldberg["rule"])
     assert (rule.equation, rule.pal, rule.days, rule.weight, rule.height) == (

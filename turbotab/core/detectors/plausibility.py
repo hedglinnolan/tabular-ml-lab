@@ -60,6 +60,34 @@ CDC_SOURCE = ("CDC, SAS Program for CDC Growth Charts (2000 growth charts, 2 to 
 
 _AGE_NAMES = {"age", "ridageyr", "age_years", "age_yrs", "ageyears", "age_yr", "age_y", "agey"}
 _MONTH_NAMES = {"agemos", "age_months", "age_mo", "ridagemn", "ridexagm", "age_in_months"}
+# An age named with the occasion or the person it belongs to (audit WP14 repair: ``child_age``,
+# ``age_child``, ``age_at_visit``, ``AgeAtExam`` and ``visit_age`` left children judged by adult
+# limits). Read by whole words: ``age`` beside only these words is the participant's age now;
+# ``mother_age``, ``age_at_diagnosis``, ``gestational_age`` and ``stage`` are not.
+_AGE_COMPANIONS = {"at", "of", "in", "the", "child", "children", "kid", "participant", "subject",
+                   "patient", "pt", "respondent", "person", "visit", "exam", "examination",
+                   "screening", "interview", "baseline", "bl", "enrollment", "enrolment", "entry",
+                   "recruitment", "study", "survey", "measurement", "assessment", "current", "now",
+                   "index", "yr", "yrs", "years", "year", "y", "age"}
+_MONTH_WORDS = {"months", "month", "mo", "mos", "mon"}
+
+
+def _age_words(column: str) -> str | None:
+    """``years`` or ``months`` when the column's name reads as the participant's age, by whole
+    words (:func:`turbotab.core.recognizers.tokens`), else None."""
+    from turbotab.core.recognizers import tokens
+
+    words = tokens(column)
+    if "age" not in words and not any(w in ("agemos", "ageyears", "agey") for w in words):
+        return None
+    rest = [w for w in words if w not in _AGE_COMPANIONS and not w.isdigit()]
+    if not rest:
+        return "years"
+    if set(rest) <= _MONTH_WORDS | {"agemos"}:
+        return "months"
+    return None
+
+
 _SEX_NAMES = {"sex", "gender", "riagendr", "male", "female", "is_male", "is_female", "sex_male"}
 
 
@@ -94,22 +122,40 @@ def variable_of(column: str) -> str | None:
 # ── age and sex ──────────────────────────────────────────────────────────────
 
 
-def age_in_months(df: pd.DataFrame) -> pd.Series | None:
-    """Each row's age in months, from a months column or a years column (whole years read at
-    mid-year), or None when the table has neither."""
+def age_column(df: pd.DataFrame) -> tuple[str, str] | None:
+    """``(column, "years" | "months")``: the table's age column, by exact name first, then by
+    whole words (``child_age``, ``AgeAtExam``, ``age_at_visit``, ``age_months``)."""
     for c in df.columns:
         if _normal(c) in {_normal(n) for n in _MONTH_NAMES} and pd.api.types.is_numeric_dtype(df[c]):
-            months = pd.to_numeric(df[c], errors="coerce")
-            if months.notna().any() and months.dropna().between(0, 1500).all():
-                return months
+            return str(c), "months"
     for c in df.columns:
         if _normal(c) in {_normal(n) for n in _AGE_NAMES} and pd.api.types.is_numeric_dtype(df[c]):
-            years = pd.to_numeric(df[c], errors="coerce")
-            if not years.notna().any() or not years.dropna().between(0, 125).all():
-                continue
-            whole = bool(np.all(np.mod(years.dropna().to_numpy(dtype=float), 1) == 0))
-            return years * 12.0 + (6.0 if whole else 0.0)
+            return str(c), "years"
+    for c in df.columns:
+        kind = _age_words(str(c))
+        if kind and pd.api.types.is_numeric_dtype(df[c]) and not pd.api.types.is_bool_dtype(df[c]):
+            return str(c), kind
     return None
+
+
+def age_in_months(df: pd.DataFrame) -> pd.Series | None:
+    """Each row's age in months, from a months column or a years column (whole years read at
+    mid-year), or None when the table has neither. The age column is read by
+    :func:`age_column`."""
+    found = age_column(df)
+    if found is None:
+        return None
+    c, kind = found
+    if kind == "months":
+        months = pd.to_numeric(df[c], errors="coerce")
+        if months.notna().any() and months.dropna().between(0, 1500).all():
+            return months
+        return None
+    years = pd.to_numeric(df[c], errors="coerce")
+    if not years.notna().any() or not years.dropna().between(0, 125).all():
+        return None
+    whole = bool(np.all(np.mod(years.dropna().to_numpy(dtype=float), 1) == 0))
+    return years * 12.0 + (6.0 if whole else 0.0)
 
 
 def sex_codes(df: pd.DataFrame) -> pd.Series | None:
@@ -228,16 +274,23 @@ def read(df: pd.DataFrame) -> dict[str, Any]:
         tier = "any_age" if (var in BODY_SIZE and has_children) else "impossible"
         band = spec.get(tier) or spec["impossible"]
         low, high = float(band["low"]), float(band["high"])
+        adult_tier = True
         if var in BODY_SIZE and months is None and float(x.median()) < p01:
+            # No age column and body sizes below adults': these may be children, who are never
+            # judged by adult limits (§A1.2). Only the any-age limits apply; the adult percentiles
+            # are not read, so no value is called an unusual adult one (audit WP14 repair: the
+            # detail said both "Set aside rather than judged" and "299 adult values outside …").
             set_aside.append({
-                "column": str(col), "variable": var,
+                "column": str(col), "variable": var, "tier": "adult_percentiles",
                 "why": (f"its values sit below adults' (median {float(x.median()):g} against the "
                         f"adult 1st percentile {p01:g} {spec['unit']}) and there is no age column, "
-                        f"so children cannot be told from errors; children are judged by "
-                        f"age-specific z-scores, never by adult limits")})
+                        f"so children cannot be told from adults; only the any-age limits apply, "
+                        f"since children are judged by age-specific z-scores, never by adult "
+                        f"limits")})
             band = spec.get("any_age") or band
             low, high = float(band["low"]), float(band["high"])
             tier = "any_age"
+            adult_tier = False
         impossible = x[(x < low) | (x > high)]
         ifcc = None
         if var == "hba1c":
@@ -253,7 +306,7 @@ def read(df: pd.DataFrame) -> dict[str, Any]:
             set_aside.append({"column": str(col), "variable": var,
                               "why": verdict.statement or f"the reading is {verdict.reading}"})
             continue
-        adult_x = x[adult.reindex(x.index, fill_value=False)]
+        adult_x = x[adult.reindex(x.index, fill_value=False)] if adult_tier else x.iloc[:0]
         possible = adult_x[(adult_x >= low) & (adult_x <= high)]
         outside_98 = possible[(possible < p01) | (possible > p99)]
         entry: dict[str, Any] = {
@@ -360,9 +413,14 @@ def impossible_vs_extreme_finding(df: pd.DataFrame) -> dict[str, Any] | None:
     if len(flagged) > 1:
         parts.append("The same reading applies to " + ", ".join(
             f"`{e['column']}`" for e in flagged if e is not lead) + ".")
-    if r["set_aside"]:
+    whole = [a for a in r["set_aside"] if a.get("tier") != "adult_percentiles"]
+    partial = [a for a in r["set_aside"] if a.get("tier") == "adult_percentiles"]
+    if whole:
         parts.append("Set aside rather than judged: " + "; ".join(
-            f"`{a['column']}` ({a['why']})" for a in r["set_aside"][:3]) + ".")
+            f"`{a['column']}` ({a['why']})" for a in whole[:3]) + ".")
+    if partial:
+        parts.append("Not judged by adult percentiles: " + "; ".join(
+            f"`{a['column']}` ({a['why']})" for a in partial[:3]) + ".")
     if lead["n_impossible"]:
         title = (f"`{lead['column']}` holds impossible values and unusual ones, and they are "
                  f"different categories")
@@ -387,7 +445,8 @@ def impossible_vs_extreme_finding(df: pd.DataFrame) -> dict[str, Any] | None:
                              if e.get("children")],
                 "reference_version": r["version"], "status": r["status"],
                 "has_age": r["has_age"], "n_children": r["n_children"],
-                "columns_the_core_could_not_read": [a["column"] for a in r["set_aside"]],
+                "columns_the_core_could_not_read": [a["column"] for a in r["set_aside"]
+                                                     if a.get("tier") != "adult_percentiles"],
                 "set_aside": r["set_aside"]},
         fix_label="", fix_kind="none")
 
