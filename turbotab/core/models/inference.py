@@ -99,12 +99,17 @@ INDEPENDENT = Clusters()
 
 def cluster_columns(state: Any, available: Sequence[str], also: Sequence[str | None] = ()) -> list[str]:
     """Columns that may name the unit: the grain's named column first, then every identifier,
-    then ``also`` (the column the split grouped by, when it is none of these)."""
+    then every cluster (a site or household: rows within one are not independent, so a repeating
+    cluster clusters the intervals as a repeating identifier does; WP13 split it from the
+    identifiers so that the seal never groups by it), then ``also`` (the column the split grouped
+    by, when it is none of these)."""
     grain = getattr(state, "grain", None)
     named = getattr(grain, "id_column", None) if grain is not None else None
-    identifiers = [c for c, r in (getattr(state, "roles", None) or {}).items() if r == "identifier"]
+    roles = getattr(state, "roles", None) or {}
+    identifiers = [c for c, r in roles.items() if r == "identifier"]
+    clusters = [c for c, r in roles.items() if r == "cluster"]
     have = set(available)
-    wanted = [*([named] if named else []), *identifiers, *[c for c in also if c]]
+    wanted = [*([named] if named else []), *identifiers, *clusters, *[c for c in also if c]]
     return [c for c in dict.fromkeys(wanted) if c in have]
 
 

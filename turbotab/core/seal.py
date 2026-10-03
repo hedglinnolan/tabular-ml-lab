@@ -123,7 +123,8 @@ class Chronology(_Model):
 
 
 def _basis(state: BasisState, column: str | None, sentence: str, *,
-           source: str | None = None, n_units: int | None = None) -> SealBasis:
+           source: str | None = None, n_units: int | None = None,
+           exploratory: bool = False) -> SealBasis:
     label = {
         "grouped": f"grouped by `{column}`",
         "one_row_per_unit": "one row per unit",
@@ -131,7 +132,18 @@ def _basis(state: BasisState, column: str | None, sentence: str, *,
         "undetermined": "undetermined",
     }[state]
     return SealBasis(state=state, column=column, label=label, sentence=sentence,
-                     exploratory=state in EXPLORATORY_STATES, source=source, n_units=n_units)
+                     exploratory=exploratory or state in EXPLORATORY_STATES, source=source,
+                     n_units=n_units)
+
+
+def _measurement(frame: Any, column: str) -> str | None:
+    """Why a column named as the unit is a measurement rather than a unit's identifier, or None
+    (:func:`turbotab.core.recognizers.reads_as_measurement`; audit IN-06: ``length_of_stay_days``
+    gave a clean "grouped" seal over 19 "units")."""
+    from turbotab.core.recognizers import reads_as_measurement
+
+    values = frame[column] if column in frame.columns else None
+    return reads_as_measurement(column, values=values)
 
 
 def _units(values: Any) -> int:
@@ -195,6 +207,16 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
                            f"whole, so the held-out rows were drawn by row. A unit can sit on both "
                            f"sides: treat held-out scores as exploratory.",
                            source=source, n_units=units), None)
+        why = _measurement(frame, column) if source == "grain" else None
+        if why is not None:
+            # The user's answer is the answer, and the draw keeps its values together; but a
+            # measurement names no unit, so the lock is not called clean (audit IN-06).
+            return (_basis("grouped", column,
+                           f"Held out by `{column}` as answered, in `{units:,}` groups; but "
+                           f"`{column}` reads as a measurement ({why}), not a unit's identifier, "
+                           f"so a unit can sit on both sides: treat held-out scores as "
+                           f"exploratory.", source=source, n_units=units, exploratory=True),
+                    column)
         return (_basis("grouped", column,
                        f"Held out by `{column}`: each of the `{units:,}` units sits wholly on one "
                        f"side, so no unit is both trained on and scored.",

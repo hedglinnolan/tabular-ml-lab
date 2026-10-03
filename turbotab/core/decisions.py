@@ -119,7 +119,10 @@ class Revert(_DecisionModel):
 # The shapes are fixed here so every M1 agent builds on one definition; their
 # validators, sentences and the stages that read them are the agents' work.
 
-Role = Literal["identifier", "exposure", "energy", "covariate", "design", "flag", "time", "excluded"]
+# "cluster" (audit WP13, IN-06): a column that groups participants (a site, a household, a family)
+# is neither a person's identifier nor a trait; the seal never groups by it as if it named people.
+Role = Literal["identifier", "exposure", "energy", "covariate", "design", "flag", "time", "excluded",
+               "cluster"]
 # "residual" keeps total energy in the outcome model; "residual_energy_dropped" lets it leave
 # (BLUEPRINT §12 ruling 1); "all_components" gives every energy source its own term (audit WP6).
 EnergyMethod = Literal["none", "standard", "residual", "residual_energy_dropped",
@@ -684,6 +687,16 @@ class SetOutcomeOrder(_DecisionModel):
         return value
 
 
+class SetOutcomeUnit(_DecisionModel):
+    """The outcome's unit, as the user reads it from the source's data dictionary. Stands only
+    while ``column`` is the target. A unit the name does not spell out is never guessed into a
+    sentence (audit IN-05; CLINICAL_SURVEY_PACK §A1.1: "TurboTab will not guess")."""
+
+    kind: Literal["set_outcome_unit"] = "set_outcome_unit"
+    column: str = Field(min_length=1)
+    unit: str = Field(min_length=1, max_length=24, pattern=r"^[^`\n\r]+$")
+
+
 class SetTemporal(_DecisionModel):
     kind: Literal["set_temporal"] = "set_temporal"
     temporal: bool
@@ -767,7 +780,7 @@ Decision = Annotated[
         OpenSeal, ApplyRepair, DeferFinding, DismissFinding,
         SetFeatureTable, SetCategorical, SetSurvey,
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
-        SetSensitivity, SetMeasurementError,
+        SetSensitivity, SetMeasurementError, SetOutcomeUnit,
     ],
     Field(discriminator="kind"),
 ]
@@ -841,6 +854,9 @@ class ProjectState(BaseModel):
     # WP12 (audit §5): methods a reviewer expects
     sensitivity: list[SensitivityAnalysis] | None = None  # analyses beside the primary's rows
     measurement_error: MeasurementErrorSpec | None = None  # regression calibration, or none
+    # WP13 (audit IN-05): the outcome's unit as the user recorded it (holds while its column is
+    # the target); a unit the name does not spell out is proposed, never stated, until then
+    outcome_unit: str | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1102,6 +1118,8 @@ register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetFollowUp, "follow_up",
               value=lambda d: FollowUpSpec(time_column=d.time_column, entry_column=d.entry_column),
+              holds=lambda d, slots: slots.get("target") == d.column)
+register_kind(SetOutcomeUnit, "outcome_unit", value=lambda d: d.unit,
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetSensitivity, "sensitivity")
 register_kind(SetMeasurementError, "measurement_error",
@@ -2207,6 +2225,20 @@ def _outcome_values(ctx: Any, column: str) -> list[Any] | None:
     return list(store.materialize([column])[column].dropna().unique())
 
 
+def _unit_names_the_outcome(decision: SetOutcomeUnit, ctx: Any) -> None:
+    """The unit answers for the outcome: a recorded unit is what every outcome quantity is then
+    stated in (audit IN-05)."""
+    target = _target_of(ctx)
+    if target is not _UNKNOWN and target is None:
+        raise Refusal("no_target", "Choose the outcome first; the unit describes it.",
+                      exits=[{"label": "Choose the outcome", "decision": None}])
+    if target is not _UNKNOWN and decision.column != target:
+        raise Refusal(
+            "not_the_target",
+            f"The outcome is `{target}`, not `{decision.column}`; the unit answers for the outcome.",
+            exits=[{"label": f"Record the unit of `{target}`", "decision": None}])
+
+
 def _order_names_the_outcome(decision: SetOutcomeOrder, ctx: Any) -> None:
     """The order answers for the outcome and places each of its levels exactly once."""
     target = _target_of(ctx)
@@ -2353,6 +2385,7 @@ register_validator("set_measurement_error", _calibrated_exposures_are_columns)
 register_validator("set_measurement_error", _calibration_is_for_inference)
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_outcome_order", _order_names_the_outcome)
+register_validator("set_outcome_unit", _unit_names_the_outcome)
 register_validator("set_exposure_form", _form_fits_the_column)
 register_validator("set_follow_up", _follow_up_belongs_to_the_outcome)
 register_validator("set_roles", _roles_name_real_columns)

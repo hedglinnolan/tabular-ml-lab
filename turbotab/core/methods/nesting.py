@@ -54,10 +54,24 @@ def _role(column: str) -> str | None:
         return None
 
 
+def _part(column: str) -> str | None:
+    """The part of its macronutrient the one recognizer reads in ``column`` (audit WP13: the
+    nesting vocabulary and the energy vocabulary had diverged, so ``DR1TSFAT`` nested nowhere)."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+
+    try:
+        reading = read_nutrient(column)
+    except AmbiguousNutrient:
+        return None
+    return reading.part if reading is not None and reading.macro is not None else None
+
+
 def _macro_of_child(column: str) -> str | None:
     """The macronutrient ``column`` names a subtype of, from its name alone."""
     tokens = _tokens(column)
     role = _role(column)
+    if role in SUBTYPES and _part(column) is not None:
+        return role
     for macro, words in SUBTYPES.items():
         if tokens & SPECIFIC[macro] or (role == macro and tokens & words):
             return macro
@@ -78,7 +92,8 @@ def candidates(columns: Sequence[str]) -> dict[str, list[str]]:
     parents: dict[str, list[str]] = {}
     for c in columns:
         role = _role(c)
-        if role in SUBTYPES and not _tokens(c) & SUBTYPES[role] and _unit_class(c) is not None:
+        if (role in SUBTYPES and not _tokens(c) & SUBTYPES[role] and _part(c) is None
+                and _unit_class(c) is not None):
             parents.setdefault(role, []).append(c)
     out: dict[str, list[str]] = {}
     for macro, options in parents.items():

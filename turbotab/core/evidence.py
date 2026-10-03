@@ -262,6 +262,15 @@ def implausible_evidence(finding: dict, ctx: EvidenceContext) -> tuple[list[Any]
     except ImportError:  # pragma: no cover - the legacy pack always defines it
         bounds = (500.0, 5000.0)
     low, high = float(bounds[0]), float(bounds[1])
+    unit = finding.get("energy_unit")
+    if unit is None:  # a finding stored before WP13: read the column's unit by its name and size
+        from turbotab.core.stages.proposals import energy_unit_reading
+
+        unit = energy_unit_reading(ctx.datastore.materialize([column]), column)["unit"]
+    if unit == "kj":  # the same daily range, in the column's own unit (audit IN-07)
+        from turbotab.core.stages.proposals import KCAL_PER_KJ
+
+        low, high = low * KCAL_PER_KJ, high * KCAL_PER_KJ
     rule = ExclusionRule(column=column, low=low, high=high, reason="implausible intake")
     values = pd.to_numeric(ctx.datastore.materialize([column])[column], errors="coerce").astype(float)
     finite = values[np.isfinite(values)]

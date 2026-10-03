@@ -6,12 +6,12 @@ and so does every worker process that runs a heavy stage.
 
     ingest       heavy   deps: —        DatasetInfo
     profile      heavy   deps: ingest   column summaries + lens hints
-    target_info  light   deps: ingest   reads target, task; requires target
+    target_info  light   deps: ingest   reads target, task, outcome_unit; requires target
     findings     heavy   deps: ingest   reads lens, target; requires lens
 
 M1 (docs/turbotab-next/M1_CONTRACT.md):
 
-    roles        heavy   deps: ingest, profile                reads lens, target
+    roles        heavy   deps: ingest, profile                reads lens, target, purpose
     proposals    light   deps: ingest, profile, roles         reads lens, roles, target, purpose
     cohort       heavy   deps: ingest, target_info            reads target, roles, exclusions, missing, findings; requires target
     split        heavy   deps: cohort, target_info            reads split, roles, task; requires split
@@ -100,9 +100,11 @@ def build_graph() -> Graph:
                 heavy=True,
                 label="Summarizing every column",
             ),
+            # findings 5 (WP13): identifiers, kJ and NHANES weights read by the one recognizer;
+            # the pack's energy findings for energy names only the recognizer reads.
             Stage(
                 "findings",
-                4,
+                5,
                 ("oriented",),
                 ("lens", "target"),
                 findings_stage,
@@ -112,23 +114,28 @@ def build_graph() -> Graph:
             ),
             # structure reads ``findings`` for the date-reading repair: a date column that reads
             # both month-first and day-first is read only once that is answered (audit MA-05).
-            Stage("structure", 4, ("oriented",),
+            # structure 5 (WP13): the grain question never suggests a measurement as the unit.
+            Stage("structure", 5, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             Stage("working", 2, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind"),
                   working_stage, heavy=True, label="Building the working table"),
+            # target_info 3 (WP13, audit IN-05): the unit is stated only as recorded or spelled out
+            # by the name; the clinical pack's reading is a proposal.
             Stage(
                 "target_info",
-                2,
+                3,
                 ("working",),
-                ("target", "task"),
+                ("target", "task", "outcome_unit"),
                 target_info_stage,
                 requires=("target",),
                 label="Reading the outcome column",
             ),
             # ── M1 (each reads the working table) ──
-            Stage("roles", 1, ("working",), ("lens", "target"), roles_stage,
+            # roles 2 (WP13): whole-token recognizers; a study's arms are exposures, a site or
+            # household a cluster, and a batch's proposed role follows the declared purpose.
+            Stage("roles", 2, ("working",), ("lens", "target", "purpose"), roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -137,13 +144,16 @@ def build_graph() -> Graph:
             # model; the exposure-form options with their two labels (WP12a).
             # proposals 6 (methods gate): Willett's sex-specific screen reads sex left out of the
             # model, as the Goldberg screen does.
-            Stage("proposals", 6, ("working", "roles"), ("lens", "roles", "target", "purpose"),
+            # proposals 7 (WP13): nutrients and energy by the one recognizer; the energy unit by
+            # its suffix, the Atwater reconstruction, or the pack's magnitude prior (audit IN-07).
+            Stage("proposals", 7, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             Stage("cohort", 2, ("working", "target_info"),
                   ("target", "roles", "exclusions", "missing", "findings"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
-            Stage("split", 3, ("working", "cohort", "target_info", "structure"),
+            # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.
+            Stage("split", 4, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
             # shelf 7 (methods gate): under inference it ranks for every analyzed row and its basis
@@ -163,7 +173,9 @@ def build_graph() -> Graph:
             # design 9 (methods gate): under inference the estimand's fitted elasticity, the energy
             # step's warnings, the residual gap, the lineage and the matrix read every analyzed row
             # (ruling 3); the pipelines are still sized for the training rows.
-            Stage("design", 9, ("working", "split", "target_info"),
+            # design 10 (WP13): energy sources, parts and total energy read by the one recognizer
+            # (whole words, NHANES and INFOODS codes; ``alc_kcal`` is alcohol, not total energy).
+            Stage("design", 10, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -190,14 +202,17 @@ def build_graph() -> Graph:
             # substitution 7 (repair round): under inference the curve reads every analyzed row and
             # the families refit on them (BLUEPRINT §12 ruling 3), as the coefficient table does.
             # substitution 8 (methods gate): the outcome keeps its own values (a True/False event).
-            Stage("substitution", 8, ("working", "fit", "design"),
-                  ("substitution", "event", "outcome_order", "purpose"),
+            # substitution 9 (WP13, audit IN-05): the estimand states the outcome's unit only as
+            # recorded or spelled out by its name.
+            Stage("substitution", 9, ("working", "fit", "design"),
+                  ("substitution", "event", "outcome_order", "purpose", "outcome_unit"),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
             # seal_plan 3 (repair round): the declared purpose orders the split question (under
             # inference no holdout leads; BLUEPRINT §12 ruling 3), and the validation options.
-            Stage("seal_plan", 3, ("working", "cohort", "target_info", "structure"),
+            # seal_plan 4 (WP13): the basis reads a measurement named as the unit as exploratory.
+            Stage("seal_plan", 4, ("working", "cohort", "target_info", "structure"),
                   ("roles", "task", "event", "purpose", *SEAL_READS), seal_plan_stage,
                   requires=("target",),
                   label="Reading what a held-out set can measure"),

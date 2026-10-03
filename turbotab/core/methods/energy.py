@@ -317,22 +317,12 @@ class EnergyAdjustmentNotApplicable(ValueError):
 _FALLBACK_ATWATER = {"protein": 4.0, "carbohydrate": 4.0, "fat": 9.0, "alcohol": 7.0, "fiber": 2.0}
 KCAL_PER_KJ: float = float(getattr(_nutrition, "KCAL_PER_KJ", 4.184))
 
-_FALLBACK_ROLE_PATTERNS = {
-    "protein": r"prot",
-    "carbohydrate": r"carb|cho\b",
-    "fat": r"\bfat|lipid|tfat",
-    "alcohol": r"alco|etoh",
-}
-_ROLE_PATTERNS: Dict[str, str] = {
-    role: pattern
-    for role, pattern in (getattr(_nutrition, "_NAME_PATTERNS", None) or _FALLBACK_ROLE_PATTERNS).items()
-    if role != "energy"
-}
-_ROLE_PATTERNS["fiber"] = r"fib"
-# Sugars and starch are carbohydrate at the same 4 kcal/g (NUTRITION_PACK §01): a `sugar` column
-# carries energy and is adjusted with the rest. It is a part of total carbohydrate (nesting.py),
-# so a partition never takes it beside its total.
-_ROLE_PATTERNS["carbohydrate"] = f"(?:{_ROLE_PATTERNS['carbohydrate']})|sugar|starch"
+# Which macronutrient a column is, and whether it names total energy, are read by the one
+# recognizer every stage shares (turbotab/core/recognizers.py; audit WP13): whole words, the NHANES
+# codebook and INFOODS tagnames, never a substring (audit IN-01: ``fat`` in ``fat_mass_kg``, ``prot``
+# in ``c_reactive_protein``, ``fib`` in ``fibrinogen``, ``carb`` in ``bicarbonate``). Sugars and
+# starch are carbohydrate at 4 kcal/g (NUTRITION_PACK §01), and saturated, monounsaturated and
+# polyunsaturated fatty acids are fat at 9 kcal/g; each is a part of its total (nesting.py).
 
 # Unit suffixes, NUTRITION_PACK §01 signal 3. Density is tested first so that
 # `protein_pct_kcal` is a share of energy and not an amount in kcal.
@@ -362,26 +352,28 @@ def default_atwater() -> Dict[str, float]:
 
 
 def unit_of(column: str) -> str:
-    """The unit a column name declares by its suffix: grams, kcal, kj, density, … or unmarked."""
+    """The unit a column name declares: by its suffix (grams, kcal, kj, density, …), else by the
+    codebook its name comes from (NHANES ``DR1TSFAT`` "(gm)", INFOODS ``PROCNT`` in g; audit IN-08),
+    else unmarked."""
     name = str(column).lower()
     for unit, pattern in _UNIT_SUFFIXES:
         if re.fullmatch(pattern, name):
             return unit
-    return "unmarked"
+    from turbotab.core.recognizers import codebook_unit
+
+    return codebook_unit(column) or "unmarked"
 
 
 def nutrient_role(column: str) -> Optional[str]:
     """Which energy-bearing macronutrient a column name refers to, or None.
 
-    Uses the nutrition pack's name patterns (plus fiber), with ``_`` read as a word
-    break so that ``total_fat_g`` and ``sat_fat_g`` are fat. Returns None when no
-    role matches and raises ``ValueError`` when more than one does.
+    Read by :func:`turbotab.core.recognizers.nutrient_role` (whole words, the NHANES codebook,
+    INFOODS tagnames; a body compartment, a specimen, a score or a food withdraws the reading).
+    Raises ``ValueError`` when the name names more than one.
     """
-    name = re.sub(r"[_\-.]+", " ", str(column))
-    roles = [role for role, pattern in _ROLE_PATTERNS.items() if re.search(pattern, name, re.I)]
-    if len(roles) > 1:
-        raise ValueError(f"{column} matches more than one nutrient ({' and '.join(roles)})")
-    return roles[0] if roles else None
+    from turbotab.core.recognizers import nutrient_role as _read
+
+    return _read(column)
 
 
 @dataclass(frozen=True)
@@ -423,6 +415,15 @@ def energy_factor(column: str, atwater: Optional[Mapping[str, float]] = None) ->
         role = nutrient_role(column)
     except ValueError as err:
         return FactorReading(column, None, None, unit, False, f"{err}, so its energy factor is ambiguous")
+    if role is None and unit == "grams":
+        from turbotab.core.recognizers import is_nutrient
+
+        if not is_nutrient(column):
+            # A food or food group in grams (``fatty_fish_g``) does carry energy, by no general
+            # factor: fatty fish is about 2 kcal/g, not fat's 9 (audit IN-01).
+            return FactorReading(column, None, None, unit, False,
+                                 f"{column} is a food, not a nutrient the Atwater factors cover; "
+                                 f"its kcal per gram must be declared")
     if role is None or role not in factors:
         return FactorReading(column, None, None, unit, False,
                              f"{column} carries no energy: no Atwater factor is known for it")
@@ -819,6 +820,17 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
                 raise EnergyAdjustmentNotApplicable(
                     self.method_, f"{_and(overlap)} would be converted as grams, and the "
                                  f"Atwater reconstruction says: {check.sentence}")
+        elif unit_of(E) != "kj":
+            # No reconstruction to read the unit by: the pack's magnitude prior is the second
+            # signal (audit IN-07; NUTRITION_PACK §01, "energy 1,600–2,600 kcal (7,000–11,000 →
+            # kJ)"). A median in the kJ band is not subtracted from as kcal.
+            from turbotab.core.recognizers import energy_unit_by_magnitude
+
+            if energy_unit_by_magnitude(e) == "kj":
+                raise EnergyAdjustmentNotApplicable(
+                    self.method_, f"the partition subtracts kcal from {E}, and its median daily "
+                                 f"value is in the kilojoule range (7,000–11,000), not kcal; "
+                                 f"convert it to kcal first")
         for n, reading in readings.items():
             if not reading.declared:
                 confirmed = complete and check.verdict == "pass" and n in check.macro_columns.values()
@@ -1340,16 +1352,51 @@ _RECONSTRUCTION_ROLES = ("protein", "carbohydrate", "fat")
 
 
 def _atwater_reading(X: pd.DataFrame, energy_column: str) -> Any:
-    """The nutrition pack's Atwater reconstruction on these rows, if it reads this energy column."""
-    if _nutrition is None:
+    """The nutrition pack's Atwater reconstruction on these rows, against this energy column."""
+    return atwater_check(X, energy_column)
+
+
+_UNIT_FAMILIES = ("grams", "unmarked", "density", "other")
+
+
+def atwater_check(frame: pd.DataFrame, energy_column: str) -> Any:
+    """NUTRITION_PACK §01's Atwater reconstruction, ``E_hat = 4P + 4C + 9F + 7A``, against
+    ``energy_column``, over the macronutrient columns the one recognizer reads (audit WP13).
+
+    The ratio table is the pack's own (``turbotab.nutrition._reconstruct``: pass, kJ, inverse,
+    percent of energy, mixed units); what this adds is which columns it reads. The legacy check
+    found them by substring, so a body-fat or serum-protein column could stand in for an intake.
+    A part (saturated fat, sugars) is never read beside its total, and grams are tried first. None
+    when there is no reading: fewer than two macronutrients in one unit family, or too few rows.
+    """
+    if _nutrition is None or energy_column not in frame.columns:
         return None
-    try:
-        reading = _nutrition.atwater(X)
-    except Exception:  # pragma: no cover - a diagnostic that cannot run is not a verdict
-        return None
-    if reading is None or reading.energy_column != energy_column:
-        return None
-    return reading
+    families: Dict[str, Dict[str, str]] = {}
+    for c in frame.columns:
+        c = str(c)
+        if c == energy_column or not pd.api.types.is_numeric_dtype(frame[c]):
+            continue
+        role = _role_or_none(c)
+        if role not in ENERGY_SOURCES or _part_of(c) is not None:
+            continue
+        unit = unit_of(c)
+        family = unit if unit in ("grams", "unmarked", "density") else "other"
+        families.setdefault(family, {}).setdefault(role, c)
+    sets = [(f, families[f]) for f in _UNIT_FAMILIES if len(families.get(f, {})) >= 2]
+    every = [col for _, cols in sets for col in cols.values()]
+    readings = []
+    for family, cols in sets:
+        aside = [c for c in every if c not in cols.values()]
+        try:
+            reading = _nutrition._reconstruct(frame, energy_column, cols, family, aside)
+        except Exception:  # pragma: no cover - a diagnostic that cannot run is not a verdict
+            reading = None
+        if reading is None:
+            continue
+        if reading.verdict == "pass":
+            return reading
+        readings.append(reading)
+    return readings[0] if readings else None
 
 
 # ── What the fitted model estimates (audit ME-02, ME-03, ME-04, ME-14, ME-15) ────
@@ -1369,28 +1416,16 @@ class EnergyTerm:
     share: bool = False
 
 
-# A column named like total energy (``energy_kcal``, ``DR1TKCAL``, ``total_kj``): the proposals'
-# recognizer (``stages.proposals.is_energy_name``), less what names an expenditure or a target.
-_TOTAL_ENERGY_NAME = re.compile(r"kcal|(?:^|[^a-z])kj(?:$|[^a-z])|energy|calor", re.I)
-_NOT_INTAKE = re.compile(r"expend|\btee\b|\bree\b|\bbmr\b|\bpal\b|burn|basal|requirement|"
-                         r"goal|target|^kcal from\b", re.I)
-
-
 def reads_as_total_energy(column: str) -> bool:
     """Whether ``column``'s name reads as a total energy intake (audit ME-02: the estimand is read
     off the fitted matrix, so total energy in it is recognized whatever its role).
 
-    Not a macronutrient's amount or share (``protein_kcal``, ``fat_pct_kcal``), and not an energy
-    expenditure, requirement or basal rate."""
-    name = str(column)
-    if not _TOTAL_ENERGY_NAME.search(name) or unit_of(name) == "density":
-        return False
-    if _NOT_INTAKE.search(re.sub(r"[_\-.]+", " ", name)):
-        return False
-    try:
-        return nutrient_role(name) is None
-    except ValueError:
-        return False
+    Not a macronutrient's amount or share (``protein_kcal``, ``alc_kcal``, ``fat_pct_kcal``), and
+    not an energy expenditure, requirement or basal rate: the one recognizer every stage shares
+    (:func:`turbotab.core.recognizers.reads_as_total_energy`)."""
+    from turbotab.core.recognizers import reads_as_total_energy as _read
+
+    return _read(column)
 
 
 def total_energy_columns(predictors: Sequence[str], roles: Mapping[str, str]) -> List[str]:
@@ -1735,6 +1770,17 @@ def omitted_sentence(reading: Mapping[str, Any]) -> Optional[str]:
             f"the model to remove it.")
 
 
+def _part_of(column: str) -> Optional[str]:
+    """The part of its macronutrient a column names (``sugar``, ``sfa``…), else None."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+
+    try:
+        reading = read_nutrient(column)
+    except AmbiguousNutrient:
+        return None
+    return reading.part if reading is not None else None
+
+
 def fiber_beside_carbohydrate(columns: Sequence[str]) -> Optional[str]:
     """A warning when fiber and total carbohydrate are both energy-bearing predictors (B19).
 
@@ -1747,8 +1793,7 @@ def fiber_beside_carbohydrate(columns: Sequence[str]) -> Optional[str]:
         return _role_or_none(c) == role and energy_factor(c).factor is not None
 
     fiber = [c for c in columns if bearing(c, "fiber")]
-    carbs = [c for c in columns if bearing(c, "carbohydrate")
-             and not re.search(r"sugar|starch|sucrose|fructose|lactose", str(c), re.I)]
+    carbs = [c for c in columns if bearing(c, "carbohydrate") and _part_of(c) is None]
     if not fiber or not carbs:
         return None
     return (f"{_and(fiber)} sits beside {_and(carbs)}: if carbohydrate is by difference (total "

@@ -212,12 +212,62 @@ def _compositional(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> 
                  "roles", "Leave one part out")
 
 
+def energy_unit_of(fc: FindingContext, column: str | None) -> dict[str, str] | None:
+    """The energy column's unit as the proposals read it (suffix, Atwater, magnitude prior)."""
+    if not column or column not in fc.frame.columns:
+        return None
+    from turbotab.core.stages.proposals import energy_unit_reading
+
+    return energy_unit_reading(fc.frame, column)
+
+
+def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> None:
+    """The pack's implausible-intake count, in the unit the energy column is in (audit IN-07).
+
+    The pack compares the raw column with 500–5,000 whatever its unit, so a kJ column had nearly
+    every row "above 5000" beside the app's own finding that it is in kilojoules. Read in kJ, the
+    same range is 2,092–20,920 kJ: the count then matches the kcal screens the proposals offer."""
+    col = p.get("column") or (f["affected_columns"] or [None])[0]
+    reading = energy_unit_of(fc, col)
+    if reading is None:
+        return
+    f["energy_unit"] = reading["unit"]
+    if reading["unit"] != "kj":
+        return
+    from turbotab.core.stages.proposals import KCAL_PER_KJ
+
+    try:
+        from turbotab.packs import _PLAUSIBLE_KCAL as kcal  # the detector's own range
+    except ImportError:  # pragma: no cover - the legacy pack always defines it
+        kcal = (500.0, 5000.0)
+    low, high = kcal[0] * KCAL_PER_KJ, kcal[1] * KCAL_PER_KJ
+    s = pd.to_numeric(fc.frame[col], errors="coerce")
+    below, above = int((s < low).sum()), int((s > high).sum())
+    n = below + above
+    p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": "kJ"})
+    f["title"] = (f"{n:,} {'record reports' if n == 1 else 'records report'} an implausible daily "
+                  f"intake" if n else "No record reports an implausible daily intake, read in kJ")
+    f["detail"] = (f"{reading['sentence']} Read in kJ, {tick(col)} is below {low:,.0f} kJ "
+                   f"({kcal[0]:,.0f} kcal) on {below:,} {plural(below, 'record')} and above "
+                   f"{high:,.0f} kJ ({kcal[1]:,.0f} kcal) on {above:,}. Observed range "
+                   f"{float(s.min()):,.0f} to {float(s.max()):,.0f} kJ.")
+
+
 def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
+    restate_implausible(f, p, fc)
     col = p.get("column") or (f["affected_columns"] or ["energy"])[0]
     n = p.get("n_flagged")
     lo, hi = p.get("minimum"), p.get("maximum")
     if n is None or lo is None or hi is None:
         return Voice(finish(f["title"]), "exclusions", "Choose an exclusion rule")
+    if p.get("unit") == "kJ":
+        if not n:
+            return Voice(f"Read in kJ, every row of {tick(col)} is within "
+                         f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} kJ a day; nothing needs "
+                         f"excluding.", closes=True)
+        return Voice(f"{count(n)} of {count(fc.n_rows)} rows report {tick(col)} below "
+                     f"{tick(f'{lo:,.0f}')} kJ or above {tick(f'{hi:,.0f}')} kJ a day.",
+                     "exclusions", "Choose an exclusion rule")
     return Voice(f"{count(n)} of {count(fc.n_rows)} rows report {tick(col)} below {tick(number(lo))} "
                  f"or above {tick(number(hi))} a day.", "exclusions", "Choose an exclusion rule")
 
@@ -270,9 +320,55 @@ def _repeated_subjects(f: dict[str, Any], p: dict[str, Any], fc: FindingContext)
                  "roles", "Mark the subject identifier")
 
 
+NHANES_WEIGHTING_EVIDENCE = {
+    "status": "CONVENTION",
+    "source": "NHANES Tutorials, Weighting Module: the least common denominator",
+}
+
+
+def restate_survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> None:
+    """The weight NHANES's least-common-denominator rule names for this table's variables
+    (audit IN-19): the legacy finding always said the dietary day-1 weight, even beside fasting
+    analytes whose subsample weight (``WTSAF2YR``) is the smaller sample. The NHANES weighting
+    tutorial: "You must use the weight of the smallest subpopulation that includes all the
+    variables you want to include in your analysis.\""""
+    from turbotab.core.recognizers import NHANES_LCD_QUOTE, least_common_denominator
+
+    lcd = least_common_denominator(fc.columns)
+    if lcd is None or not lcd["because"] or lcd["sample"] in ("dietary day 1", "dietary days 1 and 2"):
+        return
+    because = [c for c in lcd["because"] if c != fc.target][:4] or lcd["because"][:4]
+    if fc.target in lcd["because"]:
+        because = [fc.target, *[c for c in because if c != fc.target]][:4]
+    measured = (f"{listing(because, limit=4)} {plural(len(because), 'was', 'were')} measured on "
+                f"the morning fasting subsample, the smallest sample among this table's variables")
+    if lcd["use"]:
+        p.update({"use": [lcd["use"]], "not": list(lcd["not"]), "sample": lcd["sample"]})
+        f["title"] = f"Use the fasting subsample weight, {tick(lcd['use'])}"
+        f["detail"] = (f"{measured}, so the analysis takes its weight, {tick(lcd['use'])}, not "
+                       f"{listing(lcd['not'], limit=4)}. NCHS: {NHANES_LCD_QUOTE}")
+    else:
+        p.update({"use": [], "not": list(lcd["not"]), "sample": lcd["sample"],
+                  "missing": lcd["missing"]})
+        f["title"] = f"The fasting subsample weight is not in this table"
+        f["detail"] = (f"{measured}, so the analysis needs its weight, {tick(lcd['missing'])}, "
+                       f"which this table does not carry; {listing(lcd['not'], limit=4)} "
+                       f"describe{'s' if len(lcd['not']) == 1 else ''} a larger sample. NCHS: "
+                       f"{NHANES_LCD_QUOTE}")
+    f["affected_columns"] = list(dict.fromkeys([*([lcd["use"]] if lcd["use"] else []), *because]))
+    f["evidence"] = dict(NHANES_WEIGHTING_EVIDENCE)
+
+
 def _survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
+    restate_survey_weights(f, p, fc)
     use = [str(w) for w in p.get("use") or []]
     avoid = [str(w) for w in p.get("not") or []]
+    if p.get("sample") == "fasting subsample":
+        if not use:
+            return Voice(f"Fasting analytes need {tick(p.get('missing'))}, which this table lacks; "
+                         f"{listing(avoid)} describe a larger sample.", "roles", "Mark design columns")
+        return Voice(f"Fasting analytes set the weight: {listing(use)}, not {listing(avoid)}; as "
+                     f"design columns none becomes a predictor.", "roles", "Mark design columns")
     if avoid:
         text = (f"Dietary analyses use {listing(use)}, not {listing(avoid)}; as design columns "
                 f"neither becomes a predictor.")
@@ -531,10 +627,7 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
 
 # ── the app's own findings ───────────────────────────────────────────────────
 
-_ID_NAMES = {"seqn", "id", "respondent", "respondent_id", "subject", "participant", "patient",
-             "person", "record", "uuid"}
-_ID_TOKENS = {"id", "seqn", "uuid"}
-_FLAG = re.compile(r"^(?:imputed|flag|is_imputed)_(?P<pre>.+)$|^(?P<post>.+)_(?:imputed|flag|imp)$", re.I)
+_FLAG =re.compile(r"^(?:imputed|flag|is_imputed)_(?P<pre>.+)$|^(?P<post>.+)_(?:imputed|flag|imp)$", re.I)
 _DESIGN = re.compile(r"^(?:wt[a-z0-9]*|sdmv\w*|sddsrvyr)$|(?:^|_)(?:pweight|sampweight|sampling_weight|"
                      r"survey_weight|svy_weight|strata|stratum|psu|cluster|fpc)(?:$|_)", re.I)
 _CYCLE = re.compile(r"(?:^|_)cycle(?:$|_)|^sddsrvyr$|^survey_year$|^release$", re.I)
@@ -548,8 +641,12 @@ def _tokens(name: str) -> list[str]:
 
 
 def is_identifier_name(name: str) -> bool:
-    tokens = _tokens(name)
-    return str(name).lower() in _ID_NAMES or bool(tokens and tokens[-1] in _ID_TOKENS)
+    """The name reads as an identifier of any kind: the one recognizer every stage shares
+    (:func:`turbotab.core.recognizers.is_identifier`; audit IN-06, where three recognizers
+    disagreed on 11 of 46 real names)."""
+    from turbotab.core.recognizers import is_identifier
+
+    return is_identifier(name)
 
 
 def nhanes_like(columns: Sequence[str]) -> bool:
@@ -570,7 +667,6 @@ def _finding(fid: str, severity: str, title: str, summary: str, detail: str, why
     }
 
 
-_PERSON = {"seqn", "respondent", "subject", "participant", "patient", "person", "pid", "member"}
 REPEATED_SHARE = 0.2  # of units seen more than once, for a column to read as repeated measures
 
 
@@ -583,10 +679,14 @@ def identifier_findings(fc: FindingContext, taken: set[str]) -> list[dict[str, A
         s = fc.frame[c].dropna()
         if s.empty:
             continue
+        from turbotab.core.recognizers import id_kind, reads_as_measurement
+
+        if reads_as_measurement("__values__", values=s) is not None:
+            continue  # fractional values: a measurement, whatever its name (audit IN-06)
         per = s.value_counts()
         n_units = int(len(per))
         per_unit = int(per.max())
-        person = bool(_PERSON & set(_tokens(c)))
+        person = id_kind(c) == "subject"
         units = "participants" if person else "distinct values"
         if n_units == len(s) and len(s) >= 0.95 * n:
             names = "a participant" if person else "its row"
@@ -598,6 +698,18 @@ def identifier_findings(fc: FindingContext, taken: set[str]) -> list[dict[str, A
                 f"not seen.",
                 "As a predictor it would be noise at best, and a way to memorize rows at worst.",
                 [c], "roles", "Mark as identifier"))
+        elif (id_kind(c) == "cluster" and n_units >= 2
+              and float((per > 1).mean()) >= REPEATED_SHARE):
+            # A site or household groups participants: not their identifier (audit IN-06).
+            out.append(_finding(
+                f"voice::repeats__{c}", "warning", f"{tick(c)} groups rows",
+                f"{tick(c)} groups {count(len(s))} rows into {count(n_units)} clusters, such as "
+                f"sites or households; rows within one are not independent.",
+                f"{tick(c)} has {count(n_units)} values across {count(len(s))} rows, at most "
+                f"{count(per_unit)} rows each. It groups participants rather than naming them.",
+                "Rows that share a site or household share whatever differs between sites or "
+                "households, so intervals that treat them as independent are too narrow.",
+                [c], "roles", "Mark as cluster"))
         elif (2 <= per_unit <= 50 and n_units >= 10
               and float((per > 1).mean()) >= REPEATED_SHARE):
             mean = len(s) / n_units
@@ -707,6 +819,62 @@ def cycle_findings(fc: FindingContext) -> list[dict[str, Any]]:
     return out
 
 
+_PACK_ENERGY_ALIAS = "DR1TKCAL"  # a name the pack's exact-alias matcher reads as total energy
+
+
+def energy_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The pack's implausible-intake and energy-adjustment findings for a total-energy column only
+    the app's recognizer reads (audit IN-08: ``DR2TKCAL``, ``DRXTKCAL``, ``ENERC_KCAL``,
+    ``TotalKcal``, ``total_energy`` and ``kcal_day`` produced neither, because the pack matches
+    energy by exact alias). The pack's own detectors run, with the column it could not name read as
+    the energy column, so their counts, text and badges are the pack's."""
+    if "dietary" not in fc.lens:
+        return []
+    from turbotab import packs
+    from turbotab.core.stages.findings import pack_finding
+    from turbotab.core.stages.proposals import energy_column
+
+    have = {family(f["id"]) for f in legacy}
+    info = {c: {"dtype": "numeric" if pd.api.types.is_numeric_dtype(fc.frame[c]) else "text"}
+            for c in fc.columns if c != fc.target}
+    energy = energy_column(info, {})
+    if energy is None or energy == _PACK_ENERGY_ALIAS or _PACK_ENERGY_ALIAS in fc.names:
+        return []
+    alias = fc.frame.rename(columns={energy: _PACK_ENERGY_ALIAS})
+    if fc.target is not None and fc.target in alias.columns:
+        alias = alias.drop(columns=[fc.target])
+    out = []
+    for fid, detector in (("pack::dietary::implausible_intake", packs._implausible_intake),
+                          ("pack::dietary::energy_adjustment", packs._energy_adjustment)):
+        if fid in have:
+            continue
+        try:
+            raw = detector(alias)
+        except Exception:  # noqa: BLE001 - the legacy detector is a second reader, never a failure
+            raw = None
+        if raw is None:
+            continue
+        raw = _renamed(raw, _PACK_ENERGY_ALIAS, energy)
+        finding = pack_finding(raw)
+        if fid == "pack::dietary::energy_adjustment":
+            restate_energy(finding, raw, fc)
+        out.append(speak(finding, raw, fc))
+    return out
+
+
+def _renamed(value: Any, old: str, new: str) -> Any:
+    """``value`` with every mention of the column ``old`` naming ``new`` instead."""
+    if isinstance(value, str):
+        return new if value == old else value.replace(f"`{old}`", f"`{new}`")
+    if isinstance(value, list):
+        return [_renamed(v, old, new) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_renamed(v, old, new) for v in value)
+    if isinstance(value, dict):
+        return {k: _renamed(v, old, new) for k, v in value.items()}
+    return value
+
+
 def own_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """The app's own findings, skipping columns a legacy finding already speaks for."""
     taken = set()
@@ -714,6 +882,7 @@ def own_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> list[d
         if family(f["id"]) == "pack::metabolomics::repeated_subjects":
             taken.update(f.get("affected_columns") or [])
     found = identifier_findings(fc, taken) + flag_findings(fc) + design_findings(fc) + cycle_findings(fc)
+    found += energy_findings(fc, legacy)
     for f in found:
         f["title"] = finish(f["title"])
         f["summary"] = finish(f["summary"])

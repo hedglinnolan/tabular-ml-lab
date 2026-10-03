@@ -74,6 +74,7 @@ const roles = [
   "energy",
   "covariate",
   "identifier",
+  "cluster",
   "design",
   "time",
   "flag",

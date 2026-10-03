@@ -102,11 +102,15 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
                 for value, count in ranked[:MAX_CLASSES]
             ]
 
-    from turbotab.core.units import outcome_unit
+    from turbotab.core.units import outcome_unit, proposed_unit, recorded_unit
 
     # The outcome's unit, for every outcome quantity the app shows (M2_CONTRACT §6). A class
-    # label has none.
-    unit, unit_source = outcome_unit(target, series) if task == "regression" else (None, None)
+    # label has none. Stated only as recorded or as the name spells it out; the clinical pack's
+    # reading is a proposal for ``set_outcome_unit``, never stated (audit IN-05).
+    regression = task == "regression"
+    unit, unit_source = (outcome_unit(target, recorded=recorded_unit(ctx.state, target))
+                         if regression else (None, None))
+    proposal = proposed_unit(target, series) if regression and unit is None else None
     return {
         "column": target,
         "task": task,
@@ -117,4 +121,7 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         "classes": classes,
         "unit": unit,
         "unit_source": unit_source,
+        # Proposed for the user's decision when nothing states it; never in a sentence.
+        "proposed_unit": proposal["unit"] if proposal else None,
+        "unit_candidates": list(proposal["candidates"]) if proposal else [],
     }

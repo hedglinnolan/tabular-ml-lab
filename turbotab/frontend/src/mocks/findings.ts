@@ -124,6 +124,8 @@ export function targetInfo(
     classes: numeric ? null : topValues(col, 12),
     unit: null,
     unit_source: null,
+    proposed_unit: null,
+    unit_candidates: [],
   };
 }
 

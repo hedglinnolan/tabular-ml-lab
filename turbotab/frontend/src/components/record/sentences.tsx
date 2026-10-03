@@ -99,6 +99,8 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "exposure_forms";
     case "set_outcome_order":
       return "outcome_order";
+    case "set_outcome_unit":
+      return "outcome_unit";
     case "set_follow_up":
       return "follow_up";
     case "set_sensitivity":

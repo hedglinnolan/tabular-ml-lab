@@ -867,13 +867,29 @@ def with_effective_grain(state: Any, structure: Mapping[str, Any] | None) -> tup
 
 
 def person_identifiers(columns: Sequence[str], target: str | None) -> list[str]:
-    """Columns whose names say they identify a person (``utils.test_lockbox``: ``SEQN``,
-    ``participant_id``, ``respondent_id``; never a sample, visit, record or site column)."""
-    try:
-        from utils.test_lockbox import _id_kind
-    except Exception:  # noqa: BLE001 - no name reading: none recognized, so grain is asked
-        return []
-    return [c for c in columns if c not in (target, ROW_ID) and _id_kind(c) == "subject"]
+    """Columns whose names say they identify a person (``SEQN``, ``participant_id``, ``eid``,
+    ``patid``, ``USUBJID``; never a sample, visit, record or site column): the one recognizer every
+    stage shares (:func:`turbotab.core.recognizers.names_a_person`; audit IN-06)."""
+    from turbotab.core.recognizers import names_a_person
+
+    return [c for c in columns if c not in (target, ROW_ID) and names_a_person(c)]
+
+
+def unit_suggestions(columns: Sequence[str], dtypes: Mapping[str, str], frame: Any,
+                     target: str | None) -> list[str]:
+    """The grain question's candidate unit columns, never a measurement (audit IN-06: the shape
+    reading offered ``length_of_stay_days``, ``age`` and ``sodium_mmol_l``): a column the
+    recognizer reads as a person's identifier first, then other identifiers, then shape-only
+    candidates whose names and values do not read as measurements."""
+    from turbotab.core.recognizers import id_kind, reads_as_measurement
+
+    def measured(c: str) -> bool:
+        values = frame[c] if c in frame.columns else None
+        return reads_as_measurement(c, dtype=dtypes.get(c), values=values) is not None
+
+    kept = [c for c in columns if c != target and c != ROW_ID and not measured(c)]
+    rank = {"subject": 0, "record": 1, "cluster": 2}
+    return sorted(kept, key=lambda c: (rank.get(str(id_kind(c)), 3), list(columns).index(c)))
 
 
 def _stated_grain_reading(frame: Any, candidates: Sequence[str], n_rows: int,
@@ -985,9 +1001,12 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
     contradiction = ({"columns": list(found["columns"]), "message": str(found["message"])}
                      if found else None)
     _quiet_streamlit()
+    suggested = unit_suggestions([str(c) for c in suggestion.get("columns") or []], dtypes,
+                                 frame, target)
     out: dict[str, Any] = {
-        "grain": {"suggested": [c for c in suggestion.get("columns") or [] if c != target][:SUGGESTED],
-                  "evidence": evidence[:SUGGESTED], "if_one_row": contradiction,
+        "grain": {"suggested": suggested[:SUGGESTED],
+                  "evidence": [e for e in evidence if e["column"] in suggested][:SUGGESTED],
+                  "if_one_row": contradiction,
                   "stated": _stated_grain_reading(frame, people, n_rows, contradiction)},
         "units": None, "repeats": None, "outcome": None, "aggregation": None,
         "time_columns": [], "time_column": None, "unread_dates": unread, "time_order": None,
