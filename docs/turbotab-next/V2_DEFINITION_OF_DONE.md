@@ -5,6 +5,11 @@ idea enters v2 only by displacing something on this list; otherwise it goes to `
 This guards against the pattern Nolan diagnosed in the old project: "close two, open three, the
 goalposts move."
 
+**Amended 2026-10-03.** Nolan put **codebook import** into v2 (§1). The modeling-sequence review
+(MODELING_SEQUENCE.md §0) refined the rows in §2. Most of its changes correct rows already listed. Two are
+additions: multivariate regression calibration, and sensitivity to unmeasured confounding. Each resolves a
+conflict inside rows already in v2.
+
 **The one-sentence test.** v2 is done when a nutrition researcher in any of the five lenses can take
 their own table from upload to a defensible prediction *or* inference result and a methods section a
 reviewer accepts, and every number, label and sentence on the way is verified against an
@@ -26,6 +31,12 @@ The bar for each journey:
 - every decision recorded as a publishable sentence;
 - a stated reason for every refusal, with a way forward.
 
+**Codebook import (Nolan, 2026-10-03):** the researcher's data dictionary can be imported in one of three
+forms: a variable/label/unit/codes table (CSV or Excel), an NHANES codebook, or the variable labels carried by
+an XPT file. Its *structured* fields settle readings as the user's own documentation: units, value-code
+tables, and the variable type. Its *free-text* labels only strengthen the guess on the ask card, and the
+user confirms them in one tap. The app asks only about what remains (BLUEPRINT §14.2).
+
 **Multi-file assembly, minimal form:** joining two or more files on a shared identifier, with a
 preview of row counts (one-to-one and one-to-many). NHANES ships as separate files joined on
 `SEQN`, so without this most NHANES users cannot start.
@@ -38,12 +49,12 @@ independent reference.
 | Scope | In v2 |
 |---|---|
 | **Prediction (shared)** | in-fold preprocessing, nested tuning; linear, penalized and boosted-tree families; calibration; bootstrap optimism; DeLong; selection optimism stated; the price of explainability measured |
-| **Inference (shared)** | a declared exposure, estimand and adjustment set; OLS, logistic (odds ratios), ordinal, Cox, mixed models and GEE, design-based survey estimation; cluster-robust and HC3 intervals; multiple imputation with Rubin's rules; splines with nonlinearity tests; declared secondary analyses; the analysis-plan lock |
-| **Dietary** | energy adjustment (the five models plus all-components, each with its correct estimand); implausible intake by fixed rules and Goldberg, with a sensitivity view; repeated recalls by averaging and univariate regression calibration; substitution curves with refit bands; NHANES design |
+| **Inference (shared)** | a declared exposure, estimand and adjustment set; OLS, logistic (odds ratios), ordinal, Cox, mixed models and GEE, design-based survey estimation; cluster-robust and HC3 intervals; multiple imputation compatible with the analysis model, pooled by Rubin's rules (D1 for multi-df tests); splines with nonlinearity tests; declared secondary analyses; the analysis-plan lock; the effect measure (conditional or marginal, with g-computation standardization); exposure families with FDR; sensitivity to unmeasured confounding (E-value; robustness value) |
+| **Dietary** | energy adjustment (the five models plus all-components, each with its correct estimand); implausible intake by fixed rules and Goldberg, with a sensitivity view; repeated recalls by averaging and by univariate and multivariate regression calibration (a declared secondary analysis); substitution curves with refit bands; NHANES design |
 | **Clinical** | plausibility repairs; time points and the temporal seal; Cox; mixed models; calibration; Riley sample size |
 | **Metabolomics** | orientation; **QC-drift correction (QC-RLSC)**; LOD-aware handling; PQN, log and scaling in-fold; feature-wise FDR inference |
 | **Genomics** | count normalization in-fold; regularized families with screening at p ≫ n; batch as a covariate; FDR |
-| **Survey instruments** | sentinel codes; reverse coding; **scale scoring with reliability (α/ω)**; ordinal models; the attenuation statement |
+| **Survey instruments** | sentinel codes; reverse coding; **scale scoring with reliability (ω; α labeled customary)**; ordinal models; the attenuation statement, with disattenuation refused for formative indices |
 | **Explainability** | **inductive-bias curves**: each top exposure's effect per family on shared axes (ALE with support masks), gated by a held-out performance floor; the **full SHAP suite** (beeswarm, per-observation attributions, with stability across reseeds); **interaction ranking**; the **architecture lane** beside the data lane on the canvas (linear: the fitted equation; trees: split structure; elastic net: shrinkage) |
 | **Causal inference** (shortest leash) | **DoubleML and TMLE** for a declared exposure and estimand, with flexible nuisance models; **time-varying exposures** by g-methods (marginal structural models with inverse-probability weights; the parametric g-formula); declared assumptions (positivity, no unmeasured confounding, time ordering) and their diagnostics (overlap, weight distribution) shown before any estimate |
 | **Dietary, extended** | the **NCI usual-intake method** (amount-only, and the two-part model for episodically consumed foods); **multiclass substitution curves** (one per class) |
@@ -89,7 +100,8 @@ independent reference.
 ## 6 · The road from here to done
 
 methods verification (running) → intelligence (WP13–15) → routing (WP16–18) → completeness pass
-(QC drift, scale reliability, batch covariate, XPT and minimal joins) → the modeling-sequence spec,
+(QC drift, scale reliability, batch, XPT, codebook import and minimal joins, and the engine defects MS1–MS8 from
+the modeling-sequence review) → the modeling-sequence spec,
 reviewed and built → the extended methods (causal ML, time-varying exposures, NCI, ComBat,
 multiclass substitution) on the modeling sequence's exposure and estimand machinery → presentation resumed for Explore, the modeling sequence, the inductive-bias
 curves and export → re-audit → Nolan's drives → expert review → packaging → `v2.0.0`.

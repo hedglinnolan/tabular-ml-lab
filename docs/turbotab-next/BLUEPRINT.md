@@ -537,7 +537,9 @@ exactly what the fields are."* This is how the ledger's conservative path behave
    never settles a reading it does not list. That is what §14.1 forbids in a bulk confirm.
 3. **Let the codebook answer.** A researcher's data dictionary — a variable/label/unit table, or an
    NHANES codebook — settles readings in bulk from their own documentation, and the app asks only
-   about what remains. (Codebook import: recommended for v2, pending Nolan's yes.)
+   about what remains. **In v2 (Nolan, 2026-10-03).** Under §14.3, the codebook's structured fields
+   settle readings as the user's own documentation: units, value-code tables, and the variable type.
+   Its free-text labels are names, so they only strengthen the guess the card leads with.
 
 ### 14.3 · Corroboration must discriminate (2026-10-03)
 

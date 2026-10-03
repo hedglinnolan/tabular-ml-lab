@@ -1,0 +1,988 @@
+[
+ {
+  "section": "inference",
+  "summary": "Adversarial review of the inference rows of MODELING_SEQUENCE.md (§1 rows 2, 3, 4, 8, 11, 12, the inference column, plus the §4 inference leash), checked against primary sources. I did not write anything in the repo.\n\nFour rows survive as written:\n- Exposure and estimand first, with the \"required\" leash.\n- The forking-paths \"record and disclose\" rule for Explore.\n- Declared secondary analyses.\n- The §4 leash rows outside this section (omitted energy sources, median fill, no holdout), each with small caveats.\n\nThe rest need changes.\n\n1. **Data-driven confounder selection: \"refuse\" is too tight, and it contradicts the spec's own plans.** v2 promises DoubleML and TMLE \"with flexible nuisance models\", and row 9 offers flexible learners \"as nuisance models\". Two cases should stay refused: choosing which exposures to report, and stepwise selection by p-value. Change-in-estimate is customary (15% of 2008 epidemiology papers) and should be block-and-record. Post-double-selection and cross-fitted DML/TMLE give valid intervals over a candidate set chosen from subject knowledge, so they should be allowed.\n\n2. **Adjustment-set roles should come from VanderWeele's actual questions.** That means adding two roles, \"instrument\" and \"proxy for an unmeasured common cause\", and handling covariates whose timing is unknown in cross-sectional data with a with-and-without sensitivity analysis. The mediator block should stay for the primary total-effect model. The customary \"further adjusted for BMI\" model should be a declared secondary analysis, labelled as neither a total nor a valid direct effect. Declaring a direct effect must also ask for mediator–outcome confounders.\n\n3. **Missing outputs a reviewer would ask for:**\n   - The results table must show only the exposure's estimates (Table 2 fallacy).\n   - STROBE 16a requires the unadjusted estimate alongside the adjusted ones; the field also expects a declared series of adjustment models (Model 1, 2, 3).\n   - Model diagnostics, such as the proportional-hazards check.\n   - The effect measure, conditional versus marginal; odds ratios cannot simply be averaged across covariates.\n   - A multiplicity policy for omics and multi-nutrient analyses (FDR is customary in metabolome-wide studies).\n   - E-value and Cinelli–Hazlett sensitivity analyses for unmeasured confounding in v2.\n\n4. **Functional form.** Harrell's knot percentiles hold. Under inference the number of knots should follow a declared rule rather than AIC. The reported test of association is the overall test. A non-significant nonlinearity test must not silently switch the model back to linear, because pretesting inflates the type I error by about 50% (Grambsch & O'Brien). Spline tests after multiple imputation need multi-parameter pooling (D1), not Rubin's rules for one coefficient. Continuous confounders also need a declared form, since categorising them into a few groups leaves residual confounding. Foods with many non-consumers break quintiles and percentile knots, so non-consumers need their own category (STROBE-nut nut-11).\n\n5. **Leash and order changes.**\n   - Quintiles as the primary analysis should be ranked lower, not blocked: it is the field's standard and does not produce a false number. Block-and-record should be kept for data-derived \"optimal\" cut points and for confounders categorised into a few groups.\n   - The quintile trend test on medians should be labelled \"p for linear trend\", not dose–response.\n   - The functional form is defined on the energy-adjusted, possibly logged, exposure. So the energy model must come before it, and changing the energy model must invalidate the knots, cut points and units.\n   - Multiple imputation must include the declared spline and interaction terms, using an imputation model compatible with the analysis model.\n   - Effect modification and interaction need different adjustment sets and should be reported on both the additive and multiplicative scales.\n   - The analysis-plan lock must never be written as \"prespecified\" or \"preregistered\". It only shows that decisions were recorded in the app before estimates were displayed.\n\nSource note: the VanderWeele 2019 and Knol & VanderWeele 2012 quotes came through a page-summarising fetch rather than the PDFs, so they should be checked against the original text before going into the app. The Lederer 2019 Table 2 line comes from a search summary only.",
+  "findings": [
+   {
+    "row": "§1 row 2 (Exposure and estimand) + §4 'Exposure/estimand: required'",
+    "verdict": "holds",
+    "claim_in_spec": "'Which exposure, and which effect?': total vs direct; for nutrients, substitution vs addition (energy partition); per what unit. No coefficient is shown before this is answered. Leash: required.",
+    "correction": "Keep as required. Additions are listed separately (effect measure and conditional vs marginal; exposure families and multiplicity).",
+    "customary": "Rarely stated explicitly: even among papers that draw DAGs, only about a fifth report their target estimand (Tennant 2021). Energy-model estimands are routinely conflated (Tomova 2022).",
+    "sound": "Sound and necessary. Each energy model targets a different estimand, so a coefficient means nothing until the estimand is fixed.",
+    "sources": [
+     "Tomova GD et al. Am J Clin Nutr 2022;115:189 — \"It remains underappreciated that each approach evaluates a different estimand and only partially accounts for confounding by common dietary causes.\"",
+     "Tennant PWG et al. Int J Epidemiol 2021;50:620 — \"A fifth (n = 48, 21%) reported their target estimand(s) and half (n = 115, 48%) reported the adjustment set(s) implied by their DAG(s).\"",
+     "Westreich D, Greenland S. Am J Epidemiol 2013;177:292 — \"...inviting confusion of direct-effect estimates with total-effect estimates for covariates in the model.\""
+    ],
+    "severity": "minor"
+   },
+   {
+    "row": "§1 row 2 (Exposure and estimand), inference — effect measure and conditional vs marginal",
+    "verdict": "missing",
+    "claim_in_spec": "The estimand question covers total vs direct, substitution vs addition, and per what unit; v2 lists 'logistic (odds ratios)'.",
+    "correction": "Add the effect measure to the estimand question (difference or ratio; RD/RR/OR/HR) and ask whether it is conditional on covariates or marginal (standardized over the sample or target population). For logistic and Cox models, label OR/HR as conditional and non-collapsible, and offer marginal standardization (g-computation) to RD/RR, ranked first when the outcome is common (e.g., NHANES obesity or diabetes prevalence). Relation: under OR/HR, adding a 'precision' covariate changes the conditional estimand; state this instead of calling it free. Offer translation to absolute risk (STROBE 16c).",
+    "customary": "'Adjusted OR' from logistic regression is the norm and is often read as a risk ratio; absolute-risk translation is uncommon.",
+    "sound": "Conditional ORs/HRs change with the covariate set even without confounding, so 'adjusted' does not mean 'marginal'. Change-in-estimate is invalid for these measures when the outcome is common.",
+    "sources": [
+     "Daniel R, Zhang J, Farewell D. Biom J 2021;63:528 — \"...to promote the idea that the words conditional and adjusted (likewise marginal and unadjusted) should not be used interchangeably.\"",
+     "STROBE cohort checklist item 16(c) — \"If relevant, consider translating estimates of relative risk into absolute risk for a meaningful time period\"",
+     "VanderWeele TJ. Eur J Epidemiol 2019;34:211 — \"the change-in-estimate approach is relative to the effect measure and it is inappropriate for non-collapsible measures such as the odds ratio or hazard ratio if the outcome is common.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 rows 2 and 12 (inference) — exposure families and multiplicity",
+    "verdict": "missing",
+    "claim_in_spec": "A single declared exposure is assumed; the locked plan states no multiplicity policy (FDR appears only in V2_DEFINITION_OF_DONE for the omics lenses).",
+    "correction": "Add a 'family' mode to the exposure step: exposure-wide inference (each metabolite, gene or nutrient in turn under one declared adjustment set). The locked plan then declares the family and its multiplicity method: Benjamini–Hochberg FDR for feature-wise omics; for a small set of prespecified nutrient hypotheses, unadjusted p-values with the number of tests stated (customary vs sound labeled). Results show every member of the declared family, not only the significant ones. Declared subgroups count toward the family.",
+    "customary": "It splits by lens. FDR is customary for metabolome-wide association studies in AJCN; no adjustment is customary for a few prespecified diet hypotheses (Rothman 1990).",
+    "sound": "STROBE asks authors to interpret results considering 'multiplicity of analyses'. Gelman & Loken recommend analysing all relevant comparisons rather than the significant ones.",
+    "sources": [
+     "STROBE item 20 — \"Give a cautious overall interpretation of results considering objectives, limitations, multiplicity of analyses, results from similar studies, and other relevant evidence\"",
+     "Am J Clin Nutr 2023 (PMID 36781127, refined grain MWAS) — \"...were associated with subsequent GDM risk (all false discovery rate-adjusted P values <0.05).\"",
+     "Rothman KJ. Epidemiology 1990;1:43 — \"A policy of not making adjustments for multiple comparisons is preferable because it will lead to fewer errors of interpretation when the data under evaluation are not random numbers but actual observations on nature.\"",
+     "Gelman A, Loken E. 2013 — \"A starting point would be to analyze all relevant comparions, not just focusing on whatever happens to be statistically significant.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 3 (Adjustment set) — role vocabulary and the disjunctive cause criterion",
+    "verdict": "correct",
+    "claim_in_spec": "'a role for each covariate: confounder · precision · mediator · collider · not relevant ... the disjunctive cause criterion is offered as guidance.'",
+    "correction": "Use the modified disjunctive cause criterion as the questions themselves, not as side guidance. Per covariate, ask: is it a cause of the exposure? of the outcome? could the exposure have changed it (or was it measured after the exposure)? is it known to be an instrument? is it a proxy for an unmeasured common cause? Derive the role from the answers, with two roles added: 'instrument — exclude only when known to be one' and 'proxy of an unmeasured common cause — include'. Do not ask users to tag 'collider' freehand. When timing is unknowable (cross-sectional NHANES: BMI, blood pressure, activity), offer a declared with-and-without sensitivity analysis rather than forcing one role. Couple this step to the energy model: other dietary components are confounders through common dietary causes and must not default to 'not relevant'. Export the roles and the implied adjustment set in the provenance record.",
+    "customary": "In four epidemiology journals in 2008: prior knowledge 28%, change-in-estimate 15%, stepwise 20%, not described 35% (Walter & Tiemeier 2009). DAG use is rising, but only 48% of DAG papers report the implied adjustment set (Tennant 2021).",
+    "sound": "VanderWeele's criterion needs less causal knowledge than a full DAG and protects against instruments and post-exposure adjustment. Adjusting for an uncertain near-instrument usually costs little.",
+    "sources": [
+     "VanderWeele TJ. Principles of confounder selection. Eur J Epidemiol 2019;34:211 — \"control for each covariate that is a cause of the exposure, or of the outcome, or of both; exclude from this set any variable known to be an instrumental variable; and include as a covariate any proxy for an unmeasured variable that is a common cause of both the exposure and the outcome.\"",
+     "VanderWeele 2019 — \"One difficulty with studies in which the exposure and potential confounding covariates are all assessed at the same time is that it can be difficult to determine whether a covariate assessed at the same time as the exposure may in fact be affected by it.\" and \"It is also of course possible to carry out sensitivity analysis of the timing of confounder measurement...\"",
+     "Myers JA et al. Am J Epidemiol 2011;174:1213 — \"...minimizing unmeasured confounding should be the priority when selecting variables for adjustment, even at the risk of conditioning on IVs.\"",
+     "Walter S, Tiemeier H. Eur J Epidemiol 2009;24:733 — \"Prior knowledge: 28% | Effect estimate change: 15% | Stepwise selection: 20% | Modern methods ...: 0% | Other: 3% | Not described: 35%\"",
+     "Tomova 2022 AJCN — \"...only partially accounts for confounding by common dietary causes.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 3 'No data-driven confounder selection' + §1 row 8 inference + §4 'Data-driven selection: refuse for the reported model; sensitivity only'",
+    "verdict": "leash-wrong",
+    "claim_in_spec": "No data-driven confounder selection; a data-driven selection is refused for the reported model (post-selection inference) and allowed only as a labeled sensitivity analysis.",
+    "correction": "Split the rung by what is selected and how:\n(a) Choosing which exposures or terms to report by significance: refuse for the reported model (selective inference).\n(b) Significance-test or stepwise selection of confounders: refuse as primary, labeled 'customary, unsound'.\n(c) Change-in-estimate (10%) among covariates already screened as pre-exposure causes: block and record, stating that it cannot detect mediators or colliders and is invalid for OR/HR with a common outcome.\n(d) Data-adaptive adjustment with valid post-selection inference (post-double-selection lasso; cross-fitted DML/TMLE) over a candidate set chosen from subject knowledge: allow, ranked high when candidates are many relative to n.\nThe blanket refusal contradicts v2 ('DoubleML and TMLE ... with flexible nuisance models') and row 9 ('flexible learners ... as nuisance models').",
+    "customary": "Stepwise selection was the predominant method in 2008 epidemiology papers (20%); change-in-estimate was used by 15%; shrinkage by none (Walter & Tiemeier 2009).",
+    "sound": "Naive post-selection intervals are invalid (VanderWeele 2019; Belloni 2014). Change-in-estimate performs acceptably at 10% in simulation, and p-value strategies only at α≈0.20 (Maldonado & Greenland). Statistical criteria can adjust for a collider or mediator (Hernán 2002). Post-double-selection restores uniformly valid intervals.",
+    "sources": [
+     "VanderWeele 2019 — \"if the data have already been used to carry out covariate selection, the estimates and confidence intervals that are obtained following such selection are no longer valid.\" / \"Recent work has examined approaches to carry out statistical inference after a data-based covariate selection procedure has been used, but these are no longer as straightforward as simply fitting a final regression model.\" / \"even with the most sophisticated statistical covariate selection approaches, it still must be the case that the initial covariate set itself suffices to control for confounding\"",
+     "Belloni A, Chernozhukov V, Hansen C. Rev Econ Stud 2014;81:608 — \"standard post-model selection estimators fail to provide uniform inference even in simple cases with a small, fixed number of controls\"; the post-double-selection method gives \"confidence intervals that are valid uniformly across a large class of models.\"",
+     "Maldonado G, Greenland S. Am J Epidemiol 1993;138:923 — \"The change-in-estimate and equivalence-test-of-the-difference strategies performed best when the cut-point ... was set to a low value (10%). The significance test strategies performed best when the alpha level was set to much higher than conventional levels (0.20).\"",
+     "Hernán MA et al. Am J Epidemiol 2002;155:176 — \"When statistical strategies for confounding evaluation are used, the adjusted odds ratio is 0.80 ... However, the consideration of a priori causal knowledge suggests that the crude odds ratio of 0.65 ... should be used because the adjusted odds ratio is invalid.\"",
+     "Taylor J, Tibshirani RJ. PNAS 2015;112:7629 — \"The fact that we have 'cherry-picked'--searched for the strongest associations--means that we must set a higher bar for declaring significant the associations that we see.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§4 'Mediators in a total-effect set: block and record' + §1 row 2 'total vs direct'",
+    "verdict": "correct",
+    "claim_in_spec": "Mediators in a total-effect model are blocked and recorded.",
+    "correction": "Keep block-and-record for the primary total-effect model. But the field's customary 'further adjusted for BMI' model must be offered as a first-class declared secondary analysis, labeled 'not a total effect, and not a valid direct effect unless mediator–outcome confounders are adjusted (and none is affected by the exposure)'. When the user declares a direct effect at row 2, row 3 must also ask for mediator–outcome confounders. With exposure–mediator interaction, or a mediator–outcome confounder affected by the exposure, route to counterfactual mediation methods rather than the difference method. For covariates of unknown timing (BMI in cross-sectional data), the with-and-without pair is the recommended sensitivity analysis, not a block.",
+    "customary": "AJCN papers routinely report estimates with and without BMI (e.g., López-García 2004).",
+    "sound": "Adjusting for an intermediate causes overadjustment bias for the total effect. Stratifying on the mediator gives a biased direct effect unless mediator–outcome confounding is controlled.",
+    "sources": [
+     "Schisterman EF, Cole SR, Platt RW. Epidemiology 2009;20:488 — \"We define overadjustment bias as control for an intermediate variable (or a descending proxy for an intermediate variable) on a causal path from exposure to outcome.\"",
+     "Cole SR, Hernán MA. Int J Epidemiol 2002;31:163 — \"Estimating direct effects without bias requires that two assumptions hold, namely the absence of unmeasured confounding for (1) exposure and outcome, and (2) the intermediate variable and outcome.\"",
+     "López-García E et al. Am J Clin Nutr 2004 (PMID 15447916) — \"...after adjustment for all confounders except BMI; with further adjustment for BMI, the coefficients remained significant for CRP...\"",
+     "VanderWeele 2019 — \"for estimation of total effects, rather than direct effects, we do not want to make adjustment for variables that may be on the pathway from the exposure to the outcome.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "Inference results table (§2 'exposure declared enables the effect display'; §1 rows 9/11) — Table 2 fallacy",
+    "verdict": "missing",
+    "claim_in_spec": "Westreich & Greenland 2013 appears only in §6 'sources to verify'. No row says what the inference results table shows.",
+    "correction": "Under inference, the results table shows only the declared exposure's estimates (across the declared model sequence, crude included). Covariate coefficients are hidden by default and live in an appendix headed 'adjustment terms — not effect estimates'. A user who wants a covariate's effect must declare it as an exposure with its own adjustment set (a separate model). In the all-components or substitution model, show coefficients only for components declared as exposures, and require the adjustment set to suffice for each. In product-term models, the modifier's main effect is never displayed as an effect.",
+    "customary": "Full multivariable coefficient tables remain common in clinical and nutrition papers.",
+    "sound": "Covariate coefficients from the exposure's model are direct effects at best and may be confounded even when the exposure's estimate is not.",
+    "sources": [
+     "Westreich D, Greenland S. Am J Epidemiol 2013;177:292 — \"Presentation of exposure and confounder effect estimates from a single model may lead to several interpretative difficulties, inviting confusion of direct-effect estimates with total-effect estimates for covariates in the model. These effect estimates may also be confounded even though the effect estimate for the main exposure is not confounded.\"",
+     "Westreich & Greenland 2013 — \"We offer suggestions ... including precise distinction between total and direct effect measures from a single model, and use of multiple models tailored to yield total-effect estimates for covariates.\"",
+     "Lederer DJ et al. Ann Am Thorac Soc 2019;16:22 (editors' guidance; wording from a secondary summary, not verified verbatim) — \"Do not present all of the effect estimates from a model designed to test a single causal association (Table 2 fallacy).\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 11 inference ('not a comparison: one declared model')",
+    "verdict": "missing",
+    "claim_in_spec": "Not a comparison: one declared model; alternative specifications are declared secondary analyses.",
+    "correction": "The declared object should be one primary model plus a declared crude or minimally adjusted model plus the declared adjustment sequence. Model 1 is age, sex and energy; Model 2 adds the confounder set; an optional Model 3 adds possible mediators, labeled as such. All are locked and shown for the exposure coefficient only. Add assumption diagnostics to the declaration: proportional hazards via Schoenfeld residuals for Cox; residual and influence checks for linear and GLM models. These are reported, and a failed check leads to a recorded change, never a silent switch.",
+    "customary": "Nested Model 1/2/3 tables are the nutrition convention (NUTRITION_PACK §08). AJCN cohorts report PH checks.",
+    "sound": "STROBE 16(a) requires unadjusted plus adjusted estimates and the reason each confounder was included.",
+    "sources": [
+     "STROBE cohort checklist item 16(a) — \"Give unadjusted estimates and, if applicable, confounder-adjusted estimates and their precision (eg, 95% confidence interval). Make clear which confounders were adjusted for and why they were included\"",
+     "Am J Clin Nutr 2025 (PMID 40127717, SCCS polyphenols) — \"The proportional hazards assumption was confirmed for the Cox models by plotting Schoenfield residuals against time and log time and analyzing for flat lines around 0.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 4 inference (Functional form: spline with overall and nonlinearity tests; knots at percentiles) + §2 'spline replaces the single coefficient'",
+    "verdict": "correct",
+    "claim_in_spec": "Declared before estimates: linear · spline with an overall and a nonlinearity test; knots at the pack's percentiles.",
+    "correction": "The knot percentiles hold (Harrell: k=3 at .10/.5/.90; k=4 at .05/.35/.65/.95; k=5 at .05/.275/.5/.725/.95). Three changes:\n(1) Under inference, fix k by a declared rule (k=4 by default; 3 for small n; 5 for large n). AIC chooses k using the outcome, so under inference it is a recorded data-driven choice; under prediction it stays allowed in-fold.\n(2) The reported test of association is the overall (multi-df) test. A non-significant nonlinearity test must not silently refit a linear model and report its 1-df p-value. If the user declared 'linear primary, spline as a check', switching after the nonlinearity test is a post-estimate change recorded under row 12.\n(3) Under MI, the overall and nonlinearity tests need multi-parameter pooling (D1 Wald), not scalar Rubin's rules. The §2 MI relation should say so.",
+    "customary": "AJCN cohorts use 3 knots at the 10th/50th/90th percentiles, trimmed to the 1st–99th percentile, with an overall and a nonlinearity p-value.",
+    "sound": "Pretesting for nonlinearity and then simplifying inflates type I error by about 50% for a quadratic. Prespecified flexible forms avoid wrong linearity assumptions.",
+    "sources": [
+     "Harrell FE. Regression Modeling Strategies (hbiostat.org/rmsc/genreg) — knot quantile table; \"Usually k=3,4,5. Often k=4\"; \"Can use Akaike's information criterion (AIC) ... to choose k\"; \"Grambsch & O'Brien (1991) elegantly described the hazards of pretesting ... If the test of linearity insignificant, refit without the quadratic term and final test of association is 1 d.f. test ... Showed that type I error > α\"",
+     "Grambsch PM, O'Brien PC. Stat Med 1991;10:697 — \"With either approach, the resulting test for association between the two variables can have an inflated type I error ... In the case of quadratic regression, the type I error will be increased by roughly 50 per cent.\"",
+     "Durrleman S, Simon R. Stat Med 1989;8:551 — \"This simple method can help prevent the problems that result from inappropriate linearity assumptions.\"",
+     "van Buuren S. Flexible Imputation of Missing Data §5.3 — \"If the estimates are approximately normal and if the software can produce the required variance-covariance matrices, we recommend using D₁...\"",
+     "Am J Clin Nutr 2025 (PMID 40127717) — \"Three knots were located at the 10th, 50th, and 90th percentiles of intakes...\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 4 inference — quintiles for presentation with a trend test on medians",
+    "verdict": "correct",
+    "claim_in_spec": "Categories for presentation (quintiles with a trend test on medians).",
+    "correction": "Keep it as the customary companion table, but label the statistic 'p for linear trend (customary)', never 'dose–response'. It is a 1-df linear test on a coarsened exposure: it duplicates the declared linear or spline test with less information and does not test monotonicity. Report quintile boundaries and the reference category (STROBE 16b; STROBE-nut nut-11). Under MI, compute category medians within each imputation and pool. Under survey design, state whether cut points are weighted. Keep the pack's anti-pattern: rank codes 1–5 are refused when spacing is unequal.",
+    "customary": "Near-universal in AJCN. Europe PMC finds about 40 AJCN full texts containing 'median value of each quintile', e.g., \"Tests for linear trends were assessed using the median value of each quintile as a continuous variable in the Cox models.\"",
+    "sound": "Sound only as a test of linear trend. Trend tests are not tests of monotonic dose–response, and categorical analysis wastes within-category information.",
+    "sources": [
+     "Am J Clin Nutr 2025 (PMID 40127717) — \"Tests for linear trends were assessed using the median value of each quintile as a continuous variable in the Cox models.\"",
+     "Maclure M, Greenland S. Am J Epidemiol 1992;135:96 — \"Tests for overall trend, such as the Mantel extension test, are not tests for monotonic dose response.\"",
+     "Greenland S. Epidemiology 1995;6:356 — \"Standard categorical analysis is based on an unrealistic model for dose-response and trends and does not make efficient use of within-category information.\"",
+     "STROBE item 16(b) — \"Report category boundaries when continuous variables were categorized\""
+    ],
+    "severity": "minor"
+   },
+   {
+    "row": "§4 'Categories as the analysis model' — inference: block and record",
+    "verdict": "leash-wrong",
+    "claim_in_spec": "Inference: block and record, offer splines (categories for presentation).",
+    "correction": "Too tight for exposure quantiles. A quintile model estimates a coarser contrast; it does not put a false number in a paper, and it is the field's primary-analysis convention. Rung: rank lower and state the information loss; the spline is ranked first and the quintile table is produced alongside it by default. Move block-and-record to two cases: (i) data-derived 'optimal' cut points, which are seriously biased; (ii) categorizing a continuous confounder into few groups, which causes residual confounding.",
+    "customary": "86% of epidemiology papers categorized the primary continuous exposure (Turner 2010). 'Quantiles are a staple' (Bennette & Vickers 2012). AJCN cohorts report quintile HRs as the primary result.",
+    "sound": "Categorization is inefficient and depends on the sample's distribution (Bennette & Vickers; Harrell). Optimal cut points are badly biased (Altman & Royston).",
+    "sources": [
+     "Turner EL et al. Epidemiol Perspect Innov 2010;7:9 — \"Categorisation occurred in 50 (86%) of them.\"",
+     "Bennette C, Vickers A. BMC Med Res Methodol 2012;12:21 — \"Quantiles are a staple of epidemiologic research\" / \"The use of quantiles is often inadequate for epidemiologic research with continuous variables.\"",
+     "Altman DG, Royston P. Stat Med 2006;25:127 — \"the use of a data-derived 'optimal' cutpoint leads to serious bias.\"",
+     "Brenner H, Blettner M. Epidemiology 1997;8:429 — \"categorization of the confounder may often lead to serious residual confounding if the number of categories is small.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 4 'Fires' (inference: a continuous exposure only) — functional form of continuous confounders",
+    "verdict": "missing",
+    "claim_in_spec": "Functional form fires for 'a continuous exposure (inference)'.",
+    "correction": "Under inference, also fire for continuous confounders (age, total energy, BMI, physical activity). Default to a flexible form (spline with a declared k, or at least linear). Rank categorization into few groups lower, with a stated residual-confounding concern (block and record at three or fewer groups). The choice goes into the locked plan.",
+    "customary": "Confounders are often entered as categories (BMI classes, age bands).",
+    "sound": "Categorizing a confounder into few groups leaves serious residual confounding; a single linear term or a spline controls it better.",
+    "sources": [
+     "Brenner H, Blettner M. Epidemiology 1997;8:429 — \"We show that inclusion of the confounder as a single linear term often provides satisfactory control for confounding ... In contrast, categorization of the confounder may often lead to serious residual confounding if the number of categories is small.\"",
+     "Harrell, RMS (genreg) — \"...the outer intervals (e.g., outer quintiles) will be wide, resulting in significant heterogeneity of subjects within those intervals, and residual confounding\"",
+     "Desquilbet L, Mariotti F. Stat Med 2010;29:1037 — RCS functions are tools \"(iii) to minimize residual confounding when adjusting for a continuous exposure.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 4 (dietary lens) — exposures with a mass at zero (non-consumers)",
+    "verdict": "missing",
+    "claim_in_spec": "Knots at the pack's percentiles; quintiles with medians.",
+    "correction": "When a food exposure has many zeros (alcohol, fish, nuts on 24-h recall), percentile knots tie at 0 and quintile cut points collapse: the 10th and 50th percentile knots can both be 0, and Q1 and Q2 can share a boundary. Detect the point mass and offer: non-consumers as their own reference category plus N-tiles among consumers; or a non-consumer indicator plus a spline on consumers' intake, with knots at consumers' percentiles. State the reference category in the methods.",
+    "customary": "STROBE-nut explicitly requires stating how non-consumers were handled.",
+    "sound": "Ties at zero make percentile-based knots and quantiles undefined or degenerate. A separate non-consumer term avoids forcing one curve through a structural zero.",
+    "sources": [
+     "Lachat C et al. STROBE-nut. PLoS Med 2016;13:e1002036, nut-11 — \"Explain the categorization of dietary/nutritional data (e.g., use of N-tiles and handling of nonconsumers) and the choice of reference category, if applicable.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "Order §1 row 4 (functional form) before row 5 (domain transforms) + §2 relations (energy model / log transform → functional form)",
+    "verdict": "order-wrong",
+    "claim_in_spec": "Functional form (step 4) is declared before domain transforms (step 5). §2 links the log transform only to substitution labels, and the energy model only to substitution.",
+    "correction": "The spline basis, quintile boundaries and the 'per what unit' are defined on the energy-adjusted exposure (residual, density, or a kcal component in the all-components model), on the log scale if logged. The energy model and any log transform must therefore be fixed before the functional form. Add the relation: 'energy model or log transform → invalidates knots, quintile boundaries and the estimand's unit (re-asked, never silently kept)'. The Router should derive the order energy model → functional form. Otherwise knots computed on raw intake get applied to residuals, or a unit stated in grams describes a residual or %-energy coefficient.",
+    "customary": "Quintiles and splines are formed on energy-adjusted intake (Willett's residual quintiles; pack §07G 'outcome vs energy-adjusted intake').",
+    "sound": "Each energy model defines a different exposure variable and estimand, so knots and cut points belong to that variable's scale.",
+    "sources": [
+     "Tomova 2022 AJCN — \"each approach evaluates a different estimand\"",
+     "Willett WC, Howe GR, Kushi LH. Am J Clin Nutr 1997;65:1220S — \"Several disease-risk models and formulations of these models are available to account for energy intake ..., including adjustment of nutrient intakes for total energy intake by regression analysis and addition of total energy to a model with the nutrient density\"",
+     "NUTRITION_PACK §07G (internal, citing Desquilbet & Mariotti 2010) — \"Restricted cubic spline of outcome vs energy-adjusted intake: 3–5 knots at conventional percentiles\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§2 relation 'multiple imputation implies pooled intervals (Rubin's rules)' — compatibility with declared splines and interactions",
+    "verdict": "missing",
+    "claim_in_spec": "Multiple imputation invalidates median fill for the inference table and implies pooled intervals (Rubin's rules) everywhere a coefficient is shown.",
+    "correction": "Add three relations.\n(1) Declared spline terms, product terms (effect modification) and exposure transforms imply an imputation model compatible with the analysis model: SMC-FCS ranked first. Passive or JAV imputation is acceptable only for a linear outcome; JAV is refused for logistic models.\n(2) A change to the declared form or interactions invalidates the imputations (re-impute).\n(3) Multi-df tests (spline overall and nonlinearity tests, quintile global tests, interaction tests) use D1 pooling.\nRaw intakes are imputed with energy, and energy-adjusted exposures are derived within each imputed dataset. The chain test should assert that the imputation model contains every declared term.",
+    "customary": "MICE with the analysis variables entered linearly, then a spline fitted after imputation, is common.",
+    "sound": "Imputation models incompatible with non-linear or interaction terms bias those terms toward linearity or no interaction.",
+    "sources": [
+     "Bartlett JW et al. Stat Methods Med Res 2015;24:462 — \"...standard software implementations of multiple imputation may impute covariates from models that are incompatible with such substantive models.\"",
+     "Seaman SR, Bartlett JW, White IR. BMC Med Res Methodol 2012;12:46 — \"JAV is the best of a set of imperfect imputation methods for linear regression with a quadratic or interaction effect, but should not be used for logistic regression.\"",
+     "Sterne JAC et al. BMJ 2009;338:b2393 — \"If statistical interactions were included in the final analyses, were they also included in imputation models?\"",
+     "van Buuren, FIMD §5.3 — \"...if a categorical variable enters the analysis through a set of dummy variables, all parameters related to this set should be tested simultaneously.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 7 inference ('only declared, scientifically motivated interactions (effect modification)') — effect modification vs interaction",
+    "verdict": "correct",
+    "claim_in_spec": "Only declared, scientifically motivated interactions (effect modification), stated in the methods.",
+    "correction": "Make these two declared objects.\n• Effect modification: the exposure's effect across strata of M. The adjustment set is the exposure's own.\n• Interaction: the joint effect of two exposures. Re-run row 3 for the second factor so its confounders are adjusted.\nPresent (Knol & VanderWeele): estimates for each stratum against a single reference; the exposure's effect within each stratum; both additive (RERI for ratio models) and multiplicative measures with CIs; and the confounders adjusted. Subgroups are declared before estimates. Post hoc subgroups are allowed but labeled 'suggested by data inspection' and count toward the multiplicity family.",
+    "customary": "Nutrition cohorts report stratified HRs and a product-term p for heterogeneity (multiplicative only). The additive scale is rarely reported.",
+    "sound": "Interaction and effect modification differ in which confounding must be controlled. STROBE E&E favors the additive scale for public-health relevance.",
+    "sources": [
+     "VanderWeele TJ. Epidemiology 2009;20:863 — \"Interaction is defined in terms of the effects of 2 interventions whereas effect modification is defined in terms of the effect of one intervention varying across strata of a second variable.\"",
+     "Knol MJ, VanderWeele TJ. Int J Epidemiol 2012;41:514 — \"We strongly encourage reporting both additive and multiplicative interaction estimates and CIs whenever interaction or effect modification is of interest.\" / abstract: \"(iv) List the A-D and B-D confounders adjusted for.\"",
+     "Vandenbroucke JP et al. STROBE E&E. PLoS Med 2007 — \"There is consensus that the additive scale, which uses absolute risks, is more appropriate for public health and clinical decision making.\"",
+     "Am J Clin Nutr 2025 (PMID 40127717) — \"Stratified or heterogeneity analyses by hormonal receptor status of BC, menopausal status, race, and BMI were conducted to assess potential effect modifications\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 12 inference (analysis-plan lock) + forking-paths disclosure",
+    "verdict": "correct",
+    "claim_in_spec": "The analysis plan is locked; any change after estimates are seen is recorded 'after the estimates were seen'.",
+    "correction": "The mechanism holds. Fix what the app says and what the lock contains.\n(1) The methods sentence must never say 'prespecified' or 'preregistered' from the in-app lock. It should say what was declared, and that it was declared in the software before estimates were displayed. For public, previously analysed data (NHANES), Gelman & Loken note that preregistration is close to meaningless.\n(2) Offer an exportable, timestamped plan (with a content hash) that users can register externally.\n(3) The lock covers: exposure or exposure family, estimand and effect measure, adjustment set and roles, functional forms (exposure and confounders), energy model, missing-data method, declared secondary or sensitivity analyses, effect modifiers and subgroups, multiplicity policy.\n(4) Outcome-relationship views seen before the lock are listed in the record.",
+    "customary": "Preregistration of observational nutrition analyses is uncommon. STROBE asks only for 'any prespecified hypotheses'.",
+    "sound": "Data-contingent choices inflate evidence even without fishing. Declaring choices before estimates, and disclosing departures, is the available remedy.",
+    "sources": [
+     "Gelman A, Loken E. The garden of forking paths, 2013 — \"researchers can perform a reasonable analysis given their assumptions and their data, but had the data turned out differently, they could have done other analyses that were just as reasonable in those circumstances.\"",
+     "Gelman & Loken 2013 — \"...we are often analyzing public data ... that have already been studied by others many times before, and it would be close to meaningless to consider preregistration for data with which we are already so familiar.\"",
+     "STROBE item 3 — \"State specific objectives, including any prespecified hypotheses\"",
+     "STROBE E&E (Vandenbroucke 2007) — authors should state \"whether particular analyses were suggested by data inspection.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 11 inference — declared secondary analyses shown side by side",
+    "verdict": "holds",
+    "claim_in_spec": "Alternative specifications (energy model, exclusion rules, MI vs complete cases) are declared secondary analyses, shown side by side and labeled.",
+    "correction": "Holds. Small additions: always show every declared secondary analysis whatever its result. Allow post hoc additions labeled 'after the estimates were seen'. Optionally add a vibration-of-effects view across the declared candidate adjustment sets (with-and-without for ambiguous covariates) as a robustness display.",
+    "customary": "Sensitivity analyses are expected (STROBE 12e/17; STROBE-nut nut-17).",
+    "sound": "Analysing all relevant comparisons is the observational-data remedy for forking paths. On NHANES, the model specification alone reversed the direction of the estimate for 31% of variables.",
+    "sources": [
+     "STROBE-nut nut-17 — \"Report any sensitivity analysis (e.g., exclusion of misreporters or outliers) and data imputation, if applicable.\"",
+     "Patel CJ, Burford B, Ioannidis JPA. J Clin Epidemiol 2015;68:1046 — \"For 31% of the 417 variables, we observed a Janus effect, with the effect being in opposite direction in the 99th versus the 1st percentile of analyses.\"",
+     "Gelman & Loken 2013 — \"...the best strategy is to move toward an analysis of all the data rather than a focus on a single comparison or small set of comparisons.\""
+    ],
+    "severity": "minor"
+   },
+   {
+    "row": "v2 inference (and the 'Causal inference' lane) — sensitivity analysis for unmeasured confounding",
+    "verdict": "missing",
+    "claim_in_spec": "Neither the sequence nor V2_DEFINITION_OF_DONE offers any sensitivity analysis for unmeasured confounding, though the causal lane declares 'no unmeasured confounding' as an assumption.",
+    "correction": "Add to v2 inference, required in the causal lane and offered elsewhere.\n• Ratio measures: the E-value for the estimate and for the CI limit nearer the null, labeled 'customary (growing), limited'. Never show a pass/fail threshold.\n• Linear outcomes (glucose, BMI, common in nutrition): the Cinelli–Hazlett robustness value and partial R², benchmarked against a named measured confounder (e.g., 'an unmeasured confounder as strong as smoking would / would not explain this'), ranked first as sounder because it is anchored to measured covariates.\n• The methods sentence reports it, and the coach names plausible unmeasured confounders.",
+    "customary": "Recommended by VanderWeele & Ding for all causal observational studies; increasingly reported, but often mechanically (Blum 2020).",
+    "sound": "E-values carry little information beyond the estimate and invite automation (Ioannidis 2019). Benchmarked bounds tie the sensitivity analysis to the study's own covariates. STROBE 19 asks for the direction and magnitude of potential bias.",
+    "sources": [
+     "VanderWeele TJ, Ding P. Ann Intern Med 2017;167:268 — \"The authors propose that in all observational studies intended to produce evidence for causality, the E-value be reported or some other sensitivity analysis be used.\"",
+     "Ioannidis JPA, Tan YJ, Blum MR. Ann Intern Med 2019;170:108 — \"No general rule can exist about what is a 'small enough' E-value ... The automation of E-values may give an excuse not to think seriously about confounding.\"",
+     "Blum MR, Tan YJ, Ioannidis JPA. Int J Epidemiol 2020;49:1482 — \"E-values should not be a substitute for careful consideration of potential sources of unmeasured confounding.\"",
+     "Cinelli C, Hazlett C. J R Stat Soc B 2020;82:39 — \"...introduce a novel procedure to bound the strength of confounders formally on the basis of a comparison with observed covariates.\"",
+     "STROBE item 19 — \"Discuss limitations of the study, taking into account sources of potential bias or imprecision. Discuss both direction and magnitude of any potential bias\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§4 'Explore of outcome relationships' — inference: record and disclose, never block (with §1 row 1)",
+    "verdict": "holds",
+    "claim_in_spec": "Inference: record and disclose, never block.",
+    "correction": "Holds. Refine the order rather than the rung. Under inference, Explore shows outcome-free views first (distributions, missingness, Table 1 by quintile of energy-adjusted exposure, which includes energy). Then rows 2–4 are declared. Then exposure–outcome views follow. Any exposure–outcome view opened before the lock is listed in the record and methods.",
+    "customary": "Researchers routinely refine hypotheses after looking. The nutrition Table 1 by exposure quintile is outcome-free.",
+    "sound": "Blocking is too tight (refining hypotheses is legitimate). Disclosure addresses the multiplicity this creates.",
+    "sources": [
+     "Gelman & Loken 2013 — \"In our experience, it is good scientific practice to refine one's research hypotheses in light of the data.\"",
+     "STROBE E&E — authors should state \"whether particular analyses were suggested by data inspection.\""
+    ],
+    "severity": "minor"
+   },
+   {
+    "row": "§4 inference rows outside this section: omitted energy sources (block and record above a stated share); median fill (block and record); single split (not applicable)",
+    "verdict": "holds",
+    "claim_in_spec": "Omitted energy sources: block and record above a stated omitted share. Median fill: block and record for the inference table. Single split at small n: not applicable (no holdout).",
+    "correction": "Holds, with one caveat for the energy row. Bias from omitting a source depends on how much its effect differs from the sources it is pooled with, not only on its share of energy (the audit's ME-05 found 57% bias with two of four sources). So the threshold should not be share-only: alcohol at about 5% of energy with a distinct effect can still matter. Name the omitted source in the curve label. Single split is correctly not applicable per BLUEPRINT §12 ruling 3.",
+    "customary": "Leave-one-out and partition models are common; all-components is newer (Tomova 2022). Single median fill is common in ML pipelines.",
+    "sound": "All-components gives accurate substitution estimates. Single imputation gives standard errors that are too small.",
+    "sources": [
+     "Tomova 2022 AJCN — \"Accurate estimates of both the total and average relative causal effects may instead be derived by simultaneously adjusting for all dietary components, an approach we term the 'all-components model.'\"",
+     "Sterne JAC et al. BMJ 2009;338:b2393 — \"Single imputation of missing values usually causes standard errors to be too small, since it fails to account for the fact that we are uncertain about the missing values.\""
+    ],
+    "severity": "minor"
+   }
+  ]
+ },
+ {
+  "section": "prediction",
+  "findings": [
+   {
+    "row": "§1 row 1 Explore (prediction) and §4 'Explore of outcome relationships: right as is (training rows only)'",
+    "verdict": "leash-wrong",
+    "severity": "critical",
+    "claim_in_spec": "Prediction: 'stack of findings on training rows only, each tied to a lever below'. §4: 'right as is (training rows only)'.",
+    "customary": "In ML practice, EDA is kept off the test rows (Kapoor & Narayanan 2023 leakage taxonomy L1.2/L1.3). In clinical prediction, internal validation resamples the whole model-building process, so every step that used the outcome is redone in each resample (Harrell; Collins et al. 2024).",
+    "sound": "The rule only protects a holdout. Below 20,000 units the app's own validation_plan puts bootstrap or CV first and no holdout (turbotab/core/models/validation.py), so the 'training rows' are every row. A lever pulled from an outcome-relationship view is then an outcome-informed step taken outside the resampling, yet the score is still labeled 'optimism-corrected'. Examples: a spline because the y-x plot bends, dropping a weakly associated predictor, collapsing categories by outcome rate. Outcome-free levers learned on all rows also bias CV (variance filters, rare-category grouping, rescaling).",
+    "correction": "Under prediction: (a) record outcome-relationship views as looked at, as under inference. (b) Offer each Explore lever first as an in-fold rule that the bootstrap/CV repeats. Examples: spline df for all continuous predictors by a rule stated in advance, nonlinearity chosen by inner CV, variance filter fitted in-fold. (c) A lever the user applies by hand after viewing outcome relationships is recorded as 'chosen after viewing outcome relationships on the rows that validate the model; its optimism is not in the corrected score'. The methods sentence says so. Never block. (d) When a holdout exists, say that the holdout covers these choices. (e) Add TRIPOD+AI item 7: data-quality checks compared across sociodemographic groups.",
+    "sources": [
+     "Harrell, Regression Modeling Strategies, ch. Validation (hbiostat.org/rmsc/validate): \"Strong internal validation using 100 repeats of 10-fold cross-validation or several hundred bootstrap resamples, repeating _all_ analysis steps involving Y afresh at each re-sample\"",
+     "Collins et al., BMJ 2024;384:e074819: \"bootstrapping evaluates the model building process itself (eg, predictor selection, imputation, estimation of regression coefficients)\"; \"The complexity of implementing either k-fold cross validation or bootstrapping increases when both missing data and selection of non-linear terms (eg, using restricted cubic splines or fractional polynomials) are part of the model building process.\"",
+     "Moscovich & Rosset, JRSS B 2022;84:1474: \"We demonstrate that unsupervised preprocessing can, in fact, introduce a substantial bias into cross-validation estimates and potentially hurt model selection.\"",
+     "Kapoor & Narayanan, Patterns 2023;4:100804: \"[L1.2] Pre-processing on training and test set.\" \"[L1.3] Feature selection on training and test set.\"",
+     "TRIPOD+AI (Collins et al. BMJ 2024;385:e078378) item 7: \"Describe any data pre-processing and quality checking, including whether this was similar across relevant sociodemographic groups.\""
+    ]
+   },
+   {
+    "row": "§1 row 8 Selection (prediction) and §4 'Data-driven selection: allowed in-fold'",
+    "verdict": "correct",
+    "severity": "major",
+    "claim_in_spec": "'none · penalized (elastic net selects) · stability selection · in-fold screening at p ≫ n (genomics). Never on the full data'. §4: 'allowed in-fold'.",
+    "customary": "Nutrition and clinical epidemiology: univariable p-value screening and stepwise selection. Metabolomics: VIP > 1 from PLS-DA and univariate FDR screens. Genomics: variance/IQR filters and sure-independence screening. These are often run on all rows before modeling.",
+    "sound": "The in-fold rule is right: any selection must be repeated inside each CV training set and each bootstrap resample (Ambroise & McLachlan 2002). Unsupervised filters must be in-fold too (Moscovich & Rosset). Stepwise selection compromises model stability (Heinze et al. 2018).",
+    "correction": "(1) Complete the menu so customary options appear with their label and a lower rank, never silently. Add stepwise, univariable screening and VIP > 1, each in-fold only, with the concern stated (instability). Add unsupervised variance/IQR filters as an in-fold option for every omics lens, not only genomics. (2) §4 needs an explicit rung: selection outside the resampling is refused under prediction, with the exit 'run it in-fold', because it produces a false performance number. (3) Ask and record whether any predictors were pre-selected with these rows' outcome before upload (TRIPOD+AI 9a). (4) Report each predictor's inclusion frequency across folds and resamples (Heinze). (5) Declare the in-fold order: outcome-free imputation → construction → filter/select → fit. A native-missing family still needs its selector to see imputed values.",
+    "sources": [
+     "Ambroise & McLachlan, PNAS 2002;99:6562: \"the selection bias can be assessed and corrected for by either performing a cross-validation or applying the bootstrap external to the selection process\"; \"the same feature-selection method must be implemented in training the rule on the M − 1 subsets combined at each stage of an (external) cross-validation.\"",
+     "Heinze, Wallisch & Dunkler, Biom J 2018;60:431: \"Variable selection ... can compromise stability of a final model, unbiasedness of regression coefficients, and validity of p-values or confidence intervals\"; \"We also propose some quantities based on resampling the entire variable selection process to be routinely reported\"",
+     "TRIPOD+AI item 9a: \"Describe the choice of initial predictors (eg, literature, previous models, all available predictors) and any pre-selection of predictors before model building.\"",
+     "Kapoor & Narayanan 2023: \"Feature selection on the entire dataset results in using information about which feature performs well on the test set to make a decision about which features should be included in the model.\""
+    ]
+   },
+   {
+    "row": "§1 row 8 Selection: stability selection under prediction",
+    "verdict": "correct",
+    "severity": "minor",
+    "claim_in_spec": "Stability selection is listed beside penalized selection as a prediction selection option.",
+    "customary": "Used in omics to discover biomarker panels.",
+    "sound": "Stability selection is a structure-estimation method that controls the expected number of false selections. It does not optimize prediction. The Meinshausen-Bühlmann bound rests on a strong exchangeability assumption and is conservative. It keeps fewer variables, which raises prediction error. Inside every outer fold and bootstrap resample it is also expensive: 100 subsamples × 5 folds × 200 resamples.",
+    "correction": "Label it 'for a short, reproducible predictor panel: controls false selections, not prediction error; usually predicts no better than the penalized fit it wraps'. Rank it after elastic net under prediction. Offer the complementary-pairs variant (CPSS) for the bound. State the compute cost before running.",
+    "sources": [
+     "Meinshausen & Bühlmann, JRSS B 2010;72:417 (abstract): \"Stability selection provides finite sample control for some error rates of false discoveries and hence a transparent principle to choose a proper amount of regularisation for structure estimation.\"",
+     "Shah & Samworth, JRSS B 2013;75:55: \"the bound is derived under a very strong exchangeability assumption on the selection of noise variables\"; \"the new error bounds allow one to select more variables than the conservative bounds of Meinshausen and Bühlmann (2010) for the same level of error control, and as a consequence, the expected prediction error is reduced.\""
+    ]
+   },
+   {
+    "row": "§1 row 9 The shelf (prediction): ordering, plus Riley sample size",
+    "verdict": "correct",
+    "severity": "major",
+    "claim_in_spec": "'ordered by expected performance for the data's shape (n, p, events), each family's inductive bias stated'. No sample-size step appears anywhere in the sequence.",
+    "customary": "In clinical prediction, a regression model is the default and ML is increasingly added. A Riley minimum-sample-size justification is now expected (TRIPOD+AI item 10).",
+    "sound": "No validated rule predicts which family will perform best. The evidence is about data hunger and stability: ML needs more than 10× the events per variable to stabilize. There is no ML advantage in comparisons at low risk of bias. Penalization is least reliable exactly when n is small. Tree ensembles lead deep nets around 10K samples, but that benchmark compares against NNs, not regression.",
+    "correction": "Order the shelf by soundness at this size, not by 'expected performance'. Compute Riley's minimum n for the candidate predictor parameters before the shelf (sample_size.py exists but the sequence never routes it). Below the minimum: (a) regression families first, flexible learners ranked lower with the stated reason 'may need over 10 times as many events per variable'; (b) offer to cut the candidate parameters (outcome-blind data reduction, fewer knots) instead of relying on penalization. Always fit the no-predictor baseline and a properly specified regression benchmark with splines. Tree ensembles move up only at large n with evidence of nonlinearity. State the ordering rule as a convention with its sources.",
+    "sources": [
+     "van der Ploeg, Austin & Steyerberg, BMC Med Res Methodol 2014;14:137: \"Modern modelling techniques such as SVM, NN and RF may need over 10 times as many events per variable to achieve a stable AUC and a small optimism than classical modelling techniques such as LR.\"",
+     "Christodoulou et al., J Clin Epidemiol 2019;110:12: \"For 145 comparisons at low risk of bias, the difference in logit(AUC) between LR and ML was 0.00 (95% confidence interval, -0.18 to 0.18)... We found no evidence of superior performance of ML over LR.\"",
+     "Riley et al., J Clin Epidemiol 2021;132:88: \"Penalization methods are not a 'carte blanche'; they do not guarantee a reliable prediction model is developed. They are more unreliable when needed most (i.e., when overfitting may be large).\"",
+     "Riley et al., Stat Med 2019;38:1276 (PMC6519266): \"to ensure an S VH of 0.9 (ie, an expected shrinkage of 10%), the researcher should lower p by reducing the number of candidate predictors.\"",
+     "Grinsztajn et al., NeurIPS 2022 (arXiv:2207.08815): \"tree-based models remain state-of-the-art on medium-sized data (~10K samples)\"",
+     "TRIPOD+AI item 10: \"Explain how the study size was arrived at ... and justify that the study size was sufficient to answer the research question.\""
+    ]
+   },
+   {
+    "row": "§1 row 9 / North star 5: 'the price of explainability'",
+    "verdict": "correct",
+    "severity": "major",
+    "claim_in_spec": "'the price of explainability measured after the fit'. North star: 'Performance versus explainability is a measured price'.",
+    "customary": "An accuracy-interpretability trade-off is widely assumed (Rudin cites the DARPA XAI figure). In practice 'explainable' usually means post-hoc explanations (SHAP, permutation importance) of a black box.",
+    "sound": "Measuring the gap is sound. Calling it a 'price' presupposes a cost the literature often does not find on structured data. 'Explainable' (post-hoc) is also the opposite of what is being priced, which is an inherently interpretable model. A gap can be manufactured by under-specifying the simple model. ML advantages show up mainly in biased comparisons.",
+    "correction": "Rename it 'what the interpretable model costs or gains on your data'. Compute it as the signed paired difference between the best inherently interpretable family and the best flexible family. The interpretable family is a regression with splines and the same in-fold preprocessing. Report the difference on the strictly proper primary score and on calibration, with the corrected interval. Remove the selection optimism of picking the 'best flexible' family (BBC-CV over the flexible set). When the interval spans 0, say 'no measurable cost on these rows'. Never offer post-hoc explanations of the flexible model as the interpretable alternative.",
+    "sources": [
+     "Rudin, Nat Mach Intell 2019;1:206 (arXiv:1811.10154): \"It is a myth that there is necessarily a trade-off between accuracy and interpretability.\"; \"When considering problems that have structured data with meaningful features, there is often no significant difference in performance between more complex classifiers (deep neural networks, boosted decision trees, random forests) and much simpler classifiers (logistic regression, decision lists) after preprocessing.\"; \"One can always create an artificial trade-off between accuracy and interpretability/explainability by removing parts of a more complex model to reduce accuracy\"; \"Explainable ML methods provide explanations that are not faithful to what the original model computes.\"",
+     "Christodoulou et al. 2019: \"For 137 comparisons at high risk of bias, logit(AUC) was 0.34 (0.20-0.47) higher for ML.\"",
+     "Kapoor & Narayanan 2023: \"When the errors are corrected, complex ML models do not perform substantively better than decades-old LR models.\""
+    ]
+   },
+   {
+    "row": "§1 row 11 'primary metric by task (proper scores first)', against the engine's PRIMARY",
+    "verdict": "correct",
+    "severity": "major",
+    "claim_in_spec": "'primary metric by task (proper scores first)'. Yet turbotab/core/models/metrics.py PRIMARY = binary: AUC, ordinal: C-index, time_to_event: C-index. That metric drives the versus-baseline verdict, family_differences, the BBC-CV pick and the declaration.",
+    "customary": "The AUC/c-statistic is the headline in clinical prediction, and STRATOS TG6 still lists AUROC as essential to report.",
+    "sound": "AUROC is only semi-proper: it ignores calibration and has low power for comparing models. Strictly proper overall measures are the ones STRATOS calls 'useful to compare different models on the same dataset'. Choosing by AUC can declare a miscalibrated boosted tree over a calibrated regression with the same ranking.",
+    "correction": "Compare, select (BBC-CV) and declare on a strictly proper score: log loss or scaled Brier (binary/multiclass), ranked probability score or log loss (ordinal), Brier at a horizon or integrated Brier (time-to-event), MSE/R² (regression). Keep AUC/C as the always-reported discrimination measure, labeled 'customary headline'. Name the tension in one line (North star 5). The spec's 'proper scores first' is right, so the engine must change to match it.",
+    "sources": [
+     "Van Calster et al. (STRATOS TG6), 'Performance evaluation of predictive AI models to support medical decisions', arXiv:2412.10288: \"AUROC has a clear interpretation, is semi-proper\"; \"AUROC, AUPRC, and pAUROC are not strictly proper, because these rank-based measures are invariant to monotonic transformations of probability estimates.\"; \"Because Brier and R-squared variants (except discrimination slope) measure overall performance and are strictly proper, they are useful to compare different models on the same dataset.\"",
+     "Harrell, 'Statistically efficient ways to quantify added predictive value' (fharrell.com/post/addvalue): \"Comparing two c-indexes ... is a low-power procedure.\""
+    ]
+   },
+   {
+    "row": "§1 row 11 'nested CV on the same folds; paired differences with intervals; selection optimism estimated'",
+    "verdict": "correct",
+    "severity": "major",
+    "claim_in_spec": "Nested CV on the same folds, paired differences with intervals, and selection optimism estimated. §4 separately ranks bootstrap optimism first at small n.",
+    "customary": "The ML standard is the Nadeau-Bengio corrected resampled t on repeated CV (Bouckaert & Frank 2004). Varma & Simon's nested CV is the standard defense against tuning optimism.",
+    "sound": "Paired differences are the right object, because comparing two models is easier than estimating error. But the k-fold correction (ρ = 1/k) is an approximation, and on a single CV run the test's verdict poorly replicates across partitions. In the engine, repeats = 1 unless validation == 'repeated_kfold' (turbotab/core/stages/rows.py:1734). Below 20k units bootstrap leads, so family differences, the versus-baseline verdict and BBC-CV all rest on one 5-fold partition (df = 4). The spec also says 'nested CV' while the engine uses BBC-CV, which is the better tool for the family choice.",
+    "correction": "Whatever validation supplies the headline, run repeated k-fold (≥ 10 × K) as the comparison substrate. Paired differences (corrected repeated k-fold t, rK − 1 df), the versus-baseline verdict and BBC-CV all run on it. Bootstrap optimism stays the per-family headline for regression families. Rewrite the row as: 'tuning nested inside every outer fold and every bootstrap resample (Varma & Simon); the optimism of choosing among families by BBC-CV (Tsamardinos 2018)'. Present the pairwise 'X is ahead' sentences as descriptive (with K families there are K(K−1)/2 intervals). The declaration rests on the selection-corrected estimate.",
+    "sources": [
+     "Bouckaert & Frank, PAKDD 2004: \"good replicability was obtained using 100 runs of random subsampling in conjunction with Nadeau and Bengio's corrected resampled t-test, and replicability improved even further by using 10-times 10-fold cross-validation instead of random subsampling. Both methods are acceptable but for best replicability we recommend the latter one.\" Table 5 replicability: \"10-fold cv 49.7 47.6 33.2 90.8 33.2 / corrected 10x10 fold cv 91.9 80.3 76.7 98.9 76.7\"",
+     "correctR vignette (CRAN): \"Nadeau and Bengio (2003) proved there is no unbiased estimator, but it can be approximated with ρ = 1/k.\"",
+     "Bates, Hastie & Tibshirani, JASA 2023 (arXiv:2104.00673): \"Yang (2007); Wager (2020) show that for CV, comparing two models is a statistically easier task than estimating the prediction error\"",
+     "Varma & Simon, BMC Bioinformatics 2006;7:91: \"using CV to compute an error estimate for a classifier that has itself been tuned using CV gives a significantly biased estimate of the true error\"; \"A nested CV procedure provides an almost unbiased estimate of the true error.\"",
+     "Tsamardinos, Greasidou & Borboudakis, Mach Learn 2018;107:1895: \"In comparison to the alternatives, namely the nested cross-validation ... BBC-CV is computationally more efficient, has smaller variance and bias\""
+    ]
+   },
+   {
+    "row": "§1 row 11 intervals: target of inference and p ≫ n undercoverage",
+    "verdict": "correct",
+    "severity": "major",
+    "claim_in_spec": "'paired differences with intervals'. Every CV score carries LeDell's standard error (engine).",
+    "customary": "In practice, CV ± SE is reported as 'the model's performance'.",
+    "sound": "CV and the bootstrap estimate the expected error of the modeling procedure at this n, not the error of this fitted model. Naive CV intervals undercover badly in high dimensions, which is the omics lens's normal case. The engine's docstring already admits the undercoverage but the app offers no remedy.",
+    "correction": "(a) Every CV and bootstrap performance sentence says 'expected performance of this modeling procedure at this sample size', not 'this model's'. (b) At p ≫ n (omics lenses, or p/n above a stated cut-off), offer Bates et al.'s nested-CV interval for the headline score. If it is not run, label the interval 'likely too narrow at p ≫ n (Bates et al. 2023)'. State the extra compute.",
+    "sources": [
+     "Bates, Hastie & Tibshirani, JASA 2023: \"Rather it estimates the average prediction error of models fit on other unseen training sets drawn from the same population.\"; \"with n = 90 observations of p = 1000 features ... naïve confidence intervals for prediction error are far too small: intervals with desired miscoverage of 10% give 31% miscoverage in our simulation.\"; \"we conclude that bootstrap should also be viewed as an estimator of Err or ErrX, rather than of ErrXY.\"",
+     "Collins et al. BMJ 2024: \"bootstrapping evaluates the model building process itself\""
+    ]
+   },
+   {
+    "row": "§1 row 11 'calibration', for time-to-event, ordinal and multiclass",
+    "verdict": "missing",
+    "severity": "major",
+    "claim_in_spec": "The row promises 'calibration'. The engine computes calibration intercept and slope only for binary and regression outcomes (validation._calibration_points returns {} otherwise), and METRICS['time_to_event'] = ('c_index',).",
+    "customary": "Survival prediction models are reported with discrimination, calibration and overall performance at a fixed horizon (McLernon et al. 2023). TRIPOD+AI 12e asks for calibration.",
+    "sound": "Harrell's C alone says nothing about whether predicted risks are right. Incident-disease outcomes in nutrition cohorts are usually time-to-event.",
+    "correction": "Time-to-event: calibration at a declared horizon (observed vs predicted risk, calibration slope), Brier at the horizon or integrated Brier, and Uno's C or time-dependent AUC beside Harrell's C. Ordinal and multiclass: calibration by level. Until these are built, the record states 'calibration not assessed' for these tasks instead of inheriting the row's word.",
+    "sources": [
+     "McLernon et al., Ann Intern Med 2023;176:105: \"The model predictions can be evaluated across the full range of observed follow-up times or for the event occurring by the end of a fixed time horizon of interest. The authors first discuss recommended statistical measures that evaluate model performance in terms of discrimination, calibration, or overall performance.\"",
+     "TRIPOD+AI item 12e: \"Specify all measures and plots used (and their rationale) to evaluate model performance (eg, discrimination, calibration, clinical utility).\"",
+     "Van Calster et al., BMC Med 2019;17:230: \"Efforts are required to avoid poor calibration when developing prediction models, to evaluate calibration when validating models, and to update models when indicated.\""
+    ]
+   },
+   {
+    "row": "§1 row 12 Declaration (prediction)",
+    "verdict": "correct",
+    "severity": "major",
+    "claim_in_spec": "'the final family is declared on CV, then the holdout is opened once'.",
+    "customary": "Lock the model, then open the test set once (ML). Clinical prediction prefers no split: develop on all rows and validate internally (Collins 2024).",
+    "sound": "The row assumes a holdout, but below 20k units there is none by default. The declared family's reported score is then its bootstrap optimism-corrected score. That corrects the family's own fit, not the choice among K families. The engine computes BBC-CV separately but neither document says which number is the result.",
+    "correction": "Write two cases. (a) Holdout drawn: as written. Also state which model is reported and deployed: the training-rows fit the holdout scored, or a refit on all rows, with the holdout then validating the procedure. Lock any threshold or recalibration before opening. (b) No holdout: the declaration says the family was chosen among K on CV, and the reported performance is the selection-corrected estimate (BBC-CV) with its interval. Only a family pre-specified before any score was seen may report its bootstrap-corrected score alone. Never report the winner's bootstrap-corrected score alone as 'the result'.",
+    "sources": [
+     "Tsamardinos et al. 2018: \"the cross-validated performance of the best configuration is optimistically biased.\"",
+     "Harrell RMS, Validation: \"when resampling is used to repeat _all_ modeling steps for each resample, rigorous internal validation tests the _process_ used to develop the model\"; on data splitting: \"Does not validate the final model (from recombined data).\"",
+     "Collins et al. BMJ 2024: \"we generally recommend that all available data should be used to build the model, accompanied by a meaningful internal or internal-external cross validation.\"; \"If splitting is to be considered, the splits should be done only once (ie, no repeated splitting until good results are achieved), ensuring that the sample sizes for development and evaluation are of sufficient size.\""
+    ]
+   },
+   {
+    "row": "TRIPOD+AI items the prediction sequence does not produce",
+    "verdict": "missing",
+    "severity": "major",
+    "claim_in_spec": "The prediction column ends at 'declaration'. No row produces sample size, subgroup performance, fairness, output and thresholds, clinical utility, or model updating.",
+    "customary": "TRIPOD+AI (2024) is the reporting standard reviewers apply to prediction papers.",
+    "sound": "Each missing item is a checklist line a reviewer will mark 'not reported'. The engine already has internal-external validation (12d/23b) and an imbalance sentence (13), but the sequence does not route them.",
+    "correction": "Add to the prediction sequence: (1) sample size (item 10) before the shelf (see the shelf finding); (2) an 'intended use' question, decision support or not, that gates net benefit with a decision curve (12e) and how thresholds are identified, in-fold (15); (3) performance with CIs in key sociodemographic subgroups, e.g. sex, age band, race/ethnicity, income for NHANES-type data (23a), and the fairness approach recorded, even if 'none' (14); (4) optional uniform shrinkage of regression coefficients by the optimism-corrected calibration slope, stated as model updating (12f/24); (5) internal-external heterogeneity when a cluster exists (12d/23b); (6) the imbalance statement (13).",
+    "sources": [
+     "TRIPOD+AI items: 10 \"Explain how the study size was arrived at\"; 12d \"Describe if and how any heterogeneity in estimates of model parameter values and model performance was handled and quantified across clusters\"; 12f \"Describe any model updating (eg, recalibration) arising from the model evaluation\"; 13 \"If class imbalance methods were used, state why and how this was done, and any subsequent methods to recalibrate the model\"; 14 \"Describe any approaches that were used to address model fairness and their rationale\"; 15 \"Specify the output of the prediction model (eg, probabilities, classification). Provide details and rationale for any classification and how the thresholds were identified\"; 23a \"Report model performance estimates with confidence intervals, including for any key subgroups (eg, sociodemographic)\"",
+     "Van Calster et al. (STRATOS TG6), arXiv:2412.10288: \"recommend the following measures and plots as essential to report: AUROC, calibration plot, a clinical utility measure such as net benefit with decision curve analysis, and a plot with probability distributions per outcome category.\"",
+     "Collins et al. BMJ 2024: \"the value of optimism corrected calibration slope can be used to adjust the model from any overfitting by applying it as shrinkage factor to the original regression coefficients\""
+    ]
+   },
+   {
+    "row": "§1 row 10 Model-specific preprocessing, and North star 5's 'SMOTE versus calibration-preserving weighting'",
+    "verdict": "correct",
+    "severity": "minor",
+    "claim_in_spec": "Row 10: 'stated per family in the lineage (scaling, encoding, native missing values)'. North star 5 names 'calibration-preserving weighting' as the sound alternative to SMOTE.",
+    "customary": "SMOTE, resampling and class weights are common in ML for rare outcomes.",
+    "sound": "Row 10 holds. But every imbalance correction miscalibrates, with no AUC gain, and moving the threshold achieves the same sensitivity/specificity balance. Class weighting changes the implied prevalence and shifts the intercept, so it does not preserve calibration without recalibration. The engine's imbalance_sentence already says 'no resampling'; the doctrine text is what is wrong. Native missing-value handling is sound for prediction only if deployment uses the same handling.",
+    "correction": "Change North star 5's example to 'imbalance corrections (SMOTE, resampling, class weights) versus no correction with a chosen threshold'. Any correction must be in-fold and followed by recalibration (TRIPOD+AI 13). In row 10, add a relation: a family with native missing-value handling either replaces the in-fold imputation or follows it, the lineage says which, and deployment uses the same handling.",
+    "sources": [
+     "van den Goorbergh et al., JAMIA 2022;29:1525: \"The use of random undersampling, random oversampling, or SMOTE yielded poorly calibrated models: the probability to belong to the minority class was strongly overestimated. These methods did not result in higher areas under the ROC curve ... Although imbalance correction improved the balance between sensitivity and specificity, similar results were obtained by shifting the probability threshold instead.\"; \"Outcome imbalance is not a problem in itself, imbalance correction may even worsen model performance.\"",
+     "Sperrin et al., J Clin Epidemiol 2020;125:183: \"the missing data method used in model development may not match the method used when a model is deployed. This may lead to overoptimistic assessments of model performance.\""
+    ]
+   },
+   {
+    "row": "§4 'Single split at small n: rank lower than bootstrap optimism, state why' (prediction)",
+    "verdict": "holds",
+    "severity": "minor",
+    "claim_in_spec": "Single split at small n is ranked lower than bootstrap optimism, with the reason stated.",
+    "customary": "Bootstrap optimism correction is the clinical-prediction default; split-sample validation is advised against.",
+    "sound": "Holds, with three refinements. (1) For near-interpolating learners the resampling should be repeated CV, since bootstrap optimism understates their optimism (Coley 2023; the engine already does this). (2) All bootstrap variants are biased at small n with penalized estimation (Iba 2021). (3) Collins 2024 now recommends at least 500 bootstraps; the engine's OPTIMISM_BOOT is 200 (turbotab/core/decisions.py:280).",
+    "correction": "Reword the row to 'rank lower than resampling (bootstrap optimism for regression families; repeated CV for near-interpolating learners)'. Raise the default B to 500, or state 200 as Steyerberg's minimum. At small n with elastic net, state that every internal validation estimate is uncertain (Iba 2021).",
+    "sources": [
+     "Steyerberg et al., J Clin Epidemiol 2001;54:774: \"We conclude that split-sample validation is inefficient, and recommend bootstrapping for estimation of internal validity of a predictive logistic regression model.\"",
+     "Collins et al. BMJ 2024: \"Split sample validation is generally advised against.\"; \"Steyerberg and colleagues have shown that the expected optimism could precisely be estimated with as few as 200 bootstraps with minor sampling variability; with modern computational power, we generally recommend at least 500 bootstraps.\"",
+     "Iba et al., BMC Med Res Methodol 2021;21:9: \"all three methods had biases under small sample settings, and the directions and sizes of biases were inconsistent\"; \"the .632+ estimator performed relatively well under small sample settings, except when the regularized estimation methods are adopted.\""
+    ]
+   },
+   {
+    "row": "§1 row 7 Feature construction (prediction)",
+    "verdict": "holds",
+    "severity": "minor",
+    "claim_in_spec": "'domain features (contracts), declared interactions, in-fold PCA for omics; each states its scope'.",
+    "customary": "PCA and other unsupervised steps are commonly fitted on all rows before CV.",
+    "sound": "Fitting them in-fold is correct, because unsupervised preprocessing outside the folds biases CV. The data-scope declaration (§13) is the right mechanism.",
+    "correction": "None, beyond routing any construction chosen from an outcome-relationship view through the Explore rule (finding on row 1).",
+    "sources": [
+     "Moscovich & Rosset 2022: \"It is often believed that such preprocessing stages, if done in an unsupervised manner ... are generally safe to do prior to cross-validation ... We demonstrate that unsupervised preprocessing can, in fact, introduce a substantial bias into cross-validation estimates\"",
+     "Kapoor & Narayanan 2023: \"[L1.2] Pre-processing on training and test set.\""
+    ]
+   },
+   {
+    "row": "§4 'Median fill: allowed in-fold' and 'Categories as the analysis model: rank lower, state the information loss' (prediction)",
+    "verdict": "holds",
+    "severity": "minor",
+    "claim_in_spec": "Median fill is allowed in-fold under prediction. Categorizing continuous predictors is ranked lower, with the information loss stated.",
+    "customary": "Both are common practice in prediction work.",
+    "sound": "Constant imputation in-fold is consistent for prediction when missingness is not informative, and missing-incorporated-in-attribute handles informative missingness for trees. Categorizing continuous predictors loses information.",
+    "correction": "None. Optionally offer missing indicators / MIA when missingness may be informative (Sperrin 2020).",
+    "sources": [
+     "Josse et al., 'On the consistency of supervised learning with missing values' (arXiv:1902.06931, rev. 2024): \"the widely-used method of imputing with a constant, such as the mean prior to learning is consistent when missing values are not informative\"; \"we recommend using the 'missing incorporated in attribute' method as it can handle both non-informative and informative missing values.\"",
+     "Altman & Royston, BMJ 2006;332:1080: \"Dichotomising a variable at the median reduces power by the same amount as would discarding a third of the data.\"; \"a carefully developed model with bilirubin as a continuous explanatory variable explained 31% more of the variability in the data than when bilirubin distribution was split at the median.\""
+    ]
+   }
+  ],
+  "summary": "Adversarial review of the prediction column of docs/turbotab-next/MODELING_SEQUENCE.md: §1 rows 1, 7, 8, 9, 10, 11, 12 and the §4 prediction leash rows. I checked them against primary sources (PMC, arXiv, Europe PMC full text, BMJ via ORA, CRAN) and against the engine code that implements them. The session's WebSearch budget ran out partway, so later sources were read through WebFetch and the Europe PMC API.\n\nHolds (with its source): in-fold feature construction (row 7); in-fold median fill; ranking categorization lower; ranking a single split below resampling at small n. The last needs three refinements: repeated CV for near-interpolating learners, at least 500 bootstraps per Collins 2024 (the engine default is 200), and the Iba 2021 small-n caveat.\n\nCritical, 1 finding: Explore 'on training rows only' is a leash that is too loose. Below 20,000 units the app's own validation plan has no holdout, so training rows are all rows. Any lever pulled from an outcome-relationship view (a spline from a bending plot, dropping a weak predictor) then sits outside the bootstrap/CV, yet the score is labeled optimism-corrected. Fix: record those views as looked at, offer every Explore lever as an in-fold rule the resampling repeats, and disclose any choice made by hand.\n\nMajor, 10 findings:\n- **Selection (row 8):** customary options (stepwise, VIP > 1, univariable screens, variance filters) are missing from the menu. Out-of-fold selection should be refused, TRIPOD+AI 9a pre-selection asked, and inclusion frequencies reported.\n- **Shelf (row 9):** order it by soundness at this size, not 'expected performance'. Put a Riley sample-size step before it and fit a regression-with-splines benchmark every time.\n- **'Price of explainability':** rename it to the cost or gain of the interpretable model (Rudin). Measure it as a signed paired difference on a proper score and calibration, corrected for the choice of the best flexible family.\n- **Primary metric (row 11):** the spec says 'proper scores first', but the engine compares, selects and declares binary, ordinal and time-to-event models on AUC/C, which STRATOS calls semi-proper.\n- **Comparisons (row 11):** under the default bootstrap validation they rest on one 5-fold partition (rows.py:1734). Repeated k-fold should be the substrate for paired corrected t, the baseline verdict and BBC-CV. The row's 'nested CV' wording should name BBC-CV for the family choice.\n- **CV intervals (row 11):** they describe the expected performance of the modeling procedure, not this fitted model (Bates et al.). At p ≫ n they undercover badly (31% vs 10% miscoverage at n = 90, p = 1000); offer the nested-CV interval or label the standard one.\n- **Calibration (row 11):** not computed for time-to-event, ordinal or multiclass outcomes.\n- **Declaration (row 12):** with no holdout, the result must be the selection-corrected estimate, not the winning family's bootstrap-corrected score alone.\n- **TRIPOD+AI gaps:** items 10, 12d/23b, 12e (net benefit), 12f (shrinkage), 13, 14, 15 and 23a are produced by no step.\n\nMinor, 2 findings: stability selection should be labeled as error control (a reproducible predictor panel), not a prediction optimizer, and ranked after elastic net. North star 5's 'calibration-preserving weighting' is a misnomer: every imbalance correction miscalibrates, and threshold shifting is the sound alternative.\n\nEngine paths cited: /Users/nhedglin/tabular-ml-lab/turbotab/core/models/metrics.py (PRIMARY, METRICS), /Users/nhedglin/tabular-ml-lab/turbotab/core/stages/rows.py:1734 (repeats only under repeated_kfold), /Users/nhedglin/tabular-ml-lab/turbotab/core/models/validation.py (validation_plan, _calibration_points), /Users/nhedglin/tabular-ml-lab/turbotab/core/models/selection.py (BBC-CV), /Users/nhedglin/tabular-ml-lab/turbotab/core/decisions.py:280 (OPTIMISM_BOOT = 200). No files in the repo were written."
+ },
+ {
+  "section": "domain",
+  "summary": "I reviewed Section 1 rows 5 and 6, the domain relations in §2, and the domain parts of §4 and §13 against primary sources. I also checked turbotab/core to see what each chain actually produces. The energy rulings hold: the residual method keeps total energy, all-components ranks first for substitution under inference, and a model that omits an energy source is blocked and recorded. QC-RLSC before the seal on reference rows also holds, as does omics normalization in-fold.\n\nThe spec fails on the order in which steps combine. These findings would change what the app does or says:\n\n1. **Critical: multiple imputation (MI) ignores the terms the analysis model uses.** MI runs on raw columns with a linear-normal model. The log residual, density, spline, interaction and omics log2 are then derived from the imputed values in each completed table (passive imputation). In Bartlett 2015 this pulls a quadratic coefficient to 0.70 instead of 1.0, and its 95% interval never covers the truth (coverage 0%). Normal draws can also be negative for skewed intakes and intensities. A log of a negative or zero value then either errors or becomes missing, and the in-pipeline median fill fills it. That puts a single median fill inside the pooled inference table, which §4 blocks.\n2. **Major: regression calibration (RC) conflicts with the top-ranked energy model.** Freedman 2011 limits univariate RC to energy-adjusted intakes (residual or density). The code refuses RC under all-components, standard and partition, but the spec offers both RC and all-components first without naming that trade-off.\n3. **Major: RC is not labeled or placed correctly.** RC from repeated recalls corrects only day-to-day error, and it belongs beside the uncorrected estimate rather than replacing it. Under MI it currently refits one outcome-free fill instead of running inside each imputed table.\n4. **Major: the log/substitution label is wrong.** The spec says a log makes the substitution a \"ratio rather than difference\". In fact the curve is still a kcal swap, but its effect now varies with each person's intake, and the all-components weighted contrast is undefined on logged components. The menu also lacks compositional (ilr) models under inference.\n5. **Major: \"residual equals standard model\" is false once a spline or categories are applied** to the adjusted nutrient, yet the label stays the same.\n6. **Major: batch handling is missing from the sequence.** This includes the Nygaard 2016 ComBat pitfall: removing batch effects while protecting the outcome inflates group differences.\n7. **Major: non-detects are handled out of order.** The omics chain logs before handling missing values, so non-detects turn into median fills.\n8. **Major: survey scales use the wrong reliability and order.** Alpha should be omega. Attenuation must use reliability conditional on the covariates. Missing items need item-level MI before scoring.\n9. **Minor:** some data-scope labels are wrong (PQN can be reference-rows scope, the D-ratio filter needs the training fold, scoring by a published key is row-local). Also, m should be at least the percentage of incomplete rows, and the leave-one-out model is missing from the menu.\n\nOne gap: I could not retrieve a primary source stating that the nutrient and energy are logged before the residual. That claim rests on NUTRITION_PACK §04 as the field default. My web-search budget ran out partway through, so I took the remaining abstracts from PubMed via NCBI E-utilities.",
+  "findings": [
+   {
+    "row": "§1 row 6 (Missing data, inference) x row 4 (functional form) x row 5 (energy/omics transforms) x row 7 (declared interactions); §2 'multiple imputation invalidates median fill ... implies pooled intervals'",
+    "verdict": "order-wrong",
+    "claim_in_spec": "Inference: 'multiple imputation with the outcome and energy, m >= 20, Rubin's rules'. Nothing requires the imputation model to be compatible with the analysis model's nonlinear or derived terms. Implemented chain (/Users/nhedglin/tabular-ml-lab/turbotab/core/models/pipeline.py docstring 'Step order: detect -> normalize -> impute -> energy adjustment -> exposure form'; methods/missing.py imputation_frame): MI imputes the raw inputs plus the outcome with Bayesian linear-normal draws, deliberately untransformed (methods/imputation.py lines 20-30). Each completed table then derives the log residual, density N/E, spline basis, interaction and omics PQN+log2 passively.",
+    "correction": "Add a §2 relation: 'a declared nonlinear or derived term (spline, log, ratio/density, log-log residual, interaction, omics log) under MI -> the imputation model must be compatible with the analysis model.' The order follows from the term. (1) Linear residual, with or without energy kept: impute N, E and Y, then compute the residual in each completed table, re-estimating b each time. This is compatible because the model stays linear in N and E, so keep this order. (2) Log or log-log residual, and log-analysed intakes or intensities: impute on the log scale (transform, then impute), so draws stay positive and the imputation and analysis share a scale. (3) Spline, interaction or density with a linear outcome model: use SMC-FCS, or 'just another variable' (JAV) as second best. With a logistic or Cox outcome, use SMC-FCS only; JAV should not be used for logistic regression. (4) Identities among energy sources: impute the sources and 'other', then derive E as their sum, so 'other' = E - Σ sources is never negative. Leash under inference: block and record 'passive MI with a declared nonlinear term', and state that the nonlinearity and interaction tests are biased toward the null. A NaN produced after a log inside a completed table must never reach the in-pipeline median imputer. It must be refused or routed to the detection-limit (LOD) question, because today it puts a single median fill into the pooled inference table that §4 blocks.",
+    "customary": "Impute-then-transform (passive imputation) is the default in mice and ice and is what most papers do (Bartlett 2015 describes it as the default).",
+    "sound": "Substantive-model-compatible FCS (SMC-FCS) is consistent for squared, interaction and nonlinear (Cox, logistic) models under MAR. Passive imputation attenuates the nonlinear term with near-zero interval coverage.",
+    "sources": [
+     "Bartlett, Seaman, White & Carpenter 2015, Stat Methods Med Res 24:462-487: \"X2 is then passively imputed by squaring the imputed X values. In this case, estimates of the parameters of the substantive model from multiply imputed datasets will be biased (unless the quadratic coefficient is in truth zero)\"; Table 2, normal X MCAR, linear passive: \"0.696 (0.041) 0.0\" (true value 1, coverage 0%), versus SMC-FCS \"0.998 (0.038) 93.9\".",
+     "Seaman, Bartlett & White 2012, BMC Med Res Methodol 12:46: \"JAV is the best of a set of imperfect imputation methods for linear regression with a quadratic or interaction effect, but should not be used for logistic regression.\"",
+     "White, Pandis & Pham, 'Missing data 6. Choices in doing multiple imputation' (UCL Discovery 10158712): \"A particular issue arises if the analysis model explores interactions or non-linear effects, because then the imputation model needs to be complex enough to respect these complexities\"; \"imputing and analysing on different scales can be problematic\".",
+     "van Buuren, Flexible Imputation of Missing Data 2nd ed., §6.3.2: \"Include all variables that appear in the complete-data model, i.e., the model that will be applied to the data after imputation, including the outcome\"."
+    ],
+    "severity": "critical"
+   },
+   {
+    "row": "§1 row 5 inference ('energy model ... all-components first for substitution' AND 'regression calibration when there are repeated recalls'); §2 has no relation between them",
+    "verdict": "missing",
+    "claim_in_spec": "Row 5 offers all-components first for substitution and regression calibration (RC) for repeated recalls as independent items, with no relation between them. The code refuses RC under all-components, standard and partition (turbotab/core/stages/calibration.py lines 20-24, 'The multivariate method is not offered').",
+    "correction": "Add a §2 conflict: 'regression calibration conflicts with all-components, standard and partition until multivariate RC exists.' Name the trade-off in one line on the energy-model question when repeated recalls exist. All-components has no composite-variable bias, but its error-prone components stay uncorrected and the errors of several mismeasured terms can bias in either direction. Residual or density can be calibrated (univariate RC), but they carry composite-variable bias. Add an 'implies' relation: RC implies that every outcome-model covariate enters the calibration equation (and never the outcome). Add an order rule: energy-adjust each recall day first, then calibrate the energy-adjusted exposure. Multivariate RC (Rosner 1990) is the route that would let all-components be calibrated; list it on the menu as not yet available rather than leaving it absent.",
+    "customary": "Univariate RC of energy-adjusted intakes (densities or residuals), and multivariate RC (Rosner 1990) for the standard and partition models, are both customary in cohort studies (Freedman 2011).",
+    "sound": "Univariate RC of a raw nutrient beside error-prone energy or other components is unsound: the attenuation factor is wrong and the bias can go either way.",
+    "sources": [
+     "Freedman, Schatzkin, Midthune & Kipnis 2011, J Natl Cancer Inst 103:1086 (abstract): \"performing statistical adjustment of relative risks ... using univariate (only for energy-adjusted intakes such as densities or residuals) or multivariate regression calibration.\"",
+     "Rosner, Spiegelman & Willett 1990, Am J Epidemiol 132:734 (abstract): \"if several risk factors for disease are considered in the same multiple logistic regression model, and some of these risk factors are measured with error, the point and interval estimates of relative risk corresponding to any of these factors may be biased either toward or away from the null value.\"",
+     "Kipnis et al. 2009, Biometrics 65:1003 (abstract): \"individual usual intake is generally predicted as the conditional mean intake given 24HR-reported intake and other covariates in the health model.\"",
+     "Keogh, Shaw & Gustafson 2020 (STRATOS Part 1), Stat Med 39:2197, §6.1.1: the worked example calibrates the energy-adjusted exposure (\"the prediction equation for log potassium density intake is: −0.48+0.45×log(FFQ potassium density)+0.046×sex+0.0059×age\"), with the outcome-model covariates in the calibration equation."
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 5 inference 'regression calibration when there are repeated recalls'; its order relative to row 6 (MI) and its place relative to row 11 (declared secondary analyses)",
+    "verdict": "correct",
+    "claim_in_spec": "RC appears as a domain transform of the reported model, with no stated assumption, no placement as a secondary analysis, and no order relative to MI. Under MI the code calibrates one outcome-free single fill (turbotab/core/stages/calibration.py line 396: 'The calibration refits the model with blanks filled once without the outcome').",
+    "correction": "(1) Label: replicate 24-hour recalls correct only within-person (day-to-day) error, under the assumption that recalls are unbiased for usual intake. Person-specific reporting bias remains, so the corrected estimate is still attenuated and can be off in either direction. Label it customary, with soundness conditional on that assumption. (2) Placement: report the corrected estimate as a declared secondary analysis beside the uncorrected one (row 11). The test of no association stays the uncorrected model's. Intervals come from bootstrapping the whole procedure. (3) Order under inference: run MI first, with the recall mean or recalls, Z and the outcome in the imputation model. Then fit RC inside each completed table, with the calibration equation containing Z but never Y. Combine bootstrap and MI with a scheme shown to be valid (Schomaker & Heumann 2018), not a single fill. (4) Generalize the §2 relation 'MI implies pooled intervals (Rubin's rules) everywhere a coefficient is shown': outputs whose intervals come from a bootstrap (RC intervals, substitution-curve bands) need a stated bootstrap-with-MI scheme.",
+    "customary": "Treating replicate 24-hour recalls as unbiased is widespread practice (Beaton et al.; NCI method).",
+    "sound": "Self-report error is not classical, so recall-based RC under-corrects. Biomarker calibration is the only unbiased reference, available for energy, protein, potassium and sodium.",
+    "sources": [
+     "Keogh, Shaw & Gustafson 2020 (STRATOS Part 1), Stat Med 39:2197, §4.3.1: \"The measurement error model for self-reported dietary intakes has been shown not to conform to the classical model, so replicates studies are not a true option. However, many investigators, in the absence of anything better, have adopted the assumption that 24-hour recalls provide unbiased measurements\"; §6.1.2: \"one cannot use the usual model standard errors from the outcome regression model when performing RC, as these will be too small\".",
+     "Kipnis et al. 2003, Am J Epidemiol 158:14 (OPEN, abstract): \"Using the 24HR as a reference instrument can seriously underestimate true attenuation (up to 60% for energy-adjusted protein).\"",
+     "Freedman et al. 2011, J Natl Cancer Inst 103:1086 (abstract): \"reporting estimates adjusted for measurement error along with the usual relative risk estimates\"; \"statistical significance tests of unadjusted relative risk estimates are approximately valid.\"",
+     "Schomaker & Heumann 2018, Stat Med 37:2252 (abstract): \"We present 4 methods that ... combine bootstrap estimation with multiple imputation. We show that 3 of the 4 approaches yield valid inference\"."
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§2 'log transform of a nutrient changes what a substitution means (ratio rather than difference) — the curve's label says so'; order of log vs residual; ilr offered under prediction only (row 5)",
+    "verdict": "correct",
+    "claim_in_spec": "A log turns the substitution into a ratio instead of a difference, and the curve's label says so.",
+    "correction": "The label is wrong for the instrument the app actually computes. The substitution curve (turbotab/core/methods/substitution.py) moves k kcal from donor to recipient through the fitted pipeline, so it stays an isocaloric kcal difference. Replace the relation with three statements. (a) Under any log (log-log residual, log N in the outcome model, logged components), the effect of moving k kcal is no longer a constant per-kcal coefficient contrast. It depends on each person's baseline intake and on k, and the curve is an average of heterogeneous row-level effects; label it that way. (b) The all-components relative effect (a source's coefficient minus a share-weighted average of the others) is undefined on logged components, because Tomova's substitution models require every variable in the same units (kcal). Under inference, refuse reading a substitution off logged coefficients and allow only the standardized (g-computation) curve. (c) Order: a log comes before the residual (log N ~ log E, then back-transform), never residual-then-log (residual plus constant can be ≤ 0, and the log of a linear residual has no estimand) and never mixed scales (log N on raw E). Under inference, add compositional isometric log-ratio (ilr) models to the menu as the principled log-scale model of dietary composition, labeled emerging. At present ilr is offered only under prediction, which shortens the inference menu.",
+    "customary": "Willett log-log residual (NUTRITION_PACK §04 methods sentence; I could not retrieve a primary-source quote for log-before-residual). Linear-in-kcal substitution models (Tomova 2022a/b).",
+    "sound": "Substitution contrasts are coefficient differences only on a common linear kcal scale. On a log scale, only a standardized contrast at stated intakes, or an ilr model, has a defined estimand.",
+    "sources": [
+     "Tomova, Gilthorpe & Tennant 2022, Am J Clin Nutr (doi 10.1093/ajcn/nqac188), abstract: the leave-one-out and energy partition models performed well \"provided all variables were measured in the same units\"; \"The practice of examining foods measured in grams or portions while adjusting for total energy intake is likely to deliver obscure relative effect estimands with unclear interpretations.\"",
+     "Tomova et al. 2022, Am J Clin Nutr 115:189-198: the average relative causal effect is obtained \"by subtracting a weighted average of the estimated effects of all other individual component sources of energy from the total causal effect\". This contrast is defined only on a common additive scale.",
+     "Leite 2016, Stat Methods Med Res 25:3057 (abstract): \"The new isometric log-ratio variables allow full inferences about each element of dietary composition and adjustment by total energy intake.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§2 missing relation: row 4 (spline or categories) x row 5 (residual energy model)",
+    "verdict": "missing",
+    "claim_in_spec": "The residual model is presented as the standard model's estimand. The code labels residual-with-energy 'the standard model's, identically' (turbotab/core/methods/energy.py METHOD_TABLE['residual']) whatever the exposure form. It runs the spline or quintiles after the energy step (pipeline.py: 'the curve or the fifths are of the energy-adjusted intake'), and energy.py has no spline awareness.",
+    "correction": "Add a relation: 'spline or categories x residual: the identity with the standard model holds only for a linear term.' {N_adj, E} spans the same columns as {N, E}, but a spline basis of N_adj = N - b(E - Ē) with E does not span the same space as a spline of N with E. The curve is therefore a different model with a different estimand: the nutrient's curve on the energy-adjusted scale at mean energy, not the substitution curve at fixed total energy. Change the label when a spline or categories are declared on a residual, and offer standard-model spline(N) + E as the substitution-curve route. Customary residual quintiles stay on the menu with their own estimand sentence.",
+    "customary": "Quintiles or splines of energy-adjusted residuals are customary.",
+    "sound": "The equivalence to the standard model is algebraic for a linear term only. Under any nonlinear transform the two are different models.",
+    "sources": [
+     "Tomova et al. 2022, Am J Clin Nutr 115:189-198, on the residual model: \"The approach is mathematically identical to the standard model, and therefore also targets the average relative causal effect.\" That identity is a linear reparametrization and does not survive a nonlinear basis.",
+     "McCullough & Byrd 2023, Am J Epidemiol 192:1801: \"A variation on the simple nutrient residual model proposed by Willett and Stampfer includes the nutrient residual plus a term for total energy intake.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 5 (omics, both purposes) and §13 'batch handling': batch correction is absent from the sequence and from §2",
+    "verdict": "missing",
+    "claim_in_spec": "Row 5 lists only 'omics normalization in-fold'. Batch appears only as a future item in §13. No relation covers ComBat, batch as a covariate, or an outcome in the batch model.",
+    "correction": "Add a batch step to row 5 with purpose-split leashes. Inference: account for batch in the outcome model (fixed effect or random intercept), ranked first. ComBat-style adjustment with the outcome as a protected covariate is blocked and recorded whenever outcome groups are unbalanced across batches, because it inflates group differences. ComBat without the outcome is stated to deflate them under imbalance. Prediction: batch adjustment is fitted in-fold and never with the outcome in its model (refuse: label leakage). Use the training set as the reference batch (reference ComBat) or addon adjustment, so held-out and new rows are adjusted without changing the training values. Metabolomics with pooled QCs: inter-batch alignment by QC-RLSC is reference-rows scope before the seal (§13), and that relation should say it covers batches as well as drift. Scopes: QC-based = reference rows; ComBat = training fold; batch covariate = the model.",
+    "customary": "Running ComBat (Johnson et al. 2007) with the group or outcome in its model matrix, on the full data, before analysis, is widespread.",
+    "sound": "With unbalanced designs, model batch in the analysis (Nygaard 2016). For prediction, use a fixed reference (training) batch so the training data and model are frozen (Zhang 2018; Hornung 2017).",
+    "sources": [
+     "Nygaard, Rødland & Hovig 2016, Biostatistics 17:29-39 (abstract): \"when study groups are not evenly distributed across batches ... batch adjustments may bias, usually deflate, group differences ... using a two-way ANOVA model to simultaneously estimate both group and batch effects ... may systematically induce incorrect group differences in downstream analyses\"; body: \"For an investigator facing an unbalanced data set with batch effects, our primary advice would be to account for batch in the statistical analysis.\"",
+     "Zhang, Jenkins, Manimaran & Johnson 2018, BMC Bioinformatics 19:262: \"establishing the training set as a 'reference batch' to which all future batches will be standardized ... would allow the training data and biomarker to be fixed a priori\"; ComBat \"suffers from sample 'set bias'\".",
+     "Hornung, Causeur, Bernau & Boulesteix 2017, Bioinformatics 33:397 (abstract): \"We suggest the use of addon normalization and addon batch effect removal techniques in this context to reduce systematic differences between external data and the original dataset\".",
+     "Dunn et al. 2011, Nat Protoc 6:1060 (abstract): \"Methods for quality control-based robust LOESS signal correction to provide signal correction and integration of data from multiple analytical batches are also described.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§13 omics chain (drift -> QC rows leave -> seal -> PQN, log, scaling in-fold) and §1 rows 5-6: non-detects/LOD and missing-value order",
+    "verdict": "order-wrong",
+    "claim_in_spec": "The chain has no missing-value or LOD step. Rows 5 and 6 never mention values below detection. Code: QuotientLog makes zeros missing after log2 ('A zero cannot be logged: it becomes missing', turbotab/core/methods/omics.py line 37). The in-pipeline median or energy-aware imputer, present even under MI (pipeline.py: impute = strategy in ('impute', 'multiple_imputation')), then fills those post-log missing values. Non-detects end up in the middle of the distribution, including inside the pooled inference table.",
+    "correction": "Make the chain: QC drift and inter-batch correction (reference rows) -> QC-RSD and QC detection-rate filters (reference rows) -> QC rows leave -> seal -> PQN (in-fold, or a QC reference: see the scope finding) -> censoring-aware handling of non-detects and zeros -> log/glog -> scaling (in-fold). Leash: half-minimum or half-LOD fill is allowed with its customary label only when ≤10% of values are censored. Above that, it ranks lower under prediction (QRILC or censored-normal expectation instead) and is blocked and recorded under inference (censored-normal MI within the chained equations instead). A zero that a log would turn into missing must route to the LOD question, never to median fill. Under inference with p ≫ n features, chained-equations MI over every feature is infeasible (the code refuses more than 80 columns). State the route: per-feature censoring-aware imputation with a restricted predictor set (about 15 predictors), or complete-feature analysis with its assumption stated.",
+    "customary": "MetaboAnalyst half-minimum fill; workflow order normalisation -> imputation -> transformation -> scaling (Di Guida 2016).",
+    "sound": "Non-detects are left-censored (MNAR), not MAR. Half-LOD is biased beyond about 5-10% censoring. Tobit/censored MI or QRILC is sound.",
+    "sources": [
+     "Di Guida et al. 2016, Metabolomics 12:93 (abstract): \"The generic metabolomics data processing workflow is constructed with a serial set of processes including peak picking, quality assurance, normalisation, missing value imputation, transformation and scaling.\"",
+     "Lubin et al. 2004, Environ Health Perspect 112:1691 (abstract): \"assignment of one-half the detection limit to nondetected values ... can be biased unless the percentage of measurements below detection limits is small (5-10%) ... Truncated data methods (e.g., Tobit regression) and multiple imputation offer two unbiased approaches\".",
+     "Wei et al. 2018, Sci Rep 8:663 (abstract): \"RF performed the best for MCAR/MAR and QRILC was the favored one for left-censored MNAR.\"",
+     "van Buuren, FIMD 2nd ed. §6.3.2: \"the increase in explained variance in linear regression is typically negligible after the best, say, 15 variables have been included.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "§1 row 5 inference 'scale scores with reliability and attenuation'; prediction 'scale scores'; order relative to row 6",
+    "verdict": "correct",
+    "claim_in_spec": "Scale scores come with 'reliability and attenuation'. The spec does not name the reliability coefficient, does not say whether attenuation is conditional on covariates, and gives no order with MI or data scope.",
+    "correction": "(1) Reliability: compute omega and say which one (omega-total for a unidimensional congeneric scale, omega-hierarchical for a multidimensional one). Show alpha only with its customary label, because alpha's assumptions usually fail and it usually understates reliability. Disattenuating by alpha over-corrects. (2) Attenuation: in a model with covariates Z, the slope is attenuated by the reliability conditional on Z, not by the scale's marginal omega. Dividing by marginal omega under-corrects whenever the scale correlates with the covariates. Offer a latent-variable (SEM) model or a conditional-reliability correction, and report the disattenuated estimate as a declared secondary analysis beside the observed one. (3) Order under inference: when items are missing, run item-level MI before scoring, not MI of the total score. Prorate by the instrument's manual (row-local) only when few items are missing. Mean imputation is blocked and recorded. (4) Prediction: no disattenuation, because the deployed model sees the same error-prone score. (5) Scopes: scoring by a published key, reverse coding and prorating are row-local. IRT or factor scores and sample z-scores are training fold. Reliability is descriptive under prediction.",
+    "customary": "Cronbach's alpha reporting; Spearman correction by alpha; prorated sum scores.",
+    "sound": "Omega family reliability (McNeish 2018); covariate-conditional attenuation factor (STRATOS); item-level MI (Eekhout 2014).",
+    "sources": [
+     "McNeish 2018, Psychol Methods 23:412 (abstract): \"Cronbach's alpha is riddled with problems stemming from unrealistic assumptions. In many circumstances, violating these assumptions yields estimates of reliability that are too small\"; alternatives named: \"omega total, Revelle's omega total, the greatest lower bound, and Coefficient H\".",
+     "Keogh, Shaw & Gustafson 2020 (STRATOS Part 1), Stat Med 39:2197, §3.1.2: with covariates Z, \"the relationship β*X = λβX still holds but now λ = αX|Z var(X|Z) / (α²X|Z var(X|Z) + var(U))\"; §1: \"In studies in which the aim is instead to derive a prediction model, the considerations surrounding error-prone variables can be quite different.\"",
+     "Eekhout et al. 2014, J Clin Epidemiol 67:335 (abstract): \"Mean imputation caused biased estimates in every missing data scenario when data are missing for more than 10% of the subjects. Furthermore, when a large percentage of subjects had missing items (>25%), MI methods applied to the items outperformed methods applied to the total score.\""
+    ],
+    "severity": "major"
+   },
+   {
+    "row": "Data scopes in §13 and row 5: PQN, QC filters, log, LOD fill, count normalization",
+    "verdict": "correct",
+    "claim_in_spec": "§13: 'PQN learns its reference spectrum from study samples, so its scope is training fold.' Row 5 says 'omics normalization in-fold' for everything. No scope is stated for QC feature filters, the log, LOD fills or scale scoring.",
+    "correction": "State a scope per variant. PQN with a pooled-QC reference spectrum is reference-rows scope and may run before the seal. This is the default in pmp, a common MS pipeline. PQN with a study-sample median reference is training-fold scope, as in the current code. QC-RSD (<20% LC-MS / <30% GC-MS) and QC detection-rate filters are reference rows. The D-ratio filter is the ratio of QC to study-sample dispersion, so it reads participants and is training-fold scope; it cannot run before the seal. A log or glog with a fixed offset is row-local. A half-minimum LOD fill is training fold, while a known instrument LOD is row-local. edgeR log-CPM (prior scaled by the mean library size) and TMM are training fold, as implemented. Each scope is what the lockbox §06 test should decide, so the menu should show it.",
+    "customary": "Both PQN reference choices are used (Dieterle 2006; pmp defaults to QC). QC RSD and D-ratio filtering (Broadhurst 2018).",
+    "sound": "Scope follows the §06 test: does row i's output depend on other participants' rows or on the outcome?",
+    "sources": [
+     "pmp (Bioconductor) pqn_normalisation documentation: \"For every feature the mean response is calculated across all QC samples. A reference vector is then generated\"; when ref_mean is NULL, \"QC sample data will be used\".",
+     "Dieterle et al. 2006, Anal Chem 78:4281 (abstract): PQN is \"based on the calculation of a most probable dilution factor by looking at the distribution of the quotients of the amplitudes of a test spectrum by those of a reference spectrum.\"",
+     "Broadhurst et al. 2018, Metabolomics 14:72: \"acceptance criterion for RSD is typically set to < 20% ... or < 30%\"; \"the acceptance criterion for D-ratio is set to, at most, < 50%\"; \"The acceptance criterion for detection rate is typically set to > 70%\"."
+    ],
+    "severity": "minor"
+   },
+   {
+    "row": "§1 row 6 inference 'm ≥ 20'",
+    "verdict": "correct",
+    "claim_in_spec": "m ≥ 20.",
+    "correction": "State m ≥ max(20, the percentage of rows with any imputed value), and report Monte Carlo error. The code already warns about this (methods/missing.py mi_concerns); the spec and the methods sentence should say it so the default scales with missingness.",
+    "customary": "m = 5-20 is common in practice.",
+    "sound": "m ≥ the percentage of incomplete cases, so pooled p-values and intervals reproduce (White, Royston & Wood 2011).",
+    "sources": [
+     "White, Pandis & Pham, 'Missing data 6. Choices in doing multiple imputation' (UCL Discovery 10158712), citing White, Royston & Wood 2011, Stat Med 30:377: \"A rule of thumb is that the number of imputations should be at least equal to the percentage of incomplete cases ... More important is to use one's statistical software to report the Monte Carlo errors\"."
+    ],
+    "severity": "minor"
+   },
+   {
+    "row": "§1 row 5 / §2 energy model menu: the leave-one-out substitution model",
+    "verdict": "missing",
+    "claim_in_spec": "The menu (energy.py METHODS) offers none, standard, residual (two forms), density (two forms), partition and all-components. The leave-one-out model is not named.",
+    "correction": "Name the leave-one-out model on the menu: total energy plus every source except the one being replaced. It is the most customary substitution model in nutritional cohorts and performs as well as partition for single-component swaps measured in kcal. Rank it beside all-components under inference, with the same omitted-source rule. Sources in grams or portions get the 'obscure estimand' concern.",
+    "customary": "Leave-one-out is the field's usual substitution model.",
+    "sound": "Unbiased for a single-component swap when all variables are in the same units; biased when the swap involves more than one substituting component.",
+    "sources": [
+     "Tomova et al. 2022, Am J Clin Nutr 115:189-198: \"Robust causal effect estimates could also be obtained using a variant of the standard model ... that in addition adjusted for all but 1 remaining dietary component, an approach that is sometimes termed the 'leave-one-out' approach.\"",
+     "Tomova, Gilthorpe & Tennant 2022, Am J Clin Nutr (nqac188), abstract: the leave-one-out and energy partition models \"performed equally well when the target estimand involved substituting a single exposure with a single component, provided all variables were measured in the same units\"; \"Bias occurred when the substitution involved >1 substituting component\"."
+    ],
+    "severity": "minor"
+   },
+   {
+    "row": "§1 row 5 energy models (residual keeps E; all-components first for substitution under inference; 'choice matters little' under prediction); §2 'energy model constrains substitution ... block and record under inference'",
+    "verdict": "holds",
+    "claim_in_spec": "The residual method keeps total energy. All-components ranks first for substitution under inference, with its precision cost. Under prediction the choice matters little. Omitted energy sources are blocked and recorded under inference above a stated share.",
+    "correction": "None, with one wording limit: 'matters little' applies only among models that keep total energy, which are linear reparametrizations of one another. Density-alone and energy-dropped residual discard information. The code's TENSION sentence already says this.",
+    "customary": "Standard and residual are the field defaults; all-components is emerging and disputed (Willett, Stampfer & Tobias 2022).",
+    "sound": "All-components avoids composite-variable bias at a precision cost. The residual with E kept equals the standard model.",
+    "sources": [
+     "Tomova et al. 2022, Am J Clin Nutr 115:189-198: \"A single model that includes all individual components of the diet may provide the simplest and most accurate approach\"; \"This strategy does introduce a trade-off between minimizing bias ... and maximizing precision\".",
+     "McCullough & Byrd 2023, Am J Epidemiol 192:1801: \"A variation on the simple nutrient residual model proposed by Willett and Stampfer includes the nutrient residual plus a term for total energy intake.\"",
+     "Tomova, Gilthorpe & Tennant 2022 (nqac188): \"Bias occurred when the substitution involved >1 substituting component\". This supports blocking and recording omitted sources."
+    ],
+    "severity": "minor"
+   },
+   {
+    "row": "§2 'QC drift correction (before the seal; reference-rows scope) implies that the QC rows leave the cohort, and precedes in-fold normalization'; row 5 'omics normalization in-fold'",
+    "verdict": "holds",
+    "claim_in_spec": "QC-RLSC is learned only from pooled QCs over run order, before the seal. The QC rows then leave the cohort, and normalization is fit in-fold.",
+    "correction": "None to the order. Add to the drift relation that QC-RLSC is fit per batch, needs a QC at least every 10th injection or at least 5 QCs per batch (otherwise refuse with that reason), and also aligns batches (see the batch finding). In-fold TMM/PQN with a frozen reference applied to held-out rows is sound.",
+    "customary": "QC-RLSC (Dunn 2011) is the standard for large LC/GC-MS studies.",
+    "sound": "It learns only from technical replicates, so a participant's corrected value depends on no other participant and not on the outcome.",
+    "sources": [
+     "Dunn et al. 2011, Nat Protoc 6:1060 (abstract): \"Methods for quality control-based robust LOESS signal correction to provide signal correction and integration of data from multiple analytical batches are also described.\"",
+     "Broadhurst et al. 2018, Metabolomics 14:72: \"it is recommended that a pooled QC is analysed at least every 10th sample, and/or there are at least five pooled QCs distributed evenly across a single batch\".",
+     "Zhang et al. 2018, BMC Bioinformatics 19:262: whole-set batch adjustment \"suffers from sample 'set bias' meaning that if samples or batches are added to or removed from the set ... the adjusted values will be different\". This supports fitting references on training rows and freezing them."
+    ],
+    "severity": "minor"
+   }
+  ]
+ },
+ {
+  "section": "chains",
+  "summary": "I reviewed §2 and the chain as a whole by building seven analyses end to end against the spec and the engine it governs, read-only. Eleven relations or orderings give a wrong, unreportable or under-covered result in a realistic chain, and only five relations hold as written.\n\nChain 1. NHANES with linked mortality, log-residual fiber, a spline exposure, Cox, multiple imputation, population estimand. It breaks in four places:\n- Step 4 asks for the knots before step 5 changes the exposure (finding 4).\n- The multiple-imputation model omits strata, PSUs and weights (finding 2).\n- Normal draws on the raw scale give negative intakes, and the log residual then refuses the completed copy. The imputation model is also linear in an exposure the outcome model treats as a spline (finding 3).\n- The Cox fit runs unweighted with SRS intervals and only a concern after the user chose 'the surveyed population' (finding 1, critical).\nWhat holds: the event indicator and Nelson–Aalen in the imputation model, and Rubin's ν_com set to the design degrees of freedom (in the code, not stated in the spec).\nRequired sentence: \"Fiber and energy were log-transformed and fiber energy-adjusted by the residual method with total energy retained; adjusted intake entered as a restricted cubic spline (4 knots at the 5th/35th/65th/95th percentiles of observed values, fixed across imputations); covariates were multiply imputed (m=20, substantive-model-compatible FCS including the event indicator, Nelson–Aalen cumulative hazard, energy, and survey strata, PSUs and weights); hazard ratios from survey-weighted Cox regression (Taylor linearization) pooled by Rubin's rules on design degrees of freedom.\"\n\nChain 2. Repeated 24-h recalls, regression calibration, all-components substitution. It breaks in three places:\n- Calibration (step 5) precedes imputation (step 6), so it cannot include imputed confounders. It is also univariate, and nothing propagates its uncertainty (finding 5).\n- The 'log means ratio' relation is wrong (finding 6).\n- Under multiple imputation the headline substitution curve uses a single outcome-free fill and ignores the survey design (findings 7 and 1).\nRequired sentence: \"Usual intakes of all energy sources were calibrated jointly with every outcome-model covariate in the calibration model; the substitution is the difference of calibrated coefficients in the all-components model; CIs by a bootstrap resampling PSUs within strata that repeats calibration, imputation and the outcome model.\"\n\nChain 3. Metabolomics: QC drift, PQN, log, elastic net under nested CV (prediction). The QC-drift relation and nested CV hold. The spec does not put imputation of values below the detection limit between normalization and log, and treats those blanks as MAR (finding 12). It has no batch relation (finding 10), and no grouped folds for repeat samples (finding 9).\nRequired sentence: \"Drift was corrected per batch by QC-RLSC fitted to pooled QCs only, which were then removed; within each training fold, PQN, detection-limit-aware imputation, log transformation and autoscaling were fitted and applied to the held-out fold; elastic-net parameters were tuned in an inner CV nested in an outer CV.\"\n\nChain 4. FFQ diet score, omega, attenuation correction, ordinal outcome. Disattenuating a formative, multidimensional index by its internal consistency produces an inflated coefficient. Even for reflective scales, alpha and omega leave out transient error, and the correction is conditional on covariates and approximate on the proportional-odds scale (finding 13). Under a survey design the ordinal family also falls back to unweighted (finding 1).\nRequired sentence: \"Reliability was estimated as the test–retest ICC from a repeat administration (or a calibration substudy); the corrected coefficient was obtained by regression calibration including all model covariates, with bootstrap CIs re-estimating the reliability; uncorrected and corrected estimates are both reported.\"\n\nChain 5. Genomics with p ≫ n, batch, screening and penalized logistic regression. In-fold screening and nested CV hold. Batch correction that keeps the outcome-group differences (ComBat with the outcome as a covariate) is unrouted and produces false differences or leakage (finding 10). The inference twin (many exposures) has no multiplicity relation, although the engine already ships a feature-wise family with Benjamini–Hochberg (finding 11).\nRequired sentence: \"Batch was included as a covariate; ComBat was used for visualization only.\"\n\nChain 6. Multi-site cohort, repeated visits, GEE, multiple imputation. The imputation is single-level on long rows with no cluster identifier, so a participant's time-invariant covariate gets different imputed values on different visits, and the ICC and coefficients are biased (finding 8). The repeated-units relation is inference-only and participant-only: it says nothing about sites, small-cluster corrections, grouped folds, or performance heterogeneity across sites (finding 9).\nRequired sentence: \"Missing data were imputed with a two-level model (visits within participants, participants within sites), time-invariant covariates once per participant; GEE with exchangeable working correlation and bias-corrected sandwich SEs (few sites).\"\n\nChain 7. An episodically consumed food (zeros), log, quintiles. A consumers-only analysis is a change of estimand that STROBE-nut nut-14 requires the paper to report, and the spec does not route it (finding 14).\n\nSTROBE / TRIPOD+AI items the spec currently lets fail:\n- STROBE 12(d) and nut-12.2 (sampling design and weighting): findings 1 and 2.\n- nut-12.3 (measurement-error adjustment): findings 5 and 13.\n- nut-14 (total population or consumers only): finding 14.\n- TRIPOD+AI 12d and 23b (heterogeneity across clusters): finding 9.\n- TRIPOD+AI 7 (pre-processing, here batch handling): finding 10.\n- TRIPOD+AI 11 (missing data) holds.\n\nAlso minor: selection run as a sensitivity analysis under multiple imputation must select by Rubin's rules (finding 15). Choices the user makes from training-row evidence are not repeated inside the folds, so they make the CV comparison optimistic (finding 16).\n\nCaveats:\n- My web-search budget ran out partway through. Later sources were read as abstracts through the Europe PMC API.\n- These quotes come from the repo's own docstrings or packs and were not re-fetched: the NHANES guideline, White & Royston, Lubin, Freedman, the NUTRITION_PACK spline line, and the METABOLOMICS_PACK multiple-testing line.\n- I quoted the Benjamini–Hochberg sentence from memory.\n- Code evidence:\n  - /Users/nhedglin/tabular-ml-lab/turbotab/core/stages/modeling.py:742-744 and 1803-1809\n  - /Users/nhedglin/tabular-ml-lab/turbotab/core/methods/missing.py:422-450\n  - /Users/nhedglin/tabular-ml-lab/turbotab/core/methods/energy.py:788-796\n  - /Users/nhedglin/tabular-ml-lab/turbotab/core/methods/exposure_form.py:8-11\n  - /Users/nhedglin/tabular-ml-lab/turbotab/core/models/survey.py:438-485",
+  "findings": [
+   {
+    "row": "§2 'survey design under inference implies design-based estimation, or a recorded attestation'; §4 has no row for it. Chain 1 (NHANES with linked mortality and Cox) and Chain 4 (ordinal outcome).",
+    "verdict": "leash-wrong",
+    "claim_in_spec": "survey design under inference *implies* design-based estimation, or a recorded attestation of a sample-only estimand.",
+    "correction": "The relation does not fire for any family or display without a design-based estimator. After the user answers 'the surveyed population', Cox, ordinal and mixed families are fit unweighted with SRS intervals plus one concern (modeling.py:742-744: 'Fit without the survey weights…'). survey_table covers only least squares, logistic and multinomial (survey.py:438-440). The substitution curve's refits ignore weights and PSUs. Add a §4 row: 'population estimand × a family or display with no design-based estimator → block and record (inference)'. Exits: (a) a family that has one: survey-weighted Cox (Binder pseudo-likelihood, linearized variance) or a weighted proportional-odds model; (b) switch to the sample-only attestation, recorded word for word. The chain test should assert that no table or curve under a population answer carries SRS intervals.",
+    "sources": [
+     "NHANES Analytic Guidelines 2011–2016 §3 (as quoted in turbotab/core/survey.py): \"The complex survey design used for NHANES, including oversampling, stratification, and clustering, must be considered when analyzing the data for appropriate variance estimation and to calculate statistics representative of the U.S. civilian non-institutionalized population.\"",
+     "STROBE (von Elm et al. 2007) item 12(d), cross-sectional: \"If applicable, describe analytical methods taking account of sampling strategy.\"",
+     "STROBE-nut (Lachat et al. 2016, PLoS Med 13:e1002036) nut-12.2: \"Describe and justify the method for energy adjustments, intake modeling, and use of weighting factors, if applicable.\""
+    ],
+    "severity": "critical",
+    "customary": "NHANES mortality and ordinal-outcome papers in AJCN and AJE use survey-weighted Cox or ordinal models with Taylor-linearized variance (svycoxph or the SAS SURVEYPHREG procedure).",
+    "sound": "Under the declared population estimand, an unweighted fit with SRS intervals estimates a different quantity, and its intervals are too narrow by the design effect. A concern is the 'rank and state' rung, too loose when the result is a false interval in a paper."
+   },
+   {
+    "row": "§2: no relation between 'survey design' and 'multiple imputation'. Chain 1.",
+    "verdict": "missing",
+    "claim_in_spec": "Step 6, inference: 'multiple imputation with the outcome and energy, m ≥ 20, Rubin's rules'. Nothing says the design enters the imputation model.",
+    "correction": "Add the relation: survey design (population estimand) *implies* that strata, PSUs (or PSU indicators) and the analysis weight enter the imputation model, and that Rubin's rules pool each copy's design-based variance with ν_com equal to the design degrees of freedom (PSUs minus strata). The engine already passes design df (survey.py:485, which pool_rows reads). Today imputation_frame imputes from spec.inputs plus the outcome terms only (missing.py:422-450), so design variables are left out. The methods sentence names the design variables in the imputation model.",
+    "sources": [
+     "Reiter, Raghunathan & Kinney 2006, Survey Methodology 32(2):143–158: \"the bias can be severe when the design features are related to the survey variables of interest … the safest course of action is to include design variables in the specification of imputation models.\""
+    ],
+    "severity": "major",
+    "customary": "NCHS-style MI of income or BMI in NHANES conditions on the design variables, and the design-based variance is pooled with Rubin's rules.",
+    "sound": "NHANES oversamples by age, race/ethnicity and income, which relate to diet, so leaving the design out of the imputation model biases design-based estimates (Reiter 2006)."
+   },
+   {
+    "row": "§1 step 6 × steps 4, 5 and 7; §2 has no relation between multiple imputation and nonlinear analysis terms. Chain 1 (spline and log residual inside MI) and Chain 6.",
+    "verdict": "missing",
+    "claim_in_spec": "Step 6 'multiple imputation with the outcome and energy'; step 4 'spline'; step 5 log residual; step 7 'declared interactions'. No relation links them.",
+    "correction": "The engine imputes main-effects, raw-scale normal models and then refits the whole pipeline on each copy (passive imputation). Three consequences follow. (a) A spline exposure or a declared interaction is imputed from a model linear in it, which biases the curvature or the interaction toward the null. (b) Normal draws can be negative (the imputation.py docstring says imputed values can fall outside the observed range), and the log residual then raises 'log_transform needs positive values' on that copy (energy.py:788-796), so the analysis cannot be reported. (c) When the exposure itself is incomplete, knots and quintile cut points are relearned per copy (exposure_form.py:10), so the D1 and Rubin pooling combines coefficients of different bases. Add the relations: a spline, log, interaction or Cox term on an incomplete variable *implies* substantive-model-compatible FCS (SMC-FCS), or at least imputation on the analysis scale with the declared interaction in the imputation model. Multiple imputation is *ordered after* the declarations of steps 4 and 7. Knots and cut points are fixed once from observed values (or pre-specified) and held across copies.",
+    "sources": [
+     "Bartlett, Seaman, White & Carpenter 2015, Stat Methods Med Res 24:462: \"Imputation of partially observed covariates is complicated if the substantive model is non-linear (e.g. Cox proportional hazards model), or contains non-linear (e.g. squared) or interaction terms, and standard software implementations of MI may impute covariates from models that are incompatible with such substantive models.\"",
+     "Seaman, Bartlett & White 2012, BMC Med Res Methodol 12:46: \"When X is missing at random, JAV may be biased, but this bias is generally less than for passive imputation and PMM … [JAV] should not be used for logistic regression.\"",
+     "van Buuren, Flexible Imputation of Missing Data 2nd ed. §6.4: \"The standard MICE algorithm only models main effects … interactions of interest should be added to the imputation model.\"",
+     "Morris, White, Carpenter, Stanworth & Royston 2015, Stat Med 34:3298: the issues include \"how to impute so that the imputation model does not favour certain fractional polynomial (FP) models over others; second, how to estimate the FP exponents in multiply imputed data\" (the functional form is estimated once across imputations, not per copy)."
+    ],
+    "severity": "major",
+    "customary": "Passive imputation followed by a spline or interaction is common in nutrition cohorts. Methods papers since 2012 recommend SMC-FCS.",
+    "sound": "Only an imputation model compatible with the substantive model is consistent for nonlinear terms, interactions and Cox (Bartlett 2015)."
+   },
+   {
+    "row": "§1 order: step 4 'Functional form' before step 5 'Domain transforms'. §2 lacks 'a transform of the exposure invalidates the form'. Chain 1 and the 'log transform before an energy residual' case.",
+    "verdict": "order-wrong",
+    "claim_in_spec": "Step 4 (functional form, 'declared before estimates', knots at percentiles) is asked before step 5 (energy model, log, scale scores, regression calibration).",
+    "correction": "Knots, quintile cut points and the linearity question belong to the final exposure scale: log, then energy adjustment, then calibration, then form. The engine's pipeline already runs the form after energy adjustment (exposure_form.py:8-11). The Router's question order in the spec does not, so the user declares knots on raw grams and the preview shows the wrong variable. Move functional form after domain transforms. Add the relation: any domain transform of the exposure (log, energy model, calibration, scale scoring) *invalidates* the functional-form answer, which is re-asked.",
+    "sources": [
+     "NUTRITION_PACK §07G (quoted in turbotab/core/methods/exposure_form.py): \"Restricted cubic spline of outcome vs energy-adjusted intake: 3–5 knots at conventional percentiles\".",
+     "Boe et al. 2023, Am J Epidemiol 192:1406 ('Issues in Implementing Regression Calibration Analyses'): \"the calibration equation should be specified to estimate the transformed exposure directly\".",
+     "TRIPOD+AI (Collins et al. 2024, BMJ 385:e078378) item 12b: \"Depending on the type of model, describe how predictors were handled in the analyses (functional form, rescaling, transformation, or any standardisation)\"."
+    ],
+    "severity": "major",
+    "customary": "Splines and quintiles are taken on energy-adjusted (often log) intake.",
+    "sound": "The form is a property of the variable that enters the model. Declaring it on a different variable makes the declared plan and the fitted model disagree."
+   },
+   {
+    "row": "§1 step 5 inference 'regression calibration when there are repeated recalls' × step 6, plus §2 (no variance relation). Chain 2 (repeated 24-h recalls, regression calibration, all-components substitution).",
+    "verdict": "order-wrong",
+    "claim_in_spec": "Regression calibration is a step-5 domain transform, before missing data (step 6), with no stated variance or multivariate requirement.",
+    "correction": "(a) Order: the calibration model must contain every outcome-model covariate, including those that are imputed. So multiple imputation wraps calibration: calibrate inside each completed copy. Add the relation: a change to the adjustment set *invalidates* the calibration. (b) Several error-prone intakes (energy, every component of the all-components model) *imply* multivariate calibration of all of them jointly, never one nutrient at a time. (c) Calibration *implies* bootstrap or stacked-estimating-equation variance over the whole chain (calibration, imputation, outcome model), resampling PSUs within strata under a survey design and clusters under repeated units. Model-based or Rubin-only intervals are refused for calibrated coefficients. (d) Log or other transforms are applied before calibration. The methods sentence reports the calibration covariates, the reference instrument or repeats, and the bootstrap.",
+    "sources": [
+     "Boe et al. 2023, Am J Epidemiol 192:1406: \"the calibration equation should include all confounders included in the outcome model\"; \"SEs must be adjusted to account for the uncertainty in the estimation of the calibration equation\".",
+     "Rosner, Spiegelman & Willett 1990, Am J Epidemiol 132:734, 'Correction of logistic regression relative risk estimates and confidence intervals for measurement error: the case of multiple covariates measured with error'. In the dietary example, correction moved alcohol's RR from 1.33 to 1.62 and saturated fat's from 0.94 to 0.84.",
+     "Freedman et al. 2011, JNCI 103:1086 (as quoted in NUTRITION_PACK): \"In multivariable disease models with two or more mismeasured exposures, estimated relative risks may become attenuated, inflated, or can even change direction\".",
+     "Schomaker & Heumann 2018, Stat Med 37:2252, 'Bootstrap inference when using multiple imputation': \"Many modern estimators require bootstrapping to calculate confidence intervals\".",
+     "STROBE-nut nut-12.3: \"Report any adjustments for measurement error (i.e., from a validity or calibration study).\""
+    ],
+    "severity": "major",
+    "customary": "The NCI method or regression calibration with covariates, reporting bootstrap or BRR SEs (HCHS/SOL, NHANES).",
+    "sound": "Univariate calibration in a multi-nutrient model can move estimates in either direction. Naive SEs ignore calibration uncertainty (Boe 2023)."
+   },
+   {
+    "row": "§2 'log transform of a nutrient changes what a substitution means (ratio rather than difference)'. Chain 2.",
+    "verdict": "correct",
+    "claim_in_spec": "log transform of a nutrient *changes what a substitution means* (ratio rather than difference) — the curve's label says so.",
+    "correction": "Wrong as stated. The substitution instrument moves k kcal from donor to recipient through the fitted pipeline on raw inputs (substitution.py docstring), so the contrast is still a difference. Logging components makes the effect depend on k and on the starting composition, and it breaks the same-units additivity that lets an all-components coefficient difference be a substitution. A share or ratio reallocation is a different estimand that needs a compositional (ilr) model with total energy as a separate term when totals vary. Replace the relation with: a log or spline on an energy component *conflicts with* reading the substitution as a coefficient difference. The estimate becomes the curve's stated-k, stated-population contrast and is labeled as such. A share reallocation *routes to* the ilr model, which §1 row 5 lists only under prediction and should also be offered under inference as a declared estimand.",
+    "sources": [
+     "Tomova, Gilthorpe & Tennant 2022, Am J Clin Nutr 116:1379: \"The leave-one-out and energy partition models both performed equally well when the target estimand involved substituting a single exposure with a single component, provided all variables were measured in the same units.\"",
+     "Tomova, Walmsley, Berrie, Morris & Tennant 2025, BMC Med Res Methodol 25: \"the performance of each approach to analysing compositional data depends on how closely its parameterisation matches the true data generating process\"; ratio-variable models are equivalent to linear ones only \"in compositional data with fixed totals\"."
+    ],
+    "severity": "major",
+    "customary": "Isocaloric substitution in kcal or %E with linear terms. CoDA (ilr) is emerging for dietary compositions.",
+    "sound": "Only a parameterization that matches the estimand gives a substitution. A label cannot turn a logged all-components contrast into a ratio substitution."
+   },
+   {
+    "row": "§2 'multiple imputation … implies pooled intervals (Rubin's rules) everywhere a coefficient is shown'. Chain 2 (substitution under inference with MI).",
+    "verdict": "correct",
+    "claim_in_spec": "multiple imputation … *implies* pooled intervals (Rubin's rules) everywhere a coefficient is shown.",
+    "correction": "'Coefficient' is too narrow. Under inference with multiple imputation, the substitution curve, the headline display of a substitution analysis, uses 'the fit on every analyzed row, whose blanks are filled once without the outcome', and its band 'leaves out their uncertainty' (modeling.py:1803-1809). That contradicts ruling 4 and gives a single-imputed, null-biased estimate. Restate it: multiple imputation *implies* pooling for every estimate shown under inference (coefficients, contrasts, curves, margins, form tests). For a linear all-components model the pair substitution is an exact linear contrast of the pooled coefficients with the pooled covariance. For a nonlinear model, compute the curve in each completed copy and pool per k, with the bootstrap nested in the imputations. Until that is built, block and record the single-fill curve as an inference estimate.",
+    "sources": [
+     "Harrell, Regression Modeling Strategies §3.8, citing Moons et al. 2006 (as quoted in turbotab/core/methods/imputation.py): \"multiple imputation can and should use the response variable for imputing predictors\".",
+     "Schomaker & Heumann 2018, Stat Med 37:2252, 'Bootstrap inference when using multiple imputation': \"Many modern estimators require bootstrapping to calculate confidence intervals\" (they present ways to combine bootstrap and MI)."
+    ],
+    "severity": "major",
+    "customary": "Substitution estimates in AJCN cohorts come from the same pooled model as the table.",
+    "sound": "An outcome-free single fill attenuates covariate–outcome associations and understates variance. Purpose ruling 4 forbids it for inference."
+   },
+   {
+    "row": "§2 'repeated units imply cluster-aware intervals or mixed models/GEE' × multiple imputation. Chain 6 (multi-site cohort, repeated visits, GEE, MI).",
+    "verdict": "missing",
+    "claim_in_spec": "repeated units *imply* cluster-aware intervals or mixed models/GEE. Nothing is said about the imputation model.",
+    "correction": "The imputation frame carries no cluster identifier (missing.py:422-450). Long-format visit rows are imputed independently, so a participant's time-invariant covariate (baseline income, education) receives different imputed values on different visits, and the within-cluster correlation is erased. Add: repeated units or clusters *imply* a cluster-aware imputation model. Time-invariant variables are imputed once per unit (wide format or level-2 imputation), with multilevel (2l) FCS or a joint mixed model. Cluster dummies only with large clusters. Under inference, single-level imputation on clustered rows is block-and-record.",
+    "sources": [
+     "Lüdtke, Robitzsch & Grund 2017, Psychol Methods 22:141: \"the imputation model used to generate the imputed values must be at least as general as the analysis model. For multilevel designs … this means that the multilevel structure must be taken into account in the imputation model … ignoring the multilevel structure in the imputation may lead to substantial negative bias in estimates of intraclass correlations as well as biased estimates of regression coefficients in multilevel models … an ad hoc strategy that includes dummy indicators … may be problematic under certain conditions (e.g., small groups, low intraclass correlations).\""
+    ],
+    "severity": "major",
+    "customary": "Longitudinal nutrition cohorts impute in wide format or with multilevel MI (jomo, mice 2l methods).",
+    "sound": "Congeniality: the imputation model must be at least as general as the analysis model (Lüdtke 2017)."
+   },
+   {
+    "row": "§2 'repeated units …' is inference-only and participant-only. Chain 6 (prediction twin) and Chain 3 (repeat samples).",
+    "verdict": "correct",
+    "claim_in_spec": "repeated units *imply* cluster-aware intervals or mixed models/GEE; i.i.d. intervals on repeated rows are refused.",
+    "correction": "Extend it on three axes. (1) Purpose: under prediction, repeated units *imply* grouped holdout and grouped inner and outer folds, a bootstrap by unit, and reporting of performance heterogeneity across sites (internal–external CV by site when sites are several). (2) Level: clusters include sites, centres and households, not only repeated participants; intervals cluster at the highest correlated level. (3) Few clusters *imply* a small-sample sandwich (CR2 or Mancl–DeRouen with Bell–McCaffrey df) and refusal below a floor. The engine has CR2 and BM df, but the spec should state it so the chain test asserts it.",
+    "sources": [
+     "Saeb et al. 2017, GigaScience 6(5): \"record-wise CV often massively overestimates the prediction accuracy of the algorithms\".",
+     "TRIPOD+AI 2024 item 12d: \"Describe if and how any heterogeneity in estimates of model parameter values and model performance was handled and quantified across clusters (eg, hospitals, countries)\"; item 23b: \"If examined, report results of any heterogeneity in model performance across clusters\".",
+     "Mancl & DeRouen 2001, Biometrics 57:126: \"Hypothesis tests using the robust covariance estimator can have inflated size when the number of independent clusters is small.\""
+    ],
+    "severity": "major",
+    "customary": "Subject-wise and site-wise CV and TRIPOD-Cluster reporting for multi-centre prediction. Small-sample-corrected GEE for fewer than about 40 clusters.",
+    "sound": "Record-wise folds leak a participant's own rows into training. Sandwich SEs with few clusters under-cover."
+   },
+   {
+    "row": "§2: no batch relation. Chain 5 (genomics with p ≫ n, batch, screening, penalized logistic) and Chain 3.",
+    "verdict": "missing",
+    "claim_in_spec": "None. 'Batch handling' appears only in BLUEPRINT §13's completeness list.",
+    "correction": "Add the relations. (a) Batch perfectly confounded with the outcome *conflicts with* any estimate: refuse under both purposes. (b) Batch correction that preserves outcome-group differences (ComBat with the outcome as a protected covariate) reads the outcome. Under inference it is refused for testing: model batch as a covariate, with ComBat or removeBatchEffect for figures only. Under prediction, correction must be outcome-free and fitted in-fold (data scope: training fold), or a reference-row (QC- or bridge-sample) correction before the seal. (c) Batch correction *precedes* in-fold screening. The methods sentence states which was used.",
+    "sources": [
+     "Nygaard, Rødland & Hovig 2016, Biostatistics 17:29: \"Some tools therefore have the option of preserving the difference between study groups, e.g. using a two-way ANOVA model to simultaneously estimate both group and batch effects. Unfortunately, this approach may systematically induce incorrect group differences in downstream analyses when groups are distributed between the batches in an unbalanced manner.\"",
+     "TRIPOD+AI 2024 item 7: \"Describe any data pre-processing and quality checking, including whether this was similar across relevant sociodemographic groups\"."
+    ],
+    "severity": "major",
+    "customary": "ComBat before analysis is widespread. Batch-in-the-design (limma, DESeq2) is the recommended practice, as GENOMICS_PACK §05 already says.",
+    "sound": "Two-step correction with the outcome protected inflates significance in unbalanced designs and leaks the outcome into CV preprocessing."
+   },
+   {
+    "row": "§1 step 2 'Which exposure', step 8 inference 'selection refused', §2: no multiplicity relation. Chain 5 inference twin (metabolome- or epigenome-wide association).",
+    "verdict": "missing",
+    "claim_in_spec": "The inference sequence assumes one declared exposure, and data-driven selection is refused. Many exposures under one adjustment set are not mentioned.",
+    "correction": "Name the feature-wise estimand: each of many exposures tested under one declared adjustment set. The engine already ships it (models/featurewise.py, Benjamini–Hochberg). Add the relation: many exposures *imply* multiplicity control (BH q-values in the table; the number tested and q in the methods). A per-feature table without it is block-and-record. Make clear this is not 'selection' and is not refused.",
+    "sources": [
+     "Benjamini & Hochberg 1995, J R Stat Soc B 57:289: \"It calls for controlling the expected proportion of falsely rejected hypotheses—the false discovery rate.\"",
+     "METABOLOMICS_PACK §08 (quoted in turbotab/core/models/featurewise.py): \"per-feature testing with multiple-testing correction is expected, and its absence is a fatal flaw in review\"."
+    ],
+    "severity": "major",
+    "customary": "MWAS, EWAS and nutrigenomics papers report per-feature adjusted models with FDR.",
+    "sound": "Without multiplicity control, the expected number of false discoveries among hundreds of tests is large."
+   },
+   {
+    "row": "§1 step 6 inference ('MI … Rubin's rules') and the omics order in §2 'QC drift … precedes in-fold normalization'. Chain 3 (metabolomics).",
+    "verdict": "missing",
+    "claim_in_spec": "Missing data are handled by MI with the outcome (inference) or outcome-free in-fold imputation (prediction). The omics order is drift correction, QC removal, seal, then 'PQN, log and scaling in-fold' (BLUEPRINT §13).",
+    "correction": "Blanks below a detection limit are not missing at random given the other variables; they are left-censored. Add the relation: a detection-limit reading *implies* censoring-aware imputation (Tobit-based MI, already in imputation.py) or a stated half-minimum substitution as a recorded choice. MAR MI on those blanks is refused under inference. Fix the in-fold order as normalization, then detection-limit imputation, then log or glog, then scaling, all after drift correction and QC removal, so that no log is taken of a zero or a blank.",
+    "sources": [
+     "Lubin et al. 2004, Environ Health Perspect 112:1691 (as quoted in turbotab/core/methods/imputation.py): \"Truncated data methods (e.g., Tobit regression) and multiple imputation offer two unbiased approaches for analyzing measurement data with detection limits\".",
+     "Di Guida et al. 2016, Metabolomics 12:93: the workflow is \"peak picking, quality assurance, normalisation, missing value imputation, transformation and scaling\"."
+    ],
+    "severity": "major",
+    "customary": "Half-minimum or LOD/√2 substitution, then log. Censored (Tobit) approaches are recommended in the exposure literature.",
+    "sound": "MAR imputation of censored values pulls them toward observed values above the limit, which biases associations."
+   },
+   {
+    "row": "§1 step 5 inference 'scale scores with reliability and attenuation'. Chain 4 (FFQ diet score, omega, attenuation, ordinal outcome).",
+    "verdict": "leash-wrong",
+    "claim_in_spec": "Scale scores with reliability and attenuation (inference).",
+    "correction": "Refuse disattenuation by internal-consistency reliability (α or ω) for dietary indices and FFQ-derived scores. These are formative and multidimensional, so α and ω are not the error that dilutes the regression, and dividing by them over-corrects. Require test–retest or repeat-administration ICC, or a calibration substudy. For reflective survey scales, α or ω may be offered but must be labeled as omitting transient error (it under-corrects). Compute the correction by regression calibration that includes all model covariates (conditional reliability), not β/ω. For an ordinal or logistic outcome, label it approximate. Bootstrap CIs re-estimate the reliability in each replicate. Report the corrected estimate beside the uncorrected one as a declared secondary analysis.",
+    "sources": [
+     "Reedy et al. 2018, J Acad Nutr Diet 118:1622 (Evaluation of the HEI-2015): \"the standardized Cronbach's alpha was .67\" and \"The components demonstrated multidimensionality when examined with a scree plot (at least four dimensions).\"",
+     "Schmidt, Le & Ilies 2003, Psychol Methods 8:206: \"the nearly universal use of the coefficient of equivalence (Cronbach's alpha …), which fails to assess transient error, leads to overestimates of reliability and undercorrections for biases due to measurement error.\"",
+     "Boe et al. 2023, Am J Epidemiol 192:1406: \"the calibration equation should include all confounders included in the outcome model\".",
+     "STROBE-nut nut-8.6: \"Report on the validity of the dietary or nutritional assessment methods and any internal or external validation used in the study, if applicable.\""
+    ],
+    "severity": "major",
+    "customary": "Psychometric papers report ω, and some disattenuate with the Spearman correction. Nutrition papers correct using validation-study or repeat-recall attenuation factors.",
+    "sound": "The relevant reliability is the one for the error that dilutes the regression, conditional on covariates, with its uncertainty propagated."
+   },
+   {
+    "row": "§2 'log transform of a nutrient' and step 2 estimand: zeros in an episodically consumed food. Chain 7.",
+    "verdict": "missing",
+    "claim_in_spec": "Log is treated as always available. Nothing addresses non-consumers.",
+    "correction": "Add the relation: zeros in a food exposure *conflict with* log and log-residual. The engine refuses log on zeros (energy.py:788-796) but the spec routes no exit. Offered exits: a two-part exposure (consumer indicator plus amount among consumers), or a consumers-only domain. The latter is an estimand change, asked at step 2 and recorded for nut-14. Usual intake for episodic foods uses the two-part NCI model.",
+    "sources": [
+     "STROBE-nut nut-14: \"Give the distribution of participant characteristics across the exposure variables if applicable. Specify if the food consumption of the total population or consumers only were used to obtain results.\""
+    ],
+    "severity": "minor",
+    "customary": "Consumers-only analyses or log(x+1) are common, and log(x+1) is rarely justified.",
+    "sound": "A consumers-only analysis answers a different question, and the paper must say which population the result describes."
+   },
+   {
+    "row": "§1 step 8 inference 'allowed only as a labeled sensitivity analysis' × step 6 MI.",
+    "verdict": "missing",
+    "claim_in_spec": "Data-driven selection is refused for the reported model and allowed only as a labeled sensitivity analysis.",
+    "correction": "Add: selection run as a sensitivity analysis under multiple imputation selects by Rubin's-rules Wald tests across all copies, not on complete cases or one copy. State it in the methods.",
+    "sources": [
+     "Wood, White & Royston 2008, Stat Med 27:3227: \"the type 1 error is only preserved if selection is based on RR, which is our recommended approach.\""
+    ],
+    "severity": "minor",
+    "customary": "Selection on complete cases or on the first imputation is common.",
+    "sound": "Only Rubin's-rules-based selection preserves type I error (Wood 2008)."
+   },
+   {
+    "row": "§1 steps 1 and 4 prediction ('offered from evidence on training rows') × step 11 nested CV.",
+    "verdict": "correct",
+    "claim_in_spec": "Prediction may learn choices from the training data 'as long as the choice is made inside the folds'. Functional form is 'offered from evidence on training rows'.",
+    "correction": "A user choice made from training-row evidence (Explore findings, the nonlinearity view) is made outside the inner folds and is not repeated in them. Nested-CV comparisons are therefore optimistic for the chosen option. State this in the comparison: 'choices made by the analyst from training-row views are not repeated within folds; the holdout is the unbiased estimate'. Alternatively, put the form choice inside the inner loop as a tuned option.",
+    "sources": [
+     "Varma & Simon 2006, BMC Bioinformatics 7:91: \"Proper use of CV for estimating true error of a classifier developed using a well defined algorithm requires that all steps of the algorithm, including classifier parameter tuning, be repeated in each CV loop.\""
+    ],
+    "severity": "minor",
+    "customary": "Analyst-driven feature decisions before CV are common, and TRIPOD+AI 12c asks that all model-building steps be reported.",
+    "sound": "Only choices repeated within each loop are covered by the CV estimate. The single-use holdout protects the final number."
+   },
+   {
+    "row": "§2 'QC drift correction … implies the QC rows leave the cohort, and precedes in-fold normalization'. Chain 3.",
+    "verdict": "holds",
+    "claim_in_spec": "QC drift correction (before the seal; reference-rows scope) implies that the QC rows leave the cohort, and precedes in-fold normalization.",
+    "correction": "Holds. Add the detection-limit imputation step between normalization and log (see the detection-limit finding).",
+    "sources": [
+     "Di Guida et al. 2016, Metabolomics 12:93: the workflow is \"peak picking, quality assurance, normalisation, missing value imputation, transformation and scaling\"."
+    ],
+    "severity": "minor",
+    "customary": "QC-RLSC per batch, then QC removal, then normalization (Dunn et al. 2011).",
+    "sound": "Learning only from technical replicates touches neither participants nor the outcome, so it is legitimate before the seal."
+   },
+   {
+    "row": "§1 step 8 prediction 'in-fold screening at p ≫ n … Never on the full data' plus step 11 nested CV. Chain 5.",
+    "verdict": "holds",
+    "claim_in_spec": "Selection in-fold; nested CV on the same folds.",
+    "correction": "Holds. Penalty tuning sits in the inner loop, and screening is repeated per outer fold.",
+    "sources": [
+     "Ambroise & McLachlan 2002, PNAS 99:6562: when selection bias is corrected by CV external to gene selection, \"the cross-validated error is no longer zero for a subset of only a few genes.\"",
+     "Varma & Simon 2006, BMC Bioinformatics 7:91: \"A nested CV procedure provides an almost unbiased estimate of the true error.\""
+    ],
+    "severity": "minor",
+    "customary": "Standard in genomic prediction.",
+    "sound": "Selection outside the folds produces optimistic error estimates."
+   },
+   {
+    "row": "§2 'energy model constrains substitution … all-components enables substitution of any pair'. Chain 2.",
+    "verdict": "holds",
+    "claim_in_spec": "A substitution curve needs every energy source in the model; the all-components model enables substitution of any pair.",
+    "correction": "Holds for one donor and one recipient in the same units. Add two attachments: (a) a substitution involving more than one replacing component is a stated concern; (b) with self-reported components the multivariate measurement-error caveat applies to the contrast, since it can be biased in either direction.",
+    "sources": [
+     "Tomova et al. 2022, Am J Clin Nutr 116:1379: \"Bias occurred when the substitution involved >1 substituting component.\"",
+     "Freedman et al. 2011, JNCI 103:1086 (as quoted in NUTRITION_PACK): \"estimated relative risks may become attenuated, inflated, or can even change direction\"."
+    ],
+    "severity": "minor",
+    "customary": "Energy-partition (all-components) and leave-one-out substitution models.",
+    "sound": "The contrast identifies a single-component substitution when units are shared."
+   },
+   {
+    "row": "§1 step 6 inference × Cox (Chain 1): outcome terms in the imputation model.",
+    "verdict": "holds",
+    "claim_in_spec": "Multiple imputation 'with the outcome'.",
+    "correction": "Holds in the engine (event indicator plus Nelson–Aalen H(t), imputation.py:171-185). The spec should name it, because 'the outcome' is ambiguous for time-to-event, and SMC-FCS is preferred when the Cox model has nonlinear terms (see the finding on multiple imputation and nonlinear terms).",
+    "sources": [
+     "White & Royston 2009, Stat Med 28:1982 (as quoted in turbotab/core/methods/imputation.py): \"we recommend … including the event indicator and the Nelson–Aalen estimate of the cumulative hazard\"."
+    ],
+    "severity": "minor",
+    "customary": "Event indicator plus Nelson–Aalen in MICE for Cox.",
+    "sound": "This is approximately compatible with Cox when covariate effects are modest."
+   }
+  ]
+ }
+]
