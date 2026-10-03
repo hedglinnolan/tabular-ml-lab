@@ -576,3 +576,21 @@ now explicit:
 
   The gate also reports how many questions a reference journey asks, so the leash (§11.3) is
   weighed and not just tightened.
+
+**Amendment after the fifth gate (2026-10-03).** The fifth gate found value tests that real data can
+still fool:
+- decimal ICD-9 codes read as amounts;
+- an NHANES skip-pattern gate read as a missingness flag;
+- a 4-day kcal total whose ratio, 4.00, sits next to kJ's 4.184;
+- an assay run date read as visit time.
+
+So two further rules apply:
+- **Settle by values only where the alternatives are excluded, not merely unlikely.** Where two
+  readings produce the same values, the kind is settled by the user. The skip gate and the
+  missingness flag are such a pair, and so are the run date and the visit date. Asking costs one line
+  on the card, pre-filled with the guess.
+- **Settlement is visible.** Readings settled by their values appear on the card under "read from
+  your data", each with its evidence and a way to change it, and in the methods record. A value test
+  that fails only on an alternative that is rare in that lens's real data counts as an accepted
+  limitation, never a silent one, and the gate must cite that rarity. An ignored confirmation, or an
+  offered answer that fails, is never accepted.
