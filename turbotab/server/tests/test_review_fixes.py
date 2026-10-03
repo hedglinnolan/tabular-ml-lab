@@ -77,6 +77,11 @@ def test_a_preview_names_the_rows_it_read(client):
     decision = {"kind": "set_energy_adjustment", "method": "residual",
                 "energy_column": energy["energy_column"], "nutrients": energy["nutrients"]}
     settle_reads(client, pid, decision)  # the stages the recorded days reshaped, read again
+    # The recorded days recompute the findings, so the working table, the cohort and the split
+    # behind them: the preview reads the training rows only from a fresh split (while it
+    # recomputes, the service says it read the names and summaries). Wait for the rows it reads,
+    # as a user's preview after the recomputation would, rather than racing them.
+    wait_for(client, pid, {"cohort": "fresh", "split": "fresh"}, timeout=240)
     split = client.get(f"/api/projects/{pid}/stages/split").json()["artifact"]
     sampled = client.post(f"/api/projects/{pid}/preview", json=decision).json()
     n_train = split["n_train"]

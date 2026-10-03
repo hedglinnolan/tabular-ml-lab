@@ -1052,7 +1052,12 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
     labels = [_family_label(k, task, ctx) for k in d.models]
     n = len(labels)
     head = _NUMBER_WORD.get(n, tick(n))
-    return f"{head} model {plural(n, 'family', 'families')} {plural(n, 'was', 'were')} chosen: {listing(labels, limit=8, ticked=False)}"
+    chosen = (f"{head} model {plural(n, 'family', 'families')} {plural(n, 'was', 'were')} "
+              f"chosen: {listing(labels, limit=8, ticked=False)}")
+    # BLUEPRINT §14.3 (amendment): the readings the values settled, which the fit reads, are
+    # stated in the record ("read from the values"), each with its evidence.
+    read = _get(ctx, "read_from_values")
+    return f"{chosen}. {read}" if read else chosen
 
 
 # set_substitution

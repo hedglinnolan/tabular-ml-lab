@@ -595,7 +595,7 @@ def card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, u
                         f"outside {value(round(low))}–{value(round(high))}: confirm it",
                         "column", energy)
         elif not confirmed and (below or above) and (unit_reading or {}).get("days_unsettled") \
-                and (unit_reading or {}).get("basis") in ("name", "atwater"):
+                and (unit_reading or {}).get("basis") in ("name", "atwater", "decision"):
             # BLUEPRINT §14.1: the unit is settled, the days are not (the gate's ``day1_day2``).
             line = note(f"If {tick(energy)} is one day's, {count(below + above)} rows fall outside "
                         f"{value(round(low))}–{value(round(high))}: record days",

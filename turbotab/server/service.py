@@ -153,6 +153,20 @@ class SentenceFacts:
         return None
 
     @cached_property
+    def read_from_values(self) -> str | None:
+        """The methods record's line for the readings the values settled, no question asked
+        (BLUEPRINT §14.3, amendment: settlement is visible in the methods record)."""
+        try:
+            from turbotab.core.readings import read_from_data, read_from_values_sentence
+
+            items = read_from_data(self._ctx.state, roles=self._artifact("roles"),
+                                   target_info=self._artifact("target_info"),
+                                   proposals=self._artifact("proposals"), store=self.datastore)
+        except Exception:  # noqa: BLE001 - a sentence never fails a decision; it says less
+            return None
+        return read_from_values_sentence(items) or None
+
+    @cached_property
     def repeats(self) -> dict[str, Any] | None:
         roles = self._artifact("roles")
         repeats = roles.get("repeats") if isinstance(roles, dict) else None
@@ -588,6 +602,26 @@ class ProjectService:
             "stages": stages,
             "interview": self.interview(pid, state, stages, records),
         }
+
+    def readings(self, pid: str) -> dict[str, Any]:
+        """The readings the values settled with no question asked ("read from your data",
+        BLUEPRINT §14.3): read from the roles, outcome and proposals stages (fresh, else the
+        newest computed) and the working table's values."""
+        from turbotab.core.readings import read_from_data, read_from_values_sentence
+
+        self.workspace.get(pid)
+        state = self.log(pid).state()
+        items = read_from_data(state, store=self._store_or_none(pid),
+                               **{name: self._shown(pid, stage) for name, stage in
+                                  (("roles", "roles"), ("target_info", "target_info"),
+                                   ("proposals", "proposals"))})
+        return {"read_from_data": items, "sentence": read_from_values_sentence(items)}
+
+    def _store_or_none(self, pid: str) -> Any:
+        try:
+            return self.store(pid)
+        except ApiError:
+            return None
 
     def interview(self, pid: str, state: ProjectState, stages: dict[str, StageStatus],
                   records: list[Any]) -> list[InterviewStep]:

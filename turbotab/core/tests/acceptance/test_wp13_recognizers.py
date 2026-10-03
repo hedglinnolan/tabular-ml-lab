@@ -704,7 +704,10 @@ def test_5b_the_atwater_reconstruction_still_reads_kj_and_the_counts_agree():
     """H-skeptic/h9.py's table (``default_rng(9)``, n = 300): energy in kJ beside protein,
     carbohydrate and fat in grams; and the shipped ``nhanes_kilojoules.csv``, whose finding said
     "118 records … above 5000" beside "The energy column is in kilojoules". Expected: NumPy's
-    count in kcal, by the reconstruction."""
+    count in kcal, by the reconstruction, once the unit is recorded. BLUEPRINT §14.3 (amendment
+    after the fifth gate): the reconstruction's ratio, 4.18, fits kJ and a 4-day kcal total beside
+    daily-mean macronutrients alike (NIST SP 811: 1 kcal = 4.184 kJ exactly; 4 is within 5%), so
+    it proposes kJ, offers both, and settles neither."""
     from turbotab.core.stages.findings import findings_stage
     from turbotab.core.stages.proposals import energy_unit_reading
 
@@ -718,13 +721,15 @@ def test_5b_the_atwater_reconstruction_still_reads_kj_and_the_counts_agree():
     shipped = pd.read_csv(SAMPLES / "nhanes_kilojoules.csv")
     for frame, energy in ((h9, "energy"), (shipped, "DR1TKCAL")):
         reading = energy_unit_reading(frame, energy)
-        assert (reading["unit"], reading["basis"]) == ("kj", "atwater"), reading
+        # The guess leads with the header's unit where it spells one (DR1TKCAL: kcal, over 4 days),
+        # else the ratio's nearest reading (kJ, one day); both are offered.
+        assert reading["basis"] == "atwater_ambiguous" and not reading["unit_settled"], reading
+        assert ["kj", 1] in reading["candidates"] and ["kcal", 4] in reading["candidates"], reading
         kcal = frame[energy] / KCAL_PER_KJ
         expected = int(((kcal < 500) | (kcal > 5000)).sum())
         with tempfile.TemporaryDirectory() as folder:
             path = _write(frame, Path(folder), "t.csv")
-            # The day count is the fixture's truth, recorded (BLUEPRINT §14.3); the unit is the
-            # Atwater identity's, as read above.
+            # The unit and the day count are the fixture's truth, recorded (BLUEPRINT §14.3).
             state = ProjectState(lens=["dietary"],
                                  column_units={energy: ColumnUnitSpec(unit="kj", days=1)})
             found = Ingested(path, Path(folder)).run(findings_stage, state)

@@ -122,6 +122,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/readings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readings Card
+         * @description The readings the values settled with no question asked, each with its evidence and the
+         *     answers that change it ("read from your data"; BLUEPRINT §14.3). Nothing waits on them.
+         */
+        get: operations["readings_card_api_projects__pid__readings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/stages/{stage}": {
         parameters: {
             query?: never;
@@ -500,19 +521,19 @@ export interface components {
         };
         /**
          * ColumnUnitSpec
-         * @description A column's recorded unit; for total energy, the number of days each value totals.
+         * @description A column's recorded unit and, for total energy, the number of days each value totals: the
+         *     one place both readings are kept (BLUEPRINT §14.3, every confirmation is honored), written by
+         *     ``set_column_unit`` (both in one answer) and by ``confirm_reading`` / ``confirm_readings`` for a
+         *     unit or a day count (each merged into what was recorded before). ``None``: not recorded.
          */
         ColumnUnitSpec: {
-            /**
-             * Unit
-             * @enum {string}
-             */
-            unit: "kcal" | "kj" | "years" | "months" | "weeks" | "days";
+            /** Unit */
+            unit: ("kcal" | "kj" | "g" | "kg" | "lb" | "cm" | "m" | "in" | "years" | "months" | "weeks" | "days" | "pct_energy") | null;
             /**
              * Days
              * @default 1
              */
-            days: number;
+            days: number | null;
         };
         /**
          * ConfirmReading
@@ -1525,6 +1546,25 @@ export interface components {
             };
         };
         /**
+         * ReadFromData
+         * @description One reading the values settled with no question asked (BLUEPRINT §14.3, amendment:
+         *     settlement is visible), with its evidence and the answers that change it.
+         */
+        ReadFromData: {
+            /** Kind */
+            kind: string;
+            /** Column */
+            column: string;
+            /** Value */
+            value: unknown;
+            /** Words */
+            words: string;
+            /** Evidence */
+            evidence: string;
+            /** Change */
+            change: components["schemas"]["Exit"][];
+        };
+        /**
          * ReadingItem
          * @description One reading a block confirmation lists, with the value it shows.
          */
@@ -1538,6 +1578,17 @@ export interface components {
             column: string;
             /** Value */
             value: string;
+        };
+        /**
+         * ReadingsCard
+         * @description The readings card's "read from your data": every reading the values settled, never a
+         *     required tap, and the methods record's line for them.
+         */
+        ReadingsCard: {
+            /** Read From Data */
+            read_from_data: components["schemas"]["ReadFromData"][];
+            /** Sentence */
+            sentence: string;
         };
         /**
          * Refusal
@@ -6142,6 +6193,46 @@ export interface operations {
             };
             /** @description The decision was refused and not recorded */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readings_card_api_projects__pid__readings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadingsCard"];
+                };
+            };
+            /** @description No such project */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

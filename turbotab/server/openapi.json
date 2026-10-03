@@ -522,6 +522,59 @@
         }
       }
     },
+    "/api/projects/{pid}/readings": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Readings Card",
+        "description": "The readings the values settled with no question asked, each with its evidence and the\nanswers that change it (\"read from your data\"; BLUEPRINT §14.3). Nothing waits on them.",
+        "operationId": "readings_card_api_projects__pid__readings_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadingsCard"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/stages/{stage}": {
       "get": {
         "tags": [
@@ -1868,19 +1921,40 @@
       "ColumnUnitSpec": {
         "properties": {
           "unit": {
-            "type": "string",
-            "enum": [
-              "kcal",
-              "kj",
-              "years",
-              "months",
-              "weeks",
-              "days"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "kcal",
+                  "kj",
+                  "g",
+                  "kg",
+                  "lb",
+                  "cm",
+                  "m",
+                  "in",
+                  "years",
+                  "months",
+                  "weeks",
+                  "days",
+                  "pct_energy"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Unit"
           },
           "days": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Days",
             "default": 1
           }
@@ -1892,7 +1966,7 @@
           "days"
         ],
         "title": "ColumnUnitSpec",
-        "description": "A column's recorded unit; for total energy, the number of days each value totals."
+        "description": "A column's recorded unit and, for total energy, the number of days each value totals: the\none place both readings are kept (BLUEPRINT §14.3, every confirmation is honored), written by\n``set_column_unit`` (both in one answer) and by ``confirm_reading`` / ``confirm_readings`` for a\nunit or a day count (each merged into what was recorded before). ``None``: not recorded."
       },
       "ConfirmReading": {
         "properties": {
@@ -5203,6 +5277,47 @@
         "title": "RangeByLevel",
         "description": "Different plausible ranges per level of another column (e.g. by sex)."
       },
+      "ReadFromData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "words": {
+            "type": "string",
+            "title": "Words"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          },
+          "change": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "type": "array",
+            "title": "Change"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "value",
+          "words",
+          "evidence",
+          "change"
+        ],
+        "title": "ReadFromData",
+        "description": "One reading the values settled with no question asked (BLUEPRINT §14.3, amendment:\nsettlement is visible), with its evidence and the answers that change it."
+      },
       "ReadingItem": {
         "properties": {
           "reading": {
@@ -5241,6 +5356,28 @@
         ],
         "title": "ReadingItem",
         "description": "One reading a block confirmation lists, with the value it shows."
+      },
+      "ReadingsCard": {
+        "properties": {
+          "read_from_data": {
+            "items": {
+              "$ref": "#/components/schemas/ReadFromData"
+            },
+            "type": "array",
+            "title": "Read From Data"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "read_from_data",
+          "sentence"
+        ],
+        "title": "ReadingsCard",
+        "description": "The readings card's \"read from your data\": every reading the values settled, never a\nrequired tap, and the methods record's line for them."
       },
       "Refusal": {
         "properties": {

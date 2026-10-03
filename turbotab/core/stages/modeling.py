@@ -1626,21 +1626,23 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         if column not in spec.inputs:
             raise ValueError(f"{column} is not one of the model's predictors, so energy cannot be "
                              f"moved through it.")
-    readings = {c: energy_factor(c) for c in (sub.donor, sub.recipient) if c not in percent}
-    for c, reading in readings.items():
-        if reading.factor is None:
-            raise ValueError(f"{c} carries no energy in a known unit: {reading.reason}.")
-    # BLUEPRINT §14.1 (the readings ledger): each kcal-per-unit factor is read settled only (a unit
-    # stated, corroborated by the Atwater identity, or confirmed); the substitution answer's
+    # BLUEPRINT §14.3 (every confirmation is honored): each kcal-per-unit factor is derived from
+    # the column's recorded unit (g → its Atwater factor, kg → 1,000 × it, kcal → 1, kJ → 1/4.184)
+    # or from grams the Atwater identity reads, never from its name; the substitution answer's
     # refusal asks it, and a curve recorded before the rule is not drawn on a guess.
-    from turbotab.core.readings import Unsettled, confirm_exit, listing, unsettled_factors
+    from turbotab.core.readings import Unsettled, factor_exits, kcal_per_unit as factor_of, listing
+    from turbotab.core.readings import _macros_in_grams_by_values
 
+    moved = [c for c in (sub.donor, sub.recipient) if c not in percent]
     with open_store(ctx) as store:
-        waiting = unsettled_factors(ctx.state, list(readings), store)
+        grams = _macros_in_grams_by_values(ctx.state, store)
+    readings = {c: factor_of(ctx.state, c, macros_in_grams=grams) for c in moved}
+    waiting = [c for c, r in readings.items() if not r.settled]
     if waiting:
-        raise Unsettled(f"{listing(waiting)}'s unit is unstated, so the kcal each unit carries is a "
-                        f"guess; confirm it before the curve is drawn.",
-                        exits=[confirm_exit("unit", c, "g", f"`{c}` is in grams") for c in waiting])
+        raise Unsettled(f"{listing(waiting)}'s kcal per unit is not settled: "
+                        + "; ".join(readings[c].why for c in waiting)
+                        + ". Record the unit before the curve is drawn.",
+                        exits=[e for c in waiting for e in factor_exits(c)])
     kcal_per_unit = {c: float(r.factor) for c, r in readings.items()}
 
     # The rows and fits the curve reads: under inference every analyzed row and the families refit
@@ -1797,10 +1799,13 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         said = omitted_sentence(omitted)
         if said:
             notes.append(said)
+    from turbotab.core.readings import confirmation as _recorded
+
     for c, reading in readings.items():
-        if not reading.declared:
-            notes.append(f"{c} is read as {reading.role} in grams at {reading.factor:g} kcal/g; its "
-                         f"name does not state the unit.")
+        if _recorded(ctx.state, "unit", c) is None:
+            # Settled by the values, not recorded (BLUEPRINT §14.3: settlement is visible).
+            notes.append(f"{c} is read in grams by its values (the Atwater identity holds with "
+                         f"total energy), at {reading.factor:g} kcal per gram.")
     if spec.multiple_imputation() and X_fit.isna().any().any():
         # WP7: the coefficient table pools the multiple imputations; the curve does not.
         which = ("the fit on every analyzed row, whose blanks are filled once without the outcome"

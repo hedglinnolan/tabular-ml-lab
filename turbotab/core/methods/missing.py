@@ -241,22 +241,52 @@ def energy_fill(spec_energy: Mapping[str, Any] | None, predictors: Sequence[str]
     return {"energy": energy, "nutrients": nutrients} if nutrients else None
 
 
-class EnergyAwareImputer(SimpleImputer):
+class MedianFill(SimpleImputer):
+    """SimpleImputer's median fill, except that a number with exactly two values (``two_valued``:
+    a 1/2-coded sex, a 0/1 smoker) is filled by its most frequent value on the fitting rows, as a
+    code is (the smallest of tied values, SimpleImputer's own rule), never by a median between the
+    two (BLUEPRINT §14.3: such a column is one indicator either way, so its two readings must fill
+    it alike). Everything else, the indicators included, is SimpleImputer's."""
+
+    def __init__(self, *, two_valued: Sequence[str] = (), strategy: str = "median",
+                 keep_empty_features: bool = True, add_indicator: bool = False,
+                 missing_values: Any = np.nan, fill_value: Any = None, copy: bool = True):
+        super().__init__(missing_values=missing_values, strategy=strategy, fill_value=fill_value,
+                         copy=copy, add_indicator=add_indicator,
+                         keep_empty_features=keep_empty_features)
+        self.two_valued = two_valued
+
+    def fit(self, X: Any, y: Any = None) -> "MedianFill":
+        super().fit(X, y)
+        two = set(self.two_valued or ())
+        if not two:
+            return self
+        frame = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X, columns=self.feature_names_in_)
+        for i, c in enumerate(self.feature_names_in_):
+            if str(c) in two:
+                present = pd.to_numeric(frame[c], errors="coerce").dropna()
+                if len(present):
+                    self.statistics_[i] = float(present.mode().iloc[0])
+        return self
+
+
+class EnergyAwareImputer(MedianFill):
     """A median fill (most frequent for categories is the caller's other part) in which each
     nutrient in ``nutrients`` is filled from its least-squares line on ``energy`` instead.
 
     Fit on the fitting rows only (in-fold): each nutrient's line is fit on the rows where both it
     and energy are observed; a row missing energy too reads energy at its median. A fill is kept
     within the nutrient's observed range on those rows. Every other column, the indicators and the
-    medians (``statistics_``) are exactly SimpleImputer's.
+    medians (``statistics_``) are exactly :class:`MedianFill`'s.
     """
 
     def __init__(self, *, energy: str | None = None, nutrients: Sequence[str] = (),
+                 two_valued: Sequence[str] = (),
                  strategy: str = "median", keep_empty_features: bool = True,
                  add_indicator: bool = False, missing_values: Any = np.nan, fill_value: Any = None,
                  copy: bool = True):
-        super().__init__(missing_values=missing_values, strategy=strategy, fill_value=fill_value,
-                         copy=copy, add_indicator=add_indicator,
+        super().__init__(two_valued=two_valued, missing_values=missing_values, strategy=strategy,
+                         fill_value=fill_value, copy=copy, add_indicator=add_indicator,
                          keep_empty_features=keep_empty_features)
         self.energy = energy
         self.nutrients = nutrients

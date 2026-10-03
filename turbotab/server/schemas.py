@@ -153,6 +153,26 @@ class Exit(Model):
     decision: Decision | None
 
 
+class ReadFromData(Model):
+    """One reading the values settled with no question asked (BLUEPRINT §14.3, amendment:
+    settlement is visible), with its evidence and the answers that change it."""
+
+    kind: str
+    column: str
+    value: Any
+    words: str  # what was read, as a predicate of the column ("is an amount (one slope)")
+    evidence: str
+    change: list[Exit]
+
+
+class ReadingsCard(Model):
+    """The readings card's "read from your data": every reading the values settled, never a
+    required tap, and the methods record's line for them."""
+
+    read_from_data: list[ReadFromData]
+    sentence: str
+
+
 class RefusalDetail(Model):
     code: str
     message: str

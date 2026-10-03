@@ -466,38 +466,69 @@ def nested_reason(nested: Mapping[str, str], nutrients: Sequence[str]) -> str | 
 
 
 def recorded_energy_unit(state: Any, energy: str | None) -> Any:
-    """The unit ``set_column_unit`` recorded for the energy column (kcal or kJ), or None."""
-    units = getattr(state, "column_units", None) or {}
-    spec = units.get(energy) if energy else None
-    if spec is None or getattr(spec, "unit", None) not in ("kcal", "kj"):
-        return None
-    return spec
+    """What the user recorded for the energy column, unit and days (``set_column_unit``, or a
+    unit's or a day count's own confirmation: one store, read through the one accessor,
+    ``readings.unit_record``), or None. Either part may be None while unrecorded."""
+    from turbotab.core.readings import unit_record
+
+    return unit_record(state, energy)
 
 
 # The bases that settle the energy unit; a magnitude prior or nothing at all only proposes one
 # (audit WP13 gate repair: the toddlers' 4,040 kJ read as kcal set the screens' bounds, the
 # implausible-intake count and the coach's "likely over-reporting", and no decision confirmed it).
 # The bases that settle an energy column's unit (BLUEPRINT §14.3): the user's record, and the
-# Atwater identity (kcal and kJ sit 4.184× apart against the macronutrients' energy). A name's
-# ``kcal`` or ``_kj`` is the best guess a question leads with, never a settlement.
+# Atwater identity where its ratio admits one reading only (near 1: kcal). A name's ``kcal`` or
+# ``_kj`` is the best guess a question leads with, never a settlement.
 SETTLED_UNIT_BASES = ("decision", "atwater")
+ENERGY_WORDS = {"kj": "kJ", "kcal": "kcal"}
 
 
 def energy_unit_reading(frame: pd.DataFrame, energy: str, recorded: Any = None) -> dict[str, Any]:
     """The energy column's unit and day count as the readings ledger holds them (BLUEPRINT §14.1):
     the unit (:func:`_energy_unit_named`), and how many days each value spans
     (:func:`turbotab.core.readings.day_count_reading`). ``confirmed`` only when both are settled.
+    ``recorded`` is what the user recorded (:func:`recorded_energy_unit`): the unit and the days
+    are each read from it when recorded, whichever decision recorded them (BLUEPRINT §14.3: the
+    fifth gate's ``confirm_reading`` kcal and 4 days were ignored by the screens).
 
-    The Atwater identity settles kcal against kJ and says nothing about days: the gate's 2-day
-    totals (``energy_kcal_day1_day2``, ``kcal_sum_d1_d2``, ``Energy (kcal) - 2 recalls``) followed
-    their 2-day macronutrients, were read as one day's intake, and a 5,000 kcal screen removed 135
-    of 500 rows where one true daily value exceeded it. One day is settled by the values only: a
-    median inside a day's band for the unit (NUTRITION_PACK §01), under a name that says nothing
-    of several days."""
+    The Atwater identity settles kcal and says nothing about days: the gate's 2-day totals
+    (``energy_kcal_day1_day2``, ``kcal_sum_d1_d2``, ``Energy (kcal) - 2 recalls``) followed their
+    2-day macronutrients, were read as one day's intake, and a 5,000 kcal screen removed 135 of
+    500 rows where one true daily value exceeded it. A ratio that fits several readings (4.00: kJ,
+    or a 4-day kcal total beside daily means) settles neither, and the question offers each as one
+    answer, unit and days together (``candidates``)."""
     from turbotab.core.readings import day_count_candidates, day_count_reading
+    from turbotab.core.voice import tick
 
-    reading = _energy_unit_named(frame, energy, recorded)
-    if reading["basis"] in ("decision", "days"):
+    unit_rec = getattr(recorded, "unit", None) if recorded is not None else None
+    days_rec = getattr(recorded, "days", None) if recorded is not None else None
+    if isinstance(recorded, Mapping):
+        unit_rec, days_rec = recorded.get("unit"), recorded.get("days")
+    if unit_rec is not None and str(unit_rec) not in ENERGY_WORDS:
+        # A unit recorded for total energy that is no energy unit (``g``): the screens read
+        # nothing in it, and say why (an answer is never read as another).
+        return {"unit": "kcal", "basis": "not_energy", "days": int(days_rec or 1),
+                "confirmed": False, "unit_settled": False, "recorded_unit": str(unit_rec),
+                "sentence": f"{tick(energy)} is recorded in {unit_rec}, which is no unit of energy; "
+                            f"record kcal or kJ before screening by it."}
+    reading = _energy_unit_named(frame, energy, str(unit_rec) if unit_rec is not None else None)
+    if reading["basis"] == "days" and days_rec is None:
+        return reading
+    if days_rec is not None:
+        days = int(days_rec)
+        reading["days"] = days
+        reading["days_recorded"] = True
+        reading["confirmed"] = bool(reading.get("unit_settled"))
+        if reading["basis"] == "days":
+            reading["basis"] = "name"
+        if reading["basis"] == "decision":
+            word = ENERGY_WORDS[str(reading["unit"])]
+            over = f", a total over {days} days" if days > 1 else ""
+            reading["sentence"] = f"{tick(energy)} is in {word}{over}, as recorded."
+        elif not reading["unit_settled"]:
+            reading["sentence"] = (f"{reading['sentence']} Each value spans {days} "
+                                   f"day{'s' if days != 1 else ''}, as recorded.")
         return reading
     values = frame[energy] if energy in frame.columns else None
     days = day_count_reading(energy, values, unit=str(reading["unit"]))
@@ -505,12 +536,13 @@ def energy_unit_reading(frame: pd.DataFrame, energy: str, recorded: Any = None) 
     if not days.settled:
         reading["confirmed"] = False
         reading["days_unsettled"] = True
-        reading["days_candidates"] = day_count_candidates(energy, values, unit=str(reading["unit"]))
-        from turbotab.core.voice import tick
-
-        reading["sentence"] = (f"{reading['sentence']} How many days each value spans is not "
-                               f"settled: {days.evidence}; record it before screening by "
-                               f"{tick(energy)}.")
+        found = day_count_candidates(energy, values, unit=str(reading["unit"]))
+        found += [d for u, d in reading.get("candidates") or [] if d not in found]
+        reading["days_candidates"] = found
+        if reading["basis"] != "atwater_ambiguous":
+            reading["sentence"] = (f"{reading['sentence']} How many days each value spans is not "
+                                   f"settled: {days.evidence}; record it before screening by "
+                                   f"{tick(energy)}.")
     return reading
 
 
@@ -542,12 +574,10 @@ def _energy_unit_named(frame: pd.DataFrame, energy: str, recorded: Any = None) -
 
     col = tick(energy)
     if recorded is not None:
-        unit = str(recorded.unit)
-        days = int(getattr(recorded, "days", 1) or 1)
+        unit = str(recorded)
         word = "kJ" if unit == "kj" else "kcal"
-        over = f", a total over {days} days" if days > 1 else ""
-        return {"unit": unit, "basis": "decision", "days": days, "confirmed": True,
-                "unit_settled": True, "sentence": f"{col} is in {word}{over}, as recorded."}
+        return {"unit": unit, "basis": "decision", "days": 1, "confirmed": True,
+                "unit_settled": True, "sentence": f"{col} is in {word}, as recorded."}
 
     def out(unit: str, basis: str, sentence: str) -> dict[str, Any]:
         return {"unit": unit, "basis": basis, "days": 1, "confirmed": basis in SETTLED_UNIT_BASES,
@@ -580,8 +610,20 @@ def _energy_unit_named(frame: pd.DataFrame, energy: str, recorded: Any = None) -
 
     verdict = atwater_unit(frame, energy) if energy in frame.columns else None
     if verdict is not None and verdict.settles:
-        word = "kilojoules" if verdict.value == "kj" else "kcal"
-        return out(str(verdict.value), "atwater", f"{col} {verdict.evidence}: {word}.")
+        return out(str(verdict.value), "atwater", f"{col} {verdict.evidence}.")
+    if verdict is not None and verdict.candidates:
+        # BLUEPRINT §14.3 (amendment after the fifth gate): the ratio fits more than one reading
+        # (4.00: kJ, or a 4-day kcal total beside daily-mean macronutrients); the unit and the
+        # days are asked together, the name's unit first among them when it spells one.
+        named = "kj" if unit_of(energy) == "kj" else ("kcal" if unit_of(energy) == "kcal"
+                                                      or energy_unit(energy) == "kcal" else None)
+        pairs = sorted(verdict.candidates, key=lambda p: (p[0] != named, p[1]))
+        reading = out(str(pairs[0][0]), "atwater_ambiguous",
+                      f"{col} {verdict.evidence}; record its unit and the days each value spans "
+                      f"before screening by it.")
+        reading["days"] = int(pairs[0][1])
+        reading["candidates"] = [list(p) for p in pairs]
+        return reading
     if unit_of(energy) == "kcal" or energy_unit(energy) == "kcal":
         return out("kcal", "name", f"{col} says kcal in its name.")
     if energy in frame.columns:
@@ -619,6 +661,15 @@ def unit_refusal(energy: str, reading: Mapping[str, Any] | None) -> str | None:
     if reading is None or reading.get("confirmed", True):
         return None
     word = "kJ" if reading.get("unit") == "kj" else "kcal"
+    if reading.get("basis") == "not_energy":
+        return (f"Refused until {tick(energy)}'s unit is recorded as kcal or kJ: it is recorded in "
+                f"{reading.get('recorded_unit')}, which is no unit of energy.")
+    if reading.get("basis") == "atwater_ambiguous":
+        fits = " or ".join(f"{ENERGY_WORDS[u]}" + (f" over {d} days" if int(d) > 1 else "")
+                           for u, d in reading.get("candidates") or [])
+        return (f"Refused until {tick(energy)}'s unit and days are recorded: against the energy "
+                f"its macronutrients carry it reads as {fits}, which its values cannot tell "
+                f"apart, and the screen's bounds are read in it.")
     if reading.get("days_unsettled") and reading.get("basis") in SETTLED_UNIT_BASES:
         evidence = (reading.get("days_reading") or {}).get("evidence") or "nothing settles it"
         return (f"Refused until {tick(energy)}'s days are recorded: {evidence}, so whether each "
@@ -816,30 +867,57 @@ def _named(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame, names: se
 def body_columns(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame,
                  roles: Mapping[str, str], units: Mapping[str, Any] | None = None,
                  state: Any = None) -> dict[str, Any]:
-    """Age (years), weight (kg) and height (cm or m) columns, when their names and values agree.
-    An age recorded in another unit (``set_column_unit``: months) is no age in years."""
-    age = _named(info, frame, _AGE_NAMES, roles, 10, 100)
-    recorded = (units or {}).get(age) if age else None
-    if recorded is not None and getattr(recorded, "unit", "years") != "years":
-        age = None
-    weight = _named(info, frame, _WEIGHT_NAMES, roles, 25, 200)
-    from turbotab.core.readings import confirmation
+    """Age (years), weight (kg or lb) and height (cm or m) columns, when their names and values
+    agree, each read in the unit the user recorded for it (the one accessor,
+    ``readings.unit_record``; BLUEPRINT §14.3, every confirmation is honored):
 
-    recorded_weight = None
-    for c in info:
-        spec = (units or {}).get(c)
-        said = confirmation(state, "unit", c) if state is not None else getattr(spec, "unit", None)
-        if str(c).lower() in _WEIGHT_NAMES and said == "lb" and c in frame.columns:
-            recorded_weight = c
-    if recorded_weight is not None:
-        # A weight recorded in pounds: its median read in kilograms (1 lb = 0.45359237 kg).
-        median = pd.to_numeric(frame[recorded_weight], errors="coerce").median() * 0.45359237
-        weight = recorded_weight if 25 <= float(median) <= 200 else None
-    height = _named(info, frame, _HEIGHT_NAMES, roles, 100, 230)
-    unit = "cm"
-    if height is None:
-        height, unit = _named(info, frame, _HEIGHT_NAMES, roles, 1.0, 2.3), "m"
-    return {"age": age, "weight": weight, "height": height, "height_unit": unit}
+    * an age recorded in another unit than years (months) is no age in years: not read;
+    * a weight recorded in lb is read in lb (converted exactly by the screen), in kg as kg, and
+      in any other unit (g, a length) not at all;
+    * a height recorded in cm or m is read in it, and in any other unit (inches, which the BMR
+      equation does not take) not at all: the weight-only equation is used;
+    * an unrecorded measure is found by its median's band, as proposed (its own refusal asks)."""
+    from turbotab.core.readings import _get, unit_record
+
+    def recorded(column: str | None) -> Any:
+        if column is None:
+            return None
+        spec = (unit_record(state, column) if state is not None
+                else unit_record(None, column, units=units or {}))
+        return _get(spec, "unit") if spec is not None else None
+
+    def named(names: set[str]) -> list[str]:
+        return [str(c) for c in info if str(c).lower() in names and c in frame.columns
+                and roles.get(c) not in _NOT_A_MEASURE]
+
+    def median(column: str) -> float:
+        values = pd.to_numeric(frame[column], errors="coerce")
+        return float(values.median()) if values.notna().sum() else float("nan")
+
+    age = _named(info, frame, _AGE_NAMES, roles, 10, 100)
+    if age is not None and recorded(age) not in (None, "years"):
+        age = None
+    weight, weight_unit = None, "kg"
+    for c in named(_WEIGHT_NAMES):
+        said = recorded(c)
+        factor = {None: 1.0, "kg": 1.0, "lb": 0.45359237}.get(said)
+        if factor is not None and 25 <= median(c) * factor <= 200:
+            weight, weight_unit = c, ("lb" if said == "lb" else "kg")
+            break
+    height, height_unit = None, "cm"
+    for c in named(_HEIGHT_NAMES):
+        said = recorded(c)
+        if said in ("cm", "m"):
+            height, height_unit = c, str(said)
+            break
+        if said is None and 100 <= median(c) <= 230:
+            height, height_unit = c, "cm"
+            break
+        if said is None and 1.0 <= median(c) <= 2.3:
+            height, height_unit = c, "m"
+            break
+    return {"age": age, "weight": weight, "weight_unit": weight_unit, "height": height,
+            "height_unit": height_unit}
 
 
 def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]], *, energy: str,
@@ -865,12 +943,9 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
     if unit_reading is not None and int(unit_reading.get("days") or 1) > 1:
         return None  # Goldberg reads a day's mean intake; a total over days is not one
     height = body["height"]
-    from turbotab.core.readings import body_unit_reading
-
     # The weight's unit as the ledger holds it (BLUEPRINT §14.3): a recorded pound is converted to
     # kilograms exactly, so the count shown is the screen's own, never one read in the wrong unit.
-    weight_reading = body_unit_reading(body["weight"], "weight", state)
-    weight_unit = "lb" if weight_reading.value == "lb" else "kg"
+    weight_unit = str(body.get("weight_unit") or "kg")
     rule = GoldbergRule(
         column=energy, energy_unit="kj" if unit == "kj" else "kcal", days=days, sex=sex,
         female=[k for k, v in sex_levels.items() if v == "female"],
@@ -1094,6 +1169,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     roles a number-changing default may read (:func:`turbotab.core.readings.settled_columns`;
     BLUEPRINT §14), every role as given when None.
     """
+    from turbotab.core.readings import unit_record
     from turbotab.core.voice import tick
 
     info = {str(c["name"]): c for c in columns}
@@ -1116,8 +1192,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     energy = energy_read["column"] if energy_read is not None else None
     settled_unit = None
     if energy is not None and energy in frame.columns:
-        recorded = (units or {}).get(energy)
-        recorded = recorded if getattr(recorded, "unit", None) in ("kcal", "kj") else None
+        recorded = unit_record(state, energy, units=units)
         first = energy_unit_reading(frame, energy, recorded)
         # A share of a day's energy reads the unit alone: settled by the record or the Atwater
         # identity, whatever the days (BLUEPRINT §14.3).
@@ -1149,8 +1224,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     unit = "kcal"
     unit_reading = None
     if energy is not None and energy in frame.columns:
-        recorded = (units or {}).get(energy)
-        recorded = recorded if getattr(recorded, "unit", None) in ("kcal", "kj") else None
+        recorded = unit_record(state, energy, units=units)
         unit_reading = energy_unit_reading(frame, energy, recorded)
         unit = unit_reading["unit"]
         if energy != target:  # an eligibility rule never reads the outcome (audit RO-01)

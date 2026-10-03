@@ -138,7 +138,8 @@ def _stage(frame: pd.DataFrame, folder: Path, *, n_boot: int, recipient: str = "
     roles["energy_kcal"] = "energy"
     st = mf.state(roles=roles, target="y", models=list(models),
                   substitution=SubstitutionSpec(donor="fat_g", recipient=recipient, step_kcal=100.0,
-                                                n_boot=n_boot))
+                                                n_boot=n_boot),
+                  column_units=mf.grams(*[c for c in frame.columns if c.endswith("_g")]))
     split = mf.split_bundle(np.arange(len(frame)), holdout=0.0)
     ti = mf.target_info("regression", "y")
     design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))

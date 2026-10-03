@@ -145,9 +145,12 @@ def build_graph() -> Graph:
             # counts no misreport, and a day count the values do not settle is asked.
             # findings 13 (corroboration must discriminate, BLUEPRINT §14.3): a numeric sex column is
             # read for the growth charts only as the user confirmed its coding.
+            # findings 14 (ledger repair 2, BLUEPRINT §14.3 amendment): the energy unit by the Atwater
+            # identity only where its ratio admits one reading; a unit or day count confirmed on its
+            # own is read with the recorded ones (one store).
             Stage(
                 "findings",
-                13,
+                14,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
@@ -170,14 +173,17 @@ def build_graph() -> Graph:
             # one (the reading's is proposed); the whole numbers that may be codes or counts.
             # structure 11 (BLUEPRINT §14.3): every whole-valued number that changes within units is
             # asked as codes or amounts, whatever its count or type.
-            Stage("structure", 11, ("oriented",),
+            # structure 12 (ledger repair 2): values with decimals that do not fill their grid (codes
+            # written with a decimal point) are asked as codes or amounts too.
+            Stage("structure", 12, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings", "temporal",
                    "shape_confirmations"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             # working 3 (the readings ledger): a code or a count is combined only as the user said,
             # and first, last and change only by a settled time column.
             # working 4 (BLUEPRINT §14.3): as structure 11.
-            Stage("working", 4, ("oriented", "findings", "structure"),
+            # working 5 (ledger repair 2): as structure 12.
+            Stage("working", 5, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -189,9 +195,11 @@ def build_graph() -> Graph:
             # (ordered or not); a bare amount the quantity does not take is no stated unit.
             # target_info 6 (BLUEPRINT §14.3): no unit is stated from a header (a name); the header's
             # letters are the proposal.
+            # target_info 7 (ledger repair 2): the task is settled only by its registry value test (two
+            # values; decimals filling their grid), never by the dtype.
             Stage(
                 "target_info",
-                6,
+                7,
                 ("working",),
                 ("target", "task", "outcome_unit"),
                 target_info_stage,
@@ -215,7 +223,9 @@ def build_graph() -> Graph:
             # roles 7 (corroboration must discriminate, BLUEPRINT §14.3): high only where a value test
             # rejects every alternative: a repeating identifier, a time-named number, a visit index,
             # a many-label text column and a design name are asked.
-            Stage("roles", 7, ("working",), ("lens", "target", "purpose", "grain"), roles_stage,
+            # roles 8 (ledger repair 2): a flag (a skip-pattern gate marks blanks the same way) and a
+            # date that changes within units (an assay's run date does too) are proposed medium.
+            Stage("roles", 8, ("working",), ("lens", "target", "purpose", "grain"), roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -244,7 +254,10 @@ def build_graph() -> Graph:
             # proposals 14 (corroboration must discriminate, BLUEPRINT §14.3): a day count and a body
             # measure's unit are settled only as recorded (a header is a name); a recorded pound is
             # converted exactly; a numeric sex column is read as the user confirmed its coding.
-            Stage("proposals", 14, ("working", "roles"),
+            # proposals 15 (ledger repair 2): the energy unit and days are read through the one
+            # accessor, whichever answer recorded them; an Atwater ratio that fits several readings
+            # (4.00: kJ, or a 4-day kcal total) settles neither and offers each.
+            Stage("proposals", 15, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings"),
                   proposals_stage, label="Looking up what the field usually does"),
@@ -295,7 +308,10 @@ def build_graph() -> Graph:
             # a role that rode along, or a whole-number predictor's code-or-amount reading, is asked.
             # design 16 (BLUEPRINT §14.3): codes or amounts asked for every whole-valued predictor, and
             # the user's code answer read wherever it is kept.
-            Stage("design", 16, ("working", "split", "target_info"),
+            # design 17 (ledger repair 2): a column the energy answer removes or computes with never
+            # reaches the one-hot step as codes; a number with two values is filled by its most
+            # frequent value.
+            Stage("design", 17, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -317,7 +333,8 @@ def build_graph() -> Graph:
             # survey question too, so the inference table waits for its answer.
             # fit 14 (BLUEPRINT §14.3): the intervals cluster by the grain's unit or a grouping the
             # user confirmed, never by a reader's identifier over the grain answer.
-            Stage("fit", 14, ("working", "design", "split", "target_info", "cohort"),
+            # fit 15 (ledger repair 2): multiple imputation fills a number with two values as a yes/no.
+            Stage("fit", 15, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
@@ -331,9 +348,11 @@ def build_graph() -> Graph:
             # recorded or spelled out by its name.
             # substitution 10 (the readings ledger, BLUEPRINT §14.1): each kcal-per-unit factor is
             # read settled only.
-            Stage("substitution", 10, ("working", "fit", "design"),
+            # substitution 11 (ledger repair 2): each kcal per unit derives from the recorded unit (g, kg,
+            # kcal, kJ) or grams the Atwater identity reads, never from a name.
+            Stage("substitution", 11, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
-                   *ROLE_READS),
+                   "column_units", *ROLE_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
@@ -355,14 +374,16 @@ def build_graph() -> Graph:
             # sensitivity 4 (methods gate): the outcome keeps its own values (a True/False event).
             # sensitivity 5 (gate repair): as fit 13, a half-read survey design waits for its answer.
             # sensitivity 6 (recognition's leash): its clusters read settled roles only.
-            Stage("sensitivity", 7, ("working", "design", "split", "target_info"),
+            # sensitivity 8 (ledger repair 2): as fit 15.
+            Stage("sensitivity", 8, ("working", "design", "split", "target_info"),
                   SENSITIVITY_READS, sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
             # calibration 4 (methods gate): the outcome keeps its own values (a True/False event).
             # calibration 5, sensitivity 7 (the readings ledger): each reads the readings' own
             # confirmations; calibration applies only on an answered repeat kind.
-            Stage("calibration", 5,
+            # calibration 6 (ledger repair 2): as design 17.
+            Stage("calibration", 6,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   CALIBRATION_READS, calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),

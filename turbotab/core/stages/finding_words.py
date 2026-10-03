@@ -78,7 +78,9 @@ class FindingContext:
         reading = self.energy or {}
         if reading.get("column") != column:
             return False
-        recorded = (self.units or {}).get(column)
+        from turbotab.core.readings import unit_record
+
+        recorded = unit_record(None, column, units=self.units or {})
         if getattr(recorded, "unit", None) in ("kcal", "kj"):
             # The user recorded its energy unit (``set_column_unit``): their own answer that it is a
             # day's, or several days', energy intake.
@@ -340,9 +342,9 @@ def energy_unit_of(fc: FindingContext, column: str | None) -> dict[str, Any] | N
         return None
     from turbotab.core.stages.proposals import energy_unit_reading
 
-    recorded = (fc.units or {}).get(column)
-    recorded = recorded if getattr(recorded, "unit", None) in ("kcal", "kj") else None
-    return energy_unit_reading(fc.frame, column, recorded)
+    from turbotab.core.readings import unit_record
+
+    return energy_unit_reading(fc.frame, column, unit_record(None, column, units=fc.units or {}))
 
 
 def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> None:
@@ -380,7 +382,7 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
     n = below + above
     word = "kJ" if reading["unit"] == "kj" else "kcal"
     if not reading.get("confirmed", True) and reading.get("days_unsettled") \
-            and reading.get("basis") in ("name", "atwater"):
+            and reading.get("basis") in ("name", "atwater", "decision"):
         # BLUEPRINT §14.1: the unit is settled (Atwater or the name), the days are not: the gate's
         # ``energy_kcal_day1_day2`` (2-day totals) had 135 rows called implausible daily intakes.
         spans = [d for d in reading.get("days_candidates") or [] if d > 1] or [2]

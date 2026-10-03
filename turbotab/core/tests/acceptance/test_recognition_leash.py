@@ -482,15 +482,20 @@ def test_a2_identifier_flag_and_time_words_need_their_values(tmp_path):
             assert roles[c]["confidence"] != "high", (lens, c, roles[c])
         for c in ("sbp_imp", "hba1c_imputed", "imp_ldl"):
             assert f"`{adam[c].nunique():,}` different values" in roles[c]["reason"], roles[c]
-    # A true flag: binary, and exactly where its base is blank (pandas).
+    # A true flag: binary, and exactly where its base is blank (pandas). BLUEPRINT §14.3,
+    # amendment after the fifth gate: a survey's skip-pattern gate marks its follow-up's blanks
+    # the same way (NHANES ALQ111 "No" skips ALQ130), so the tie is the guess's evidence and the
+    # user settles the flag; it is proposed, linked to its base, below high.
     marked = adam.drop(columns=["sbp_imp"]).assign(sbp_flag=adam["sbp"].isna().astype(int))
     roles = _roles(_write(marked, tmp_path, "marked.csv"), lens=["clinical"], target="ldl_wk12")
     assert (roles["sbp_flag"]["proposed"], roles["sbp_flag"]["confidence"],
-            roles["sbp_flag"]["linked_to"]) == ("flag", "high", "sbp")
-    # The same flag shuffled is no longer tied to the blanks: below high.
+            roles["sbp_flag"]["linked_to"]) == ("flag", "medium", "sbp")
+    assert "Marks `sbp`'s missing values" in roles["sbp_flag"]["reason"], roles["sbp_flag"]
+    # The same flag shuffled is no longer tied to the blanks: its reason says so.
     shuffled = marked.assign(sbp_flag=np.random.default_rng(1).permutation(marked["sbp_flag"]))
     roles = _roles(_write(shuffled, tmp_path, "shuffled.csv"), lens=["clinical"], target="ldl_wk12")
     assert roles["sbp_flag"]["confidence"] != "high", roles["sbp_flag"]
+    assert "Marks `sbp`'s missing values" not in roles["sbp_flag"]["reason"], roles["sbp_flag"]
 
 
 def test_a2_the_case_control_inference_never_clusters_by_a_category(tmp_path):
