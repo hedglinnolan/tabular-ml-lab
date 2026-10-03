@@ -89,20 +89,25 @@ def build_graph() -> Graph:
         [
             Stage("ingest", 1, (), (), ingest_stage, heavy=True, label="Reading the file"),
             # ── M2: what the table is (M2_CONTRACT §2) ──
-            Stage("oriented", 2, ("ingest",), ("orientation", "feature_table"), oriented_stage,
+            # oriented 3 (WP14): the names are read before the shape, and the shape is scale-aware.
+            Stage("oriented", 3, ("ingest",), ("orientation", "feature_table"), oriented_stage,
                   heavy=True, label="Reading which way round the table is"),
+            # profile 2 (WP14): lens hints need positive evidence (turbotab.core.detectors.lenses).
             Stage(
                 "profile",
-                1,
+                2,
                 ("oriented",),
                 (),
                 profile_stage,
                 heavy=True,
                 label="Summarizing every column",
             ),
+            # findings 5 (WP14): the detectors that fired on clean data are read by
+            # turbotab.core.detectors (codes, survey scales, drift, redundancy, plausibility,
+            # genomics data type).
             Stage(
                 "findings",
-                4,
+                5,
                 ("oriented",),
                 ("lens", "target"),
                 findings_stage,
@@ -112,7 +117,8 @@ def build_graph() -> Graph:
             ),
             # structure reads ``findings`` for the date-reading repair: a date column that reads
             # both month-first and day-first is read only once that is answered (audit MA-05).
-            Stage("structure", 4, ("oriented",),
+            # structure 5 (WP14): repeats are stated only when unambiguous.
+            Stage("structure", 5, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             Stage("working", 2, ("oriented", "findings", "structure"),

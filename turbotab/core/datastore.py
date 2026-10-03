@@ -1714,9 +1714,15 @@ class DataStore:
         """Histogram over the finite values of a numeric/integer column.
 
         ``n_missing`` counts the values not drawn: missing, NaN or infinite, so
-        ``sum(counts) + n_missing == n_rows``. An integer column whose range
-        fits in ``bins`` gets one bin per integer, centered on it.
+        ``sum(counts) + n_missing == n_rows``. Bins are aligned to the column's resolution (audit
+        MI-01): values recorded to a step (whole years, a score, HbA1c to 0.1) get bins a whole
+        number of steps wide with edges half a step off the grid, so no bin is a sawtooth artifact;
+        the rule and the bin assignment are ``turbotab.core.detectors.bins``, which the preview
+        histograms (``consequences._histogram_pair``) use too. ``bins`` is then the most bins
+        drawn; values with no common step get exactly ``bins`` equal bins.
         """
+        from turbotab.core.detectors import bins as binning
+
         (col,) = self._resolve([column])
         ci = self._column_map()[col]
         if ci.dtype not in ("numeric", "integer"):
@@ -1736,16 +1742,11 @@ class DataStore:
             if n_ok == 0:
                 return {"column": col, "edges": [], "counts": [], "n_missing": n_rows}
             lo, hi = float(lo), float(hi)
-            if ci.dtype == "integer" and hi - lo + 1 <= bins:
-                nb = int(hi - lo) + 1
-                start, width = lo - 0.5, 1.0
-                edges = [start + i for i in range(nb + 1)]
-            elif hi == lo:
-                nb, start, width = 1, lo - 0.5, 1.0
-                edges = [lo - 0.5, lo + 0.5]
-            else:
-                nb, start, width = bins, lo, (hi - lo) / bins
-                edges = [lo + i * width for i in range(bins)] + [hi]
+            grid = cur.execute(
+                f"SELECT {binning.resolution_sql('v')} FROM "
+                f"(SELECT DISTINCT {x} AS v FROM {self._rel} WHERE {finite})").fetchone()
+            step = next((s for s, ok in zip(binning.STEPS, grid) if ok), None)
+            start, width, nb, edges = binning.layout(lo, hi, step, bins)
             rows = cur.execute(
                 f"SELECT least(greatest(CAST(floor(({x} - ?) / ?) AS BIGINT), 0), ?) AS b, "
                 f"count(*) FROM {self._rel} WHERE {finite} GROUP BY b",

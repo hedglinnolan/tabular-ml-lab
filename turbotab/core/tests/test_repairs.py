@@ -110,10 +110,10 @@ def test_impossible_values_set_to_missing_exactly_as_pandas_says(tables):
     frame = table.frame()
     f = finding(artifact, "pack::clinical::impossible_vs_extreme")
     assert [o["key"] for o in f["repairs"]] == ["set_missing", "exclude_rows", "unusable"]
-    assert f["repairs"][0]["decision"]["params"]["bands"] == {"sbp": [40.0, 300.0]}
+    assert f["repairs"][0]["decision"]["params"]["bands"] == {"sbp": [30.0, 300.0]}
     got = sql_frame(table, artifact, {f["id"]: applied(f, "set_missing")}, ["sbp"])
     x = frame["sbp"]
-    reference = x.mask((x < 40) | (x > 300))
+    reference = x.mask((x < 30) | (x > 300))  # CLINICAL_SURVEY_PACK §A1.2: SBP 30–300
     same(got["sbp"], reference)
     assert int(got["sbp"].isna().sum() - x.isna().sum()) == 4  # clinical_labs.md: 4 impossible sbp
     assert int((got["sbp"] > 200).sum()) == int((x > 200).sum())  # the abnormal but real stay
@@ -128,7 +128,7 @@ def test_impossible_values_excluded_leave_the_flow_as_exactly_those_rows(tables)
     state = ProjectState(target="readmitted", findings={f["id"]: applied(f, "exclude_rows")})
     with table.store() as store:
         steps, kept, _ = compute_cohort(store, state, table.info)
-    outside = (frame["sbp"] < 40) | (frame["sbp"] > 300)
+    outside = (frame["sbp"] < 30) | (frame["sbp"] > 300)
     reference = frame.index[frame["readmitted"].notna() & ~outside].to_numpy()
     np.testing.assert_array_equal(np.sort(kept), np.sort(reference))
     step = next(s for s in steps if s["key"] == "repair:0")
@@ -157,11 +157,14 @@ def test_sas_zeros_become_zero_and_compose_with_the_impossible_band(tables):
         assert not repairs.is_sas_zero(got[column].to_numpy(dtype=float, na_value=np.nan)).any()
     assert int((got["bp_di"] == 0).sum()) == 119
     # With the impossible values set to missing too, SAS zeros run first: a zero diastolic is
-    # impossible, so it ends blank, as the pandas composition says.
+    # outside 10–200 mmHg (CLINICAL_SURVEY_PACK §A1.2), so it ends blank, as the pandas
+    # composition says. Total energy is a dietary report, not a physiology band (audit IN-09):
+    # the plausibility repair leaves it as the SAS-zero repair wrote it.
     band = finding(artifact, "pack::clinical::impossible_vs_extreme")
+    assert "kcal" not in band["repairs"][0]["decision"]["params"]["bands"]
     both = {sas["id"]: applied(sas), band["id"]: applied(band, "set_missing")}
     got = sql_frame(table, artifact, both, ["bp_di", "kcal"])
-    for column, (lo, hi) in (("bp_di", (15, 220)), ("kcal", (100, 30000))):
+    for column, (lo, hi) in (("bp_di", (10, 200)), ("kcal", (-np.inf, np.inf))):
         x = frame[column]
         x = x.mask(repairs.is_sas_zero(x.to_numpy(dtype=float, na_value=np.nan)), 0.0)
         same(got[column], x.mask((x < lo) | (x > hi)))
@@ -373,7 +376,7 @@ def test_apply_repair_is_refused_unless_the_finding_offers_it(tables):
     # Named alone, the option is completed with the finding's own params, so the record says
     # exactly what it does.
     done = validate(ApplyRepair(finding_id=f["id"], option="set_missing"), ctx)
-    assert done.params["bands"] == {"sbp": [40.0, 300.0]}
+    assert done.params["bands"] == {"sbp": [30.0, 300.0]}
     # A two-form option must be chosen; a part of an offer is admitted (some codes, not all).
     sex = finding(artifact, "binary_text__sex")
     with pytest.raises(Refusal) as two:

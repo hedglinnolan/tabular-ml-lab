@@ -81,9 +81,11 @@ def profile_stage(ctx: StageContext) -> dict[str, Any]:
                     f"because {why}, and not even one row fits."
                 )
     ctx.progress(0.85, "Looking for lens hints")
-    from turbotab import packs
+    # WP14 (audit IN-13): each hint needs positive evidence, survey before width
+    # (turbotab.core.detectors.lenses, in place of packs.suggest).
+    from turbotab.core.detectors import lenses
 
-    hints = packs.suggest(frame.reset_index(drop=True)).get("hints", []) if frame is not None else []
+    hints = lenses.hints(frame.reset_index(drop=True)) if frame is not None else []
     lens_hints = [
         {"lens": str(h["lens"]), "because": str(h["because"])}
         for h in hints

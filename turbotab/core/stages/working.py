@@ -313,6 +313,11 @@ def orientation_reading(parquet: Path, info: Mapping[str, Any]) -> dict[str, Any
     if len(cols) < o.MIN_NUMERIC_COLUMNS or n < o.MIN_ROWS:
         return _blank_reading(n, 0, "There is not enough of a numeric block to say which way "
                                     "round this table is.")
+    # WP14 (audit IN-11): the names are read first (turbotab.core.detectors.orientation.cue), and
+    # columns that describe the features (m/z, RT, MZmine's "row …") stay out of the shape's block.
+    from turbotab.core.detectors import orientation as cues
+
+    cols = [c for c in cols if not is_feature_annotation(c)] or cols
     pf = pq.ParquetFile(parquet)
     try:
         schema = pf.schema_arrow
@@ -320,6 +325,7 @@ def orientation_reading(parquet: Path, info: Mapping[str, Any]) -> dict[str, Any
         row_means: list[Any] = []
         sums = np.zeros(len(cols))
         counts = np.zeros(len(cols))
+        lo, hi = np.inf, -np.inf
         for group in range(pf.metadata.num_row_groups):
             table = pf.reader.read_row_group(group, column_indices=indices)
             block = np.column_stack([
@@ -331,11 +337,19 @@ def orientation_reading(parquet: Path, info: Mapping[str, Any]) -> dict[str, Any
                                           np.nansum(block, axis=1) / present.sum(axis=1), np.nan))
             sums += np.nansum(block, axis=0)
             counts += present.sum(axis=0)
+            if present.any():
+                lo, hi = min(lo, float(np.nanmin(block))), max(hi, float(np.nanmax(block)))
     finally:
         pf.close()
     with np.errstate(invalid="ignore", divide="ignore"):
         col_means = np.where(counts > 0, sums / np.maximum(counts, 1), np.nan)
-    s_rows = o._spread(pd.Series(np.concatenate(row_means) if row_means else []))
+    every_row = np.concatenate(row_means) if row_means else np.array([])
+    read = cues.shape(every_row, col_means, lo, hi, n, len(cols))
+    if read is not None:
+        return {**read, "n_rows": n, "n_numeric": len(cols), "basis": "shape",
+                # never "high": a reading that could auto-advance would transpose on the app's say-so
+                "confidence": "medium" if read["reading"] != o.UNDETERMINED else "low"}
+    s_rows = o._spread(pd.Series(every_row))
     s_cols = o._spread(pd.Series(col_means))
     if s_rows is None or s_cols is None or s_cols <= 0:
         return _blank_reading(n, len(cols), "The numeric block is not spread enough on either axis "
@@ -364,6 +378,33 @@ def orientation_reading(parquet: Path, info: Mapping[str, Any]) -> dict[str, Any
             "sentence": sentence,
             # never "high": a reading that could auto-advance would transpose on the app's say-so
             "confidence": "medium" if reading != o.UNDETERMINED else "low"}
+
+
+def named_reading(parquet: Path, info: Mapping[str, Any], shape: dict[str, Any]) -> dict[str, Any]:
+    """The orientation reading with the names read first (METABOLOMICS_PACK §01's cascade: header
+    tokens, then feature- and sample-name grammar, then shape); ``shape`` when the names say
+    nothing. Never high confidence (audit IN-11)."""
+    import pyarrow.parquet as pq
+
+    from turbotab.core.detectors import orientation as cues
+
+    columns = [str(c["name"]) for c in info["columns"] if str(c["name"]) != ROW_ID]
+    numeric = [str(c["name"]) for c in info["columns"] if c["dtype"] in NUMERIC
+               and str(c["name"]) != ROW_ID]
+    label = label_column(info)
+    values: list[str] = []
+    if label is not None:
+        try:
+            values = [str(v) for v in pq.read_table(parquet, columns=[label]).column(0)
+                      .slice(0, 2000).to_pylist() if v is not None]
+        except Exception:  # noqa: BLE001 - no label values: the column names still speak
+            values = []
+    found = cues.cue(columns, numeric, label, values)
+    if found is None:
+        return {**shape, "basis": shape.get("basis", "shape")}
+    return {**shape, "reading": found["reading"], "sentence": found["sentence"],
+            "basis": "names", "cue": found["cue"], "shape_reading": shape.get("reading"),
+            "confidence": "medium"}
 
 
 def label_column(info: Mapping[str, Any]) -> str | None:
@@ -803,7 +844,7 @@ def oriented_stage(ctx: StageContext) -> Bundle:
     raw = Path(ctx.paths["data"])
     info = dict(ctx.inputs["ingest"])
     ctx.progress(0.02, "Reading which way round the table is")
-    reading = orientation_reading(raw, info)
+    reading = named_reading(raw, info, orientation_reading(raw, info))
     con, temp = _connect(ctx, "oriented")
     declared = getattr(ctx.state, "feature_table", None)
     try:
@@ -1012,7 +1053,10 @@ def structure_stage(ctx: StageContext) -> dict[str, Any]:
         keep = np.random.default_rng(0).choice(known, size=READING_UNITS, replace=False)
         sampled = frame[ids.isin(keep)]
     sampled = sampled.drop(columns=[c for c in unread if c != unit])
-    reading = repeats.read(sampled, unit)
+    # WP14 (audit IN-12): stated only when unambiguous; time-point and recall evidence are read.
+    from turbotab.core.detectors import repeats as repeat_reading
+
+    reading = repeat_reading.read(sampled, unit, list(state.lens or []))
     out["repeats"] = {k: reading.get(k) for k in ("reading", "stated", "confidence", "evidence",
                                                    "sentence", "spacing", "replicate_index")}
     out["repeats"]["n_units_read"] = int(min(len(known), READING_UNITS))

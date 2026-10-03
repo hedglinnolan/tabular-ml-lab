@@ -199,9 +199,10 @@ def _impossible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voi
     e = entries[0]
     band = e.get("impossible_band") or [None, None]
     more = f" ({len(entries) - 1} more {plural(len(entries) - 1, 'column')} too)" if len(entries) > 1 else ""
+    # Audit IN-09: the second count is "outside the reference sample's central 98%", not "abnormal".
     return Voice(f"{tick(e.get('column'))} has {count(e.get('n_impossible') or 0)} impossible values "
                  f"outside {tick(number(band[0]))}–{tick(number(band[1]))}; "
-                 f"{count(e.get('n_abnormal_but_possible') or 0)} more are abnormal but real{more}.",
+                 f"{count(e.get('n_abnormal_but_possible') or 0)} more are unusual but real{more}.",
                  "exclusions", "Exclude rows by range")
 
 
@@ -408,6 +409,8 @@ GROUPS: dict[str, str] = {
     "pack::genomics::gene_id_mixed_vocabulary": "gene_ids",
     "voice::flag": "flags",
     "voice::identifier": "identifiers",
+    # One coding convention across many columns is one card, paged (audit H19, WP14).
+    "sentinel_missing": "missing_codes",
 }
 
 

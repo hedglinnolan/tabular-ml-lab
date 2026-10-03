@@ -146,13 +146,16 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     if target is not None and target not in frame.columns:
         target = None
 
-    from turbotab import engine, packs
+    from turbotab import engine
+    from turbotab.core import detectors
 
     ctx.progress(0.3, "Checking the table's structure")
     structural = [engine.shape_finding_to_dict(f) for f in engine.diagnose(frame, target)]
-    structural = packs.reframe(structural, lens, frame)
+    # WP14 (audit IN-03, IN-04, IN-09, IN-14–IN-18): the detectors that fired on clean data are
+    # read by turbotab.core.detectors in place of the legacy ones, under the same ids.
+    structural = detectors.reframe(detectors.structural(structural, frame), lens, frame)
     ctx.progress(0.65, "Running the lens packs")
-    from_packs = packs.findings(frame, lens)
+    from_packs = detectors.pack_findings(frame, lens)
     ctx.progress(0.95, "Ranking the findings")
 
     spoken = speak_for(frame, lens, target, structural, from_packs)
@@ -170,6 +173,8 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     scale = omics.scale_finding(frame, lens, target)
     if scale is not None:
         own.append(scale)
+    # WP14 (audit IN-13): the stated lens against the table, answered by changing it or recorded.
+    own.extend(detectors.own_findings(frame, lens))
     for _, f in spoken:
         if family(f["id"]) == "pack::genomics::data_type":
             omics.restate_raw_counts(f)

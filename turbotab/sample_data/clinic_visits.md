@@ -21,7 +21,7 @@ Ten structural findings, all correct readings of a genuinely messy file:
 
 | Finding | Severity |
 |---|---|
-| `sentinel_missing__age`, `__bp_2`, `__glucose` | critical |
+| `sentinel_missing__age`, `__glucose` (999, far above every other value) | warning |
 | `positive_class__outcome` | warning |
 | `category_variants__sex` | warning |
 | `numeric_as_text__income`, `__weight` | warning |
@@ -29,6 +29,11 @@ Ten structural findings, all correct readings of a genuinely messy file:
 | `unnamed_columns` | warning |
 | `constant_columns` | info |
 | `wide_repeated_measures` (`bp_1`, `bp_2`, `bp_3`) | info |
+
+`bp_2`'s two readings of 99 mmHg are no longer read as a missing-value code (audit IN-04, WP14):
+99 is the column's lowest reading, one mmHg below the next, a real extreme rather than a code
+beyond the observations. The two 999s are warnings, not critical: nothing but the numbers says
+they are codes (no codebook corroborates a clinic export).
 
 Plus one advisory plausibility hit on `glucose`, and a task detection of
 classification at high confidence against `outcome`.

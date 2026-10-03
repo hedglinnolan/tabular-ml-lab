@@ -564,8 +564,15 @@ def _shifts(before: Any, after: Any, columns: list[str]) -> dict[str, float]:
 
 
 def _histogram_pair(x: Any, y: Any, bins: int = 30) -> tuple[HistogramData, HistogramData]:
-    """Two histograms on shared edges, so their bars line up."""
+    """Two histograms on shared edges, so their bars line up.
+
+    The edges follow the datastore histogram's rule (``turbotab.core.detectors.bins``, audit
+    MI-01): aligned to the values' resolution, so one column drawn here and by the table's
+    histogram has the same bins and counts.
+    """
     import numpy as np
+
+    from turbotab.core.detectors import bins as binning
 
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -576,14 +583,12 @@ def _histogram_pair(x: Any, y: Any, bins: int = 30) -> tuple[HistogramData, Hist
         return (empty.model_copy(update={"n_missing": int(len(x))}),
                 empty.model_copy(update={"n_missing": int(len(y))}))
     lo, hi = float(both.min()), float(both.max())
-    if lo == hi:
-        lo, hi = lo - 0.5, hi + 0.5
-    edges = np.linspace(lo, hi, bins + 1)
-    cx, _ = np.histogram(fx, edges)
-    cy, _ = np.histogram(fy, edges)
+    start, width, nb, edges = binning.layout(lo, hi, binning.resolution(both), bins)
     return (
-        HistogramData(edges=edges.tolist(), counts=cx.astype(int).tolist(), n_missing=int(len(x) - len(fx))),
-        HistogramData(edges=edges.tolist(), counts=cy.astype(int).tolist(), n_missing=int(len(y) - len(fy))),
+        HistogramData(edges=edges, counts=binning.counts(fx, start, width, nb),
+                      n_missing=int(len(x) - len(fx))),
+        HistogramData(edges=edges, counts=binning.counts(fy, start, width, nb),
+                      n_missing=int(len(y) - len(fy))),
     )
 
 

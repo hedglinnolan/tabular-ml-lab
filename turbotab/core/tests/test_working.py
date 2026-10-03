@@ -113,18 +113,29 @@ def test_a_table_with_two_rows_of_one_name_is_not_turned(graph, tmp_path):
 
 
 def test_the_streamed_reading_is_the_orientation_modules_reading(tmp_path):
-    from turbotab import orientation
+    """The statistic streamed over the Parquet file is the same shape reading taken in memory.
+
+    Since audit WP14 (IN-11) the shape is scale-aware and leaves feature-description columns (m/z,
+    RT) out of the block (``turbotab.core.detectors.orientation``); the in-memory reference is that
+    rule's ``read_frame`` with the names left out, so this checks streaming, not the rule."""
     from turbotab.core.datastore import ingest
+    from turbotab.core.detectors import orientation as rule
+    from turbotab.core.stages.working import is_feature_annotation
 
     source, _ = transposed_copy(tmp_path)
     for path in (source, METABOLOMICS, DIETARY, CLINICAL, SAMPLES / "genomics_expression.csv"):
         parquet = tmp_path / f"{path.stem}.parquet"
         info = ingest(path, parquet).to_dict()
         streamed = orientation_reading(parquet, info)
-        legacy = orientation.read(pd.read_csv(path))
-        assert streamed["reading"] == legacy["reading"], path.name
-        if legacy["ratio"] is not None:
-            assert streamed["ratio"] == pytest.approx(legacy["ratio"], abs=2e-3), path.name
+        frame = pd.read_csv(path)
+        block = [c for c in frame.columns if pd.api.types.is_numeric_dtype(frame[c])
+                 and not pd.api.types.is_bool_dtype(frame[c]) and not is_feature_annotation(c)
+                 and frame[c].notna().mean() > 0.5]
+        x = frame[block].to_numpy(dtype=float)
+        memory = rule.shape(np.nanmean(x, axis=1), np.nanmean(x, axis=0), float(np.nanmin(x)),
+                            float(np.nanmax(x)), len(frame), len(block))
+        assert streamed["reading"] == memory["reading"], path.name
+        assert streamed["ratio"] == pytest.approx(memory["ratio"], abs=2e-3), path.name
 
 
 # ── aggregation ───────────────────────────────────────────────────────────────

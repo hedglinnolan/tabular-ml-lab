@@ -275,7 +275,10 @@ def test_column_summaries_and_histograms_are_queries(client, dietary):
     hist = schemas.Histogram.model_validate(
         client.get(f"/api/projects/{dietary}/columns/hba1c/histogram", params={"bins": 10}).json()
     )
-    assert len(hist.edges) == 11 and sum(hist.counts) + hist.n_missing == 600
+    # HbA1c is recorded to 0.1: bins are whole multiples of that step (audit MI-01), so ``bins`` is
+    # the most bins drawn, not an exact count.
+    assert len(hist.edges) == len(hist.counts) + 1 and 1 <= len(hist.counts) <= 10
+    assert sum(hist.counts) + hist.n_missing == 600
     text = client.get(f"/api/projects/{dietary}/columns/participant_id/histogram")
     assert text.status_code == 400 and text.json()["error"]["code"] == "not_numeric"
 
