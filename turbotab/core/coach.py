@@ -69,6 +69,9 @@ def attach(view: Any, notes: Iterable[CoachNote | None]) -> None:
     view.coach = current
 
 
+MOSTLY_R2 = 0.5  # "energy explains most" only where r² is more than half (audit MI-03)
+
+
 def r_text(r: float) -> str:
     """A correlation as written: two decimals, never ``-0.00``."""
     return tick("0.00" if abs(r) < 0.005 else f"{r:.2f}")
@@ -301,8 +304,12 @@ def energy_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
     nutrient, energy = rel.y_label_before, rel.x_label
     r0, r1 = float(rel.r_before), rel.r_after
     if abs(r0) >= 0.3:
-        notes = [note(f"{tick(nutrient)} tracks {tick(energy)} at r {r_text(r0)}: mostly how much "
-                      f"people eat", "column", nutrient)]
+        # Audit MI-03 (ledger #79): r² is the share of the nutrient's variance energy explains
+        # (10% at r 0.31), stated; "most" only where that share passes half.
+        share = r0 * r0
+        explains = f"most, {pct(share)}" if share > MOSTLY_R2 else f"{pct(share)} of it"
+        text = f"{tick(nutrient)} tracks {tick(energy)} at r {r_text(r0)}: energy explains {explains}"
+        notes = [note(text, "column", nutrient)]
     else:  # an adjustment already on record: the picture starts from its result
         notes = [note(f"Now r {r_text(r0)}: {tick(nutrient)} barely tracks {tick(energy)}",
                       "column", nutrient)]
@@ -315,8 +322,11 @@ def energy_coach(decision: Any, views: list, ctx: PreviewContext) -> None:
             notes.append(note(f"r stays {r_text(r0)}: {tick(energy)} enters the model beside it",
                               "column", energy))
         elif abs(r1) < 0.1:
-            notes.append(note(f"With this method r {r_text(r1)}: what is left is composition",
-                              "column", energy))
+            # Ledger #81: for a density the estimand is obscure (Tomova et al. 2022), not clean
+            # composition; it no longer tracks energy, which is all r says.
+            density = str(getattr(decision, "method", "")).startswith("density")
+            said = "it no longer tracks energy" if density else "what is left is composition"
+            notes.append(note(f"With this method r {r_text(r1)}: {said}", "column", energy))
         else:
             notes.append(note(f"With this method r {r_text(r1)}: some of energy's signal remains",
                               "column", energy))

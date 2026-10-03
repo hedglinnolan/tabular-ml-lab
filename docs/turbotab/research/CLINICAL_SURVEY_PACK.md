@@ -154,8 +154,16 @@ and `negative`).
 > plus a substituted value is often defensible here even though it would not be for inference."*
 > **[CONVENTION — well-argued, not formally settled]**
 
-> *"`TNTC` and `QNS` are not censoring at a detection limit — they are measurement failures. Treat them
-> as missing, not as extreme values."*
+> *"`TNTC`, too numerous to count, is a count above the method's countable range: right-censored at
+> the laboratory's upper count limit, like `>ULOQ`, not missing. FDA's Bacteriological Analytical
+> Manual (ch. 3, Aerobic Plate Count): "When number of CFU per plate exceeds 250, for all dilutions,
+> record the counts as too numerous to count (TNTC) for all but the plate closest to 250", and for
+> crowded plates, "Estimate the APC as greater than 100 times the highest dilution plated, times the
+> area of the plate." Treating TNTC as missing deletes exactly the highest values. `QNS` (quantity not
+> sufficient), `hemolyzed` and similar marks are measurement failures with no value: treat those as
+> missing, not as extreme values."* **[SETTLED]** *(Until 2026-10-03 this read "`TNTC` and `QNS` are
+> not censoring at a detection limit — they are measurement failures. Treat them as missing". Audit
+> IN-23.)*
 
 **Presentation.** **Censoring summary table**: analyte | n | % below LOD | LOD value(s) | % above ULOQ |
 handling chosen. · **Censored-aware distribution plot** — histogram of detected values with a
@@ -797,9 +805,12 @@ single-factor CFA fit).
 
 > **The better method, stated honestly:** *"With substantial item-level missingness, the methodologically
 > preferred approach is **multiple imputation at the item level**, not prorating or imputing the total.
-> Eekhout et al. (*J Clin Epidemiol* 2014) found item-level MI performed best across missingness
-> patterns; imputing composite scores overestimated standard errors when >50% of participants had
-> missing data, though at n≤500 and ≤10% missingness the two performed similarly. With many scales the
+> Eekhout et al. (*J Clin Epidemiol* 2014;67:335) found that "when a large percentage of subjects had
+> missing items (>25%), MI methods applied to the items outperformed methods applied to the total
+> score", and that "Mean imputation caused biased estimates in every missing data scenario when data
+> are missing for more than 10% of the subjects." *(Until 2026-10-03 this said imputing composite
+> scores "overestimated standard errors when >50% of participants had missing data"; the abstract's
+> threshold is >25%. Audit F15.)* With many scales the
 > item count can exceed what the imputation model supports, in which case **passive imputation or parcel
 > summaries** are valid alternatives (Eekhout et al. 2018)."* **[SETTLED that item-level MI is preferred
 > where feasible; the practical cutover to parcels is CONVENTION.]**
@@ -1024,7 +1035,12 @@ item-driven.
 > associations, which cascades into underestimated loadings and understated reliability. Check the matrix
 > is positive definite — polychoric matrices estimated pairwise sometimes are not, in which case apply
 > smoothing (minimum-trace factor analysis smoothing is the recommended algorithm) **and report that you
-> did.**"* **[SETTLED that polychoric is appropriate; smoothing choice is CONVENTION.]**
+> did.**"* **[CONVENTION for factor analysis of Likert items; smoothing choice is CONVENTION. Not
+> SETTLED: reliability coefficients built on polychoric correlations are disputed (Chalmers, *EPM*
+> 2018: "ordinal alpha should not be used in routine reliability analyses and reports"), and an
+> item–rest correlation pairs an ordinal item with a many-valued sum score, which calls for a
+> polyserial correlation, not a polychoric one.]** *(Badged "SETTLED that polychoric is appropriate"
+> until 2026-10-03. Audit G19.)*
 
 **Presentation.** Lower-triangle heatmap, diverging palette centered at 0 with a **fixed −1 to +1
 domain — never auto-scaled**, because auto-scaling makes weak matrices look strong. Items ordered by
@@ -1085,17 +1101,25 @@ comparison to a partial-proportional-odds model) · detect the item-level vs sca
 > overfitting cost that shows up in optimism-corrected validation. Entering the scale score is
 > parsimonious and interpretable but assumes all items contribute as the key says, and — importantly —
 > **the score's measurement error attenuates its coefficient toward zero**, so you will understate the
-> construct's association by roughly a factor of its reliability. Practical guidance: for **prediction**,
+> construct's unstandardized slope by a factor of its reliability λ, and its correlation or
+> standardized coefficient by a factor of √λ. Practical guidance: for **prediction**,
 > item-level with penalization is reasonable and should be compared against the scale score in
 > optimism-corrected internal validation — **let the validation decide.** For **inference about the
 > construct**, use the scale score and either correct for attenuation or use a latent-variable predictor."*
 > **[DISPUTED — no consensus; the honest move is to frame the trade-off and empirically compare.]**
 
-> *"An unreliable predictor scale attenuates its estimated effect by approximately its reliability. With
-> ω=0.70, a true standardized coefficient of 0.30 is expected to show up as roughly 0.25 — and your study
+> *"An unreliable predictor scale attenuates its estimated effect, and by how much depends on the scale
+> of the coefficient. With reliability λ (here ω = 0.70) and a true coefficient of 0.30 on standardized
+> variables, the unstandardized slope on the observed score shows up as about 0.21 (0.30 × λ), and the
+> standardized coefficient, the correlation, as about 0.25 (0.30 × √λ). To correct, divide a slope by
+> λ and a standardized coefficient by √λ (by √(λx·λy) when the outcome is a scale too) — and your study
 > is correspondingly underpowered. Report reliability alongside the model so readers can interpret the
 > coefficient."* **[SETTLED for classical error in a single predictor; with multiple mismeasured
-> predictors the direction of bias is not guaranteed — do not over-claim.]**
+> predictors the direction of bias is not guaranteed — do not over-claim.]** *(Until 2026-10-03 this
+> read "attenuates its estimated effect by approximately its reliability", with 0.25 for the
+> standardized coefficient: dividing 0.25 by λ gives 0.358, not 0.30. The slope is attenuated by λ,
+> the standardized coefficient by √λ. Audit IN-26; the replay is
+> `turbotab/core/tests/acceptance/test_wp15_claims.py`.)*
 
 **Anti-patterns.** Median-splitting a scale score · using a clinical cut-point as a modeling threshold when
 the continuous score is available · treating a T-scored PROMIS measure as a raw sum · entering both a total

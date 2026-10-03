@@ -800,10 +800,31 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     # the Rows view say how many, as they stand.
     pool = f" of the rows with {tick(target)} recorded" if target else " of the rows"
     if latest:
+        # Audit IN-24: what was drawn, not "later data". Whole units are held out by their last
+        # observation, so with repeated rows their earlier rows can predate the training rows; the
+        # share is the seal plan's count for this holdout and seed (seal.Chronology.earlier).
         time = tick(_attr(chron, "time_column"))
-        whole = f"whole {tick(group)} units by their last {time}" if group else f"by {time}"
-        text = (f"The latest {share}{pool} ({whole}) were held out for one final score, so the "
-                f"models are scored on later data than they learned from; {compared}")
+        if group:
+            found = next((e for e in _attr(chron, "earlier") or []
+                          if math.isclose(float(_attr(e, "holdout")), float(d.holdout))
+                          and int(_attr(e, "seed")) == int(d.seed)), None)
+            n_rows, n_before = ((int(_attr(found, "n_held_rows")), int(_attr(found, "n_earlier")))
+                                if found is not None else (0, 0))
+            if found is None:
+                before = ", so some held-out rows can predate the latest training row"
+            elif n_before:
+                before = (f": {tick(f'{n_before / n_rows:.0%}')} of the held-out rows "
+                          f"({count(n_before)} of {count(n_rows)}) were observed before the latest "
+                          f"training row")
+            else:
+                before = ", and none of the held-out rows predates the latest training row"
+            among = f" among those with {tick(target)} recorded" if target else ""
+            text = (f"The {share} of {tick(group)} units seen last{among} were held out whole for "
+                    f"one final score, ranked by their last {time}, each unit's earlier rows "
+                    f"included{before}; {compared}")
+        else:
+            text = (f"The latest {share}{pool} by {time} were held out for one final score, so no "
+                    f"held-out row is dated earlier than a training row; {compared}")
     else:
         text = f"A random {share}{pool}{manner} was held out for one final score; {compared}"
     text += boot + r2
@@ -887,12 +908,16 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
         who = nutrients or "the nutrients"
         return (f"Energy was adjusted by the {name}: {energy} enters the models beside {who}, so "
                 f"each nutrient's effect is at fixed total energy")
+    # Audit D15 (IN-25): a density is the same ratio within any level, so strata change nothing and
+    # the sentence does not claim a stratification (models/pipeline.py warns of the same).
+    unused = (f"; strata apply to the residual method only, so {tick(d.strata)} changed nothing"
+              if d.strata else "")
     if d.method == "density_multivariate":
-        return (f"Energy was adjusted by the {name}: {each} divided by {energy}{where}, which "
-                f"stays in the models as its own term")
+        return (f"Energy was adjusted by the {name}: {each} divided by {energy}, which stays in "
+                f"the models as its own term{unused}")
     if d.method == "density":
-        return (f"Energy was adjusted by the {name}: {each} divided by {energy}{where}, which "
-                f"leaves the models")
+        return (f"Energy was adjusted by the {name}: {each} divided by {energy}, which leaves the "
+                f"models{unused}")
     who = nutrients or "the chosen nutrients"
     if d.method == "all_components":
         return (f"Energy was adjusted by the {name} (Tomova et al. 2022): {energy} was split into "

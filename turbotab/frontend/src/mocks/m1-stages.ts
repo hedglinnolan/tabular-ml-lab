@@ -483,6 +483,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
       r_with_energy,
       notes,
       not_adjusted: [],
+      outcome_dispute: null,
     },
     missing: missingCols,
     coach: cardLines(ds, energy, base),

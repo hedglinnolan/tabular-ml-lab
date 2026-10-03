@@ -57,9 +57,17 @@ def register_operation(step_class: str, verb: str) -> None:
 
 @dataclass
 class _Origin:
+    """Where a column came from: its raw sources, and the operations along each source's own path
+    (audit IN-25: an operation is attributed only to the columns it touched, so an imputation of
+    ``fat_g`` does not mark the ``energy_kcal`` edge into ``fat_g_adj`` "imputed")."""
+
     sources: list[str]
-    ops: list[str] = field(default_factory=list)
+    paths: dict[str, list[str]] = field(default_factory=dict)  # source → its operations, in order
     formula: str | None = None
+
+    @property
+    def ops(self) -> list[str]:
+        return [op for s in self.sources for op in self.paths.get(s, [])]
 
 
 def _verb(step: Any) -> str:
@@ -131,21 +139,36 @@ def trace_step(step: Any, inputs: Sequence[str], missing: Mapping[str, int] | No
                 out[o] = (parents, op, None)
         return out
     verb = _verb(step)
-    return {o: (parents, verb, None) for o, parents in _map_by_name(_names_out(step, inputs), inputs).items()}
+    # A step that names the columns it transforms (``columns``, as the levels encoder does) passes
+    # every other column through unchanged: same name, same values, so "kept" (audit IN-25: the
+    # encoder's verb was printed on columns it passed through).
+    acts_on = getattr(step, "columns", None)
+    acted = {str(c) for c in acts_on} if isinstance(acts_on, (list, tuple)) else None
+    out = {}
+    for o, parents in _map_by_name(_names_out(step, inputs), inputs).items():
+        passed = acted is not None and parents == [o] and o not in acted
+        out[o] = (parents, KEPT if passed else verb, None)
+    return out
 
 
 def _run(steps: Sequence[tuple[str, Any]], columns: Sequence[str],
          missing: Mapping[str, int] | None) -> dict[str, _Origin]:
-    current = {c: _Origin([c]) for c in columns}
+    current = {c: _Origin([c], {c: []}) for c in columns}
     for _, step in steps:
         mapping = trace_step(step, list(current), missing)
         nxt: dict[str, _Origin] = {}
         for out, (parents, op, formula) in mapping.items():
             known = [current[p] for p in parents if p in current]
             sources = list(dict.fromkeys(s for origin in known for s in origin.sources))
-            ops = [o for origin in known for o in origin.ops] + [op]
+            paths: dict[str, list[str]] = {}
+            for origin in known:
+                for s in origin.sources:
+                    paths.setdefault(s, list(origin.paths.get(s, [])))
+            for s in sources or list(parents):
+                paths.setdefault(s, []).append(op)
             inherited = next((origin.formula for origin in known if origin.formula), None)
-            nxt[out] = _Origin(sources or list(parents), ops, formula or (inherited if op == KEPT else None))
+            nxt[out] = _Origin(sources or list(parents), paths,
+                               formula or (inherited if op == KEPT else None))
         current = nxt
     return current
 
@@ -174,16 +197,17 @@ def trace(steps: Sequence[tuple[str, Any]], raw: Sequence[str], roles: Mapping[s
     for c, origin in adjusted.items():
         nodes.append(LineageNode(id=f"adj:{c}", column=c, lane="adjusted", role=role_of(origin.sources),
                                  label=c, formula=origin.formula))
-        op = _link_op(origin.ops)
-        links.extend(LineageLink(source=f"raw:{s}", target=f"adj:{c}", operation=op)
+        links.extend(LineageLink(source=f"raw:{s}", target=f"adj:{c}",
+                                 operation=_link_op(origin.paths.get(s, [])))
                      for s in origin.sources)
     for c, origin in matrix.items():
         adj_sources = origin.sources
         raw_sources = [s for a in adj_sources for s in adjusted.get(a, _Origin([a])).sources]
         nodes.append(LineageNode(id=f"mx:{c}", column=c, lane="matrix", role=role_of(raw_sources),
                                  label=c))
-        op = _link_op(origin.ops)
-        links.extend(LineageLink(source=f"adj:{a}", target=f"mx:{c}", operation=op) for a in adj_sources)
+        links.extend(LineageLink(source=f"adj:{a}", target=f"mx:{c}",
+                                 operation=_link_op(origin.paths.get(a, [])))
+                     for a in adj_sources)
     lineage = Lineage(nodes=nodes, links=links)
     return collapse(lineage) if len(raw) > COLLAPSE_AT else lineage
 

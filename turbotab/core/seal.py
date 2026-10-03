@@ -108,8 +108,24 @@ class SealBasis(_Model):
     n_units: int | None  # units the draw kept whole (grouped), or found repeating (abandoned)
 
 
+class EarlierRows(_Model):
+    """For one held-out share drawn by time: how many held-out rows there are, and how many were
+    observed before the latest training row (audit IN-24)."""
+
+    holdout: float
+    seed: int
+    n_held_rows: int
+    n_earlier: int
+
+
 class Chronology(_Model):
-    """The chronological draw the temporal answer asked for, and whether it was drawn."""
+    """The chronological draw the temporal answer asked for, and whether it was drawn.
+
+    Whole units are held out by their last observation, so with repeated rows a held-out unit's
+    earlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).
+    ``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the
+    split question offers, at this draw's seed, so the split's sentence can state it.
+    """
 
     drawn: bool
     time_column: str | None
@@ -117,6 +133,9 @@ class Chronology(_Model):
     n_units: int | None  # units held out, latest first
     n_undated: int  # units with no readable time: they train, never held out
     sentence: str
+    n_held_rows: int | None = None
+    n_held_earlier: int | None = None  # held-out rows observed before the latest training row
+    earlier: list[EarlierRows] = []
 
 
 # ── the basis ────────────────────────────────────────────────────────────────
@@ -329,9 +348,14 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
         return mask, Chronology(drawn=False, time_column=column, boundary=None, n_units=None,
                                 n_undated=n_undated,
                                 sentence=f"No rows were held out by time: {why}.")
-    n_hold = min(len(ranked) - 1, max(1, int(round(len(ranked) * holdout))))
-    held = set(ranked[-n_hold:].tolist())
-    mask = np.isin(keys, np.asarray(list(held), dtype=object))
+    mask, held, n_hold = _held_by_time(keys, ranked, holdout)
+    n_held_rows, n_earlier = _held_earlier(times, mask)
+    earlier = []
+    for share in HOLDOUTS:
+        if share > 0:
+            other, _, _ = _held_by_time(keys, ranked, share)
+            rows, before = _held_earlier(times, other)
+            earlier.append(EarlierRows(holdout=share, seed=seed, n_held_rows=rows, n_earlier=before))
     boundary_value = float(dated_units.loc[list(held)].min())
     train_last = float(dated_units.loc[ranked[:-n_hold]].max())
     boundary = _show_time(boundary_value, dated)
@@ -340,11 +364,36 @@ def chronological_holdout(times: Any, groups: Any | None, holdout: float, seed: 
            f"which of them are held out was drawn at random." if tied else "")
     undated = (f" `{n_undated:,}` {word} with no readable `{column}` train and are never held out."
                if n_undated else "")
+    # Audit IN-24: whole units are held out, so their earlier rows can predate training rows.
+    before = (f" Whole units are held out, earlier rows included: `{n_earlier / n_held_rows:.0%}` "
+              f"of the held-out rows (`{n_earlier:,}` of `{n_held_rows:,}`) were observed before the "
+              f"latest training row." if groups is not None and n_earlier and n_held_rows else "")
     sentence = (f"The latest `{n_hold:,}` {word} by their last `{column}` are held out, from "
                 f"`{boundary}` on; every training {word[:-1]}'s last `{column}` comes "
-                f"{'no later' if tied else 'earlier'}.{tie}{undated}")
+                f"{'no later' if tied else 'earlier'}.{tie}{undated}{before}")
     return mask, Chronology(drawn=True, time_column=column, boundary=boundary, n_units=n_hold,
-                            n_undated=n_undated, sentence=sentence)
+                            n_undated=n_undated, sentence=sentence, n_held_rows=n_held_rows,
+                            n_held_earlier=n_earlier, earlier=earlier)
+
+
+def _held_by_time(keys: Any, ranked: Any, holdout: float) -> tuple[Any, set, int]:
+    """The held-out mask for ``holdout``: the latest ``round(units × holdout)`` units, whole (at
+    least one, and at least one unit left to train)."""
+    n_hold = min(len(ranked) - 1, max(1, int(round(len(ranked) * holdout))))
+    held = set(ranked[-n_hold:].tolist())
+    return np.isin(keys, np.asarray(list(held), dtype=object)), held, n_hold
+
+
+def _held_earlier(times: Any, mask: Any) -> tuple[int, int]:
+    """Held-out rows, and those observed strictly before the latest training row's time."""
+    times = np.asarray(times, dtype=float)
+    train = times[~mask]
+    train = train[~np.isnan(train)]
+    n_held = int(mask.sum())
+    if not len(train):
+        return n_held, 0
+    held = times[mask]
+    return n_held, int(np.sum(held[~np.isnan(held)] < float(train.max())))
 
 
 # ── the seal's inputs, for the split stage, its preview and the plan ─────────
@@ -1414,7 +1463,7 @@ def _register_preview() -> None:
 _register_preview()
 
 __all__ = [
-    "BasisState", "Chronology", "DECISION_A", "GRAIN_FIRST", "HoldoutOption", "SEALED_DETAIL",
+    "BasisState", "Chronology", "DECISION_A", "EarlierRows", "GRAIN_FIRST", "HoldoutOption", "SEALED_DETAIL",
     "SEALED_SCORES", "details_by_family", "read_sealed_detail", "sealed_detail_frame",
     "SealBasis",
     "SealDraw", "SealFloor", "SealPlan", "changed_after_seal", "chronological_holdout",

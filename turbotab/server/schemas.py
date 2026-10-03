@@ -395,6 +395,17 @@ class EnergyRanking(Model):
     line: str | None
 
 
+class OutcomeDispute(Model):
+    """An energy-related outcome's DISPUTED note for the energy card (audit IN-20; NUTRITION_PACK
+    §04: "escalate the mediation/collider warning"): what the outcome's name reads as, the card
+    line (also in ``notes``) and its badge."""
+
+    outcome: str
+    kind: str  # "body weight" · "BMI" · "waist size" · "adiposity" · "diabetes"
+    note: str
+    evidence: FindingEvidence
+
+
 class EnergyReading(Model):
     """What the energy-adjustment question can offer on this table (NUTRITION_PACK §04)."""
 
@@ -408,6 +419,7 @@ class EnergyReading(Model):
     r_with_energy: dict[str, float]
     notes: list[str]
     not_adjusted: list[NotAdjusted]
+    outcome_dispute: OutcomeDispute | None = None
 
 
 class MissingColumn(Model):

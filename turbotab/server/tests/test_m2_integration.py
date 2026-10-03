@@ -48,12 +48,21 @@ def test_a_chronological_seal_is_said_as_drawn_and_a_repair_speaks_its_own_sente
     decide(client, pid, {"kind": "set_missing", "strategy": "complete_case"})
     wait_for(client, pid, {"seal_plan": "fresh"})
     said = sentence(decide(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5}))
-    assert said.startswith("The latest `20%`") and "`visit_date`" in said and "`subject_id`" in said
+    # Audit IN-24 (WP15): whole units are held out by their last visit, earlier rows included, so
+    # the sentence says what was drawn rather than "scored on later data".
+    assert said.startswith("The `20%` of `subject_id` units seen last") and "`visit_date`" in said
+    assert "held out whole" in said and "scored on later data" not in said
     assert "random" not in said and "stratified" not in said
     split = wait_for(client, pid, {"split": "fresh"})
     artifact = client.get(f"/api/projects/{pid}/stages/split").json()["artifact"]
-    assert artifact["chronology"]["drawn"] and artifact["basis"]["state"] == "grouped"
+    chron = artifact["chronology"]
+    assert chron["drawn"] and artifact["basis"]["state"] == "grouped"
     assert split["stages"]["split"]["status"] == "fresh"
+    # The share the sentence states is the drawn seal's own count (the same holdout and seed).
+    if chron["n_held_earlier"]:
+        assert f"(`{chron['n_held_earlier']:,}` of `{chron['n_held_rows']:,}`)" in said
+    else:
+        assert "none of the held-out rows predates the latest training row" in said
 
 
 def test_a_kept_missing_level_is_counted_as_keeping_its_rows(client, tmp_path):

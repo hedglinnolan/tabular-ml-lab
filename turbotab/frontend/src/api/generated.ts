@@ -3135,6 +3135,11 @@ export interface components {
         /**
          * Chronology
          * @description The chronological draw the temporal answer asked for, and whether it was drawn.
+         *
+         *     Whole units are held out by their last observation, so with repeated rows a held-out unit's
+         *     earlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).
+         *     ``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the
+         *     split question offers, at this draw's seed, so the split's sentence can state it.
          */
         Chronology: {
             /** Drawn */
@@ -3149,6 +3154,21 @@ export interface components {
             n_undated: number;
             /** Sentence */
             sentence: string;
+            /**
+             * N Held Rows
+             * @default null
+             */
+            n_held_rows: number | null;
+            /**
+             * N Held Earlier
+             * @default null
+             */
+            n_held_earlier: number | null;
+            /**
+             * Earlier
+             * @default []
+             */
+            earlier: components["schemas"]["EarlierRows"][];
         };
         /**
          * ClusterScore
@@ -3394,6 +3414,21 @@ export interface components {
             detail: string;
         };
         /**
+         * EarlierRows
+         * @description For one held-out share drawn by time: how many held-out rows there are, and how many were
+         *     observed before the latest training row (audit IN-24).
+         */
+        EarlierRows: {
+            /** Holdout */
+            holdout: number;
+            /** Seed */
+            seed: number;
+            /** N Held Rows */
+            n_held_rows: number;
+            /** N Earlier */
+            n_earlier: number;
+        };
+        /**
          * EnergyRanking
          * @description The energy methods in order of soundness for the declared purpose, applicable ones first
          *     (audit WP6; BLUEPRINT §12 ruling 2): the all-components model first under inference, the
@@ -3435,6 +3470,8 @@ export interface components {
             notes: string[];
             /** Not Adjusted */
             not_adjusted: components["schemas"]["NotAdjusted"][];
+            /** @default null */
+            outcome_dispute: components["schemas"]["OutcomeDispute"] | null;
         };
         /**
          * ExclusionProposal
@@ -4451,6 +4488,21 @@ export interface components {
             transposed: boolean;
             reading: components["schemas"]["OrientationReading"];
             turn: components["schemas"]["TurnCheck"];
+        };
+        /**
+         * OutcomeDispute
+         * @description An energy-related outcome's DISPUTED note for the energy card (audit IN-20; NUTRITION_PACK
+         *     §04: "escalate the mediation/collider warning"): what the outcome's name reads as, the card
+         *     line (also in ``notes``) and its badge.
+         */
+        OutcomeDispute: {
+            /** Outcome */
+            outcome: string;
+            /** Kind */
+            kind: string;
+            /** Note */
+            note: string;
+            evidence: components["schemas"]["FindingEvidence"];
         };
         /** OutcomeRule */
         OutcomeRule: {

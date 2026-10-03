@@ -632,7 +632,8 @@ def _intakes(n: int = 600, seed: int = 31) -> pd.DataFrame:
 
 def test_e_the_sex_specific_screen_stays_on_the_menu_when_sex_is_left_out(tmp_path):
     """Through the real server: with sex left out of the model (``excluded``), the exclusions menu
-    still offers Willett's sex-specific cut-offs, with the rule and count it has when sex is a
+    still offers the NHS/HPFS sex-specific cut-offs (WP15 renamed the screen once "Willett, by sex":
+    MI-02), with the rule and count it has when sex is a
     covariate; recorded, the cohort drops exactly those rows. Reference: pandas, women outside
     500–3,500 kcal and men outside 800–4,200 kcal; the sex-neutral 500–3,500 screen counts
     differently on this fixture, so the count is the sex-specific one."""
@@ -661,7 +662,7 @@ def test_e_the_sex_specific_screen_stays_on_the_menu_when_sex_is_left_out(tmp_pa
             })
             drive.reach("exclusions")
             menu = drive.artifact("proposals")["exclusions"]
-            offered[sex_role] = next((x for x in menu if x["key"] == "willett_by_sex"), None)
+            offered[sex_role] = next((x for x in menu if x["key"] == "nhs_hpfs_by_sex"), None)
         drive.decide({"kind": "set_exclusions", "rules": [offered["excluded"]["rule"]]})
         cohort = drive.artifact("cohort")
     kept, left = offered["covariate"], offered["excluded"]

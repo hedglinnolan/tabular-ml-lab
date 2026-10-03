@@ -178,12 +178,72 @@ def _number_format(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> 
                  title=f"{count(n)} {plural(n, 'column')} {verb} numbers in a format that does not parse")
 
 
+# "Too numerous to count" is a count above the plate's countable range, a right-censored value
+# (audit IN-23, ledger #9). FDA Bacteriological Analytical Manual, ch. 3 (Aerobic Plate Count,
+# 2001): "When number of CFU per plate exceeds 250, for all dilutions, record the counts as too
+# numerous to count (TNTC) for all but the plate closest to 250"; for crowded plates, "Estimate the
+# APC as greater than 100 times the highest dilution plated, times the area of the plate." The
+# legacy reading (turbotab/clinical.py) counts TNTC among measurement failures routed to missing,
+# which deletes exactly the highest values; this restates its table from the cells.
+_ABOVE_COUNTABLE = re.compile(r"\btntc\b|too\s+numerous", re.I)
+TNTC_SOURCE = "FDA Bacteriological Analytical Manual, ch. 3"
+
+
+def _tntc_count(fc: FindingContext, column: str | None) -> tuple[int, int]:
+    """Cells reading as too numerous to count, and those the legacy reading counted as failures
+    (any cell containing ``tntc``, its token)."""
+    if not column or column not in fc.frame.columns:
+        return 0, 0
+    cells = fc.frame[column].dropna().astype(str)
+    return (int(cells.str.contains(_ABOVE_COUNTABLE).sum()),
+            int(cells.str.lower().str.contains("tntc", regex=False).sum()))
+
+
 def _censored(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
-    entries = _list(p.get("analytes"))
+    entries = [e for e in _list(p.get("analytes")) if isinstance(e, Mapping)]
     cols = [c for c in (_col(e) for e in entries) if c] or list(f["affected_columns"])
     n = len(cols)
-    return Voice(f"{listing(cols, limit=3)} {plural(n, 'carries', 'carry')} values censored at a "
-                 f"detection limit.")
+    rows = []
+    for e in entries:
+        col = _col(e)
+        tntc, as_failure = _tntc_count(fc, col)
+        below = int(e.get("n_below_lod") or 0)
+        above = int(e.get("n_above_uloq") or 0) + tntc
+        failed = max(0, int(e.get("n_measurement_failure") or 0) - as_failure)
+        if below or above or failed:
+            rows.append((col, below, e.get("detection_limit"), above, tntc, failed,
+                         [t for t in e.get("measurement_failure_tokens") or [] if t != "tntc"]))
+    if not any(r[4] for r in rows):  # no TNTC: the legacy detail is true of the table
+        return Voice(f"{listing(cols, limit=3)} {plural(n, 'carries', 'carry')} values censored at "
+                     f"a detection limit.")
+    parts = []
+    for col, below, limit, above, tntc, failed, tokens in rows[:3]:
+        said = []
+        if below:
+            at = f"`{number(limit)}`" if limit is not None else "its detection limit"
+            said.append(f"{count(below)} below {at}, left-censored")
+        if tntc:
+            said.append(f"{count(tntc)} too numerous to count, right-censored above the countable "
+                        f"range")
+        if above - tntc:
+            said.append(f"{count(above - tntc)} above the upper limit of quantitation, right-censored")
+        if failed:
+            said.append(f"{count(failed)} measurement {plural(failed, 'failure')} "
+                        f"({listing(tokens, limit=3)}) with no value")
+        parts.append(f"{tick(col)}: " + "; ".join(said))
+    failures = (" A measurement failure such as QNS or a hemolyzed specimen has no value and "
+                "routes to missing." if any(r[5] for r in rows) else "")
+    f["detail"] = (
+        ". ".join(parts) + ". TNTC, too numerous to count, means more than the method's countable "
+        "range (over 250 colonies per plate in the " + TNTC_SOURCE + "), so the count is above "
+        "that limit: a right-censored value at the laboratory's upper count limit, not a missing "
+        "one." + failures + " TurboTab has not substituted a number for any of them.")
+    kinds = (["below detection"] if any(r[1] for r in rows) else []) + ["too numerous to count"]
+    censored = sum(1 for r in rows if r[1] or r[3])  # the legacy title counted TNTC as a failure
+    return Voice(f"{listing(cols, limit=2)} {plural(n, 'carries', 'carry')} censored values, "
+                 f"{' or '.join(kinds)}.",
+                 title=f"{count(censored)} {plural(censored, 'analyte')} "
+                       f"{plural(censored, 'carries', 'carry')} censored values")
 
 
 def _text_numeric(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
@@ -231,8 +291,9 @@ def _energy(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
         return Voice(f"{tick(best)} correlates {rs[best]:.2f} with {tick(energy)} across all "
                      f"{count(fc.n_rows)} rows: nutrient effects are tangled with total energy.",
                      *lever)
-    return Voice(f"{tick(energy)} is total energy; every nutrient association is confounded by it "
-                 f"until adjusted.", *lever)
+    # Audit IN-20 (ledger #87): adjusting changes the question, it does not just remove a confounder.
+    return Voice(f"{tick(energy)} is total energy: adjusting for it makes each nutrient's effect a "
+                 f"swap at fixed energy.", *lever)
 
 
 def _acquisition(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
@@ -505,7 +566,19 @@ def energy_correlations(frame: pd.DataFrame, energy: str | None, *, target: str 
 
 
 def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: FindingContext) -> None:
-    """The legacy detail counts every numeric column as a candidate nutrient; say what is true."""
+    """The legacy detail counts every numeric column as a candidate nutrient; say what is true.
+
+    The legacy reason said adjustment "is not in dispute" (audit IN-20, ledger #86): adjusting for
+    total energy changes the estimand (Tomova et al. 2022), so the reason states the choice
+    (:data:`~turbotab.core.methods.dietary_caveats.ENERGY_WHY`). When the outcome reads as energy-
+    related (weight, BMI, waist, adiposity, diabetes; NUTRITION_PACK §04's diagnostic), the reason
+    names the dispute and the finding carries the DISPUTED badge; otherwise it keeps the pack's
+    weakest status (CONVENTION: which method is a convention).
+    """
+    from turbotab.core.methods.dietary_caveats import (
+        DISPUTED, ENERGY_TITLE, ENERGY_WHY, dispute_why, energy_related,
+    )
+
     params = dict((raw or {}).get("params") or {})
     energy = params.get("energy_column") or (finding["affected_columns"] or [None])[0]
     rs = energy_correlations(fc.frame, energy, target=fc.target)
@@ -521,12 +594,13 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
     else:
         finding["detail"] = (f"{tick(energy)} is total energy; no energy-bearing nutrient column was "
                              f"recognized by name.")
-    finding["why_it_matters"] = (
-        "People who eat more of everything eat more of anything, so every nutrient association is "
-        "confounded by total intake; that adjustment is needed is not in dispute. Which method to "
-        "use is a convention: with total energy kept in the model the standard and residual "
-        "methods estimate the same substitution, and the residual method's advantages are "
-        "practical, not inferential.")
+    finding["title"] = ENERGY_TITLE
+    why = ENERGY_WHY
+    kind = energy_related(fc.target)
+    if kind is not None and fc.target is not None:
+        why = f"{why} {dispute_why(fc.target, kind)}"
+        finding["evidence"] = dict(DISPUTED)
+    finding["why_it_matters"] = why
 
 
 # ── the app's own findings ───────────────────────────────────────────────────
