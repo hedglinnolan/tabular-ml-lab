@@ -188,9 +188,20 @@ def proposal(state: Any, store: Any) -> dict[str, Any] | None:
                 pooled_cycle = c
                 cycles = sorted((_plain(v) for v in values), key=lambda v: (str(type(v)), v))
                 break
+    frame = None
+    columns = set(getattr(store, "columns", ()) or ())
+    roles = getattr(state, "roles", None) or {}
+    target = getattr(state, "target", None)
+    read = [c for c in [*([target] if target else []),
+                        *(c for c, r in roles.items() if r in ("exposure", "covariate", "energy")),
+                        *reading.weights] if c in columns]
+    if reading.weights and 0 < len(read) <= 500:
+        # The values place a subsample's variables the names cannot (the least-common-denominator
+        # rule; audit WP13 gate repair).
+        frame = store.materialize(list(dict.fromkeys(read)), None)
     return {"weights": reading.weights, "strata": reading.strata, "psu": reading.psu,
             "cycle": pooled_cycle, "cycles": [str(v) for v in cycles],
-            "four_year": reading.four_year, "options": offered(state, pooled_cycle)}
+            "four_year": reading.four_year, "options": offered(state, pooled_cycle, frame)}
 
 
 __all__ = ["FitSurvey", "PooledWeight", "UNANSWERED", "analysis_weights", "for_fit", "proposal"]

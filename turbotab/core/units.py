@@ -76,8 +76,24 @@ def _words(column: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", spaced.lower()).strip()
 
 
+# A word before the suffix that makes it the denominator of a longer unit: another unit
+# (``protein_g_kg`` is g/kg, not kg), a multiplier (``wbc_k_ul`` is 10³/µL, not U/L) or "per".
+_NUMERATORS = {"g", "gm", "mg", "mcg", "ug", "ng", "pg", "kg", "kcal", "kj", "mmol", "umol",
+               "nmol", "pmol", "mol", "meq", "iu", "cells", "x10", "10e3", "10e9", "e3", "e9",
+               "thou", "per", "ratio"}
+# A count's multiplier before a volume (``wbc_k_ul``: thousands per µL; ``rbc_m_ul``: millions).
+# Elsewhere ``k`` is potassium (``k_mmol_l``).
+_MULTIPLIERS = {"k", "m", "x", "10"}
+_VOLUMES = {"ul", "l", "dl", "ml"}
+
+
 def from_name(column: str) -> str | None:
-    """The unit the column's name spells out in full as its suffix, or None."""
+    """The unit the column's name spells out in full as its suffix, or None.
+
+    The suffix must be the whole unit (audit WP13 gate repair): ``protein_g_kg`` is grams per kg,
+    which ends in ``kg`` but is not kg, and ``wbc_k_ul`` is thousands per µL, which ends in ``ul``
+    but is not U/L. A suffix after a unit, a multiplier or "per" is a denominator, so nothing is
+    stated (the unit is proposed, or recorded with ``set_outcome_unit``)."""
     tokens = [t for t in re.split(r"[^a-z0-9]+", str(column).lower()) if t]
     if len(tokens) == 1 and tokens[0] in ("kcal", "kj"):
         return _SUFFIX[tokens[0]]
@@ -87,6 +103,10 @@ def from_name(column: str) -> str | None:
         if len(tokens) > n:
             unit = _SUFFIX.get("".join(tokens[-n:]))
             if unit is not None:
+                before = tokens[-n - 1]
+                if before in _NUMERATORS or (before in _MULTIPLIERS and n == 1
+                                             and tokens[-1] in _VOLUMES):
+                    return None
                 return unit
     return None
 
@@ -127,6 +147,18 @@ def proposed_unit(column: str, values: Any = None) -> dict[str, Any] | None:
     return None
 
 
+def analyte_of(column: str) -> str | None:
+    """The clinical pack's analyte the name reads as (§A1.1, §A1.2), by whole words, whatever
+    else the name says (``ldl_change``, ``dietary_cholesterol``): the pattern matched, or None."""
+    from turbotab.core.recognizers import tokens
+
+    name = " ".join(tokens(column))
+    for pattern, _ in _ANALYTES:
+        if re.search(pattern, name):
+            return pattern
+    return None
+
+
 def from_pack(column: str, values: Any = None) -> str | None:
     """The pack's proposed unit alone (:func:`proposed_unit`), or None. A proposal, not a fact."""
     proposal = proposed_unit(column, values)
@@ -161,5 +193,5 @@ def with_unit(text: str, unit: str | None) -> str:
     return f"{text}%" if unit == "%" else f"{text} {unit}"
 
 
-__all__ = ["MIN_FACTOR", "from_name", "from_pack", "outcome_unit", "proposed_unit",
+__all__ = ["MIN_FACTOR", "analyte_of", "from_name", "from_pack", "outcome_unit", "proposed_unit",
            "recorded_unit", "with_unit"]

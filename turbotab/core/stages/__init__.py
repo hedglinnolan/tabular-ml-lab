@@ -97,9 +97,12 @@ def build_graph() -> Graph:
             # (audit IN-08: DR2TKCAL, ENERC_KCAL, TotalKcal …).
             # profile 4 (repair round): a wide table hints genomics only by a library-size
             # signature, never by "log-scale, normalization not recoverable" (IN-13).
+            # profile 5 (gate repair): whole numbers hint genomics only when their features' mean
+            # counts span orders of magnitude, as genes' do (an FFQ's codes, portions, minute
+            # counts do not).
             Stage(
                 "profile",
-                4,
+                5,
                 ("oriented",),
                 (),
                 profile_stage,
@@ -121,11 +124,16 @@ def build_graph() -> Graph:
             # as intake only, a screen that would remove most rows asks the unit, the OGTT and
             # pre-pandemic NHANES weights, codes beside the answers, ages by whole words, voom, and
             # the current BAM edition.
+            # findings 10 (gate repair): the energy findings are about the column whose values
+            # follow the macronutrients; an energy unit only proposed, or an age's unit the body
+            # sizes contradict, is asked, not judged in; NHANES subsample variables by their
+            # missingness; an outcome nothing places states the dispute as a condition; the
+            # recorded column units (``set_column_unit``) are read.
             Stage(
                 "findings",
-                9,
+                10,
                 ("oriented",),
-                ("lens", "target"),
+                ("lens", "target", "column_units"),
                 findings_stage,
                 heavy=True,
                 requires=("lens",),
@@ -138,7 +146,9 @@ def build_graph() -> Graph:
             # structure 6 (WP13 + WP14 merged): both of the above in one stage.
             # structure 7 (repair round): spacing alone never states repeats; a two-record change
             # is time-point evidence (IN-12).
-            Stage("structure", 7, ("oriented",),
+            # structure 8 (gate repair): same-date records ordered within the day, and a regular
+            # schedule nothing names as visits (or intakes under the dietary lens), are asked.
+            Stage("structure", 8, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             Stage("working", 2, ("oriented", "findings", "structure"),
@@ -146,9 +156,11 @@ def build_graph() -> Graph:
                   working_stage, heavy=True, label="Building the working table"),
             # target_info 3 (WP13, audit IN-05): the unit is stated only as recorded or spelled out
             # by the name; the clinical pack's reading is a proposal.
+            # target_info 4 (gate repair): a unit is stated only from a whole suffix (``protein_g_kg``
+            # is g/kg, not kg; ``wbc_k_ul`` thousands per µL, not U/L).
             Stage(
                 "target_info",
-                3,
+                4,
                 ("working",),
                 ("target", "task", "outcome_unit"),
                 target_info_stage,
@@ -160,7 +172,11 @@ def build_graph() -> Graph:
             # household a cluster, and a batch's proposed role follows the declared purpose.
             # roles 3 (repair round): a nutrient name the values contradict is no nutrient; an arm
             # named ``arm_id`` is an exposure; acquisition and survey-weight names read whole.
-            Stage("roles", 3, ("working",), ("lens", "target", "purpose"), roles_stage,
+            # roles 4 (gate repair): confidence says how much was checked; total energy by its values
+            # against the macronutrients; ratios (g/kg, g/1000 kcal) no day's amount; an ``_id``
+            # with a few values a code for groups; acquisition and sampling-weight names corroborated
+            # by the table (an assay lens, a survey design).
+            Stage("roles", 4, ("working",), ("lens", "target", "purpose"), roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -177,7 +193,11 @@ def build_graph() -> Graph:
             # proposals 9 (integration): the energy card reads the outcome by the one tokenizer.
             # proposals 10 (repair round): the energy column is intake by name and median; nutrients
             # are corroborated; a screen removing most rows is refused (IN-07).
-            Stage("proposals", 10, ("working", "roles"), ("lens", "roles", "target", "purpose"),
+            # proposals 11 (gate repair): total energy corroborated by its values; a unit only
+            # proposed refuses the screens until ``set_column_unit`` records it; an outcome nothing
+            # places states the dispute as a condition; subsample weights read by missingness.
+            Stage("proposals", 11, ("working", "roles"),
+                  ("lens", "roles", "target", "purpose", "column_units"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             Stage("cohort", 2, ("working", "target_info"),
@@ -212,7 +232,9 @@ def build_graph() -> Graph:
             # touched, marks pass-throughs kept, and names the geometric mean under log.
             # design 11 (WP13 + WP15 merged): both of the above in one stage.
             # design 12 (repair round): total energy read as intake only (no expenditure or score).
-            Stage("design", 12, ("working", "split", "target_info"),
+            # design 13 (gate repair): with an energy role named, a second energy-named predictor is
+            # what the user said it is, not total energy.
+            Stage("design", 13, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -230,7 +252,9 @@ def build_graph() -> Graph:
             # outcome's event is coded and named as declared; under inference the event's share
             # is of every analyzed row.
             # fit 12 (audit WP15, IN-22): under inference the table carries its measurement-error line.
-            Stage("fit", 12, ("working", "design", "split", "target_info", "cohort"),
+            # fit 13 (gate repair): a design whose strata or PSUs are read with no weight asks the
+            # survey question too, so the inference table waits for its answer.
+            Stage("fit", 13, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
@@ -261,7 +285,8 @@ def build_graph() -> Graph:
             # design, units, ordinal order, follow-up).
             # sensitivity 3: under inference each analysis pools its own multiple imputations.
             # sensitivity 4 (methods gate): the outcome keeps its own values (a True/False event).
-            Stage("sensitivity", 4, ("working", "design", "split", "target_info"),
+            # sensitivity 5 (gate repair): as fit 13, a half-read survey design waits for its answer.
+            Stage("sensitivity", 5, ("working", "design", "split", "target_info"),
                   SENSITIVITY_READS, sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),

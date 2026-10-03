@@ -697,6 +697,33 @@ class SetOutcomeUnit(_DecisionModel):
     unit: str = Field(min_length=1, max_length=24, pattern=r"^[^`\n\r]+$")
 
 
+# Audit WP13 gate repair: a unit TurboTab could only propose (total energy's, by its median or by
+# nothing; an age's, by a bare ``age``) is recorded by the user before any number is read in it.
+ENERGY_UNITS = ("kcal", "kj")
+AGE_UNITS = ("years", "months", "weeks", "days")
+ColumnUnit = Literal["kcal", "kj", "years", "months", "weeks", "days"]
+
+
+class ColumnUnitSpec(_Value):
+    """A column's recorded unit; for total energy, the number of days each value totals."""
+
+    unit: ColumnUnit
+    days: int = 1
+
+
+class SetColumnUnit(_DecisionModel):
+    """A column's unit, as the user reads it from the source's data dictionary, where TurboTab
+    could only propose one: total energy in kcal or kJ (a day's, or a total over ``days`` days),
+    or an age in years, months, weeks or days. Leash (BLUEPRINT §11.3): a unit not read from a
+    stated suffix, a codebook or the values' own agreement is a proposal, and no screen, band or
+    count is applied in it until it is recorded here."""
+
+    kind: Literal["set_column_unit"] = "set_column_unit"
+    column: str = Field(min_length=1)
+    unit: ColumnUnit
+    days: int = Field(default=1, ge=1, le=366)
+
+
 class SetTemporal(_DecisionModel):
     kind: Literal["set_temporal"] = "set_temporal"
     temporal: bool
@@ -780,7 +807,7 @@ Decision = Annotated[
         OpenSeal, ApplyRepair, DeferFinding, DismissFinding,
         SetFeatureTable, SetCategorical, SetSurvey,
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
-        SetSensitivity, SetMeasurementError, SetOutcomeUnit,
+        SetSensitivity, SetMeasurementError, SetOutcomeUnit, SetColumnUnit,
     ],
     Field(discriminator="kind"),
 ]
@@ -857,6 +884,9 @@ class ProjectState(BaseModel):
     # WP13 (audit IN-05): the outcome's unit as the user recorded it (holds while its column is
     # the target); a unit the name does not spell out is proposed, never stated, until then
     outcome_unit: str | None = None
+    # WP13 gate repair: a column's unit the user recorded where TurboTab could only propose one
+    # (total energy in kcal or kJ, an age in months): column -> its unit
+    column_units: dict[str, ColumnUnitSpec] | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1121,6 +1151,8 @@ register_kind(SetFollowUp, "follow_up",
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetOutcomeUnit, "outcome_unit", value=lambda d: d.unit,
               holds=lambda d, slots: slots.get("target") == d.column)
+register_kind(SetColumnUnit, "column_units", key=lambda d: d.column,
+              value=lambda d: ColumnUnitSpec(unit=d.unit, days=d.days))
 register_kind(SetSensitivity, "sensitivity")
 register_kind(SetMeasurementError, "measurement_error",
               value=lambda d: MeasurementErrorSpec(**d.model_dump(exclude={"kind"})))
@@ -1460,6 +1492,78 @@ def _screens_keep_most_rows(decision: SetExclusions, ctx: Any) -> None:
             f"intake screen removes the implausible few; one that removes most rows says the bounds "
             f"are not in `{column}`'s unit. Check the unit first.",
             exits=exits)
+
+
+# ── a screen on total energy waits for its unit (audit WP13 gate repair) ───────
+# The leash (BLUEPRINT §11.3): a unit read from a median-magnitude prior, or from nothing, is a
+# proposal; a screen's bounds are numbers in a unit, so no screen on total energy is recorded
+# until that unit is (a toddler's 4,040 kJ read as kcal lost 15% of healthy children to the
+# 500–5,000 kcal screen, offered unrefused). The exits record the unit.
+
+
+def _names_a_macro_total(column: str) -> bool:
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+
+    try:
+        reading = read_nutrient(column)
+    except AmbiguousNutrient:
+        return False
+    return reading is not None and reading.part is None and reading.macro in (
+        "protein", "carbohydrate", "fat", "alcohol")
+
+
+def _screens_wait_for_the_unit(decision: SetExclusions, ctx: Any) -> None:
+    from turbotab.core.recognizers import macro_totals, reads_as_total_energy
+    from turbotab.core.stages.proposals import energy_unit_reading, recorded_energy_unit
+
+    opener = _ctx(ctx, "store")
+    try:
+        store = opener() if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no data to check: nothing is refused for it
+        store = None
+    if store is None:
+        return
+    state = _state(ctx)
+    if state is not None and "dietary" not in (getattr(state, "lens", None) or []):
+        return
+    roles = (getattr(state, "roles", None) or {}) if state is not None else {}
+    names = set(store.columns)
+    for rule in decision.rules:
+        column = rule.column
+        if column not in names or not (roles.get(column) == "energy"
+                                       or reads_as_total_energy(column)):
+            continue
+        totals = [c for c in names if c != column and _names_a_macro_total(c)]
+        frame = store.materialize([column, *totals])
+        macros = macro_totals(frame, exclude=[column])
+        reading = energy_unit_reading(frame[[column, *macros.values()]], column,
+                                      recorded_energy_unit(state, column))
+        if reading.get("confirmed", True):
+            continue
+        proposed = str(reading["unit"])
+        other = "kcal" if proposed == "kj" else "kj"
+        word = {"kj": "kJ", "kcal": "kcal"}
+        raise Refusal(
+            "energy_unit_unconfirmed",
+            f"The rule on `{column}` reads its bounds in {word[proposed]}, but "
+            + ("only the column's median says so" if reading.get("basis") == "magnitude"
+               else "nothing says what unit the column is in")
+            + ". Record the unit first; then the screen's bounds are read in it.",
+            exits=[{"label": f"`{column}` is a day's energy in {word[proposed]}",
+                    "decision": SetColumnUnit(column=column, unit=proposed)},
+                   {"label": f"`{column}` is a day's energy in {word[other]}",
+                    "decision": SetColumnUnit(column=column, unit=other)},
+                   *([{"label": f"`{column}` is a week's total, in {word[proposed]}",
+                       "decision": SetColumnUnit(column=column, unit=proposed, days=7)}]
+                     if _names_a_week(column) else []),
+                   {"label": f"`{column}` is a total over two days, in {word[proposed]}",
+                    "decision": SetColumnUnit(column=column, unit=proposed, days=2)}])
+
+
+def _names_a_week(column: str) -> bool:
+    from turbotab.core.recognizers import tokens
+
+    return bool(set(tokens(column)) & {"week", "weeks", "weekly", "wk", "wks"})
 
 
 # ── no eligibility rule on the outcome (audit RO-01) ─────────────────────────
@@ -2308,6 +2412,26 @@ def _unit_names_the_outcome(decision: SetOutcomeUnit, ctx: Any) -> None:
             exits=[{"label": f"Record the unit of `{target}`", "decision": None}])
 
 
+def _column_unit_fits(decision: SetColumnUnit, ctx: Any) -> None:
+    """The unit names a numeric column of this table, and a span of days belongs to energy."""
+    columns = _columns_of(ctx)
+    if columns is not None and decision.column not in columns:
+        raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
+                      exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+    info = _info(ctx, decision.column)
+    if info is not None and info.get("dtype") not in NUMERIC_DTYPES:
+        raise Refusal("not_numeric",
+                      f"`{decision.column}` does not hold numbers, so it has no unit to record.",
+                      exits=[{"label": "Choose a numeric column", "decision": None}])
+    if decision.days != 1 and decision.unit not in ENERGY_UNITS:
+        raise Refusal(
+            "days_need_energy",
+            f"A span of days says how many days' intake a value totals; an age in "
+            f"{decision.unit} has none.",
+            exits=[{"label": f"Record `{decision.column}` in {decision.unit}",
+                    "decision": SetColumnUnit(column=decision.column, unit=decision.unit)}])
+
+
 def _order_names_the_outcome(decision: SetOutcomeOrder, ctx: Any) -> None:
     """The order answers for the outcome and places each of its levels exactly once."""
     target = _target_of(ctx)
@@ -2415,9 +2539,13 @@ def _sensitivity_rules_are_eligibility_rules(decision: SetSensitivity, ctx: Any)
         try:
             _exclusions_leave_the_outcome_alone(probe, ctx)
             _exclusions_are_ranges_on_numbers(probe, ctx)
+            _screens_wait_for_the_unit(probe, ctx)
         except Refusal as refused:
+            # A unit to record is answered where it is asked (its own exits), or the analysis left out.
+            kept = refused.exits if refused.code == "energy_unit_unconfirmed" else []
             raise Refusal(refused.code, f"In “{analysis.label}”: {refused.message}",
-                          exits=[{"label": f"Leave out “{analysis.label}”", "decision": rest}]) from None
+                          exits=[*kept, {"label": f"Leave out “{analysis.label}”",
+                                         "decision": rest}]) from None
 
 
 def _calibrated_exposures_are_columns(decision: SetMeasurementError, ctx: Any) -> None:
@@ -2455,6 +2583,7 @@ register_validator("set_measurement_error", _calibration_is_for_inference)
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_outcome_order", _order_names_the_outcome)
 register_validator("set_outcome_unit", _unit_names_the_outcome)
+register_validator("set_column_unit", _column_unit_fits)
 register_validator("set_exposure_form", _form_fits_the_column)
 register_validator("set_follow_up", _follow_up_belongs_to_the_outcome)
 register_validator("set_roles", _roles_name_real_columns)
@@ -2465,6 +2594,7 @@ register_validator("set_missing", _missing_fits_the_purpose)
 register_validator("set_missing", _non_detections_are_not_filled_by_the_median)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
+register_validator("set_exclusions", _screens_wait_for_the_unit)
 register_validator("set_exclusions", _screens_keep_most_rows)
 # first: a rule on the outcome is refused for that reason, whatever else is wrong with its bounds
 register_validator("set_exclusions", _exclusions_leave_the_outcome_alone, first=True)

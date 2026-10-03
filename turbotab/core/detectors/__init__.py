@@ -34,8 +34,9 @@ import pandas as pd
 from turbotab.core.detectors import codes, scales
 
 
-def _superseding() -> dict[str, Callable[[pd.DataFrame], list[dict[str, Any]]]]:
-    """Legacy detector name -> the reading served in its place (a list: one may become two)."""
+def _superseding(units: Any = None) -> dict[str, Callable[[pd.DataFrame], list[dict[str, Any]]]]:
+    """Legacy detector name -> the reading served in its place (a list: one may become two).
+    ``units`` are the columns' recorded units (``set_column_unit``: an age in months)."""
     from turbotab.core.detectors import assay, genomics, plausibility
 
     def one(fn: Callable[[pd.DataFrame], dict[str, Any] | None]) -> Callable[[pd.DataFrame], list]:
@@ -46,19 +47,20 @@ def _superseding() -> dict[str, Callable[[pd.DataFrame], list[dict[str, Any]]]]:
         "_survey_sentinel_codes": lambda df: [],
         "_acquisition_order": one(assay.run_order_finding),
         "_redundancy": one(assay.redundancy_finding),
-        "_clinical_impossible_vs_extreme": one(plausibility.impossible_vs_extreme_finding),
+        "_clinical_impossible_vs_extreme": one(
+            lambda df: plausibility.impossible_vs_extreme_finding(df, units=units)),
         "_genomics_data_type": genomics.findings,
     }
 
 
-def pack_findings(df: pd.DataFrame, lens: Sequence[str]) -> list[dict[str, Any]]:
+def pack_findings(df: pd.DataFrame, lens: Sequence[str], units: Any = None) -> list[dict[str, Any]]:
     """``packs.findings``, with the superseded detectors read here instead."""
     from turbotab import packs
 
     out: list[dict[str, Any]] = []
     if df is None or df.empty:
         return out
-    replaced = _superseding()
+    replaced = _superseding(units)
     for key in packs.normalize_quiet(lens):
         pack = packs.PACKS.get(key)
         if pack is None:

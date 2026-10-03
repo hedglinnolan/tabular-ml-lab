@@ -43,6 +43,15 @@ _RUN_ORDER = re.compile(r"(?:^|[_.\s])(?:run|inj(?:ection)?|acq(?:uisition)?|seq
                         r"(?:[_.\s]?(?:order|index|no|number))?(?:$|[_.\s])|order$", re.I)
 MIN_SHARE = 0.5          # of numeric column labels that must carry a vocabulary or grammar
 MIN_WIDE = 100           # numeric columns for a data-type reading to hint genomics on its own
+# Whole numbers are not yet counts of transcripts: a raw food-frequency questionnaire's 9-point
+# codes, portions in a web recall, food groups in whole grams and minute-level accelerometer counts
+# are all wide blocks of non-negative integers (audit WP13 gate repair: each was hinted genomics,
+# "what a count matrix looks like", and drew a critical lens contradiction under its own dietary
+# or survey lens). What sets expression counts apart is that features differ in abundance by
+# orders of magnitude: the middle half of genes' mean counts spans 2.6 decades on GEO GSE60450 and
+# 2.3 on GSE147507 (the acceptance tests' public matrices), while every non-assay table above
+# spans under 0.1, its items being answered on one scale. TurboTab's own cut-off sits between.
+ABUNDANCE_SPREAD = 0.5   # decades: interquartile range of log10(1 + each column's mean count)
 
 
 def _numeric(df: pd.DataFrame) -> list[str]:
@@ -100,6 +109,35 @@ def metabolomics_evidence(df: pd.DataFrame) -> str | None:
     return None
 
 
+def abundance_spread(df: pd.DataFrame, columns: Sequence[str]) -> float:
+    """The interquartile range, in decades, of ``log10(1 + mean)`` over ``columns``."""
+    import numpy as np
+
+    means = df[list(columns)].apply(pd.to_numeric, errors="coerce").mean(axis=0).to_numpy(dtype=float)
+    means = means[np.isfinite(means)]
+    if len(means) < 4:
+        return 0.0
+    logged = np.log10(1.0 + np.clip(means, 0.0, None))
+    q1, q3 = np.percentile(logged, [25, 75])
+    return float(q3 - q1)
+
+
+def count_signature(df: pd.DataFrame) -> str | None:
+    """Why a wide block of non-negative whole numbers reads as expression counts, or None: its
+    features' mean counts span orders of magnitude (:data:`ABUNDANCE_SPREAD`), as genes' do; a
+    questionnaire, a recall's portions or minute counts sit on one scale."""
+    from turbotab import packs
+
+    block = packs.count_matrix(df)
+    if block is None:
+        return None
+    spread = abundance_spread(df, block["columns"])
+    if spread < ABUNDANCE_SPREAD:
+        return None
+    return (f"{len(block['columns']):,} columns hold non-negative whole numbers whose mean counts "
+            f"span {spread:.1f} orders of magnitude across the middle half of them, as genes' do")
+
+
 def total_energy_column(df: pd.DataFrame) -> str | None:
     """The first numeric column whose name reads as total energy intake, by the one recognizer
     (:func:`turbotab.core.recognizers.reads_as_total_energy`), or None.
@@ -140,9 +178,9 @@ def hints(df: pd.DataFrame | None) -> list[dict[str, str]]:
     vocabulary = gene_vocabulary(df)
     genomic = None
     metabolomic = None if found else metabolomics_evidence(df)
-    if packs.count_matrix(df) is not None and not metabolomic:
-        genomic = ("every one of these columns holds non-negative whole numbers, which is what a "
-                   "count matrix looks like")
+    counts = count_signature(df) if not metabolomic else None
+    if counts:
+        genomic = counts
     elif vocabulary >= MIN_SHARE:
         genomic = f"{vocabulary:.0%} of the labels are gene identifiers"
         metabolomic = None
@@ -153,6 +191,8 @@ def hints(df: pd.DataFrame | None) -> list[dict[str, str]]:
         # thickness panel (audit WP14 repair), and hints nothing.
         card = genomics.card(df)
         keys = (card or {}).get("classification", {}).get("keys") or []
+        if keys and keys[0] in ("raw_counts", genomics.SHALLOW_COUNTS) and not count_signature(df):
+            keys = []  # whole numbers on one scale: a questionnaire, portions, minute counts
         if card and card.get("read") and keys and keys[0] != genomics.LOG_UNKNOWN:
             genomic = (f"{len(numeric):,} measurement columns read as "
                        f"{card['classification']['label']}, an expression matrix")
@@ -206,5 +246,5 @@ def contradiction_finding(df: pd.DataFrame, lens: Sequence[str]) -> dict[str, An
         {"status": "CONVENTION", "source": "DOMAIN_PACKS.md#01 · The opening question"})
 
 
-__all__ = ["contradiction_finding", "gene_vocabulary", "hints", "metabolomics_evidence",
-           "total_energy_column"]
+__all__ = ["ABUNDANCE_SPREAD", "abundance_spread", "contradiction_finding", "count_signature",
+           "gene_vocabulary", "hints", "metabolomics_evidence", "total_energy_column"]

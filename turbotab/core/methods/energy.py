@@ -364,13 +364,21 @@ def unit_of(column: str) -> str:
     """The unit a column name declares: by its suffix (grams, kcal, kj, density, …), else by the
     codebook its name comes from (NHANES ``DR1TSFAT`` "(gm)", INFOODS ``PROCNT`` in g; audit IN-08),
     else unmarked."""
+    from turbotab.core.recognizers import amount_unit, codebook_unit
+
     name = str(column).lower()
+    if re.fullmatch(_DENSITY_SUFFIX, name):
+        return "density"
+    # The codebook's stated unit, then the name's unit expression read whole (audit WP13 gate
+    # repair): ``protein_g_kg`` is per kg of body weight, ``fat_g_1000kcal`` a density,
+    # ``alcohol_g_week`` a weekly amount; the suffixes below never see them.
+    found = codebook_unit(column) or amount_unit(column)
+    if found:
+        return found
     for unit, pattern in _UNIT_SUFFIXES:
         if re.fullmatch(pattern, name):
             return unit
-    from turbotab.core.recognizers import codebook_unit
-
-    return codebook_unit(column) or "unmarked"
+    return "unmarked"
 
 
 def nutrient_role(column: str) -> Optional[str]:
@@ -415,6 +423,12 @@ def energy_factor(column: str, atwater: Optional[Mapping[str, float]] = None) ->
     if unit == "density":
         return FactorReading(column, None, None, unit, True,
                              f"{column} is already a share of energy, not an amount that carries energy")
+    if unit in ("per_body", "per_period", "concentration"):
+        what = {"per_body": "per kg of body weight", "per_period": "per week, month or year",
+                "concentration": "a concentration"}[unit]
+        return FactorReading(column, None, None, unit, True,
+                             f"{column} is {what}, not a day's amount, so it carries no day's "
+                             f"energy unless one is declared")
     if unit == "kcal":
         return FactorReading(column, 1.0, None, unit, True, f"{column} is already in kcal")
     if unit == "kj":
@@ -1440,12 +1454,16 @@ def reads_as_total_energy(column: str) -> bool:
 
 
 def total_energy_columns(predictors: Sequence[str], roles: Mapping[str, str]) -> List[str]:
-    """The predictors that are total energy: the energy role's, then any exposure or covariate
-    whose name reads as total energy intake (:func:`reads_as_total_energy`)."""
+    """The predictors that are total energy: the energy role's; with none, any exposure or
+    covariate whose name reads as total energy intake (:func:`reads_as_total_energy`; audit ME-02:
+    energy kept as a covariate is the standard model). When the roles name the energy column, a
+    second energy-named predictor is what the user said it is (audit WP13 gate repair: a device's
+    ``Calories`` beside the intake column, kept as a covariate, is energy spent, not intake)."""
     named = [str(c) for c in predictors if roles.get(c) == "energy"]
-    by_name = [str(c) for c in predictors if roles.get(c) in ("exposure", "covariate")
-               and str(c) not in named and reads_as_total_energy(c)]
-    return named + by_name
+    if named:
+        return named
+    return [str(c) for c in predictors if roles.get(c) in ("exposure", "covariate")
+            and reads_as_total_energy(c)]
 
 
 def _is_share(column: str) -> bool:

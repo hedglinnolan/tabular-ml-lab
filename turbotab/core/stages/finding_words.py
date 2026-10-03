@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import AbstractSet, Any, Callable, Mapping, Sequence
 
@@ -46,10 +46,24 @@ class FindingContext:
     frame: pd.DataFrame
     lens: Sequence[str] = ()
     target: str | None = None
+    # The columns' units the user recorded (``set_column_unit``): column -> its unit spec.
+    units: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def n_rows(self) -> int:
         return len(self.frame)
+
+    @cached_property
+    def energy(self) -> dict[str, Any] | None:
+        """The total-energy column under the dietary lens, read by names and checked by its values
+        against the macronutrients (``stages.proposals.energy_column_reading``), or None."""
+        if "dietary" not in self.lens:
+            return None
+        from turbotab.core.stages.proposals import _with_medians, energy_column_reading
+
+        info = {c: {"dtype": "numeric" if pd.api.types.is_numeric_dtype(self.frame[c]) else "text"}
+                for c in self.columns if c != self.target}
+        return energy_column_reading(_with_medians(info, self.frame), {}, self.frame)
 
     @cached_property
     def columns(self) -> list[str]:
@@ -260,6 +274,16 @@ def _text_numeric(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> V
 
 def _impossible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     entries = [e for e in _list(p.get("columns")) if isinstance(e, Mapping)]
+    if p.get("age_unit_question"):
+        # Audit WP13 gate repair: an age in months read as years; nothing is judged by age, and no
+        # range is offered on values whose judgment depends on the unit.
+        age = (p.get("age") or {}).get("column") or "age"
+        return Voice(f"Read in years, {tick(age)} flags most rows: record its unit before judging "
+                     f"by age.")
+    if not entries and p.get("in_question"):
+        col = _list(p.get("in_question"))[0] if _list(p.get("in_question")) else None
+        return Voice(f"Most of {tick(col)} sits outside the adult reference: its unit or "
+                     f"population is in question.")
     if not entries:
         return Voice(finish(f["title"]), "exclusions", "Exclude rows by range")
     e = entries[0]
@@ -279,13 +303,16 @@ def _compositional(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> 
                  "roles", "Leave one part out")
 
 
-def energy_unit_of(fc: FindingContext, column: str | None) -> dict[str, str] | None:
-    """The energy column's unit as the proposals read it (suffix, Atwater, magnitude prior)."""
+def energy_unit_of(fc: FindingContext, column: str | None) -> dict[str, Any] | None:
+    """The energy column's unit as the proposals read it (a recorded unit, suffix, Atwater,
+    magnitude prior), with whether that settles it."""
     if not column or column not in fc.frame.columns:
         return None
     from turbotab.core.stages.proposals import energy_unit_reading
 
-    return energy_unit_reading(fc.frame, column)
+    recorded = (fc.units or {}).get(column)
+    recorded = recorded if getattr(recorded, "unit", None) in ("kcal", "kj") else None
+    return energy_unit_reading(fc.frame, column, recorded)
 
 
 def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> None:
@@ -293,7 +320,12 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
 
     The pack compares the raw column with 500–5,000 whatever its unit, so a kJ column had nearly
     every row "above 5000" beside the app's own finding that it is in kilojoules. Read in kJ, the
-    same range is 2,092–20,920 kJ: the count then matches the kcal screens the proposals offer."""
+    same range is 2,092–20,920 kJ: the count then matches the kcal screens the proposals offer.
+
+    A unit only proposed (a median-magnitude prior, or nothing at all) is the finding's question,
+    not its premise (audit WP13 gate repair): toddlers' 4,040 kJ read as kcal made "76 records
+    report an implausible daily intake". The finding then counts under each reading and asks for
+    the unit; no row is called a misreport in a unit nobody stated."""
     col = p.get("column") or (f["affected_columns"] or [None])[0]
     reading = energy_unit_of(fc, col)
     if reading is None:
@@ -305,16 +337,39 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
         from turbotab.packs import _PLAUSIBLE_KCAL as kcal  # the detector's own range
     except ImportError:  # pragma: no cover - the legacy pack always defines it
         kcal = (500.0, 5000.0)
-    factor = KCAL_PER_KJ if reading["unit"] == "kj" else 1.0
-    low, high = kcal[0] * factor, kcal[1] * factor
+    days = int(reading.get("days") or 1)
     s = pd.to_numeric(fc.frame[col], errors="coerce")
-    below, above = int((s < low).sum()), int((s > high).sum())
-    n, present = below + above, int(s.notna().sum())
+    present = int(s.notna().sum())
+
+    def counted(unit: str) -> tuple[float, float, int, int]:
+        factor = (KCAL_PER_KJ if unit == "kj" else 1.0) * days
+        lo, hi = kcal[0] * factor, kcal[1] * factor
+        return lo, hi, int((s < lo).sum()), int((s > hi).sum())
+
+    low, high, below, above = counted(reading["unit"])
+    n = below + above
+    word = "kJ" if reading["unit"] == "kj" else "kcal"
+    if not reading.get("confirmed", True):
+        other = "kcal" if reading["unit"] == "kj" else "kj"
+        o_low, o_high, o_below, o_above = counted(other)
+        o_word = "kJ" if other == "kj" else "kcal"
+        p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word,
+                  "unit_question": True, "unit_unconfirmed": True, "n_present": present,
+                  "other_unit": o_word, "other_n_flagged": o_below + o_above})
+        f["severity"] = "warning" if n else "info"
+        f["title"] = f"The unit of `{col}` is not settled"
+        f["detail"] = (
+            f"{reading['sentence']} Read in {word}, {n:,} of {present:,} rows fall outside "
+            f"{low:,.0f}–{high:,.0f} {word} a day ({below:,} below, {above:,} above); read in "
+            f"{o_word}, {o_below + o_above:,} fall outside {o_low:,.0f}–{o_high:,.0f} {o_word}. "
+            f"Which rows are implausible depends on the unit, so none is counted as a misreport "
+            f"until it is recorded, and the intake screens wait for it. Observed range "
+            f"{float(s.min()):,.0f} to {float(s.max()):,.0f}, median {float(s.median()):,.0f}.")
+        return
     if present and n > MOST_ROWS * present:
         # Audit IN-07's remedy: a screen that would remove more than half the rows says the unit is
         # wrong, not the people (a child's day in kJ, an athlete's, a weekly total). The count is
         # not an implausible-intake count; the unit is asked first.
-        word = "kJ" if reading["unit"] == "kj" else "kcal"
         p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word,
                   "unit_question": True, "n_present": present})
         f["severity"] = "warning"
@@ -328,15 +383,18 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
             f"unit {tick(col)} is in first. Observed range {float(s.min()):,.0f} to "
             f"{float(s.max()):,.0f}, median {float(s.median()):,.0f}.")
         return
-    if reading["unit"] != "kj":
+    if reading["unit"] != "kj" and days == 1:
         return
-    p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": "kJ"})
+    p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word})
+    over = f" over {days} days" if days > 1 else ""
     f["title"] = (f"{n:,} {'record reports' if n == 1 else 'records report'} an implausible daily "
-                  f"intake" if n else "No record reports an implausible daily intake, read in kJ")
-    f["detail"] = (f"{reading['sentence']} Read in kJ, {tick(col)} is below {low:,.0f} kJ "
-                   f"({kcal[0]:,.0f} kcal) on {below:,} {plural(below, 'record')} and above "
-                   f"{high:,.0f} kJ ({kcal[1]:,.0f} kcal) on {above:,}. Observed range "
-                   f"{float(s.min()):,.0f} to {float(s.max()):,.0f} kJ.")
+                  f"intake" if n else f"No record reports an implausible daily intake, read in "
+                                      f"{word}{over}")
+    f["detail"] = (f"{reading['sentence']} Read in {word}{over}, {tick(col)} is below "
+                   f"{low:,.0f} {word} ({kcal[0]:,.0f} kcal a day) on {below:,} "
+                   f"{plural(below, 'record')} and above {high:,.0f} {word} ({kcal[1]:,.0f} kcal a "
+                   f"day) on {above:,}. Observed range {float(s.min()):,.0f} to "
+                   f"{float(s.max()):,.0f} {word}.")
 
 
 def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
@@ -346,6 +404,10 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
     lo, hi = p.get("minimum"), p.get("maximum")
     if n is None or lo is None or hi is None:
         return Voice(finish(f["title"]), "exclusions", "Choose an exclusion rule")
+    if p.get("unit_unconfirmed"):
+        return Voice(f"Read in {p.get('unit')}, {count(n)} of {count(p.get('n_present') or fc.n_rows)} "
+                     f"rows fall outside {tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} a day: record "
+                     f"{tick(col)}'s unit first.", "exclusions", "Record the unit first")
     if p.get("unit_question"):
         return Voice(f"{count(n)} of {count(p.get('n_present') or fc.n_rows)} rows fall outside "
                      f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} {p.get('unit')} a day: check "
@@ -438,7 +500,10 @@ _SUBSAMPLE_WORDS = {
     "oral glucose tolerance test subsample": (
         "OGTT subsample weight", "the oral glucose tolerance test subsample, drawn from the "
                                  "fasting subsample"),
+    "subsample": ("subsample weight", "the subsample that weight describes"),
 }
+_SUBSAMPLE_OF = {"fasting subsample": "the morning fasting subsample",
+                 "oral glucose tolerance test subsample": "the OGTT subsample"}
 
 
 def restate_survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> None:
@@ -449,19 +514,28 @@ def restate_survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingCont
     weight of the smallest subpopulation that includes all the variables you want to include in
     your analysis." A subsample weight whose analytes TurboTab cannot tell (``WTSA2YR``…) leaves
     the choice to the user: the finding says so and is never SETTLED."""
-    from turbotab.core.recognizers import NHANES_LCD_QUOTE, least_common_denominator
+    from turbotab.core.recognizers import NHANES_LCD_QUOTE, least_common_denominator, weight_tier
 
-    lcd = least_common_denominator(fc.columns)
+    lcd = least_common_denominator(fc.columns, fc.frame)
     if lcd is None:
         return
     others = list(lcd.get("other_subsamples") or [])
+    unconfirmed = list(lcd.get("unconfirmed") or [])
     unsure = (f" {listing(others, limit=3)} {plural(len(others), 'is a subsample weight', 'are subsample weights')} "
               f"whose analytes TurboTab cannot tell from the names: if any variable in the "
               f"analysis was measured on that subsample, its weight is the smaller one and the "
               f"rule names it instead.") if others else ""
+    for w in unconfirmed:
+        # Audit WP13 gate repair: a fasting weight beside a fasting analyte TurboTab did not know
+        # (LBDLDNSI, a renamed glucose) was passed over and the dietary weight stated, SETTLED.
+        tier = weight_tier(w)
+        sample = _SUBSAMPLE_OF.get(tier[0], "a subsample") if tier else "a subsample"
+        unsure += (f" {tick(w)} weights {sample}, and no variable here reads as measured on it, by "
+                   f"its name or by being recorded only where {tick(w)} is positive: if one was, "
+                   f"{tick(w)} is the smaller sample and the rule names it instead.")
     if lcd["sample"] not in _SUBSAMPLE_WORDS or not lcd["because"]:
-        if others:
-            p.update({"other_subsamples": others})
+        if others or unconfirmed:
+            p.update({"other_subsamples": others, "unconfirmed": unconfirmed})
             f["detail"] = (f.get("detail") or "").rstrip() + unsure
             f["evidence"] = dict(NHANES_WEIGHTING_EVIDENCE)
         return
@@ -474,7 +548,7 @@ def restate_survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingCont
     cdc = f" CDC: {OGTT_QUOTE}" if lcd["sample"] != "fasting subsample" else ""
     if lcd["use"]:
         p.update({"use": [lcd["use"]], "not": list(lcd["not"]), "sample": lcd["sample"],
-                  "other_subsamples": others})
+                  "other_subsamples": others, "unconfirmed": unconfirmed})
         f["title"] = f"Use the {weight_words}, {tick(lcd['use'])}"
         f["detail"] = (f"{measured}, so the analysis takes its weight, {tick(lcd['use'])}"
                        + (f", not {listing(lcd['not'], limit=4)}" if lcd["not"] else "")
@@ -499,7 +573,9 @@ def _survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
     avoid = [str(w) for w in p.get("not") or []]
     sample = p.get("sample")
     if sample in _SUBSAMPLE_WORDS:
-        which = "Fasting analytes" if sample == "fasting subsample" else "OGTT analytes"
+        which = {"fasting subsample": "Fasting analytes",
+                 "oral glucose tolerance test subsample": "OGTT analytes"}.get(sample,
+                                                                               "Subsample analytes")
         if not use:
             larger = f"; {listing(avoid)} describe a larger sample" if avoid else ""
             return Voice(f"{which} need {tick(p.get('missing'))}, which this table lacks{larger}.",
@@ -510,6 +586,10 @@ def _survey_weights(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) ->
     if p.get("other_subsamples") and not use:
         return Voice(f"{listing(p['other_subsamples'], limit=2)} weight a subsample: which weight "
                      f"applies depends on the variables you analyze.", "roles", "Mark design columns")
+    if p.get("unconfirmed") and use:
+        return Voice(f"{listing(use)}, unless a variable here was measured on "
+                     f"{listing(p['unconfirmed'], limit=2)}'s subsample: then that weight.",
+                     "roles", "Mark design columns")
     if avoid:
         text = (f"Dietary analyses use {listing(use)}, not {listing(avoid)}; as design columns "
                 f"neither becomes a predictor.")
@@ -529,8 +609,9 @@ def weight_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> lis
         return []
     from turbotab.core.recognizers import least_common_denominator
 
-    lcd = least_common_denominator(fc.columns)
-    if lcd is None or not (lcd["use"] or lcd["missing"] or lcd.get("other_subsamples")):
+    lcd = least_common_denominator(fc.columns, fc.frame)
+    if lcd is None or not (lcd["use"] or lcd["missing"] or lcd.get("other_subsamples")
+                           or lcd.get("unconfirmed")):
         return []
     from turbotab import packs
     from turbotab.core.stages.findings import pack_finding
@@ -794,7 +875,7 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
     weakest status (CONVENTION: which method is a convention).
     """
     from turbotab.core.methods.dietary_caveats import (
-        DISPUTED, ENERGY_TITLE, ENERGY_WHY, dispute_why, energy_related,
+        DISPUTED, ENERGY_TITLE, ENERGY_WHY, dispute_why, outcome_relation, unconfirmed_why,
     )
 
     params = dict((raw or {}).get("params") or {})
@@ -814,9 +895,16 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
                              f"recognized by name.")
     finding["title"] = ENERGY_TITLE
     why = ENERGY_WHY
-    kind = energy_related(fc.target)
-    if kind is not None and fc.target is not None:
-        why = f"{why} {dispute_why(fc.target, kind)}"
+    relation = outcome_relation(fc.target, fc.frame) if fc.target is not None else None
+    if relation is not None and relation["kind"] is not None:
+        how = (f" It tracks {tick(relation['via'])} (r = {relation['r']:.2f})."
+               if relation["basis"] == "values" else "")
+        why = f"{why} {dispute_why(fc.target, relation['kind'])}{how}"
+        finding["evidence"] = dict(DISPUTED)
+    elif relation is not None and relation["basis"] == "unconfirmed":
+        # The leash (audit WP13 gate repair): nothing places the outcome, so the dispute is the
+        # researcher's question, stated, never dropped because a name list missed it.
+        why = f"{why} {unconfirmed_why(fc.target)}"
         finding["evidence"] = dict(DISPUTED)
     finding["why_it_matters"] = why
 
@@ -1018,6 +1106,65 @@ def cycle_findings(fc: FindingContext) -> list[dict[str, Any]]:
 _PACK_ENERGY_ALIAS = "DR1TKCAL"  # a name the pack's exact-alias matcher reads as total energy
 
 
+_ENERGY_FAMILIES = ("pack::dietary::implausible_intake", "pack::dietary::energy_adjustment")
+
+
+def _pack_energy_raw(fid: str, energy: str, fc: FindingContext) -> dict[str, Any] | None:
+    """The pack's own energy detector ``fid`` run with ``energy`` as the energy column: the column
+    renamed to an alias the pack's exact-alias matcher reads, and every other column that matcher
+    would read as energy set aside, so the pack cannot pick one the app's reading passed over."""
+    from turbotab import packs
+
+    alias = fc.frame.rename(columns={energy: _PACK_ENERGY_ALIAS})
+    if fc.target is not None and fc.target in alias.columns:
+        alias = alias.drop(columns=[fc.target])
+    for _ in range(len(alias.columns)):
+        found = packs._reference_column(alias, "kcal")
+        if found is None or found == _PACK_ENERGY_ALIAS:
+            break
+        alias = alias.drop(columns=[found])
+    detector = {"pack::dietary::implausible_intake": packs._implausible_intake,
+                "pack::dietary::energy_adjustment": packs._energy_adjustment}[fid]
+    try:
+        raw = detector(alias)
+    except Exception:  # noqa: BLE001 - the legacy detector is a second reader, never a failure
+        return None
+    return None if raw is None else _renamed(raw, _PACK_ENERGY_ALIAS, energy)
+
+
+def repoint_energy(legacy: list[tuple[dict[str, Any], dict[str, Any]]],
+                   fc: FindingContext) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """The pack's energy findings, about the column the app reads as total energy intake.
+
+    The pack names energy by exact alias, so a device's energy expenditure (Fitbit ``Calories``,
+    ActiLife ``Kcals``) was read as intake beside the real intake column, and the implausible-
+    intake finding counted "84 of 320 rows below 500" on energy spent (audit WP13 gate repair). A
+    legacy energy finding about a column the app's reading passed over is run again on the app's
+    column, or dropped when the app reads no column as total energy intake."""
+    if "dietary" not in fc.lens:
+        return legacy
+    from turbotab.core.stages.findings import pack_finding
+
+    reading = fc.energy or {}
+    energy = reading.get("column")
+    out = []
+    for raw, finding in legacy:
+        if family(finding["id"]) not in _ENERGY_FAMILIES:
+            out.append((raw, finding))
+            continue
+        params = dict(raw.get("params") or {})
+        named = params.get("column") or params.get("energy_column")
+        if named == energy:
+            out.append((raw, finding))
+            continue
+        if energy is None:
+            continue  # nothing reads as energy intake: the pack's alias was the only reading
+        again = _pack_energy_raw(family(finding["id"]), energy, fc)
+        if again is not None:
+            out.append((again, pack_finding(again)))
+    return out
+
+
 def energy_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """The pack's implausible-intake and energy-adjustment findings for a total-energy column only
     the app's recognizer reads (audit IN-08: ``DR2TKCAL``, ``DRXTKCAL``, ``ENERC_KCAL``,
@@ -1026,33 +1173,19 @@ def energy_findings(fc: FindingContext, legacy: Sequence[dict[str, Any]]) -> lis
     the energy column, so their counts, text and badges are the pack's."""
     if "dietary" not in fc.lens:
         return []
-    from turbotab import packs
     from turbotab.core.stages.findings import pack_finding
-    from turbotab.core.stages.proposals import energy_column
 
     have = {family(f["id"]) for f in legacy}
-    info = {c: {"dtype": "numeric" if pd.api.types.is_numeric_dtype(fc.frame[c]) else "text"}
-            for c in fc.columns if c != fc.target}
-    from turbotab.core.stages.proposals import _with_medians
-
-    energy = energy_column(_with_medians(info, fc.frame), {})
-    if energy is None or energy == _PACK_ENERGY_ALIAS or _PACK_ENERGY_ALIAS in fc.names:
+    energy = (fc.energy or {}).get("column")
+    if energy is None or energy == _PACK_ENERGY_ALIAS:
         return []
-    alias = fc.frame.rename(columns={energy: _PACK_ENERGY_ALIAS})
-    if fc.target is not None and fc.target in alias.columns:
-        alias = alias.drop(columns=[fc.target])
     out = []
-    for fid, detector in (("pack::dietary::implausible_intake", packs._implausible_intake),
-                          ("pack::dietary::energy_adjustment", packs._energy_adjustment)):
+    for fid in _ENERGY_FAMILIES:
         if fid in have:
             continue
-        try:
-            raw = detector(alias)
-        except Exception:  # noqa: BLE001 - the legacy detector is a second reader, never a failure
-            raw = None
+        raw = _pack_energy_raw(fid, energy, fc)
         if raw is None:
             continue
-        raw = _renamed(raw, _PACK_ENERGY_ALIAS, energy)
         finding = pack_finding(raw)
         if fid == "pack::dietary::energy_adjustment":
             restate_energy(finding, raw, fc)

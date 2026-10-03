@@ -528,10 +528,14 @@ register_evidence_coach("voice::identifier", lambda finding, views, ctx: None)
 
 
 def card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, unit: str,
-               missing: Mapping[str, Any]) -> dict[str, CoachNote]:
+               missing: Mapping[str, Any],
+               unit_reading: Mapping[str, Any] | None = None) -> dict[str, CoachNote]:
     """At most one line per decision card, from the proposals' own reading of the data as loaded.
 
-    ``exclusions``: rows outside the pack's plausible-intake range (the detector's own bounds).
+    ``exclusions``: rows outside the pack's plausible-intake range (the detector's own bounds), in
+    the energy column's unit (``unit_reading``). While that unit is only proposed, the line asks
+    for it and calls no one an under- or over-reporter (audit WP13 gate repair: "`76` rows above
+    `5,000` kcal: likely over-reporting" on toddlers' kJ).
     ``missing``: the blankest column whose blanks likely mean "not asked".
     """
     out: dict[str, CoachNote] = {}
@@ -541,7 +545,8 @@ def card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, u
             from turbotab.packs import _PLAUSIBLE_KCAL as kcal  # the detector's own range
         except ImportError:  # pragma: no cover - the legacy pack always defines it
             kcal = (500.0, 5000.0)
-        factor = 4.184 if unit == "kj" else 1.0
+        days = int((unit_reading or {}).get("days") or 1)
+        factor = (4.184 if unit == "kj" else 1.0) * days
         low, high = kcal[0] * factor, kcal[1] * factor
         e = pd.to_numeric(frame[energy], errors="coerce")
         below, above = int(((e < low) & base).sum()), int(((e > high) & base).sum())
@@ -549,7 +554,15 @@ def card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, u
         present = int((e.notna() & base).sum())
         from turbotab.core.stages.proposals import MOST_ROWS
 
-        if present and below + above > MOST_ROWS * present:
+        confirmed = (unit_reading or {}).get("confirmed", True)
+        if not confirmed and (below or above):
+            # Twelve words (COACH_WORDS): the count is conditional on a unit nobody stated.
+            line = note(f"If {tick(energy)} is {word}, {count(below + above)} rows fall outside "
+                        f"{value(round(low))}–{value(round(high))}: record its unit",
+                        "column", energy)
+        elif not confirmed:
+            line = None
+        elif present and below + above > MOST_ROWS * present:
             # Most rows outside a day's plausible intake is a unit question, not misreporting
             # (audit IN-07: "`764` rows above `5,000` kcal: likely over-reporting").
             line = note(f"{count(below + above)} of {count(present)} rows outside "

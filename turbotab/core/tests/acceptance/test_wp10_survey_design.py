@@ -335,12 +335,22 @@ def test_1_the_app_asks_population_or_this_sample_and_records_the_attestation(cl
     model = finish(client, pid)
     assert any("Scores are unweighted" in c for c in model["concerns"]), model["concerns"]
 
-    # No weight column: not asked. A body weight called `weight` is not a survey weight.
+    # No weight column beside the strata and PSU: a body weight called `weight` is not a survey
+    # weight, so no population option is offered; but the table names its design, so the question
+    # is still asked (gate repair: a half-read design took the unweighted estimand without a word,
+    # BLUEPRINT §11.3), and "these participants" is recorded with its attestation, never assumed.
     frame.drop(columns=["WTDRD1"]).rename(columns={"DR1TKCAL": "weight"}).to_csv(
         tables["I4"].with_name("no_weight.csv"), index=False)
     roles = {"SEQN": "identifier", "weight": "covariate", "DR1TFIBE": "exposure",
              "SDMVSTRA": "design", "SDMVPSU": "design"}
     pid = open_project(client, tables["I4"].with_name("no_weight.csv"), "LBXCRP", "inference", roles)
+    assert step(client, pid, "survey")["status"] == "open"
+    assert [o["key"] for o in survey_options(client, pid)] == ["sample"]
+    # With no design column at all, the question does not apply.
+    frame.drop(columns=["WTDRD1", "SDMVSTRA", "SDMVPSU"]).rename(
+        columns={"DR1TKCAL": "weight"}).to_csv(tables["I4"].with_name("no_design.csv"), index=False)
+    roles = {"SEQN": "identifier", "weight": "covariate", "DR1TFIBE": "exposure"}
+    pid = open_project(client, tables["I4"].with_name("no_design.csv"), "LBXCRP", "inference", roles)
     assert step(client, pid, "survey")["status"] == "not_applicable"
 
 

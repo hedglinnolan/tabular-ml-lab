@@ -640,6 +640,8 @@ function slotOf(d: Decision): Slot | null {
       return "outcome_order";
     case "set_outcome_unit":
       return "outcome_unit";
+    case "set_column_unit":
+      return "column_units";
     case "set_follow_up":
       return "follow_up";
     case "set_sensitivity":
@@ -739,6 +741,7 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_outcome_unit":
       return d.unit;
     case "set_exposure_form": // keyed by column; the fold merges it
+    case "set_column_unit": // keyed by column; the fold merges it
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -808,6 +811,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     sensitivity: null,
     measurement_error: null,
     outcome_unit: null,
+    column_units: null,
   };
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {
@@ -824,6 +828,12 @@ export function fold(records: DecisionRecord[]): ProjectState {
     if (d.kind === "apply_repair" || d.kind === "defer_finding" || d.kind === "dismiss_finding") {
       // A keyed slot: one disposition per finding, the latest write winning (M2_CONTRACT §4).
       state.findings = { ...(state.findings ?? {}), [d.finding_id]: disposition(d) };
+      continue;
+    }
+    if (d.kind === "set_column_unit") {
+      // A keyed slot: one unit per column (turbotab/core/decisions.py, column_units).
+      const unit = { unit: d.unit, days: d.days ?? 1 };
+      state.column_units = { ...(state.column_units ?? {}), [d.column]: unit };
       continue;
     }
     if (d.kind === "set_exposure_form") {

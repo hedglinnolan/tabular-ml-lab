@@ -171,15 +171,16 @@ def test_1c_on_a_diet_and_body_composition_table_only_intakes_are_adjusted(tmp_p
 
     path = _diet_and_body_composition(tmp_path)
     roles = _roles(path, lens=["dietary"], target="hba1c")
-    nutrient_reasons = ("A nutrient that carries energy: an exposure under the dietary lens.",
-                        "A nutrient intake: an exposure under the dietary lens.")
     for name in MUST_NOT + ["crp_mg_l"]:
-        assert roles[name]["reason"] not in nutrient_reasons, (name, roles[name])
+        assert not _reads_as_nutrient(roles[name]["reason"]), (name, roles[name])
         assert "energy" not in roles[name]["reason"].lower(), (name, roles[name])
     # A food group in grams is an intake, said as one, not a nutrient.
     assert roles["fatty_fish_g"]["proposed"] == "exposure"
     assert roles["fatty_fish_g"]["reason"].startswith("An intake by its unit, not a nutrient")
-    assert roles["protein_g"]["reason"] == nutrient_reasons[0]
+    # Gate repair: the reason says what corroborated it (here, rising with the energy it builds).
+    assert roles["protein_g"]["reason"].startswith("A nutrient that carries energy: an exposure")
+    assert "rises with total energy" in roles["protein_g"]["reason"]
+    assert roles["protein_g"]["confidence"] == "high"
     assert roles["energy_kcal"]["proposed"] == "energy"
     frame = pd.read_csv(path)
     columns = [{"name": c, "dtype": "numeric" if frame[c].dtype.kind in "if" else "categorical",
@@ -381,7 +382,12 @@ def test_3a_one_recognizer_agrees_with_itself_on_the_46_names():
         summary = {"name": name, "dtype": "integer", "n": 100, "n_missing": 0, "n_unique": 100}
         proposed = propose_roles([summary], lens=[], target=None, n_rows=100)[0]
         if acquisition_kind(name) is not None:
-            assert proposed["kind"] == "acquisition", (name, proposed)
+            # Gate repair: alone, with no assay lens, an acquisition name is one signal; it is kept
+            # as a predictor and the reason says so. Under an assay lens it is acquisition (2c).
+            assert proposed["kind"] is None and proposed["proposed"] == "covariate", (name, proposed)
+            assert proposed["reason"].startswith("Named like an acquisition column"), proposed
+            assay = propose_roles([summary], lens=["metabolomics"], target=None, n_rows=100)[0]
+            assert assay["kind"] == "acquisition", (name, assay)
             continue
         assert (proposed["proposed"] == "identifier") == (kind is not None), (name, proposed)
     for name in IDENTIFIERS:
@@ -626,7 +632,12 @@ def test_5_a_kj_energy_beside_sodium_is_read_as_kj_and_counted_as_the_screens_co
     764–989 of 800 rows and the pack's finding said nearly every row was "above 5000". Expected:
     the magnitude prior (NUTRITION_PACK §01: "energy 1,600–2,600 kcal (7,000–11,000 → kJ)") reads
     kJ; the finding's count, and the 500–5,000 kcal screen's, equal NumPy's count of rows whose
-    value ÷ 4.184 falls outside 500–5,000."""
+    value ÷ 4.184 falls outside 500–5,000.
+
+    Gate repair (the leash, BLUEPRINT §11.3): a unit only the median says is a proposal. Until it
+    is recorded (``set_column_unit``) the screens show their counts and are refused, the coach line
+    is conditional, and the finding asks for the unit; once kJ is recorded, the screens may be
+    chosen and the finding counts implausible intakes, the same NumPy count."""
     from turbotab.core.stages.findings import findings_stage
     from turbotab.core.stages.proposals import build_proposals
 
@@ -640,24 +651,40 @@ def test_5_a_kj_energy_beside_sodium_is_read_as_kj_and_counted_as_the_screens_co
     columns = [{"name": c, "dtype": "categorical" if frame[c].dtype == object else "numeric",
                 "n_unique": int(frame[c].nunique()), "n_missing": 0} for c in frame.columns]
     out = build_proposals(frame, columns, lens=["dietary"], target=None)
-    assert out["energy_unit"]["unit"] == "kj" and out["energy_unit"]["basis"] == "magnitude"
-    screens = {e["key"]: e["affected"] for e in out["exclusions"]}
-    assert screens["sex_neutral_500_5000"] == expected
+    reading = out["energy_unit"]
+    assert (reading["unit"], reading["basis"], reading["confirmed"]) == ("kj", "magnitude", False)
+    screens = {e["key"]: e for e in out["exclusions"]}
+    assert screens["sex_neutral_500_5000"]["affected"] == expected
+    assert all(e["refused"].startswith("Refused until `energy`'s unit is recorded")
+               for e in out["exclusions"])
 
     path = _write(frame, tmp_path, "kj.csv")
     found = Ingested(path, tmp_path).run(findings_stage, ProjectState(lens=["dietary"]))["findings"]
-    implausible = [f for f in found if f["id"] == "pack::dietary::implausible_intake"]
-    assert len(implausible) == 1
-    f = implausible[0]
-    assert "kJ" in f["detail"] and "2,092 kJ (500 kcal)" in f["detail"]
+    f = next(x for x in found if x["id"] == "pack::dietary::implausible_intake")
+    assert f["title"] == "The unit of `energy` is not settled."
+    assert f"Read in kJ, {expected:,} of 800 rows fall outside 2,092–20,920 kJ" in f["detail"]
+    coach = out["coach"].get("exclusions")
+    if expected:
+        assert coach["text"] == f"If `energy` is kJ, `{expected}` rows fall outside `2,092`–`20,920`: record its unit."
+
+    # Recorded as kJ: the screens may be chosen, and the finding counts implausible intakes.
+    recorded = {"energy": d.ColumnUnitSpec(unit="kj")}
+    out = build_proposals(frame, columns, lens=["dietary"], target=None, units=recorded)
+    assert (out["energy_unit"]["basis"], out["energy_unit"]["confirmed"]) == ("decision", True)
+    screens = {e["key"]: e for e in out["exclusions"]}
+    assert screens["sex_neutral_500_5000"]["affected"] == expected
+    assert screens["sex_neutral_500_5000"]["refused"] is None
+    found = Ingested(path, tmp_path / "recorded").run(
+        findings_stage, ProjectState(lens=["dietary"], column_units=recorded))["findings"]
+    f = next(x for x in found if x["id"] == "pack::dietary::implausible_intake")
+    assert "kJ" in f["detail"] and "2,092 kJ (500 kcal a day)" in f["detail"]
     if expected:
         assert f["title"] == f"{expected:,} records report an implausible daily intake."
         assert f["summary"].startswith(f"`{expected}` of `800` rows report `energy` below `2,092` kJ")
+        coach = out["coach"].get("exclusions")
+        assert "kJ" in coach["text"] and "kcal" not in coach["text"]
     else:
         assert f["title"] == "No record reports an implausible daily intake, read in kJ."
-    coach = out["coach"].get("exclusions")
-    if expected:
-        assert "kJ" in coach["text"] and "kcal" not in coach["text"]
 
 
 def test_5b_the_atwater_reconstruction_still_reads_kj_and_the_counts_agree():
@@ -766,6 +793,13 @@ def test_6_fasting_analytes_name_the_fasting_subsample_weight(tmp_path):
 
 _NUTRIENT_REASONS = ("A nutrient that carries energy: an exposure under the dietary lens.",
                      "A nutrient intake: an exposure under the dietary lens.")
+
+
+def _reads_as_nutrient(reason: str) -> bool:
+    """A roles reason that proposes the column as a nutrient intake, with or without the clause
+    saying what corroborated it (gate repair: a name-only reading says so, "Named as …")."""
+    return reason.startswith(("A nutrient that carries energy", "A nutrient intake",
+                              "Named as a nutrient", "A nutrient intake its codebook names"))
 # The verifier's names that were read as energy-bearing nutrients (1a's failure class), each with
 # values such a column holds: a yes/no flag, a lab value, an enzyme activity, an infusion volume, a
 # DXA fat mass in grams.
@@ -863,12 +897,13 @@ def test_1f_the_values_corroborate_a_name_or_withdraw_it(tmp_path):
     for purpose in ("inference", "prediction"):
         roles = _roles(path, lens=["dietary"], target="hba1c", purpose=purpose)
         for name in VERIFIER_NOT + CORROBORATION_ONLY:
-            assert roles[name]["reason"] not in _NUTRIENT_REASONS, (name, roles[name])
+            assert not _reads_as_nutrient(roles[name]["reason"]), (name, roles[name])
             assert roles[name]["proposed"] != "energy", (name, roles[name])
         for name in CORROBORATION_ONLY:
             assert roles[name]["reason"].startswith("Named like"), (name, roles[name])
         for name in ("protein_g", "carb_g", "fat_g"):
-            assert roles[name]["reason"] == _NUTRIENT_REASONS[0], (name, roles[name])
+            assert roles[name]["reason"].startswith("A nutrient that carries energy: an exposure"), (name, roles[name])
+            assert roles[name]["confidence"] == "high", (name, roles[name])
     roles = _roles(path, lens=["dietary"], target="hba1c", purpose="inference")
     columns = [{"name": c, "dtype": "numeric" if frame[c].dtype.kind in "if" else "categorical",
                 "n_unique": int(frame[c].nunique()), "n_missing": 0} for c in frame.columns]
@@ -966,9 +1001,15 @@ def test_1h_the_energy_finding_says_tangled_only_when_the_data_do(tmp_path):
                             "age": rng.integers(20, 70, n)})
     loose = pd.DataFrame({"energy_kcal": rng.normal(2100, 450, n).round(0), **grams,
                           "age": rng.integers(20, 70, n)})
+    # Gate repair: beside protein, carbohydrate and fat whose energy it does not follow (r ≈ 0),
+    # ``energy_kcal`` is no energy intake at all, and no energy finding is raised (test 1i). Here
+    # only protein is kept, so nothing can be reconstructed and the name stands, as it does in a
+    # table that carries no macronutrients to check it against.
+    loose = loose.drop(columns=["carb_g", "fat_g"]).assign(
+        sodium_mg=rng.normal(3200, 800, n).round(0), bmi=rng.normal(27, 4, n).round(1))
     largest = {}
     for name, frame in (("tangled", tangled), ("loose", loose)):
-        rs = {c: float(frame[c].corr(frame["energy_kcal"])) for c in grams}
+        rs = {c: float(frame[c].corr(frame["energy_kcal"])) for c in grams if c in frame}
         best = max(rs, key=rs.get)
         r = largest[name] = rs[best]
         path = _write(frame, tmp_path, f"{name}.csv")
@@ -1039,45 +1080,56 @@ def test_5c_a_screen_that_would_remove_most_rows_is_refused_with_a_units_exit(tm
     athletes' 600 of 600, a weekly total 596 of 600. The audit's IN-07 remedy: "refuse a screen
     that would remove more than half the rows, with a units exit".
 
-    Expected, from NumPy counts on the fixtures: each screen whose count is more than half the rows
-    is refused with a sentence naming the unit; the coach line names the unit, never misreporting;
-    the finding asks about the unit instead of counting implausible intakes; ``set_exclusions`` with
-    the 500–5,000 kcal rule is refused, and its exits are the same rule read in kJ (bounds × 4.184)
-    or as a weekly total (× 7), offered only where NumPy says that reading keeps most rows."""
+    Gate repair: the remedy has two layers now. A unit nothing settles (an assumption, or only the
+    median) is the first question: every screen is refused until it is recorded, the coach line is
+    conditional, and ``set_exclusions`` is refused with exits that record it. A recorded unit the
+    values still contradict is the second: with kcal recorded, each screen whose count is more than
+    half the rows (NumPy) is refused naming the unit, the finding asks about the unit instead of
+    counting implausible intakes, and ``set_exclusions`` with the 500–5,000 kcal rule is refused,
+    its exits the same rule read in kJ (bounds × 4.184) or as a weekly total (× 7), offered only
+    where NumPy says that reading keeps most rows."""
     from turbotab.core.stages.findings import findings_stage
     from turbotab.core.stages.proposals import build_proposals
 
+    kcal_recorded = {"energy": d.ColumnUnitSpec(unit="kcal")}
     for label, frame in _kj_cases().items():
         e = frame["energy"]
         columns = [{"name": c, "dtype": "numeric", "n_unique": int(frame[c].nunique()),
                     "n_missing": 0} for c in frame.columns]
         out = build_proposals(frame, columns, lens=["dietary"], target="glucose")
-        unit = out["energy_unit"]["unit"]
-        factor = KCAL_PER_KJ if unit == "kj" else 1.0
+        assert out["energy_unit"]["confirmed"] is False, (label, out["energy_unit"])
+        for screen in out["exclusions"]:
+            assert screen["refused"].startswith("Refused until `energy`'s unit is recorded")
+        coach = (out["coach"].get("exclusions") or {}).get("text", "")
+        assert "reporting" not in coach and (not coach or "record its unit" in coach), coach
+        path = _write(frame, tmp_path, f"{label}.csv")
+        found = Ingested(path, tmp_path / label).run(findings_stage,
+                                                     ProjectState(lens=["dietary"]))["findings"]
+        f = next(x for x in found if x["id"] == "pack::dietary::implausible_intake")
+        assert f["title"] == "The unit of `energy` is not settled.", (label, f["title"])
+
+        # kcal recorded: the second layer.
+        out = build_proposals(frame, columns, lens=["dietary"], target="glucose",
+                              units=kcal_recorded)
         for screen in out["exclusions"]:
             lo, hi = {"sex_neutral_500_5000": (500, 5000),
                       "sex_neutral_500_3500": (500, 3500)}[screen["key"]]
-            removed = int(((e < lo * factor) | (e > hi * factor)).sum())
+            removed = int(((e < lo) | (e > hi)).sum())
             assert screen["affected"] == removed
             if removed > len(e) / 2:
                 assert screen["refused"] and "check the unit of `energy`" in screen["refused"]
             else:
                 assert screen["refused"] is None
-        outside = int(((e < 500 * factor) | (e > 5000 * factor)).sum())
+        outside = int(((e < 500) | (e > 5000)).sum())
+        assert outside > len(e) / 2, label  # every case is in kJ or a week: kcal is wrong
         coach = (out["coach"].get("exclusions") or {}).get("text", "")
-        path = _write(frame, tmp_path, f"{label}.csv")
-        found = Ingested(path, tmp_path / label).run(findings_stage,
-                                                     ProjectState(lens=["dietary"]))["findings"]
+        found = Ingested(path, tmp_path / f"{label}_kcal").run(
+            findings_stage, ProjectState(lens=["dietary"], column_units=kcal_recorded))["findings"]
         f = next(x for x in found if x["id"] == "pack::dietary::implausible_intake")
-        if outside > len(e) / 2:
-            assert label != "adult_kj_name_energy"
-            assert "check the unit" in coach and "reporting" not in coach, coach
-            assert f["title"] == "The unit of `energy` is in question.", f["title"]
-            assert "records report" not in f["title"]
-            assert f"{outside:,} of {len(e):,} rows" in f["detail"]
-        else:
-            assert label == "adult_kj_name_energy" and unit == "kj"
-            assert "reporting" not in coach or outside == 0
+        assert "check the unit" in coach and "reporting" not in coach, coach
+        assert f["title"] == "The unit of `energy` is in question.", f["title"]
+        assert "records report" not in f["title"]
+        assert f"{outside:,} of {len(e):,} rows" in f["detail"]
 
     store_frame = _kj_cases()["children_kj"]
 
@@ -1090,6 +1142,14 @@ def test_5c_a_screen_that_would_remove_most_rows_is_refused_with_a_units_exit(tm
 
     rule = d.ExclusionRule(column="energy", low=500, high=5000, reason="implausible intakes")
     state = ProjectState(lens=["dietary"], target="glucose", roles={"energy": "energy"})
+    with pytest.raises(d.Refusal) as refused:
+        d.validate(d.SetExclusions(rules=[rule]), {"state": state, "store": lambda: _Store()})
+    assert refused.value.code == "energy_unit_unconfirmed"
+    recorded = [x["decision"] for x in refused.value.exits]
+    assert {(x["unit"], x["days"]) for x in recorded} == {("kcal", 1), ("kj", 1), ("kcal", 2)}
+    assert all(x["kind"] == "set_column_unit" and x["column"] == "energy" for x in recorded)
+
+    state = state.model_copy(update={"column_units": kcal_recorded})
     with pytest.raises(d.Refusal) as refused:
         d.validate(d.SetExclusions(rules=[rule]), {"state": state, "store": lambda: _Store()})
     assert refused.value.code == "screen_removes_most_rows"

@@ -152,6 +152,42 @@ def _is_nutrient(name: str) -> bool:
 MAX_DAY_GRAMS = 10_000.0
 
 
+_RATIO_WORDS = {"per_body": "per kg of body weight", "density": "per unit of energy",
+                "per_period": "per week, month or year", "concentration": "per volume"}
+
+
+def _ratio_unit(name: str) -> str | None:
+    """How the name's unit expression is a ratio, said in words (``protein_g_kg`` → "per kg of body
+    weight"), or None for an amount (:func:`turbotab.core.recognizers.amount_unit`)."""
+    from turbotab.core.methods.energy import unit_of
+
+    return _RATIO_WORDS.get(unit_of(name))
+
+
+def _doubt(check: Any) -> str:
+    """The clause a name-only nutrient proposal carries: what did, and did not, corroborate it."""
+    why = str(getattr(check, "why", "") or "")
+    r = getattr(check, "r", None)
+    if "too few values" in why:
+        return "too few values to check"
+    if r is not None and "does not rise" in why:
+        return f"it does not track total energy (r = {r:.2f})"
+    if "name and unit" in why:
+        return "only its name and unit say so"
+    return "only its name says so"
+
+
+def _codebook_nutrient(name: str) -> bool:
+    """A nutrient read from a codebook (NHANES, INFOODS, the Framingham FFQ file)."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+
+    try:
+        reading = read_nutrient(name)
+    except AmbiguousNutrient:
+        return False
+    return reading is not None and reading.source in ("nhanes", "infoods", "fhs")
+
+
 def _intake_by_unit(name: str, median: Any = None) -> bool:
     """An amount in an intake unit (``_g``, ``_mg``, a share of energy) that names no specimen,
     score, body scan or concentration, and whose median (when known) is a day's amount: a food or
@@ -180,23 +216,51 @@ def _design_role(name: str, summary: Mapping[str, Any], exact: set[str],
     """A reason when this column is part of a survey design, else None.
 
     A sampling weight is read by :func:`turbotab.core.recognizers.reads_as_survey_weight`: an
-    NHANES weight by name, survey vocabulary, or a bare ``weight`` far above any body weight in a
-    table that names its design exactly; never a birth or body weight (audit IN-10)."""
+    NHANES weight by name, unambiguous survey vocabulary, or a name that is a weight only beside a
+    survey design (``sample_wt``, a bare ``weight`` far above any body weight, ``_LLCPWT``, a word
+    ending in ``wt``): the design columns in the table are the corroboration, so a tissue mass on a
+    metabolomics sample sheet is no sampling weight (audit WP13 gate repair); never a birth or body
+    weight (audit IN-10)."""
     from turbotab.core.recognizers import reads_as_survey_weight
 
     upper = str(name).upper()
     if upper in exact or upper.startswith(("SDMV",)):
         return "An NHANES survey design variable: a weight, stratum or sampling unit."
     median = summary.get("median")
+    low = summary.get("min")
+    positive = low is None or _positive(low)
     if reads_as_survey_weight(name, median=None if median is None else float(median),
-                              design_in_table=design_in_table):
+                              design_in_table=design_in_table) and positive:
         if upper.startswith(("WTDR", "WTMEC", "WTINT", "WTSA", "WTSB")):
             return "An NHANES survey design variable: a weight, stratum or sampling unit."
+        if design_in_table:
+            return ("A sampling weight beside the survey's design columns: how each row was "
+                    "sampled, not a body measurement.")
         return "A sampling weight: how each row was sampled, not a body measurement."
     tokens = set(_tokens(name))
     if tokens & _SURVEY_STRATA and not tokens & {"id", "ids"}:
         return "Names a sampling stratum or cluster of the survey design."
     return None
+
+
+def _positive(value: Any) -> bool:
+    try:
+        return float(value) > 0
+    except (TypeError, ValueError):
+        return True
+
+
+def _design_in_table(columns: Sequence[Mapping[str, Any]], exact: set[str]) -> bool:
+    """The table names its survey design: an NHANES design variable, or a stratum or primary
+    sampling unit by its name (``SDMVSTRA``, ``_PSU``, ``strata``)."""
+    for c in columns:
+        name = str(c["name"])
+        tokens = set(_tokens(name))
+        if name.upper() in exact or name.upper().startswith("SDMV"):
+            return True
+        if tokens & {"psu", "strata", "stratum"} and not tokens & {"id", "ids"}:
+            return True
+    return False
 
 
 ACQUISITION_REASON = {
@@ -227,6 +291,26 @@ def _acquisition_values_fit(name: str, n_unique: int, n_present: int) -> bool:
     return True
 
 
+def acquisition_corroborated(columns: Sequence[Mapping[str, Any]], lens: Sequence[str] | None,
+                             acquisition: Iterable[str]) -> str | None:
+    """Why the table's acquisition-named columns read as how samples were acquired, or None.
+
+    An acquisition word is one signal; the other is that the table is an assay: an assay lens
+    (metabolomics, genomics), or a second acquisition column of another kind (a batch beside a run
+    order or a plate). In a plate-size feeding study ``plate`` (small/large) is the intervention,
+    and leaving it out "since new samples come from new batches" would drop the exposure (audit
+    WP13 gate repair). Without that second signal the column is kept, as an ordinary predictor,
+    and the proposal says so."""
+    from turbotab.core.recognizers import acquisition_kind
+
+    if any(k in OMICS for k in (lens or [])):
+        return "the table is read under an assay lens"
+    kinds = {acquisition_kind(c) for c in acquisition} - {None}
+    if len(kinds) >= 2:
+        return "the table records several acquisition columns"
+    return None
+
+
 def propose_roles(
     columns: Sequence[Mapping[str, Any]],
     *,
@@ -238,6 +322,7 @@ def propose_roles(
     purpose: str | None = None,
     fractional: Iterable[str] = (),
     intake: Mapping[str, Any] | None = None,
+    energy_info: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """One proposal per column (the outcome and the row identity excepted), in table order.
 
@@ -249,11 +334,17 @@ def propose_roles(
     ``intake`` the values' verdict on each column the name reads as an energy-bearing nutrient
     (:func:`turbotab.core.recognizers.intake_check`): a name the values contradict, or one with no
     second signal under an energy column, is not proposed as a nutrient (NUTRITION_PACK §01: "match
-    on three signals jointly, never names alone").
+    on three signals jointly, never names alone"); ``energy_info`` how the total-energy column
+    was read (:func:`turbotab.core.stages.proposals.energy_column_reading`).
 
     Every name is read by :mod:`turbotab.core.recognizers` (audit WP13): whole words, never
     substrings; a study's arms and groups are exposures; a site or household is a cluster.
-    """
+
+    **Confidence says how much was checked** (audit WP13 gate repair): ``high`` only where the
+    values agree with the name (a codebook, a column rising with total energy, total energy
+    following its macronutrients, an identifier unique per unit); a reading the name alone makes is
+    ``medium`` at most and its reason says so; ``low`` is the lens's default for a column nothing
+    recognized. A proposal is confirmed with ``set_roles``; nothing here is applied."""
     from turbotab import nutrition
     from turbotab.core.recognizers import (
         acquisition_kind, has_id_tail, id_kind, is_rate, reads_as_time, study_group,
@@ -263,11 +354,16 @@ def propose_roles(
     dietary = "dietary" in lenses
     omics = any(k in OMICS for k in lenses)
     exact_design = {c.upper() for c in getattr(nutrition, "EXACT_DESIGN_NAMES", ())}
-    design_in_table = any(str(c["name"]).upper() in exact_design for c in columns)
+    design_in_table = _design_in_table(columns, exact_design)
     acquisition = set(acquisition) | {str(c["name"]) for c in columns
                                       if acquisition_kind(c["name"]) is not None}
+    assay = acquisition_corroborated(columns, lens, acquisition)
     fractional = set(fractional)
     intake = dict(intake or {})
+    energy_info = dict(energy_info or {})
+    rejected_energy = {str(x["column"]): x for x in energy_info.get("rejected") or []}
+    other_energy = {str(x["column"]): x for x in energy_info.get("others") or []}
+    lens_default = "covariate" if (dietary or omics) else "exposure"
     by_lower = {str(c["name"]).lower(): str(c["name"]) for c in columns}
     out: list[dict[str, Any]] = []
 
@@ -298,15 +394,27 @@ def propose_roles(
                 put("flag", "medium", "Named like a flag that marks other values; not a measurement.")
         elif design is not None:
             put("design", "high" if str(name).upper() in exact_design else "medium", design)
-        elif name in acquisition and _acquisition_values_fit(name, n_unique, n_present):
+        elif name in acquisition and _acquisition_values_fit(name, n_unique, n_present) and assay:
             role, reason = acquisition_proposal(purpose)
             put(role, "medium", reason, kind="acquisition")
+        elif name in acquisition and _acquisition_values_fit(name, n_unique, n_present):
+            put("covariate", "low", "Named like an acquisition column, but nothing says this is an "
+                                    "assay: kept in the model.")
         elif _norm(name) == "seqn":
             put("identifier", "high", "`SEQN` is the NHANES respondent number; it names people, not traits.")
         elif kind == "subject":
             put("identifier", "high", "Named like a participant's identifier; it names people, not traits.")
-        elif kind == "record" and n_unique > 2:
-            put("identifier", "high", "Named like an identifier; it names rows or samples, not traits.")
+        elif kind == "record" and n_unique > 2 and (n_unique > CATEGORY_LEVELS or unique):
+            put("identifier", "high" if unique else "medium",
+                "Named like an identifier; it names rows or samples, not traits.")
+        elif kind == "record" and n_unique > 2 and n_present and n_unique < n_present:
+            # An identifier names units; a ``trt_id`` or ``tx_id`` holding three values on 312
+            # rows is a code for groups, such as a trial's arms or a study's sites (audit WP13
+            # gate repair: one more arm than ``arm_id``'s two brought "Names each unit; 3 units"
+            # back, and the seal grouped by the arm).
+            put(lens_default, "low",
+                f"Named like an identifier, but `{n_unique:,}` values on `{n_present:,}` rows: a "
+                f"group code, not a unit.")
         elif kind == "cluster" and unique:
             put("identifier", "high", "Names a group, such as a household, and is unique on every row.")
         elif kind == "cluster":
@@ -320,7 +428,38 @@ def propose_roles(
         elif not numeric and dtype in ("categorical", "text") and n_present and n_unique >= 0.95 * n_present:
             put("identifier", "medium", f"`{n_unique:,}` different values in `{n_present:,}` rows: it names rows.")
         elif energy_column is not None and name == energy_column:
-            put("energy", "high" if dietary else "medium", "Total energy intake, the column energy adjustment works against.")
+            basis = energy_info.get("basis")
+            why = energy_info.get("why")
+            r = energy_info.get("r")
+            if basis == "values":
+                put("energy", "high" if dietary else "medium",
+                    f"Total energy intake: its values follow the macronutrients' energy (r = {r:.2f}).")
+            elif basis == "codebook":
+                put("energy", "high" if dietary else "medium",
+                    "Total energy intake, as its codebook names it: what energy adjustment works "
+                    "against.")
+            elif r is not None:
+                put("energy", "medium",
+                    f"Named as total energy intake; it follows the macronutrients' energy only "
+                    f"loosely (r = {r:.2f}).")
+            elif basis == "name":
+                put("energy", "medium",
+                    "Named as total energy intake; no macronutrients here to check it against.")
+            else:  # read from the name alone, its values not read (a preview of the lens)
+                put("energy", "medium",
+                    "Named as total energy intake, the column energy adjustment works against.")
+        elif numeric and dietary and name in other_energy and energy_column is not None:
+            r = other_energy[name].get("r")
+            tracks = f" (this one: r = {r:.2f})" if r is not None else ""
+            put("covariate", "low",
+                f"Also named as energy, but `{energy_column}` is the intake{tracks}; say what this is.")
+        elif numeric and dietary and name in rejected_energy:
+            # Named like total energy, but the values say it is not what people ate: a device's
+            # energy expenditure (Fitbit ``Calories``, ActiLife ``Kcals``) beside a diet record.
+            r = rejected_energy[name].get("r")
+            put("covariate", "low",
+                f"Named like total energy, but it does not track the macronutrients' energy "
+                f"(r = {r:.2f}).")
         elif dtype == "datetime":
             put("time", "high", "Holds dates or times: when a row was recorded.")
         elif (numeric and dietary and _is_nutrient(name) and name in intake
@@ -334,9 +473,20 @@ def propose_roles(
                                     f"not read as a nutrient until you say it is one.")
         elif numeric and dietary and _is_nutrient(name):
             carries = energy_bearing(name)
-            reason = ("A nutrient that carries energy: an exposure under the dietary lens."
-                      if carries else "A nutrient intake: an exposure under the dietary lens.")
-            put("exposure", "high", reason)
+            check = intake.get(name)
+            unit = _ratio_unit(name)
+            head = "A nutrient that carries energy" if carries else "A nutrient intake"
+            if unit is not None:
+                put("exposure", "medium",
+                    f"A nutrient intake {unit}: an exposure, not a day's amount.")
+            elif _codebook_nutrient(name):
+                put("exposure", "high", f"{head} its codebook names: an exposure under the "
+                                        f"dietary lens.")
+            elif check is not None and check.by_values:
+                put("exposure", "high",
+                    f"{head}: an exposure; it rises with total energy (r = {check.r:.2f}).")
+            else:
+                put("exposure", "medium", f"Named as {head[0].lower()}{head[1:]}; {_doubt(check)}.")
         elif numeric and dietary and _intake_by_unit(name, summary.get("median")):
             put("exposure", "medium", "An intake by its unit, not a nutrient: an exposure under the "
                                       "dietary lens.")
@@ -411,15 +561,44 @@ def categorical_proposals(columns: Sequence[Mapping[str, Any]],
 
 
 def _energy_reading(columns: Sequence[Mapping[str, Any]]) -> str | None:
-    """The total-energy column, read from names and dtypes only by the one recognizer every stage
-    shares (``stages.proposals.energy_column``: ``DR2TKCAL``, ``ENERC_KCAL``, ``TotalKcal`` and
-    ``energy_kj`` alike; never a macronutrient's own kcal such as ``alc_kcal``)."""
-    from turbotab.core.stages.proposals import energy_column
+    """The total-energy column read from names and summaries alone (:func:`_energy_info` without
+    the values), or None."""
+    return _energy_info(columns).get("column")
 
+
+def _energy_info(columns: Sequence[Mapping[str, Any]], store: Any = None) -> dict[str, Any]:
+    """The total-energy column and how it was read, by the one recognizer every stage shares
+    (``stages.proposals.energy_column_reading``: ``DR2TKCAL``, ``ENERC_KCAL``, ``TotalKcal`` and
+    ``energy_kj`` alike; never a macronutrient's own kcal such as ``alc_kcal``), with its values
+    read against the macronutrients' energy when ``store`` is given: a device's energy
+    expenditure named ``Calories`` is no intake (audit WP13 gate repair)."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+    from turbotab.core.stages.proposals import energy_column_reading, is_energy_name
+
+    info = {str(c["name"]): c for c in columns}
+
+    def total(c: str) -> bool:
+        try:
+            reading = read_nutrient(c)
+        except AmbiguousNutrient:
+            return False
+        return reading is not None and reading.macro in ("protein", "carbohydrate", "fat",
+                                                         "alcohol") and reading.part is None
+
+    numeric = [c for c, i in info.items() if str(i.get("dtype") or "") in ("numeric", "integer")]
     try:
-        return energy_column({str(c["name"]): c for c in columns}, {})
-    except Exception:  # a recognizer failure must not fail the stage
-        return None
+        frame = None
+        if store is not None:
+            wanted = [c for c in numeric if is_energy_name(c) or total(c)]
+            frame = store.materialize(wanted) if wanted else None
+        reading = energy_column_reading(info, {}, frame)
+    except Exception as exc:  # a recognizer failure must not fail the stage
+        from turbotab import devchecks
+
+        devchecks.swallowed("roles::energy_reading", exc,
+                            "the energy column could not be read; no column is proposed as energy")
+        reading = None
+    return dict(reading or {"column": None, "rejected": []})
 
 
 def _acquisition_columns(columns: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -437,20 +616,35 @@ def intake_checks(store: Any, columns: Sequence[Mapping[str, Any]], *, energy: s
     """The values' verdict on every numeric column the name reads as an energy-bearing nutrient
     (:func:`turbotab.core.recognizers.intake_check`), against the total-energy column when there
     is one."""
-    from turbotab.core.recognizers import intake_check
+    from turbotab.core.recognizers import IntakeCheck, _rises_with, intake_check
 
-    names = [str(c["name"]) for c in columns
-             if str(c.get("dtype") or "") in ("numeric", "integer")
-             and str(c["name"]) not in (energy, target) and energy_bearing(str(c["name"]))]
-    if not names:
+    numeric = [str(c["name"]) for c in columns
+               if str(c.get("dtype") or "") in ("numeric", "integer")
+               and str(c["name"]) not in (energy, target)]
+    names = [c for c in numeric if energy_bearing(c)]
+    # Nutrients that carry no energy of their own (sodium, a vitamin) are corroborated the same way
+    # when there is an energy column to read them against: an intake rises with how much is eaten.
+    others = [c for c in numeric if c not in names and _is_nutrient(c) and _ratio_unit(c) is None
+              and not _codebook_nutrient(c)] if energy else []
+    if not names and not others:
         return {}
-    frame = store.materialize(list(dict.fromkeys([*names, *([energy] if energy else [])])))
+    frame = store.materialize(list(dict.fromkeys([*names, *others, *([energy] if energy else [])])))
     e = frame[energy] if energy and energy in frame.columns else None
     out = {}
     for name in names:
         check = intake_check(name, frame[name], energy=e)
         if check is not None:
             out[name] = check
+    for name in others:
+        import pandas as pd
+
+        x = pd.to_numeric(frame[name], errors="coerce")
+        r, rises, _ = _rises_with(x, e)
+        shown = f"r = {r:.2f}" if math.isfinite(r) else "it cannot be compared"
+        out[name] = (IntakeCheck(True, f"it rises with total energy ({shown})", r, by_values=True)
+                     if rises else
+                     IntakeCheck(True, f"only its name says it is an intake: it does not rise with "
+                                       f"total energy ({shown})", r if math.isfinite(r) else None))
     return out
 
 
@@ -525,11 +719,13 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
             columns = store.summaries()
     columns = [c for c in columns if not str(c["name"]).startswith("__")]
     ctx.progress(0.1, "Reading column names and summaries")
-    energy = _energy_reading(columns)
+    dietary = "dietary" in (ctx.state.lens or [])
     with open_store(ctx) as store:
+        energy_info = _energy_info(columns, store)
+        energy = energy_info.get("column")
         fractional = _fractional_identifiers(store, columns)
         intake = (intake_checks(store, columns, energy=energy, target=ctx.state.target)
-                  if "dietary" in (ctx.state.lens or []) else {})
+                  if dietary else {})
     proposals = propose_roles(
         columns,
         lens=ctx.state.lens,
@@ -540,6 +736,7 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
         purpose=ctx.state.purpose,
         fractional=fractional,
         intake=intake,
+        energy_info=energy_info,
     )
     ctx.progress(0.6, "Checking whether identifiers repeat")
     with open_store(ctx) as store:

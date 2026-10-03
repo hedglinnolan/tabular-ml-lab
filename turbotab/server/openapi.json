@@ -418,6 +418,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetOutcomeUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetColumnUnit-Input"
                   }
                 ],
                 "discriminator": {
@@ -454,7 +457,8 @@
                     "set_follow_up": "#/components/schemas/SetFollowUp-Input",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Input",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Input",
-                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit"
+                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
+                    "set_column_unit": "#/components/schemas/SetColumnUnit-Input"
                   }
                 },
                 "title": "Decision"
@@ -750,6 +754,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetOutcomeUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetColumnUnit-Input"
                   }
                 ],
                 "discriminator": {
@@ -786,7 +793,8 @@
                     "set_follow_up": "#/components/schemas/SetFollowUp-Input",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Input",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Input",
-                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit"
+                    "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
+                    "set_column_unit": "#/components/schemas/SetColumnUnit-Input"
                   }
                 },
                 "title": "Decision"
@@ -1833,6 +1841,35 @@
         ],
         "title": "ColumnSummary"
       },
+      "ColumnUnitSpec": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "enum": [
+              "kcal",
+              "kj",
+              "years",
+              "months",
+              "weeks",
+              "days"
+            ],
+            "title": "Unit"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "unit",
+          "days"
+        ],
+        "title": "ColumnUnitSpec",
+        "description": "A column's recorded unit; for total energy, the number of days each value totals."
+      },
       "CreateProject": {
         "properties": {
           "path": {
@@ -1988,6 +2025,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetOutcomeUnit"
+              },
+              {
+                "$ref": "#/components/schemas/SetColumnUnit-Output"
               }
             ],
             "title": "Decision",
@@ -2002,6 +2042,7 @@
                 "select_models": "#/components/schemas/SelectModels",
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
                 "set_categorical": "#/components/schemas/SetCategorical",
+                "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
                 "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                 "set_event": "#/components/schemas/SetEvent",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
@@ -2631,6 +2672,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetOutcomeUnit"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetColumnUnit-Output"
                   }
                 ],
                 "discriminator": {
@@ -2644,6 +2688,7 @@
                     "select_models": "#/components/schemas/SelectModels",
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
                     "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
                     "set_event": "#/components/schemas/SetEvent",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
@@ -4680,6 +4725,20 @@
               }
             ],
             "title": "Outcome Unit"
+          },
+          "column_units": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ColumnUnitSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Units"
           }
         },
         "type": "object",
@@ -4712,7 +4771,8 @@
           "follow_up",
           "sensitivity",
           "measurement_error",
-          "outcome_unit"
+          "outcome_unit",
+          "column_units"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -5751,6 +5811,93 @@
         ],
         "title": "SetCategorical",
         "description": "Columns whose numbers are codes for categories (RIDRETH3: 1, 2, 3, 4, 6, 7): each enters\nthe models as indicators, one per level after the first, never as one straight line."
+      },
+      "SetColumnUnit-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_column_unit",
+            "title": "Kind",
+            "default": "set_column_unit"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "kcal",
+              "kj",
+              "years",
+              "months",
+              "weeks",
+              "days"
+            ],
+            "title": "Unit"
+          },
+          "days": {
+            "type": "integer",
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Days",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "unit"
+        ],
+        "title": "SetColumnUnit",
+        "description": "A column's unit, as the user reads it from the source's data dictionary, where TurboTab\ncould only propose one: total energy in kcal or kJ (a day's, or a total over ``days`` days),\nor an age in years, months, weeks or days. Leash (BLUEPRINT §11.3): a unit not read from a\nstated suffix, a codebook or the values' own agreement is a proposal, and no screen, band or\ncount is applied in it until it is recorded here."
+      },
+      "SetColumnUnit-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_column_unit",
+            "title": "Kind",
+            "default": "set_column_unit"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "kcal",
+              "kj",
+              "years",
+              "months",
+              "weeks",
+              "days"
+            ],
+            "title": "Unit"
+          },
+          "days": {
+            "type": "integer",
+            "maximum": 366.0,
+            "minimum": 1.0,
+            "title": "Days",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "unit",
+          "days"
+        ],
+        "title": "SetColumnUnit",
+        "description": "A column's unit, as the user reads it from the source's data dictionary, where TurboTab\ncould only propose one: total energy in kcal or kJ (a day's, or a total over ``days`` days),\nor an age in years, months, weeks or days. Leash (BLUEPRINT §11.3): a unit not read from a\nstated suffix, a codebook or the values' own agreement is a proposal, and no screen, band or\ncount is applied in it until it is recorded here."
       },
       "SetEnergyAdjustment-Input": {
         "properties": {
@@ -10126,6 +10273,7 @@
           },
           "basis": {
             "enum": [
+              "decision",
               "name",
               "atwater",
               "magnitude",
@@ -10137,12 +10285,24 @@
           "sentence": {
             "title": "Sentence",
             "type": "string"
+          },
+          "days": {
+            "default": 1,
+            "title": "Days",
+            "type": "integer"
+          },
+          "confirmed": {
+            "default": true,
+            "title": "Confirmed",
+            "type": "boolean"
           }
         },
         "required": [
           "unit",
           "basis",
-          "sentence"
+          "sentence",
+          "days",
+          "confirmed"
         ],
         "title": "EnergyUnitReading",
         "type": "object"
@@ -12800,8 +12960,15 @@
             "type": "string"
           },
           "kind": {
-            "title": "Kind",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
           },
           "note": {
             "title": "Note",
@@ -12809,13 +12976,24 @@
           },
           "evidence": {
             "$ref": "#/components/schemas/FindingEvidence"
+          },
+          "basis": {
+            "default": "name",
+            "enum": [
+              "name",
+              "values",
+              "unconfirmed"
+            ],
+            "title": "Basis",
+            "type": "string"
           }
         },
         "required": [
           "outcome",
           "kind",
           "note",
-          "evidence"
+          "evidence",
+          "basis"
         ],
         "title": "OutcomeDispute",
         "type": "object"

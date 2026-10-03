@@ -146,44 +146,98 @@ _INTAKE_WORDS = {"intake", "intakes", "ei", "tei", "dietary", "diet", "food", "f
                  "consumption", "reported"}
 
 
-def energy_column(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, str]) -> str | None:
-    """The total-energy column: the one the roles name, else the one its name declares.
+def _codebook_energy(c: str) -> bool:
+    """A codebook's total-energy variable (DR1TOT_L "DR1TKCAL - Energy (kcal)"; NUTR_DEF
+    ENERC_KCAL; the Framingham FFQ's "NUT_CALOR … CALORIES, (kcal)"): what it is is documented."""
+    return bool(re.fullmatch(r"(?i)(DR[12X][TI]KCAL|ENERC_?KCAL|ENERC_?KJ|ENER_?KCAL|ENER_?KJ|"
+                             r"NUT_CALOR)", str(c)))
 
-    Among names that read as total energy intake, one whose median is no day's energy in kcal or
-    kJ is passed over (:func:`turbotab.core.recognizers.energy_median_contradicts`, when the
-    column's summary carries a median); then a name that says intake (``energy_intake``,
-    ``DR1TKCAL``, ``ENERC_KCAL``, ``TEI``) comes first, then one in kcal, then any other, in table
-    order. The unit alone never outranks the word "intake" (audit WP13 repair: ``exercise_kcal``
-    outranked ``energy_intake``)."""
-    from turbotab.core.recognizers import energy_median_contradicts, tokens
+
+def energy_column_reading(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, str],
+                          frame: pd.DataFrame | None = None) -> dict[str, Any] | None:
+    """The total-energy column and how it was read, or None when no column reads as one.
+
+    The roles name it (``basis: "roles"``), else a name that reads as total energy intake, checked
+    by its values where it can be:
+
+    * a column whose median is no day's energy in kcal or kJ is passed over
+      (:func:`turbotab.core.recognizers.energy_median_contradicts`), unless a codebook documents it;
+    * with the macronutrients in the table, each candidate is read against the energy they carry
+      (:func:`turbotab.core.recognizers.energy_against_macros`): one that does not follow them is
+      no energy intake whatever its name (a device's energy expenditure, ``Calories`` or
+      ``Kcals``), and is listed in ``rejected`` with why; one that follows them is read "by its
+      values" (``basis: "values"``) and ranks first;
+    * then a name that says intake (``energy_intake``, ``DR1TKCAL``, ``ENERC_KCAL``, ``TEI``), then
+      one in kcal, then any other, in table order. The unit alone never outranks the word
+      "intake" (audit WP13 repair: ``exercise_kcal`` outranked ``energy_intake``).
+
+    ``basis`` is ``"values"``, ``"codebook"``, ``"name"`` (only the name says so: nothing to check
+    it against) or ``"roles"``; ``why`` is the clause a proposal states."""
+    from turbotab.core.recognizers import (
+        energy_against_macros, energy_median_contradicts, macro_totals, tokens,
+    )
 
     named = [c for c, r in roles.items() if r == "energy" and c in columns]
     if named:
-        return named[0]
-    def codebook(c: str) -> bool:
-        # The codebook states what the variable is and its unit (DR1TOT_L "DR1TKCAL - Energy
-        # (kcal)"; NUTR_DEF ENERC_KCAL): its values are not second-guessed here, and a median no
-        # day's intake has is the implausible-intake finding's unit question instead.
-        return bool(re.fullmatch(r"(?i)(DR[12X][TI]KCAL|ENERC_?KCAL|ENERC_?KJ|ENER_?KCAL|"
-                                 r"ENER_?KJ)", str(c)))
-
+        return {"column": named[0], "basis": "roles", "why": "the roles name it", "r": None,
+                "rejected": [], "others": []}
     candidates = [c for c, info in columns.items()
                   if _dtype(info) in _NUMERIC and is_energy_name(c)
                   and roles.get(c) not in ("identifier", "cluster", "flag", "design", "time",
                                            "excluded")
-                  and (codebook(c) or energy_median_contradicts((info or {}).get("median")) is None)]
+                  and (_codebook_energy(c)
+                       or energy_median_contradicts((info or {}).get("median")) is None)]
     if not candidates:
         return None
+    verdicts: dict[str, Any] = {}
+    if frame is not None:
+        macros = macro_totals(frame, exclude=candidates)
+        for c in candidates:
+            if c in frame.columns:
+                verdicts[c] = energy_against_macros(frame, c, macros)
+    rejected = [{"column": c, "why": verdicts[c].why, "r": verdicts[c].r} for c in candidates
+                if verdicts.get(c) is not None and not verdicts[c].corroborated
+                and not _codebook_energy(c)]
+    kept = [c for c in candidates if c not in {x["column"] for x in rejected}]
+    if not kept:
+        return {"column": None, "basis": None, "why": None, "r": None, "rejected": rejected,
+                "others": []}
     order = list(columns)
 
-    def rank(c: str) -> tuple[int, int, int]:
+    def rank(c: str) -> tuple[int, int, int, int]:
         words = set(tokens(c))
-        says_intake = 0 if (words & _INTAKE_WORDS or codebook(c)) else 1
+        by_values = 0 if verdicts.get(c) is not None and verdicts[c].by_values else 1
+        says_intake = 0 if (words & _INTAKE_WORDS or _codebook_energy(c)) else 1
         in_kcal = 0 if words & {"kcal", "kcals", "calories", "calorie", "kilocalories"} \
             or str(c).upper().endswith("KCAL") else 1
-        return says_intake, in_kcal, order.index(c)
+        return by_values, says_intake, in_kcal, order.index(c)
 
-    return sorted(candidates, key=rank)[0]
+    chosen = sorted(kept, key=rank)[0]
+    verdict = verdicts.get(chosen)
+    if verdict is not None and verdict.by_values:
+        basis, why = "values", verdict.why
+    elif _codebook_energy(chosen):
+        basis, why = "codebook", "its codebook names it total energy"
+    elif verdict is not None:
+        basis, why = "name", verdict.why
+    else:
+        basis, why = "name", ("only its name says it is total energy intake; no macronutrients "
+                              "are here to check it against")
+    # The other names that read as total energy, and why each was not the one: they are not a
+    # second energy column, and the roles proposal says so rather than calling them "not a
+    # nutrient".
+    others = [{"column": c, "r": verdicts[c].r if verdicts.get(c) is not None else None}
+              for c in kept if c != chosen]
+    return {"column": chosen, "basis": basis, "why": why,
+            "r": verdict.r if verdict is not None else None, "rejected": rejected,
+            "others": others}
+
+
+def energy_column(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, str],
+                  frame: pd.DataFrame | None = None) -> str | None:
+    """The total-energy column (:func:`energy_column_reading`), or None."""
+    reading = energy_column_reading(columns, roles, frame)
+    return reading["column"] if reading is not None else None
 
 
 def energy_bearing(column: str) -> bool:
@@ -386,62 +440,114 @@ def nested_reason(nested: Mapping[str, str], nutrients: Sequence[str]) -> str | 
             f"would count that energy twice.")
 
 
-def energy_unit_reading(frame: pd.DataFrame, energy: str) -> dict[str, str]:
-    """The energy column's unit and how it was read (audit IN-07), first signal that speaks:
+def recorded_energy_unit(state: Any, energy: str | None) -> Any:
+    """The unit ``set_column_unit`` recorded for the energy column (kcal or kJ), or None."""
+    units = getattr(state, "column_units", None) or {}
+    spec = units.get(energy) if energy else None
+    if spec is None or getattr(spec, "unit", None) not in ("kcal", "kj"):
+        return None
+    return spec
 
+
+# The bases that settle the energy unit; a magnitude prior or nothing at all only proposes one
+# (audit WP13 gate repair: the toddlers' 4,040 kJ read as kcal set the screens' bounds, the
+# implausible-intake count and the coach's "likely over-reporting", and no decision confirmed it).
+SETTLED_UNIT_BASES = ("decision", "name", "atwater")
+
+
+def energy_unit_reading(frame: pd.DataFrame, energy: str, recorded: Any = None) -> dict[str, Any]:
+    """The energy column's unit, how it was read, and whether that settles it (audit IN-07), first
+    signal that speaks:
+
+    0. ``decision``: the unit the user recorded (``set_column_unit``), with the days each value
+       totals;
     1. ``name``: a ``_kj`` suffix;
     2. ``atwater``: the reconstruction from the macronutrients (NUTRITION_PACK §01: a ratio near
        4.18 is kJ, near 1 is kcal), which outranks a ``kcal`` in the name;
     3. ``name``: a ``kcal`` suffix or word, or a codebook that states kcal (``DR1TKCAL``);
     4. ``magnitude``: with no macronutrients to reconstruct from, the pack's median-magnitude prior
        ("energy 1,600–2,600 kcal (7,000–11,000 → kJ)");
-    5. ``assumed``: kcal, said as an assumption.
-    """
+    5. ``assumed``: nothing says; kcal is the reading counts are made in, said as an assumption.
+
+    ``confirmed`` is True for the first three. A magnitude or an assumption is a proposal: the
+    screens are offered with their counts but refused until the unit is recorded, and no line
+    calls a row an under- or over-report in it (the leash, BLUEPRINT §11.3)."""
     from turbotab.core.methods.energy import atwater_check, unit_of
     from turbotab.core.recognizers import ENERGY_PRIOR_SOURCE, energy_unit, energy_unit_by_magnitude
     from turbotab.core.voice import tick
 
     col = tick(energy)
+    if recorded is not None:
+        unit = str(recorded.unit)
+        days = int(getattr(recorded, "days", 1) or 1)
+        word = "kJ" if unit == "kj" else "kcal"
+        over = f", a total over {days} days" if days > 1 else ""
+        return {"unit": unit, "basis": "decision", "days": days, "confirmed": True,
+                "sentence": f"{col} is in {word}{over}, as recorded."}
+
+    def out(unit: str, basis: str, sentence: str) -> dict[str, Any]:
+        return {"unit": unit, "basis": basis, "days": 1, "confirmed": basis in SETTLED_UNIT_BASES,
+                "sentence": sentence}
+
+    if unit_of(energy) == "per_period":
+        # ``kcal_week``: the name says a total over a period, not a day's intake; how many days it
+        # totals is recorded, never guessed.
+        return out(energy_unit(energy) or "kcal", "assumed",
+                   f"{col} names a total over a week, month or year; record how many days it "
+                   f"totals before screening by it.")
     if unit_of(energy) == "kj":
-        return {"unit": "kj", "basis": "name", "sentence": f"{col} says kJ in its name."}
+        return out("kj", "name", f"{col} says kJ in its name.")
     try:
         reading = atwater_check(frame, energy) if energy in frame.columns else None
     except Exception:  # noqa: BLE001 - a diagnostic that cannot run is not a verdict
         reading = None
     if reading is not None and reading.verdict == "energy_in_kj":
-        return {"unit": "kj", "basis": "atwater",
-                "sentence": f"{col} is about {reading.ratio:.2f}× the energy its macronutrients "
-                            f"carry: kilojoules."}
+        return out("kj", "atwater", f"{col} is about {reading.ratio:.2f}× the energy its "
+                                    f"macronutrients carry: kilojoules.")
     if reading is not None and reading.verdict == "pass":
-        return {"unit": "kcal", "basis": "atwater",
-                "sentence": f"{col} matches the energy its macronutrients carry: kcal."}
+        return out("kcal", "atwater", f"{col} matches the energy its macronutrients carry: kcal.")
     if unit_of(energy) == "kcal" or energy_unit(energy) == "kcal":
-        return {"unit": "kcal", "basis": "name", "sentence": f"{col} says kcal in its name."}
+        return out("kcal", "name", f"{col} says kcal in its name.")
     if energy in frame.columns:
         by = energy_unit_by_magnitude(frame[energy])
         if by is not None:
             median = float(pd.to_numeric(frame[energy], errors="coerce").median())
             word = "kJ" if by == "kj" else "kcal"
-            return {"unit": by, "basis": "magnitude",
-                    "sentence": f"{col}'s median, {tick(f'{median:,.0f}')}, is a day's energy in "
-                                f"{word} ({ENERGY_PRIOR_SOURCE})."}
+            return out(by, "magnitude",
+                       f"Only {col}'s median, {tick(f'{median:,.0f}')}, says {word} "
+                       f"({ENERGY_PRIOR_SOURCE}); record its unit before screening by it.")
     median = (float(pd.to_numeric(frame[energy], errors="coerce").median())
               if energy in frame.columns else float("nan"))
     if math.isfinite(median) and median > 5_000:
         # No population eats a median of more than 5,000 kcal a day: the column is in kJ outside
         # the adult band (children), or a total over more than a day. Kcal is only the reading the
         # counts are made in, and the screens refuse what it would remove (audit IN-07).
-        return {"unit": "kcal", "basis": "assumed",
-                "sentence": f"Nothing says what unit {col} is in, and its median, "
-                            f"{tick(f'{median:,.0f}')}, is no day's intake in kcal; kcal is assumed "
-                            f"only to count, so check the unit."}
-    return {"unit": "kcal", "basis": "assumed",
-            "sentence": f"Nothing says what unit {col} is in; kcal is assumed."}
+        return out("kcal", "assumed",
+                   f"Nothing says what unit {col} is in, and its median, {tick(f'{median:,.0f}')}, "
+                   f"is no day's intake in kcal; record its unit before screening by it.")
+    return out("kcal", "assumed", f"Nothing says what unit {col} is in; record its unit before "
+                                  f"screening by it.")
 
 
 def _energy_unit(frame: pd.DataFrame, energy: str) -> str:
     """``kj`` when the column is in kilojoules, else ``kcal`` (:func:`energy_unit_reading`)."""
     return energy_unit_reading(frame, energy)["unit"]
+
+
+def unit_refusal(energy: str, reading: Mapping[str, Any] | None) -> str | None:
+    """Why no screen may be chosen on ``energy`` yet: its unit is only proposed (a median-magnitude
+    prior, or nothing at all), so the screen's bounds would be read in a unit nobody stated. None
+    once the unit is settled (recorded, spelled out, or reconstructed from the macronutrients)."""
+    from turbotab.core.voice import tick
+
+    if reading is None or reading.get("confirmed", True):
+        return None
+    word = "kJ" if reading.get("unit") == "kj" else "kcal"
+    if reading.get("basis") == "magnitude":
+        return (f"Refused until {tick(energy)}'s unit is recorded: only its median says {word}, "
+                f"and the screen's bounds are read in it.")
+    return (f"Refused until {tick(energy)}'s unit is recorded: nothing says whether it is kcal or "
+            f"kJ, a day's intake or a total over several days.")
 
 
 # ── the proposals ────────────────────────────────────────────────────────────
@@ -460,19 +566,25 @@ SEX_SPECIFIC_SCREENS: tuple[tuple[str, str, float, str], ...] = (
 
 
 def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str | None,
-                        sex_levels: Mapping[str, str], base: pd.Series) -> list[dict[str, Any]]:
-    """The pack's fixed kcal screens, each with the rows it would remove from ``base``."""
-    factor = KCAL_PER_KJ if unit == "kj" else 1.0
+                        sex_levels: Mapping[str, str], base: pd.Series, days: int = 1,
+                        unit_reading: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """The pack's fixed kcal screens, each with the rows it would remove from ``base``, read in
+    ``unit`` (a value totalling ``days`` days is screened at ``days`` times a day's bounds). While
+    the unit is only proposed (``unit_reading`` not confirmed) every screen is refused with the
+    reason (:func:`unit_refusal`): its count is shown, never applied."""
+    factor = (KCAL_PER_KJ if unit == "kj" else 1.0) * max(int(days or 1), 1)
     per_day = "kcal a day"
 
     def bounds(low: float, high: float) -> tuple[float, float]:
         return round(low * factor, 1), round(high * factor, 1)
 
     def in_kj(low: float, high: float) -> str:
-        if unit != "kj":
+        if unit != "kj" and factor == 1.0:
             return ""
         lo, hi = bounds(low, high)
-        return f" ({_kcal(lo)}–{_kcal(hi)} kJ)"
+        word = "kJ" if unit == "kj" else "kcal"
+        over = f" over {int(days)} days" if days and int(days) > 1 else ""
+        return f" ({_kcal(lo)}–{_kcal(hi)} {word}{over})"
 
     screens: list[tuple[str, str, ExclusionRule]] = []
     if sex is not None:
@@ -487,7 +599,8 @@ def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str
             screens.append((
                 key,
                 f"{name}, by sex: women 500–3,500 and men 800–{_kcal(men_high)} {per_day}"
-                + (" (compared in kJ)" if unit == "kj" else ""),
+                + (" (compared in kJ)" if unit == "kj" else "")
+                + (f" (over {int(days)} days)" if days and int(days) > 1 else ""),
                 ExclusionRule(column=energy, by=RangeByLevel(column=sex, ranges=ranges),
                               reason=f"implausible intakes ({source})"),
             ))
@@ -501,11 +614,12 @@ def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str
         ))
     out = []
     present = int((pd.to_numeric(frame[energy], errors="coerce").notna() & base).sum())
+    unsettled = unit_refusal(energy, unit_reading)
     for key, label, rule in screens:
         affected = int((rule_excludes(frame, rule) & base).sum())
         out.append({"key": key, "rule": rule.model_dump(mode="json"), "label": label,
                     "affected": affected, "evidence": dict(EXCLUSION_EVIDENCE),
-                    "refused": screen_refusal(energy, affected, present)})
+                    "refused": unsettled or screen_refusal(energy, affected, present)})
     return out
 
 
@@ -556,9 +670,13 @@ def _named(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame, names: se
 
 
 def body_columns(info: Mapping[str, Mapping[str, Any]], frame: pd.DataFrame,
-                 roles: Mapping[str, str]) -> dict[str, Any]:
-    """Age (years), weight (kg) and height (cm or m) columns, when their names and values agree."""
+                 roles: Mapping[str, str], units: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Age (years), weight (kg) and height (cm or m) columns, when their names and values agree.
+    An age recorded in another unit (``set_column_unit``: months) is no age in years."""
     age = _named(info, frame, _AGE_NAMES, roles, 10, 100)
+    recorded = (units or {}).get(age) if age else None
+    if recorded is not None and getattr(recorded, "unit", "years") != "years":
+        age = None
     weight = _named(info, frame, _WEIGHT_NAMES, roles, 25, 200)
     height = _named(info, frame, _HEIGHT_NAMES, roles, 100, 230)
     unit = "cm"
@@ -571,7 +689,9 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
                       unit: str, sex: str | None, sex_levels: Mapping[str, str],
                       roles: Mapping[str, str], target: str | None,
                       base: pd.Series, days: float = 1.0,
-                      days_note: str | None = None) -> dict[str, Any] | None:
+                      days_note: str | None = None,
+                      unit_reading: Mapping[str, Any] | None = None,
+                      units: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
     """The Goldberg screen with Schofield's BMR, offered with its count when the columns are read.
 
     PAL 1.55 and the days of intake each row's energy averages (``recall_days``: one, unless the
@@ -580,9 +700,11 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
     """
     from turbotab.core.decisions import GoldbergRule
 
-    body = body_columns(info, frame, roles)
+    body = body_columns(info, frame, roles, units)
     if sex is None or body["age"] is None or body["weight"] is None:
         return None
+    if unit_reading is not None and int(unit_reading.get("days") or 1) > 1:
+        return None  # Goldberg reads a day's mean intake; a total over days is not one
     height = body["height"]
     rule = GoldbergRule(
         column=energy, energy_unit="kj" if unit == "kj" else "kcal", days=days, sex=sex,
@@ -601,7 +723,8 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
     present = int((pd.to_numeric(frame[energy], errors="coerce").notna() & base).sum())
     return {"key": "goldberg_schofield", "rule": rule.model_dump(mode="json"), "label": label,
             "affected": affected, "evidence": dict(GOLDBERG_EVIDENCE),
-            "refused": screen_refusal(energy, affected, present)}
+            "refused": unit_refusal(energy, unit_reading)
+            or screen_refusal(energy, affected, present)}
 
 
 def _marked(text: str, columns: Iterable[str]) -> str:
@@ -668,15 +791,28 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
     # Audit IN-20: an energy-related outcome (weight, BMI, waist, adiposity, diabetes) pushes the
     # DISPUTED note onto the energy card (NUTRITION_PACK §04: "escalate the mediation/collider
     # warning"), as a card line now and as a badged field for the card's presentation.
-    from turbotab.core.methods.dietary_caveats import DISPUTED, dispute_line, energy_related
+    # Audit WP13 gate repair: the outcome is read by its name, else by its values against the
+    # table's body-size columns; when nothing places it, the dispute is stated as a condition the
+    # researcher answers (the leash), never dropped because a name list missed the outcome.
+    from turbotab.core.methods.dietary_caveats import (
+        DISPUTED, dispute_line, outcome_relation, unconfirmed_line, values_line,
+    )
 
     notes: list[str] = []
     dispute = None
-    kind = energy_related(target)
-    if kind is not None and target is not None:
-        line = finish(dispute_line(target, kind))
+    relation = outcome_relation(target, frame) if target is not None else None
+    if relation is not None and relation["kind"] is not None:
+        kind = relation["kind"]
+        line = finish(values_line(target, kind, relation["via"], relation["r"])
+                      if relation["basis"] == "values" else dispute_line(target, kind))
         notes.append(line)
-        dispute = {"outcome": target, "kind": kind, "note": line, "evidence": dict(DISPUTED)}
+        dispute = {"outcome": target, "kind": kind, "note": line, "evidence": dict(DISPUTED),
+                   "basis": relation["basis"]}
+    elif relation is not None and relation["basis"] == "unconfirmed":
+        line = finish(unconfirmed_line(target))
+        notes.append(line)
+        dispute = {"outcome": target, "kind": None, "note": line, "evidence": dict(DISPUTED),
+                   "basis": "unconfirmed"}
     return {
         "energy_column": energy,
         "nutrients": nutrients,
@@ -761,13 +897,15 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                     lens: Sequence[str] | None, target: str | None,
                     roles: Mapping[str, str] | None = None,
                     purpose: str | None = None,
-                    days: tuple[float, str | None] = (1.0, None)) -> dict[str, Any]:
+                    days: tuple[float, str | None] = (1.0, None),
+                    units: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The proposals artifact from a frame holding (at least) the columns it reads.
 
     ``columns`` are the ingest's column records (``name``, ``dtype``, ``n_unique``,
     ``n_missing``); ``roles`` the confirmed roles, else the proposed ones, else empty;
     ``purpose`` the declared purpose, which orders the energy methods by soundness; ``days`` the
-    recall days each row's energy averages, with a note when they differ (``recall_days``).
+    recall days each row's energy averages, with a note when they differ (``recall_days``);
+    ``units`` the columns' recorded units (``set_column_unit``).
     """
     from turbotab.core.voice import tick
 
@@ -786,7 +924,8 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                 "coach": _card_lines(frame, target=target, energy=None, unit="kcal", missing=missing),
                 "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen.",
                 "energy_unit": None}
-    energy = energy_column(_with_medians(info, frame), roles)
+    energy_read = energy_column_reading(_with_medians(info, frame), roles, frame)
+    energy = energy_read["column"] if energy_read is not None else None
     nutrients = nutrient_candidates(info, roles, energy=energy, target=target, frame=frame)
     sex, sex_levels = sex_column(info, frame, roles)
     if target and target in frame.columns:
@@ -802,7 +941,9 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     unit = "kcal"
     unit_reading = None
     if energy is not None and energy in frame.columns:
-        unit_reading = energy_unit_reading(frame, energy)
+        recorded = (units or {}).get(energy)
+        recorded = recorded if getattr(recorded, "unit", None) in ("kcal", "kj") else None
+        unit_reading = energy_unit_reading(frame, energy, recorded)
         unit = unit_reading["unit"]
         if energy != target:  # an eligibility rule never reads the outcome (audit RO-01)
             # A screen reads a column whatever its model role: sex left out of the model still
@@ -811,10 +952,13 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
             screen_sex, screen_levels = sex_column(info, frame, roles, screen=True)
             by_sex = screen_sex if screen_sex != target else None  # never a rule on the outcome
             exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=by_sex,
-                                             sex_levels=screen_levels, base=base)
+                                             sex_levels=screen_levels, base=base,
+                                             days=int(unit_reading.get("days") or 1),
+                                             unit_reading=unit_reading)
             goldberg = goldberg_proposal(frame, info, energy=energy, unit=unit, sex=screen_sex,
                                          sex_levels=screen_levels, roles=roles, target=target,
-                                         base=base, days=days[0], days_note=days[1])
+                                         base=base, days=days[0], days_note=days[1],
+                                         unit_reading=unit_reading, units=units)
             if goldberg is not None:
                 exclusions.append(goldberg)
     reading = None
@@ -822,16 +966,19 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
                                  target=target, purpose=purpose)
     return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
-            "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing),
+            "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing,
+                                 unit_reading=unit_reading),
             "basis": basis, "energy_unit": unit_reading}
 
 
 def _card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, unit: str,
-                missing: Mapping[str, Any]) -> dict[str, Any]:
+                missing: Mapping[str, Any],
+                unit_reading: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The decision cards' coach lines, at most one per question (turbotab.core.coach)."""
     from turbotab.core.coach import card_lines
 
-    lines = card_lines(frame, target=target, energy=energy, unit=unit, missing=missing)
+    lines = card_lines(frame, target=target, energy=energy, unit=unit, missing=missing,
+                       unit_reading=unit_reading)
     return {key: line.model_dump(mode="json") for key, line in lines.items()}
 
 
@@ -839,13 +986,32 @@ def needed_columns(columns: Sequence[Mapping[str, Any]], *, target: str | None,
                    roles: Mapping[str, str]) -> list[str]:
     """The few columns the proposals read: energy (every column named as total energy, so the
     values can pass over one that is no day's intake), sex, the outcome and the nutrients."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+
     info = {str(c["name"]): c for c in columns}
     energy = energy_column(info, roles)
     energies = [c for c, i in info.items() if _dtype(i) in _NUMERIC and is_energy_name(c)]
     nutrients = nutrient_candidates(info, roles, energy=energy, target=target)
+
+    def total(c: str) -> bool:
+        try:
+            reading = read_nutrient(c)
+        except AmbiguousNutrient:
+            return False
+        return reading is not None and reading.macro in ("protein", "carbohydrate", "fat",
+                                                         "alcohol") and reading.part is None
+
+    # The macronutrient totals the energy column is read against (energy_column_reading), and the
+    # body-size columns an unrecognized outcome is read against (``outcome_relation``).
+    macros = [c for c, i in info.items() if _dtype(i) in _NUMERIC and c != target and total(c)]
+    from turbotab.core.methods.dietary_caveats import energy_related
+
+    bodies = [c for c, i in info.items() if _dtype(i) in _NUMERIC and c != target
+              and energy_related(c) is not None][:20]
+    macros = [*macros, *bodies]
     sexes = [c for c in info if c.lower() in _SEX_NAMES or {"sex", "gender"} & set(_tokens(c))]
     body = [c for c in info if str(c).lower() in _AGE_NAMES | _WEIGHT_NAMES | _HEIGHT_NAMES]
-    wanted = [energy, *energies, target, *sexes, *nutrients, *body]
+    wanted = [energy, *energies, target, *sexes, *nutrients, *macros, *body]
     return list(dict.fromkeys(c for c in wanted if c and c in info))
 
 
@@ -881,7 +1047,8 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
         survey = _survey_proposal(state, store)
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
     out = build_proposals(frame, columns, lens=state.lens, target=target, roles=roles,
-                          purpose=state.purpose, days=recall_days(ctx.inputs.get("working")))
+                          purpose=state.purpose, days=recall_days(ctx.inputs.get("working")),
+                          units=getattr(state, "column_units", None) or {})
     out["survey"] = survey
     # WP12a (repair round): the exposure-form question's options, ordered by soundness for the
     # declared purpose, each with its "customary in" and "sound for" labels (north star 5).
@@ -922,7 +1089,8 @@ def recall_days(working: Any) -> tuple[float, str | None]:
 __all__ = [
     "ENERGY_EVIDENCE", "EXCLUSION_EVIDENCE", "build_proposals", "energy_bearing", "energy_column",
     "MOST_ROWS", "exclusion_proposals", "gappy_predictors", "level_key", "missing_reading",
-    "needed_columns", "screen_refusal",
+    "needed_columns", "screen_refusal", "unit_refusal", "energy_column_reading",
+    "energy_unit_reading", "recorded_energy_unit", "SETTLED_UNIT_BASES",
     "nested_reason",
     "nutrient_candidates", "partition_check", "proposals_stage", "recall_days",
     "roles_from", "rule_excludes", "sex_column", "strata_candidates",

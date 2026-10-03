@@ -146,6 +146,79 @@ def _p(p: float) -> str:
     return "< 0.001" if p < 0.001 else f"= {p:.3f}"
 
 
+# A clock or an elapsed time within the day: ``time_min``, ``minutes``, ``hour``, ``tp`` (audit WP13
+# gate repair: an OGTT drawn at 0–120 minutes on one morning was stated "repeated measurements",
+# every record carrying the same date, and its mean recommended).
+_CLOCK_WORDS = {"min", "mins", "minute", "minutes", "hr", "hrs", "hour", "hours", "sec", "secs",
+                "second", "seconds", "time", "timepoint", "tp", "clock", "draw", "sample", "sampling",
+                "postprandial", "elapsed"}
+
+
+def within_day_order(df: pd.DataFrame, unit: str, date_column: str) -> str | None:
+    """What orders a unit's same-date records within the day, or None: the date column's own
+    clock times (records minutes or hours apart, which a day-resolution spacing reads as one
+    date), or a column named as a time or an elapsed time that changes within units."""
+    parsed = pd.to_datetime(df[date_column], errors="coerce", format="mixed")
+    seconds = []
+    for _, block in parsed.groupby(df[unit], dropna=True):
+        values = block.dropna().sort_values()
+        if len(values) >= 2:
+            seconds.extend(np.diff(values.to_numpy()).astype("timedelta64[s]").astype(float))
+    gaps = np.array(seconds, dtype=float)
+    if len(gaps) and float(np.mean(gaps > 0)) >= 0.5:
+        minutes = float(np.median(gaps[gaps > 0])) / 60.0
+        return (f"`{date_column}` holds clock times {minutes:,.0f} minutes apart at the median "
+                f"within a unit's day")
+    from turbotab.core.recognizers import tokens
+
+    for c in df.columns:
+        if c in (unit, date_column) or not pd.api.types.is_numeric_dtype(df[c]) \
+                or pd.api.types.is_bool_dtype(df[c]):
+            continue
+        if not set(tokens(c)) & _CLOCK_WORDS:
+            continue
+        varying = df.groupby(unit, dropna=True)[c].nunique(dropna=True)
+        if len(varying) and float((varying > 1).mean()) >= 0.5:
+            values = sorted(pd.to_numeric(df[c], errors="coerce").dropna().unique())
+            shown = ", ".join(f"{v:g}" for v in values[:7]) + (" …" if len(values) > 7 else "")
+            return f"`{c}` orders them within the day ({shown})"
+    return None
+
+
+_OCCASION_WORDS = {"visit", "visits", "wave", "waves", "followup", "round", "session", "timepoint",
+                   "occasion", "cycle", "exam", "examination"}
+
+
+def occasion_column(df: pd.DataFrame, unit: str) -> str | None:
+    """A column that names each record's occasion as a visit, wave or follow-up (``visit``,
+    ``visit_date``, ``wave``): the study's own word for a schedule of time points."""
+    from turbotab.core.recognizers import id_kind, tokens
+
+    for c in df.columns:
+        if c == unit:
+            continue
+        if id_kind(c) == "visit" or set(tokens(c)) & _OCCASION_WORDS:
+            return str(c)
+    return None
+
+
+def intake_varies(df: pd.DataFrame, unit: str) -> str | None:
+    """A dietary intake (total energy or a nutrient, by the one recognizer) that changes within
+    units: the repeated rows are reports of intake, which the dietary lens reads as replicates of
+    usual intake as readily as time points (NUTRITION_PACK)."""
+    from turbotab.core.recognizers import is_nutrient, reads_as_total_energy
+
+    for c in df.columns:
+        if c == unit or not pd.api.types.is_numeric_dtype(df[c]):
+            continue
+        if not (reads_as_total_energy(c) or is_nutrient(c)):
+            continue
+        varying = df.groupby(unit, dropna=True)[c].nunique(dropna=True)
+        if len(varying) and float((varying > 1).mean()) >= 0.5:
+            return str(c)
+    return None
+
+
 def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) -> dict[str, Any]:
     """Question 4's reading: ``turbotab.repeats.read``'s measurements, stated only when
     unambiguous (see the module docstring)."""
@@ -164,8 +237,16 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
     evidence: list[str] = []
     reading, stated = None, False
     if gaps is not None and gaps["all_identical"]:
-        reading, stated = repeats.REPEATS, True
-        evidence.append(f"every one of a unit's records carries the same date in `{gaps['column']}`")
+        same = f"every one of a unit's records carries the same date in `{gaps['column']}`"
+        within = within_day_order(df, unit, gaps["column"])
+        if within:
+            # Same date is not the same moment: a time course within the day (an OGTT, a meal
+            # test) is as likely as duplicate measurements, so it is asked.
+            evidence.append(f"{same}, but {within}, which a time course within the day follows "
+                            f"as well as repeated measurements")
+        else:
+            reading, stated = repeats.REPEATS, True
+            evidence.append(same)
     elif gaps is not None:
         days = "day" if round(gaps["median_days"]) == 1 else "days"
         spaced = (f"a unit's records in `{gaps['column']}` are {gaps['median_days']:.0f} {days} "
@@ -173,10 +254,27 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
         regular = gaps["cv"] <= repeats._SCHEDULE_MAX_CV
         if regular and gaps["median_days"] >= repeats._SCHEDULE_MIN_DAYS:
             evidence.append(spaced + ", regular enough to be a schedule")
-            reading, stated = repeats.TIME_POINTS, recalls is None
+            # Spacing alone never states time points (audit WP13 gate repair: four 24-hour recalls
+            # a season apart, the SEASONS design, were stated "time points: averaging them
+            # destroys the signal"). The study naming its occasions as visits or waves is the second
+            # signal, unless the dietary lens's repeated rows are intakes, replicates of usual
+            # intake as readily as time points.
+            occasion = occasion_column(df, unit)
+            intake = intake_varies(df, unit) if dietary else None
             if recalls:
                 evidence.append(f"`{recalls}` says they are dietary recalls, which are repeated "
                                 f"measures of usual intake, so the spacing alone does not decide")
+            elif intake:
+                evidence.append(f"`{intake}` is an intake reported on each record, which the dietary "
+                                f"lens reads as a replicate of usual intake as readily as a time "
+                                f"point")
+            elif occasion:
+                reading, stated = repeats.TIME_POINTS, True
+                evidence.append(f"`{occasion}` names each record's occasion, as a schedule of visits "
+                                f"does")
+            else:
+                evidence.append("nothing names the records' occasions, so the spacing alone does "
+                                "not decide")
         elif regular:
             evidence.append(spaced + ": a short, regular schedule, which a time course and "
                                      "same-week replicates both follow")

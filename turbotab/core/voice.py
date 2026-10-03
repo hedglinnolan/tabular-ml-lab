@@ -355,6 +355,7 @@ _SLOT_SUBJECT = {
     "exposure_forms": "the exposure forms",
     "outcome_order": "the order of the outcome's levels",
     "outcome_unit": "the outcome's unit",
+    "column_units": "the columns' units",
 }
 _PLURAL_SUBJECTS = {"roles", "exclusions", "models"}
 
@@ -1095,6 +1096,21 @@ def _set_exposure_form(d: Any, state: Any, ctx: Any) -> str:
 def _set_outcome_unit(d: Any, state: Any, ctx: Any) -> str:
     unit = "percent" if d.unit == "%" else d.unit
     return f"The unit of {tick(d.column)} was recorded as {unit}"
+
+
+_UNIT_WORDS = {"kcal": "kcal", "kj": "kJ", "years": "years", "months": "months",
+               "weeks": "weeks", "days": "days"}
+
+
+@register_sentence("set_column_unit")
+def _set_column_unit(d: Any, state: Any, ctx: Any) -> str:
+    unit = _UNIT_WORDS.get(d.unit, d.unit)
+    if d.unit in ("kcal", "kj") and d.days > 1:
+        return (f"{tick(d.column)} was recorded as a total over {count(d.days)} days in {unit}, so "
+                f"each day's intake is a value divided by {count(d.days)}")
+    if d.unit in ("kcal", "kj"):
+        return f"{tick(d.column)} was recorded as a day's energy in {unit}"
+    return f"{tick(d.column)} was recorded as an age in {unit}"
 
 
 @register_sentence("set_outcome_order")

@@ -50,10 +50,6 @@ FOUR_YEAR = {"WTINT2YR": "WTINT4YR", "WTMEC2YR": "WTMEC4YR", "WTDRD1": "WTDR4YR"
              "WTSAF2YR": "WTSAF4YR"}
 _NHANES_WEIGHT = re.compile(r"^WT[A-Z0-9]{2,8}$", re.I)
 _REPLICATE = re.compile(r"^WT[A-Z]*REP\d+$", re.I)  # jackknife and BRR replicate weights
-_GENERIC_WEIGHT = re.compile(
-    r"(?:^|_)(?:pweight|sampweight|samp_weight|sample_weight|sampling_weight|survey_weight|"
-    r"svy_weight|svyweight|design_weight|final_weight|finalweight|finalwgt|finwgt|perwt|wtfinal)"
-    r"(?:$|_)", re.I)
 _STRATA = re.compile(r"^sdmvstra$|^(?:strat|stratid|vstrat|vestr|var_strata)$|"
                      r"(?:^|_)(?:strata|stratum)(?:$|_)", re.I)
 _PSU = re.compile(r"^sdmvpsu$|^(?:psuid|vpsu|secu|var_psu)$|(?:^|_)psu(?:$|_)", re.I)
@@ -62,7 +58,12 @@ _CYCLE = re.compile(r"^sddsrvyr$|(?:^|_)(?:survey_)?cycle(?:$|_)|^survey_year$",
 
 @dataclass(frozen=True)
 class DesignReading:
-    """What the column names say about a survey design. Never a decision: the user's answer is."""
+    """What the column names say about a survey design. Never a decision: the user's answer is.
+
+    ``present`` when any part of a design is read, a weight, strata or primary sampling units:
+    a table that names its sampling units but no weight TurboTab can read (BRFSS ``_PSU`` beside
+    ``_LLCPWT``) still asks the survey question, rather than taking the unweighted estimand
+    without a word (audit WP13 gate repair)."""
 
     weights: list[str] = field(default_factory=list)
     strata: list[str] = field(default_factory=list)
@@ -72,7 +73,7 @@ class DesignReading:
 
     @property
     def present(self) -> bool:
-        return bool(self.weights)
+        return bool(self.weights or self.strata or self.psu)
 
     def columns(self) -> list[str]:
         return list(dict.fromkeys([*self.weights, *self.four_year.values(), *self.strata,
@@ -81,15 +82,24 @@ class DesignReading:
 
 def read_design(columns: Sequence[str], target: str | None = None) -> DesignReading:
     """Survey weights, strata, PSUs and cycle columns among ``columns``, by their names."""
+    from turbotab.core.recognizers import reads_as_survey_weight
+
     names = [str(c) for c in columns if c is not None and str(c) != target]
     upper = {c.upper(): c for c in names}
     nhanes = bool(NHANES_DESIGN & set(upper))
+    strata = [c for c in names if _STRATA.search(c)]
+    psu = [c for c in names if _PSU.search(c)]
+    # One weight reader for the roles proposal and this question
+    # (:func:`turbotab.core.recognizers.reads_as_survey_weight`): the strata and PSUs the table
+    # names are what corroborates a weight the name alone leaves ambiguous.
+    designed = nhanes or bool(strata or psu)
     weights: list[str] = []
     for c in names:
         u = c.upper()
         if _REPLICATE.match(c) and u not in NHANES_WEIGHTS:
             continue
-        if u in NHANES_WEIGHTS or (nhanes and _NHANES_WEIGHT.match(c)) or _GENERIC_WEIGHT.search(c):
+        if (u in NHANES_WEIGHTS or (nhanes and _NHANES_WEIGHT.match(c))
+                or reads_as_survey_weight(c, design_in_table=designed)):
             weights.append(c)
     four: dict[str, str] = {}
     for w in weights:
@@ -100,8 +110,8 @@ def read_design(columns: Sequence[str], target: str | None = None) -> DesignRead
     partners = set(four.values())  # a four-year weight is offered through its 2-year partner
     return DesignReading(
         weights=[w for w in weights if w not in partners],
-        strata=[c for c in names if _STRATA.search(c)],
-        psu=[c for c in names if _PSU.search(c)],
+        strata=[c for c in strata if c not in weights],
+        psu=[c for c in psu if c not in weights],
         cycles=[c for c in names if _CYCLE.search(c)],
         four_year=four,
     )
@@ -123,7 +133,8 @@ def not_applicable_reason(state: Any) -> str | None:
     if purpose is None or getattr(state, "roles", None) is None:
         return None
     if not reading_of(state).present:
-        return "No column reads as a survey weight, so there is no surveyed population to weight to."
+        return ("No column reads as a survey weight, stratum or sampling unit, so there is no "
+                "surveyed population to weight to.")
     return None
 
 
@@ -160,7 +171,7 @@ def sample_concern(reading: DesignReading) -> str:
             f"used).")
 
 
-def offered(state: Any, pooled_cycle: str | None = None) -> list[dict[str, Any]]:
+def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None) -> list[dict[str, Any]]:
     """The answers the survey question offers, each with the decision it records.
 
     One "surveyed population" option per weight the names read as, with the strata, PSU (and, when
@@ -184,7 +195,9 @@ def offered(state: Any, pooled_cycle: str | None = None) -> list[dict[str, Any]]
     roles = getattr(state, "roles", None) or {}
     target = getattr(state, "target", None)
     used = [c for c, r in roles.items() if r in ("exposure", "covariate", "energy")]
-    lcd = least_common_denominator([*([target] if target else []), *used, *weights])
+    # With the table's values (``frame``), a variable recorded only on a subsample's rows is read
+    # as that subsample's whatever its name (audit WP13 gate repair).
+    lcd = least_common_denominator([*([target] if target else []), *used, *weights], frame)
     if lcd is not None and lcd["use"] in weights:
         weights.sort(key=lambda w: w != lcd["use"])
     out: list[dict[str, Any]] = []

@@ -38,6 +38,7 @@ from turbotab.core.stages.finding_words import (
     family,
     flag_columns,
     own_findings,
+    repoint_energy,
     restate_energy,
     settle_groups,
     speak,
@@ -101,15 +102,19 @@ def pack_finding(f: dict[str, Any]) -> dict[str, Any]:
 
 
 def speak_for(frame: Any, lens: list[str], target: str | None, structural: list[dict[str, Any]],
-              from_packs: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+              from_packs: list[dict[str, Any]],
+              units: Any = None) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """Both legacy streams in the app's voice, plus the app's own findings, as (raw, finding).
 
     One column, one card: a flag column the app speaks for (``imputed_weight`` → ``weight``) is
     not also reported as "a binary variable written as true/false", and a column the binary-text
     check already reports is not reported again as "true/false stored as text".
     """
-    fc = FindingContext(frame=frame, lens=tuple(lens), target=target)
+    fc = FindingContext(frame=frame, lens=tuple(lens), target=target, units=dict(units or {}))
     legacy = [(f, structural_finding(f)) for f in structural] + [(f, pack_finding(f)) for f in from_packs]
+    # The pack's energy findings are about the column the app reads as energy intake (audit WP13
+    # gate repair: the pack's alias matcher read a device's energy expenditure as intake).
+    legacy = repoint_energy(legacy, fc)
     own = own_findings(fc, [finding for _, finding in legacy])
     flags = flag_columns(own)
     two_level = {c for _, f in legacy if family(f["id"]) == "binary_text" for c in f["affected_columns"]}
@@ -155,10 +160,11 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     # read by turbotab.core.detectors in place of the legacy ones, under the same ids.
     structural = detectors.reframe(detectors.structural(structural, frame), lens, frame)
     ctx.progress(0.65, "Running the lens packs")
-    from_packs = detectors.pack_findings(frame, lens)
+    units = getattr(ctx.state, "column_units", None) or {}
+    from_packs = detectors.pack_findings(frame, lens, units=units)
     ctx.progress(0.95, "Ranking the findings")
 
-    spoken = speak_for(frame, lens, target, structural, from_packs)
+    spoken = speak_for(frame, lens, target, structural, from_packs, units=units)
     sas = repairs.sas_zero_finding(frame, target)  # M2: the app's own detector for XPT zeros
     if sas is not None:
         spoken.append(sas)

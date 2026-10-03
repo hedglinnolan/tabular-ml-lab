@@ -411,9 +411,14 @@ class OutcomeDispute(Model):
     line (also in ``notes``) and its badge."""
 
     outcome: str
-    kind: str  # "body weight" · "BMI" · "waist size" · "adiposity" · "diabetes"
+    # "body weight" · "BMI" · "waist size" · "adiposity" · "diabetes" · "hip size" · "body size" ·
+    # "child growth"; None when nothing places the outcome (``basis`` "unconfirmed")
+    kind: str | None
     note: str
     evidence: FindingEvidence
+    # WP13 gate repair: how the outcome was read: its name, its values (it tracks a body-size
+    # column), or nothing (the dispute stated as a condition the researcher answers).
+    basis: Literal["name", "values", "unconfirmed"] = "name"
 
 
 class EnergyReading(Model):
@@ -510,10 +515,16 @@ class EnergyUnitReading(Model):
     """The energy column's unit and how it was read (audit IN-07)."""
 
     unit: Literal["kcal", "kj"]
-    # name: a suffix or codebook; atwater: the reconstruction from the macronutrients; magnitude:
-    # the pack's median-magnitude prior; assumed: nothing said, kcal assumed and said so.
-    basis: Literal["name", "atwater", "magnitude", "assumed"]
+    # decision: recorded with ``set_column_unit``; name: a suffix or codebook; atwater: the
+    # reconstruction from the macronutrients; magnitude: the pack's median-magnitude prior;
+    # assumed: nothing said, kcal the reading counts are made in.
+    basis: Literal["decision", "name", "atwater", "magnitude", "assumed"]
     sentence: str
+    # WP13 gate repair: the days each value totals (a recorded total over several days), and
+    # whether the unit is settled; a magnitude or an assumption is a proposal, and every screen
+    # on the column is refused until ``set_column_unit`` records it.
+    days: int = 1
+    confirmed: bool = True
 
 
 class ProposalsArtifact(Model):

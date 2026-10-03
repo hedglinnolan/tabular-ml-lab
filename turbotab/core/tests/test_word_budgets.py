@@ -257,6 +257,10 @@ def representative_decisions():
         d.SetExposureForm(column="fat_g", form="quintiles"),
         d.SetOutcomeOrder(column="hba1c", levels=["normal", "prediabetes", "diabetes"]),
         d.SetOutcomeUnit(column="hba1c", unit="%"),
+        # WP13 gate repair: a unit TurboTab could only propose, recorded by the user
+        d.SetColumnUnit(column="energy_kcal", unit="kj"),
+        d.SetColumnUnit(column="energy_kcal", unit="kcal", days=2),
+        d.SetColumnUnit(column="age", unit="months"),
         d.SetSubstitution(donor="fat_g", recipient="carbohydrate_g", scale="percent_energy",
                           step_percent=5),
         # WP12: a time-to-event outcome's follow-up
