@@ -1,0 +1,995 @@
+{
+ "gate": {
+  "items": [
+   {
+    "item": "A \u00b7 set_follow_up race (RO-03, WP12b.3)",
+    "verdict": "closed",
+    "reasoning": "Tested through my own server (port 8977, fresh TURBOTAB_HOME, TURBOTAB_WORKERS=2) using my own fixture: 1,500 people, exponential hazards, 17.9% events (A/race.py).\n\nRace: 12 fresh projects, each running set_lens, set_target, then set_follow_up.\n- Posted immediately, with target_info 'idle', i.e. the window: 409 not_time_to_event, 'task is not settled yet'.\n- Posted concurrently from two threads: 409.\n- Posted after detection finished: 409, 'analyzed as a binary outcome'.\n- No project recorded a set_follow_up.\n\nPositive path: set_event, then the refusal's exit set_task time_to_event, then the follow-up was accepted. Under inference with 20% held out, the fit is Cox on the hazard_ratio scale with coefficients_n 1,500. The fiber log-HR is -0.0202614300, equal to statsmodels PHReg (Efron) on all 1,500 rows (-0.0202614300). The sentence claims a time to event only after that answer.\n\nObservations (not failures):\n1. During the window, the refusal's own first exit (set_task time_to_event) is itself refused with 'not_yet' until the event question is answered. It works once target_info is fresh. This is a routing papercut.\n2. As the repairer noted, the log is append-only. After set_task binary, or after retargeting, the old sentence \"`cvd_event` was analyzed as a time to event\" stays in the record. The corrective sentence follows it and the fit is logistic. A methods text built from the log should fold out superseded decisions."
+   },
+   {
+    "item": "B \u00b7 ruling 3: every number beside an inference coefficient table reads every analyzed row",
+    "verdict": "not-closed",
+    "reasoning": "Most of it is closed. Each check below ran under inference with 20% held out, against numpy/statsmodels/scipy on all rows; under prediction each switched to training rows.\n- Log-residual elasticity printed 1.022: numpy on all 2,500 rows 1.0216, training rows 1.0354.\n- Residual-gap warning 'on 2,500 analyzed rows +0.0232 against +0.024' equals statsmodels on all rows (training rows: +0.0258 / +0.0248).\n- Stratum note 'Level C of site has 12 analyzed rows' equals pandas (training: 9). Lineage r within C is -0.261, equal to numpy on all rows.\n- Matrix n_rows and coefficients_n are both 2,500.\n- Shelf basis 'Ranked for 2,500 analyzed rows'.\n- Preview basis 'Values on all 2,500 analyzed rows', nothing sealed.\n- Library-size check on 240 analyzed rows: median 1.36x, AUC 0.67, p 9e-6, equal to scipy Mann-Whitney on all rows (training: 1.38x / 0.65).\n- Omitted-energy refusal reads 17%, which is the every-row value (rows outside the seal: 16%).\n- The event share in the imbalance sentence is on analyzed rows.\n\nNOT closed: the near-singular concern beside the table is computed on training rows. turbotab/core/stages/modeling.py:1323 calls `collinearity_concern(model_matrix(final, X))`, where `final` and `X` are the training fit and the training rows, not table_fit and X_tab.\n- Repro B/collin.py (2,000 rows; x2 = x1 + small noise): the table equals statsmodels on all 2,000 rows (x1 0.0350273793), but the concern prints 'scaled condition number 1,760'. numpy gives 1,760 on the training rows and 1,755 on every analyzed row.\n- Repro B/collin2.py (1,500 rows tuned so the every-row matrix has condition 999.0, below the app's 1,000 threshold): under inference with seed 0, the concern still fires, printing '1,009', the training rows' value. Whether this concern appears next to the inference table depends on which rows the seal drew.\n\nThree labels still say 'training rows' under inference although the rows used are every analyzed row:\n- pipeline.py:495, the design's energy step detail ('...fit on training rows'). It sits beside a model step that says 'The coefficient table uses every analyzed row'.\n- previews.py:436, the energy preview's distribution caption ('on the sampled training rows'). It sits under a basis line that says 2,500 analyzed rows.\n- previews.py:47 STEP_PHRASES, the select_models preview's 'Elastic net: 7 columns, each standardized on training rows'.\n\nMinor: decisions.py:1617-1620, the partition validator, still reads only the rows outside the seal under inference, while the omitted-energy validator was moved to the analyzed rows."
+   },
+   {
+    "item": "C \u00b7 %E exit leaves a reference out and the estimand names it",
+    "verdict": "closed",
+    "reasoning": "Tested through the API on my own fixture: 2,000 rows, four shares summing to 100 (max deviation 1e-4), inference, 20% held out (C/pe.py, C/pe2.py).\n\nfat+carb in the model, protein and alcohol excluded:\n- fat\u2192carb at 5 pp is refused with omitted_energy_sources (20%).\n- There are two set_roles exits: 'Add alcohol, with protein left out as the reference' and the mirror one. numpy rank of each exit's matrix is 6 of 6 (full rank).\n- Before the exit the estimand says 'no one source is the reference... not the field's leave-one-out model'.\n\nAfter the first exit:\n- The swap is accepted. The estimand reads 'leave-one-out model (Hu et al. 1997...), with protein as the reference: each coefficient is a point of energy from its source in place of protein.'\n- The curve at 5 pp is -0.77112417. statsmodels on all 2,000 rows gives 5\u00b7(b_carb\u2212b_fat) = -0.77112417, and Hu's carbohydrate-reference form \u22125\u00b7\u03b3_fat = -0.77112409. A training-rows fit would give -0.7533.\n- Basis 'Averaged over 2,000 analyzed rows'.\n\nAll four shares in the model:\n- Refused with no_reference_share, one exit per non-moved share. Each exit is full rank (6 of 6).\n- The estimand says no named source is the reference.\n\nLeave-one-out with carbohydrate (mean share 44.8%) as the reference: fat\u2192protein is accepted, and the curve -0.28429376 equals statsmodels exactly.\n\nObservations:\n- The coefficient rows read 'in place of protein and other energy', while the estimand says 'in place of protein'. Other energy is 0% here.\n- A swap toward the reference itself (fat\u2192carb with carb excluded) is refused as 'not an energy-bearing nutrient in the model'. That contrast is the fat row of the table, but the wording is off."
+   },
+   {
+    "item": "D \u00b7 a True/False outcome's event is labeled by its declared level everywhere",
+    "verdict": "closed",
+    "reasoning": "Tested through the API with `False` declared as the event: 1,200 rows of booleans (60.4% False), 20% held out (D/tf2.py).\n\nInference:\n- The caption reads 'log-odds of `False` against `True`'. The effect reads '`False` rather than `True`'. event/reference are False/True.\n- fat_g is -0.00623734, equal to statsmodels Logit of smoker==False on all 1,200 rows (-0.00623734).\n- The imbalance sentence reads 'The event, `False`, is 60% of the analyzed rows' (pandas 60.4%).\n- The shelf's rarer class is 475 (pandas 475).\n- The set_event sentence reads '`False` ... coded 1; `True` was coded 0'.\n- The substitution estimand reads 'probability that smoker is False'.\n\nPrediction:\n- fat_g equals the statsmodels training-row logit for False (0.00338624).\n- Out-of-fold calibration observed 0.60417 equals the False share of the training rows.\n- After opening the seal: holdout AUC 0.6039927 against sklearn's 0.603993 for the False model, and holdout observed 0.604167 equals pandas' False share of the held-out rows.\n\nNo `1.0`/`0.0` level names appear in the fit, shelf or decisions.\n\nObservation outside this item (WP1 ingest): a yes/no or TRUE/FALSE CSV is ingested as booleans, and declaring 'no' is refused with \"`smoker` has no level `no`\"."
+   },
+   {
+    "item": "E \u00b7 Willett by-sex screen offered when sex is not a predictor",
+    "verdict": "closed",
+    "reasoning": "Tested through the API on 900 rows, with misreporters placed where the sex-specific and sex-neutral cut-offs disagree (E/willett.py).\n\nCoverage: three sex encodings \u00d7 three roles = 9 cases.\n- Encodings: sex F/M, RIAGENDR 2/1, gender female/male.\n- Roles: covariate, excluded, absent from roles.\n\nResults:\n- In all 9 cases the exclusions menu offers willett_by_sex with ranges F/2/female 500\u20133,500 and M/1/male 800\u20134,200, and affected = 33. pandas: sex-specific 33; sex-neutral 500\u20133,500 gives 23.\n- With sex excluded, recording the rule leaves cohort n_final 867 = 900 \u2212 33.\n\nSource check:\n- Women 500\u20133,500 kcal/d is the NHS convention (Rhee et al. 2015, PMC4325679: 'less than 500 kcal/day and greater than 3,500 kcal/day').\n- Men 800\u20134,200 kcal/d is the HPFS convention (Shan et al. 2023, PMC9857813: men 'less than 800 kcal or greater than 4200 kcal')."
+   }
+  ],
+  "suites": "Run against HEAD 8dcd48c with TURBOTAB_WORKERS=2 and OMP_NUM_THREADS=2. The working tree was clean before and after; I made no commits.\n- Acceptance suite (turbotab/core/tests/acceptance): 318 passed, 2 warnings, 488 s. Exit 0. Log: /private/tmp/turbotab-fix/gate-methods-2/acceptance.log and acceptance.xml.\n- Full core+server suite (turbotab/core/tests and turbotab/server/tests): 1,201 passed, 2 warnings, 625 s. Exit 0. Log: /private/tmp/turbotab-fix/gate-methods-2/full.log and full.xml.\n- The 2 warnings in both runs are the known numpy RuntimeWarning in test_wp1 test_8.",
+  "gate": "fail",
+  "summary": "The methods gate fails on item B; items A, C, D and E are closed. Both suites pass: acceptance 318/318 and core+server 1,201/1,201. I checked each item through my own server (port 8977, fresh home, 2 workers) on my own fixtures, against numpy, statsmodels, scipy, sklearn and pandas. Scripts are under /private/tmp/turbotab-fix/gate-methods-2/{A,B,C,D,E}/.\n\n**Why B is open:** under inference, the near-singular concern next to the coefficient table is still computed on the training rows.\n- The cause is turbotab/core/stages/modeling.py:1323, `collinearity_concern(model_matrix(final, X))`. It should use the table's own fit and rows (`table_fit`, `X_c`).\n- In repro B/collin2.py the inference table is fit on all 1,500 rows, whose condition number is 999.0, below the app's 1,000 threshold. The concern still fires and prints \"1,009\", the training rows' value. So whether the concern appears depends on which rows the seal drew.\n\n**Three labels also still say \"training rows\" under inference, though the rows used are every analyzed row:**\n- the design's energy step detail (\"fit on training rows\"), pipeline.py:495;\n- the energy preview's distribution caption (\"on the sampled training rows\"), previews.py:436;\n- the model preview's \"each standardized on training rows\", previews.py:47.\n\n**The rest of B is closed.** These all match independent computation on every analyzed row:\n- the log-residual elasticity;\n- the residual-gap warning;\n- the stratum notes and lineage;\n- the matrix size;\n- the shelf basis;\n- previews (nothing sealed);\n- the library-size check;\n- the omitted-energy share;\n- the event share.\n\n**Not failures, but worth a look:**\n- During the race window, the follow-up refusal's own exit is itself refused with \"not_yet\".\n- The decision log keeps the old \"analyzed as a time to event\" sentence after the task or outcome changes. A corrective sentence follows it.\n- In %E models, the coefficient rows say \"in place of protein and other energy\" while the estimand says \"in place of protein\".\n- The partition check before recording an energy answer still reads only rows outside the seal under inference.\n- A yes/no CSV is ingested as booleans, so declaring the event \"no\" is refused. This belongs to WP1, not this gate."
+ },
+ "done": [
+  {
+   "package": "WP13 \u00b7 Recognizers: whole tokens and corroboration (closes IN-01, IN-02, IN-05, IN-06, IN-07, IN-08, IN-10, IN-19, and the methods gate's reads_as_total_energy(\"alc_kcal\"))",
+   "branch": "worktree-wf_52f020de-c42-4 (worktree /Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_52f020de-c42-4; based on turbotab-next 30e7354)",
+   "commit": "ffaf2d0",
+   "summary": "Every column-name reading in turbotab/core now goes through one new module, turbotab/core/recognizers.py. All of WP13's \u00a75 acceptance tests pass as permanent tests: 24 tests in turbotab/core/tests/acceptance/test_wp13_recognizers.py. Where the audit left a generator, the fixture replays it draw for draw: h3, h4, h5b, h10, h10b, h16, idnames, c4 and s10_kj. As a check, the s10 replay reproduces the audit's own figure: 764 rows \"above 5,000\" on the raw kJ column.\n\nWhat is now true:\n- **Nutrients (IN-01, IN-08).** Names are read as whole words, never substrings. The recognizer reads the NHANES DR1TOT codebook suffixes and the INFOODS tagnames. A name is not read as an intake when another word in it names:\n  - a body compartment, a specimen, a concentration unit or a score;\n  - a medication or a behavior;\n  - a food (fatty fish), or the serum \"total protein\" test.\n- **Codebook units and nesting.** Codebook names carry their stated unit (DR1TSFAT \"(gm)\"). SFA, MUFA, PUFA, DR1TSFAT, DR1TMFAT, DR1TPFAT and DR1TSUGR get fat's or carbohydrate's factor and nest inside their totals. A food in grams is described as a food, not as \"carries no energy\".\n- **Energy names.** DR2TKCAL, DRXTKCAL, ENERC_KCAL, TotalKcal and similar names read as total energy, and they now raise the pack's energy-adjustment and implausible-intake findings. `alc_kcal` reads as alcohol's energy, not total energy.\n- **Roles (IN-02, IN-10).** Under every lens:\n  - a trial's treatment, arm, group, condition and phenotype are exposures, and fasting is a covariate;\n  - batch, plate and run order carry `kind: \"acquisition\"`: a covariate under inference, left out under prediction, with the reason stated (the roles stage now reads the purpose);\n  - rates are no longer time, and birth weight in grams is no longer a sampling weight.\n- **Identifiers (IN-06).** The row proposal, the identifier finding and the grain question's person reading all ask the same `id_kind`, so they agree on all 46 names. `eid`, `patid`, `ptid`, `IDNO`, `USUBJID` and `MRN` read as people. `site_id`, `household_id` and `HHID` are clusters, using a new `cluster` role that the seal never groups by. The grain question no longer suggests a measurement as the unit. If the user names one anyway, the draw groups by it but the seal is marked exploratory.\n- **Units (IN-05).** A unit is stated only from a full suffix or from the new `set_outcome_unit` decision. The clinical pack's reading becomes a proposal (`target_info.proposed_unit`, `unit_candidates`), and it is never proposed by magnitude when the two candidate units are less than 3\u00d7 apart. Dietary choline is never \"mg/dL\". A recorded unit reaches the record sentence, the target stage and the substitution estimand.\n- **kJ (IN-07).** The energy unit is read by suffix first, then the Atwater reconstruction (now over columns the shared recognizer picks), then the pack's magnitude prior; the result is reported in `proposals.energy_unit`. The implausible-intake finding and its evidence count in that unit, so the finding's count equals the 500\u20135,000 kcal screen's. When no reconstruction is possible, the partition fit refuses energy whose median is in the kJ range.\n- **Weights (IN-19).** The NHANES least-common-denominator rule names WTSAF2YR beside fasting analytes, quoting the NHANES weighting tutorial with a CONVENTION badge. The survey question offers that weight first.\n\nTest results:\n- Full core+server suite: 1,229 passed, run once before the commit (11 min 41 s). The only change after that run was a spelling fix in two comments.\n- Frontend `npm run check`: 153 passed.\n- `openapi.json` and `generated.ts` were regenerated. The frontend edits are only what the types require: role maps, the new decision kind, and new fields in the mocks.",
+   "acceptance": [
+    {
+     "test": "1a Must not be nutrients (14 \u00a75 names + 6 further audit probes; alc_kcal not total energy)",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_1a_names_that_only_share_letters_with_a_nutrient_carry_no_energy",
+     "measured": "All 20 names: nutrient_role None, energy_factor None, energy_bearing False, is_nutrient False, not total energy. reads_as_total_energy('alc_kcal') False (alcohol, factor 1.0). fatty_fish_g's reason now says 'is a food', not 'carries no energy'. Before (audit H3 repro at HEAD): fat_mass_kg, body_fat_pct, c_reactive_protein, fibrinogen etc. read as fat/protein/fiber at 9/4/2 kcal/g.",
+     "reference": "None of the listed names is a nutrient intake; fat_g = 9 kcal/g",
+     "how_reference_was_computed": "The audit's \u00a75 list (categorical expectation, not code output); the FAO general Atwater factor for fat (9 kcal/g, NUTRITION_PACK \u00a701 SETTLED)."
+    },
+    {
+     "test": "1b Must be recognized: sfa_g, mufa_g, pufa_g, DR1TSFAT, DR1TMFAT, DR1TPFAT, DR1TSUGR, PROCNT, CHOAVL; DR2TKCAL, DRXTKCAL, ENERC_KCAL as energy; NHANES parts nest in their total",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_1b_codebook_and_tagname_nutrients_are_recognized_with_their_factors",
+     "measured": "Each name gets the expected (macro, part) and a declared factor: fat 9, carbohydrate 4, protein 4. unit_of('DR1TSFAT') == 'grams'. The three energy codes plus DR1TKCAL, energy_kcal, TotalKcal, total_energy and kcal_day read as total energy. nested_components maps DR1TSFAT/MFAT/PFAT \u2192 DR1TTFAT.",
+     "reference": "SFA/MUFA/PUFA are fat at 9 kcal/g; sugars are carbohydrate at 4; PROCNT is protein; CHOAVL is carbohydrate; KCAL codes and ENERC_KCAL are energy",
+     "how_reference_was_computed": "NHANES DR1TOT_L codebook SAS labels, fetched 2026-10-03 (e.g. DR1TSFAT 'Total saturated fatty acids (gm)', DR1TSUGR 'Total sugars (gm)', DR1TKCAL 'Energy (kcal)'). USDA SR27 NUTR_DEF.txt, fetched 2026-10-03 ('~203~^~g~^~PROCNT~^~Protein~', '~208~^~kcal~^~ENERC_KCAL~^~Energy~'). FAO/INFOODS for CHOAVL. FAO Atwater factors 4/4/9/7."
+    },
+    {
+     "test": "1c Diet + body-composition table: only the gram macronutrients are energy-adjustment nutrients; excluded exposures get true reasons",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_1c_on_a_diet_and_body_composition_table_only_intakes_are_adjusted",
+     "measured": "The real roles stage gives no must-not column a nutrient reason. Proposal nutrients == ['protein_g', 'carbohydrate_g', 'fat_g'] (before: those three plus fat_mass_kg, c_reactive_protein and fibrinogen). not_adjusted reason for fatty_fish_g: 'a food, not a nutrient: no energy factor unless one is declared'.",
+     "reference": "['protein_g', 'carbohydrate_g', 'fat_g']",
+     "how_reference_was_computed": "The fixture (H-skeptic/h3.py replay, default_rng(7)) builds energy_kcal = 4P + 4C + 9F from exactly those three columns."
+    },
+    {
+     "test": "1d 45-nutrient DR1T* table: no nutrient proposed covariate",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_1d_no_nhanes_nutrient_is_proposed_a_covariate",
+     "measured": "0 covariates; all 45 nutrient codes are exposures; DR1TKCAL is energy; SEQN is the identifier. Before (audit H10b at HEAD): 24 covariates.",
+     "reference": "0 covariates, 45 exposures",
+     "how_reference_was_computed": "Every one of the 45 codes is a nutrient in the NHANES DR1TOT_L codebook (fetched). Fixture is H-skeptic/h10b.py, replayed draw for draw."
+    },
+    {
+     "test": "1e (IN-08 evidence) Energy names the pack's exact-alias matcher misses still raise its findings (DR2TKCAL, DRXTKCAL, ENERC_KCAL, TotalKcal, total_energy, kcal_day)",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_1e_energy_the_pack_could_not_name_still_raises_its_findings",
+     "measured": "For each name, the energy-adjustment finding exists and the implausible-intake finding says '12 records report\u2026' on that column. Before (audit H10): no pack findings at all for these names.",
+     "reference": "12 rows outside 500\u20135,000 kcal",
+     "how_reference_was_computed": "NumPy count on the H-skeptic/h10.py replay (default_rng(10)), which plants 12 rows at 5,100\u20136,500 kcal."
+    },
+    {
+     "test": "2a RCT table: treatment, arm, diet_group, condition, phenotype, fasting stay predictors under every lens",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_2a_a_trials_arms_groups_and_fasting_stay_predictors_under_every_lens",
+     "measured": "Under clinical, dietary, metabolomics, genomics and no lens: arms and groups are exposures; fasting is a covariate; plate_reader_od is a predictor with kind None; site is a cluster. Before: all were 'design', with the reason 'An acquisition column \u2026 not biology'.",
+     "reference": "Each listed column has a predictor role (exposure, covariate or energy)",
+     "how_reference_was_computed": "The \u00a75 list. Fixture is H-skeptic/h4.py, replayed (default_rng(3))."
+    },
+    {
+     "test": "2b steps_per_day, drinks_per_week, baseline_glucose, birth_weight (g) stay predictors",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_2b_rates_and_birth_weight_stay_predictors",
+     "measured": "Under clinical, dietary and no lens: rates, baseline and follow-up glucose, and birth_weight are exposures or covariates. Before: 'time', and birth_weight was 'design: sampling weight'. NHANES WT* and survey_weight are still read as sampling weights.",
+     "reference": "Predictor roles for all listed columns",
+     "how_reference_was_computed": "The \u00a75 list. Fixture is H-skeptic/h16.py, replayed (default_rng(6))."
+    },
+    {
+     "test": "2c Batch is proposed as acquisition/batch, a covariate under inference",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_2c_batch_is_an_acquisition_column_whose_role_follows_the_purpose",
+     "measured": "batch, run_order and plate_id carry kind 'acquisition' and a reason starting 'Acquisition/batch:'. The role is covariate under inference and with no purpose declared, and excluded under prediction. group is an exposure.",
+     "reference": "acquisition/batch, covariate under inference",
+     "how_reference_was_computed": "\u00a75 text, plus IN-02's recommendation for prediction (excluded, reason stated)."
+    },
+    {
+     "test": "3a One recognizer agrees with itself on the 46-name table; eid, patid, ptid, HHID, IDNO, USUBJID are identifiers; site_id, household_id are clusters",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_3a_one_recognizer_agrees_with_itself_on_the_46_names",
+     "measured": "On all 46 names, these agree: rows._id_like, finding_words.is_identifier_name, working.person_identifiers and the roles proposal (acquisition names are routed by purpose instead; test 2c). Before: 11 disagreements among the three readers. Expected kinds hold, and lipid, uric_acid, RIDAGEYR and sample are not identifiers.",
+     "reference": "The listed names are identifiers or clusters as named",
+     "how_reference_was_computed": "H/idnames.py's 46 names. Expected kinds from the audit text and the cohorts' documentation: UK Biobank EID, CPRD patid, MESA idno, CDISC USUBJID, HRS HHID (household)."
+    },
+    {
+     "test": "3b Clusters never corrupt the seal on a clean study",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_3b_sites_and_households_are_clusters_and_a_clean_study_seals_cleanly",
+     "measured": "site_id and household_id are proposed 'cluster'. participant_id, eid, MRN, patid and Participant are identifiers. One row per unit gives basis 'one_row_per_unit', not exploratory. Before: 'abandoned \u2026 site_id repeats'.",
+     "reference": "Clean one_row_per_unit basis",
+     "how_reference_was_computed": "H-skeptic/h5b.py replay (default_rng(1)): every person identifier is unique on all 400 rows by construction."
+    },
+    {
+     "test": "3c No float or measurement column is suggested as a unit ID",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_3c_no_measurement_is_suggested_as_a_unit",
+     "measured": "clinical_risk.csv suggests no length_of_stay_days, age, sodium_mmol_l, charlson_index, and no float column. On a roster fixture the suggestions are exactly ['SUBJ']: a float visit_weight_kg and a fractional 'subject_id' are excluded, and that subject_id is not proposed as an identifier.",
+     "reference": "No measurement suggested; ['SUBJ']",
+     "how_reference_was_computed": "dtypes and names read with pandas from the fixtures; SUBJ is the only integer roster built by np.repeat."
+    },
+    {
+     "test": "3d A measurement named as the unit never yields a clean seal",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_3d_a_measurement_named_as_the_unit_never_makes_a_clean_seal",
+     "measured": "Grain repeated by length_of_stay_days: grouped, exploratory=True, sentence says it 'reads as a measurement'. participant_id remains a clean grouped basis.",
+     "reference": "Exploratory basis for a measurement unit",
+     "how_reference_was_computed": "IN-06 recommendation ('mark the basis exploratory if the user names one'); clinical_risk.csv as shipped."
+    },
+    {
+     "test": "4a Dietary choline is not mg/dL; no unit stated without an explicit suffix",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_4a_no_unit_is_stated_that_the_name_does_not_spell_out",
+     "measured": "For all 15 of the auditor's names (c4.py): target_info unit and unit_source are None and the record sentence carries no unit. Choline and cholesterol intakes get no proposal. Spelled suffixes are stated: glucose_mg_dl\u2192mg/dL, ldl_mmol_l\u2192mmol/L, sbp_mmhg, weight_kg, choline_mg_day\u2192mg/day, energy_kcal. Before: choline 'mg/dL', gestational_age 'years', birth_weight 'lb', sleep_hr 'beats/min', and so on.",
+     "reference": "No stated unit unless spelled out",
+     "how_reference_was_computed": "CLINICAL_SURVEY_PACK \u00a7A1.1 rule; the units the auditor generated each column in (c4.py comments)."
+    },
+    {
+     "test": "4b A proposed unit reaches a sentence only once recorded; source check CLINICAL_SURVEY_PACK 'TurboTab will not guess'",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_4b_a_proposed_unit_reaches_a_sentence_only_once_recorded",
+     "measured": "glucose: unit None, proposed_unit 'mg/dL', candidates ['mg/dL', 'mmol/L']. After set_outcome_unit 'mmol/L': unit 'mmol/L', source 'decision', and the record sentence is stated. A unit for a non-target column is refused (not_the_target, with an exit). The slot drops when the target changes. Also over HTTP: server test_teaching hba1c \u2192 '%' recorded.",
+     "reference": "'Please confirm units per analyte against the source data dictionary \u2014 TurboTab will not guess.' / 'Detect, propose, require explicit confirmation.'",
+     "how_reference_was_computed": "Read from docs/turbotab/research/CLINICAL_SURVEY_PACK.md by the test itself (blockquote markers stripped)."
+    },
+    {
+     "test": "4c The substitution estimand states only a recorded unit",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_4c_the_substitution_estimand_states_only_a_recorded_unit",
+     "measured": "Without a decision: 'predicted dietary_choline when\u2026', with no '(in' and no 'mg/dL'. With outcome_unit 'mg/day': 'predicted dietary_choline (in mg/day)'.",
+     "reference": "No unit before the decision; the recorded unit after",
+     "how_reference_was_computed": "\u00a75 rule; the design, fit and substitution stages run on a 400-row fixture."
+    },
+    {
+     "test": "5 A kJ 'energy' column with only sodium beside it is read as kJ by the magnitude prior; the implausible-intake count after conversion matches the kcal screens",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_5_a_kj_energy_beside_sodium_is_read_as_kj_and_counted_as_the_screens_count",
+     "measured": "energy_unit is kj with basis 'magnitude'. Finding n = 0 (as-shipped replay) and 80 (planted), each equal to the sex_neutral_500_5000 screen's count. The finding detail reads '2,092 kJ (500 kcal)', and the coach line is in kJ. Before: the pack counted 764 (replay) / 728 (planted) rows outside 500\u20135,000 on the raw kJ column; 764 is the audit's own figure.",
+     "reference": "0 and 80 rows outside 500\u20135,000 kcal",
+     "how_reference_was_computed": "NumPy: (energy / 4.184 < 500) | (> 5000) on the D-skeptic/s10_kj.py replay (default_rng(5)), with 40 + 40 planted rows from default_rng(55)."
+    },
+    {
+     "test": "5b Atwater path still reads kJ; counts agree (h9 fixture and shipped nhanes_kilojoules.csv)",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_5b_the_atwater_reconstruction_still_reads_kj_and_the_counts_agree",
+     "measured": "Both tables read as kj with basis 'atwater'. The finding count equals the NumPy kcal count, 0 for nhanes_kilojoules.csv. Before, that table's finding said '118 records \u2026 above 5000' beside 'The energy column is in kilojoules'.",
+     "reference": "NumPy count of value/4.184 outside 500\u20135,000",
+     "how_reference_was_computed": "NumPy on H-skeptic/h9.py's replay (default_rng(9)) and on the shipped CSV."
+    },
+    {
+     "test": "6 With WTSAF2YR and fasting analytes present, the least-common-denominator rule names the fasting weight; source check NHANES weighting tutorial",
+     "status": "pass",
+     "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_6_fasting_analytes_name_the_fasting_subsample_weight",
+     "measured": "Finding title: 'Use the fasting subsample weight, `WTSAF2YR`.' The detail names LBXGLU and LBXTR and quotes the tutorial, with a CONVENTION badge. Without WTSAF2YR in the table, it says the weight is missing. With no fasting analytes, the dietary-weights finding stands. The survey question's first option is WTSAF2YR, and WTDRD1 when there is no lab variable.",
+     "reference": "WTSAF2YR",
+     "how_reference_was_computed": "NHANES Tutorials, Weighting Module (wwwn.cdc.gov/nchs/nhanes/tutorials/weighting.aspx), fetched 2026-10-03: 'You must use the weight of the smallest subpopulation that includes all the variables\u2026'; 'A good rule of thumb is to use the least common denominator\u2026'; 'You would use the fasting subsample weights (wtsaf4yr).'"
+    }
+   ],
+   "closed_findings": [
+    "IN-01",
+    "IN-02",
+    "IN-05",
+    "IN-06",
+    "IN-07",
+    "IN-08",
+    "IN-10",
+    "IN-19",
+    "methods-gate: reads_as_total_energy('alc_kcal') returned True"
+   ],
+   "tests": {
+    "command": "TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core/tests turbotab/server/tests -q -p no:cacheprovider ; cd turbotab/frontend && npm ci && npm run check",
+    "passed": true,
+    "detail": "Core+server: 1,229 passed in 701 s, including the 24 new WP13 acceptance tests. Frontend: tsc, eslint and vitest pass (153 tests). The pre-commit gates (python parses, ledger, register, American spelling, copy deck, evidence badges) passed with TURBOTAB_PYTHON set; the first attempt was refused for 'behaviour' in two comments, which were fixed. The commit came after the full run; the only change in between is that comment-only spelling fix."
+   },
+   "deviations": [
+    "The worktree branch started on main (f5e935c), not turbotab-next. Before doing any work I reset this worktree's own branch to turbotab-next 30e7354; nothing else was touched.",
+    "HHID is read as a household. The HRS documentation says it 'uniquely identifies an original household', and person = HHID + PN. So `is_identifier('HHID')` is True, as \u00a75 requires, but its kind is 'cluster', the same as household_id. The roles stage proposes it as 'identifier' when it is unique on every row (a household-level table) and as 'cluster' when it repeats.",
+    "New role 'cluster' (decisions.Role, a shared file). It is needed for \u00a75's 'site_id, household_id are clusters' and to stop the seal grouping by them. It also touched voice role words, a teaching-content option, schemas, openapi and generated types, and two frontend role maps.",
+    "What a cluster does to the model (site fixed effects, the cluster question) is WP17's test 4. In the meantime, so intervals do not narrow, models/inference.cluster_columns (a WP2 file; 5-line change) now includes cluster-role columns. A repeating site still clusters the intervals, as it did when it was misread as an identifier.",
+    "Acquisition columns are marked with a new optional RoleProposal field, `kind: 'acquisition'`, rather than a new role. The proposed role is covariate (inference or undeclared) or excluded (prediction). The roles stage now reads 'purpose' (version 2).",
+    "Units: a new decision, set_outcome_unit (decisions.py, voice), plus target_info proposed_unit and unit_candidates. Presentation is paused, so there is no UI card yet; the decision works through the API, as the server test shows. Three existing tests pinned guessed units: test_coach (pack units), test_voice (glucose \u2192 mg/dL) and server test_teaching (hba1c \u2192 '%'). The audit overturned that behavior, so I rewrote them to the audited rule; teaching now records '%' over HTTP.",
+    "NHANES and INFOODS codebook names now declare their documented unit (e.g. DR1TSFAT \u2192 grams). test_energy's premise 'NHANES names declare no unit' was rewritten: it keeps the unmarked-name Atwater path, using bare names, and adds a codebook-path test. The methods-layer partition fit gains one refusal: when no Atwater reconstruction can run and the energy median is in the pack's kJ band (7,000\u201311,000), it refuses kJ-sized energy.",
+    "Legacy turbotab/packs.py and nutrition.py are untouched, because Classic's ml/router.py imports packs (BLUEPRINT \u00a70 wrapper rule). Core works around them: it reruns the pack's own energy detectors with the column aliased to a name the pack recognizes, restates the implausible-intake and survey-weight findings in finding_words, and wraps the pack's Atwater ratio table (nutrition._reconstruct) with columns the core recognizer chooses.",
+    "Shared files touched, each change kept small: decisions.py, voice.py, finding_words.py (identifier finding, kJ and weight restatements, energy supplement; restate_energy's 'not in dispute' text is left for WP15), core/survey.py (WP10's options order the LCD weight first), seal.py, evidence.py, teaching/content.py, models/inference.py. stages/findings.py is unchanged.",
+    "IN-01 recommendations not done: there is no gate requiring a nutrient to correlate positively with energy before it becomes a default adjustment target. It would drop weakly correlated real sources such as alcohol on small samples, and names, units and deny words already pass the acceptance list.",
+    "IN-07: refusing a screen that would remove more than half the rows is not implemented. The unit is now read correctly, so the screens count in the right unit.",
+    "IN-10: 'time' is still read from the name; it now excludes rates and measurement words but does not check that values are dates or small indices increasing within a unit.",
+    "IN-08: the dietary lens hint for DR2TKCAL, ENERC_KCAL and similar names is not changed; it sits in packs.suggest, which is WP14's lens-hint work (IN-13).",
+    "The LCD rule ranks the interview, MEC, dietary day 1, both-day and fasting weights only. OGTT and environmental subsample weights are recognized as design columns but not ranked, because no primary source was read for them.",
+    "Source for CHOAVL: the FAO/INFOODS PDFs could not be parsed (the text in them could not be extracted), so CHOAVL's definition comes from FAO/INFOODS search excerpts, and the module docstring says so. The other codebook names are quoted from fetched pages: NHANES DR1TOT_L and USDA SR27 NUTR_DEF."
+   ],
+   "inbox": [
+    "Presentation: a card for set_outcome_unit that shows target_info.proposed_unit and unit_candidates, and records the user's unit. The decision already exists in the API.",
+    "WP17: what the 'cluster' role does under inference (cluster question; site fixed effects with clustered errors, test 4). Until then, cluster-role columns only cluster the intervals.",
+    "WP14 (lens hints, IN-13): let packs.suggest, or a core wrapper, use recognizers.reads_as_total_energy so DR2TKCAL, DRXTKCAL, ENERC_KCAL and TotalKcal get the dietary hint.",
+    "Consider refusing an exclusion screen that would remove more than 50% of rows, with a units exit (IN-07 recommendation).",
+    "Consider value-based time reading (dates, or small indices increasing within a unit) to back up the name-based reading (IN-10 recommendation).",
+    "Classic utils/test_lockbox._id_kind still disagrees with core's recognizer (e.g. eid, patid, IDNO). Classic is untouched by rule; turbotab/grain.suggestion's named candidates still come from it, and core re-ranks and filters them."
+   ]
+  },
+  {
+   "package": "WP14 \u00b7 Detectors \u2014 pass must-not-fire fixtures and the null",
+   "branch": "worktree-wf_52f020de-c42-5",
+   "commit": "3ac36d557be676ba81535d694a3fa752bbb243a8",
+   "summary": "WP14 is finished and committed on top of turbotab-next 30e7354. The worktree had been created from main, so before starting I reset this worktree's own clean branch to 30e7354.\n\nThe legacy detectors live in modules that Classic or the legacy app also import (ml/import_doctor, ml/physiology_reference, turbotab/packs, survey, clinical, orientation, repeats). None of those modules were edited. A new package, turbotab/core/detectors/, now reads each detector in their place. It keeps the legacy finding ids and shapes, so the repair registry, the voice and the client work unchanged.\n- The findings stage calls detectors.structural, detectors.reframe, detectors.pack_findings and detectors.own_findings.\n- The profile stage calls lenses.hints.\n- The oriented stage calls named_reading, which reads column names before shape.\n- The structure stage calls repeats.read.\n- Both histogram implementations share detectors.bins.\n\nWhat changed, by detector:\n- **codes.py**: a value is read as a missing-value code only when it lies beyond every other value and past a gap. The gap is either far (10 or more typical spacings and at least half the range), or near on a coded question whose top answer is well populated. Design columns are skipped. Findings are warnings, and critical only when the codes are NHANES codes in an NHANES table. One code convention across many columns is now one paged card.\n- **scales.py**: the response run is the contiguous union of answers across the block. A value counts as a code only if a gap separates it from the run and it is either a known code or at least 3 steps beyond. Eleven conventional scales are recognised. Blocks form from name stems (3 or more items, floor-heavy allowed) or, without stems, from the legacy shape rule. PHQ-9, GAD-7, HADS, CES-D, RSE, PSS and EQ-5D are named as hypotheses for the user to confirm.\n- **assay.py**: drift uses the pack's own rule (Spearman |\u03c1| > 0.3 and Benjamini\u2013Hochberg q < 0.05), and the finding states the share expected by chance. Redundancy uses Spearman correlation with average linkage, plus a leave-one-sample-out check.\n- **plausibility.py**: bands carry source, cycle and CONVENTION (data/plausibility.json).\n  - Total energy is no longer a physiology band.\n  - The \"unusual\" tier is the weighted 1st\u201399th percentile of NHANES 2017\u20132018 adults, rebuilt by build_plausibility.py from the public .xpt files.\n  - The \"impossible\" tier is CLINICAL_SURVEY_PACK \u00a7A1.2's bounds, or TurboTab's own where the pack gives none, labelled as such.\n  - Children are judged by CDC modified z-scores from the vendored LMS tables.\n  - A diastolic pressure of 0 is described per the BPX_J documentation.\n  - HbA1c in IFCC units is reported as a unit question, not an impossible value.\n- **genomics.py**: reads log2 CPM/TPM, voom log-CPM, TMM-scaled CPM (a per-sample count quantum) and shallow counts. A single-cell matrix raises a pseudoreplication concern that names both remedies and says which one to use is disputed.\n- **orientation.py**: reads header tokens and feature/sample name grammar first, then a scale-aware shape. The question is asked under an assay lens unless the table reads as one row per sample.\n- **repeats.py**: repeats are stated only when the evidence is unambiguous. Trends, crossover periods, short regular schedules and bare indices are asked. Recalls under the dietary lens are never stated as time points.\n- **lenses.py**: each hint needs positive evidence, and the survey hint is checked first. The contradiction check becomes a finding routed to the lens question.\n- **bins.py**: resolution-aligned bins.\n\nSmall wording fixes: the survey-code repair sentence now says the values were recoded \"on the user's instruction\", and the impossible-values voice says \"unusual but real\" instead of \"abnormal\".\n\nAll 40 acceptance tests pass. The full core and server suite passed: 1,243 passed in 6:57 with -n 2. All six pre-commit gates pass, and openapi.json is unchanged, so no generated types or frontend changes were needed.\n\nPrimary sources I read: CDC's SAS Program for CDC Growth Charts page (modified z-score definition and Table 2 cut-offs); the NHANES BPX_J documentation (\"Diastolic BP can be zero\"; BPXDI1 range 0 to 136); limma's voom.R via rdrr.io; the NGSP master equation (ngsp.org); the Europe PMC abstracts of Squair et al. 2021 and Zimmerman et al. 2021; GEO GSE60450.\n\nFiles: /Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_52f020de-c42-5/turbotab/core/detectors/ (the new package) and /Users/nhedglin/tabular-ml-lab/.claude/worktrees/wf_52f020de-c42-5/turbotab/core/tests/acceptance/test_wp14_detectors.py (with fixtures in its wp14_data/ folder).",
+   "acceptance": [
+    {
+     "test": "WP14.1a balanced 6-point, skewed 7-point, 0\u20135 and 9-point blocks raise no code finding",
+     "status": "pass",
+     "measured": "through findings_stage under the survey lens: no pack::survey::sentinel_codes and no sentinel_missing__* on any of the four blocks; each block is still declared, on its drawn k-point scale",
+     "reference": "each generator's support is one contiguous run of whole numbers (1\u20136, 1\u20137, 0\u20135, 1\u20139)",
+     "how_reference_was_computed": "pd.unique over the drawn values of the audit's generators (H-skeptic/h1.py seed 11, F-skeptic/f3_direct.py seed 7, H-skeptic/h17.py seed 12), replayed draw for draw",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_1a_real_answers_at_a_scales_end_raise_no_code_finding"
+    },
+    {
+     "test": "WP14.1b a 1\u20135 block with a real 9 still raises the code finding",
+     "status": "pass",
+     "measured": "critical sentinel_codes finding naming exactly the items holding a 9, each with code [9]; the detail no longer says 'almost certainly'; the repair blanks only the 9s, and its sentence says 'on the user's instruction'",
+     "reference": "the items where (frame == 9).any(), and every 9 cell",
+     "how_reference_was_computed": "pandas over h1's 1\u20135 block with 3% of cells set to 9 (seed 11)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_1b_a_one_to_five_block_with_a_real_nine_is_still_flagged"
+    },
+    {
+     "test": "WP14.1c floor-heavy PHQ-9, GAD-7 and a 0\u201310 rating scale are recognized as instruments",
+     "status": "pass",
+     "measured": "one block of all 9 / 7 / 10 items on 0\u20133 / 0\u20133 / 0\u201310; PHQ-9 and GAD-7 named as hypotheses; survey hint present; PHQ-9 item 9's modal share is above 0.9 and the block is still recognized",
+     "reference": "CLINICAL_SURVEY_PACK \u00a7B1.1: 'PHQ-9 (9 items, 0\u20133), GAD-7 (7, 0\u20133)', '0\u201310 (NRS)'",
+     "how_reference_was_computed": "the audit's h17 generators (seed 12); the expected scales are the drawn supports; the modal shares come from pandas value_counts",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_1c_floor_heavy_phq9_gad7_and_a_zero_to_ten_scale_are_instruments"
+    },
+    {
+     "test": "WP14.2a eight clean generators at n = 100/300/1,000, 200 replicates each, flag rate \u2264 1%",
+     "status": "pass",
+     "measured": "0.0% in all 24 cells; on the same draws the legacy check_numeric_sentinels exceeds 1% (asserted)",
+     "reference": "\u2264 1% (audit: legacy up to 15.5%)",
+     "how_reference_was_computed": "H/sentinel_fp.py's eight generators (seed 0), replayed; flag counts / 200",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_2a_eight_clean_generators_are_flagged_at_most_one_percent_of_the_time"
+    },
+    {
+     "test": "WP14.2b real codes still read; clinical extremes and survey strata not",
+     "status": "pass",
+     "measured": "8/8 NHANES yes/no items flag their 7 and 9 (critical, one paged card); every 0\u201310 rating flags 99; clinic_visits age and glucose flag 999 (warning); bp_2's 99 (the column's lowest reading, one mmHg below the next) is not flagged; nhanes_dietary's SDMVSTRA 999 (9 rows) is not flagged",
+     "reference": "the codes the generator planted (H/make_fx.py F and G, seed 7) and the fixture values read by pandas",
+     "how_reference_was_computed": "make_fx replayed draw for draw; pandas counts of 7, 9, 99, 999 and of bp_2's neighbouring values",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_2b_real_codes_are_still_read_and_extremes_and_strata_are_not"
+    },
+    {
+     "test": "WP14.3a drift finding fires \u2264 5% on drift-free data at n = 16\u201340",
+     "status": "pass",
+     "measured": "at most 2/40 at every n (0 observed); the count of drifting features equals the pack rule computed independently, table by table; legacy fires 40/40 at n = 16 on the same draws",
+     "reference": "\u2264 5% (2 of 40); METABOLOMICS_PACK \u00a701 item 7: Spearman |\u03c1| > 0.3 and an FDR-significant trend",
+     "how_reference_was_computed": "scipy.stats.spearmanr plus statsmodels multipletests (fdr_bh) on F-skeptic/f8_sim.py's tables (seed 13)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_3a_drift_free_runs_fire_at_most_five_percent_and_match_the_pack_rule"
+    },
+    {
+     "test": "WP14.3b real drift still fires (positive control)",
+     "status": "pass",
+     "measured": "fires at n = 16 and n = 40 with 40% of features drifting; n_tracking equals the scipy/statsmodels count; the chance share is reported",
+     "reference": "pack rule count",
+     "how_reference_was_computed": "scipy spearmanr plus statsmodels BH",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_3b_real_drift_still_fires"
+    },
+    {
+     "test": "WP14.3c one sample \u00d720: redundancy count stays near 300",
+     "status": "pass",
+     "measured": "effective count 301 of 301 columns (300 features + bmi); finding silent; legacy reports fewer than 50",
+     "reference": "no feature pair reaches Spearman 0.9, so every column is its own quantity",
+     "how_reference_was_computed": "pandas DataFrame.corr(method='spearman') on F-skeptic/f9_sim.py's table (seed 4, n = 80, p = 300, row 0 \u00d7 20)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_3c_one_concentrated_sample_leaves_three_hundred_quantities"
+    },
+    {
+     "test": "WP14.3d real redundancy still counted (positive control)",
+     "status": "pass",
+     "measured": "metabolomics_redundant.csv reads 104 effective features; no group rests on a single sample",
+     "reference": "about 100 compounds wearing 404 names (95\u2013115 accepted)",
+     "how_reference_was_computed": "the fixture's companion .md (built by make_metabolomics_redundant.py)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_3d_real_redundancy_is_still_counted"
+    },
+    {
+     "test": "WP14.4a total energy is not in the physiology bands",
+     "status": "pass",
+     "measured": "kcal/energy/energy_kcal/calories/DR1TKCAL match no band; with nine 0\u201393 kcal recalls, the clinical repair bands name only bp_sys and the detail never mentions kcal",
+     "reference": "IN-09: energy belongs to the dietary screens",
+     "how_reference_was_computed": "constructed table (seed 0) and the served finding's repair params",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_4a_total_energy_is_not_a_physiology_band"
+    },
+    {
+     "test": "WP14.4b bands carry source, cycle and CONVENTION and match NHANES",
+     "status": "pass",
+     "measured": "every variable's two tiers carry status CONVENTION and a source; every improbable tier has cycle 2017-2018; p01/p99 equal the weighted quantiles exactly (e.g. SBP 94\u2013180, DBP 42\u2013100, weight 47.2\u2013157.4 kg); impossible SBP 30\u2013300 and DBP 10\u2013200",
+     "reference": "statsmodels DescrStatsW.quantile([0.01, 0.99]) with WTMEC2YR (WTSAF2YR for glucose and triglycerides) on adults \u2265 20; CLINICAL_SURVEY_PACK \u00a7A1.2's table",
+     "how_reference_was_computed": "recomputed from the vendored NHANES 2017\u20132018 extract (DEMO_J, BPX_J, BMX_J, GLU_J, TRIGLY_J, GHB_J, TCHOL_J as downloaded from wwwn.cdc.gov)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_4b_bands_carry_source_cycle_and_convention_and_match_nhanes"
+    },
+    {
+     "test": "WP14.4c children are judged by age-specific z-scores",
+     "status": "pass",
+     "measured": "no adult band applied to the 300 children (0 'unusual' values, any-age tier); exactly row 0 (0.2 kg) is a biologically implausible value; the module's modified z equals the hand computation to 1e-9",
+     "reference": "CDC: modified z built by 'extrapolating one-half of the distance between 0 and +2 (or between 0 and -2) z-scores'; weight-for-age cut-offs below \u22125 or above 8",
+     "how_reference_was_computed": "LMS read straight from the CDC wtage.csv, interpolated with numpy, X\u00b12 = M(1 \u00b1 2LS)^(1/L), in the test; H-skeptic/h7.py fixture (seed 4)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_4c_children_are_judged_by_age_specific_z_scores"
+    },
+    {
+     "test": "WP14.4d DBP 0 described per the NHANES BPX documentation",
+     "status": "pass",
+     "measured": "detail quotes 'Diastolic BP can be zero', calls a 0 a reading and not an entry error, and offers set-to-missing with band [10, 200]",
+     "reference": "BPX_J documentation, Data Processing and Editing: '... and Diastolic BP can be zero.'",
+     "how_reference_was_computed": "BPX_J.htm fetched from wwwn.cdc.gov and read",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_4d_a_diastolic_zero_is_described_per_the_nhanes_documentation"
+    },
+    {
+     "test": "WP14.4f HbA1c in IFCC mmol/mol is a unit question",
+     "status": "pass",
+     "measured": "IFCC-range values above 30% are counted as a unit question, not as impossible values; no repair is offered for the column",
+     "reference": "NGSP = 0.09148 \u00d7 IFCC + 2.152",
+     "how_reference_was_computed": "NGSP master equation applied in the test to h7's mixed column (seed 4)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_4f_hba1c_in_ifcc_units_is_a_unit_question_not_an_impossible_value"
+    },
+    {
+     "test": "WP14.5 log2 GEO-style and MZmine-style feature-major tables are asked about under an assay lens",
+     "status": "pass",
+     "measured": "GEO log2, GEO raw and MZmine read feature_major (medium confidence, never high) from names; asked under the genomics and metabolomics lenses, not under clinical; with no names, log2 reads feature_major from the scale-aware shape (the legacy reading was undetermined); a sample-major metabolomics fixture is not asked",
+     "reference": "the ratio of row-mean SD to column-mean SD on the values themselves",
+     "how_reference_was_computed": "numpy over the H-skeptic/h13.py (seed 8) and F-skeptic/f4_orient.py fixtures",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_5a_log2_geo_and_mzmine_tables_are_asked_about_under_an_assay_lens"
+    },
+    {
+     "test": "WP14.6 a daily falling time course and a crossover are asked; quarterly recalls under the dietary lens are read as replicates or asked",
+     "status": "pass",
+     "measured": "daily and crossover: stated False, the repeat-kind gate opens the question (legacy stated both as repeats); quarterly recalls under dietary: not stated time points (legacy stated time points); dietary_recalls stays stated repeats, clinical_longitudinal stays stated time points, a bare visit index is asked",
+     "reference": "median within-unit Spearman \u03c1 < \u22120.5 for the falling glucose; a treatment column that changes within units",
+     "how_reference_was_computed": "scipy spearmanr per unit on H-skeptic/h14.py's fixtures (seed 5)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_6a_a_falling_time_course_and_a_crossover_are_asked"
+    },
+    {
+     "test": "WP14.7 lens hints and the contradiction check",
+     "status": "pass",
+     "measured": "profile_stage hints genomics (only) for TPM and log2-TPM with Ensembl IDs (legacy: metabolomics); survey fixtures hint survey only; six genomics fixtures hint genomics; the TPM table under the survey lens raises voice::lens_contradiction routed to 'lens'; none under the genomics lens",
+     "reference": "the gene-ID vocabulary of the column labels",
+     "how_reference_was_computed": "H-skeptic/h11.py's tables (seed 2); legacy packs.suggest recorded on the same tables",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_7c_the_contradiction_check_runs_on_the_stated_lens"
+    },
+    {
+     "test": "WP14.8a log2-TPM and voom log-CPM are read",
+     "status": "pass",
+     "measured": "log2(TPM+1) and log2(CPM+1) read as log2 CPM/TPM with offset 1, voom log-CPM with offset 0; the legacy card read nothing; the finding names limma and closes count models",
+     "reference": "closed forms on public counts; voom.R: y <- t(log2(t(counts+0.5)/(lib.size+1)*1e6))",
+     "how_reference_was_computed": "numpy on GEO GSE60450 counts (5,000-gene seeded subset); voom formula quoted from limma source via rdrr.io",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_8a_log2_tpm_and_voom_log_cpm_are_read"
+    },
+    {
+     "test": "WP14.8b thresholds validated on a public matrix",
+     "status": "pass",
+     "measured": "GSE60450 raw \u2192 raw counts; CPM and TPM \u2192 CPM or TPM; FPKM lists FPKM first; TMM-scaled CPM \u2192 composition-scaled (the pack's 25% band fails here and is replaced by a count-quantum reading); shallow thinned counts (max < 10^4) \u2192 raw counts",
+     "reference": "rnanorm TMM factors 0.64\u20131.22, giving TMM-CPM totals of 0.82\u20131.56 million (more than 25% off)",
+     "how_reference_was_computed": "rnanorm TMM (validated against edgeR); numpy binomial thinning (seed 0)",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_8b_the_thresholds_hold_on_the_public_matrix"
+    },
+    {
+     "test": "WP14.8c single-cell raises a concern naming pseudoreplication",
+     "status": "pass",
+     "measured": "pack::genomics::single_cell finding names pseudoreplication, pseudobulk and a random effect, and says the remedy is disputed",
+     "reference": "Zimmerman et al. 2021 ('pseudoreplicates'); Squair et al. 2021 ('prone to false discoveries'); GENOMICS_PACK \u00a711",
+     "how_reference_was_computed": "Europe PMC abstracts fetched and quoted",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_8c_single_cell_raises_a_concern_naming_pseudoreplication"
+    },
+    {
+     "test": "WP14.9 resolution-aligned bins; the two implementations agree",
+     "status": "pass",
+     "measured": "for ages, a 0\u201340 score, a 0.1 grid, HbA1c to 0.1 and a 0.5 grid: every bin holds the same number of grid steps (the last may hold fewer) and the first edge is half a step below the minimum; DataStore.histogram and _histogram_pair give identical edges and counts; a continuous column gets 30 equal bins",
+     "reference": "pandas.cut(right=False) on the served edges; np.histogram of the known grid",
+     "how_reference_was_computed": "C/t5_hist.py and t5b.py generators (seed 3), n = 60,000",
+     "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_9_discrete_data_get_resolution_aligned_bins_and_both_histograms_agree"
+    }
+   ],
+   "closed_findings": [
+    "IN-03",
+    "IN-04",
+    "IN-09",
+    "IN-11",
+    "IN-12",
+    "IN-13",
+    "IN-14",
+    "IN-15",
+    "IN-16",
+    "IN-17",
+    "IN-18",
+    "MI-01",
+    "MI-04",
+    "H19",
+    "F16"
+   ],
+   "tests": {
+    "command": "TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 venv/bin/python -m pytest turbotab/core turbotab/server -q -p no:cacheprovider -n 2",
+    "passed": true,
+    "detail": "1243 passed in 6:57, including 40 new WP14 acceptance tests (about 20 s on their own). Pre-commit gates all passed (parsecheck, ledger, register, spelling, copy deck, evidence badges). openapi.json is unchanged. One existing test, test_methods_gate::test_b_previews_under_inference_read_every_analyzed_row, failed once under -n 2 in an earlier run ('no answer for the open step event'), then passed alone and in the final run. It looks like a timing race in server_drive.reach, which this package did not touch."
+   },
+   "deviations": [
+    "Shared files touched, each change kept small: stages/findings.py (calls the new package), stages/data.py (lens hints), stages/working.py (named_reading, a scale-aware shape in orientation_reading, the core repeats reading), interview.py (the orientation gate now asks under an assay lens unless the table reads as one row per sample), stages/__init__.py (versions bumped: oriented 3, profile 2, findings 5, structure 5), stages/finding_words.py (one GROUPS line so code findings page as one card; the voice says 'unusual but real'), repairs.py (survey-code sentences say 'recoded as missing on the user's instruction'), consequences.py and datastore.py (shared bins), fact_previews.py (the lens preview reads the same findings and orientation rule).",
+    "Existing tests updated to the new sourced behaviour, with comments citing the source: test_repairs.py (SBP band 40\u2013300 becomes 30\u2013300 and DBP 15\u2013220 becomes 10\u2013200, per CLINICAL_SURVEY_PACK \u00a7A1.2; kcal no longer banded); test_repairs_api.py (floor label 30 mmHg); test_working.py (streamed orientation parity is now checked against the new rule's in-memory reading, not legacy orientation.read); test_datastore.py and test_api.py (histogram edges are grid-aligned, so `bins` is now the most bins drawn, not an exact count). Fixture notes clinic_visits.md and clinical_labs.md were updated: bp_2's 99 is no longer a code, and the 999s are warnings.",
+    "Test 1: a 1\u20137 block whose 8 and 9 codes sit right next to the scale (H/make_fx D) is no longer flagged. IN-03's rule requires a gap, and with no gap the numbers cannot tell those codes from a 9-point scale. In the same way, a single 6 after 1\u20135 answers widens the block to 1\u20136. IN-16's inter-item correlation is not required, because the audit's own PHQ-9 fixture draws its items independently.",
+    "Test 2: 'name or codebook corroborates' is implemented as an NHANES table carrying NHANES codes (7/9/77/99/\u2026), which makes the finding critical. Every other code is a warning.",
+    "Test 4: the 'impossible' tier uses CLINICAL_SURVEY_PACK \u00a7A1.2's suggested EHR limits (the pack labels them CONVENTION and cites Kahn et al. 2016). For waist, triglycerides, HbA1c, cholesterol, and any-age body size, TurboTab's own limits are kept and labelled as having no published source; no published EHR limits were found. The 'unusual' tier is a single NHANES cycle (2017\u20132018, adults \u2265 20, weighted). Not done: pregnancy gating, pediatric blood-pressure norms, WHO charts under 2 years, and the 2022 extended BMI charts. Children's growth-chart flags are reported without a column-wide repair, because the limit differs by age and sex.",
+    "Test 5: under an assay lens an undetermined reading is now asked, so wide_assay.csv and genomics_single_cell.csv ask the orientation question. The missing 'Ask me anyway' control for a not-applicable step (Record.tsx) is presentation and was not touched.",
+    "Test 7: the contradiction check runs as a critical finding routed to the lens question. Dismissing it records that the answer stands. It does not refuse set_lens: blocking would need a new decision field (schema and generated types) and belongs to routing (WP16\u201318).",
+    "Test 8: thresholds were validated on one public matrix, GSE60450 (raw, CPM, TPM, FPKM, TMM-CPM, three log variants, shallow). The pack's TMM band (25%) fails on it (totals 0.82\u20131.56 million), so a count-quantum reading was added. Microarray, VST and estimated counts were not checked on public data (no R, no salmon output). The single-cell concern covers both purposes in its text but does not block by purpose: the findings stage does not read purpose, and adding purpose would recompute the working table and everything after it on each purpose change.",
+    "Test 3: drift is not computed within batch, although the pack says 'within batch'. Test 9: when the grid count is not a multiple of the bin width, the last bin holds fewer grid steps.",
+    "H18 (the Atwater 'mixed units' verdict) was not done. It lives in turbotab/nutrition.py's Atwater finding, which WP13 is changing for IN-07, and touching it in parallel risked a conflict."
+   ],
+   "inbox": [
+    "Routing: promote voice::lens_contradiction to a block-and-record step on set_lens (it needs an acknowledged field on SetLens).",
+    "Routing: make the single-cell concern purpose-specific (block and record under inference, a stated concern under prediction).",
+    "H18: the Atwater 'mixed units' verdict should test drift with energy, not ratio spread; coordinate with WP13's nutrition.py work.",
+    "Plausibility: pregnancy gating, pediatric BP norms (AAP 2017), WHO charts under 2 years, the 2022 extended BMI charts, and published EHR limits for waist, triglycerides, HbA1c and cholesterol.",
+    "Genomics: validate microarray, VST and estimated-count thresholds on public matrices (needs R/DESeq2 or salmon outputs).",
+    "Drift: compute within batch when a batch column exists (METABOLOMICS_PACK \u00a701 item 7)."
+   ]
+  },
+  {
+   "package": "WP15 \u00b7 Claims: every sentence matches its source and the computation (closes IN-20, IN-21, IN-22, IN-23, IN-24, IN-25, IN-26, MI-02, MI-03; minors G14, G15, G16, G18, G19, F15, D15)",
+   "branch": "worktree-wf_52f020de-c42-6",
+   "commit": "e9c0959",
+   "summary": "WP15 is done in two commits on worktree-wf_52f020de-c42-6, on top of turbotab-next 30e7354: e5f8049 holds the package and e9c0959 makes the preset test sharper. Every claim the app serves now matches its primary source and the computation.\n\n**Energy findings and the energy card (IN-20)**\n- The energy finding no longer says adjustment \"is not in dispute\" or that energy \"confounds every nutrient association\". It now says adjusting for total energy is a choice between two estimands (Tomova 2022), and that under prediction the choice matters little.\n- A new module, turbotab/core/methods/dietary_caveats.py, reads whether the outcome is energy-related (weight, BMI, waist, adiposity, diabetes). It reads whole tokens only, so WTMEC2YR, birth_weight and fat_g do not match.\n- For such an outcome the finding carries the DISPUTED badge, and the energy card gets the DISPUTED line in `notes` plus a typed `EnergyReading.outcome_dispute` field with its badge.\n\n**Density plus energy and measurement error (IN-21, IN-22)**\n- The estimand the design serves for density plus energy now quotes Tomova's \"but one which is still biased\" and names the all-components model as the paper's recommended route. The option text and the pack's table row say the same.\n- \"Unbiased in direction\" is now qualified in the AGGREGATION card, the attenuation term and NUTRITION_PACK \u00a703. A closed-form check plus a simulation shows the old claim was false: \u03b21 of \u22120.10 comes out at +0.19.\n- Under inference, the coefficient table now carries a measurement-error limitation line. It names the exposures and how many reports each row averages, and says the table is not corrected (Freedman 2011; Keogh 2020).\n\n**TNTC (IN-23)**\n- TNTC is now right-censored, not missing, per FDA BAM ch. 3. I read the PDF itself: \">250 CFU per plate \u2026 record \u2026 TNTC\". This holds in the REPAIRS card, the censored-values finding (restated from the cells, since the legacy classifier cannot be edited) and CLINICAL_SURVEY_PACK \u00a7A1.3. QNS and hemolyzed specimens stay measurement failures.\n\n**Temporal methods sentence (IN-24)**\n- It no longer says \"scored on later data\". It says the units seen last were held out whole, earlier rows included, and how many held-out rows were observed before the latest training row.\n- The seal's `Chronology` now counts these rows for its own draw and for each offered holdout size.\n- On the audit's visit fixtures: 71% (168 of 235) and 56% (125 of 222). Through the real server on clinical_longitudinal.csv: 67% (80 of 120), matching the drawn seal's own count.\n\n**Lineage (IN-25, D15)**\n- Each operation is now attributed only to the column it touched (energy_kcal's edge into fat_g_adj no longer says \"imputed\").\n- The encoder's pass-through columns are marked \"kept\".\n- The stratified log residual's formula names the geometric-mean energy: 1984.08, against an arithmetic mean of 2076.96.\n- The density methods sentence no longer claims a stratification.\n\n**Exclusion screens (MI-02)**\n- \"Willett, by sex\" (men 800\u20134,200) was misattributed. It is replaced by two attributed screens: Willett 2013 (men 800\u20134,000; Banna 2017, publisher page) and NHS/HPFS (men 800\u20134,200; Pan 2011 and de Koning 2011 full text). Each rule's reason names its source, and the methods sentence quotes it.\n\n**Coach (MI-03)**\n- The note now states r\u00b2 (energy explains 10% at r = 0.31) and says \"most\" only when r\u00b2 is above 0.5.\n\n**Teaching cards and the packs (G14, G15, G16, G18, G19, F15)**\n- G14: the \"most-checked figure\" line now rests on STROBE-nut item nut-13.\n- G15: the \"14 of 24\" evidence is now attributed to Goldberg cut-offs from one simulation (Yamamoto 2023).\n- G16: multiclass is scored by log loss; boosted trees no longer claim to handle missing values.\n- G18: claims two cards share are now one section each, with one badge.\n- G19: the polychoric claim is no longer SETTLED in the pack.\n- Smaller fixes:\n  - p > n now says penalization, dimension reduction or one test per feature, instead of \"regularization is mandatory\".\n  - The calibration card no longer says \"rank on calibration\" while the app ranks by AUC.\n  - Groenwold's exception for randomized trials is added.\n  - The substitution review now names its authors.\n- F15 (pack citations): the survey pack now says attenuation is \u03bb for a slope and \u221a\u03bb for a standardized coefficient (replay: 0.2095 and 0.2504), and three citations are corrected:\n  - Nygaard 2016: GSE40566, 2,011 against 11 genes, ComBat against blocking in limma.\n  - Zindler 2020: DNA methylation arrays.\n  - Eekhout 2014: the threshold is >25%.\n- Each pack correction keeps a dated note of the old wording.\n- The claims ledger has a new re-check section, generated from the test's own table. turbotab/core/tests/acceptance/test_wp15_claims.py has 96 tests. They read the ledger's 27 marked rows, require an entry for each, and check that each corrected sentence is served and the old one is gone.\n\nI read every primary source myself, from full text, PDF or abstract, and checked every citation's volume and pages against Europe PMC.",
+   "acceptance": [
+    {
+     "test": "1 \u00b7 Every WRONG/OVERSTATED/SELF-CONTRADICTED claims-ledger row re-checked with the corrected sentence beside its primary source",
+     "status": "pass",
+     "measured": "27 rows parsed from claims-ledger.md (plus INCOMPLETE/misleading rows 73, 75, 81); RECHECK covers exactly those 27; for all 30, each corrected phrase is served by the app's own path (teaching entries, findings voice, proposals, coach, methods sentences, METHOD_TABLE) and each old phrase is absent; ledger gains a generated re-check table",
+     "reference": "each row's primary source quoted in the test table and the ledger (Tomova 2022, Freedman 2011, Keogh 2020, Groenwold 2012, Van Calster 2019, Lachat 2016, Banna 2017, Pan 2011, Yamamoto 2023, FDA BAM ch.3, Josse et al., Sisk 2023, Varoquaux 2018, McCullough & Byrd 2023, Chalmers 2018); row 4 by closed form; row 21 by closed form and simulation (\u03b21 \u22120.10 becomes +0.194 with W2 measured with error)",
+     "how_reference_was_computed": "Sources read via Europe PMC full-text XML (Tomova, de Koning, Nygaard, Lachat, Van Calster), PMC pages via WebFetch (Freedman, Groenwold, Keogh, Pan), the FDA BAM PDF decompressed locally, Europe PMC abstracts (Yamamoto, Eekhout, Zindler, Chalmers, Varoquaux, Louie & Bhowmik), the arXiv abstract (Josse), the Frontiers page (Banna); volume and pages checked in Europe PMC metadata. Row 4: numpy SVD and least squares give two exact fits at p > n. Row 21: \u03b2* = \u03a3_W\u207b\u00b9\u03a3_WX \u03b2, plus a 200,000-row simulation",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_1_*"
+    },
+    {
+     "test": "2 \u00b7 Badge-consistency: identical claim texts with the same source share one badge",
+     "status": "pass",
+     "measured": "70 badged drawer claims, 0 conflicts at the whole-text or sentence level; the G18 'resample the entire modeling pipeline' claim now appears in temporal, split and open_seal, all SETTLED; 'a single train and test split is the weakest' appears twice, both CONVENTION; positive control flags a planted disagreement",
+     "reference": "CLINICAL_SURVEY_PACK \u00a7A5.5: '[SETTLED that the full pipeline must be inside the loop; the bootstrap-vs-CV preference is CONVENTION.]'",
+     "how_reference_was_computed": "Claims grouped by normalized text and normalized sentence plus source; more than one status in a group is a conflict; checked on synthetic disagreeing inputs",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_2_*"
+    },
+    {
+     "test": "3 \u00b7 'Not in dispute' is gone; an energy-related outcome pushes the DISPUTED note on the energy card",
+     "status": "pass",
+     "measured": "no teaching text, and no finding on the dietary fixture (targets ldl and bmi) or dietary_recalls.csv, contains 'not in dispute'; target bmi gives the energy finding DISPUTED (NUTRITION_PACK \u00a704) and the dispute in its reason, energy card notes == ['`bmi` reads as BMI: energy may be on its causal path and a collider, so adjusting for it is disputed.'] (\u2264 22-word card budget) and outcome_dispute.evidence DISPUTED; target ldl gives CONVENTION, no note; 15 energy-related names recognized, 14 others (fat_g, WTMEC2YR, birth_weight, sampling_weight, hba1c\u2026) not",
+     "reference": "Tomova 2022: 'adjusting for total energy and adjusting for remaining energy intake evaluate very different causal estimands'; NUTRITION_PACK \u00a704: 'Detect whether the outcome is itself energy-related (weight, BMI, adiposity, diabetes) \u2014 if so, escalate the mediation/collider warning.'",
+     "how_reference_was_computed": "Findings run through the findings stage's own voice (speak_for over the legacy streams) and build_proposals; names chosen by hand from the pack's list and NHANES codebook names",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_3_*"
+    },
+    {
+     "test": "4 \u00b7 Density plus energy carries Tomova's caveat; 'unbiased in direction' qualified; TNTC right-censored (FDA BAM ch. 3)",
+     "status": "pass",
+     "measured": "describe_model's served estimand for density_multivariate contains 'still biased' and 'all-components model'; option 'obscure, and still biased (Tomova 2022)'; pack row corrected; the coach no longer says 'composition' for a density; 'unbiased in direction' gone from app and pack; inference table concern equals measurement_error_line(fat_g, protein_g; energy_kcal), absent under prediction; clinical_labs.csv wbc: '`6` too numerous to count, right-censored above the countable range; `8` measurement failures (`qns`)'; a TNTC/QNS-only column is titled '`1` analyte carries censored values.'",
+     "reference": "Tomova 2022 model 3b: 'a more accurate estimate than the (unadjusted) nutrient density model, but one which is still biased' (Table 2: Obscure); Freedman 2011 and Keogh 2020 as quoted; FDA BAM ch. 3: 'When number of CFU per plate exceeds 250, for all dilutions, record the counts as too numerous to count (TNTC)'",
+     "how_reference_was_computed": "Tomova Table 2 read from the full-text XML; TNTC and QNS counts by pandas over the file's cells; the fit concern through the real design and fit stages on a synthetic dietary table",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_4_*"
+    },
+    {
+     "test": "5 \u00b7 Temporal methods sentence describes what was drawn and the share of held-out rows predating the training boundary (reference 56\u201371%)",
+     "status": "pass",
+     "measured": "A/r15 fixture: 71% (168 of 235); A-skeptic/s9 fixture: 56% (125 of 222); the sentence states them and no longer says 'scored on later data'; Chronology.earlier recounted for holdouts 0.1, 0.2 and 0.3; an unplanned holdout (0.25) says 'some held-out rows can predate\u2026'; ungrouped rows: 'no held-out row is dated earlier than a training row' (numpy: min held \u2265 max train); through the server on clinical_longitudinal.csv: 67% (80 of 120), equal to the split artifact's drawn count",
+     "reference": "AUDIT_REPORT IN-24 and the audit's repro scripts: 0.71 and 0.56",
+     "how_reference_was_computed": "Fixtures regenerated from the scripts' seeds; share = numpy mean(held time < max training time) over the app's mask, rounded to 2 decimals as the audit printed",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_5_*; turbotab/server/tests/test_m2_integration.py"
+    },
+    {
+     "test": "6 \u00b7 Lineage marks pass-throughs 'kept', attributes operations only to touched columns, says 'geometric mean' under log",
+     "status": "pass",
+     "measured": "raw:fat_g\u2192adj:fat_g_adj 'imputed, energy-adjusted (residual)'; raw:energy_kcal and raw:sex \u2192 'energy-adjusted (residual)' (was 'imputed, \u2026'); adj:fat_g_adj, energy_kcal and missingindicator_fat_g \u2192 mx: 'kept' (was 'one-hot, blank as a level'); the formula states the geometric-mean energy_kcal (1984.08) against an arithmetic 2076.96; density methods sentences no longer say 'within levels of'",
+     "reference": "pandas isna: fat_g has 31 blanks, energy_kcal and sex have 0; encoder input equals output for the kept columns; numpy exp(mean log E)",
+     "how_reference_was_computed": "B-skeptic/s15_lineage.py fixture regenerated (seed 2, n 400); the pipeline's own transform before and after the encoder compared with numpy allclose",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_6_*"
+    },
+    {
+     "test": "7 \u00b7 Survey pack attenuation text replays with \u03bb = 0.70: slope \u00d7 \u03bb = 0.210, standardized \u00d7 \u221a\u03bb = 0.251",
+     "status": "pass",
+     "measured": "simulation (n = 400,000, seed 1): slope 0.2095, standardized 0.2504; the pack's stated '0.21 (0.30 \u00d7 \u03bb)' and '0.25 (0.30 \u00d7 \u221a\u03bb)' (read from its text) match within 0.005; 'by approximately its reliability' gone",
+     "reference": "closed form: 0.30\u00b70.70 = 0.210; 0.30\u00b7\u221a0.70 = 0.251",
+     "how_reference_was_computed": "F/sim_atten.py design: X ~ N(0,1), W = X + U, var(U) = 1/\u03bb \u2212 1, Y = 0.3X + e; slope = cov(W,Y)/var(W), standardized = corr(W,Y)",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_7_the_attenuation_text_replays_with_reliability_070"
+    },
+    {
+     "test": "8 \u00b7 Exclusion presets attributed: Willett 2013 (800\u20134,000 men) and NHS/HPFS (800\u20134,200); coach states r\u00b2 rather than 'mostly'",
+     "status": "pass",
+     "measured": "proposals offer willett_2013_by_sex and nhs_hpfs_by_sex with ranges M 800\u20134,000 and 800\u20134,200; counts equal pandas', differing by exactly 5 for men set at 4,100 kcal; rule reasons and the methods sentence name each source; coach: r 0.31 \u2192 'energy explains `10%` of it', r 0.80 \u2192 'energy explains most, `64%`'; 'most' only when r\u00b2 > 0.5, for 7 r values",
+     "reference": "Banna 2017 quoting Willett 2013: '800\u20134,000 kcal/day for men'; Pan 2011: '<800 or >4200 kcal/d for men and <500 or >3500 kcal/d for women'; de Koning 2011 (HPFS): '<800 or >4200 kcal/day'; r\u00b2",
+     "how_reference_was_computed": "pandas boolean masks written out by hand; r*r arithmetic",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_8_*; turbotab/core/tests/test_proposals.py"
+    },
+    {
+     "test": "9 \u00b7 Pack citations corrected: Nygaard 2016 (GSE40566, 2,011 vs 11, ComBat vs limma blocking), Zindler 2020's methylation-array setting, Eekhout 2014's threshold",
+     "status": "pass",
+     "measured": "GENOMICS_PACK and METABOLOMICS_PACK cite GSE40566, 2,011 vs 11, and ComBat against limma blocking; the misquote 'inadvertently exaggerate the differences observed' and '>1,000 \u2026 11' are gone; Zindler cited as BMC Bioinformatics 21:271 on simulated DNA methylation arrays; CLINICAL_SURVEY_PACK quotes Eekhout's '>25%'",
+     "reference": "Nygaard 2016: 'We re-analyzed the cited data (GEO: GSE40566) \u2026 detecting 2011 differentially expressed genes \u2026 we blocked for batch effect in limma \u2026 only 11'; Zindler 2020 abstract (450K/EPIC DNAm data); Eekhout 2014 abstract: '(>25%), MI methods applied to the items outperformed'",
+     "how_reference_was_computed": "Nygaard from Europe PMC full-text XML (PMC4679072); Zindler and Eekhout from Europe PMC abstracts, volume and pages checked in its metadata",
+     "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_9_*"
+    }
+   ],
+   "closed_findings": [
+    "IN-20",
+    "IN-21",
+    "IN-22",
+    "IN-23",
+    "IN-24",
+    "IN-25",
+    "IN-26",
+    "MI-02",
+    "MI-03",
+    "G14",
+    "G15",
+    "G16",
+    "G18",
+    "G19",
+    "F15",
+    "D15"
+   ],
+   "tests": {
+    "command": "TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest -q turbotab/core/tests turbotab/server/tests; then cd turbotab/frontend && npm run check",
+    "passed": true,
+    "detail": "First full core+server run: 1,298 passed, 1 failed (725 s). The failure was turbotab/server/tests/test_m2_integration.py, which pinned the old 'The latest `20%`' wording that IN-24 changes on purpose. I updated it and strengthened it: it now also asserts the stated share equals the drawn seal's count. After that, the server suite passed alone (63) and so did the WP15 file (96 after e9c0959). I did not repeat the full core+server run after the fix; the fix touched only that server test and this package's own test file. An earlier targeted run passed 475: every acceptance package, test_modeling, test_wave1_seams, test_findings_voice and test_teaching. npm run check passed: tsc, eslint and 153 vitest tests. All six pre-commit gates passed on both commits, without --no-verify."
+   },
+   "deviations": [
+    "The worktree was created at main (f5e935c), not turbotab-next. It was clean and its branch was private, so I reset it to turbotab-next's HEAD 30e7354 before starting. Both commits sit on 30e7354.",
+    "Acceptance 3, 'badge it by purpose and outcome': the energy finding's badge reads the outcome only (DISPUTED for an energy-related outcome, otherwise the pack's CONVENTION). The findings stage does not read the purpose; making it do so would recompute findings, and the working table downstream, on every purpose change. The purpose-dependent line stays on the energy card, which already reads the purpose (energy.ranking.line).",
+    "IN-24 also recommends offering a row-time cut (train before T, test after T) for forecasting. That is a new split option (routing or methods), so I did not build it. The sentence now states what was drawn and the share instead. When the recorded holdout or seed differs from a size the plan counted, the sentence says 'some held-out rows can predate the latest training row' with no number.",
+    "D15: the backend still accepts strata with a density method, because ChoiceQuestions.tsx offers them and presentation is paused. The methods sentence no longer claims a stratification, and the existing design warning already says strata change nothing.",
+    "Legacy code I may not edit still carries some of the old claims. turbotab/packs.py has 'not in dispute' and turbotab/clinical.py treats TNTC as a failure token; Next restates both in finding_words.py. turbotab/survey.py and figure_specs.py still badge polychoric as SETTLED; Next does not import them (a test checks this) and the pack is corrected. Legacy docs (DOMAIN_PACKS.md, FEATURE_REGISTER.md/register.json, old prompts) still use the old wording as history.",
+    "Acceptance 1 is implemented as a test table (RECHECK) plus a re-check section generated from it and appended to claims-ledger.md; the auditor's rows are unchanged. Rows the methods layer had already corrected (WP6, WP7, WP9, WP10) are re-checked against today's served text, not rewritten. Teaching drawer sections must cite a pack section (test_word_budgets), so primary citations go in the body text and in the corrected packs.",
+    "The IN-22 limitation line on the inference table counts energy-bearing nutrient exposures as the self-reported intakes, plus total energy while it stays in the model. Micronutrient exposures in mg are not named. This is conservative: the statement stays true but can under-list.",
+    "Shared files, each change small: stages/proposals.py (the two attributed presets and the card's dispute note); stages/finding_words.py (the energy and censored-values restatements); stages/modeling.py (one helper and three lines for the fit concern); seal.py (Chronology.n_held_rows, n_held_earlier, earlier); voice.py (split and density sentences); methods/energy.py (density-plus-energy estimand and caveat, the stratified log formula wording); models/lineage.py; coach.py; teaching/content.py; server/schemas.py (OutcomeDispute). Stage versions bumped in stages/__init__.py: findings 5, proposals 7, split 4, design 10, fit 12, seal_plan 4. openapi.json and generated.ts are regenerated; the only frontend source edits are the new fields filled into two mocks (m1-stages.ts, m2-record.ts).",
+    "Existing tests updated for intended changes: test_proposals.py (keys and pandas references for both presets); test_voice.py (reason text); acceptance/test_methods_gate.py (key renamed to nhs_hpfs_by_sex, same rule and count); server/tests/test_m2_integration.py (new sentence wording, plus a check that the share equals the drawn seal's count)."
+   ],
+   "inbox": [
+    "Presentation: ChoiceQuestions.tsx STRATIFIABLE still includes density and density_multivariate. Drop them; a density is the same ratio within any level (D15).",
+    "Presentation: explore/m2/Scenes.tsx:267 still says the model 'is scored on later people', which is the IN-24 claim. Reword it from chronology.n_held_earlier and n_held_rows.",
+    "Presentation: render EnergyReading.outcome_dispute with its DISPUTED badge. Its line already shows today through `notes`.",
+    "Presentation: frontend/src/mocks/m1-teaching.json and m2-teaching.json are stale snapshots of /api/teaching. They predate WP6\u2013WP10, lack the survey entry, and still carry the corrected claims (TNTC, 'Regularization is mandatory', 'Willett, by sex', 'scored by accuracy'). Regenerate them from the served entries when presentation resumes.",
+    "Routing (WP17): IN-24 recommends a row-time cut (train before T, test after T) when the purpose is forecasting.",
+    "WP13: methods/dietary_caveats.energy_related() reads outcome names by whole tokens. If WP13 builds a shared token recognizer, fold this into it. The IN-22 limitation line could also name micronutrient exposures once WP13 lists self-reported intakes.",
+    "Merge: this package bumps stage versions in stages/__init__.py (findings 5, proposals 7, split 4, design 10, fit 12, seal_plan 4); WP13 and WP14 may bump the same lines. After merging, regenerate openapi.json (venv/bin/python -m turbotab.server.openapi --write) and generated.ts (npm run gen:api).",
+    "Legacy retirement (BLUEPRINT \u00a79.1): turbotab/packs.py, clinical.py, survey.py and figure_specs.py keep the old claims. Next restates or does not serve them; they go when the legacy app is retired."
+   ]
+  }
+ ],
+ "integrated": {
+  "package": "INTEGRATION",
+  "branch": "turbotab-next",
+  "commit": "792d042",
+  "summary": "WP13, WP14 and WP15 are merged into turbotab-next in that order, each with --no-ff, followed by one integration commit. The full core+server suite passes on the final tree, 1,384 tests including all 499 acceptance tests, and npm run check is green.\n\nCommits:\n- ab44c4c merges WP13 (merged cleanly).\n- c3e320a merges WP14.\n- 4e57f2d merges WP15.\n- 792d042 fixes the seams between the three packages.\n\n**Conflicts.** The only textual conflicts were stage versions in turbotab/core/stages/__init__.py. Both sides had raised the same stages from the same base, so the merged stage gets a number neither side used, keeping every side's comment: after WP14, findings and structure are 6; after WP15, findings 7, proposals 8, split 5, design 11 and seal_plan 5. The integration commit then raises profile to 3, findings to 8 and proposals to 9.\n\n**Seams the merge exposed.** Each is fixed and has a permanent test in turbotab/core/tests/acceptance/test_wp13_15_integration.py (19 tests). Without the fixes, exactly the 8 tests expected to fail did; the controls passed either way.\n1. **WP15's import rule.** WP14's survey-code finding imported SENTINEL_EVIDENCE from the legacy turbotab.survey. WP15 forbids that import in core, because the module also labels the polychoric claim SETTLED (ledger row 96), so WP15's acceptance test 1 failed after the merge. The evidence is now copied into detectors/scales.py with the same status and source; ledger row 8 rates it CONSISTENT. The test reads the legacy definition by parsing turbotab/survey.py's source, not by importing it. This fix is in the WP15 merge commit.\n2. **IN-08's dietary lens hint.** WP13 left it to WP14, and WP14 kept the pack's exact-name matcher, so after both merges DR2TKCAL, DRXTKCAL, ENERC_KCAL, TotalKcal, total_energy, kcal_day and energy_kj still produced no dietary hint. Replaying h10.py draw for draw: the legacy hint fired for 2 of 9 names, the merged one for 9 of 9. The hint now asks recognizers.reads_as_total_energy. Every alias the pack matched still hints, and expenditure, alc_kcal, shares and per-kg rates do not.\n3. **Energy-related outcomes.** WP15's energy_related used its own name splitter, which left BMIChange and T2DIncident as single words, so their energy findings were not marked DISPUTED. It now uses recognizers.tokens.\n4. **Genomics tables called repeated measures.** Pointing the word-budget harness (stage_harness.lenses_that_fit) at the hints the app actually serves showed this: with WP14's hints, the genomics sample matrices are checked under the genomics lens. There the pack treats the wide shape as expected only for raw counts, so CPM, FPKM, TMM-CPM, VST and estimated-count matrices were told their genes \"look like repeated measures of one quantity\" (that wording also failed the word budget). detectors.reframe now applies the pack's own note to any matrix WP14's data-type card reads. clinic_visits' bp_1..bp_3 is still flagged as repeated measures.\n\nWP15's test helper _findings now builds findings the way the merged stage does. openapi.json and generated.ts regenerate byte-identical to the merged copies; the frontend was not touched beyond what the packages committed.",
+  "acceptance": [
+   {
+    "test": "WP13 \u00a75 tests 1\u20136: whole-token nutrients, predictors kept, one identifier recognizer, units only when spelled out or recorded, kJ energy by magnitude, fasting weight by the least-common-denominator rule (24 permanent tests)",
+    "status": "pass",
+    "measured": "24/24 pass on the merged tree after each merge and in the final full run",
+    "reference": "\u00a75 lists; the s10_kj replay reproduces the audit's 764 rows 'above 5,000' on the raw kJ column; NHANES weighting tutorial quote",
+    "how_reference_was_computed": "Package author's independent references (audit generators replayed draw for draw, codebook labels, FAO Atwater factors, NumPy counts); re-run here unchanged",
+    "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py"
+   },
+   {
+    "test": "WP14 \u00a75 tests 1\u20139: survey scales, clinical codes \u22641%, drift \u22645% and redundancy, sourced plausibility bands, orientation, repeats, lens hints with the contradiction check, genomics card, aligned histograms (40 permanent tests)",
+    "status": "pass",
+    "measured": "40/40 pass on the merged tree after each merge, after the integration fixes, and in the final full run",
+    "reference": "\u00a75 bounds: code-flag rate \u22641% (200 replicates \u00d7 8 generators \u00d7 n=100/300/1,000); drift \u22645% at n=16\u201340; redundancy near 300 with one sample \u00d720; GSE60450 thresholds",
+    "how_reference_was_computed": "Package author's simulations and public data (GSE60450, NHANES 2017\u20132018); re-run here unchanged",
+    "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py"
+   },
+   {
+    "test": "WP15 \u00a75 tests 1\u20139: ledger re-check, badge consistency, 'not in dispute' gone with DISPUTED for energy-related outcomes, Tomova caveat and TNTC censoring, temporal share, lineage, attenuation replay, preset attribution, pack citations (96 permanent tests)",
+    "status": "pass",
+    "measured": "96/96 pass once SENTINEL_EVIDENCE is copied into scales.py (before that, test_1_the_polychoric_claim_is_not_served_by_next failed on WP14's import)",
+    "reference": "\u03bb=0.70: slope\u00d7\u03bb=0.210, standardized\u00d7\u221a\u03bb=0.251; 56\u201371% of held-out rows predate training on the visit fixtures; Willett 2013 800\u20134,000 vs NHS/HPFS 800\u20134,200",
+    "how_reference_was_computed": "Package author's closed forms and quoted primary sources; re-run here, with the _findings helper now matching the merged stage",
+    "file": "turbotab/core/tests/acceptance/test_wp15_claims.py"
+   },
+   {
+    "test": "Integration 1: every total-energy name the audit lists hints the dietary lens; every alias the pack matched still does; energy that is not intake does not",
+    "status": "pass",
+    "measured": "h10 replay: 9/9 tables hinted dietary, each naming its column (legacy packs.suggest: 2/9); all reference-bundle aliases hint; 0/5 not-intake names hint",
+    "reference": "IN-08 evidence: DR2TKCAL, DRXTKCAL, total_energy, kcal_day, TotalKcal, ENERC_KCAL 'produce no dietary hint'",
+    "how_reference_was_computed": "The audit's H-skeptic/h10.py generator replayed draw for draw; alias list read from ml/physiology_reference's data bundle",
+    "file": "turbotab/core/tests/acceptance/test_wp13_15_integration.py"
+   },
+   {
+    "test": "Integration 2: the copied sentinel evidence equals the legacy definition and the ledger's verdict",
+    "status": "pass",
+    "measured": "must_recode and never_auto_recode claims: SETTLED, research/CLINICAL_SURVEY_PACK.md#B1.1 Detecting Likert blocks; served badge DISPUTED (the weakest claim's)",
+    "reference": "turbotab/survey.py SENTINEL_EVIDENCE; claims-ledger row 8 'SETTLED | CONSISTENT'; the pack heading '### B1.1 Detecting Likert blocks' exists",
+    "how_reference_was_computed": "Legacy source parsed with ast (not imported); the ledger and pack read as text; h1.py's 1\u20135 block with 9s replayed draw for draw",
+    "file": "turbotab/core/tests/acceptance/test_wp13_15_integration.py"
+   },
+   {
+    "test": "Integration 3: an energy-related outcome named in camel case marks the energy finding DISPUTED; a non-related one keeps CONVENTION",
+    "status": "pass",
+    "measured": "BMIChange\u2192BMI, T2DIncident\u2192diabetes, BodyWeightKg\u2192body weight: evidence DISPUTED (NUTRITION_PACK \u00a704 source); LDLChange: CONVENTION. Before the fix, BMIChange and T2DIncident failed",
+    "reference": "NUTRITION_PACK \u00a704 Diagnostic: 'Detect whether the outcome is itself energy-related (weight, BMI, adiposity, diabetes)'",
+    "how_reference_was_computed": "Pack quote; h10's ENERC_KCAL table (an energy name only WP13's recognizer reads) with an outcome drawn from default_rng(3)",
+    "file": "turbotab/core/tests/acceptance/test_wp13_15_integration.py"
+   },
+   {
+    "test": "Integration 4: under the genomics lens an expression matrix's wide shape is expected; real repeated measures are still named",
+    "status": "pass",
+    "measured": "cpm, estimated_counts, fpkm, tmm_cpm, vst, expression: title 'The wide shape is expected here.', severity info, no lever; clinic_visits bp_1..bp_3 still 'look like repeated measures'. Before the fix, 5 of 6 failed",
+    "reference": "make_genomics_siblings.py: each fixture is the 60-sample count matrix put through the named transform (different genes); clinic_visits.md: bp_1/bp_2/bp_3 'is a genuine wide repeated-measures family'",
+    "how_reference_was_computed": "Fixture documentation and generator; the reframing note is the genomics pack's own text",
+    "file": "turbotab/core/tests/acceptance/test_wp13_15_integration.py"
+   }
+  ],
+  "closed_findings": [
+   "IN-01",
+   "IN-02",
+   "IN-05",
+   "IN-06",
+   "IN-07",
+   "IN-08",
+   "IN-10",
+   "IN-19",
+   "IN-03",
+   "IN-04",
+   "IN-09",
+   "IN-11",
+   "IN-12",
+   "IN-13",
+   "IN-14",
+   "IN-15",
+   "IN-16",
+   "IN-17",
+   "IN-18",
+   "MI-01",
+   "MI-04",
+   "H19",
+   "F16",
+   "IN-20",
+   "IN-21",
+   "IN-22",
+   "IN-23",
+   "IN-24",
+   "IN-25",
+   "IN-26",
+   "MI-02",
+   "MI-03",
+   "G14",
+   "G15",
+   "G16",
+   "G18",
+   "G19",
+   "F15",
+   "D15"
+  ],
+  "tests": {
+   "command": "TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 /Users/nhedglin/tabular-ml-lab/venv/bin/python -m pytest turbotab/core turbotab/server -q -p no:cacheprovider; cd turbotab/frontend && npm ci && npm run check",
+   "passed": true,
+   "detail": "Final tree: 1384 passed, 2 warnings (numpy RuntimeWarning) in 11m45s, exit 0. That includes all 499 acceptance tests: WP13 24, WP14 40, WP15 96, integration 19. Targeted suites were re-run after each merge: 266 passed after WP13; 424 + 85 after WP14; after WP15, 503 passed with 1 WP15 failure, fixed by copying the constant, then 151 and 225. Frontend: tsc, eslint and vitest pass (23 files, 153 tests). openapi.json and generated.ts regenerate byte-identical to the merged copies. Pre-commit gates passed on all four commits; no --no-verify. Log: scratchpad/integration-wp13-15/full_suite.txt"
+  },
+  "deviations": [
+   "H18 (the Atwater 'mixed units' verdict) is not in closed_findings. WP14 left it undone to avoid colliding with WP13's work on nutrition.py, and it is still open now that both are merged.",
+   "IN-08's dietary lens hint was not closed by either package: WP13 left it to WP14 and WP14 kept the legacy matcher. The integration commit closes it (detectors.lenses.total_energy_column via recognizers.reads_as_total_energy).",
+   "Integration fixes outside a pure merge, each small and tested: detectors/scales.py (SENTINEL_EVIDENCE copied, needed for WP15 test 1 to pass), detectors/lenses.py (dietary hint), methods/dietary_caveats.py (shared tokenizer), detectors/__init__.py (genomics wide-shape reframing from WP14's data-type card), tests/stage_harness.py (lenses_that_fit uses the hints the app serves, not packs.suggest), acceptance/test_wp15_claims.py (_findings composes findings as the merged stage does).",
+   "The genomics reframing is a WP14 gap surfaced at integration rather than a strict merge conflict. Pointing the word-budget harness at the hints the app serves exposed it. Changing the harness back would have kept test_word_budgets green while checking the genomics sample tables under a lens the app no longer hints, so the gap was fixed instead.",
+   "Package-level deviations stand as their authors reported them, not re-litigated here. WP13: no positive-energy-correlation gate (IN-01), no refusal of a screen that would remove more than half the rows (IN-07), time read from names only (IN-10), OGTT and environmental weights not ranked. WP14: drift not computed within batch; the contradiction check does not block set_lens; single-cell is not blocked by purpose; no pregnancy, pediatric BP or under-2 WHO gating. WP15: the energy finding's badge reads the outcome, not the purpose; no row-time split cut offered; D15 strata still accepted with density."
+  ],
+  "inbox": [
+   "Name readers that still bypass recognizers.py: detectors/codes.design_column (WP14) and the older finding_words._DESIGN both read `wt` and `wtkg` as survey-design columns. recognizers.reads_as_survey_weight does not, and it reads `wgt`, which they miss. Consequence: a body-weight column named `wt` is skipped by the missing-code detector. Unify through recognizers (with strata/PSU readers) in a later pass.",
+   "The engine's wide-shape title says \"`1` group of columns look like repeated measures.\": a number-agreement problem in older voice text (seen on clinic_visits.csv). Presentation is paused, so left alone.",
+   "H18 (Atwater 'mixed units' verdict in turbotab/nutrition.py's finding) can now be done: WP13, the conflict WP14 avoided, is merged.",
+   "For routing (WP16\u201318): the lens contradiction finding does not block set_lens (WP14 test 7); the energy finding's badge and the single-cell concern do not read the purpose (WP14, WP15); IN-24's row-time cut (train before T, test after T) is not offered.",
+   "test_wp7_missing_data.py still builds findings with legacy packs.findings for the metabolomics lens. That still matches what is served, because the detectors it reads (left_censored, zeros_or_missing) are not superseded by WP14, but it would drift if they are."
+  ]
+ },
+ "verification": {
+  "verdicts": [
+   {
+    "package": "WP13",
+    "test": "1 \u00b7 Must not be nutrients / must be recognized / no DR1T* nutrient proposed covariate",
+    "verdict": "not-closed",
+    "reasoning": "Permanent tests test_1a\u20131e (test_wp13_recognizers.py) pass, and their references are independent: the audit's name lists, codebook labels, FAO factors and NumPy counts. Every listed name behaves as specified. My own variants show the fix is a deny-list. The audit asked for corroboration by unit, magnitude or correlation with energy, and none was implemented. (a) These names are read as energy-bearing nutrients and, under the dietary lens, become 'A nutrient that carries energy' exposures and default energy-adjustment targets: lipid_disorder (0/1), lipid_panel_done, protein_supplement_use (0/1), fiber_supplement_use, low_carb_diet, alcohol_dehydrogenase, BreathAlcohol, alcohol_abstainer, tot_protein/TotProt (serum total protein), fat_soluble_vit_d, lipid_emulsion_ml, and dxa_fat_g with a median of 25,000 g. Confirmed through the API on :8931: the energy finding lists them as nutrients. (b) reads_as_total_energy accepts energy expenditure (exercise_kcal, activity_energy_kcal, physical_activity_energy, PAEE_kj, steps_kcal, met_kcal) and questionnaire items (sf36_energy_fatigue, energy_fatigue, phq9_energy, little_energy, energy_level_score, energy_score). energy_column() ranks names containing 'kcal' first. So with energy_intake, or with energy_kcal placed after exercise_kcal, the roles stage proposes exercise_kcal as 'Total energy intake' and demotes the real intake to covariate. Through the API, the implausible-intake finding then reads '238 records report an implausible daily intake' on exercise_kcal. An SF-36 energy/fatigue score becomes the energy column ('300 of 300 rows\u2026 below 500'), and the summary says '`protein_g` correlates -0.04 with `energy_fatigue`\u2026: nutrient effects are tangled with total energy'. Scripts: probes/wp13_names.py, wp13_roles.py, wp13_energy.py, api_drive.py."
+   },
+   {
+    "package": "WP13",
+    "test": "2 \u00b7 Must stay predictors (RCT arms, fasting, rates, birth weight; batch as acquisition)",
+    "verdict": "not-closed",
+    "reasoning": "test_2a\u20132c pass on the audit's h4/h16 generators and every listed name is correct under every lens. Variants of the same failure class still leave the model with a false reason. arm_id and group_id coded 1/2 in an RCT are proposed 'identifier': 'Names each unit; `2` units, up to `220` rows each', so the trial arm leaves the model (id_kind returns 'record' for any '<word>_id', and the record kind becomes an identifier whether or not it is unique). insulin_injection and steroid_injection are read as acquisition run order; under prediction they are 'excluded' with 'new samples come from new batches'. sleep_well, feel_well and eat_well are read as an acquisition 'well'. sample_weight_mg (tissue mass) is proposed 'design: A sampling weight'. All confirmed through the API (probes/wp13_roles.py, api_drive.py adv_diet)."
+   },
+   {
+    "package": "WP13",
+    "test": "3 \u00b7 One identifier recognizer; eid/patid/ptid/HHID/IDNO/USUBJID; sites and households are clusters; no measurement suggested as unit",
+    "verdict": "closed",
+    "reasoning": "test_3a\u20133d pass. The 46-name self-agreement is checked against the cohorts' documented names. My variants (Subject_ID, PatientId, pat_no, participant_no, member_id, person_id, SchoolID, clinic_id, hospital_id, practice_id, hh_id, FamilyID) read as specified. In long REDCap-style tables keyed by record_id, study_id, child_id, mouse_id, Subject, eid or patid, the right column is the grain suggestion. Minor residuals: on a long table, an integer enrollment_year and a zip_code constant within person are offered as unit IDs beside the real one; arm_id/group_id are covered under test 2."
+   },
+   {
+    "package": "WP13",
+    "test": "4 \u00b7 Units stated only from an explicit suffix or a recorded decision (CLINICAL_SURVEY_PACK 'TurboTab will not guess')",
+    "verdict": "closed",
+    "reasoning": "test_4a\u20134c pass; the pack quote is asserted from the pack file. Proposals never reach a sentence: the only callers are target_info (unit from name or decision), fact_previews (outcome_unit by name) and the modeling estimand (state.outcome_unit). Minor residual: two 'explicit' suffixes misread. '_ul' is taken as U/L, so wbc_k_ul, platelets_per_ul and rbc_ul (per \u00b5L) would be stated 'U/L'. pack_years is stated in 'years'."
+   },
+   {
+    "package": "WP13",
+    "test": "5 \u00b7 kJ energy read by the magnitude prior; implausible-intake count after conversion matches the kcal screens",
+    "verdict": "not-closed",
+    "reasoning": "test_5 and 5b pass. For an adult kJ column inside the pack's 7,000\u201311,000 band, I confirmed through the API that 80 planted rows are counted in kJ. Outside the band the IN-07 failure returns, because the prior abstains and kcal is 'assumed'. Children's kJ intakes (median 6,178 kJ): the screen and the finding remove 463 of 600 rows, and the coach says '`463` rows above `5,000` kcal: likely over-reporting'. Athletes (median 12,208 kJ): 600 of 600. A weekly kcal total: 596 of 600. The audit's IN-07 remedy, 'refuse a screen that would remove more than half the rows, with a units exit', was not implemented (no such guard in validators or proposals). Script: probes/wp13_kj.py."
+   },
+   {
+    "package": "WP13",
+    "test": "6 \u00b7 With WTSAF2YR and fasting analytes, the least-common-denominator rule names the fasting weight (NHANES weighting tutorial)",
+    "verdict": "not-closed",
+    "reasoning": "test_6 passes. I re-read the tutorial, and both quoted sentences are verbatim. WEIGHT_TIERS knows only the 2-year and 4-year names. With the 2017\u2013March 2020 pre-pandemic names (WTSAFPRP, WTMECPRP, WTDRD1PP), least_common_denominator() returns None; I confirmed in the CDC P_GLU codebook that WTSAFPRP is the 'Fasting Subsample Weight'. Through the API, a fasting-glucose outcome then gets no weights finding at all, and the survey question offers WTDRD1PP first. With the OGTT subsample (WTSOG2YR plus LBXGLT), the finding says 'Use the dietary weights, not the examination weight' (SETTLED). The CDC OGTT_I doc says 'Specific sample weights for this subsample are included in this data file and should be used'. Script: probes/wp13_weights.py."
+   },
+   {
+    "package": "WP14",
+    "test": "1 \u00b7 Survey scales: no code finding on balanced 6-, skewed 7-, 0\u20135, 9-point; 1\u20135 with real 9 still flagged; PHQ-9/GAD-7/0\u201310 recognized",
+    "verdict": "closed",
+    "reasoning": "test_1a\u20131d pass, using the generators' own support as the reference. My own blocks raised no code finding under the survey or clinical lens: balanced 1\u20134 'item_', 0\u20134 with a 0.5% top answer, a mixed 1\u20135/1\u20137 'q' block, a 0\u201310 NPS skewed high, and a 1\u201310 satisfaction block. NHANES DPQ010\u2013DPQ090 with 7/9 was flagged critical, as it should be. Minor: a 7-day 'fruit_day1..7' servings diary is read as an 11-point survey block."
+   },
+   {
+    "package": "WP14",
+    "test": "2 \u00b7 Clinical codes: \u22641% flag rate on eight clean generators at n = 100/300/1,000",
+    "verdict": "not-closed",
+    "reasoning": "test_2a\u20132c pass for the audit's eight generators. On a new clean generator, an integer change score whose only negative value is \u22121 (round(N(2.5,1.2))), codes.read flags \u22121 as a missing code in 13% of columns at n=100, 46% at n=300 and 69% at n=1,000. N(3,1.4) gives 17\u201355%. The rule 'a negative code in a column of non-negative values is never a real observation' treats the \u22121 as outside the column although it belongs to it. Through the API the served detail says 'Found -1 (2\u00d7): below every other value (the smallest is 0), far beyond the rest, with nothing between', which is false because \u22121 is adjacent to 0. It offers 'Treat as missing'. A days-per-week 0\u20137 item heaped at 7 has 7 flagged in 10.5% of columns at n=50. Script: probes/wp14_codes.py, wp14_change.py."
+   },
+   {
+    "package": "WP14",
+    "test": "3 \u00b7 Drift fires \u22645% on drift-free data at n = 16\u201340; one sample \u00d720 keeps redundancy near 300",
+    "verdict": "closed",
+    "reasoning": "test_3a\u20133d pass; drift counts are checked against the pack's rule computed with scipy and statsmodels. My nulls fired at most 3/100 at n = 8\u201340: iid, a shared sample dilution factor, 40% zeros, randomized batches. Redundancy stayed at 300 in every case I tried (two samples \u00d720, one \u00d71000, 20% NaN, n=25 and 40, one \u00d720 with one \u00d70.05), and a true 100-compounds \u00d7 3-adducts design read 100."
+   },
+   {
+    "package": "WP14",
+    "test": "4 \u00b7 Plausibility: no energy band; bands carry source/cycle/CONVENTION; children by age-specific z; DBP 0 per BPX",
+    "verdict": "not-closed",
+    "reasoning": "test_4a\u20134f pass. Independently, the bundled NHANES extract matches the CDC DEMO_J/BPX_J XPT files row for row. Weighted p01/p99 recomputed from the CDC files equal the app's: SBP 94/180, DBP 42/100, n 4,659. BPX_J says 'Diastolic BP can be zero', and no energy name gets a band. The age-aware path depends on the age column's name. With child_age, age_child, age_at_visit, AgeAtExam or visit_age (or no age column), 300 children aged 2\u201310 are read against adult bands. The served detail calls them '299 adult values outside 47.2\u2013157.4 kg \u2026 unusual but real, and they must be kept, because excluding them would remove the sickest patients'. The same detail says the column was 'Set aside rather than judged \u2026 children are judged by age-specific z-scores, never by adult limits'. That is the IN-09 pattern, now also self-contradicting."
+   },
+   {
+    "package": "WP14",
+    "test": "5 \u00b7 Log2 GEO-style and MZmine-style feature-major tables are asked about under an assay lens",
+    "verdict": "closed",
+    "reasoning": "test_5a\u20135c pass. These feature-major formats read 'feature_major' at medium confidence and are asked under the genomics and metabolomics lenses but not under clinical: featureCounts (Geneid, Chr, Start, End, Strand, Length plus BAM-path columns), Agilent log2 with A_23_P probes, MaxQuant LFQ log2, and log10 compounds-by-sample with QC columns. A wide sample-major clinical table was not asked. The orientation question was open under the genomics lens through the API."
+   },
+   {
+    "package": "WP14",
+    "test": "6 \u00b7 Falling time course and crossover asked; quarterly recalls under dietary read as replicates or asked",
+    "verdict": "not-closed",
+    "reasoning": "test_6a\u20136c pass. My variants were asked as they should be: a weekly weight with a weak decline, a period or diet_phase column, a month index, a bare visit index. Trend evidence needs at least 3 records per unit, so a two-visit pre/post design falls back to spacing alone. In my fixture, SBP falls 10 mmHg within every person (2 SD of noise; paired t \u2248 9), with visits 10\u00b14 days apart. Under the clinical lens it is stated 'repeats' ('close together and irregular'), and through the API the repeat_kind question is skipped. Under the dietary lens, 7\u00b13 and 14\u00b16 days are also stated 'repeats'. IN-12's remedy was 'ask unless the evidence is unambiguous; treat spacing as weak evidence'. Script: probes/wp14_repeats.py, api_drive.py prepost."
+   },
+   {
+    "package": "WP14",
+    "test": "7 \u00b7 Lens hints: TPM/log2-TPM with Ensembl IDs \u2192 genomics; survey blocks \u2192 survey; contradiction check runs",
+    "verdict": "not-closed",
+    "reasoning": "test_7a\u20137c pass. My table types were hinted correctly: DR2T* to dietary, 38 labs to none, microarray probe IDs and ENSMUSG counts to genomics, M/z_RT names to metabolomics. But the genomics log-expression and scaled-CPM signatures accept any wide table of floats under 25. A 130-item FFQ in servings/day with participant_id, age, sex and hba1c is hinted 'genomics: 132 measurement columns read as TMM- or median-of-ratios-scaled CPM, an expression matrix'. Under its own dietary lens it then gets a critical 'The lens you chose and the table disagree \u2026 The table reads more like metabolomics', so the hint and the finding contradict each other. A 300-ROI MRI thickness table under the clinical lens gets the same treatment; both were confirmed through the API (probes/api_ffq2.py, api_mri.py). This is the IN-13 failure on wide non-omics tables, routed to genomics and now at critical severity."
+   },
+   {
+    "package": "WP14",
+    "test": "8 \u00b7 Genomics card reads log2-TPM and voom log-CPM; thresholds validated on public matrices; single-cell names pseudoreplication",
+    "verdict": "not-closed",
+    "reasoning": "test_8a\u20138c pass on GSE60450. The Zimmerman 2021 and Squair 2021 quotes check against their abstracts. I validated on a second public matrix, GEO GSE147507 (78 samples; a seeded 5,000-gene subset and all 21,797 genes). Raw counts, CPM, log2(CPM+1), TMM-CPM and thinned counts read correctly. voom's log-CPM is read as 'log2 TMM-scaled CPM' (LOG_TMM, medium confidence, not asked) because one shallow library (14,694 reads in the subset, 76,756 in the full matrix) moves the back-sum 14\u201317% from 10^6. The LOG_EXACT threshold was fitted on one matrix. The same signature produces the false genomics hints described under test 7. Script: probes/wp14_geo.py."
+   },
+   {
+    "package": "WP14",
+    "test": "9 \u00b7 Histograms: resolution-aligned bins; the two implementations agree",
+    "verdict": "closed",
+    "reasoning": "test_9 passes, with pandas cut as the reference. My grids (0.25 steps, 0.01 steps, negative integers, a 5-point grid, an integer outlier, 3 levels) are aligned, and DuckDB, numpy and pandas agree on all of them. 0\u201310,000 integers use a 333.3 width (not aligned), but at 10,001 distinct values the column is effectively continuous."
+   },
+   {
+    "package": "WP15",
+    "test": "1 \u00b7 Every WRONG/OVERSTATED/SELF-CONTRADICTED ledger row re-checked with the corrected sentence beside its primary source",
+    "verdict": "closed",
+    "reasoning": "test_1 covers the 27 ledger rows plus 3, and passes. I opened the primary sources myself and the served sentences match:\n- Tomova 2022 full text: 'evaluate very different causal estimands', model 3b '\u2026but one which is still biased', Table 2 'Obscure', 'we would recommend the all-components model\u2026'.\n- Banna 2017 quoting Willett (500\u20133,500 and 800\u20134,000), Pan 2011 NHS/HPFS (<800 or >4200 men, <500 or >3500 women), and de Koning 2011 (<800 or >4200).\n- Keogh 2020 \u00a73.1.3, Yamamoto 2023, Van Calster 2019, Groenwold 2012, STROBE-nut nut-13, Nygaard 2016, Zindler 2020 and Eekhout 2014.\nMinor: the ledger, NUTRITION_PACK:339 and the dietary_caveats docstring quote Freedman 2011 as one sentence. The source has 'with two or more mismeasured exposures, the validity of conventional statistical tests is no longer guaranteed. In this case, estimated relative risks may become attenuated\u2026', so the quote splices two sentences without an ellipsis; the meaning is unchanged. The TNTC row is covered under test 4."
+   },
+   {
+    "package": "WP15",
+    "test": "2 \u00b7 Badge consistency: identical claim texts with the same source share one badge",
+    "verdict": "closed",
+    "reasoning": "test_2 passes, with a positive control. served_claims() collects only teaching drawer sections, although its docstring also claims entry badges and proposals' badges. So I ran a broader scan: 79 teaching claims, including entry badges, plus findings on 40 sample files under 5 lenses (475 badged claims). No sentence is served under two badges."
+   },
+   {
+    "package": "WP15",
+    "test": "3 \u00b7 'Not in dispute' gone; an energy-related outcome pushes the DISPUTED note on the energy card",
+    "verdict": "not-closed",
+    "reasoning": "test_3 passes. Through the API the BMI outcome's energy finding carries {'status': 'DISPUTED'}, and 'not in dispute' is absent from turbotab/core and server. But energy_related() misses common spellings, so no dispute is pushed for: body_mass_index, BodyMassIndex, the pediatric BMI z-scores bmiz/zbmi/BMIz, visceral_fat, trunk_fat, hip_circumference, weightloss_kg and GWG. The finding's summary also asserts a correlation it did not find: it serves '\u2026correlates -0.04 with `energy_fatigue`\u2026: nutrient effects are tangled with total energy' whatever r is (finding_words._energy). The old 'not in dispute' text survives in frontend fixtures reachable on dev routes (src/explore/stage/fixtures.json at /explore-stage; mocks/m2-teaching.json at /stage-lab). Presentation is paused, so that last part is noted only."
+   },
+   {
+    "package": "WP15",
+    "test": "4 \u00b7 Density plus energy carries Tomova's caveat; 'unbiased in direction' qualified; TNTC right-censored (FDA BAM ch. 3)",
+    "verdict": "not-closed",
+    "reasoning": "test_4 passes, and the density caveat and the measurement-error qualification match Tomova, Keogh and Freedman. The TNTC sentence says 'over 250 per plate in FDA's Bacteriological Analytical Manual'. That is the January 2001 edition. I extracted the current PDFs: the March 2025 revision ('The suitable colony counting range updated from 25-250 to 15-300 per plate'), and the May 2025 and January 2026 editions. The current text treats TNTC plates as lower bounds in a maximum-likelihood APC: 'If a count of visible colonies is available, then this is the lower bound\u2026', with a threshold of 'e.g. 300 colonies'. The right-censored reading is correct, and the current edition supports it more strongly. The number is stale. Fix: content.py:259, finding_words.py:238 and the CLINICAL_SURVEY_PACK quote should cite the current edition (15\u2013300; TNTC as a lower bound) or name the 2001 edition."
+   },
+   {
+    "package": "WP15",
+    "test": "5 \u00b7 The temporal sentence describes what was drawn and the share of held-out rows predating training (56\u201371%)",
+    "verdict": "closed",
+    "reasoning": "test_5 passes. I wrote my own draw: rank units by last observation and hold out whole units. It gives shares of 0.714 (r15) and 0.554 (s9); the app's are 0.715 and 0.563, which reproduces the audit's 71% and 56%. On a new fixture (500 units, visits 6 months apart) the sentence counts 497 of 708 held-out rows, equal to a NumPy count on its mask. Minor: the boundary prints unrounded ('from `56.4166` on')."
+   },
+   {
+    "package": "WP15",
+    "test": "6 \u00b7 Lineage marks pass-throughs 'kept', attributes operations only to touched columns, says 'geometric mean' under log",
+    "verdict": "closed",
+    "reasoning": "test_6 passes, with references from pandas blank counts, value equality and numpy's geometric mean. On my own spec (non-log, stratified residual, blanks only in age, smoker with no blanks), imputed and missing-indicator edges appear only for age, and pass-throughs read 'kept'. Minor: smoker \u2192 smoker_yes reads 'one-hot, blank as a level' although smoker has no blanks."
+   },
+   {
+    "package": "WP15",
+    "test": "7 \u00b7 Survey pack attenuation replays with \u03bb = 0.70: slope 0.210, standardized 0.251",
+    "verdict": "closed",
+    "reasoning": "Closed forms 0.30\u00d70.70 = 0.210 and 0.30\u00d7\u221a0.70 = 0.2510; the test's n = 400,000 simulation agrees. CLINICAL_SURVEY_PACK:1113-1115 now says slope \u00d7 \u03bb, standardized \u00d7 \u221a\u03bb, and to divide by \u03bb or \u221a\u03bb respectively."
+   },
+   {
+    "package": "WP15",
+    "test": "8 \u00b7 Presets attributed Willett 2013 (800\u20134,000 men) and NHS/HPFS (800\u20134,200); coach states r\u00b2",
+    "verdict": "closed",
+    "reasoning": "test_8 passes. The fixture puts five men at 4,100 kcal, so the two screens differ by exactly 5; counts come from pandas. I verified Banna 2017 (Willett quote), Pan 2011 and de Koning 2011 in full text. The teaching section's wording matches them. The coach states r\u00b2 and says 'most' only above 0.5."
+   },
+   {
+    "package": "WP15",
+    "test": "9 \u00b7 Pack citations corrected: Nygaard 2016 (GSE40566, 2,011 vs 11), Zindler 2020 methylation arrays, Eekhout 2014 threshold",
+    "verdict": "closed",
+    "reasoning": "In the full texts: Nygaard (PMC4679072) 'GSE40566 \u2026 2011 differentially expressed genes \u2026 only 11'. Zindler (PMC7328269) simulated 450K/EPIC DNAm data, 'alarming numbers of false\u2026'. Eekhout 2014 abstract: '(>25%), MI methods applied to the items outperformed'. The packs carry these, and the old misattributions are gone."
+   }
+  ],
+  "regressions": [],
+  "summary": "I verified WP13\u2013WP15 read-only; the repo is still clean at 792d042. Of 24 acceptance tests, 13 are closed and 11 are not. None is unsound and nothing regressed.\n\nThe suites, all with TURBOTAB_WORKERS=2:\n- Math and methods acceptance (WP1\u2013WP12 and the methods gate): 311 passed.\n- WP13\u201315 acceptance plus integration: 179 passed.\n- Full core and server suite: 1,384 passed.\n\nEvery permanent test passes, and none asserts a value the code under test produced. I opened every primary source the claims rest on, and the served sentences match them except where noted under WP15.\n\nThe packages pass their own fixtures but fail new variants of the same findings. These are confirmed through the real server on port 8931 with a fresh TURBOTAB_HOME:\n\n**WP13**\n- **Energy:** energy expenditure columns (exercise_kcal, PAEE_kj) and questionnaire items (SF-36 energy/fatigue, PHQ \"little energy\") are read as total energy intake. Names with \"kcal\" rank first, so exercise_kcal becomes the energy column ahead of energy_intake or energy_kcal. The served finding then says \"238 records report an implausible daily intake\" on exercise_kcal.\n- **Nutrients:** the fix is a list of denied words, not the corroboration by unit, magnitude or correlation with energy that the audit asked for. lipid_disorder (0/1), protein_supplement_use, BreathAlcohol and dxa_fat_g (median 25,000 g) become energy-bearing nutrients and default energy-adjustment targets.\n- **Trial arms:** arm_id and group_id coded 1/2 are proposed as identifiers, so the arm leaves the model. insulin_injection is read as run order.\n- **kJ outside the prior band:** for children (median 6,178 kJ) the app assumes kcal and the screens would remove 463 of 600 rows. The coach calls it \"likely over-reporting\"; the audit's refusal of a screen that removes more than half the rows was never built.\n- **NHANES weights:** the 2017\u2013March 2020 names (WTSAFPRP, which I checked in the CDC codebook) get no weights finding, and the survey question offers WTDRD1PP first for fasting glucose. The OGTT subsample is told to use the dietary weights (SETTLED).\n\n**WP14**\n- **Codes:** an integer change score whose only negative value is \u22121 has \u22121 flagged as a missing code in 13\u201369% of clean columns. The detail says \"far beyond the rest, with nothing between\", although \u22121 sits next to 0.\n- **Repeats:** a two-visit pre/post design with a 10 mmHg within-person drop is stated \"repeats\", and the question is skipped.\n- **Lens hints:** a 130-item FFQ in servings/day is hinted \"genomics: \u2026 TMM-scaled CPM, an expression matrix\". Under its own dietary lens it gets a critical \"The lens you chose and the table disagree \u2026 reads more like metabolomics\". A 300-region MRI thickness table under the clinical lens gets the same.\n- **Genomics card:** on a second public matrix, GEO GSE147507, voom log-CPM is read as TMM-scaled.\n- **Plausibility:** an age column named child_age or age_at_visit makes children's weights \"adult values \u2026 unusual but real\". The same detail says the column was set aside.\n\n**WP15**\n- **TNTC:** the sentence cites \"over 250 per plate\" from the 2001 FDA BAM. The current editions (revised March 2025, January 2026) use 15\u2013300 per plate and treat TNTC plates as lower bounds; the right-censored reading itself is correct.\n- **Energy-related outcomes:** the check misses body_mass_index, BodyMassIndex and the pediatric BMI z-score names (bmiz, zbmi, BMIz), so no dispute is pushed for them.\n- **Energy summary:** it says \"nutrient effects are tangled with total energy\" whatever the correlation is, including at r = \u22120.04.\n\n**Minor (closed tests)**\n- The Freedman 2011 quote in the ledger and NUTRITION_PACK splices two sentences without an ellipsis.\n- \"_ul\" is read as U/L for per-\u00b5L counts.\n- The old claim text survives in frontend fixtures on the dev routes (/stage-lab, /explore-stage).\n\nEverything is in /private/tmp/turbotab-fix/verify-intelligence/: the probe scripts in probes/ (wp13_*.py, wp14_*.py, wp15_*.py, api_*.py), the fixtures in fx/, and the suite logs mathmethods.out, intel.out and full.out."
+ },
+ "repair": {
+  "package": "REPAIR",
+  "branch": "turbotab-next",
+  "commit": "8ee449f",
+  "summary": "I fixed all 11 open verifier items in the layer where each one starts, and each fix is held by a permanent acceptance test whose expected values come from an independent path. The fixes cover WP13 tests 1, 2, 5 and 6, WP14 tests 2, 4, 6, 7 and 8, and WP15 tests 3 and 4.\n\n**Nutrients and energy (WP13 test 1).** The name is no longer enough on its own. `recognizers.intake_check` reads the values of any column whose name says it is an energy-bearing macronutrient. Three things withdraw it, whatever the name says: only two distinct values (a yes/no), negative values, or a median that would carry more than 5,000 kcal a day. With no unit and no codebook name, it must also rise with total energy (one-sided test of r > 0 at 1%). The roles stage, the proposals and the energy finding all use this check. Three names the name rules still read as nutrients are now withdrawn by their values alone: `total_fat_g` holding a DXA fat mass, `alcohol` coded 0/1, and a unit-less `protein` unrelated to intake. I also extended the name contexts the verifier listed. Total energy is now read as intake only: every other word in the name must come from a short list of words a total-intake name carries. So energy spent (`exercise_kcal`, `PAEE_kj`) and questionnaire items (`sf36_energy_fatigue`) no longer count. A column whose median is no day's energy in either kcal or kJ is passed over, and `energy_column` puts names that say \"intake\" first rather than any name containing \"kcal\". The energy finding now says nutrients are \"tangled\" with energy only when r is at least 0.3.\n\n**Roles (WP13 test 2).**\n- `arm_id` and `group_id` are read as trial arms; a `group_id` with dozens of groups is a cluster.\n- A record identifier needs more than two values.\n- Acquisition words count only as whole names, so `insulin_injection` and `sleep_well` are not run order or plate wells. A run order or well holding only two values is not an acquisition column.\n- A mass unit or specimen word means a column is not a sampling weight (`sample_weight_mg`).\n\n**kJ outside the adult band (WP13 test 5).** This is the audit's IN-07 remedy. A screen that would remove more than half the rows that hold energy is refused with a units exit, in three places:\n- The proposals mark it with a new `refused` field.\n- The coach line says to check the unit instead of \"likely over-reporting\".\n- A new `set_exclusions` validator refuses the rule and offers it read in kJ or as a weekly total, wherever that reading keeps most rows.\n\nThe implausible-intake finding now reads \"The unit of `energy` is in question\" instead of counting implausible intakes.\n\n**NHANES weights (WP13 test 6).** The 2017\u2013March 2020 pre-pandemic names, WTDR4YR, and the OGTT subsample (WTSOG2YR with LBXGLT) now follow the least-common-denominator rule. I checked each name against the CDC codebooks. A subsample weight whose analytes are unknown leaves the choice to the user, and the app now makes its own weights finding where the legacy reader made none.\n\n**Detectors (WP14 tests 2, 4, 6, 7, 8).**\n- **Codes:** -1 next to 0 is an answer, not a code. A code just one unused value past the top answer must be clearly rarer than an answer there would be.\n- **Plausibility:** age columns are found by whole words (`child_age`, `AgeAtExam`, `visit_age` and the rest). With no age column, adult percentiles are not read, so the finding no longer contradicts itself.\n- **Repeats:** visit spacing alone never states repeats. With two records per person, a change in one direction (sign test p < 0.01) counts as time-point evidence.\n- **Lens hints:** a wide table hints genomics only from a library-size signature. Scaled counts must sum to 0.25\u20134 million, so the FFQ and MRI tables get no hint and no lens contradiction.\n- **Genomics card:** voom log-CPM is identified exactly, by recovering whole counts from each sample's smallest value. I checked this on a second public matrix, GEO GSE147507 (a seeded 5,000-gene subset is now in `wp14_data`).\n\n**Claims (WP15 tests 3 and 4).** `energy_related` now reads `body_mass_index`, `BodyMassIndex`, `bmiz`/`zbmi`/`BMIz`, visceral and trunk fat, hip circumference, `weightloss_kg` and `GWG`, and each pushes the disputed note. The TNTC sentence now cites the FDA Bacteriological Analytical Manual chapter 3, January 2026 edition: 15\u2013300 colonies per plate, with TNTC plates read as lower bounds. That change is in the finding, the teaching text, CLINICAL_SURVEY_PACK and claims-ledger row 9.\n\nEvery fix was also confirmed through the running API on port 8951, using the verifier's scenarios.\n\n**Other changes in the commit.**\n- `ExclusionProposal` gains `refused`. I regenerated `openapi.json` and `generated.ts`, and updated the m1 mock to match. `npm run check` passes.\n- Stage versions are bumped: profile 4, findings 9, structure 7, roles 3, proposals 10, design 12.",
+  "acceptance": [
+   {
+    "test": "WP13 test 1 (a): verifier's names not read as energy-bearing nutrients; corroboration, not a deny-list",
+    "status": "pass",
+    "measured": "Through the roles stage, the proposals (with proposed roles and with no roles) and the energy finding, all 13 verifier names and the 3 corroboration-only names are no nutrient. Nutrients are exactly protein_g, carb_g, fat_g, and the energy finding's affected columns are [energy_intake, protein_g, carb_g, fat_g]. Through the API on :8931-style drive (:8951), the adv_diet energy finding lists only those three. The corroboration-only names (total_fat_g, alcohol, protein) still read as a macronutrient by name alone, and their reasons start 'Named like \u2026'.",
+    "reference": "total_fat_g median \u00d7 9 kcal/g > 5,000 kcal; alcohol has 2 distinct values; protein vs energy: SciPy pearsonr one-sided p > 0.01. Positive control: protein_g p < 0.01.",
+    "how_reference_was_computed": "NumPy median and unique; FAO 9 kcal/g (fat) against NUTRITION_PACK \u00a702's 500\u20135,000 kcal screen; scipy.stats.pearsonr(alternative='greater'). The fixture is the verifier's probes/wp13_roles.py adv_diet, draw for draw. The NHANES DXX_J codebook (read 2026-10-03) labels DXDTOFAT 'Total Fat (g)'.",
+    "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_1f_the_values_corroborate_a_name_or_withdraw_it"
+   },
+   {
+    "test": "WP13 test 1 (b): energy expenditure and questionnaire items are not total energy; the intake column wins",
+    "status": "pass",
+    "measured": "All 22 of the verifier's ENERGY_YES names read as total energy and all 34 ENERGY_NO names do not. On adv_diet, energy_intake is the energy column and exercise_kcal/sf36 are not. On table A, energy_kcal is energy and no implausible or energy finding names exercise_kcal. Table B gets no energy-adjustment or implausible finding. A column named energy holding a 0\u2013100 score is not proposed as energy.",
+    "reference": "The verifier's two name lists. The score's median is below 500, so it is no day's energy in kcal or kJ.",
+    "how_reference_was_computed": "The verifier's probes/wp13_names.py lists; NumPy median; fixtures replayed from probes/wp13_energy.py (default_rng(7)).",
+    "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_1g_only_energy_eaten_is_total_energy_intake"
+   },
+   {
+    "test": "WP13 test 1 / WP15 test 3: the energy summary calls nutrients 'tangled' with energy only when the data show it",
+    "status": "pass",
+    "measured": "Tangled table: the summary says 'correlates <r> \u2026 tangled'. Loose table: it says 'correlates only <r>' and does not say 'tangled'.",
+    "reference": "Largest r \u2265 0.3 on the tangled table; < 0.3 on the loose table",
+    "how_reference_was_computed": "pandas Series.corr on the fixture's own columns",
+    "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_1h_the_energy_finding_says_tangled_only_when_the_data_do"
+   },
+   {
+    "test": "WP13 test 2: arm_id/group_id coded 1/2, injections, wells, sample_weight_mg",
+    "status": "pass",
+    "measured": "Under dietary, clinical, metabolomics and no lens, \u00d7 inference/prediction/None: arm_id and group_id are proposed exposure (not identifier). insulin/steroid_injection and sleep/feel/eat_well have no acquisition kind and are predictors. sample_weight_mg is not design. A group_id with 40 groups is a cluster. A binary 'well' or 'run_order' column is not acquisition.",
+    "reference": "arm_id and group_id each hold 2 distinct values; group_id holds 40 in the cluster fixture",
+    "how_reference_was_computed": "pandas nunique on the verifier's adv_diet fixture (default_rng(2026))",
+    "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_2d_the_verifiers_arms_treatments_and_wells_stay_what_they_are"
+   },
+   {
+    "test": "WP13 test 5: kJ outside the band, weekly totals: refuse a screen removing > half the rows, with a units exit",
+    "status": "pass",
+    "measured": "Children's kJ: 463/600 and 578/600 are refused; the coach says 'check the unit'; the finding is titled 'The unit of `energy` is in question.' Athletes: 600/600 refused. Weekly kcal: 596/600 refused. The adult kJ case is still read in kJ with 0 flagged. set_exclusions(500\u20135,000) is refused with code screen_removes_most_rows; the kJ exit's bounds are 2,092\u201320,920, and that exit is accepted. Through the API the same refusal and exits are served.",
+    "reference": "Rows outside each band, counted directly; kept counts under \u00d74.184 and \u00d77",
+    "how_reference_was_computed": "NumPy boolean counts on the verifier's probes/wp13_kj.py fixtures (default_rng(11)), draw for draw",
+    "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_5c_a_screen_that_would_remove_most_rows_is_refused_with_a_units_exit"
+   },
+   {
+    "test": "WP13 test 6: pre-pandemic and OGTT weights follow the least-common-denominator rule",
+    "status": "pass",
+    "measured": "Pre-pandemic: 'Use the fasting subsample weight, `WTSAFPRP`.' (CONVENTION), and the survey question offers WTSAFPRP first. OGTT: 'Use the OGTT subsample weight, `WTSOG2YR`.' (CONVENTION), with the CDC sentence quoted. Missing weights name WTSOG2YR / WTSAFPRP. WTSA2YR leaves the choice to the user and is not SETTLED. Confirmed through the API.",
+    "reference": "CDC codebooks: P_GLU 'WTSAFPRP - Fasting Subsample Weight'; P_DEMO 'WTMECPRP - Full sample MEC exam weight'; P_DR1TOT 'WTDRD1PP - Dietary day one sample weight'; OGTT_I 'WTSOG2YR - OGTT Subsample MEC Weight', 'LBXGLT - Two Hour Glucose (OGTT) (mg/dL)', and 'Specific sample weights for this subsample are included in this data file and should be used when analyzing these data.'",
+    "how_reference_was_computed": "CDC .htm codebooks fetched with curl on 2026-10-03; quoted in the test docstring and in recognizers.WEIGHT_TIERS",
+    "file": "turbotab/core/tests/acceptance/test_wp13_recognizers.py::test_6b_pre_pandemic_and_ogtt_weights_follow_the_rule"
+   },
+   {
+    "test": "WP14 test 2: \u22641% code-flag rate on the verifier's twelve new clean generators at n = 100/300/1,000",
+    "status": "deviated",
+    "measured": "Every generator is \u2264 1% at n = 100, 300 and 1,000 (200 reps, seed 20261003). The integer change scores no longer flag -1 next to 0. At n = 50, below \u00a75's grid, the heaped days-per-week item is about 1.4\u20131.9% (3,000 reps); the test asserts \u2264 3% there.",
+    "reference": "\u00a75's bound of \u2264 1%; the generators' own support (the -1 and the 7 are real answers)",
+    "how_reference_was_computed": "Closed form: each generator's support; replicate counts over 200 draws",
+    "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_2d_the_verifiers_clean_generators_stay_under_one_percent"
+   },
+   {
+    "test": "WP14 test 2: -1 beside 0 is an answer; real negative codes are still read; the detail is not false",
+    "status": "pass",
+    "measured": "The change score from probes/wp14_change.py gives no code. -9 in a 0\u2013100 score \u2192 {-9: 6}. -1 under a 1\u20135 scale \u2192 {-1: 5}, and the detail does not say 'far beyond the rest'. The change scenario through the API produces no sentinel finding.",
+    "reference": "Unused value(s) between the code and the smallest real value",
+    "how_reference_was_computed": "NumPy min/gap on the fixture",
+    "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_2e_a_minus_one_beside_zero_is_an_answer_and_real_codes_still_read"
+   },
+   {
+    "test": "WP14 test 4: children are judged by age-specific z-scores whatever the age column's name; no self-contradiction without an age column",
+    "status": "pass",
+    "measured": "For each of child_age, age_child, age_at_visit, AgeAtExam and visit_age: n_children = 300, no adult rows read, 0 outside the central 98%, and the growth-chart flagged rows equal the hand computation. With no age column, adult percentiles are not read, the 0.2 kg value is caught by the any-age limits, and the detail says 'Not judged by adult percentiles' with no 'adult values' and no 'Set aside rather than judged'. mother_age, age_at_diagnosis and gestational_age are not read as the age.",
+    "reference": "CDC modified z-scores from the LMS tables: below -5 or above 8 for weight-for-age",
+    "how_reference_was_computed": "The test's own _cdc_modified_z, written from the CDC definition and read off the LMS CSVs",
+    "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_4g_an_age_named_for_its_occasion_still_judges_children_by_z_scores + test_4h_without_an_age_column_no_child_is_called_an_unusual_adult"
+   },
+   {
+    "test": "WP14 test 6: a two-visit falling SBP and close irregular visits are asked, not stated",
+    "status": "pass",
+    "measured": "At 10\u00b14 days (clinical) and at 7\u00b13 and 14\u00b16 days (dietary): never stated as repeats. The trend evidence is sbp falling (paired). The repeat_kind gate is open; through the API, repeat_kind is 'open'. Flat close visits are asked too. Recall tables under the dietary lens are still stated as repeats (6c).",
+    "reference": "Paired t < -5 and sign-test p < 0.01 on each fixture",
+    "how_reference_was_computed": "scipy.stats.ttest_rel and binomtest on the verifier's api_drive prepost fixture (default_rng(8))",
+    "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_6d_a_two_visit_change_and_close_irregular_visits_are_asked"
+   },
+   {
+    "test": "WP14 test 7: wide non-assay tables (FFQ servings, MRI ROIs) get no genomics hint and no contradiction",
+    "status": "pass",
+    "measured": "No genomics hint for either table. contradiction_finding is None under dietary (FFQ) and clinical (MRI). Through the API the profile hints are [] and there is no lens_contradiction finding.",
+    "reference": "Each FFQ sample's totals are < 1,000, nowhere near the million a CPM scale sums to",
+    "how_reference_was_computed": "NumPy row sums on the verifier's api_ffq2 (default_rng(3)) and api_mri (default_rng(1)) fixtures",
+    "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_7d_wide_tables_that_are_not_assays_get_no_genomics_hint_and_no_contradiction"
+   },
+   {
+    "test": "WP14 test 8: genomics card validated on a second public matrix; voom read exactly",
+    "status": "pass",
+    "measured": "GSE147507 (78 samples, shallowest library 14,694 reads): raw counts \u2192 raw_counts; CPM \u2192 cpm_or_tpm; log2(CPM+1) \u2192 LOG_CPM with offset 1; TMM-CPM \u2192 tmm_scaled_cpm; thinned counts \u2192 raw_counts. voom with lib.size = colSums or colSums\u00d7TMM \u2192 'log2 CPM with a prior count (voom-style log-CPM)', high confidence. On GSE60450, voom_reading recovers the library sizes within 0.1% and is None for log2(TPM+1) and for log-normal noise.",
+    "reference": "Closed-form scalings, limma voom.R: y <- log2((counts+0.5)/(lib.size+1)*1e6). rnanorm TMM totals of 0.80\u20132.14 M (GSE147507) and 0.82\u20131.56 M (GSE60450). Old back-sum gap 0.5\u00b7G/lib > 5%.",
+    "how_reference_was_computed": "NumPy on the GEO counts, downloaded from ftp.ncbi.nlm.nih.gov (SHA-256 matches the verifier's copy); TMM via rnanorm",
+    "file": "turbotab/core/tests/acceptance/test_wp14_detectors.py::test_8d_the_genomics_card_holds_on_a_second_public_matrix + test_8e_the_voom_reading_is_exact_and_not_a_threshold"
+   },
+   {
+    "test": "WP15 test 3: the verifier's energy-related spellings push the DISPUTED note",
+    "status": "pass",
+    "measured": "body_mass_index, BodyMassIndex, bmiz, zbmi, BMIz, visceral_fat, trunk_fat, hip_circumference, weightloss_kg and GWG each carry: the energy card's outcome_dispute (DISPUTED), the card line, and the energy finding badge DISPUTED (also confirmed through the API). hip_fracture, total_fat_g, trunk_flexion and sample_weight_mg are not read as energy-related.",
+    "reference": "NUTRITION_PACK \u00a704: 'Detect whether the outcome is itself energy-related (weight, BMI, adiposity, diabetes)'; the audit adds waist",
+    "how_reference_was_computed": "The pack's list, quoted; each spelling maps to one of its kinds by definition (a BMI z-score is BMI; GWG is weight gain)",
+    "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_3b_the_verifiers_energy_related_spellings_push_the_dispute"
+   },
+   {
+    "test": "WP15 test 4: TNTC cites the current FDA BAM ch. 3 edition",
+    "status": "pass",
+    "measured": "The teaching says '15\u2013300 per plate \u2026 (2026 edition), which reads such a plate as a lower bound' and contains no 250. The finding says '15\u2013300 colonies per plate in the FDA Bacteriological Analytical Manual, ch. 3, January 2026 edition \u2026 TNTC plates read as lower bounds'. The pack quotes the 2026 text and names 250 as the January 2001 edition's. Ledger row 9 is updated.",
+    "reference": "BAM ch. 3, January 2026 edition: 'March 2025: The suitable colony counting range updated from 25-250 to 15-300 per plate'; 'If a count of visible colonies is available, then this is the lower bound.'",
+    "how_reference_was_computed": "PDF from fda.gov/media/191248, fetched 2026-10-03 and text-extracted with pypdf",
+    "file": "turbotab/core/tests/acceptance/test_wp15_claims.py::test_4_tntc_in_the_teaching_and_the_pack"
+   }
+  ],
+  "closed_findings": [
+   "WP13-1 (IN-01, IN-08): names corroborated by values; total energy read as intake only",
+   "WP13-2 (IN-02, IN-06, IN-10): arm_id/group_id, injections, wells, sample_weight_mg",
+   "WP13-5 (IN-07): screen removing more than half the rows refused, with units exits",
+   "WP13-6 (IN-19): pre-pandemic and OGTT weights, unknown subsample weights asked",
+   "WP14-2 (IN-04): -1 beside 0 and a heaped top answer are not codes",
+   "WP14-4 (IN-09): ages named for their occasion; no adult judgement without an age column",
+   "WP14-6 (IN-12): spacing never states repeats; two-visit change is time-point evidence",
+   "WP14-7 (IN-13): genomics hint needs a library-size signature; no contradiction on FFQ/MRI",
+   "WP14-8 (IN-14): voom read exactly; validated on GEO GSE147507",
+   "WP15-3 (IN-20): energy-related spellings push DISPUTED; summary says 'tangled' only when r >= 0.3",
+   "WP15-4 (IN-23): TNTC cites the BAM January 2026 edition (15-300; lower bounds)"
+  ],
+  "tests": {
+   "command": "export TURBOTAB_PYTHON=/Users/nhedglin/tabular-ml-lab/venv/bin/python OMP_NUM_THREADS=2 TURBOTAB_WORKERS=2; venv/bin/python -m pytest -q -n 2 turbotab/core/tests turbotab/server/tests  (and: cd turbotab/frontend && npm run check)",
+   "passed": true,
+   "detail": "Full core+server suite: 1416 passed (6:23). Acceptance suite alone: 531 passed. After the full run, two trivial edits to plausibility.py (keep the set-aside params consistent, blank-line spacing); the 52 WP14 tests were rerun and passed. npm run check: tsc, eslint and vitest (153 tests) pass. Pre-commit gates: all six passed."
+  },
+  "deviations": [
+   "WP14 test 2: \u00a75's bound (\u22641%) holds at its sizes n = 100, 300 and 1,000 for all 12 of the verifier's generators. At n = 50, below \u00a75's grid, the days-per-week item heaped at 7 is still flagged about 1.4\u20131.9% of the time (3,000 reps). It happens when 6 is absent and 7 is drawn rarely by chance. The permanent test asserts \u2264 3% at n = 50 and says why.",
+   "WP13 test 1: the correlation-with-energy requirement applies only to names with no intake unit and no codebook name (the name is the only signal). Names with a unit (protein_g, alc_kcal) are corroborated by name plus unit unless the values contradict them (binary, negative, or a median over a day's energy). Requiring r > 0 for every nutrient would demote a real alcohol_g whose true r is weak at small n. The cost runs the other way: a unit-less real 'alcohol' column with weak r at small n is proposed covariate (low), with a reason saying it can be made an exposure.",
+   "WP13 test 5: there is no new energy-unit decision. The units exit is a set_exclusions refusal whose exits offer the same rule read in kJ (\u00d74.184) or as a weekly total (\u00d77), where that keeps most rows. The EnergyUnitReading schema has no 'unknown' unit, so a median above 5,000 still reports kcal 'assumed', with a sentence saying the median is no day's intake in kcal.",
+   "WP15 test 3: presentation is paused, so the dev-route frontend fixtures (src/explore/stage/fixtures.json, mocks/m2-teaching.json) still hold the old 'not in dispute' text. They are noted, not changed.",
+   "Name contexts the verifier listed (disorder, panel, supplement use, diet patterns, enzymes, breath, DXA, infusions, 'tot') are also read by name, alongside the value corroboration, so the fix is not a deny-list alone. A supplement's amount with an intake unit (protein_supplement_g) stays an intake."
+  ],
+  "inbox": [
+   "sample_weight_mg (a tissue mass) is no longer a design weight, but under the dietary lens it is proposed covariate with the generic reason 'A person's characteristic' (the 'weight' covariate word). The wording is imprecise; the role is not harmful.",
+   "The exits of the screen_removes_most_rows refusal (read in kJ / as a weekly total) are not yet rendered on the exclusions card. Presentation is paused, so the frontend shows the new ExclusionProposal.refused text only where it already renders generic fields.",
+   "An explicit energy-unit decision (kcal / kJ / weekly), and an 'unknown' value in EnergyUnitReading, would make the units exit a recorded decision rather than a refusal exit. That belongs to routing or presentation."
+  ]
+ }
+}
