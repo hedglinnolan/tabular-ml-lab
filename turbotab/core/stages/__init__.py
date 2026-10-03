@@ -93,9 +93,11 @@ def build_graph() -> Graph:
             Stage("oriented", 3, ("ingest",), ("orientation", "feature_table"), oriented_stage,
                   heavy=True, label="Reading which way round the table is"),
             # profile 2 (WP14): lens hints need positive evidence (turbotab.core.detectors.lenses).
+            # profile 3 (integration): the dietary hint reads total energy by the one recognizer
+            # (audit IN-08: DR2TKCAL, ENERC_KCAL, TotalKcal …).
             Stage(
                 "profile",
-                2,
+                3,
                 ("oriented",),
                 (),
                 profile_stage,
@@ -111,9 +113,11 @@ def build_graph() -> Graph:
             # findings 5 (audit WP15): the energy finding states the estimand choice and, for an
             # energy-related outcome, the dispute; TNTC reads as right-censored, not a failure.
             # findings 7 (WP13 + WP14 + WP15 merged): all of the above in one stage.
+            # findings 8 (integration): under the genomics lens an expression matrix the data-type
+            # card reads keeps its wide shape (IN-14); outcome names by the one tokenizer.
             Stage(
                 "findings",
-                7,
+                8,
                 ("oriented",),
                 ("lens", "target"),
                 findings_stage,
@@ -160,7 +164,8 @@ def build_graph() -> Graph:
             # proposals 7 (audit WP15): the sex-specific screens attributed to their sources
             # (Willett 2013, NHS/HPFS); an energy-related outcome's DISPUTED note on the energy card.
             # proposals 8 (WP13 + WP15 merged): both of the above in one stage.
-            Stage("proposals", 8, ("working", "roles"), ("lens", "roles", "target", "purpose"),
+            # proposals 9 (integration): the energy card reads the outcome by the one tokenizer.
+            Stage("proposals", 9, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             Stage("cohort", 2, ("working", "target_info"),

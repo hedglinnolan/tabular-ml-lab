@@ -90,24 +90,51 @@ SURVEY_WIDE_NOTE = ("These are the items of one instrument, not one quantity mea
                     "instrument, not by reshaping the table.")
 
 
+#: The genomics pack's own reframing note (``turbotab.packs``, GENOMICS ``reframings``), which it
+#: applies only to a raw count matrix (``count_matrix``).
+GENOMICS_WIDE_NOTE = ("These are different genes, not one gene measured several times. Reshaping "
+                      "to long format would rebuild what a row is.")
+
+
+def _expression_matrix(frame: pd.DataFrame) -> bool:
+    """Whether the data-type card reads the table as an expression matrix (audit IN-14): CPM/TPM,
+    FPKM, VST, log-expression, scaled or shallow counts, the matrices the pack's count-only
+    reframing misses."""
+    from turbotab.core.detectors import genomics
+
+    try:
+        found = genomics.card(frame)
+    except Exception:  # noqa: BLE001 - a card that cannot read the table reframes nothing
+        return False
+    return bool(found and found.get("read") and not found.get("out_of_scope"))
+
+
 def reframe(findings: list[dict[str, Any]], lens: Sequence[str], frame: pd.DataFrame) -> list[dict[str, Any]]:
-    """``packs.reframe``, with the survey lens's wide-shape reframing read from :mod:`.scales`."""
+    """``packs.reframe``, with the wide-shape reframing read from this package: the survey lens's
+    from :mod:`.scales`, and the genomics lens's from :mod:`.genomics`'s data-type card (the pack
+    reframes a raw count matrix only, so a CPM, log-CPM or VST matrix was told its genes "look
+    like repeated measures of one quantity")."""
     from turbotab import packs
 
     out = packs.reframe(findings, lens, frame)
-    if "survey" not in packs.normalize_quiet(lens):
-        return out
-    wide = [f for f in out if f.get("id") == "wide_repeated_measures"
-            and "survey" not in (f.get("reframed_by") or [])]
-    if not wide or not scales.blocks(frame):
-        return out
-    for f in wide:
-        f["severity"] = "info"
-        f["fix_kind"] = "none"
-        f["fix_label"] = ""
-        f["reframe_note"] = SURVEY_WIDE_NOTE
-        f["title"] = "The wide shape is expected here"
-        f["reframed_by"] = [*(f.get("reframed_by") or []), "survey"]
+    chosen = packs.normalize_quiet(lens)
+    readings = []
+    if "survey" in chosen:
+        readings.append(("survey", SURVEY_WIDE_NOTE, lambda: bool(scales.blocks(frame))))
+    if "genomics" in chosen:
+        readings.append(("genomics", GENOMICS_WIDE_NOTE, lambda: _expression_matrix(frame)))
+    for key, note, reads in readings:
+        wide = [f for f in out if f.get("id") == "wide_repeated_measures"
+                and key not in (f.get("reframed_by") or [])]
+        if not wide or not reads():
+            continue
+        for f in wide:
+            f["severity"] = "info"
+            f["fix_kind"] = "none"
+            f["fix_label"] = ""
+            f["reframe_note"] = note
+            f["title"] = "The wide shape is expected here"
+            f["reframed_by"] = [*(f.get("reframed_by") or []), key]
     return out
 
 

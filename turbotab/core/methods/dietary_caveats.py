@@ -28,7 +28,6 @@ corrected (the ``calibration`` stage corrects energy-adjusted exposures when ask
 """
 from __future__ import annotations
 
-import re
 from typing import Iterable, Sequence
 
 from turbotab.core.voice import count, listing, plural, tick
@@ -69,8 +68,11 @@ _NOT_BODY = {"sample", "sampling", "survey", "svy", "design", "birth", "pweight"
 
 
 def _tokens(name: str) -> list[str]:
-    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", str(name))
-    return [t for t in re.split(r"[^a-z0-9]+", spaced.lower()) if t]
+    """The name's words by the one tokenizer every name reading shares (audit WP13): it also splits
+    a run of capitals from the word after it, so ``BMIChange`` and ``T2DIncident`` read."""
+    from turbotab.core.recognizers import tokens
+
+    return tokens(name)
 
 
 def energy_related(outcome: str | None) -> str | None:

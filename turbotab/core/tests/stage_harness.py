@@ -69,9 +69,10 @@ class Ingested:
         return fn(ctx)
 
     def lenses_that_fit(self) -> list[str]:
-        """The lenses the packs suggest for this table (every lens when none is suggested)."""
-        from turbotab import packs
+        """The lenses the profile stage hints for this table (every lens when none is hinted):
+        ``turbotab.core.detectors.lenses.hints``, which serves in place of ``packs.suggest`` (WP14)."""
+        from turbotab.core.detectors import lenses
 
         frame = self.frame().reset_index(drop=True)
-        hints = [h["lens"] for h in packs.suggest(frame).get("hints", []) if h.get("lens") in LENSES]
+        hints = [h["lens"] for h in lenses.hints(frame) if h.get("lens") in LENSES]
         return hints or list(LENSES)

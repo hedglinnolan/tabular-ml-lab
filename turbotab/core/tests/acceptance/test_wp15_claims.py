@@ -106,13 +106,16 @@ def _columns(frame: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 def _findings(frame: pd.DataFrame, lens: list[str], target: str | None) -> list[dict[str, Any]]:
-    """The findings stage's voice over the legacy streams, as the stage composes them."""
-    from turbotab import engine, packs
+    """The findings stage's voice over the legacy streams, as the stage composes them (with WP14
+    merged, the superseded detectors are read by ``turbotab.core.detectors``)."""
+    from turbotab import engine
+    from turbotab.core import detectors
     from turbotab.core.stages.findings import speak_for
 
     structural = [engine.shape_finding_to_dict(f) for f in engine.diagnose(frame, target)]
-    structural = packs.reframe(structural, lens, frame)
-    return [f for _, f in speak_for(frame, lens, target, structural, packs.findings(frame, lens))]
+    structural = detectors.reframe(detectors.structural(structural, frame), lens, frame)
+    return [f for _, f in speak_for(frame, lens, target, structural,
+                                    detectors.pack_findings(frame, lens))]
 
 
 def _dietary(n: int = 600, seed: int = 15) -> pd.DataFrame:

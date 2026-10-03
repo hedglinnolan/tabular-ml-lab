@@ -15,8 +15,10 @@ evidence:
   ``M123T456``, ``123.4567_5.67``, lipid shorthand), m/z or retention-time header tokens, or an
   assay-wide block beside quality-control rows or a run-order column;
 * **survey** before any width rule: a response block (:mod:`.scales`);
-* **dietary** and **clinical** as before (a total-energy column; two recognized clinical
-  measurements), clinical no longer withheld from a wide table that is not an assay.
+* **dietary**: a numeric column the one recognizer reads as total energy intake
+  (:func:`total_energy_column`; audit IN-08, closed when WP13 and WP14 met);
+* **clinical** as before (two recognized clinical measurements), no longer withheld from a wide
+  table that is not an assay.
 
 The contradiction check runs on the stated lens in the findings stage and becomes a finding the
 user answers (change the lens, or record that the answer stands); a "shape is an assay"
@@ -98,6 +100,27 @@ def metabolomics_evidence(df: pd.DataFrame) -> str | None:
     return None
 
 
+def total_energy_column(df: pd.DataFrame) -> str | None:
+    """The first numeric column whose name reads as total energy intake, by the one recognizer
+    (:func:`turbotab.core.recognizers.reads_as_total_energy`), or None.
+
+    Audit IN-08: the pack's exact-alias matcher (``packs._reference_column``) left ``DR2TKCAL``,
+    ``DRXTKCAL``, ``ENERC_KCAL``, ``TotalKcal``, ``total_energy`` and ``kcal_day`` with no dietary
+    hint, though the roles recognizer found them. Every alias it matched (``energy``,
+    ``calories``, ``kilocalories``, ``energy_kcal``, ``DR1TKCAL``, ``kcal``) still reads.
+    """
+    from turbotab.core.recognizers import reads_as_total_energy
+
+    for c in df.columns:
+        s = df[c]
+        if isinstance(s, pd.DataFrame) or not pd.api.types.is_numeric_dtype(s) \
+                or pd.api.types.is_bool_dtype(s):
+            continue
+        if reads_as_total_energy(c):
+            return str(c)
+    return None
+
+
 def hints(df: pd.DataFrame | None) -> list[dict[str, str]]:
     """What the table hints at, survey first, each with its evidence."""
     from turbotab import packs
@@ -132,8 +155,9 @@ def hints(df: pd.DataFrame | None) -> list[dict[str, str]]:
         out.append({"lens": "genomics", "because": genomic})
     if metabolomic:
         out.append({"lens": "metabolomics", "because": metabolomic})
-    if packs._reference_column(df, "kcal") is not None:
-        out.append({"lens": "dietary", "because": "there is a total-energy column"})
+    energy = total_energy_column(df)
+    if energy is not None:
+        out.append({"lens": "dietary", "because": f"`{energy}` reads as total energy intake"})
     recognized = packs._clinical_columns(df)
     if len(recognized) >= 2 and not (genomic or metabolomic):
         out.append({"lens": "clinical",
@@ -177,4 +201,5 @@ def contradiction_finding(df: pd.DataFrame, lens: Sequence[str]) -> dict[str, An
         {"status": "CONVENTION", "source": "DOMAIN_PACKS.md#01 · The opening question"})
 
 
-__all__ = ["contradiction_finding", "gene_vocabulary", "hints", "metabolomics_evidence"]
+__all__ = ["contradiction_finding", "gene_vocabulary", "hints", "metabolomics_evidence",
+           "total_energy_column"]
