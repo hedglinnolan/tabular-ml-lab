@@ -53,6 +53,16 @@ class Drive:
         r = self.post(body)
         assert r.status_code == 200, (body["kind"], r.text[:900])
 
+    def decide_roles(self, roles: dict[str, str]) -> None:
+        """Record the roles as their author answers them, column by column (BLUEPRINT §14,
+        recognition's leash): the ``set_roles`` answer, then each role the server recorded
+        unconfirmed (proposed below high confidence) confirmed on its own, as a user who knows the
+        table does. A bulk ``set_roles`` alone confirms none of them."""
+        self.decide({"kind": "set_roles", "roles": roles})
+        record = self.view()["decisions"][-1]
+        for column in record["decision"].get("unconfirmed") or []:
+            self.decide({"kind": "confirm_role", "column": column, "role": roles[column]})
+
     def reach(self, key: str, timeout: float = 120.0) -> dict[str, Any]:
         end = time.monotonic() + timeout
         while True:

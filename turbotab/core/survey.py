@@ -189,8 +189,10 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None) -> l
         weights.sort(key=lambda w: not w.upper().startswith("WTDR"))
     # Which weight suits the variables used is NHANES's least-common-denominator rule (audit
     # IN-19; the NHANES weighting tutorial: "use the weight of the smallest subpopulation that
-    # includes all the variables you want to include in your analysis"): it is offered first.
-    from turbotab.core.recognizers import least_common_denominator
+    # includes all the variables you want to include in your analysis"): it is offered first, then
+    # the samples that contain its sample (fasting, then examination, then dietary: BLUEPRINT §14).
+    from turbotab.core.leash import unsettled
+    from turbotab.core.recognizers import least_common_denominator, rank_weights
 
     roles = getattr(state, "roles", None) or {}
     target = getattr(state, "target", None)
@@ -198,8 +200,9 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None) -> l
     # With the table's values (``frame``), a variable recorded only on a subsample's rows is read
     # as that subsample's whatever its name (audit WP13 gate repair).
     lcd = least_common_denominator([*([target] if target else []), *used, *weights], frame)
-    if lcd is not None and lcd["use"] in weights:
-        weights.sort(key=lambda w: w != lcd["use"])
+    if lcd is not None:
+        weights = rank_weights(weights, lcd)
+    waiting = set(unsettled(state)) if roles else set()
     out: list[dict[str, Any]] = []
     for w in weights[:4]:
         # Never pre-acknowledged: with no strata or PSU the server asks for the attestation.
@@ -210,9 +213,12 @@ def offered(state: Any, pooled_cycle: str | None = None, frame: Any = None) -> l
         named = [f"`{p}`" for p in (strata, psu) if p]
         within = f" over {' and '.join(named)}" if named else "; no strata or PSU named"
         label = "Surveyed population" if len(weights) == 1 else f"Population by {w}"
+        # BLUEPRINT §14 rule 2: a design role that rode along unconfirmed is marked, and the
+        # server refuses the option until the role is confirmed on its own.
+        needs = [c for c in (w, strata, psu) if c and c in waiting]
         out.append({"key": f"population:{w}", "label": label,
                     "consequence": f"Weighted by `{w}`{within}; intervals by Taylor linearization.",
-                    "decision": decision})
+                    "decision": decision, "needs_confirmation": needs})
     out.append({"key": "sample", "label": "These participants",
                 "consequence": "Unweighted; the methods state the estimand is this sample's.",
                 "decision": {"kind": "set_survey", "estimand": "sample"}})
@@ -351,11 +357,34 @@ def _pools_cycles_by_the_rule(decision: Any, ctx: Any) -> None:
                     "decision": decision.model_copy(update={"cycle": cycle})}])
 
 
+def _design_is_settled(decision: Any, ctx: Any) -> None:
+    """BLUEPRINT §14 rule 2: the survey weight (and the strata and PSU) are number-changing
+    defaults; a design role that rode along unconfirmed in a bulk confirm is confirmed on its own
+    first."""
+    from turbotab.core.decisions import Refusal, _state
+    from turbotab.core.leash import confirm_exits, unsettled, unsettled_message
+
+    if decision.estimand != "population":
+        return
+    state = _state(ctx)
+    if state is None or not getattr(state, "roles", None):
+        return
+    named = [c for c in (decision.weight, decision.strata, decision.psu, decision.four_year_weight)
+             if c]
+    waiting = unsettled(state, list(dict.fromkeys(named)))
+    if not waiting:
+        return
+    raise Refusal("role_unconfirmed", unsettled_message(waiting, "the survey design"),
+                  exits=[*confirm_exits(state, waiting),
+                         {"label": "Estimate for these participants instead",
+                          "decision": {"kind": "set_survey", "estimand": "sample"}}])
+
+
 def _register() -> None:
     from turbotab.core.decisions import register_validator
 
     for check in (_asked_under_inference, _names_real_columns, _weight_is_a_number,
-                  _names_its_units, _pools_cycles_by_the_rule):
+                  _names_its_units, _pools_cycles_by_the_rule, _design_is_settled):
         register_validator("set_survey", check)
 
 

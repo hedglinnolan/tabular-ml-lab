@@ -154,11 +154,15 @@ def test_the_recall_energy_reading_offers_grams_not_shares(recalls):
     _, artifact = recalls
     energy = artifact["energy"]
     assert energy["energy_column"] == "energy_kcal"
-    assert energy["nutrients"] == ["protein_g", "fat_g", "carbohydrate_g", "fiber_g"]
+    # BLUEPRINT §14 rule 2: only value-corroborated nutrients pre-fill the card. ``fiber_g`` is
+    # named and unitted as fiber but does not rise with energy in this sample (r = -0.07), so it
+    # waits for its own confirmation, and the card says so.
+    assert energy["nutrients"] == ["protein_g", "fat_g", "carbohydrate_g"]
     assert energy["strata_candidates"][0] == "sex"
     assert all(v["ok"] for v in energy["applicability"].values())
     # Nothing is left out silently: each exposure it does not adjust is named, with why.
     left = {e["column"]: e["reason"] for e in energy["not_adjusted"]}
+    assert left["fiber_g"] == "proposed below high confidence; confirm its role to adjust it"
     assert left["sodium_mg"] == "carries no energy"
     assert left["protein_pct_kcal"] == "already a share of energy"
 

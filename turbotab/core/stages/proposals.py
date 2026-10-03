@@ -174,7 +174,7 @@ def energy_column_reading(columns: Mapping[str, Mapping[str, Any]], roles: Mappi
     ``basis`` is ``"values"``, ``"codebook"``, ``"name"`` (only the name says so: nothing to check
     it against) or ``"roles"``; ``why`` is the clause a proposal states."""
     from turbotab.core.recognizers import (
-        energy_against_macros, energy_median_contradicts, macro_totals, tokens,
+        energy_against_macros, energy_median_contradicts, macro_candidates, tokens,
     )
 
     named = [c for c, r in roles.items() if r == "energy" and c in columns]
@@ -191,10 +191,12 @@ def energy_column_reading(columns: Mapping[str, Mapping[str, Any]], roles: Mappi
         return None
     verdicts: dict[str, Any] = {}
     if frame is not None:
-        macros = macro_totals(frame, exclude=candidates)
+        # Every macronutrient total the names read, so the values choose among duplicates for
+        # each candidate (BLUEPRINT §14: an InBody body ``Protein`` beside a recall's ``protein_g``).
+        totals = macro_candidates(frame, exclude=candidates)
         for c in candidates:
             if c in frame.columns:
-                verdicts[c] = energy_against_macros(frame, c, macros)
+                verdicts[c] = energy_against_macros(frame, c, candidates=totals)
     rejected = [{"column": c, "why": verdicts[c].why, "r": verdicts[c].r} for c in candidates
                 if verdicts.get(c) is not None and not verdicts[c].corroborated
                 and not _codebook_energy(c)]
@@ -270,13 +272,27 @@ def _with_medians(info: Mapping[str, Mapping[str, Any]],
 
 def nutrient_candidates(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, str], *,
                         energy: str | None, target: str | None,
-                        frame: pd.DataFrame | None = None) -> list[str]:
+                        frame: pd.DataFrame | None = None,
+                        settled: Iterable[str] | None = None,
+                        energy_unit: str | None = None) -> list[str]:
     """The energy-bearing nutrients energy adjustment works with: the exposures the roles name
     (the roles stage has already read their values), or, with no roles, every column the name
-    reads as one whose values corroborate it (:func:`turbotab.core.recognizers.intake_check`,
-    read on ``frame`` when given)."""
-    from turbotab.core.recognizers import intake_check
+    reads as one whose values corroborate it (BLUEPRINT §14 rule 1: plausible amounts rising with
+    total energy at r ≥ 0.3, duplicates resolved; read on ``frame`` when given).
 
+    ``settled`` (BLUEPRINT §14 rule 2): the columns whose roles a number-changing default may read
+    (:func:`turbotab.core.leash.settled_columns`); an exposure outside it, carried by a bulk
+    confirm below high confidence, is no default nutrient until confirmed on its own."""
+    from turbotab.core.recognizers import corroborated_nutrients
+
+    allowed = set(settled) if settled is not None else None
+    checks = {}
+    # Without the settled roles (a caller that has no record of confirmations), only the values'
+    # own reading pre-fills the card, whatever roles are given (BLUEPRINT §14 rule 2).
+    if (not roles or allowed is None) and frame is not None:
+        checks = corroborated_nutrients(frame, energy=energy if energy in frame.columns else None,
+                                        energy_unit=energy_unit,
+                                        skip=[c for c in (target,) if c])
     out = []
     for c, info in columns.items():
         if c in (energy, target) or _dtype(info) not in _NUMERIC or _FLAG.search(c):
@@ -285,11 +301,12 @@ def nutrient_candidates(columns: Mapping[str, Mapping[str, Any]], roles: Mapping
             continue
         if not energy_bearing(c):
             continue
-        if not roles and frame is not None and c in frame.columns:
-            e = frame[energy] if energy and energy in frame.columns else None
-            check = intake_check(c, frame[c], energy=e)
-            if check is not None and not check.corroborated:
-                continue
+        if allowed is not None and c not in allowed:
+            continue
+        if (not roles or allowed is None) and frame is not None and c in frame.columns:
+            check = checks.get(c)
+            if check is not None and not check.by_values:
+                continue  # only the values' own reading pre-fills a number-changing default
         out.append(c)
     return out
 
@@ -318,6 +335,11 @@ def not_adjusted(columns: Mapping[str, Mapping[str, Any]], roles: Mapping[str, s
             # A food or food group (``fatty_fish_g``) carries energy, but by no Atwater factor
             # the app knows: fatty fish is about 2 kcal/g, not fat's 9 (audit IN-01).
             reason = "a food, not a nutrient: no energy factor unless one is declared"
+        elif energy_bearing(c):
+            # BLUEPRINT §14 rule 2: an energy-bearing exposure the card does not pre-fill was
+            # proposed below high confidence (its values do not corroborate it, or it rode along
+            # unconfirmed in a bulk confirm); it is adjusted once its role is confirmed on its own.
+            reason = "proposed below high confidence; confirm its role to adjust it"
         else:
             reason = "carries no energy"
         out.append({"column": c, "reason": reason})
@@ -469,11 +491,16 @@ def energy_unit_reading(frame: pd.DataFrame, energy: str, recorded: Any = None) 
        ("energy 1,600–2,600 kcal (7,000–11,000 → kJ)");
     5. ``assumed``: nothing says; kcal is the reading counts are made in, said as an assumption.
 
+    Before any of 1–5, a day count in the name (``kcal_2d``, ``kcal_4day_total``; ``days``) is a
+    question: a total over the days or a mean of them (BLUEPRINT §14 rule 3).
+
     ``confirmed`` is True for the first three. A magnitude or an assumption is a proposal: the
     screens are offered with their counts but refused until the unit is recorded, and no line
     calls a row an under- or over-report in it (the leash, BLUEPRINT §11.3)."""
     from turbotab.core.methods.energy import atwater_check, unit_of
-    from turbotab.core.recognizers import ENERGY_PRIOR_SOURCE, energy_unit, energy_unit_by_magnitude
+    from turbotab.core.recognizers import (
+        ENERGY_PRIOR_SOURCE, day_count, energy_unit, energy_unit_by_magnitude,
+    )
     from turbotab.core.voice import tick
 
     col = tick(energy)
@@ -495,6 +522,19 @@ def energy_unit_reading(frame: pd.DataFrame, energy: str, recorded: Any = None) 
         return out(energy_unit(energy) or "kcal", "assumed",
                    f"{col} names a total over a week, month or year; record how many days it "
                    f"totals before screening by it.")
+    spanned = day_count(energy)
+    if spanned is not None:
+        # BLUEPRINT §14 rule 3: ``kcal_2d``, ``energy_kcal_7d``, ``kcal_4day_total`` carry a day
+        # count, a total over the days as readily as a mean of them; every screen, band and count
+        # is read in it, so it is asked (the gate: a 2-day total read as a day's intake lost 111
+        # of 500 rows to a 5,000 kcal screen no true daily value exceeded).
+        unit = "kj" if unit_of(energy) == "kj" else (energy_unit(energy) or "kcal")
+        word = "kJ" if unit == "kj" else "kcal"
+        reading = out(unit, "days", f"{col}'s name carries `{spanned}` days: a total over them or "
+                                    f"a day's mean, in {word}? Record it before screening by it.")
+        reading["days"] = spanned
+        reading["days_in_name"] = spanned
+        return reading
     if unit_of(energy) == "kj":
         return out("kj", "name", f"{col} says kJ in its name.")
     try:
@@ -543,6 +583,10 @@ def unit_refusal(energy: str, reading: Mapping[str, Any] | None) -> str | None:
     if reading is None or reading.get("confirmed", True):
         return None
     word = "kJ" if reading.get("unit") == "kj" else "kcal"
+    if reading.get("basis") == "days":
+        return (f"Refused until {tick(energy)}'s days are recorded: its name carries "
+                f"{tick(str(reading.get('days_in_name')))} days, a total or a mean, and the "
+                f"screen's bounds are read in it.")
     if reading.get("basis") == "magnitude":
         return (f"Refused until {tick(energy)}'s unit is recorded: only its median says {word}, "
                 f"and the screen's bounds are read in it.")
@@ -567,7 +611,8 @@ SEX_SPECIFIC_SCREENS: tuple[tuple[str, str, float, str], ...] = (
 
 def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str | None,
                         sex_levels: Mapping[str, str], base: pd.Series, days: int = 1,
-                        unit_reading: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+                        unit_reading: Mapping[str, Any] | None = None,
+                        settled: Iterable[str] | None = None) -> list[dict[str, Any]]:
     """The pack's fixed kcal screens, each with the rows it would remove from ``base``, read in
     ``unit`` (a value totalling ``days`` days is screened at ``days`` times a day's bounds). While
     the unit is only proposed (``unit_reading`` not confirmed) every screen is refused with the
@@ -614,13 +659,24 @@ def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str
         ))
     out = []
     present = int((pd.to_numeric(frame[energy], errors="coerce").notna() & base).sum())
-    unsettled = unit_refusal(energy, unit_reading)
+    unsettled = role_refusal(energy, settled) or unit_refusal(energy, unit_reading)
     for key, label, rule in screens:
         affected = int((rule_excludes(frame, rule) & base).sum())
         out.append({"key": key, "rule": rule.model_dump(mode="json"), "label": label,
                     "affected": affected, "evidence": dict(EXCLUSION_EVIDENCE),
                     "refused": unsettled or screen_refusal(energy, affected, present)})
     return out
+
+
+def role_refusal(energy: str, settled: Iterable[str] | None) -> str | None:
+    """Why no screen may be chosen on ``energy`` yet: its role rode along unconfirmed in a bulk
+    confirm below high confidence (BLUEPRINT §14 rule 2). None once it is settled."""
+    from turbotab.core.voice import tick
+
+    if settled is None or energy in set(settled):
+        return None
+    return (f"Refused until {tick(energy)} is confirmed as total energy intake on its own: it was "
+            f"proposed below high confidence.")
 
 
 def screen_refusal(energy: str, affected: int, present: int) -> str | None:
@@ -691,7 +747,8 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
                       base: pd.Series, days: float = 1.0,
                       days_note: str | None = None,
                       unit_reading: Mapping[str, Any] | None = None,
-                      units: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
+                      units: Mapping[str, Any] | None = None,
+                      settled: Iterable[str] | None = None) -> dict[str, Any] | None:
     """The Goldberg screen with Schofield's BMR, offered with its count when the columns are read.
 
     PAL 1.55 and the days of intake each row's energy averages (``recall_days``: one, unless the
@@ -723,7 +780,7 @@ def goldberg_proposal(frame: pd.DataFrame, info: Mapping[str, Mapping[str, Any]]
     present = int((pd.to_numeric(frame[energy], errors="coerce").notna() & base).sum())
     return {"key": "goldberg_schofield", "rule": rule.model_dump(mode="json"), "label": label,
             "affected": affected, "evidence": dict(GOLDBERG_EVIDENCE),
-            "refused": unit_refusal(energy, unit_reading)
+            "refused": role_refusal(energy, settled) or unit_refusal(energy, unit_reading)
             or screen_refusal(energy, affected, present)}
 
 
@@ -747,7 +804,10 @@ def partition_check(frame: pd.DataFrame, energy: str, nutrients: Sequence[str]) 
 def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]],
                    roles: Mapping[str, str], *, energy: str | None, nutrients: list[str],
                    sex: str | None, target: str | None,
-                   purpose: str | None = None) -> dict[str, Any]:
+                   purpose: str | None = None,
+                   settled: Iterable[str] | None = None,
+                   energy_unit: str | None = None,
+                   waiting: Iterable[str] = ()) -> dict[str, Any]:
     from turbotab.core.methods.energy import applicable_methods, rank_methods
     from turbotab.core.voice import finish
 
@@ -772,6 +832,11 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
         reason = finish(_marked(str(v["reason"]), columns))
         applicability[m] = {"ok": bool(v["ok"]),
                             "reason": reason if v["ok"] else option_reason(reason)}
+    unsettled_energy = role_refusal(energy, settled) if energy else None
+    if unsettled_energy:
+        # BLUEPRINT §14 rule 2: the energy column rode along unconfirmed; every method waits.
+        applicability = {m: {"ok": False, "reason": option_reason(unsettled_energy)}
+                         for m in applicability}
     usual = next((m for m in (USUAL_METHOD, "standard") if applicability.get(m, {}).get("ok")), None)
     # Soundness for the declared purpose orders the methods, beside the customary one (north star
     # 5; BLUEPRINT §12 ruling 2): under inference the all-components model first, with the dispute
@@ -800,7 +865,8 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
 
     notes: list[str] = []
     dispute = None
-    relation = outcome_relation(target, frame) if target is not None else None
+    relation = (outcome_relation(target, frame, energy=energy, energy_unit=energy_unit)
+                if target is not None else None)
     if relation is not None and relation["kind"] is not None:
         kind = relation["kind"]
         line = finish(values_line(target, kind, relation["via"], relation["r"])
@@ -827,7 +893,11 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
         # fit the card's budget (COMPOSED_BUDGETS["card_line"]).
         "notes": notes,
         "outcome_dispute": dispute,
-        "not_adjusted": not_adjusted(columns, roles, energy=energy, target=target, nutrients=nutrients),
+        "not_adjusted": not_adjusted(columns, roles, energy=energy, target=target,
+                                     nutrients=nutrients),
+        # BLUEPRINT §14 rule 2: the energy column and nutrients this card would read that wait for
+        # their own confirmation (recorded below high confidence in a bulk confirm).
+        "unconfirmed": sorted(set(waiting)),
     }
 
 
@@ -898,14 +968,17 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                     roles: Mapping[str, str] | None = None,
                     purpose: str | None = None,
                     days: tuple[float, str | None] = (1.0, None),
-                    units: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                    units: Mapping[str, Any] | None = None,
+                    settled: Iterable[str] | None = None) -> dict[str, Any]:
     """The proposals artifact from a frame holding (at least) the columns it reads.
 
     ``columns`` are the ingest's column records (``name``, ``dtype``, ``n_unique``,
     ``n_missing``); ``roles`` the confirmed roles, else the proposed ones, else empty;
     ``purpose`` the declared purpose, which orders the energy methods by soundness; ``days`` the
     recall days each row's energy averages, with a note when they differ (``recall_days``);
-    ``units`` the columns' recorded units (``set_column_unit``).
+    ``units`` the columns' recorded units (``set_column_unit``); ``settled`` the columns whose
+    roles a number-changing default may read (:func:`turbotab.core.leash.settled_columns`;
+    BLUEPRINT §14), every role as given when None.
     """
     from turbotab.core.voice import tick
 
@@ -924,9 +997,28 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
                 "coach": _card_lines(frame, target=target, energy=None, unit="kcal", missing=missing),
                 "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen.",
                 "energy_unit": None}
+    settled = set(settled) if settled is not None else None
     energy_read = energy_column_reading(_with_medians(info, frame), roles, frame)
     energy = energy_read["column"] if energy_read is not None else None
-    nutrients = nutrient_candidates(info, roles, energy=energy, target=target, frame=frame)
+    settled_unit = None
+    if energy is not None and energy in frame.columns:
+        recorded = (units or {}).get(energy)
+        recorded = recorded if getattr(recorded, "unit", None) in ("kcal", "kj") else None
+        first = energy_unit_reading(frame, energy, recorded)
+        settled_unit = first["unit"] if first.get("confirmed") else None
+    nutrients = nutrient_candidates(info, roles, energy=energy, target=target, frame=frame,
+                                    settled=settled, energy_unit=settled_unit)
+    # With no record of confirmations (a caller holding roles alone), the energy column sets the
+    # screens and the card only as its values' own reading: following the energy its
+    # macronutrients carry (BLUEPRINT §14 rule 2).
+    energy_settled = settled
+    if settled is None and roles and energy is not None:
+        from turbotab.core.recognizers import energy_against_macros, macro_candidates
+
+        verdict = (energy_against_macros(frame, energy,
+                                         candidates=macro_candidates(frame, exclude=[energy]))
+                   if energy in frame.columns else None)
+        energy_settled = {energy} if verdict is not None and verdict.by_values else set()
     sex, sex_levels = sex_column(info, frame, roles)
     if target and target in frame.columns:
         base = frame[target].notna()
@@ -954,17 +1046,25 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
             exclusions = exclusion_proposals(frame, energy=energy, unit=unit, sex=by_sex,
                                              sex_levels=screen_levels, base=base,
                                              days=int(unit_reading.get("days") or 1),
-                                             unit_reading=unit_reading)
+                                             unit_reading=unit_reading, settled=energy_settled)
             goldberg = goldberg_proposal(frame, info, energy=energy, unit=unit, sex=screen_sex,
                                          sex_levels=screen_levels, roles=roles, target=target,
                                          base=base, days=days[0], days_note=days[1],
-                                         unit_reading=unit_reading, units=units)
+                                         unit_reading=unit_reading, units=units,
+                                         settled=energy_settled)
             if goldberg is not None:
                 exclusions.append(goldberg)
     reading = None
     if energy is not None or nutrients:
+        # What the card would read that waits for its own confirmation (BLUEPRINT §14 rule 2):
+        # the energy column, and every energy-bearing exposure the card does not pre-fill.
+        waiting = [c for c, r in roles.items() if r == "exposure" and energy_bearing(c)
+                   and c not in nutrients and c != target]
+        if energy is not None and energy_settled is not None and energy not in energy_settled:
+            waiting.append(energy)
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
-                                 target=target, purpose=purpose)
+                                 target=target, purpose=purpose, settled=energy_settled,
+                                 energy_unit=settled_unit, waiting=waiting)
     return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
             "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing,
                                  unit_reading=unit_reading),
@@ -1046,9 +1146,12 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
         frame = store.materialize(wanted)
         survey = _survey_proposal(state, store)
     ctx.progress(0.6, "Counting what each exclusion rule would remove")
+    from turbotab.core.leash import settled_columns
+
     out = build_proposals(frame, columns, lens=state.lens, target=target, roles=roles,
                           purpose=state.purpose, days=recall_days(ctx.inputs.get("working")),
-                          units=getattr(state, "column_units", None) or {})
+                          units=getattr(state, "column_units", None) or {},
+                          settled=settled_columns(state, ctx.inputs.get("roles")))
     out["survey"] = survey
     # WP12a (repair round): the exposure-form question's options, ordered by soundness for the
     # declared purpose, each with its "customary in" and "sound for" labels (north star 5).

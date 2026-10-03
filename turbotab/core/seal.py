@@ -190,13 +190,17 @@ GRAIN_FIRST = ("The held-out rows are drawn by the grain answer: say first wheth
 
 
 def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
-                 stated: bool = False) -> tuple[SealBasis, str | None]:
+                 stated: bool = False,
+                 unconfirmed: Sequence[str] = ()) -> tuple[SealBasis, str | None]:
     """The basis the grain answer and the data give, and the column to group the draw by.
 
     ``frame`` holds the identifier columns (and the grain's named column) over the rows the seal
     is drawn from. The grain answer is the authority; the data confirms or contradicts it. The
     seal needs a grain (M2_CONTRACT §12.2): answered, or ``stated`` from a unique identifier.
     ``undetermined`` comes only from the answer "I don't know" (``unknown``), never from silence.
+    ``unconfirmed`` (BLUEPRINT §14 rule 2): identifiers whose role rode along below high confidence
+    in a bulk confirm; one never groups the draw, but its repeating still contradicts "one row per
+    unit".
     """
     n = int(len(frame))
     grain = getattr(state, "grain", None)
@@ -204,6 +208,7 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
         raise ValueError(GRAIN_FIRST)
     named = getattr(grain, "id_column", None)
     repeating = _repeating(frame, list(dict.fromkeys([*([named] if named else []), *identifiers])))
+    waiting = _repeating(frame, [c for c in unconfirmed if c != named and c in frame.columns])
     aggregated = getattr(state, "unit", None) == "unit" and getattr(state, "aggregation", None) is not None
 
     def grouped(column: str, source: str) -> tuple[SealBasis, str | None]:
@@ -256,11 +261,19 @@ def decide_basis(state: Any, frame: Any, identifiers: Sequence[str], *,
             return grouped(named, "grain")
         if repeating:
             return grouped(repeating[0][1], "roles")
+        if waiting:
+            units, column = waiting[0]
+            return (_basis("abandoned", column,
+                           f"Units were said to repeat and `{column}` repeats, but its identifier "
+                           f"role awaits its own confirmation, so the held-out rows were drawn by "
+                           f"row. A unit can sit on both sides: treat held-out scores as "
+                           f"exploratory.", source="roles", n_units=units), None)
         return (_basis("abandoned", None,
                        "Units were said to repeat, but no column names the unit, so the held-out "
                        "rows were drawn by row. A unit can sit on both sides: treat held-out "
                        "scores as exploratory.", source="grain"), None)
     source = "stated" if stated else "grain"
+    repeating = repeating or waiting
     if repeating:
         units, column = repeating[0]
         said = "stated" if stated else "said"
@@ -476,14 +489,18 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
     ids = np.asarray(universe, dtype=np.int64)
     columns = set(store.columns)
     roles = getattr(state, "roles", None) or {}
-    identifiers = [c for c, r in roles.items() if r == "identifier" and c in columns]
+    from turbotab.core.leash import unsettled
+
+    every = [c for c, r in roles.items() if r == "identifier" and c in columns]
+    waiting = set(unsettled(state, every))
+    identifiers = [c for c in every if c not in waiting]
     grain = getattr(state, "grain", None)
     named = getattr(grain, "id_column", None) if grain is not None else None
     requested, time_column = temporal_request(state)
     # Classes, or a time-to-event outcome's event, are kept in proportion by the draw.
     classify = task in ("binary", "multiclass", "ordinal", "time_to_event")
     target = getattr(state, "target", None)
-    wanted = [*identifiers, *([named] if named in columns else [])]
+    wanted = [*every, *([named] if named in columns else [])]
     if classify and target in columns:
         wanted.append(target)
     if requested and time_column in columns:
@@ -495,7 +512,8 @@ def seal_inputs(state: Any, universe: Any, store: Any, task: str | None, *,
         import pandas as pd
 
         frame = pd.DataFrame(index=pd.Index(ids, name="row_id"))
-    basis, column = decide_basis(state, frame, identifiers, stated=stated)
+    basis, column = decide_basis(state, frame, identifiers, stated=stated,
+                                 unconfirmed=[c for c in every if c in waiting])
     draw = SealDraw(basis=basis, read=wanted if len(ids) else [])
     if column is not None:
         values = frame[column].astype(object)

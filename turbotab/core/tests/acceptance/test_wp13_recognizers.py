@@ -179,7 +179,10 @@ def test_1c_on_a_diet_and_body_composition_table_only_intakes_are_adjusted(tmp_p
     assert roles["fatty_fish_g"]["reason"].startswith("An intake by its unit, not a nutrient")
     # Gate repair: the reason says what corroborated it (here, rising with the energy it builds).
     assert roles["protein_g"]["reason"].startswith("A nutrient that carries energy: an exposure")
-    assert "rises with total energy" in roles["protein_g"]["reason"]
+    # Recognition's leash (BLUEPRINT §14): "high" says which values corroborated it: rising with
+    # total energy at r >= 0.3, or adding up with the other macronutrients to the energy column.
+    assert ("rises with total energy" in roles["protein_g"]["reason"]
+            or "add up to `energy_kcal`" in roles["protein_g"]["reason"]), roles["protein_g"]
     assert roles["protein_g"]["confidence"] == "high"
     assert roles["energy_kcal"]["proposed"] == "energy"
     frame = pd.read_csv(path)
@@ -886,13 +889,20 @@ def test_1f_the_values_corroborate_a_name_or_withdraw_it(tmp_path):
     assert len(np.unique(frame["alcohol"])) == 2
     test = stats.pearsonr(frame["protein"], frame["energy_intake"], alternative="greater")
     assert test.pvalue > 0.01, test
-    # A real bare-named intake is corroborated the same way (the positive control): grams of
-    # protein, named ``protein``, rise with the energy they make up.
-    from turbotab.core.recognizers import intake_check
+    # A real bare-named intake is corroborated by its values (the positive control): grams of
+    # protein, named ``protein``, are part of the energy they make up. Recognition's leash
+    # (BLUEPRINT §14): one column's r must reach 0.3, an effect size; here protein's is under it
+    # (the fixture draws protein, carbohydrate and fat apart), so the column alone stands only by
+    # its name, and the table's Atwater identity (energy = 4P + 4C + 9F row for row) corroborates it.
+    from turbotab.core.recognizers import corroborated_nutrients, intake_check
 
-    control = stats.pearsonr(frame["protein_g"], frame["energy_intake"], alternative="greater")
-    assert control.pvalue < 0.01
-    assert intake_check("protein", frame["protein_g"], energy=frame["energy_intake"]).corroborated
+    control = float(np.corrcoef(frame["protein_g"], frame["energy_intake"])[0, 1])
+    assert control < 0.3
+    assert not intake_check("protein", frame["protein_g"], energy=frame["energy_intake"]).by_values
+    ratio = frame["energy_intake"] / (4 * frame["protein_g"] + 4 * frame["carb_g"] + 9 * frame["fat_g"])
+    assert 0.9 <= float(ratio.median()) <= 1.1
+    named = frame[["energy_intake", "carb_g", "fat_g"]].assign(protein=frame["protein_g"])
+    assert corroborated_nutrients(named, energy="energy_intake")["protein"].by_values
 
     for purpose in ("inference", "prediction"):
         roles = _roles(path, lens=["dietary"], target="hba1c", purpose=purpose)

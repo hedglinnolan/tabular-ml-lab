@@ -741,16 +741,20 @@ def _measurement_error_line(ctx: StageContext, spec: Any) -> str | None:
     counts as one more error-prone intake while it stays in the outcome model. ``reports`` is how
     many rows each analysis row averages (the working table's combining, ``recall_days``).
     """
+    from turbotab.core.leash import unsettled
     from turbotab.core.methods.dietary_caveats import measurement_error_line
     from turbotab.core.methods.energy import total_energy_columns
     from turbotab.core.stages.proposals import energy_bearing, recall_days
 
+    # BLUEPRINT §14: "self-reported intake" is a claim about what a column is, made only of a
+    # settled role (an InBody body ``Protein`` carried by a bulk confirm is no intake).
+    waiting = set(unsettled(ctx.state))
     exposures = [c for c in spec.predictors
-                 if spec.roles.get(c) == "exposure" and energy_bearing(c)]
+                 if spec.roles.get(c) == "exposure" and energy_bearing(c) and c not in waiting]
     if not exposures:
         return None
     adj = spec.energy_adjustment()
-    energy = total_energy_columns(spec.predictors, spec.roles)
+    energy = [c for c in total_energy_columns(spec.predictors, spec.roles) if c not in waiting]
     if adj is not None and adj.method in ("none", "density", "residual_energy_dropped"):
         energy = [c for c in energy if spec.roles.get(c) != "energy"]  # it left the outcome model
     reports, _ = recall_days(ctx.inputs.get("working"))

@@ -52,6 +52,20 @@ MIN_WIDE = 100           # numeric columns for a data-type reading to hint genom
 # 2.3 on GSE147507 (the acceptance tests' public matrices), while every non-assay table above
 # spans under 0.1, its items being answered on one scale. TurboTab's own cut-off sits between.
 ABUNDANCE_SPREAD = 0.5   # decades: interquartile range of log10(1 + each column's mean count)
+# BLUEPRINT §14 ("lens hints only from positive evidence"). Spread alone is no count matrix: the gate
+# hinted genomics for an FFQ in whole grams per food (tea in hundreds of grams, herbs in single
+# grams: 1.4 decades) and for a Metabolon export of integer peak areas (2.3 decades), and drew a
+# critical lens contradiction under the FFQ's own dietary lens. Two properties of read counts:
+# a feature is never named in a unit of mass, volume or energy (``tea_g`` is grams eaten), and a
+# sequencer records the small counts of scarcely expressed features: on the public matrices the
+# tests read, 42% of GSE60450's cells, 47% of GSE147507's and 97% of GSE152075's are 10 or under,
+# against none of the peak areas (minimum 1,766). TurboTab's own floor sits far below the counts.
+MIN_SMALL_COUNTS = 0.05  # share of the block's cells at 10 or under
+SMALL_COUNT = 10
+# A name that ends in a unit of mass, volume or energy (``tea_g``, ``milk_ml``, ``sodium_mg``,
+# ``snack_kcal``): an amount measured, read as a suffix so a gene label such as ``g_A1BG`` is not.
+_UNIT_SUFFIX = re.compile(r"(?i)[_\s.(-](?:g|gm|gram|grams|mg|mcg|ug|µg|ml|l|dl|oz|kcal|kj|iu)\)?"
+                          r"(?:[_\s.-]?(?:d|day|per_day))?$")
 
 
 def _numeric(df: pd.DataFrame) -> list[str]:
@@ -128,13 +142,24 @@ def count_signature(df: pd.DataFrame) -> str | None:
     questionnaire, a recall's portions or minute counts sit on one scale."""
     from turbotab import packs
 
+    import numpy as np
+
     block = packs.count_matrix(df)
     if block is None:
         return None
-    spread = abundance_spread(df, block["columns"])
+    columns = [c for c in block["columns"] if not _UNIT_SUFFIX.search(str(c))]
+    if len(columns) < len(block["columns"]) / 2:
+        return None  # amounts named in a unit (an FFQ's ``tea_g``), not counts of reads
+    spread = abundance_spread(df, columns)
     if spread < ABUNDANCE_SPREAD:
         return None
-    return (f"{len(block['columns']):,} columns hold non-negative whole numbers whose mean counts "
+    # A bounded read (the first 2,000 features on the first 2,000 rows) keeps a wide matrix cheap.
+    cells = df[columns[:2000]].head(2000).apply(pd.to_numeric, errors="coerce").to_numpy(
+        dtype=float).ravel()
+    cells = cells[np.isfinite(cells)]
+    if not len(cells) or float(np.mean(cells <= SMALL_COUNT)) < MIN_SMALL_COUNTS:
+        return None  # no small counts: integer intensities or peak areas, not reads
+    return (f"{len(columns):,} columns hold non-negative whole numbers whose mean counts "
             f"span {spread:.1f} orders of magnitude across the middle half of them, as genes' do")
 
 
@@ -147,14 +172,17 @@ def total_energy_column(df: pd.DataFrame) -> str | None:
     hint, though the roles recognizer found them. Every alias it matched (``energy``,
     ``calories``, ``kilocalories``, ``energy_kcal``, ``DR1TKCAL``, ``kcal``) still reads.
     """
-    from turbotab.core.recognizers import reads_as_total_energy
+    from turbotab.core.recognizers import energy_median_contradicts, reads_as_total_energy
 
     for c in df.columns:
         s = df[c]
         if isinstance(s, pd.DataFrame) or not pd.api.types.is_numeric_dtype(s) \
                 or pd.api.types.is_bool_dtype(s):
             continue
-        if reads_as_total_energy(c):
+        # A hint from positive evidence (BLUEPRINT §14): the name, and a median that is a day's
+        # energy in kcal or kJ (an SF-36 ``energy`` score's 50 is none).
+        if reads_as_total_energy(c) and energy_median_contradicts(
+                pd.to_numeric(s, errors="coerce").median()) is None:
             return str(c)
     return None
 

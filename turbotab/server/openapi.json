@@ -339,7 +339,7 @@
                     "$ref": "#/components/schemas/Revert"
                   },
                   {
-                    "$ref": "#/components/schemas/SetRoles"
+                    "$ref": "#/components/schemas/SetRoles-Input"
                   },
                   {
                     "$ref": "#/components/schemas/SetEnergyAdjustment-Input"
@@ -421,6 +421,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetColumnUnit-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmRole"
                   }
                 ],
                 "discriminator": {
@@ -431,7 +434,7 @@
                     "set_task": "#/components/schemas/SetTask",
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "revert": "#/components/schemas/Revert",
-                    "set_roles": "#/components/schemas/SetRoles",
+                    "set_roles": "#/components/schemas/SetRoles-Input",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Input",
                     "set_exclusions": "#/components/schemas/SetExclusions-Input",
                     "set_missing": "#/components/schemas/SetMissing-Input",
@@ -458,7 +461,8 @@
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Input",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Input",
                     "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
-                    "set_column_unit": "#/components/schemas/SetColumnUnit-Input"
+                    "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
+                    "confirm_role": "#/components/schemas/ConfirmRole"
                   }
                 },
                 "title": "Decision"
@@ -675,7 +679,7 @@
                     "$ref": "#/components/schemas/Revert"
                   },
                   {
-                    "$ref": "#/components/schemas/SetRoles"
+                    "$ref": "#/components/schemas/SetRoles-Input"
                   },
                   {
                     "$ref": "#/components/schemas/SetEnergyAdjustment-Input"
@@ -757,6 +761,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetColumnUnit-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmRole"
                   }
                 ],
                 "discriminator": {
@@ -767,7 +774,7 @@
                     "set_task": "#/components/schemas/SetTask",
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "revert": "#/components/schemas/Revert",
-                    "set_roles": "#/components/schemas/SetRoles",
+                    "set_roles": "#/components/schemas/SetRoles-Input",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Input",
                     "set_exclusions": "#/components/schemas/SetExclusions-Input",
                     "set_missing": "#/components/schemas/SetMissing-Input",
@@ -794,7 +801,8 @@
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Input",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Input",
                     "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
-                    "set_column_unit": "#/components/schemas/SetColumnUnit-Input"
+                    "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
+                    "confirm_role": "#/components/schemas/ConfirmRole"
                   }
                 },
                 "title": "Decision"
@@ -1870,6 +1878,45 @@
         "title": "ColumnUnitSpec",
         "description": "A column's recorded unit; for total energy, the number of days each value totals."
       },
+      "ConfirmRole": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "confirm_role",
+            "title": "Kind",
+            "default": "confirm_role"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "identifier",
+              "exposure",
+              "energy",
+              "covariate",
+              "design",
+              "flag",
+              "time",
+              "excluded",
+              "cluster"
+            ],
+            "title": "Role"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "role"
+        ],
+        "title": "ConfirmRole",
+        "description": "One column's role, confirmed on its own after its evidence was read (BLUEPRINT §14 rule 2:\na proposal below high \"needs its own confirmation; it never rides along in a bulk 'confirm\nall'\"). One column per record, so an individual confirmation is individual by construction."
+      },
       "CreateProject": {
         "properties": {
           "path": {
@@ -1946,7 +1993,7 @@
                 "$ref": "#/components/schemas/Revert"
               },
               {
-                "$ref": "#/components/schemas/SetRoles"
+                "$ref": "#/components/schemas/SetRoles-Output"
               },
               {
                 "$ref": "#/components/schemas/SetEnergyAdjustment-Output"
@@ -2028,6 +2075,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetColumnUnit-Output"
+              },
+              {
+                "$ref": "#/components/schemas/ConfirmRole"
               }
             ],
             "title": "Decision",
@@ -2035,6 +2085,7 @@
               "propertyName": "kind",
               "mapping": {
                 "apply_repair": "#/components/schemas/ApplyRepair-Output",
+                "confirm_role": "#/components/schemas/ConfirmRole",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
                 "open_seal": "#/components/schemas/OpenSeal-Output",
@@ -2058,7 +2109,7 @@
                 "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                 "set_purpose": "#/components/schemas/SetPurpose",
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
-                "set_roles": "#/components/schemas/SetRoles",
+                "set_roles": "#/components/schemas/SetRoles-Output",
                 "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                 "set_split": "#/components/schemas/SetSplit-Output",
                 "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -2593,7 +2644,7 @@
                     "$ref": "#/components/schemas/Revert"
                   },
                   {
-                    "$ref": "#/components/schemas/SetRoles"
+                    "$ref": "#/components/schemas/SetRoles-Output"
                   },
                   {
                     "$ref": "#/components/schemas/SetEnergyAdjustment-Output"
@@ -2675,12 +2726,16 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetColumnUnit-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmRole"
                   }
                 ],
                 "discriminator": {
                   "propertyName": "kind",
                   "mapping": {
                     "apply_repair": "#/components/schemas/ApplyRepair-Output",
+                    "confirm_role": "#/components/schemas/ConfirmRole",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
                     "open_seal": "#/components/schemas/OpenSeal-Output",
@@ -2704,7 +2759,7 @@
                     "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
-                    "set_roles": "#/components/schemas/SetRoles",
+                    "set_roles": "#/components/schemas/SetRoles-Output",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                     "set_split": "#/components/schemas/SetSplit-Output",
                     "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -4739,6 +4794,45 @@
               }
             ],
             "title": "Column Units"
+          },
+          "roles_unconfirmed": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roles Unconfirmed"
+          },
+          "role_confirmations": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "identifier",
+                    "exposure",
+                    "energy",
+                    "covariate",
+                    "design",
+                    "flag",
+                    "time",
+                    "excluded",
+                    "cluster"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Confirmations"
           }
         },
         "type": "object",
@@ -4772,7 +4866,9 @@
           "sensitivity",
           "measurement_error",
           "outcome_unit",
-          "column_units"
+          "column_units",
+          "roles_unconfirmed",
+          "role_confirmations"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -6984,7 +7080,7 @@
         ],
         "title": "SetRepeatKind"
       },
-      "SetRoles": {
+      "SetRoles-Input": {
         "properties": {
           "kind": {
             "type": "string",
@@ -7010,6 +7106,13 @@
             "type": "object",
             "minProperties": 1,
             "title": "Roles"
+          },
+          "unconfirmed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unconfirmed"
           }
         },
         "additionalProperties": false,
@@ -7019,7 +7122,52 @@
           "roles"
         ],
         "title": "SetRoles",
-        "description": "The confirmed reading of every column except the outcome."
+        "description": "The confirmed reading of every column except the outcome.\n\n``unconfirmed`` is the server's, never the client's (BLUEPRINT §14 rule 2): the proposals below\nhigh confidence this answer records exactly as proposed, read from the roles the server showed.\nA bulk confirm records them, and no number-changing default reads them until each has its own\n``confirm_role``."
+      },
+      "SetRoles-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_roles",
+            "title": "Kind",
+            "default": "set_roles"
+          },
+          "roles": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "identifier",
+                "exposure",
+                "energy",
+                "covariate",
+                "design",
+                "flag",
+                "time",
+                "excluded",
+                "cluster"
+              ]
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Roles"
+          },
+          "unconfirmed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unconfirmed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "roles",
+          "unconfirmed"
+        ],
+        "title": "SetRoles",
+        "description": "The confirmed reading of every column except the outcome.\n\n``unconfirmed`` is the server's, never the client's (BLUEPRINT §14 rule 2): the proposals below\nhigh confidence this answer records exactly as proposed, read from the roles the server showed.\nA bulk confirm records them, and no number-changing default reads them until each has its own\n``confirm_role``."
       },
       "SetSensitivity-Input": {
         "properties": {

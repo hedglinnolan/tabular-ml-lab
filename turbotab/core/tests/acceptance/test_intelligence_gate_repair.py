@@ -95,8 +95,10 @@ def _roles(path: Path, *, lens, target=None, purpose=None) -> dict:
             "categorical": out["categorical"]}
 
 
-def _proposals(path: Path, *, lens, target=None, roles=None, units=None, purpose=None) -> dict:
-    """The proposals artifact as the stage builds it, over the roles the roles stage proposes."""
+def _proposals(path: Path, *, lens, target=None, roles=None, units=None, purpose=None,
+               settled=None) -> dict:
+    """The proposals artifact as the stage builds it, over the roles the roles stage proposes.
+    ``settled``: the columns whose roles were confirmed (BLUEPRINT §14); None reads the values only."""
     from turbotab.core.stages.proposals import build_proposals
 
     t = _table(path)
@@ -104,7 +106,7 @@ def _proposals(path: Path, *, lens, target=None, roles=None, units=None, purpose
         roles = {c: p["proposed"] for c, p in _roles(path, lens=lens, target=target,
                                                        purpose=purpose)["columns"].items()}
     return build_proposals(t.frame(), t.info["columns"], lens=lens, target=target, roles=roles,
-                           purpose=purpose, units=units)
+                           purpose=purpose, units=units, settled=settled)
 
 
 def _findings(path: Path, *, lens, target=None, units=None) -> list[dict]:
@@ -474,7 +476,9 @@ def test_wp13_1b_a_unit_is_read_as_a_whole_expression(tmp_path):
     g_kg = frame["protein_g_kg"]
     assert float(g_kg.median()) * ATWATER["protein"] * KCAL_PER_KJ / float(ei.mean()) < 0.01
     check = intake_check("protein", g_kg, energy=frame["energy_kcal"])
-    assert check is not None and not check.corroborated and "under 1%" in check.why
+    # Recognition's leash (BLUEPRINT §14): protein's floor is the lowest acceptable range of any age
+    # group (IOM: 5–20% for children 1–3), 5%.
+    assert check is not None and not check.corroborated and "under 5%" in check.why
     real = (ei * 0.15 / 4).round(1)
     assert intake_check("protein", real, energy=frame["energy_kcal"]).corroborated
 
@@ -511,10 +515,27 @@ def test_wp13_1c_the_framingham_ffq_codebook_is_read(tmp_path):
                           "ldl": rng.normal(130, 30, n).round()})
     roles = _roles(_write(frame, tmp_path, "fhs.csv"), lens=["dietary"], target="ldl")["columns"]
     assert (roles["NUT_CALOR"]["proposed"], roles["NUT_CALOR"]["confidence"]) == ("energy", "high")
+    # Recognition's leash (BLUEPRINT §14, 2026-10-03): a codebook name is read, never trusted; "high"
+    # is earned by the values. Independently (NumPy): protein and carbohydrate carry well over 5% of
+    # the energy they add up to; the fat parts rise with total energy at r >= 0.3; alcohol (a gamma
+    # draw, under 5% of energy) and sodium (drawn apart from energy) do neither, and stand as their
+    # codebook's reading, medium, with the reason saying so.
+    energy = frame["NUT_CALOR"]
+    expected = {}
     for name in ("NUT_PROT", "NUT_CARBO", "NUT_ALCO", "NUT_SATFAT", "NUT_MONFAT", "NUT_POLY",
                  "NUT_SODIUM"):
+        r = float(np.corrcoef(frame[name], energy)[0, 1])
+        macro = {"NUT_PROT": "protein", "NUT_CARBO": "carbohydrate", "NUT_ALCO": "alcohol"}.get(name)
+        share = float(np.median(frame[name] * ATWATER[macro] / energy)) if macro else 0.0
+        expected[name] = "high" if (r >= 0.3 or share >= 0.05) else "medium"
+    assert expected == {"NUT_PROT": "high", "NUT_CARBO": "high", "NUT_ALCO": "medium",
+                        "NUT_SATFAT": "high", "NUT_MONFAT": "high", "NUT_POLY": "high",
+                        "NUT_SODIUM": "medium"}, expected
+    for name, confidence in expected.items():
         assert roles[name]["proposed"] == "exposure", (name, roles[name])
-        assert roles[name]["confidence"] == "high", (name, roles[name])
+        assert roles[name]["confidence"] == confidence, (name, roles[name])
+        if confidence == "medium":
+            assert roles[name]["reason"].startswith("Named as"), roles[name]
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -585,7 +606,14 @@ def test_wp13_5_toddlers_kj_and_two_day_totals_wait_for_their_unit(tmp_path):
     tod, adults = _toddlers_and_two_day()
     for frame, col, target in ((tod, "energy", "weight_kg"), (adults, "total_energy", "sbp")):
         path = _write(frame, tmp_path, f"{col}.csv")
+        # Recognition's leash (BLUEPRINT §14): with no macronutrients beside it, the column is total
+        # energy by its name alone, so its screens first wait for its role to be confirmed on its
+        # own; confirmed, they wait for its unit.
         out = _proposals(path, lens=["dietary"], target=target)
+        for screen in out["exclusions"]:
+            assert screen["refused"].startswith(f"Refused until `{col}` is confirmed"), screen
+        confirmed = set(frame.columns)
+        out = _proposals(path, lens=["dietary"], target=target, settled=confirmed)
         assert (out["energy_unit"]["basis"], out["energy_unit"]["confirmed"]) == ("assumed", False)
         for screen in out["exclusions"]:
             assert screen["refused"].startswith(f"Refused until `{col}`'s unit is recorded"), screen
@@ -603,7 +631,8 @@ def test_wp13_5_toddlers_kj_and_two_day_totals_wait_for_their_unit(tmp_path):
     # Recorded: the toddlers in kJ.
     path = _write(tod, tmp_path, "tod.csv")
     units = {"energy": d.ColumnUnitSpec(unit="kj")}
-    out = _proposals(path, lens=["dietary"], target="weight_kg", units=units)
+    out = _proposals(path, lens=["dietary"], target="weight_kg", units=units,
+                     settled=set(tod.columns))
     screen = next(e for e in out["exclusions"] if e["key"] == "sex_neutral_500_5000")
     kj = tod["energy"]
     assert screen["refused"] is None
@@ -613,7 +642,8 @@ def test_wp13_5_toddlers_kj_and_two_day_totals_wait_for_their_unit(tmp_path):
     # Recorded: the adults' two-day total in kcal, screened at twice a day's bounds.
     path = _write(adults, tmp_path, "adults.csv")
     units = {"total_energy": d.ColumnUnitSpec(unit="kcal", days=2)}
-    out = _proposals(path, lens=["dietary"], target="sbp", units=units)
+    out = _proposals(path, lens=["dietary"], target="sbp", units=units,
+                     settled=set(adults.columns))
     screen = next(e for e in out["exclusions"] if e["key"] == "sex_neutral_500_5000")
     two = adults["total_energy"]
     assert (screen["rule"]["low"], screen["rule"]["high"]) == (1000.0, 10000.0)
@@ -648,6 +678,16 @@ def test_wp13_5_through_the_api_the_screen_is_refused_until_the_unit_is_recorded
         drive.decide({"kind": "set_roles", "roles": proposed})
         drive.reach("exclusions")
         rule = {"column": "energy", "low": 500, "high": 5000, "reason": "implausible intakes"}
+        # Recognition's leash (BLUEPRINT §14): ``energy`` is total energy by its name alone (no
+        # macronutrients here to check it against), so the bulk confirm recorded it unconfirmed;
+        # the screen waits for its own confirmation first, then for its unit.
+        r = drive.post({"kind": "set_exclusions", "rules": [rule]})
+        assert r.status_code == 409, r.text
+        error = r.json()["error"]
+        assert error["code"] == "role_unconfirmed"
+        assert {"kind": "confirm_role", "column": "energy", "role": "energy"} in [
+            x["decision"] for x in error["exits"]]
+        drive.decide({"kind": "confirm_role", "column": "energy", "role": "energy"})
         r = drive.post({"kind": "set_exclusions", "rules": [rule]})
         assert r.status_code == 409, r.text
         error = r.json()["error"]
@@ -818,9 +858,13 @@ def test_wp14_6_spacing_alone_never_states_repeats_or_time_points():
     visits = pd.read_csv(SAMPLES / "clinical_longitudinal.csv")
     r = reading.read(visits, "subject_id", ["clinical"])
     assert (r["reading"], r["stated"]) == ("time_points", True) and "`visit`" in r["sentence"]
+    # Recognition's leash (BLUEPRINT §14 rule 1, 2026-10-03): a date the same on every row of a unit
+    # is never repeats evidence (it reads exactly as a birth or randomization date does), so
+    # same-date records with nothing ordering the day are asked, the sentence naming the date.
     duplicates = fx["meal"].drop(columns=["time_min"])
     r = reading.read(duplicates, "participant_id", ["clinical"])
-    assert (r["reading"], r["stated"]) == ("repeats", True)
+    assert (r["reading"], r["stated"]) == (None, False), r["sentence"]
+    assert "the same on every row of a unit" in r["sentence"]
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -70,7 +70,11 @@ def _answer_until(drive: Any, stop: str, answers: dict[str, dict[str, Any]]) -> 
         step = drive.reach(key)
         if step["status"] in ("open", "waiting"):
             assert key in answers, f"no answer for the open step {key}"
-            drive.decide(answers[key])
+            if answers[key]["kind"] == "set_roles":
+                # The author's roles, each confirmed on its own (BLUEPRINT §14, the leash).
+                drive.decide_roles(answers[key]["roles"])
+            else:
+                drive.decide(answers[key])
         if key == stop:
             return
 

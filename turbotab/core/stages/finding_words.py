@@ -349,6 +349,29 @@ def restate_implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext
     low, high, below, above = counted(reading["unit"])
     n = below + above
     word = "kJ" if reading["unit"] == "kj" else "kcal"
+    if not reading.get("confirmed", True) and reading.get("basis") == "days":
+        # BLUEPRINT §14 rule 3: a day count in the name (``kcal_2d``) reads as a total over the days
+        # or a mean of them; the count is made under each reading and no row is called a misreport.
+        spanned = int(reading.get("days_in_name") or days)
+        days = 1
+        d_low, d_high, d_below, d_above = counted(reading["unit"])
+        days = spanned
+        low, high, below, above = counted(reading["unit"])
+        n = below + above
+        p.update({"minimum": low, "maximum": high, "n_flagged": n, "unit": word,
+                  "unit_question": True, "unit_unconfirmed": True, "n_present": present,
+                  "days_question": spanned,
+                  "other_unit": f"{word} a day", "other_n_flagged": d_below + d_above})
+        f["severity"] = "warning" if (n or d_below + d_above) else "info"
+        f["title"] = f"The days in `{col}` are not settled"
+        f["detail"] = (
+            f"{reading['sentence']} Read as a total over {spanned} days, {n:,} of {present:,} rows "
+            f"fall outside {low:,.0f}–{high:,.0f} {word}; read as one day's intake, "
+            f"{d_below + d_above:,} fall outside {d_low:,.0f}–{d_high:,.0f} {word}. Which rows are "
+            f"implausible depends on it, so none is counted as a misreport until it is recorded, "
+            f"and the intake screens wait for it. Observed range {float(s.min()):,.0f} to "
+            f"{float(s.max()):,.0f}, median {float(s.median()):,.0f}.")
+        return
     if not reading.get("confirmed", True):
         other = "kcal" if reading["unit"] == "kj" else "kj"
         o_low, o_high, o_below, o_above = counted(other)
@@ -404,6 +427,11 @@ def _implausible(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Vo
     lo, hi = p.get("minimum"), p.get("maximum")
     if n is None or lo is None or hi is None:
         return Voice(finish(f["title"]), "exclusions", "Choose an exclusion rule")
+    if p.get("days_question"):
+        return Voice(f"Read as a total over {tick(str(p['days_question']))} days, {count(n)} of "
+                     f"{count(p.get('n_present') or fc.n_rows)} rows fall outside "
+                     f"{tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')}: record {tick(col)}'s days first.",
+                     "exclusions", "Record the days first")
     if p.get("unit_unconfirmed"):
         return Voice(f"Read in {p.get('unit')}, {count(n)} of {count(p.get('n_present') or fc.n_rows)} "
                      f"rows fall outside {tick(f'{lo:,.0f}')}–{tick(f'{hi:,.0f}')} a day: record "
@@ -431,6 +459,10 @@ TANGLED_R = 0.3  # the weakest correlation the energy finding calls nutrients "t
 def _energy(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
     energy = p.get("energy_column") or (f["affected_columns"] or [None])[0]
     rs = energy_correlations(fc.frame, energy, target=fc.target)
+    if not rs:
+        # A whole nutrient name the values do not corroborate is stated with its weak r, never
+        # called tangled and never said to carry energy (BLUEPRINT §14).
+        rs = energy_correlations(fc.frame, energy, target=fc.target, named=True)
     lever = ("energy_adjustment", "Adjust for energy")
     if rs:
         best = max(rs, key=lambda c: rs[c])
@@ -838,25 +870,33 @@ def settle_groups(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 # ── data the summaries cite ──────────────────────────────────────────────────
 
-def energy_correlations(frame: pd.DataFrame, energy: str | None, *, target: str | None = None) -> dict[str, float]:
+def energy_correlations(frame: pd.DataFrame, energy: str | None, *, target: str | None = None,
+                        energy_unit: str | None = None, named: bool = False) -> dict[str, float]:
     """Pearson r of each energy-bearing nutrient column with the energy column: the columns the
-    name reads as one and the values corroborate (:func:`turbotab.core.recognizers.intake_check`;
-    a yes/no ``lipid_disorder`` or a ``dxa_fat_g`` at 25,000 g is no nutrient here)."""
-    from turbotab.core.recognizers import intake_check
+    name reads as one, read whole, and the values corroborate (BLUEPRINT §14: plausible amounts
+    rising with total energy at r ≥ 0.3, one column per nutrient and occasion;
+    :func:`turbotab.core.recognizers.corroborated_nutrients`). A yes/no ``lipid_disorder``, a
+    ``dxa_fat_g`` at 25,000 g, an InBody body ``Protein`` beside ``protein_g`` or an INFOODS
+    ``ALC`` holding lymphocyte counts is named here as no nutrient that carries energy.
+    ``named``: the whole names the values neither confirm nor contradict instead (their r stated as
+    it is, below 0.3)."""
+    from turbotab.core.recognizers import corroborated_nutrients, read_nutrient
     from turbotab.core.stages.proposals import energy_bearing
 
     if not energy or energy not in frame.columns:
         return {}
     e = pd.to_numeric(frame[energy], errors="coerce")
+    checks = corroborated_nutrients(frame, energy=energy, energy_unit=energy_unit,
+                                    skip=[c for c in (target,) if c])
     out: dict[str, float] = {}
-    for c in frame.columns:
-        c = str(c)
-        if c in (energy, target) or not energy_bearing(c):
+    for c, check in checks.items():
+        if not energy_bearing(c):
             continue
-        if not pd.api.types.is_numeric_dtype(frame[c]):
-            continue
-        check = intake_check(c, frame[c], energy=e)
-        if check is not None and not check.corroborated:
+        if named:
+            if check.by_values or not check.corroborated or check.duplicate_of \
+                    or not read_nutrient(c).whole:
+                continue
+        elif not check.by_values:
             continue
         r = e.corr(pd.to_numeric(frame[c], errors="coerce"))
         if r is not None and not math.isnan(r):
@@ -891,11 +931,23 @@ def restate_energy(finding: dict[str, Any], raw: Mapping[str, Any] | None, fc: F
             f"{spread} with {tick(energy)}.")
         finding["affected_columns"] = [energy, *rs]
     else:
-        finding["detail"] = (f"{tick(energy)} is total energy; no energy-bearing nutrient column was "
-                             f"recognized by name.")
+        from turbotab.core.stages.proposals import energy_bearing
+
+        named = [str(c) for c in fc.frame.columns if c not in (energy, fc.target)
+                 and energy_bearing(str(c))]
+        finding["detail"] = (
+            f"{tick(energy)} is total energy; no energy-bearing nutrient column was recognized by "
+            f"name." if not named else
+            f"{tick(energy)} is total energy; {listing(named, limit=6)} "
+            f"{plural(len(named), 'is', 'are')} named like {plural(len(named), 'a nutrient', 'nutrients')} "
+            f"that {plural(len(named), 'carries', 'carry')} energy, but the values do not corroborate "
+            f"{plural(len(named), 'it', 'them')} as {plural(len(named), 'an intake', 'intakes')}.")
     finding["title"] = ENERGY_TITLE
     why = ENERGY_WHY
-    relation = outcome_relation(fc.target, fc.frame) if fc.target is not None else None
+    unit = energy_unit_of(fc, energy)
+    relation = (outcome_relation(fc.target, fc.frame, energy=energy,
+                                 energy_unit=unit["unit"] if unit and unit.get("confirmed") else None)
+                if fc.target is not None else None)
     if relation is not None and relation["kind"] is not None:
         how = (f" It tracks {tick(relation['via'])} (r = {relation['r']:.2f})."
                if relation["basis"] == "values" else "")

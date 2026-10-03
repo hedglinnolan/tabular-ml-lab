@@ -496,12 +496,26 @@ _ROLE_AS = {
 
 @register_sentence("set_roles")
 def _set_roles(d: Any, state: Any, ctx: Any) -> str:
+    return _set_roles_body(d, state) + _waiting_clause(list(getattr(d, "unconfirmed", None) or []))
+
+
+def _waiting_clause(waiting: list[str]) -> str:
+    """BLUEPRINT §14 rule 2: what a bulk confirm recorded without confirming, said in the record."""
+    if not waiting:
+        return ""
+    one = len(waiting) == 1
+    return (f"; {listing(waiting, limit=3)} {'was' if one else 'were'} proposed below high "
+            f"confidence and {'waits' if one else 'wait'} for {'its' if one else 'their'} own "
+            f"confirmation before any default reads {'it' if one else 'them'}")
+
+
+def _set_roles_body(d: Any, state: Any) -> str:
     roles: dict[str, str] = dict(d.roles)
     before: dict[str, str] = dict(state.roles or {})
     if before and set(before) == set(roles):
         changed = [c for c in roles if roles[c] != before[c]]
         if not changed:
-            return f"The roles of all {count(len(roles))} columns were confirmed unchanged"
+            return f"The roles of all {count(len(roles))} columns were recorded unchanged"
         if len(changed) <= 3:
             moves = [f"{tick(c)} became {_ROLE_AS.get(roles[c], tick(roles[c]))}" for c in changed]
             return f"{listing(moves, ticked=False)}; every other role is unchanged"
@@ -514,6 +528,13 @@ def _set_roles(d: Any, state: Any, ctx: Any) -> str:
         noun = one if len(cols) == 1 else many
         groups.append(f"{noun} {listing(cols)}")
     return f"Column roles were set for {count(len(roles))} columns: " + "; ".join(groups)
+
+
+@register_sentence("confirm_role")
+def _confirm_role(d: Any, state: Any, ctx: Any) -> str:
+    """BLUEPRINT §14 rule 2: an individual confirmation, recorded as one."""
+    return (f"{tick(d.column)} was confirmed as {_ROLE_AS.get(d.role, tick(d.role))} on its own, "
+            f"after the evidence for its proposal was read")
 
 
 # set_exclusions

@@ -555,7 +555,12 @@ def card_lines(frame: pd.DataFrame, *, target: str | None, energy: str | None, u
         from turbotab.core.stages.proposals import MOST_ROWS
 
         confirmed = (unit_reading or {}).get("confirmed", True)
-        if not confirmed and (below or above):
+        if not confirmed and (below or above) and (unit_reading or {}).get("basis") == "days":
+            # BLUEPRINT §14 rule 3: the days a name carries are asked; the count is conditional.
+            line = note(f"If {tick(energy)} spans {value(days)} days, {count(below + above)} rows "
+                        f"fall outside {value(round(low))}–{value(round(high))}: record it",
+                        "column", energy)
+        elif not confirmed and (below or above):
             # Twelve words (COACH_WORDS): the count is conditional on a unit nobody stated.
             line = note(f"If {tick(energy)} is {word}, {count(below + above)} rows fall outside "
                         f"{value(round(low))}–{value(round(high))}: record its unit",

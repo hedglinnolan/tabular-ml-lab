@@ -191,15 +191,34 @@ _OCCASION_WORDS = {"visit", "visits", "wave", "waves", "followup", "round", "ses
 
 def occasion_column(df: pd.DataFrame, unit: str) -> str | None:
     """A column that names each record's occasion as a visit, wave or follow-up (``visit``,
-    ``visit_date``, ``wave``): the study's own word for a schedule of time points."""
-    from turbotab.core.recognizers import id_kind, tokens
+    ``visit_date``, ``wave``) and changes within units: the study's own word for a schedule of
+    time points (BLUEPRINT §14: "a time column varies within units"; a ``wave`` the same on every
+    row of a unit names no occasion of its rows)."""
+    from turbotab.core.recognizers import TIME_VARIES, id_kind, tokens, within_unit_variation
 
     for c in df.columns:
         if c == unit:
             continue
         if id_kind(c) == "visit" or set(tokens(c)) & _OCCASION_WORDS:
-            return str(c)
+            share = within_unit_variation(df[c], df[unit])
+            if share is not None and share >= TIME_VARIES:
+                return str(c)
     return None
+
+
+def constant_dates(df: pd.DataFrame, unit: str) -> list[str]:
+    """Date columns the same on every row of a unit (``dob``, ``randomization_date``): they date
+    the unit, not its rows, and are never spacing evidence (BLUEPRINT §14 rule 1; the gate: the
+    legacy reader kept the first date column on a tie and stated "repeats" from ``dob``)."""
+    from turbotab import repeats
+    from turbotab.core.recognizers import TIME_CONSTANT, within_unit_variation
+
+    out = []
+    for c in repeats._date_columns(df.drop(columns=[unit])):
+        share = within_unit_variation(df[c], df[unit])
+        if share is not None and share <= TIME_CONSTANT:
+            out.append(str(c))
+    return out
 
 
 def intake_varies(df: pd.DataFrame, unit: str) -> str | None:
@@ -224,9 +243,15 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
     unambiguous (see the module docstring)."""
     from turbotab import repeats
 
-    out = repeats.read(df, unit)
     if not unit or unit not in df.columns:
-        return out
+        return repeats.read(df, unit)
+    dated_units = constant_dates(df, unit)
+    # Same date is not the same moment: what orders a unit's records within that day (an OGTT's
+    # ``time_min``) is read before the date leaves the spacing evidence.
+    within_day = within_day_order(df, unit, dated_units[0]) if dated_units else None
+    if dated_units:
+        df = df.drop(columns=dated_units)
+    out = repeats.read(df, unit)
     dietary = "dietary" in (lens or [])
     gaps = out.get("spacing")
     index = out.get("replicate_index")
@@ -291,7 +316,14 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
     elif index:
         evidence.append(f"`{index}` numbers each unit's records 1, 2, 3 and there is no date, "
                         f"which orders the records and says nothing about what the order means")
-        if recalls:
+        occasion = occasion_column(df.drop(columns=[index]), unit)
+        if recalls and occasion:
+            # BLUEPRINT §14 rule 3: recalls numbered across occasions the study names (two at
+            # baseline, two at month 6) are replicates within an occasion and time points across
+            # them; averaging all four erases the change (the gate: an arm's 470 kcal fall).
+            evidence.append(f"`{recalls}` reads as a recall number, but `{occasion}` names each "
+                            f"record's occasion and changes within units, as time points do")
+        elif recalls:
             reading, stated = repeats.REPEATS, True
             evidence.append(f"under the dietary lens `{recalls}` reads as a recall number, and "
                             f"recalls are repeated measures of usual intake")
@@ -305,6 +337,14 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
                         f"{moving['n_units']} units)")
     if period:
         evidence.append(f"`{period}` changes within units, as a crossover's periods do")
+    if dated_units:
+        listed = " and ".join(f"`{c}`" for c in dated_units[:3])
+        same = (f"{listed} {'is' if len(dated_units) == 1 else 'are'} the same on every row of a "
+                f"unit")
+        evidence.append(f"{same}, but {within_day}, which a time course within the day follows as "
+                        f"well as repeated measurements" if within_day else
+                        f"{same}, which dates the unit (a birth, enrollment or visit day), not the "
+                        f"order of its rows")
     if (moving or period) and reading != repeats.TIME_POINTS:
         reading, stated = None, False   # time-point evidence against a repeats reading: asked
     out.update(reading=reading if stated else None, stated=stated,
@@ -321,4 +361,5 @@ def read(df: pd.DataFrame, unit: str | None, lens: Sequence[str] | None = None) 
     return out
 
 
-__all__ = ["period_column", "read", "recall_evidence", "trend"]
+__all__ = ["constant_dates", "occasion_column", "period_column", "read", "recall_evidence",
+           "trend"]

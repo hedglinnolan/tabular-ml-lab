@@ -642,6 +642,8 @@ function slotOf(d: Decision): Slot | null {
       return "outcome_unit";
     case "set_column_unit":
       return "column_units";
+    case "confirm_role":
+      return "role_confirmations";
     case "set_follow_up":
       return "follow_up";
     case "set_sensitivity":
@@ -742,6 +744,7 @@ function valueOf(d: Decision): ProjectState[Slot] {
       return d.unit;
     case "set_exposure_form": // keyed by column; the fold merges it
     case "set_column_unit": // keyed by column; the fold merges it
+    case "confirm_role": // keyed by column; the fold merges it
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -812,6 +815,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
     measurement_error: null,
     outcome_unit: null,
     column_units: null,
+    roles_unconfirmed: null,
+    role_confirmations: null,
   };
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }>();
   for (const r of [...records].sort((a, b) => a.seq - b.seq)) {
@@ -834,6 +839,17 @@ export function fold(records: DecisionRecord[]): ProjectState {
       // A keyed slot: one unit per column (turbotab/core/decisions.py, column_units).
       const unit = { unit: d.unit, days: d.days ?? 1 };
       state.column_units = { ...(state.column_units ?? {}), [d.column]: unit };
+      continue;
+    }
+    if (d.kind === "confirm_role") {
+      // A keyed slot: one confirmation per column (BLUEPRINT §14; decisions.py role_confirmations).
+      state.role_confirmations = { ...(state.role_confirmations ?? {}), [d.column]: d.role };
+      continue;
+    }
+    if (d.kind === "set_roles") {
+      // set_roles also writes which proposals it recorded unconfirmed (decisions.py, ``also``).
+      state.roles = d.roles;
+      state.roles_unconfirmed = d.unconfirmed ?? [];
       continue;
     }
     if (d.kind === "set_exposure_form") {

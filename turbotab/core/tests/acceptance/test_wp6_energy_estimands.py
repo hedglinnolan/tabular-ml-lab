@@ -830,8 +830,10 @@ def test_6c_a_refused_partition_says_why_in_a_whole_sentence():
     columns = [{"name": c, "dtype": "numeric", "n_unique": n, "n_missing": 0} for c in frame]
     roles = {"protein_g": "exposure", "carb_g": "exposure", "fat_g": "exposure",
              "energy_kcal": "energy"}
+    # The roles are the author's, each confirmed on its own (BLUEPRINT §14, recognition's leash):
+    # half the rows in kJ keep total energy from following its macronutrients by the values alone.
     reading = build_proposals(frame, columns, lens=["dietary"], target="y", roles=roles,
-                              purpose="inference")["energy"]
+                              purpose="inference", settled=set(roles))["energy"]
     for method in ("partition", "all_components"):
         verdict = reading["applicability"][method]
         assert not verdict["ok"]

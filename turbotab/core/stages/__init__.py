@@ -76,6 +76,10 @@ from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage, 
 from turbotab.core.stages.proposals import proposals_stage
 from turbotab.core.stages.rows import cohort_stage, roles_stage, split_stage
 from turbotab.core.stages.seal import SEAL_READS, seal_plan_stage
+
+# The roles and what the leash records beside them (BLUEPRINT §14): a stage that reads a
+# number-changing default from the roles reads which of them are settled too.
+ROLE_READS: tuple[str, ...] = ("roles", "roles_unconfirmed", "role_confirmations")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.target import target_info_stage
@@ -100,9 +104,12 @@ def build_graph() -> Graph:
             # profile 5 (gate repair): whole numbers hint genomics only when their features' mean
             # counts span orders of magnitude, as genes' do (an FFQ's codes, portions, minute
             # counts do not).
+            # profile 6 (recognition's leash, BLUEPRINT §14): a count matrix holds the small counts
+            # a sequencer records and never a column named in grams; the dietary hint needs a day's
+            # energy in the median.
             Stage(
                 "profile",
-                5,
+                6,
                 ("oriented",),
                 (),
                 profile_stage,
@@ -129,9 +136,12 @@ def build_graph() -> Graph:
             # sizes contradict, is asked, not judged in; NHANES subsample variables by their
             # missingness; an outcome nothing places states the dispute as a condition; the
             # recorded column units (``set_column_unit``) are read.
+            # findings 11 (recognition's leash, BLUEPRINT §14): the energy finding names only
+            # nutrients the values corroborate (r ≥ 0.3, one per nutrient and occasion); a day count
+            # in an energy name is asked; the outcome's dispute reads value-corroborated readings.
             Stage(
                 "findings",
-                10,
+                11,
                 ("oriented",),
                 ("lens", "target", "column_units"),
                 findings_stage,
@@ -148,7 +158,9 @@ def build_graph() -> Graph:
             # is time-point evidence (IN-12).
             # structure 8 (gate repair): same-date records ordered within the day, and a regular
             # schedule nothing names as visits (or intakes under the dietary lens), are asked.
-            Stage("structure", 8, ("oriented",),
+            # structure 9 (recognition's leash, BLUEPRINT §14): a date constant within units is never
+            # spacing evidence; a recall index beside an occasion that changes within units is asked.
+            Stage("structure", 9, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             Stage("working", 2, ("oriented", "findings", "structure"),
@@ -176,7 +188,10 @@ def build_graph() -> Graph:
             # against the macronutrients; ratios (g/kg, g/1000 kcal) no day's amount; an ``_id``
             # with a few values a code for groups; acquisition and sampling-weight names corroborated
             # by the table (an assay lens, a survey design).
-            Stage("roles", 4, ("working",), ("lens", "target", "purpose"), roles_stage,
+            # roles 5 (recognition's leash, BLUEPRINT §14): "high" only where the values corroborate,
+            # codebook names included; every proposal below high carries ``attention`` and the
+            # payload lists ``needs_confirmation``.
+            Stage("roles", 5, ("working",), ("lens", "target", "purpose"), roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -196,8 +211,10 @@ def build_graph() -> Graph:
             # proposals 11 (gate repair): total energy corroborated by its values; a unit only
             # proposed refuses the screens until ``set_column_unit`` records it; an outcome nothing
             # places states the dispute as a condition; subsample weights read by missingness.
-            Stage("proposals", 11, ("working", "roles"),
-                  ("lens", "roles", "target", "purpose", "column_units"),
+            # proposals 12 (recognition's leash, BLUEPRINT §14): the energy card, the screens and the
+            # survey options read settled roles only; a day count in an energy name is asked.
+            Stage("proposals", 12, ("working", "roles"),
+                  ("lens", *ROLE_READS, "target", "purpose", "column_units"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             Stage("cohort", 2, ("working", "target_info"),
@@ -206,8 +223,9 @@ def build_graph() -> Graph:
             # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.
             # split 4 (audit WP15, IN-24): the chronology counts held-out rows that predate training.
             # split 5 (WP13 + WP15 merged): both of the above in one stage.
-            Stage("split", 5, ("working", "cohort", "target_info", "structure"),
-                  ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
+            # split 6 (recognition's leash): the draw groups by a settled identifier only.
+            Stage("split", 6, ("working", "cohort", "target_info", "structure"),
+                  ("split", *ROLE_READS, "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
             # shelf 7 (methods gate): under inference it ranks for every analyzed row and its basis
             # says so (BLUEPRINT §12 ruling 3); timing stays on the training rows.
@@ -234,8 +252,10 @@ def build_graph() -> Graph:
             # design 12 (repair round): total energy read as intake only (no expenditure or score).
             # design 13 (gate repair): with an energy role named, a second energy-named predictor is
             # what the user said it is, not total energy.
-            Stage("design", 13, ("working", "split", "target_info"),
-                  ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
+            # design 14 (recognition's leash): the fit's clusters and its intake line read settled
+            # roles only (BLUEPRINT §14).
+            Stage("design", 14, ("working", "split", "target_info"),
+                  (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
@@ -276,8 +296,9 @@ def build_graph() -> Graph:
             # seal_plan 4 (WP13): the basis reads a measurement named as the unit as exploratory.
             # seal_plan 4 (audit WP15, IN-24): the chronology's held-out rows that predate training.
             # seal_plan 5 (WP13 + WP15 merged): both of the above in one stage.
-            Stage("seal_plan", 5, ("working", "cohort", "target_info", "structure"),
-                  ("roles", "task", "event", "purpose", *SEAL_READS), seal_plan_stage,
+            # seal_plan 6 (recognition's leash): as split 6.
+            Stage("seal_plan", 6, ("working", "cohort", "target_info", "structure"),
+                  (*ROLE_READS, "task", "event", "purpose", *SEAL_READS), seal_plan_stage,
                   requires=("target",),
                   label="Reading what a held-out set can measure"),
             # ── WP12: methods a reviewer expects (AUDIT_REPORT §5) ──
@@ -286,7 +307,8 @@ def build_graph() -> Graph:
             # sensitivity 3: under inference each analysis pools its own multiple imputations.
             # sensitivity 4 (methods gate): the outcome keeps its own values (a True/False event).
             # sensitivity 5 (gate repair): as fit 13, a half-read survey design waits for its answer.
-            Stage("sensitivity", 5, ("working", "design", "split", "target_info"),
+            # sensitivity 6 (recognition's leash): its clusters read settled roles only.
+            Stage("sensitivity", 6, ("working", "design", "split", "target_info"),
                   SENSITIVITY_READS, sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),

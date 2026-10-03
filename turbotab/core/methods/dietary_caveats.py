@@ -180,14 +180,45 @@ _BODY_KINDS = ("body weight", "BMI", "waist size", "adiposity", "hip size", "bod
                "child growth")
 
 
-def recognized_otherwise(outcome: str) -> bool:
+def recognized_otherwise(outcome: str, frame: Any = None, *, energy: str | None = None,
+                         energy_unit: str | None = None) -> bool:
     """The outcome's name reads as something the pack does not list as energy-related: a clinical
-    analyte (lipids, glucose, HbA1c, blood pressure, CRP …), a nutrient or total energy."""
-    from turbotab.core.recognizers import is_nutrient, reads_as_total_energy
+    analyte (lipids, glucose, HbA1c, blood pressure, CRP …), or a nutrient or total energy that
+    the values corroborate.
+
+    BLUEPRINT §14: a nutrient name alone never drops the dispute. Hologic's ``WBTOT_PFAT``
+    (whole-body % fat) read as PUFA by its ``pfat``, and ``WBTOT_FAT``, ``SUBTOT_FAT``, BIA
+    ``Fat%`` and ``fat_kg`` read as dietary fat, made the outcome "something else" and the DISPUTED
+    line was never stated. A nutrient reading counts only where its values are an intake that rises
+    with total energy (:func:`turbotab.core.recognizers.intake_check`), a total-energy reading only
+    where its median is a day's energy."""
+    from turbotab.core.recognizers import (
+        AmbiguousNutrient, energy_median_contradicts, intake_check, nutrient_check, read_nutrient,
+        reads_as_total_energy,
+    )
     from turbotab.core.units import analyte_of
 
-    return bool(analyte_of(outcome) or is_nutrient(outcome) or reads_as_total_energy(outcome)
-                or _crp_like(outcome) or _NHANES_NOT_BODY.match(str(outcome).upper()))
+    if analyte_of(outcome) or _crp_like(outcome) or _NHANES_NOT_BODY.match(str(outcome).upper()):
+        return True
+    has = frame is not None and outcome in getattr(frame, "columns", ())
+    if reads_as_total_energy(outcome):
+        if not has:
+            return False
+        import pandas as pd
+
+        median = pd.to_numeric(frame[outcome], errors="coerce").median()
+        return energy_median_contradicts(median) is None
+    try:
+        reading = read_nutrient(outcome)
+    except AmbiguousNutrient:
+        return False
+    if reading is None or not has:
+        return False
+    e = frame[energy] if energy and energy in frame.columns and energy != outcome else None
+    check = intake_check(outcome, frame[outcome], energy=e, energy_unit=energy_unit)
+    if check is None:
+        check = nutrient_check(outcome, frame[outcome], energy=e)
+    return bool(check is not None and check.by_values)
 
 
 # NHANES variable names carry their file's prefix: LBX/LBD a laboratory result (TRIGLY_J
@@ -206,15 +237,16 @@ def _crp_like(outcome: str) -> bool:
         return False
 
 
-def outcome_relation(outcome: str | None, frame: Any = None) -> dict[str, Any] | None:
+def outcome_relation(outcome: str | None, frame: Any = None, *, energy: str | None = None,
+                     energy_unit: str | None = None) -> dict[str, Any] | None:
     """How the outcome stands to energy balance, and how that was read (audit IN-20, WP13 gate
     repair): ``{"kind", "basis", ...}`` with ``basis``
 
     * ``"name"``: the name reads as energy-related (:func:`energy_related`);
     * ``"values"``: the name does not, but the outcome tracks one of the table's body-size columns
       at |r| >= 0.7 (``via``, ``r``);
-    * ``"other"``: the name reads as something the pack does not list (an analyte, a nutrient): no
-      dispute;
+    * ``"other"``: the name reads as something the pack does not list (an analyte, or a nutrient
+      or total energy *the values corroborate*): no dispute;
     * ``"unconfirmed"``: nothing places it. The leash (BLUEPRINT §11.3): the dispute is then
       stated as a condition the researcher answers, never silently dropped."""
     if not outcome:
@@ -241,7 +273,7 @@ def outcome_relation(outcome: str | None, frame: Any = None) -> dict[str, Any] |
                 best = (str(c), other, r)
         if best is not None:
             return {"kind": best[1], "basis": "values", "via": best[0], "r": best[2]}
-    if recognized_otherwise(outcome):
+    if recognized_otherwise(outcome, frame, energy=energy, energy_unit=energy_unit):
         return {"kind": None, "basis": "other"}
     return {"kind": None, "basis": "unconfirmed"}
 

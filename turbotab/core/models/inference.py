@@ -130,13 +130,33 @@ def resolve_clusters(state: Any, frame: pd.DataFrame, also: Sequence[str | None]
     answer = getattr(grain, "grain", None) if grain is not None else None
     named = getattr(grain, "id_column", None) if grain is not None else None
     repeating: list[tuple[int, str]] = []
+    waiting_repeats: list[tuple[int, str]] = []
+    # BLUEPRINT §14 rule 2: the grouping identifier is a number-changing default, read only from a
+    # settled role (the grain's named column and the split's grouping are the user's own answers).
+    from turbotab.core.leash import unsettled
+
+    waiting = set(unsettled(state)) - {named, *[c for c in also if c]}
     for column in cluster_columns(state, list(frame.columns), also):
         values = frame[column]
         units = int(values.nunique(dropna=True))
         if 0 < units < int(values.notna().sum()):
-            repeating.append((units, column))
+            (waiting_repeats if column in waiting else repeating).append((units, column))
     repeating.sort()
     chosen = next((c for _, c in repeating if c == named), repeating[0][1] if repeating else None)
+    if chosen is None and waiting_repeats:
+        from turbotab.core.leash import confirm_exits
+
+        units, column = sorted(waiting_repeats)[0]
+        roles = getattr(state, "roles", None) or {}
+        return Clusters(
+            refusal=(f"`{column}` repeats ({units:,} values over {n:,} rows), but its role "
+                     f"({roles.get(column)}) was proposed below high confidence and not confirmed "
+                     f"on its own, so whether its rows belong together is asked, not assumed: "
+                     f"intervals that cluster by it, or that ignore it, would each rest on a "
+                     f"guess."),
+            exits=tuple([*confirm_exits(state, [column]),
+                         {"label": "Name the column that identifies the unit (the grain question)",
+                          "decision": None}]))
     if chosen is not None:
         units = next(u for u, c in repeating if c == chosen)
         values = frame[chosen].astype(object)

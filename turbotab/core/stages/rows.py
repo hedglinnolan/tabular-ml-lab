@@ -168,24 +168,19 @@ def _doubt(check: Any) -> str:
     """The clause a name-only nutrient proposal carries: what did, and did not, corroborate it."""
     why = str(getattr(check, "why", "") or "")
     r = getattr(check, "r", None)
+    if getattr(check, "duplicate_of", None):
+        return why  # another column reads as the same nutrient (BLUEPRINT §14)
+    if "no intake's name does" in why:
+        return why
     if "too few values" in why:
         return "too few values to check"
     if r is not None and "does not rise" in why:
         return f"it does not track total energy (r = {r:.2f})"
     if "name and unit" in why:
         return "only its name and unit say so"
+    if "codebook name" in why:
+        return "only its codebook name says so"
     return "only its name says so"
-
-
-def _codebook_nutrient(name: str) -> bool:
-    """A nutrient read from a codebook (NHANES, INFOODS, the Framingham FFQ file)."""
-    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
-
-    try:
-        reading = read_nutrient(name)
-    except AmbiguousNutrient:
-        return False
-    return reading is not None and reading.source in ("nhanes", "infoods", "fhs")
 
 
 def _intake_by_unit(name: str, median: Any = None) -> bool:
@@ -228,7 +223,10 @@ def _design_role(name: str, summary: Mapping[str, Any], exact: set[str],
         return "An NHANES survey design variable: a weight, stratum or sampling unit."
     median = summary.get("median")
     low = summary.get("min")
-    positive = low is None or _positive(low)
+    # A sampling weight is never negative; zero is "not in this subsample" (the CDC GLU_J codebook,
+    # WTSAF2YR: "0 | No Lab Result or Not Fasting for 8 to <24 hours | 325"; BLUEPRINT §14), so a
+    # subsample's real weight is no covariate for its zeros.
+    positive = low is None or _non_negative(low)
     if reads_as_survey_weight(name, median=None if median is None else float(median),
                               design_in_table=design_in_table) and positive:
         if upper.startswith(("WTDR", "WTMEC", "WTINT", "WTSA", "WTSB")):
@@ -248,6 +246,62 @@ def _positive(value: Any) -> bool:
         return float(value) > 0
     except (TypeError, ValueError):
         return True
+
+
+def _non_negative(value: Any) -> bool:
+    try:
+        return float(value) >= 0
+    except (TypeError, ValueError):
+        return True
+
+
+def _design_named(name: str, exact: set[str]) -> bool:
+    """An NHANES design variable or weight by its published name or the tutorial's multi-cycle
+    grammar (``SDMVSTRA``, ``WTMEC2YR``, ``WTSAF6YR``, ``MEC6YR``)."""
+    from turbotab.core.recognizers import MULTI_CYCLE_WEIGHT, NHANES_WEIGHT_PREFIX, weight_tier
+
+    upper = str(name).upper()
+    return (upper in exact or upper.startswith("SDMV") or weight_tier(upper) is not None
+            or bool(MULTI_CYCLE_WEIGHT.fullmatch(upper))
+            or (bool(re.fullmatch(r"[A-Z0-9]+", upper)) and upper.startswith(NHANES_WEIGHT_PREFIX)))
+
+
+def characteristic_fits(name: str, values: Any) -> bool:
+    """A sex, age or BMI column's values fit what its name says (BLUEPRINT §14: high only where the
+    values corroborate): a sex has two or three levels; an age is a number from 0 to 120 at its
+    median, never negative; a BMI's median lies within 10–80 kg/m²."""
+    import pandas as pd
+
+    s = pd.Series(values).dropna()
+    if s.empty:
+        return False
+    words = set(_tokens(name))
+    if words & {"sex", "gender"}:
+        return 2 <= int(s.nunique()) <= 3
+    x = pd.to_numeric(s, errors="coerce").dropna()
+    if len(x) < 0.95 * len(s) or x.empty:
+        return False
+    if "age" in words:
+        return float(x.min()) >= 0 and float(x.median()) <= 120
+    if "bmi" in words:
+        return 10 <= float(x.median()) <= 80
+    return False
+
+
+def design_values_fit(name: str, values: Any) -> bool:
+    """A design column's values fit its kind (BLUEPRINT §14: high only where the values
+    corroborate): a weight is numeric, never negative, positive somewhere and takes more than two
+    values; a stratum or PSU holds whole-number codes."""
+    import pandas as pd
+
+    x = pd.to_numeric(pd.Series(values), errors="coerce").dropna()
+    if x.empty:
+        return False
+    tokens = set(_tokens(name))
+    upper = str(name).upper()
+    if tokens & {"psu", "strata", "stratum"} or upper in ("SDMVSTRA", "SDMVPSU", "SDDSRVYR"):
+        return bool((x == x.round()).all())
+    return bool(float(x.min()) >= 0 and float(x.max()) > 0 and x.nunique() > 2)
 
 
 def _design_in_table(columns: Sequence[Mapping[str, Any]], exact: set[str]) -> bool:
@@ -323,6 +377,8 @@ def propose_roles(
     fractional: Iterable[str] = (),
     intake: Mapping[str, Any] | None = None,
     energy_info: Mapping[str, Any] | None = None,
+    facts: Mapping[str, Mapping[str, Any]] | None = None,
+    repeating: str | None = None,
 ) -> list[dict[str, Any]]:
     """One proposal per column (the outcome and the row identity excepted), in table order.
 
@@ -331,23 +387,29 @@ def propose_roles(
     ``acquisition`` the batch, plate and run-order columns (:func:`_acquisition_columns`);
     ``purpose`` the declared purpose, which sets an acquisition column's default; ``fractional``
     the identifier-named columns whose values have fractional parts (measurements, never IDs);
-    ``intake`` the values' verdict on each column the name reads as an energy-bearing nutrient
-    (:func:`turbotab.core.recognizers.intake_check`): a name the values contradict, or one with no
-    second signal under an energy column, is not proposed as a nutrient (NUTRITION_PACK §01: "match
-    on three signals jointly, never names alone"); ``energy_info`` how the total-energy column
-    was read (:func:`turbotab.core.stages.proposals.energy_column_reading`).
+    ``intake`` the values' verdict on each column the name reads as a nutrient
+    (:func:`turbotab.core.recognizers.corroborated_nutrients`); ``energy_info`` how the
+    total-energy column was read (:func:`turbotab.core.stages.proposals.energy_column_reading`);
+    ``facts`` what the values say about each column named like an identifier (``id``), a flag
+    (``flag``) or a time (``time``: the share of ``repeating``'s units it varies within), and
+    whether a design column's values fit (``design_values``); ``repeating`` the identifier whose
+    values name repeating units.
 
     Every name is read by :mod:`turbotab.core.recognizers` (audit WP13): whole words, never
     substrings; a study's arms and groups are exposures; a site or household is a cluster.
 
-    **Confidence says how much was checked** (audit WP13 gate repair): ``high`` only where the
-    values agree with the name (a codebook, a column rising with total energy, total energy
-    following its macronutrients, an identifier unique per unit); a reading the name alone makes is
+    **Confidence says what the values corroborated** (BLUEPRINT §14, Recognition's leash): ``high``
+    only where the values agree with the name, codebook names included (a nutrient plausible as an
+    intake that rises with total energy at r ≥ 0.3; total energy following its macronutrients; an
+    identifier with a unit structure; a flag that marks its base's blanks; a time that changes
+    within units; a survey design's values beside its design); a reading the name alone makes is
     ``medium`` at most and its reason says so; ``low`` is the lens's default for a column nothing
-    recognized. A proposal is confirmed with ``set_roles``; nothing here is applied."""
+    recognized. Every proposal below high carries ``attention`` and needs its own confirmation
+    (``confirm_role``) before any number-changing default reads it. Nothing here is applied."""
     from turbotab import nutrition
     from turbotab.core.recognizers import (
-        acquisition_kind, has_id_tail, id_kind, is_rate, reads_as_time, study_group,
+        TIME_CONSTANT, TIME_VARIES, acquisition_kind, has_id_tail, id_kind, is_rate, reads_as_time,
+        study_group,
     )
 
     lenses = [k for k in (lens or []) if k in LENSES]
@@ -360,11 +422,18 @@ def propose_roles(
     assay = acquisition_corroborated(columns, lens, acquisition)
     fractional = set(fractional)
     intake = dict(intake or {})
+    facts = dict(facts or {})
     energy_info = dict(energy_info or {})
     rejected_energy = {str(x["column"]): x for x in energy_info.get("rejected") or []}
     other_energy = {str(x["column"]): x for x in energy_info.get("others") or []}
     lens_default = "covariate" if (dietary or omics) else "exposure"
     by_lower = {str(c["name"]).lower(): str(c["name"]) for c in columns}
+    unit_word = f"`{repeating}`" if repeating else "unit"
+    # The design the table names corroborates its weights only where its strata and PSUs hold the
+    # whole-number codes a design's do (BLUEPRINT §14).
+    design_fits = all(f.get("design_values", True) for c, f in facts.items()
+                      if set(_tokens(c)) & {"psu", "strata", "stratum"}
+                      or str(c).upper() in ("SDMVSTRA", "SDMVPSU"))
     out: list[dict[str, Any]] = []
 
     for summary in columns:
@@ -377,36 +446,76 @@ def propose_roles(
         n_unique = int(summary.get("n_unique") or 0)
         unique = bool(n_present) and n_unique >= n_present
         tokens = set(_tokens(name))
+        fact = facts.get(name) or {}
         proposal = {"column": name, "linked_to": None, "unit": _unit(name), "nested_in": None,
                     "kind": None}
 
         def put(role: str, confidence: str, reason: str, **extra: Any) -> None:
-            out.append({**proposal, "proposed": role, "confidence": confidence, "reason": reason, **extra})
+            out.append({**proposal, "proposed": role, "confidence": confidence, "reason": reason,
+                        **extra})
 
         is_flag, base = _flag_base(name, by_lower)
+        flag = fact.get("flag")
         design = _design_role(name, summary, exact_design, design_in_table)
         kind = None if name in fractional else id_kind(name)
-        if is_flag:
-            if base:
-                put("flag", "high", f"Marks which values of `{base}` were filled in, not measured.",
+        unit_check = fact.get("id")
+        time_share = fact.get("time")
+        timed = "time" in fact  # the values were read against the repeating units
+        if is_flag and flag is not None and flag.verdict == "never":
+            # BLUEPRINT §14: continuous values are never a flag (the gate's ``sbp_imp``).
+            put(lens_default, "low", f"Named like a flag, but {flag.why}: kept as a predictor "
+                                     f"until you say otherwise.")
+        elif is_flag and flag is not None and flag.verdict == "indicator":
+            put("covariate", "low", f"Named like a flag, but {flag.why}, kept as a predictor.")
+        elif is_flag:
+            if flag is not None and flag.verdict == "flag" and base:
+                put("flag", "high", f"Marks `{base}`'s missing values: {flag.why}.",
+                    linked_to=base)
+            elif flag is not None and base:
+                put("flag", "medium", f"Named like a flag on `{base}`, but {flag.why}.",
+                    linked_to=base)
+            elif base:
+                put("flag", "medium", f"Named like a flag on `{base}`; its values are not read.",
                     linked_to=base)
             else:
                 put("flag", "medium", "Named like a flag that marks other values; not a measurement.")
         elif design is not None:
-            put("design", "high" if str(name).upper() in exact_design else "medium", design)
+            fits = fact.get("design_values")
+            confirmed = bool(_design_named(name, exact_design) and design_in_table and fits
+                             and design_fits)
+            # A reading below high says what was not shown (BLUEPRINT §14).
+            doubt = ("" if confirmed else
+                     " Its values were not read." if fits is None else
+                     " Its values do not fit one." if not fits else
+                     " The design's strata and PSUs do not hold codes." if not design_fits else
+                     " Its name is no published design variable.")
+            put("design", "high" if confirmed else "medium", design + doubt)
         elif name in acquisition and _acquisition_values_fit(name, n_unique, n_present) and assay:
             role, reason = acquisition_proposal(purpose)
             put(role, "medium", reason, kind="acquisition")
         elif name in acquisition and _acquisition_values_fit(name, n_unique, n_present):
             put("covariate", "low", "Named like an acquisition column, but nothing says this is an "
                                     "assay: kept in the model.")
-        elif _norm(name) == "seqn":
-            put("identifier", "high", "`SEQN` is the NHANES respondent number; it names people, not traits.")
-        elif kind == "subject":
-            put("identifier", "high", "Named like a participant's identifier; it names people, not traits.")
+        elif (kind in ("subject", "record", "cluster") or _norm(name) == "seqn") \
+                and unit_check is not None and unit_check.verdict == "never":
+            # BLUEPRINT §14: a 0/1, yes/no, Self/Proxy or kin-label column is never an identifier.
+            put(lens_default, "low", f"Named like an identifier, but {unit_check.why}: kept as a "
+                                     f"predictor until you say otherwise.")
+        elif _norm(name) == "seqn" or kind == "subject":
+            what = ("`SEQN` is the NHANES respondent number" if _norm(name) == "seqn"
+                    else "Named like a participant's identifier")
+            if unit_check is None:
+                put("identifier", "medium", f"{what}; its values are not read yet.")
+            elif unit_check.verdict == "units":
+                put("identifier", "high", f"{what}; {unit_check.why}.")
+            else:
+                put("identifier", "medium", f"{what}, but {unit_check.why}: say whether it names "
+                                            f"units.")
         elif kind == "record" and n_unique > 2 and (n_unique > CATEGORY_LEVELS or unique):
-            put("identifier", "high" if unique else "medium",
-                "Named like an identifier; it names rows or samples, not traits.")
+            confirmed = unit_check is not None and unit_check.verdict == "units"
+            put("identifier", "high" if confirmed else "medium",
+                "Named like an identifier; it names rows or samples, not traits."
+                if confirmed else "Named like an identifier; its values are not read yet.")
         elif kind == "record" and n_unique > 2 and n_present and n_unique < n_present:
             # An identifier names units; a ``trt_id`` or ``tx_id`` holding three values on 312
             # rows is a code for groups, such as a trial's arms or a study's sites (audit WP13
@@ -415,29 +524,37 @@ def propose_roles(
             put(lens_default, "low",
                 f"Named like an identifier, but `{n_unique:,}` values on `{n_present:,}` rows: a "
                 f"group code, not a unit.")
+        elif kind == "record" and unit_check is not None:
+            put(lens_default, "low", f"Named like an identifier, but {unit_check.why}: kept as a "
+                                     f"predictor until you say otherwise.")
         elif kind == "cluster" and unique:
-            put("identifier", "high", "Names a group, such as a household, and is unique on every row.")
+            put("identifier", "high" if unit_check is not None and unit_check.verdict == "units"
+                else "medium", "Names a group, such as a household, and is unique on every row.")
         elif kind == "cluster":
-            put("cluster", "medium", "Groups participants, such as a site or household; not a trait.")
+            put("cluster", "medium", "Named like a group of participants, such as a site or "
+                                     "household; not a trait.")
         elif kind == "visit" and unique:
             put("identifier", "medium", "Names each record, such as a visit or encounter.")
+        elif kind == "visit" and timed and time_share is not None and time_share >= TIME_VARIES:
+            put("time", "high", f"A visit or encounter index that changes within each {unit_word}.")
         elif kind == "visit":
-            put("time", "medium", "A visit or encounter index: when a row was measured.")
+            put("time", "medium", "Named like a visit or encounter index: when a row was "
+                                  "measured.")
         elif n_unique <= 1:
             put("excluded", "high", "Every row holds the same value, so it cannot explain anything.")
         elif not numeric and dtype in ("categorical", "text") and n_present and n_unique >= 0.95 * n_present:
             put("identifier", "medium", f"`{n_unique:,}` different values in `{n_present:,}` rows: it names rows.")
         elif energy_column is not None and name == energy_column:
             basis = energy_info.get("basis")
-            why = energy_info.get("why")
             r = energy_info.get("r")
             if basis == "values":
                 put("energy", "high" if dietary else "medium",
                     f"Total energy intake: its values follow the macronutrients' energy (r = {r:.2f}).")
             elif basis == "codebook":
-                put("energy", "high" if dietary else "medium",
-                    "Total energy intake, as its codebook names it: what energy adjustment works "
-                    "against.")
+                # BLUEPRINT §14: a codebook name is a name; no macronutrients here corroborate it.
+                put("energy", "medium",
+                    "Total energy intake as its codebook names it; no macronutrients here to check "
+                    "it against.")
             elif r is not None:
                 put("energy", "medium",
                     f"Named as total energy intake; it follows the macronutrients' energy only "
@@ -461,16 +578,35 @@ def propose_roles(
                 f"Named like total energy, but it does not track the macronutrients' energy "
                 f"(r = {r:.2f}).")
         elif dtype == "datetime":
-            put("time", "high", "Holds dates or times: when a row was recorded.")
+            if timed and time_share is not None and time_share >= TIME_VARIES:
+                put("time", "high", f"Holds dates that change within each {unit_word}: when each "
+                                    f"row was recorded.")
+            elif timed and time_share is not None and time_share <= TIME_CONSTANT:
+                # BLUEPRINT §14: a date constant within units (a birth or randomization date) is
+                # never the evidence of when a unit's rows were measured.
+                put("excluded", "low", f"A date that is the same on every row of a {unit_word}: "
+                                       f"when it began, not when each row was measured.")
+            elif timed and time_share is not None:
+                put("time", "medium", f"Holds dates that change within only "
+                                      f"`{time_share:.0%}` of {unit_word}s: say what they order.")
+            elif timed:
+                put("time", "medium", "Holds dates; no unit repeats here, so nothing shows they "
+                                      "order a unit's rows.")
+            else:
+                put("time", "medium", "Holds dates or times: when a row was recorded.")
         elif (numeric and dietary and _is_nutrient(name) and name in intake
               and not intake[name].corroborated):
-            # The name says a macronutrient; the values say otherwise, or nothing but the name
-            # says so beside an energy column (audit WP13 repair: ``lipid_disorder`` 0/1,
-            # ``dxa_fat_g`` at a median of 25,000 g, ``BreathAlcohol``).
-            from turbotab.core.methods.energy import nutrient_role
+            # The name says a nutrient; the values say otherwise, or nothing but the name says so
+            # beside an energy column (audit WP13 repair: ``lipid_disorder`` 0/1, ``dxa_fat_g`` at
+            # a median of 25,000 g, ``BreathAlcohol``; BLUEPRINT §14: children's DXA arm fat).
+            from turbotab.core.recognizers import read_nutrient
 
-            put("covariate", "low", f"Named like {nutrient_role(name)}, but {intake[name].why}: "
-                                    f"not read as a nutrient until you say it is one.")
+            try:
+                what = read_nutrient(name).nutrient
+            except Exception:  # noqa: BLE001 - two nutrients named: said plainly
+                what = "a nutrient"
+            put("covariate", "low", f"Named like {what}, but {intake[name].why}: not read as a "
+                                    f"nutrient until you say it is one.")
         elif numeric and dietary and _is_nutrient(name):
             carries = energy_bearing(name)
             check = intake.get(name)
@@ -479,9 +615,8 @@ def propose_roles(
             if unit is not None:
                 put("exposure", "medium",
                     f"A nutrient intake {unit}: an exposure, not a day's amount.")
-            elif _codebook_nutrient(name):
-                put("exposure", "high", f"{head} its codebook names: an exposure under the "
-                                        f"dietary lens.")
+            elif check is not None and check.by_values and "add up to" in check.why:
+                put("exposure", "high", f"{head}: an exposure; {check.why}.")
             elif check is not None and check.by_values:
                 put("exposure", "high",
                     f"{head}: an exposure; it rises with total energy (r = {check.r:.2f}).")
@@ -499,10 +634,22 @@ def propose_roles(
             put("exposure", "medium", "A study arm or group: what the study compares, an exposure.")
         elif tokens & _FASTING_TOKENS:
             put("covariate", "medium", "Fasting status: a known confounder, adjusted for rather than studied.")
+        elif reads_as_time(name) and timed and time_share is not None and time_share >= TIME_VARIES:
+            put("time", "high", f"Named like a time, and it changes within each {unit_word}.")
+        elif reads_as_time(name) and timed and (time_share is None or time_share <= TIME_CONSTANT):
+            # BLUEPRINT §14: "a time column varies within units". A crossover's ``period`` or a
+            # menstrual ``cycle_day`` on one row per unit orders nothing; it stays a predictor.
+            why = ("no unit repeats here, so it orders nothing" if time_share is None else
+                   f"it is the same on every row of a {unit_word}")
+            put(lens_default, "low", f"Named like a time, but {why}: kept as a predictor until "
+                                     f"you say otherwise.")
         elif reads_as_time(name):
             put("time", "medium", "Named like a time: a date, year, cycle, visit or recall.")
         elif tokens & _COVARIATE_TOKENS:
-            put("covariate", "high" if tokens & {"age", "sex", "gender", "bmi"} else "medium",
+            # BLUEPRINT §14: high only where the values fit the characteristic the name says (a sex
+            # with at most three levels, an age from 0 to 120, a BMI from 10 to 80).
+            put("covariate", "high" if (tokens & {"age", "sex", "gender", "bmi"}
+                                        and fact.get("characteristic")) else "medium",
                 "A person's characteristic, usually adjusted for rather than studied.")
         elif dtype == "text":
             put("excluded", "high", f"Free text with `{n_unique:,}` different values; models cannot use it as is.")
@@ -517,6 +664,8 @@ def propose_roles(
             put("covariate", "low", "A category that describes the row: read as a covariate for now.")
         else:
             put("exposure", "low", "A measured column: read as an exposure until you say otherwise.")
+    for p in out:
+        p["attention"] = p["confidence"] != "high"
     return out
 
 
@@ -613,39 +762,94 @@ def _acquisition_columns(columns: Sequence[Mapping[str, Any]]) -> list[str]:
 
 def intake_checks(store: Any, columns: Sequence[Mapping[str, Any]], *, energy: str | None,
                   target: str | None) -> dict[str, Any]:
-    """The values' verdict on every numeric column the name reads as an energy-bearing nutrient
-    (:func:`turbotab.core.recognizers.intake_check`), against the total-energy column when there
-    is one."""
-    from turbotab.core.recognizers import IntakeCheck, _rises_with, intake_check
+    """The values' verdict on every numeric column the name reads as a nutrient, codebook names
+    included, against the total-energy column when there is one, in its settled unit, with
+    duplicates resolved (:func:`turbotab.core.recognizers.corroborated_nutrients`; BLUEPRINT §14)."""
+    from turbotab.core.recognizers import corroborated_nutrients
 
     numeric = [str(c["name"]) for c in columns
                if str(c.get("dtype") or "") in ("numeric", "integer")
                and str(c["name"]) not in (energy, target)]
-    names = [c for c in numeric if energy_bearing(c)]
-    # Nutrients that carry no energy of their own (sodium, a vitamin) are corroborated the same way
-    # when there is an energy column to read them against: an intake rises with how much is eaten.
-    others = [c for c in numeric if c not in names and _is_nutrient(c) and _ratio_unit(c) is None
-              and not _codebook_nutrient(c)] if energy else []
-    if not names and not others:
+    names = [c for c in numeric if _is_nutrient(c)]
+    if not names:
         return {}
-    frame = store.materialize(list(dict.fromkeys([*names, *others, *([energy] if energy else [])])))
-    e = frame[energy] if energy and energy in frame.columns else None
-    out = {}
-    for name in names:
-        check = intake_check(name, frame[name], energy=e)
-        if check is not None:
-            out[name] = check
-    for name in others:
-        import pandas as pd
+    frame = store.materialize(list(dict.fromkeys([*names, *([energy] if energy else [])])))
+    unit = None
+    if energy and energy in frame.columns:
+        from turbotab.core.stages.proposals import energy_unit_reading
 
-        x = pd.to_numeric(frame[name], errors="coerce")
-        r, rises, _ = _rises_with(x, e)
-        shown = f"r = {r:.2f}" if math.isfinite(r) else "it cannot be compared"
-        out[name] = (IntakeCheck(True, f"it rises with total energy ({shown})", r, by_values=True)
-                     if rises else
-                     IntakeCheck(True, f"only its name says it is an intake: it does not rise with "
-                                       f"total energy ({shown})", r if math.isfinite(r) else None))
-    return out
+        reading = energy_unit_reading(frame, energy)
+        unit = reading["unit"] if reading.get("confirmed") else None
+    return corroborated_nutrients(frame, energy=energy if energy in frame.columns else None,
+                                  energy_unit=unit, skip=[c for c in (target,) if c])
+
+
+def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str | None,
+                fractional: Iterable[str] = ()) -> tuple[dict[str, dict[str, Any]], str | None]:
+    """What the values say about the columns named like an identifier, a flag, a time or a survey
+    design (BLUEPRINT §14 rule 1), and the identifier whose values name repeating units (the one
+    with the fewest, as the seal reads it), or None.
+
+    ``id``: :func:`turbotab.core.recognizers.identifier_values`; ``flag``:
+    :func:`~turbotab.core.recognizers.flag_values` against the column it would mark; ``time``: the
+    share of the repeating units within which a date or a time-named column changes
+    (:func:`~turbotab.core.recognizers.within_unit_variation`; None when no unit repeats);
+    ``design_values``: :func:`design_values_fit`."""
+    from turbotab import nutrition
+    from turbotab.core.recognizers import (
+        flag_values, id_kind, identifier_values, reads_as_time, within_unit_variation,
+    )
+
+    fractional = set(fractional)
+    by_lower = {str(c["name"]).lower(): str(c["name"]) for c in columns}
+    exact = {c.upper() for c in getattr(nutrition, "EXACT_DESIGN_NAMES", ())}
+    in_table = _design_in_table(columns, exact)
+    ids, flags, times, designs, traits = [], {}, [], [], []
+    for c in columns:
+        name = str(c["name"])
+        if name == target or name.startswith("__"):
+            continue
+        kind = id_kind(name)
+        if name not in fractional and (kind is not None or _norm(name) == "seqn"):
+            ids.append(name)
+        is_flag, base = _flag_base(name, by_lower)
+        if is_flag:
+            flags[name] = base
+        if str(c.get("dtype") or "") == "datetime" or reads_as_time(name) or kind == "visit":
+            times.append(name)
+        if _design_role(name, c, exact, in_table) is not None:
+            designs.append(name)
+        if set(_tokens(name)) & {"age", "sex", "gender", "bmi"}:
+            traits.append(name)
+    wanted = list(dict.fromkeys([*ids, *flags, *(b for b in flags.values() if b), *times,
+                                 *designs, *traits]))
+    facts: dict[str, dict[str, Any]] = {}
+    if not wanted:
+        return facts, None
+    frame = store.materialize(wanted)
+    for name in ids:
+        facts.setdefault(name, {})["id"] = identifier_values(frame[name])
+    for name, base in flags.items():
+        facts.setdefault(name, {})["flag"] = flag_values(
+            frame[name], frame[base] if base else None, base)
+    for name in designs:
+        facts.setdefault(name, {})["design_values"] = design_values_fit(name, frame[name])
+    for name in traits:
+        facts.setdefault(name, {})["characteristic"] = characteristic_fits(name, frame[name])
+    repeating = None
+    best = None
+    for name in ids:
+        check = facts[name]["id"]
+        if check.verdict == "units" and check.n_units < check.n_rows \
+                and id_kind(name) in ("subject", "record", None):
+            if best is None or check.n_units < best:
+                repeating, best = name, check.n_units
+    for name in times:
+        if name == repeating:
+            continue
+        facts.setdefault(name, {})["time"] = (within_unit_variation(frame[name], frame[repeating])
+                                              if repeating else None)
+    return facts, repeating
 
 
 def _fractional_identifiers(store: Any, columns: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -666,10 +870,11 @@ def _fractional_identifiers(store: Any, columns: Sequence[Mapping[str, Any]]) ->
 
 
 def _repeats(store: Any, proposals: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    """The identifier that repeats (several rows per unit), with its counts, or None."""
+    """The identifier that repeats (several rows per unit), with its counts, or None: only one the
+    values corroborate (a unit structure, BLUEPRINT §14), never a name's reading alone."""
     best: dict[str, Any] | None = None
     for p in proposals:
-        if p["proposed"] != "identifier":
+        if p["proposed"] != "identifier" or p.get("confidence") != "high":
             continue
         series = store.materialize([p["column"]])[p["column"]].dropna()
         if series.empty:
@@ -726,6 +931,8 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
         fractional = _fractional_identifiers(store, columns)
         intake = (intake_checks(store, columns, energy=energy, target=ctx.state.target)
                   if dietary else {})
+        facts, repeating = value_facts(store, columns, target=ctx.state.target,
+                                       fractional=fractional)
     proposals = propose_roles(
         columns,
         lens=ctx.state.lens,
@@ -737,6 +944,8 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
         fractional=fractional,
         intake=intake,
         energy_info=energy_info,
+        facts=facts,
+        repeating=repeating,
     )
     ctx.progress(0.6, "Checking whether identifiers repeat")
     with open_store(ctx) as store:
@@ -755,9 +964,15 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
             if p["column"] == repeats["column"]:
                 p["reason"] = (f"Names each unit; `{repeats['n_units']:,}` units, up to "
                                f"`{repeats['max_rows_per_unit']}` rows each.")
-                p["confidence"] = "high"
+    from turbotab.core.leash import attention_columns
+
+    for p in proposals:
+        p["attention"] = p["confidence"] != "high"
+    # BLUEPRINT §14 rule 2: every proposal below high needs its own confirmation (``confirm_role``)
+    # before a number-changing default reads it; a bulk ``set_roles`` records it unconfirmed.
     return {"columns": proposals, "repeats": repeats,
-            "categorical": categorical_proposals(columns, proposals)}
+            "categorical": categorical_proposals(columns, proposals),
+            "needs_confirmation": attention_columns(proposals)}
 
 
 # ── cohort ────────────────────────────────────────────────────────────────────

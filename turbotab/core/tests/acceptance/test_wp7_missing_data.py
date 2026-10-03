@@ -282,7 +282,7 @@ def drive_to_missing(client, path: Path, purpose: str):
     d.answer("grain", {"kind": "set_grain", "grain": "one_row_per_unit",
                        "id_column": "participant_id"})
     d.reach("roles")
-    d.decide({"kind": "set_roles", "roles": ROLES})
+    d.decide_roles(ROLES)
     d.reach("exclusions")
     d.decide({"kind": "set_exclusions", "rules": []})
     d.reach("missing")

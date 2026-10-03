@@ -128,7 +128,7 @@ export function sentenceFor(
       if (prev) {
         const changed = Object.keys(roles).filter((c) => prev[c] !== roles[c]);
         if (changed.length === 0)
-          return finish(`The roles of all ${count(n)} columns were confirmed unchanged`);
+          return finish(`The roles of all ${count(n)} columns were recorded unchanged`);
         if (changed.length <= 3) {
           const moves = changed.map(
             (c) =>
@@ -342,7 +342,7 @@ export function validateM1(ds: MockDataset, d: Decision, state: ProjectState): R
           [
             {
               label: "Leave the outcome out of the roles",
-              decision: { kind: "set_roles", roles: rest },
+              decision: { kind: "set_roles", roles: rest, unconfirmed: [] },
             },
           ],
         );

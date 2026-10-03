@@ -63,7 +63,13 @@ export function RolesAsk({
   );
 
   const roleLabel = (r: Role) => taught(p.entry, r)?.label ?? GROUP[r][0];
-  const decisionFor = (roles: Record<string, Role>): Decision => ({ kind: "set_roles", roles });
+  // ``unconfirmed`` is the server's to fill (BLUEPRINT §14): the proposals below high this answer
+  // records as proposed, read from the roles it showed.
+  const decisionFor = (roles: Record<string, Role>): Decision => ({
+    kind: "set_roles",
+    roles,
+    unconfirmed: [],
+  });
   const focusFor = (roles: Record<string, Role>, label: string): StageFocus => ({
     kind: "option",
     decision: decisionFor(roles),

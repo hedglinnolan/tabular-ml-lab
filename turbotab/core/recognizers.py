@@ -20,6 +20,15 @@ with one set of rules that every caller in ``turbotab/core`` shares:
 * **Codebooks over guesses.** The NHANES total-nutrient variables are read from the codebook's own
   suffixes, and food-composition columns from their INFOODS tagnames, so ``DR1TSFAT`` is saturated
   fat and ``PROCNT`` is protein without any guessing.
+* **Recognition's leash** (BLUEPRINT §14, 2026-10-03): "A recognizer may be wrong. A wrong
+  recognition may never silently change a number." A name, a codebook's included, says what a
+  column may be; only its values make the reading confident: a nutrient plausible as an intake
+  that rises with total energy at r ≥ 0.3 or adds up with the others to it, read whole and one per
+  nutrient and occasion (:func:`corroborated_nutrients`); an identifier with a unit structure
+  (:func:`identifier_values`); a flag tied to its base's blanks (:func:`flag_values`); a time that
+  changes within units (:func:`within_unit_variation`). A day count in a total-energy name is a
+  question (:func:`day_count`); a pooled or zero-holding NHANES weight is read and ranked by the
+  least-common-denominator rule (:func:`rank_weights`).
 
 Sources quoted here:
 
@@ -63,10 +72,39 @@ _KJ = re.compile(r"(?<![A-Za-z])kJ(?![a-z])")
 def tokens(name: Any) -> list[str]:
     """The words of a column name, lowercased: split at separators and at a lower-to-upper case
     change (``TotalKcal``, ``ParticipantID``), never inside a run of capitals or after a digit
-    (``DR1TKCAL``, ``WTSAF2YR`` and ``USUBJID`` stay one word)."""
+    (``DR1TKCAL``, ``WTSAF2YR`` and ``USUBJID`` stay one word). A percent sign is the word
+    ``pct`` (BLUEPRINT §14: a BIA export's ``Fat%`` is a percentage, and dropping the sign left
+    the INFOODS tagname ``FAT``)."""
     # The kilojoule's own spelling, ``kJ``, is one word (``Energy_kJ``), not a case change.
-    spaced = _CASE.sub("_", _KJ.sub("KJ", str(name)))
+    spaced = _CASE.sub("_", _KJ.sub("KJ", str(name).replace("%", "_pct_")))
     return [t for t in re.split(r"[^a-z0-9]+", spaced.lower()) if t]
+
+
+# A count of days a name says its value spans (``kcal_2d``, ``energy_kcal_7d``, ``kcal_4day_total``,
+# ``energy_4_days``). ``d2`` and ``day2`` name an occasion (the second day) and are no count.
+_DAY_COUNT = re.compile(r"^(\d+)(?:d|dy|day|days)$")
+
+
+def day_count(name: Any) -> int | None:
+    """How many days a name says its value spans, when more than one; None otherwise.
+
+    BLUEPRINT §14 rule 3: a day count in a total-energy name touches every number read in it (a
+    screen's bounds, an implausible-intake count, a Goldberg ratio), and ``2d`` reads as two days'
+    total as readily as a mean over two days, so it is asked, never settled as one day's intake
+    (the gate's ``kcal_2d``: a 2-day total read as a day's lost 111 of 500 rows to a 5,000 kcal
+    screen no true daily value exceeded)."""
+    words = tokens(name)
+    for i, w in enumerate(words):
+        m = _DAY_COUNT.match(w)
+        if m:
+            n = int(m.group(1))
+        elif w.isdigit() and i + 1 < len(words) and words[i + 1] in ("d", "dy", "day", "days"):
+            n = int(w)
+        else:
+            continue
+        if n >= 2:
+            return n
+    return None
 
 
 def _joined(name: Any) -> str:
@@ -333,6 +371,47 @@ _LAB_QUALIFIERS = {"protein": {"total", "tot"}, "cholesterol": {"total", "tot"}}
 _DIET_PATTERN_TAILS = {"diet", "diets", "pattern", "group", "arm"}
 _SUPPLEMENT = {"supplement", "supplements", "supplementation", "supp", "suppl"}
 
+# The words an intake's name is made of, read whole (BLUEPRINT §14): what the amount is (a total, a
+# day's, a mean of recalls, from an instrument), how a part is qualified (added, free, soluble,
+# animal, n-3), how a codebook spells it ("Carbohydrate, by difference", "Alcohol, ethyl", "Total
+# lipid (fat)"; NDSR's "Total Saturated Fatty Acids (SFA) (g)"; the IDATA ASA24 Totals dictionary's
+# ``tns_prot_asa24`` "Protein (g)"), an occasion and a unit. A name with any other word beside its
+# nutrient word (``fat_liking``, ``carb_craving``, Hologic APEX's ``LARM_FAT``) is read from part
+# of the name only: it can stand as a proposal, never as one the values call high, whatever they
+# show. An allow-list, so a word nobody listed makes the reading doubtful, not confident.
+_INTAKE_NAME_WORDS = {
+    "total", "tot", "dietary", "diet", "intake", "intakes", "daily", "day", "days", "d", "per",
+    "mean", "avg", "average", "usual", "habitual", "estimated", "est", "reported", "consumed",
+    "consumption", "ffq", "recall", "recalls", "24h", "24hr", "baseline", "bl", "followup", "fu",
+    "all", "sum", "value", "raw", "calc", "calculated", "derived", "added", "free", "natural",
+    "naturally", "occurring", "intrinsic", "extrinsic", "available", "avail", "net", "soluble",
+    "insoluble", "englyst", "aoac", "prosky", "nsp", "crude", "acid", "acids", "fatty", "ethyl",
+    "by", "difference", "of", "from", "the", "as", "animal", "plant", "vegetable", "dairy", "sat",
+    "mono", "mon", "poly", "trans", "n3", "n6", "omega", "omega3", "omega6", "long", "chain", "lc",
+    "asa24", "tns", "dhq", "ndsr", "webq", "nut",
+    *_SUPPLEMENT,
+}
+
+
+def _whole_intake_name(words: Sequence[str]) -> list[str]:
+    """The words of an intake name that no intake's name carries (empty: the name reads whole)."""
+    known = (set(_MACRO_WORDS) | set(_PART_WORDS) | _OTHER_NUTRIENTS | _INTAKE_NAME_WORDS
+             | set(_UNIT_NUMERATORS) | _PER_DAY | _PER_PERIOD
+             | {"tsp", "tbsp", "oz", "pct", "percent", "pcnt", "energy", "en", "share"})
+    for parts in _QUALIFIED_PARTS.values():
+        known |= set(parts)
+    # A denominator (``kg`` in ``protein_g_kg``, ``l`` in ``g_l``) is a unit only after an amount's
+    # unit: a bare ``fat_kg`` is fat in kilograms, which no intake is recorded in.
+    denominators = _PER_BODY | _PER_ENERGY | _PER_VOLUME
+    out, amount = [], False
+    for w in words:
+        if w in _UNIT_NUMERATORS:
+            amount = True
+        if w in known or (amount and w in denominators) or w.isdigit() or _OCCASION.match(w):
+            continue
+        out.append(w)
+    return out
+
 
 @dataclass(frozen=True)
 class NutrientReading:
@@ -343,6 +422,13 @@ class NutrientReading:
     macro: str | None  # the energy-bearing macronutrient it is (or is a part of), else None
     part: str | None  # sfa | mufa | pufa | trans | sugar | starch | animal | plant | dairy
     source: Literal["nhanes", "infoods", "fhs", "name"]
+    # The name's words no intake's name carries (``liking`` in ``fat_liking``): empty when the name
+    # reads whole. A reading of part of a name is never confirmed by values (BLUEPRINT §14).
+    foreign: tuple[str, ...] = ()
+
+    @property
+    def whole(self) -> bool:
+        return not self.foreign
 
 
 # The unit each codebook states (DR1TOT_L "(gm)", "(mg)", "(mcg)"; NUTR_DEF's units column).
@@ -459,14 +545,15 @@ def read_nutrient(name: Any) -> NutrientReading | None:
             for w in words:
                 part = _QUALIFIED_PARTS.get(macro, {}).get(w) or part
         return NutrientReading(raw, macro if part is None else f"{macro} ({part})", macro, part,
-                               "name")
+                               "name", tuple(_whole_intake_name(words)))
     if present & _FOODS:
         return None
     other = present & _OTHER_NUTRIENTS
     if other and not present & _OTHER_DENY:
         if present & _LAB_QUALIFIERS["cholesterol"] and "cholesterol" in other and not unit:
             return None
-        return NutrientReading(raw, sorted(other)[0], None, None, "name")
+        return NutrientReading(raw, sorted(other)[0], None, None, "name",
+                               tuple(_whole_intake_name(words)))
     return None
 
 
@@ -501,29 +588,40 @@ def is_nutrient(name: Any) -> bool:
 # total fat of 25,000 g would be 225,000 kcal).
 ATWATER_KCAL_PER_G = {"protein": 4.0, "carbohydrate": 4.0, "fat": 9.0, "alcohol": 7.0, "fiber": 2.0}
 MAX_DAY_KCAL = 5_000.0
-# With no unit and no codebook, the name is one signal; under an energy column the second is that
-# the column rises with total energy, as an energy source must on average (audit IN-01: "require a
-# nutrient to correlate positively with energy before it becomes a default adjustment target").
-# One-sided Fisher z test of r > 0 at 1%: an unrelated column passes 1 time in 100.
-CORRELATION_Z = 2.326
+# BLUEPRINT §14 rule 1 (Recognition's leash): "A nutrient's values are plausible as intake and rise
+# with total energy by a meaningful effect (r ≥ 0.3, not merely p < α)." The corroboration it
+# replaces was a one-sided test of r > 0 at 1%, which at a cohort's size passes nearly any positive
+# r: the gate's InBody body protein (r = 0.55), children's Hologic arm fat (0.45), a ``fat_liking``
+# score (0.44), ``carb_craving`` (0.33) and Hologic ``WBTOT_PFAT`` read as PUFA (0.24, z = 5.1 at
+# n = 450). An effect size does not grow with n. 0.3 is the conventional "medium" correlation
+# (Cohen 1988, Statistical Power Analysis for the Behavioral Sciences: r = .10, .30, .50 small,
+# medium, large), the standard the orchestrator set.
+CORROBORATE_R = 0.3
+# A part's energy never exceeds the whole's. A column whose energy as its macronutrient is more than
+# the row's total energy on over this share of rows is no amount of that macronutrient (TurboTab's
+# own tolerance, for rows misreported or rounded; the gate's children's Hologic arm fat in grams,
+# read as fat, carried more energy than the child's whole day on most rows).
+OVER_TOTAL_SHARE = 0.05
 
 
 @dataclass(frozen=True)
 class IntakeCheck:
-    """Whether a column the name reads as an energy-bearing nutrient reads as a day's intake by its
-    values too, and why (one sentence's clause, naming the signal that decided).
+    """Whether a column the name reads as a nutrient reads as an intake by its values too, and
+    why (one sentence's clause, naming the signal that decided).
 
     ``corroborated`` is False when the values contradict the name (the reading is withdrawn).
-    ``by_values`` is True only when the values themselves agree: a codebook variable whose
-    documentation states what it is, or a column that rises with total energy. A name (with or
-    without a unit) that nothing in the values confirms stands as the name's reading only, and the
-    proposal says so (audit WP13 gate repair: such names were proposed "high" with a reason that
-    hid the doubt)."""
+    ``by_values`` is True only when the values themselves agree with a name read whole: amounts
+    plausible as a day's intake that rise with total energy at r ≥ 0.3 (:data:`CORROBORATE_R`),
+    codebook names included (BLUEPRINT §14: an INFOODS ``ALC`` holding lymphocyte counts at r =
+    0.00 is no alcohol). Anything less stands as a proposal the user confirms, and says so.
+    ``duplicate_of``: another column reads as the same nutrient on the same occasion, and the
+    values chose it (or chose neither)."""
 
     corroborated: bool
     why: str
     r: float | None = None
     by_values: bool = False
+    duplicate_of: str | None = None
 
 
 def _fmt(v: float) -> str:
@@ -537,13 +635,21 @@ def _fmt(v: float) -> str:
 # own floor, set a fifth of the way below the lowest diet in practice. Without an energy column the
 # floor is read against the loosest screen's lowest day (500 kcal).
 MIN_ENERGY_SHARE = 0.01
+# Protein's floor is higher (BLUEPRINT §14): the lowest acceptable range of any age group is 5–20%
+# of energy for children 1–3 years (IOM DRI Macronutrients; NASEM 2024, "Rethinking the AMDR",
+# Table 3-1: "Children 1–3 years: 5–20"), and no population's median protein intake lies below
+# it. InBody's body ``Protein`` read as grams carries about 1.6% of the day's energy in kg and 3.6%
+# in lb, and is no intake. A very-low-protein diet trial (0.3 g/kg a day, about 4%) is read below
+# high and the user says it is one: the safe direction (a false "high" is the failure, not a
+# false "low").
+MIN_SHARE_BY_MACRO = {"protein": 0.05, "carbohydrate": MIN_ENERGY_SHARE, "fat": MIN_ENERGY_SHARE}
 MIN_DAY_KCAL = 500.0
 _FLOORED = ("protein", "carbohydrate", "fat")
 
 
 def _rises_with(x: Any, energy: Any) -> tuple[float, bool, int]:
-    """``(r, passes, n)``: Pearson's r with total energy and whether the one-sided Fisher z test of
-    r > 0 passes at 1%."""
+    """``(r, corroborates, n)``: Pearson's r with total energy and whether it reaches
+    :data:`CORROBORATE_R` (an effect size, BLUEPRINT §14)."""
     import numpy as np
     import pandas as pd
 
@@ -553,23 +659,37 @@ def _rises_with(x: Any, energy: Any) -> tuple[float, bool, int]:
     r = float(both["x"].corr(both["e"])) if n >= 4 else float("nan")
     if not math.isfinite(r):
         return r, False, n
-    z = math.atanh(max(min(r, 0.999999), -0.999999)) * math.sqrt(max(n - 3, 1))
-    return r, z >= CORRELATION_Z, n
+    return r, r >= CORROBORATE_R, n
 
 
-def intake_check(name: Any, values: Any, *, energy: Any = None) -> IntakeCheck | None:
+def _in_kcal(energy: Any, unit: str | None) -> Any:
+    """Total energy in kcal when its unit is settled (``kcal`` or ``kj``), else None."""
+    import pandas as pd
+
+    if energy is None or unit not in ("kcal", "kj"):
+        return None
+    e = pd.to_numeric(pd.Series(energy), errors="coerce")
+    return e / 4.184 if unit == "kj" else e
+
+
+def intake_check(name: Any, values: Any, *, energy: Any = None,
+                 energy_unit: str | None = None) -> IntakeCheck | None:
     """The values' verdict on a column :func:`read_nutrient` reads as an energy-bearing
     macronutrient amount, or None when the name reads as none (nothing to corroborate), or as an
     amount per body weight, per energy, per week or per volume (no day's energy to check).
 
-    Contradicted, whatever the name: two values only (a yes/no, ``lipid_disorder``), negative
-    values (no amount eaten is), a median that would carry more than a day's energy as that
-    macronutrient (``dxa_fat_g`` at 25,000 g), or, for protein, fat and carbohydrate, less than 1%
-    of the day's energy (:data:`MIN_ENERGY_SHARE`); with the name alone and an energy column, a
-    column that does not rise with it. Corroborated by the values (``by_values``): a codebook
-    variable (``DR1TFAT``, ``PROCNT``, ``NUT_PROT``), or a column that rises with ``energy``
-    (one-sided test of r > 0 at 1%). A name with an intake unit and nothing else stands, said as
-    the name's reading only."""
+    Contradicted, whatever the name (codebook names included): two values only (a yes/no,
+    ``lipid_disorder``), negative values (no amount eaten is), a median that would carry more than
+    a day's energy as that macronutrient (``dxa_fat_g`` at 25,000 g), for protein, fat and
+    carbohydrate less than 1% of the day's energy (:data:`MIN_ENERGY_SHARE`), or, beside total
+    energy, more energy than the row's whole day on over 5% of rows (:data:`OVER_TOTAL_SHARE`);
+    and a name with no unit and no codebook whose values do not rise with total energy.
+
+    Corroborated by the values (``by_values``, BLUEPRINT §14 rule 1): a name read whole whose
+    values, plausible as above, rise with ``energy`` at r ≥ 0.3. ``energy_unit`` is total energy's
+    settled unit (``kcal``/``kj``); without it the floor and the ceiling are read leniently (the
+    floor as if energy were kJ, the ceiling as if it were kcal). A name, a unit or a codebook with
+    nothing in the values to confirm it stands as a proposal, said as such."""
     import numpy as np
     import pandas as pd
 
@@ -596,49 +716,351 @@ def intake_check(name: Any, values: Any, *, energy: Any = None) -> IntakeCheck |
         return IntakeCheck(False, "it holds negative values, which no amount eaten has")
     median = float(present.median())
     if unit == "kcal":
-        day_kcal = median
+        per_unit = 1.0
     elif unit in ("grams", "unmarked"):
-        day_kcal = median * ATWATER_KCAL_PER_G[reading.macro]
+        per_unit = ATWATER_KCAL_PER_G[reading.macro]
     else:
-        day_kcal = None
+        per_unit = None
+    day_kcal = median * per_unit if per_unit is not None else None
     if day_kcal is not None and day_kcal > MAX_DAY_KCAL:
         return IntakeCheck(False, f"its median, `{_fmt(median)}`, would carry `{_fmt(day_kcal)}` "
                                   f"kcal a day as {reading.macro}, more than any day's intake")
+    e_raw = pd.to_numeric(pd.Series(energy), errors="coerce") if energy is not None else None
+    e_kcal = _in_kcal(energy, energy_unit)
     if day_kcal is not None and reading.macro in _FLOORED and reading.part is None:
-        e = pd.to_numeric(pd.Series(energy), errors="coerce") if energy is not None else None
-        e_median = float(e.median()) if e is not None and e.notna().any() else float("nan")
-        # Against an energy column read in kcal or kJ, whichever is the more lenient floor; else
-        # against the loosest screen's lowest day.
-        day = e_median if math.isfinite(e_median) and e_median > 0 else MIN_DAY_KCAL
-        share = day_kcal * (4.184 if math.isfinite(e_median) else 1.0) / day
-        if share < MIN_ENERGY_SHARE:
-            return IntakeCheck(False, f"its median, `{_fmt(median)}`, would carry under 1% of a "
-                                      f"day's energy as {reading.macro}, so it is no day's amount "
-                                      f"in grams")
-    if reading.source in ("nhanes", "infoods", "fhs"):
-        return IntakeCheck(True, "a codebook variable whose documentation states the unit",
-                           by_values=True)
+        if e_kcal is not None and e_kcal.notna().any():
+            day, lenient = float(e_kcal.median()), 1.0
+        else:
+            e_median = float(e_raw.median()) if e_raw is not None and e_raw.notna().any() \
+                else float("nan")
+            # Against an energy column of unknown unit, whichever is the more lenient floor (read
+            # as kJ); else against the loosest screen's lowest day.
+            day = e_median if math.isfinite(e_median) and e_median > 0 else MIN_DAY_KCAL
+            lenient = 4.184 if math.isfinite(e_median) else 1.0
+        floor = MIN_SHARE_BY_MACRO[reading.macro]
+        if day > 0 and day_kcal * lenient / day < floor:
+            return IntakeCheck(False, f"its median, `{_fmt(median)}`, would carry under "
+                                      f"{floor:.1%} of a day's energy as {reading.macro}, so it is "
+                                      f"no day's amount in grams".replace(".0%", "%"))
+    whole = e_kcal if e_kcal is not None else e_raw  # leniently, as if energy were kcal
+    whole_median = float(whole.median()) if whole is not None and whole.notna().any() else None
+    # The ceiling reads a total that is itself a day's energy (a median within 500–5,000 kcal, or
+    # 500–20,920 when its unit is unknown); against a column that is none, it says nothing.
+    plausible = whole_median is not None and (
+        MIN_DAY_KCAL <= whole_median <= (MAX_DAY_KCAL if e_kcal is not None
+                                         else ENERGY_MEDIAN_RANGE[1]))
+    if per_unit is not None and whole is not None and plausible:
+        both = pd.DataFrame({"part": x * per_unit, "whole": whole.reindex(x.index)
+                             if hasattr(whole, "reindex") else whole}).dropna()
+        both = both[both["whole"] > 0]
+        if len(both) >= 10:
+            over = int((both["part"] > both["whole"]).sum())
+            if over > OVER_TOTAL_SHARE * len(both):
+                return IntakeCheck(False, f"as {reading.macro} it would carry more energy than the "
+                                          f"whole day's on `{over:,}` of `{len(both):,}` rows")
+    codebook = reading.source in ("nhanes", "infoods", "fhs")
+    stated = codebook or unit in ("grams", "kcal", "kj")
+    says = ("only its codebook name says" if codebook else
+            "only its name and unit say" if unit in ("grams", "kcal", "kj") else
+            "only its name says")
+    foreign = ", ".join(f"`{w}`" for w in reading.foreign)
     if energy is not None:
         r, rises, n = _rises_with(x, energy)
-        if rises:
-            said = ("its name and unit agree, and it rises with total energy"
+        shown = f"r = {r:.2f}" if math.isfinite(r) else "it cannot be compared"
+        if rises and reading.whole:
+            said = ("its codebook names it, and it rises with total energy" if codebook else
+                    "its name and unit agree, and it rises with total energy"
                     if unit in ("grams", "kcal", "kj") else "it rises with total energy")
             return IntakeCheck(True, f"{said} (r = {r:.2f})", r, by_values=True)
-        if unit in ("grams", "kcal", "kj"):
-            shown = f"r = {r:.2f}" if math.isfinite(r) else "it cannot be compared"
-            return IntakeCheck(True, f"only its name and unit say it is an intake: it does not "
-                                     f"rise with total energy ({shown})",
-                               r if math.isfinite(r) else None)
+        if rises:
+            return IntakeCheck(True, f"it rises with total energy (r = {r:.2f}), but its name "
+                                     f"carries {foreign}, which no intake's name does", r)
+        if stated:
+            return IntakeCheck(True, f"{says} it is an intake: it does not rise with total "
+                                     f"energy ({shown})", r if math.isfinite(r) else None)
         if not math.isfinite(r):
             return IntakeCheck(False, "only its name says it is an intake, and it cannot be "
                                       "compared with total energy")
         return IntakeCheck(False, f"only its name says it is an intake: it has no unit and does "
                                   f"not rise with total energy (r = {r:.2f})", r)
+    if codebook:
+        return IntakeCheck(True, "only its codebook name says it is an intake; there is no total "
+                                 "energy to check it against")
     if unit in ("grams", "kcal", "kj"):
         return IntakeCheck(True, "only its name and unit say it is an intake; there is no total "
                                  "energy to check it against")
     return IntakeCheck(True, "only its name says it is an intake; there is no energy column to "
                              "check it against")
+
+
+def nutrient_check(name: Any, values: Any, *, energy: Any = None) -> IntakeCheck | None:
+    """The values' verdict on a column the name reads as a nutrient that carries no energy of its
+    own (sodium, a vitamin, cholesterol), or None when the name reads as none. The same rule as
+    :func:`intake_check` without the energy arithmetic: plausible amounts (more than two values,
+    none negative) that rise with total energy at r ≥ 0.3, under a name read whole."""
+    import numpy as np
+    import pandas as pd
+
+    try:
+        reading = read_nutrient(name)
+    except AmbiguousNutrient:
+        return None
+    if reading is None or reading.macro is not None:
+        return None
+    x = pd.to_numeric(pd.Series(values), errors="coerce")
+    present = x[np.isfinite(x.to_numpy(dtype=float))]
+    if len(present) >= 3:
+        distinct = np.unique(present.to_numpy(dtype=float))
+        if len(distinct) <= 2:
+            shown = " and ".join(f"`{_fmt(v)}`" for v in distinct)
+            return IntakeCheck(False, f"it holds only {shown}, a yes/no, not an amount eaten")
+        if float(present.min()) < 0:
+            return IntakeCheck(False, "it holds negative values, which no amount eaten has")
+    codebook = reading.source in ("nhanes", "infoods", "fhs")
+    if energy is None:
+        return IntakeCheck(True, "only its name says it is an intake; there is no total energy "
+                                 "to check it against")
+    r, rises, _ = _rises_with(x, energy)
+    shown = f"r = {r:.2f}" if math.isfinite(r) else "it cannot be compared"
+    if rises and reading.whole:
+        said = "its codebook names it, and it" if codebook else "it"
+        return IntakeCheck(True, f"{said} rises with total energy ({shown})", r, by_values=True)
+    if rises:
+        foreign = ", ".join(f"`{w}`" for w in reading.foreign)
+        return IntakeCheck(True, f"it rises with total energy ({shown}), but its name carries "
+                                 f"{foreign}, which no intake's name does", r)
+    return IntakeCheck(True, f"only its name says it is an intake: it does not rise with total "
+                             f"energy ({shown})", r if math.isfinite(r) else None)
+
+
+# ── one column per nutrient and occasion ──────────────────────────────────────
+
+# A table carries one total of each nutrient per occasion. Two columns that read as the same one
+# (InBody's body ``Protein`` beside a recall's ``protein_g``; Hologic's ``LARM_FAT`` beside
+# ``fat_g``; ``fat_liking`` beside ``fat_g``) cannot both be the intake. For a macronutrient total
+# the energy identity chooses (the one with which 4P + 4C + 9F + 7A follows total energy best, at
+# r >= 0.7); otherwise the values do not say, and neither is proposed above medium (BLUEPRINT
+# §14). Occasions are told apart (``DR1TPROT``/``DR2TPROT``, ``protein_g_day1``/``protein_g_day2``),
+# and an amount is told from its energy (``protein_g``/``protein_kcal``).
+_NHANES_OCCASION = re.compile(r"^(DR1|DR2|DRX)")
+
+
+def nutrient_key(name: Any) -> tuple[Any, ...] | None:
+    """What a column reads as, for telling duplicates apart: ``(nutrient, part, amount or energy,
+    occasion)``; None for a name read as no nutrient."""
+    from turbotab.core.methods.energy import unit_of
+
+    try:
+        reading = read_nutrient(name)
+    except AmbiguousNutrient:
+        return None
+    if reading is None:
+        return None
+    unit = unit_of(name)
+    if unit in UNIT_KINDS:
+        return None
+    raw = str(name).upper()
+    if reading.source == "nhanes":
+        m = _NHANES_OCCASION.match(raw)
+        occasion: tuple[str, ...] = (m.group(1),) if m else ()
+    else:
+        occasion = tuple(w for w in tokens(name) if w.isdigit() or _OCCASION.match(w))
+    kind = "energy" if unit in ("kcal", "kj") else "amount"
+    return (reading.nutrient, reading.part, kind, occasion)
+
+
+def duplicate_groups(columns: Iterable[str]) -> list[list[str]]:
+    """Groups of two or more columns that read as the same nutrient on the same occasion."""
+    groups: dict[tuple[Any, ...], list[str]] = {}
+    for c in columns:
+        key = nutrient_key(c)
+        if key is not None:
+            groups.setdefault(key, []).append(str(c))
+    return [g for g in groups.values() if len(g) > 1]
+
+
+def _identity_fit(frame: Any, chosen: Mapping[str, str], e: Any) -> tuple[float, float]:
+    """``(deviation, r)`` of total energy ``e`` from the Atwater reconstruction over ``chosen``:
+    the median absolute log ratio of ``e`` to 4P + 4C + 9F + 7A after the nearer unit factor (1 for
+    kcal, 4.184 for kJ), and Pearson's r. NaN when it cannot be read."""
+    import numpy as np
+    import pandas as pd
+
+    nan = (float("nan"), float("nan"))
+    if len([m for m in chosen if m != "alcohol"]) < 2:
+        return nan
+    parts = [pd.to_numeric(frame[c], errors="coerce") * ATWATER_KCAL_PER_G[m]
+             for m, c in chosen.items()]
+    recon = sum(p.fillna(0.0) if m == "alcohol" else p for p, m in zip(parts, chosen))
+    both = pd.DataFrame({"e": pd.to_numeric(e, errors="coerce"), "r": recon}).replace(
+        [np.inf, -np.inf], np.nan).dropna()
+    both = both[(both["r"] > 0) & (both["e"] > 0)]
+    if len(both) < MIN_RECONSTRUCTED_ROWS or both["e"].nunique() < 3:
+        return nan
+    r = float(np.corrcoef(both["e"], both["r"])[0, 1])
+    logged = np.log(both["e"].to_numpy(dtype=float) / both["r"].to_numpy(dtype=float))
+    factor = min((0.0, math.log(4.184)), key=lambda f: abs(float(np.median(logged)) - f))
+    deviation = float(np.median(np.abs(logged - factor)))
+    return deviation, (r if math.isfinite(r) else float("nan"))
+
+
+def best_totals(frame: Any, candidates: Mapping[str, Sequence[str]], e: Any
+                ) -> tuple[dict[str, str], float]:
+    """Per macronutrient, the candidate total with which the Atwater reconstruction comes closest
+    to total energy ``e`` row by row (:func:`_identity_fit`), and the reconstruction's r with it.
+    One pass of coordinate descent from each one's first candidate."""
+    chosen = {m: str(cs[0]) for m, cs in candidates.items() if cs}
+    best, r_best = _identity_fit(frame, chosen, e)
+    for m, cs in candidates.items():
+        if len(cs) < 2:
+            continue
+        for c in cs:
+            trial = {**chosen, m: str(c)}
+            dev, r = _identity_fit(frame, trial, e)
+            if math.isfinite(dev) and (not math.isfinite(best) or dev < best):
+                chosen, best, r_best = trial, dev, r
+    return chosen, r_best
+
+
+# A duplicate is chosen by the identity only by a clear margin: its reconstruction must sit at
+# least 2% (0.02 in log ratio) closer to total energy, row by row, than the next one's.
+IDENTITY_MARGIN = 0.02
+
+
+def resolve_duplicates(frame: Any, checks: Mapping[str, IntakeCheck], *,
+                       energy: str | None) -> dict[str, IntakeCheck]:
+    """``checks`` with each duplicate the values did not choose withdrawn from ``by_values``.
+
+    For a group of macronutrient totals beside total energy, the energy identity chooses: the one
+    with which 4P + 4C + 9F + 7A comes closest to total energy row by row, by a clear margin
+    (:data:`IDENTITY_MARGIN`), with the reconstruction following energy at r >= 0.7. Every other
+    member, and every member of a group nothing chooses, stands as a proposal that names the
+    other columns. A member the values already contradicted keeps its own reason."""
+    out = dict(checks)
+    columns = set(getattr(frame, "columns", ()))
+    e = frame[energy] if energy is not None and energy in columns else None
+    candidates = macro_candidates(frame, exclude=[energy]) if e is not None else {}
+    for group in duplicate_groups([c for c in checks if c in columns]):
+        key = nutrient_key(group[0])
+        live = [c for c in group if out.get(c) is not None and out[c].corroborated]
+        winner = None
+        if e is not None and key is not None and key[1] is None and key[2] == "amount" \
+                and len(live) > 1:
+            macro = read_nutrient(group[0]).macro
+            if macro in _RECONSTRUCT:
+                fits = {}
+                for c in live:
+                    chosen, _ = best_totals(frame, {**candidates, macro: [c]}, e)
+                    fits[c] = _identity_fit(frame, chosen, e)
+                ranked = sorted((dev, c) for c, (dev, r) in fits.items()
+                                if math.isfinite(dev) and math.isfinite(r))
+                if ranked and fits[ranked[0][1]][1] >= ENERGY_CORROBORATE_R and (
+                        len(ranked) < 2 or ranked[1][0] - ranked[0][0] >= IDENTITY_MARGIN):
+                    winner = ranked[0][1]
+        if len(live) < 2:
+            continue
+        for c in live:
+            if c == winner:
+                continue
+            others = [g for g in group if g != c]
+            check = out[c]
+            if winner is not None:
+                why = (f"`{winner}` also reads as {key[0]}, and it is the one whose energy totals "
+                       f"with `{energy}`")
+            else:
+                why = (f"{_listing(others)} also {'reads' if len(others) == 1 else 'read'} as "
+                       f"{key[0]}, and the values do not say which is the intake")
+            out[c] = IntakeCheck(check.corroborated, why, check.r, by_values=False,
+                                 duplicate_of=winner or others[0])
+    return out
+
+
+def _listing(columns: Sequence[str]) -> str:
+    quoted = [f"`{c}`" for c in columns]
+    return quoted[0] if len(quoted) == 1 else f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+
+
+# The Atwater identity as corroboration. Total energy is, by construction, the energy its
+# macronutrients carry (NUTRITION_PACK §01: E = 4P + 4C + 9F + 7A); its ratio table passes a
+# reconstruction whose median ratio to declared energy lies within 0.90–1.10 (turbotab.nutrition
+# PASS_LOW, PASS_HIGH). A macronutrient total that is part of a passing reconstruction, following
+# energy at r >= 0.7 and carrying at least 5% of it on the median row (TurboTab's own floor, so a
+# negligible member such as an INFOODS ``ALC`` holding lymphocyte counts is never confirmed by
+# riding with the others), is an intake by the values as surely as one that rises with energy:
+# more surely, since its energy adds up with the others' to the day's. Without this, independent
+# protein, carbohydrate and fat (each r < 0.3 with the energy they sum to) would read as names only.
+IDENTITY_BAND = (0.90, 1.10)
+IDENTITY_MEMBER_SHARE = 0.05
+
+
+def identity_members(frame: Any, energy: str | None, energy_unit: str | None = None
+                     ) -> tuple[dict[str, str], str | None]:
+    """The macronutrient totals the Atwater identity corroborates against ``energy`` (``{macro:
+    column}``), with the clause that says so; ({}, None) when the identity does not hold."""
+    import numpy as np
+    import pandas as pd
+
+    if not energy or energy not in getattr(frame, "columns", ()):
+        return {}, None
+    candidates = macro_candidates(frame, exclude=[energy])
+    if len([m for m in candidates if m != "alcohol"]) < 2:
+        return {}, None
+    e = pd.to_numeric(frame[energy], errors="coerce")
+    chosen, r = best_totals(frame, candidates, e)
+    if not math.isfinite(r) or r < ENERGY_CORROBORATE_R:
+        return {}, None
+    parts = {m: pd.to_numeric(frame[c], errors="coerce") * ATWATER_KCAL_PER_G[m]
+             for m, c in chosen.items()}
+    recon = sum(p.fillna(0.0) if m == "alcohol" else p for m, p in parts.items())
+    both = pd.DataFrame({"e": e, "r": recon}).replace([np.inf, -np.inf], np.nan).dropna()
+    both = both[(both["r"] > 0) & (both["e"] > 0)]
+    if len(both) < MIN_RECONSTRUCTED_ROWS:
+        return {}, None
+    ratio = float((both["e"] / both["r"]).median())
+    factors = {"kcal": (1.0,), "kj": (4.184,)}.get(str(energy_unit), (1.0, 4.184))
+    if not any(IDENTITY_BAND[0] <= ratio / f <= IDENTITY_BAND[1] for f in factors):
+        return {}, None
+    members = {}
+    for m, part in parts.items():
+        share = (part.reindex(both.index) / both["r"]).median()
+        if math.isfinite(float(share)) and float(share) >= IDENTITY_MEMBER_SHARE:
+            members[m] = chosen[m]
+    listed = ", ".join(f"`{c}`" for c in chosen.values())
+    return members, (f"its energy and the others' add up to `{energy}` "
+                     f"(4P + 4C + 9F + 7A over {listed}: r = {r:.2f})")
+
+
+def corroborated_nutrients(frame: Any, *, energy: str | None, energy_unit: str | None = None,
+                           skip: Iterable[str] = ()) -> dict[str, IntakeCheck]:
+    """Every numeric column the name reads as a nutrient, with the values' verdict
+    (:func:`intake_check`, :func:`nutrient_check`) and duplicates resolved
+    (:func:`resolve_duplicates`): the one reading the roles, the energy card and the energy
+    finding share."""
+    import pandas as pd
+
+    skipped = set(skip) | ({energy} if energy else set())
+    e = frame[energy] if energy and energy in frame.columns else None
+    out: dict[str, IntakeCheck] = {}
+    for c in frame.columns:
+        if c in skipped or not pd.api.types.is_numeric_dtype(frame[c]) \
+                or pd.api.types.is_bool_dtype(frame[c]):
+            continue
+        check = intake_check(c, frame[c], energy=e, energy_unit=energy_unit)
+        if check is None:
+            check = nutrient_check(c, frame[c], energy=e)
+        if check is not None:
+            out[str(c)] = check
+    members, why = identity_members(frame, energy, energy_unit)
+    for c in members.values():
+        check = out.get(c)
+        reading = read_nutrient(c)
+        # A member the values contradicted on its own (a yes/no, a median no day's intake carries)
+        # stays withdrawn; one withdrawn only for not rising with energy is part of the identity.
+        weak = check is not None and (check.corroborated or (check.r is not None
+                                                             and "does not rise" in check.why))
+        if weak and not check.by_values and reading.whole:
+            out[c] = IntakeCheck(True, why, check.r, by_values=True)
+    return resolve_duplicates(frame, out, energy=energy)
 
 
 # ── total energy ──────────────────────────────────────────────────────────────
@@ -658,7 +1080,7 @@ _ENERGY_COMPANIONS = {
     "diet", "food", "foods", "reported", "report", "self", "mean", "avg", "average", "usual",
     "habitual", "estimated", "est", "ffq", "recall", "recalls", "24h", "24hr", "baseline", "bl",
     "followup", "fu", "en", "consumed", "consumption", "value", "raw", "all", "weekly", "week",
-    "wk",
+    "wk", "sum",
 }
 _OCCASION = re.compile(r"^(?:\d+|(?:day|d|r|recall|w|wave|wk|week|v|visit|y|yr|year|t|time|m|"
                        r"month|bl|fu|tp|p|period)\d+|\d+(?:d|day|days|h|hr|hrs|y|yr|yrs|m|mo|w|"
@@ -794,18 +1216,18 @@ _RECONSTRUCT = ("protein", "carbohydrate", "fat", "alcohol")
 MIN_RECONSTRUCTED_ROWS = 10
 
 
-def macro_totals(frame: Any, exclude: Iterable[str] = ()) -> dict[str, str]:
-    """``{macronutrient: column}`` for the protein, carbohydrate, fat and alcohol totals the names
+def macro_candidates(frame: Any, exclude: Iterable[str] = ()) -> dict[str, list[str]]:
+    """``{macronutrient: [columns]}``: every protein, carbohydrate, fat and alcohol total the names
     read as a day's amount in grams (a codebook's, a ``_g`` suffix, or unmarked), whose values are
-    amounts (numeric, never negative, more than two values). A part (saturated fat, sugars) is no
-    total."""
+    amounts (numeric, never negative, more than two values), in table order. A part (saturated
+    fat, sugars) is no total."""
     import numpy as np
     import pandas as pd
 
     skip = set(exclude)
     from turbotab.core.methods.energy import unit_of
 
-    out: dict[str, str] = {}
+    out: dict[str, list[str]] = {}
     for c in frame.columns:
         if c in skip:
             continue
@@ -815,21 +1237,38 @@ def macro_totals(frame: Any, exclude: Iterable[str] = ()) -> dict[str, str]:
             continue
         if reading is None or reading.macro not in _RECONSTRUCT or reading.part is not None:
             continue
-        if reading.macro in out or unit_of(c) not in ("grams", "unmarked"):
+        if unit_of(c) not in ("grams", "unmarked"):
             continue
         x = pd.to_numeric(frame[c], errors="coerce")
         v = x[np.isfinite(x.to_numpy(dtype=float))]
         if len(v) < 3 or float(v.min()) < 0 or v.nunique() <= 2:
             continue
-        out[reading.macro] = str(c)
+        out.setdefault(reading.macro, []).append(str(c))
     return out
 
 
+def macro_totals(frame: Any, exclude: Iterable[str] = (), energy: str | None = None
+                 ) -> dict[str, str]:
+    """``{macronutrient: column}``: one total per macronutrient (:func:`macro_candidates`). With
+    ``energy``, the one with which the Atwater reconstruction follows it best
+    (:func:`best_totals`: BLUEPRINT §14, an InBody body ``Protein`` before the recall's
+    ``protein_g`` is not the protein the day's energy is made of); else the first in table order."""
+    candidates = macro_candidates(frame, exclude)
+    if energy is not None and energy in getattr(frame, "columns", ()) and any(
+            len(cs) > 1 for cs in candidates.values()):
+        return best_totals(frame, candidates, frame[energy])[0]
+    return {m: cs[0] for m, cs in candidates.items()}
+
+
 def energy_against_macros(frame: Any, column: str,
-                          macros: Mapping[str, str] | None = None) -> IntakeCheck | None:
+                          macros: Mapping[str, str] | None = None,
+                          candidates: Mapping[str, Sequence[str]] | None = None
+                          ) -> IntakeCheck | None:
     """What the values say about ``column`` as total energy intake, read against the energy its
     macronutrients carry (:func:`macro_totals`, FAO factors 4/4/9/7), or None when there is nothing
     to read it against (fewer than two of protein, carbohydrate and fat, or too few rows).
+    ``candidates`` (every total per macronutrient) lets the values choose among duplicates for
+    this column (:func:`best_totals`).
 
     ``corroborated`` False: it does not follow the macronutrients (r < 0.3), whatever its name.
     ``by_values`` True: it follows them (r >= 0.7). Otherwise the name decides and ``why`` says the
@@ -839,7 +1278,11 @@ def energy_against_macros(frame: Any, column: str,
 
     if column not in frame.columns:
         return None
-    macros = dict(macros if macros is not None else macro_totals(frame, exclude=[column]))
+    if macros is None and candidates is not None:
+        trimmed = {m: [c for c in cs if c != column] for m, cs in candidates.items()}
+        macros = best_totals(frame, {m: cs for m, cs in trimmed.items() if cs}, frame[column])[0]
+    macros = dict(macros if macros is not None
+                  else macro_totals(frame, exclude=[column], energy=column))
     macros = {k: v for k, v in macros.items() if v != column and v in frame.columns}
     if len([k for k in macros if k != "alcohol"]) < 2:
         return None
@@ -948,6 +1391,126 @@ def is_identifier(name: Any) -> bool:
 def names_a_person(name: Any) -> bool:
     """The name reads as a person's identifier: what may state the grain or group the seal."""
     return id_kind(name) == "subject"
+
+
+# ── what the values say about an identifier, a flag or a time ─────────────────
+
+# BLUEPRINT §14 rule 1: "An identifier has at least 3 distinct values and a unit structure." A
+# case–control ``patient`` coded 0/1, a ``participant`` yes/no, a ``respondent`` Self/Proxy and a
+# ``person`` mother/father/grandparent are named like identifiers and hold the labels of a category
+# (the gate: each was "identifier (high)", left the model, and under inference the intervals
+# clustered by ``participant``'s two values, so no interval was reported). Unit structure: one row
+# per value, or more distinct values than a category takes (CATEGORY_LEVELS in the roles stage, 10)
+# when values repeat; three to ten repeating values may be a small study's units or a group code,
+# and the user says which.
+ID_MIN_UNITS = 3
+FEW_UNITS = 10
+
+
+@dataclass(frozen=True)
+class UnitCheck:
+    """``verdict``: ``never`` (the values are a category's), ``few`` (3–10 repeating values: units
+    or a group code, asked), or ``units`` (a unit structure)."""
+
+    verdict: Literal["never", "few", "units"]
+    why: str
+    n_units: int = 0
+    n_rows: int = 0
+    max_rows: int = 0
+
+
+def identifier_values(values: Any) -> UnitCheck:
+    """What the values say about a column named like an identifier (BLUEPRINT §14 rule 1)."""
+    import pandas as pd
+
+    s = pd.Series(values).dropna()
+    n, k = int(len(s)), int(s.nunique())
+    most = int(s.value_counts().max()) if n else 0
+    shown = ", ".join(f"`{v}`" for v in list(pd.unique(s))[:3])
+    if k < ID_MIN_UNITS:
+        return UnitCheck("never", f"it holds only `{k}` {'value' if k == 1 else 'values'} "
+                                  f"({shown}), a category's labels, not units", k, n, most)
+    words = bool(s.map(lambda v: isinstance(v, str) and not any(ch.isdigit() for ch in v)).all())
+    if words and k <= FEW_UNITS and k < n:
+        return UnitCheck("never", f"its values are words ({shown}…), a category's labels, not "
+                                  f"units", k, n, most)
+    if k >= n:
+        return UnitCheck("units", f"`{k:,}` values, one per row", k, n, most)
+    if words:
+        # Words that repeat (kin terms, places, labels) may be a category with many levels; a
+        # unit's codes almost always carry digits. Asked, never high.
+        return UnitCheck("few", f"its `{k:,}` repeating values are words, not codes", k, n, most)
+    if k > FEW_UNITS:
+        return UnitCheck("units", f"`{k:,}` units, up to `{most:,}` rows each", k, n, most)
+    return UnitCheck("few", f"only `{k}` values on `{n:,}` rows, as many as a category or a small "
+                            f"study's units", k, n, most)
+
+
+# "A flag is binary and tied to a base column's missingness" (BLUEPRINT §14 rule 1). The gate's
+# ``sbp_imp`` held continuous imputed SBP and was "flag (high)", left out of the model with its
+# values never read; EHR ``diabetes_flag`` and ``statin_flag`` mark no other column at all.
+FLAG_TIE = 0.99  # share of the base's blank rows the flag must mark (and of the rows it marks)
+
+
+@dataclass(frozen=True)
+class FlagCheck:
+    """``verdict``: ``flag`` (two values, and one of them marks exactly where the base is blank),
+    ``unshown`` (two values beside a base its values cannot be checked against: the base has no
+    blanks left, or they do not line up), ``indicator`` (two values and no base: a yes/no
+    characteristic) or ``never`` (more than two values: a measurement)."""
+
+    verdict: Literal["flag", "unshown", "indicator", "never"]
+    why: str
+
+
+def flag_values(values: Any, base: Any = None, base_name: str | None = None) -> FlagCheck:
+    """What the values say about a column named like a flag on ``base``."""
+    import pandas as pd
+
+    s = pd.Series(values)
+    present = s.dropna()
+    k = int(present.nunique())
+    if k > 2:
+        return FlagCheck("never", f"it holds `{k:,}` different values, a measurement, not a "
+                                  f"marker")
+    if base is None:
+        return FlagCheck("indicator", "no column here is the one it would mark: a yes/no "
+                                      "characteristic")
+    blank = pd.Series(base).isna().to_numpy()
+    if not blank.any():
+        return FlagCheck("unshown", f"`{base_name}` has no blanks, so its values cannot show "
+                                    f"which were filled in")
+    for level in present.unique():
+        marked = (s == level).to_numpy()
+        hit = int((marked & blank).sum())
+        if hit >= FLAG_TIE * int(blank.sum()) and hit >= FLAG_TIE * int(marked.sum()):
+            return FlagCheck("flag", f"it marks exactly the rows where `{base_name}` is blank")
+    return FlagCheck("unshown", f"it does not line up with `{base_name}`'s blanks")
+
+
+# "A time column varies within units" (BLUEPRINT §14 rule 1): a date the same on every row of a
+# unit (``dob``, ``randomization_date``) says when the unit began, not when a row was measured, and
+# is never evidence about a unit's repeated rows (the gate: the legacy spacing reader kept the
+# first date column on a tie and stated "repeats" from ``dob``). TurboTab's own cut-offs: varying
+# in at least half the units that repeat; constant in all but 5%.
+TIME_VARIES = 0.5
+TIME_CONSTANT = 0.05
+
+
+def within_unit_variation(values: Any, units: Any) -> float | None:
+    """The share of repeating units in which ``values`` takes two or more values; None when no
+    unit repeats."""
+    import pandas as pd
+
+    frame = pd.DataFrame({"v": pd.Series(values).to_numpy(), "u": pd.Series(units).to_numpy()})
+    frame = frame.dropna(subset=["u"])
+    sizes = frame.groupby("u").size()
+    repeating = sizes[sizes > 1].index
+    if not len(repeating):
+        return None
+    inner = frame[frame["u"].isin(repeating)]
+    varying = inner.groupby("u")["v"].nunique(dropna=True)
+    return float((varying > 1).mean())
 
 
 # ── acquisition columns (batch, plate, run order) ─────────────────────────────
@@ -1132,6 +1695,12 @@ _BODY_WORDS = {"birth", "body", "bw", "baby", "infant", "newborn", "fetal", "ges
                "brain", "muscle", "fresh", "net", "gross"}
 NHANES_WEIGHT_PREFIX = ("WTDR", "WTMEC", "WTINT", "WTSA", "WTSB", "WTSOG", "WTSAF", "WTSH",
                         "WTSCD", "WTSPO", "WTSVOC", "WTSHM", "WTFSM", "WTSSB")
+# Multi-cycle weights as the NHANES tutorial builds them (Weighting Module, read 2026-10-03): "if
+# sddsrvyr in (2,3) then MEC4YR = 1/2 * WTMEC2YR;", "if sddsrvyr in (2,3,4) then MEC6YR = 1/3 *
+# WTMEC2YR;", "… MEC8YR = 1/4 * WTMEC2YR;". The same rule names a pooled interview, dietary,
+# fasting or OGTT weight, with or without the ``WT`` prefix, in any case (an R export lowercases
+# them). Without the prefix a name is a weight only beside the survey's design columns.
+MULTI_CYCLE_WEIGHT = re.compile(r"(?i)(?:WT)?(?:INT|MEC|DR|DRD1|DR1|DR2D|SAF|SOG)\d+YR")
 
 
 def reads_as_survey_weight(name: Any, *, median: float | None = None,
@@ -1149,6 +1718,8 @@ def reads_as_survey_weight(name: Any, *, median: float | None = None,
     raw = str(name)
     if re.fullmatch(r"[A-Za-z0-9]+", raw) and raw.upper().startswith(NHANES_WEIGHT_PREFIX):
         return True
+    if design_in_table and MULTI_CYCLE_WEIGHT.fullmatch(raw):
+        return True  # the NHANES tutorial's own ``MEC6YR = 1/3 * WTMEC2YR``, beside the design
     words = tokens(raw)
     present = set(words)
     if present & _BODY_WORDS:
@@ -1203,14 +1774,21 @@ NHANES_LCD_QUOTE = ("\"A good rule of thumb is to use 'the least common denomina
 # sample weight"; P_GLU "WTSAFPRP - Fasting Subsample Weight") and the OGTT subsample's (OGTT_I
 # "WTSOG2YR - OGTT Subsample MEC Weight": "Specific sample weights for this subsample are included
 # in this data file and should be used when analyzing these data.").
+# A pooled weight keeps its sample's word (``WTMEC6YR``, ``MEC6YR``, ``WTSAF6YR``, ``SAF6YR``,
+# ``WTDR6YR``; the tutorial's names above): the gate found ``WTSAF6YR`` beside ``LBXGLU`` read as no
+# fasting weight ("needs `WTSAF2YR`") and the dietary weight offered first.
 WEIGHT_TIERS: tuple[tuple[str, str, int], ...] = (
-    (r"^WTINT(2YR|4YR|PRP)?$", "interview", 0),
-    (r"^WTMEC(2YR|4YR|PRP)?$", "examination", 1),
-    (r"^(WTDRD1(PP)?|WTDR4YR)$", "dietary day 1", 2),
-    (r"^WTDR2D(PP)?$", "dietary days 1 and 2", 3),
-    (r"^WTSAF(2YR|4YR|PRP)?$", "fasting subsample", 4),
-    (r"^WTSOG(2YR|4YR|PRP)?$", "oral glucose tolerance test subsample", 5),
+    (r"^(WTINT(\d+YR|PRP)?|INT\d+YR)$", "interview", 0),
+    (r"^(WTMEC(\d+YR|PRP)?|MEC\d+YR)$", "examination", 1),
+    (r"^(WTDRD1(PP)?|WTDR\d+YR|DR\d+YR|DRD1\d+YR|DR1\d+YR)$", "dietary day 1", 2),
+    (r"^(WTDR2D(PP)?|DR2D\d+YR)$", "dietary days 1 and 2", 3),
+    (r"^(WTSAF(\d+YR|PRP)?|SAF\d+YR)$", "fasting subsample", 4),
+    (r"^(WTSOG(\d+YR|PRP)?|SOG\d+YR)$", "oral glucose tolerance test subsample", 5),
 )
+# Which sample each sample is drawn from (the tutorial's subsamples, each within the examined
+# sample; the OGTT subsample within the fasting one): the order the survey question offers the
+# other weights in after the least common denominator's, every sample that contains it first.
+WEIGHT_PARENT = {5: 4, 4: 1, 3: 2, 2: 1, 1: 0, 0: None}
 # Laboratory variables measured on the morning fasting subsample (NHANES GLU, TRIGLY and INS
 # files: fasting glucose LBXGLU/LBDGLUSI, triglycerides LBXTR/LBDTRSI, LDL LBDLDL/LBDLDLSI, insulin
 # LBXIN/LBDINSI), which the tutorial says take the fasting weight.
@@ -1239,10 +1817,42 @@ def other_subsample_weight(name: Any) -> bool:
             and weight_tier(raw) is None)
 
 
-def _expected(rank: int, prepandemic: bool) -> str:
+def _expected(rank: int, prepandemic: bool, years: str | None = None) -> str:
     if prepandemic:
         return {5: "WTSOG2YR", 4: "WTSAFPRP", 3: "WTDR2DPP", 2: "WTDRD1PP"}[rank]
+    if years and years != "2YR":
+        return {5: f"WTSOG{years}", 4: f"WTSAF{years}", 3: f"WTDR2D{years}", 2: f"WTDR{years}"}[rank]
     return {5: "WTSOG2YR", 4: "WTSAF2YR", 3: "WTDR2D", 2: "WTDRD1"}[rank]
+
+
+def rank_weights(weights: Sequence[str], lcd: Mapping[str, Any] | None) -> list[str]:
+    """``weights`` in the order the survey question offers them: the least common denominator's
+    first, then the samples that contain its sample (the examination's, then the interview's), then
+    the rest by sample; weights of no known sample keep their order, last. With fasting analytes:
+    fasting, then examination, then dietary (BLUEPRINT §14; the NHANES tutorial's rule)."""
+    names = [str(w) for w in weights]
+    use = (lcd or {}).get("use")
+    ranks = {w: (weight_tier(w) or (None, None))[1] for w in names}
+    wanted = ranks.get(use) if use in names else None
+    if wanted is None and lcd and lcd.get("sample"):
+        wanted = next((r for _, label, r in WEIGHT_TIERS if label == lcd["sample"]), None)
+    chain: list[int] = []
+    node = wanted
+    while node is not None:
+        chain.append(node)
+        node = WEIGHT_PARENT.get(node)
+
+    def key(w: str) -> tuple[int, int, int]:
+        r = ranks.get(w)
+        if w == use:
+            return (0, 0, names.index(w))
+        if r is not None and r in chain:
+            return (1, chain.index(r), names.index(w))
+        if r is not None:
+            return (2, r, names.index(w))
+        return (3, 0, names.index(w))
+
+    return sorted(names, key=key)
 
 
 # A subsample's variables are recorded only on its rows: in an NHANES merge, a fasting analyte is
@@ -1304,6 +1914,9 @@ def least_common_denominator(columns: Sequence[str], frame: Any = None) -> dict[
     if not weights and not others:
         return None
     prepandemic = any(str(w).upper().endswith(("PRP", "PP")) for w, _ in weights.values())
+    pooled = [m.group(1) for w, _ in weights.values()
+              if (m := re.search(r"(\d+YR)$", str(w).upper())) is not None]
+    years = pooled[0] if pooled else None
     present = set(map(str, columns))
     by_values: dict[int, list[str]] = {}
     other_found: dict[str, list[str]] = {}
@@ -1367,7 +1980,7 @@ def least_common_denominator(columns: Sequence[str], frame: Any = None) -> dict[
     label = {5: _SUBSAMPLE[5], 4: _SUBSAMPLE[4], 2: "dietary day 1", 3: "dietary days 1 and 2"}[wanted]
     return {"use": None, "sample": label, "because": because,
             "not": [w for _, (w, _) in sorted(weights.items())],
-            "missing": _expected(wanted, prepandemic), **base}
+            "missing": _expected(wanted, prepandemic, years), **base}
 
 
 def _positive_rows(frame: Any, weight: str) -> int:
@@ -1379,7 +1992,10 @@ def _positive_rows(frame: Any, weight: str) -> int:
 
 __all__ = [
     "AmbiguousNutrient", "ENERGY_PRIOR_SOURCE", "codebook_unit", "FASTING_ANALYTES", "IdKind", "KCAL_PRIOR",
-    "KJ_PRIOR", "MACROS", "NHANES_LCD_QUOTE", "NHANES_WEIGHTING_SOURCE", "NutrientReading",
+    "KJ_PRIOR", "MACROS", "NHANES_LCD_QUOTE", "CORROBORATE_R", "FlagCheck", "UnitCheck",
+    "corroborated_nutrients", "day_count", "duplicate_groups", "flag_values", "identifier_values",
+    "nutrient_check", "nutrient_key", "rank_weights", "resolve_duplicates",
+    "within_unit_variation", "MULTI_CYCLE_WEIGHT", "NHANES_WEIGHTING_SOURCE", "NutrientReading",
     "ATWATER_KCAL_PER_G", "ENERGY_MEDIAN_RANGE", "IntakeCheck", "OGTT_ANALYTES",
     "acquisition_kind", "concentration_unit", "energy_median_contradicts", "energy_unit",
     "energy_unit_by_magnitude", "has_id_tail", "id_kind", "intake_check", "other_subsample_weight", "is_identifier", "is_nutrient", "is_rate", "least_common_denominator",

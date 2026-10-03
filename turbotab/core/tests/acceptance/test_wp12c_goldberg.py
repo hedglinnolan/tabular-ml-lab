@@ -434,7 +434,7 @@ def run_sensitivity(path: Path, home: Path, purpose: str) -> tuple[dict, dict, s
         d.answer("grain", {"kind": "set_grain", "grain": "one_row_per_unit",
                            "id_column": "participant_id"})
         d.reach("roles")
-        d.decide({"kind": "set_roles", "roles": ROLES})
+        d.decide_roles(ROLES)
         d.reach("exclusions")
         d.decide({"kind": "set_exclusions", "rules": [GOLDBERG]})
         d.reach("missing")

@@ -414,7 +414,8 @@ def _label(rule: Any) -> str:
     return rule_label(rule)
 
 
-SENSITIVITY_READS = ("sensitivity", "exclusions", "target", "roles", "missing", "findings",
+SENSITIVITY_READS = ("sensitivity", "exclusions", "target", "roles", "roles_unconfirmed",
+                     "role_confirmations", "missing", "findings",
                      "purpose", "models", "task", "event", "categorical", "grain", "survey",
                      "outcome_order", "follow_up")
 

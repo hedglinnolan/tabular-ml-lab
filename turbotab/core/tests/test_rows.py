@@ -243,7 +243,9 @@ def test_dietary_roles_read_the_fixture(stores):
 def test_nhanes_roles_link_flags_and_name_the_respondent(stores):
     store, _ = stores["nhanes"]
     roles = _proposals(store, ["dietary"], "glucose")
-    assert roles["SEQN"]["proposed"] == "identifier" and roles["SEQN"]["confidence"] == "high"
+    # BLUEPRINT §14: "high" is earned by values, codebook names included; these proposals read
+    # names and summaries only, so the respondent number is proposed, not confirmed.
+    assert roles["SEQN"]["proposed"] == "identifier" and roles["SEQN"]["confidence"] == "medium"
     assert roles["kcal"]["proposed"] == "energy"
     assert roles["imputed_bmi"]["proposed"] == "flag" and roles["imputed_bmi"]["linked_to"] == "bmi"
     assert roles["weight"]["proposed"] == "covariate"  # body weight, not a survey weight
