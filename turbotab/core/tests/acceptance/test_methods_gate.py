@@ -670,3 +670,59 @@ def test_e_the_sex_specific_screen_stays_on_the_menu_when_sex_is_left_out(tmp_pa
     assert left["rule"]["by"] == {"column": "sex", "ranges": {"F": [500.0, 3500.0],
                                                              "M": [800.0, 4200.0]}}
     assert cohort["n_final"] == len(frame) - expected
+
+
+# ── the second gate's ruling-3 remainder, closed by the orchestrator ─────────────────────────
+
+
+def _collinear(n: int = 1500, seed: int = 41) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    x1 = rng.normal(0, 1, n)
+    x2 = x1 + rng.normal(0, 0.0004, n)  # nearly a copy: a near-singular matrix (condition > 1,000)
+    y = 0.5 * x1 + rng.normal(0, 1, n)
+    return pd.DataFrame({"pid": np.arange(n), "x1": x1.round(7), "x2": x2.round(7), "y": y.round(5)})
+
+
+def _singular_number(model: dict[str, Any]) -> float | None:
+    for concern in model.get("concerns", []):
+        found = re.search(r"condition number ([0-9,]+)", concern)
+        if found:
+            return float(found.group(1).replace(",", ""))
+    return None
+
+
+def test_b_the_singular_concern_reads_every_analyzed_row_under_inference(tmp_path):
+    """The second gate's repro B/collin.py: under inference the near-singular concern beside the
+    coefficient table must describe the matrix the table was fit on, every analyzed row. The
+    independent property (ruling 3: estimates "independent of the seal's seed"): under inference
+    the printed condition number is identical whichever rows the seal holds out; under prediction
+    it describes each seed's own training rows, so it moves with the seed."""
+    frame = _collinear()
+    paths = mf.ingest_frame(frame, tmp_path)
+    frame = pd.read_csv(Path(paths["source"]))
+    ti = mf.target_info("regression", "y")
+    roles = {"pid": "identifier", "x1": "exposure", "x2": "covariate"}
+
+    def printed(purpose: str, seed: int) -> float | None:
+        split = mf.split_bundle(np.arange(len(frame)), holdout=0.2, seed=seed)
+        st = mf.state(roles=roles, target="y", task="regression", purpose=purpose, models=["linear"],
+                      split=SplitSpec(holdout=0.2, seed=seed, folds=5))
+        design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+        fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+        return _singular_number(fit.data["models"][0])
+
+    a, b = printed("inference", 0), printed("inference", 1)
+    assert a is not None and a == b, (a, b)
+    c, d_ = printed("prediction", 0), printed("prediction", 1)
+    assert c is not None and d_ is not None and c != d_, (c, d_)
+
+
+def test_b_step_labels_name_every_analyzed_row_under_inference():
+    """Three labels said 'training rows' under inference although the rows used are every analyzed
+    row (the second gate: pipeline.py energy step, previews.py caption and step phrase)."""
+    from turbotab.core.models.pipeline import energy_detail
+
+    adj = EnergyAdjustment(method="residual", energy_column="energy_kcal", nutrients=["fat_g"])
+    under_inference = energy_detail(adj, (), "inference")
+    assert "every analyzed row" in under_inference and "training rows" not in under_inference
+    assert "training rows" in energy_detail(adj, (), "prediction")

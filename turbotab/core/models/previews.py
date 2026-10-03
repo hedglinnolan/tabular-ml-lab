@@ -319,6 +319,8 @@ def _partition_story(after: Lineage, E: str, nutrients: Sequence[str]) -> list[L
 
 
 def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
+    # Ruling 3: under inference the rows are every analyzed row, not training rows.
+    rows_word = "analyzed" if getattr(ctx.state, "purpose", None) == "inference" else "training"
     from turbotab.core.decisions import EnergyAdjustment
     from turbotab.core.models.pipeline import input_columns, model_predictors
     from turbotab.core.models.steps import energy_step
@@ -433,7 +435,7 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     if out_name != now_name or method in ("density", "density_multivariate", "partition"):
         finite0, finite1 = now[np.isfinite(now)], after[np.isfinite(after)]
         caption = (f"Mean {_num(finite0.mean())} → {_num(finite1.mean())}; SD {_num(finite0.std())} → "
-                   f"{_num(finite1.std())}, on the sampled training rows.")
+                   f"{_num(finite1.std())}, on the sampled {rows_word} rows.")
         views.append(DistributionView(
             title=fit_words(f"Values of {n}, before and after", TITLE_WORDS),
             caption=fit_words(caption, CAPTION_WORDS),
@@ -495,6 +497,8 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         fitted = transformer(steps).fit(X) if extra else shared
         after = trace(fitted.steps, spec.inputs, spec.roles, missing) if extra else base
         phrases = [STEP_PHRASES.get(name, name.replace("_", " ")) for name in extra]
+        if getattr(state, "purpose", None) == "inference":
+            phrases = [ph.replace("on training rows", "on every analyzed row") for ph in phrases]
         how = ", ".join(phrases) if phrases else "taken as they are, unscaled"
         tail = ""
         if has_missing and not spec.impute:

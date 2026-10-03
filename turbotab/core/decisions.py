@@ -1615,10 +1615,22 @@ def _partition_runs_on_the_data(decision: SetEnergyAdjustment, ctx: Any,
     if store is None or E is None or not {E, *nutrients} <= set(store.columns):
         return
     pool = np.arange(int(store.n_rows), dtype=np.int64)
-    sealed_of = _ctx(ctx, "sealed")
-    sealed = sealed_of() if callable(sealed_of) else None
-    if sealed is not None and len(sealed):
-        pool = np.setdiff1d(pool, np.asarray(sealed, dtype=np.int64), assume_unique=True)
+    state = _ctx(ctx, "state")
+    if getattr(state, "purpose", None) == "inference":
+        # BLUEPRINT §12 ruling 3: under inference no row is sealed from the estimate, so the
+        # unit check reads the rows the table will (the omitted-energy check does the same).
+        analyzed_of = _ctx(ctx, "analyzed")
+        try:
+            analyzed = analyzed_of() if callable(analyzed_of) else None
+        except Exception:  # noqa: BLE001 - not known yet: every row
+            analyzed = None
+        if analyzed is not None and len(analyzed):
+            pool = np.asarray(analyzed, dtype=np.int64)
+    else:
+        sealed_of = _ctx(ctx, "sealed")
+        sealed = sealed_of() if callable(sealed_of) else None
+        if sealed is not None and len(sealed):
+            pool = np.setdiff1d(pool, np.asarray(sealed, dtype=np.int64), assume_unique=True)
     if len(pool) > PARTITION_CHECK_ROWS:
         pool = np.sort(np.random.default_rng(0).choice(pool, size=PARTITION_CHECK_ROWS, replace=False))
     frame = store.materialize([E, *nutrients], pool)

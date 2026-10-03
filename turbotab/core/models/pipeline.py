@@ -473,7 +473,8 @@ def transformer(steps: list[tuple[str, Any]]) -> Any:
 # ── describing ──────────────────────────────────────────────────────────────
 
 
-def energy_detail(adj: EnergyAdjustment | None, energy: Sequence[str] = ()) -> str | None:
+def energy_detail(adj: EnergyAdjustment | None, energy: Sequence[str] = (),
+                  purpose: Purpose | None = None) -> str | None:
     """One line on what the energy step does; ``energy`` names the total-energy columns "none"
     takes out of the model."""
     if adj is None:
@@ -492,7 +493,8 @@ def energy_detail(adj: EnergyAdjustment | None, energy: Sequence[str] = ()) -> s
         within = f" within each level of {adj.strata}" if adj.strata else ""
         where = (f"{E} stays in the model beside them" if adj.method == "residual"
                  else f"{E} leaves the outcome model")
-        return f"Replaces {what} with their residual on {E}{within}{log}, fit on training rows; {where}."
+        rows = "every analyzed row" if purpose == "inference" else "training rows"
+        return f"Replaces {what} with their residual on {E}{within}{log}, fit on {rows}; {where}."
     if adj.method == "standard":
         return f"Keeps {what} as they are, with {E} in the model beside them."
     if adj.method == "density_multivariate":
@@ -536,7 +538,7 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
             adj = spec.energy_adjustment()
             energy = [c for c in spec.predictors if spec.roles.get(c) == "energy"]
             out.append({"key": "energy", "label": METHOD_TABLE[adj.method]["label"],
-                        "detail": energy_detail(adj, energy) or ""})
+                        "detail": energy_detail(adj, energy, purpose) or ""})
         elif name == "onehot":
             cats = [c for c in spec.categorical if c in spec.predictors]
             verb = "becomes" if len(cats) == 1 else "become"

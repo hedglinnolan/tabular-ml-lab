@@ -1320,7 +1320,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
             from turbotab.core.models.linear import collinearity_concern, model_matrix
 
             try:
-                singular = collinearity_concern(model_matrix(final, X))
+                # Ruling 3: under inference the concern describes the matrix the table was fit on.
+                use_table = on_all and table_fit is not None
+                singular = collinearity_concern(model_matrix(table_fit, X_c) if use_table
+                                                else model_matrix(final, X))
             except Exception:  # noqa: BLE001 - a diagnostic that cannot run is not a verdict
                 singular = None
             if singular and not any("singular" in c for c in concerns):
