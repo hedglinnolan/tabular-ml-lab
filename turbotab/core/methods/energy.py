@@ -198,9 +198,18 @@ METHOD_TABLE: Dict[str, Dict[str, Any]] = {
             "The nutrient's amount per unit of energy, with total energy as a separate term. "
             "Its coefficient is not clean diet composition: Tomova et al. (2022) find the "
             "density model's coefficient \"an obscure quantity that conflates both the effect of "
-            "the nutrient exposure and that of the reciprocal of total energy\"."),
+            "the nutrient exposure and that of the reciprocal of total energy\", and with total "
+            "energy added \"a more accurate estimate than the (unadjusted) nutrient density model, "
+            "but one which is still biased\"; the all-components model is the paper's recommended "
+            "route."),
         "standing": "CONVENTION",
-        "caveats": [f"Interpretation obscure ({_TOMOVA}).", _PARTIAL],
+        # Audit IN-21: Tomova et al. 2022, model 3b, "returns a more accurate estimate than the
+        # (unadjusted) nutrient density model, but one which is still biased"; the paper
+        # recommends "the all-components model as the more intuitive and transparent option".
+        "caveats": [f"Interpretation obscure ({_TOMOVA}).",
+                    f"Still biased even without confounding; the all-components model is the "
+                    f"source's recommended route ({_TOMOVA}).",
+                    _PARTIAL],
         "customary": "Yes (NUTRITION_PACK §04).",
         "sound": {"inference": "Below standard and all components, with its caveat.",
                   "prediction": "Fine: keeps total energy."},
@@ -1296,7 +1305,9 @@ class StratifiedEnergyAdjuster(TransformerMixin, BaseEstimator):
         if self.log_transform:
             head = (f"{n}_adj = exp(log {n} − b_s × (log {E} − mean log {E}_s) − mean log {n}_s "
                     f"+ {constant})")
-            back = f", back-transformed to {n}'s units"
+            # Audit IN-25: under log the reference is the geometric mean, not the arithmetic one.
+            back = (f", back-transformed to {n}'s units: {n} at the geometric-mean {E} "
+                    f"({_fmt(pooled['reference_energy'])})")
         else:
             head = f"{n}_adj = {n} − b_s × ({E} − mean {E}_s) − mean {n}_s + {constant}"
             back = ""

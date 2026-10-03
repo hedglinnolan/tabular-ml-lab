@@ -316,8 +316,13 @@ def ordinal_finding(found: list[Block]) -> dict[str, Any] | None:
 
 def sentinel_finding(df: pd.DataFrame, found: list[Block]) -> dict[str, Any] | None:
     """§B1.1's sentinel check over every block: detected, reported, recoded only on request."""
-    from turbotab.packs import DISPUTED, SURVEY, Claim, Evidence, _finding
-    from turbotab.survey import SENTINEL_EVIDENCE
+    from turbotab.packs import DISPUTED, SETTLED, SURVEY, Claim, Evidence, _finding
+
+    # The legacy ``turbotab.survey.SENTINEL_EVIDENCE``, restated: that module also badges the
+    # polychoric claim SETTLED, so nothing under turbotab/core imports it (audit WP15, ledger row
+    # 96). Ledger row 8 rates this claim CONSISTENT under the same badge and section.
+    SENTINEL_EVIDENCE = Evidence(
+        status=SETTLED, source="research/CLINICAL_SURVEY_PACK.md#B1.1 Detecting Likert blocks")
 
     readings: list[dict[str, Any]] = []
     for b in found:

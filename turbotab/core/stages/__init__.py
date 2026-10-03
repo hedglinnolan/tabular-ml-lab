@@ -108,9 +108,12 @@ def build_graph() -> Graph:
             # turbotab.core.detectors (codes, survey scales, drift, redundancy, plausibility,
             # genomics data type).
             # findings 6 (WP13 + WP14 merged): both of the above in one stage.
+            # findings 5 (audit WP15): the energy finding states the estimand choice and, for an
+            # energy-related outcome, the dispute; TNTC reads as right-censored, not a failure.
+            # findings 7 (WP13 + WP14 + WP15 merged): all of the above in one stage.
             Stage(
                 "findings",
-                6,
+                7,
                 ("oriented",),
                 ("lens", "target"),
                 findings_stage,
@@ -154,14 +157,19 @@ def build_graph() -> Graph:
             # model, as the Goldberg screen does.
             # proposals 7 (WP13): nutrients and energy by the one recognizer; the energy unit by
             # its suffix, the Atwater reconstruction, or the pack's magnitude prior (audit IN-07).
-            Stage("proposals", 7, ("working", "roles"), ("lens", "roles", "target", "purpose"),
+            # proposals 7 (audit WP15): the sex-specific screens attributed to their sources
+            # (Willett 2013, NHS/HPFS); an energy-related outcome's DISPUTED note on the energy card.
+            # proposals 8 (WP13 + WP15 merged): both of the above in one stage.
+            Stage("proposals", 8, ("working", "roles"), ("lens", "roles", "target", "purpose"),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             Stage("cohort", 2, ("working", "target_info"),
                   ("target", "roles", "exclusions", "missing", "findings"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.
-            Stage("split", 4, ("working", "cohort", "target_info", "structure"),
+            # split 4 (audit WP15, IN-24): the chronology counts held-out rows that predate training.
+            # split 5 (WP13 + WP15 merged): both of the above in one stage.
+            Stage("split", 5, ("working", "cohort", "target_info", "structure"),
                   ("split", "roles", "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
             # shelf 7 (methods gate): under inference it ranks for every analyzed row and its basis
@@ -183,7 +191,10 @@ def build_graph() -> Graph:
             # (ruling 3); the pipelines are still sized for the training rows.
             # design 10 (WP13): energy sources, parts and total energy read by the one recognizer
             # (whole words, NHANES and INFOODS codes; ``alc_kcal`` is alcohol, not total energy).
-            Stage("design", 10, ("working", "split", "target_info"),
+            # design 10 (audit WP15, IN-25): the lineage attributes each operation to the columns it
+            # touched, marks pass-throughs kept, and names the geometric mean under log.
+            # design 11 (WP13 + WP15 merged): both of the above in one stage.
+            Stage("design", 11, ("working", "split", "target_info"),
                   ("roles", "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -200,7 +211,8 @@ def build_graph() -> Graph:
             # fit 11 (methods gate): the outcome keeps the values the table spells, so a True/False
             # outcome's event is coded and named as declared; under inference the event's share
             # is of every analyzed row.
-            Stage("fit", 11, ("working", "design", "split", "target_info", "cohort"),
+            # fit 12 (audit WP15, IN-22): under inference the table carries its measurement-error line.
+            Stage("fit", 12, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
@@ -220,7 +232,9 @@ def build_graph() -> Graph:
             # seal_plan 3 (repair round): the declared purpose orders the split question (under
             # inference no holdout leads; BLUEPRINT §12 ruling 3), and the validation options.
             # seal_plan 4 (WP13): the basis reads a measurement named as the unit as exploratory.
-            Stage("seal_plan", 4, ("working", "cohort", "target_info", "structure"),
+            # seal_plan 4 (audit WP15, IN-24): the chronology's held-out rows that predate training.
+            # seal_plan 5 (WP13 + WP15 merged): both of the above in one stage.
+            Stage("seal_plan", 5, ("working", "cohort", "target_info", "structure"),
                   ("roles", "task", "event", "purpose", *SEAL_READS), seal_plan_stage,
                   requires=("target",),
                   label="Reading what a held-out set can measure"),

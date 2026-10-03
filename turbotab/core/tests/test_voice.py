@@ -83,13 +83,13 @@ def test_rules_count_in_order_each_removing_only_what_the_last_kept():
 
 
 def test_an_exclusion_by_sex_names_each_range():
-    rule = d.ExclusionRule(column="kcal", reason="implausible intakes (Willett's sex-specific cut-offs)",
+    rule = d.ExclusionRule(column="kcal", reason="implausible intakes (NHS/HPFS cut-offs)",
                            by=d.RangeByLevel(column="sex", ranges={"F": (500, 3500), "M": (800, 4200)}))
     f = pd.DataFrame({"kcal": [3600, 3600, 700, 700], "sex": ["F", "M", "F", "M"]})
     text = voice.sentence_for(d.SetExclusions(rules=[rule]), ProjectState(), {"frame": f})
     assert text == ("`2` rows with `kcal` outside `500`–`3500` for `sex` `F` and outside "
                     "`800`–`4200` for `M` or not recorded were excluded as implausible intakes "
-                    "(Willett's sex-specific cut-offs).")
+                    "(NHS/HPFS cut-offs).")
 
 
 def test_no_exclusion_is_a_recorded_answer():

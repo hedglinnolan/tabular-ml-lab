@@ -207,8 +207,13 @@ the design rather than correcting the matrix and testing corrected values.
 **The two-step warning — SETTLED that the problem is real.** Nygaard, Rodland & Hovig
 (*Biostatistics* 17:29, 2016): correcting with ComBat and then running a standard test inflates
 significance, worst under **unbalanced** batch-by-group designs, because the correction induces a
-correlation structure the downstream test ignores. In their GSE61901 example the ComBat pipeline
-returned **>1,000** DE probesets where batch-as-fixed-effect returned **11**.
+correlation structure the downstream test ignores. Their reanalysis of Towfic et al. 2014 (GEO
+GSE40566): "We re-analyzed the cited data (GEO: GSE40566) as described, detecting 2011 differentially
+expressed genes at 5% FDR. When, instead of batch adjusting using ComBat, we blocked for batch effect
+in limma (Smyth, 2004), only 11 differentially expressed genes were detected" — **2,011** against
+**11**. *(Until 2026-10-03 this read "In their GSE61901 example the ComBat pipeline returned >1,000 DE
+probesets where batch-as-fixed-effect returned 11"; GSE61901 is Towfic's own preprocessing, which
+Nygaard et al. did not reanalyze. Audit F15.)*
 
 **When batches are unknown:** SVA (Leek & Storey 2007) estimates latent factors orthogonal to the
 biological variable and you add them to the *design* — which is exactly the pattern that avoids the
@@ -500,7 +505,7 @@ panel is where that becomes visible and trustworthy.
 | Raw p<0.05 over ~20,000 tests | SETTLED wrong | ~1,000 expected false positives |
 | Feature selection on all data, then CV | SETTLED wrong | Near-zero error from pure noise |
 | Unregularized regression at p>=n | SETTLED wrong | Degenerate, non-unique; perfect separation |
-| ComBat then naive test, unbalanced design | SETTLED problem | 1,000 vs 11 DE genes in Nygaard's example |
+| ComBat then naive test, unbalanced design | SETTLED problem | 2,011 vs 11 DE genes (ComBat vs limma blocking by batch) in Nygaard's GSE40566 reanalysis |
 | Batch correction under perfect confounding | SETTLED wrong | Fabricated separation |
 | DE-selected genes, then clustering shown as validation | SETTLED wrong | Circular (Kriegeskorte 2009) |
 | PCA on raw or CPM counts | SETTLED wrong | PC1 is a library-size artifact |

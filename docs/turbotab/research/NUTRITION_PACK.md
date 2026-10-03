@@ -159,10 +159,20 @@ intake.
 ### Diagnostic
 
 1. **Fixed kcal screens** — flag against the competing conventions and show how many each catches:
-   - Willett / Nurses' Health Study **[CONVENTION]**: women **<500 or >3,500 kcal/d**; men **<800 or
-     >4,200 kcal/d**
-   - Variants in circulation: men upper bound **4,000** or **5,000**; sex-neutral **500–5,000**;
-     sex-neutral **500–3,500**
+   - Willett, *Nutritional Epidemiology* 3rd ed. (2013) **[CONVENTION]**: women **<500 or >3,500
+     kcal/d**; men **<800 or >4,000 kcal/d**. Banna et al. (*Front Nutr* 2017;4:45), quoting it: "the
+     range of 500–3,500 kcal/day may be applied to data from women", and "an allowable range of
+     800–4,000 kcal/day for men may be used, as intakes of more than 4,000 kcal/day are unlikely to be
+     true for even relatively active men".
+   - Nurses' Health Study (women) and Health Professionals Follow-up Study (men) **[CONVENTION]**:
+     women **<500 or >3,500**; men **<800 or >4,200 kcal/d**. Pan et al. (*AJCN* 2011;94:1088), across
+     NHS, NHS II and HPFS: "daily energy intake <800 or >4200 kcal/d for men and <500 or >3500 kcal/d
+     for women".
+   - Variants in circulation: men upper bound **5,000**; sex-neutral **500–5,000**; sex-neutral
+     **500–3,500**
+   - *(This list read "Willett / Nurses' Health Study: … men <800 or >4,200" until 2026-10-03. NHS
+     enrolled only women, and 800–4,200 is the HPFS rule for men; Willett 2013 gives 800–4,000.
+     Audit MI-02.)*
    - **The app must show the sensitivity of N to the choice**, because the conventions genuinely
      differ across literatures.
 2. **EI:BMR ratio.** BMR equations offered with explicit provenance:
@@ -175,7 +185,9 @@ intake.
      the individual level in several validations.
    - **Harris–Benedict (revised)** — men `88.362 + 13.397·W + 4.799·H − 5.677·age`; women
      `447.593 + 9.247·W + 3.098·H − 4.330·age`.
-3. **Goldberg cut-off, Black (2000) revision [CONVENTION, the field standard for misreporting].**
+3. **Goldberg cut-off, Black (2000) revision [CONVENTION, widely used].** Yamamoto et al. (*eLife*
+   2023;12:e83616): "Whether one uses Goldberg cutoffs should therefore be decided based on research
+   purposes and not general rules." *(Read "the field standard for misreporting" until 2026-10-03.)*
    `Cut-off = PAL × exp(±SD_limit × S / 100)` where `S = sqrt(CV²wEI/d + CV²wB + CV²tP)`, with Black's
    revised inputs **CV_wEI = 23%**, **CV_wB = 8.5%** for *estimated* BMR (4% if measured),
    **CV_tP = 15%**, `d` = assessment days, SD_limit = **±2** for 95% limits.
@@ -196,17 +208,23 @@ intake.
 
 ### Coaching
 
-> *"I flagged 214 participants (2.4%) outside the 500–3,500 / 800–4,200 kcal/d range, and 981 (11.1%)
+> *"I flagged 214 participants (2.4%) outside the NHS/HPFS 500–3,500 / 800–4,200 kcal/d range, and 981 (11.1%)
 > below the Goldberg lower cut-off using estimated BMR (Schofield) and PAL = 1.55. These are different
 > screens catching different people — the fixed-kcal screen catches data-entry failures; Goldberg
 > catches biologically implausible reporting relative to body size."*
 
-> *"Exclusion is conventional but it does not fix the problem. Bias in nutrition–health associations is
-> *reduced but not eliminated* by Goldberg cut-offs — in one evaluation only 14 of 24 nutrition–outcome
-> pairs improved. And stratifying by implausible-reporter status does not reliably reduce attenuation:
-> under non-differential error, attenuation can be *greater* in both strata than unstratified,
-> contrary to the intuition that estimates among 'plausible reporters' are cleaner."*
-> **[SETTLED that exclusion is insufficient; DISPUTED whether to exclude at all]**
+> *"Exclusion is conventional but it does not fix the problem. In one simulation built on a biomarker
+> study, bias in nutrition–health associations was *reduced but not eliminated* by Goldberg cut-offs in
+> 14 of 24 nutrition–outcome pairs and not reduced in the other 10 (Yamamoto et al., eLife 2023: "bias
+> in simulated associations using self-reported NI was reduced but not completely eliminated by
+> Goldberg cutoffs in 14 of 24 nutrition-outcome pairs; bias was not reduced for the remaining 10
+> cases"); fixed kcal screens were not evaluated there. And stratifying by implausible-reporter status
+> does not reliably reduce attenuation: under non-differential error, attenuation can be *greater* in
+> both strata than unstratified, contrary to the intuition that estimates among 'plausible reporters'
+> are cleaner."*
+> **[DISPUTED whether to exclude at all; the evidence that Goldberg exclusion leaves bias is one
+> simulation study, so it is not SETTLED]** *(Until 2026-10-03 this read "only 14 of 24 pairs improved"
+> beside the fixed-kcal screens and was badged SETTLED that exclusion is insufficient. Audit G15.)*
 
 > *"Recommended default: (1) drop only unreliable/incomplete recalls and hard-impossible values;
 > (2) run the primary analysis on the full sample with energy adjustment; (3) present the
@@ -223,8 +241,11 @@ intake.
 
 ### Presentation
 
-- **★ STROBE participant-flow diagram with itemized dietary exclusions** — the field expectation, and
-  **the single most-checked figure in a nutrition methods review.** Each box carries an n and a
+- **★ STROBE participant-flow diagram with itemized dietary exclusions** — the field expectation.
+  STROBE-nut (Lachat et al., *PLoS Med* 2016), nut-13: "Report the number of individuals excluded based
+  on missing, incomplete, or implausible dietary/nutritional data"; STROBE item 13(c): "Consider use of
+  a flow diagram." *(Read "the single most-checked figure in a nutrition methods review" until
+  2026-10-03; nothing supports the superlative. Audit G14.)* Each box carries an n and a
   reason, in order: enrolled → completed ≥1 recall → recall met minimum criteria → eligible age /
   non-pregnant → implausible energy excluded (**with the rule stated in the box**) → missing covariates
   → analytic sample. **[SETTLED that this must appear]**
@@ -308,9 +329,17 @@ de-attenuation:  r_corrected = r_obs * sqrt(1 + (sigma_w^2/sigma_b^2)/n)
 **When simple averaging is adequate [CONVENTION]:**
 
 > *"If your goal is to rank people — regression, classification, quantiles of exposure, a predictive
-> model — the mean of your available recalls is an acceptable exposure. It is still attenuated (λ =
-> 0.42 with 2 days for this nutrient, so an unadjusted slope is roughly 42% of the true slope), but it
-> is unbiased in direction under classical error and it is what most published cohort analyses use."*
+> model — the mean of your available recalls is an acceptable exposure, and it is what most published
+> cohort analyses use. It is still measured with error (λ = 0.42 with 2 days for this nutrient): as
+> the model's one error-prone exposure under classical error, an unadjusted slope is roughly 42% of
+> the true slope, attenuated toward zero; with several error-prone nutrients, or energy, in the same
+> model the coefficients can be attenuated, inflated or change sign."* Keogh et al. (STRATOS Part 1,
+> *Stat Med* 2020, §3.1.3): "the estimated coefficients in model (11) may be larger or smaller than
+> the true target values in a rather unpredictable manner"; Freedman et al. (*JNCI* 2011;103:1086):
+> "In multivariable disease models with two or more mismeasured exposures, estimated relative risks
+> may become attenuated, inflated, or can even change direction". *(Until 2026-10-03 this read "but it
+> is unbiased in direction under classical error", true only for a single error-prone exposure. Audit
+> IN-22.)*
 
 **When simple averaging is NOT adequate — three named situations [SETTLED]:**
 
@@ -383,8 +412,14 @@ NCI's newer Intake program / SIMPLE macro. **[CONVENTION]**
 
 ### Why adjust at all — three reasons [SETTLED]
 
-1. **Total energy is a strong determinant of nutrient intake**, so absolute nutrient intake is
-   confounded by body size, physical activity, metabolic efficiency and reporting scale.
+1. **Total energy is a strong determinant of nutrient intake**, so absolute nutrient intake carries
+   body size, physical activity, metabolic efficiency and reporting scale with it. Adjusting for total
+   energy changes the question a nutrient's coefficient answers (a substitution at fixed energy rather
+   than added intake): Tomova et al. (2022): "It remains underappreciated that adjusting for total
+   energy and adjusting for remaining energy intake evaluate very different causal estimands." Total
+   energy can act as a collider: "Adjusting for TE (purple) opens conditional dependencies between the
+   exposure and all competing energy sources". *(Read "absolute nutrient intake is confounded by …"
+   until 2026-10-03; the app's energy finding said adjustment "is not in dispute". Audit IN-20.)*
 2. **Diet composition, not absolute quantity, is usually the hypothesis** — nutrients act within a
    caloric budget.
 3. **Measurement-error cancellation.** Because nutrient and energy errors are strongly positively
@@ -401,7 +436,7 @@ Let `N` = nutrient, `E` = total energy, `Y` = outcome, `C` = covariates.
 |---|---|---|---|---|
 | 1 | **Standard / multivariate** | `Y ~ N + E + C` | ↑N with total energy fixed → **implicitly a substitution** for the average of all other energy sources | [CONVENTION], very common |
 | 2 | **Willett residual** | `N ~ E` (OLS, both usually logged); `N_adj = residual + N̂(Ē)`; then `Y ~ N_adj + E + C` (energy kept) or `Y ~ N_adj + C` (energy dropped) | With `E` kept: #1's coefficient exactly, in the nutrient's units. With `E` dropped: #1's only when no covariate correlates with `E`. The added constant restores units and removes negatives so quantile means are interpretable | [CONVENTION], the field default |
-| 3 | **Multivariate nutrient density** | `Y ~ (N/E) + E + C` | Composition, with total energy as a separate term | [CONVENTION] |
+| 3 | **Multivariate nutrient density** | `Y ~ (N/E) + E + C` | Not clean composition: Tomova et al. (2022) call the density coefficient "an obscure quantity that conflates both the effect of the nutrient exposure and that of the reciprocal of total energy", and with `E` added it returns "a more accurate estimate than the (unadjusted) nutrient density model, but one which is still biased" (Table 2 estimand: obscure). *(Read "Composition, with total energy as a separate term" until 2026-10-03. Audit IN-21.)* | [CONVENTION] |
 | 4 | **Nutrient density alone** | `Y ~ (N/E) + C` | Rescaled relative effect; **interpretation obscure** without the energy term | [CONVENTION but weakest] |
 | 5 | **Energy partition** | `Y ~ E_from_N + E_from_other + C` (all kcal) | Effect of **adding** calories from N holding others fixed — an *addition*, not a substitution | [CONVENTION] |
 

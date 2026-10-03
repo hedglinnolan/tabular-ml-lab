@@ -14,18 +14,22 @@ from turbotab.core.stages.proposals import proposals_stage, roles_from, rule_exc
 from turbotab.core.tests.stage_harness import NHANES, SAMPLES, Ingested
 from turbotab.server.schemas import ProposalsArtifact
 
-KEYS = ["willett_by_sex", "sex_neutral_500_5000", "sex_neutral_500_3500"]
+# Audit MI-02: Willett 2013 (men 800–4,000, Banna et al. 2017) and NHS/HPFS (men 800–4,200, Pan
+# et al. 2011), each attributed to its own source.
+KEYS = ["willett_2013_by_sex", "nhs_hpfs_by_sex", "sex_neutral_500_5000", "sex_neutral_500_3500"]
 # WP12: the Goldberg screen is offered beside them when age, weight and sex are read (NHANES).
 NHANES_KEYS = [*KEYS, "goldberg_schofield"]
 
 
 def pandas_counts(df: pd.DataFrame, energy: str, sex: str, women: str, men: str,
                   base: pd.Series) -> dict[str, int]:
-    """The three screens written out longhand, the way a reader would check them."""
+    """The four screens written out longhand, the way a reader would check them."""
     e = df[energy]
-    willett = ((df[sex] == women) & ((e < 500) | (e > 3500))) | ((df[sex] == men) & ((e < 800) | (e > 4200)))
+    willett = ((df[sex] == women) & ((e < 500) | (e > 3500))) | ((df[sex] == men) & ((e < 800) | (e > 4000)))
+    hpfs = ((df[sex] == women) & ((e < 500) | (e > 3500))) | ((df[sex] == men) & ((e < 800) | (e > 4200)))
     return {
-        "willett_by_sex": int((willett & base).sum()),
+        "willett_2013_by_sex": int((willett & base).sum()),
+        "nhs_hpfs_by_sex": int((hpfs & base).sum()),
         "sex_neutral_500_5000": int((((e < 500) | (e > 5000)) & base).sum()),
         "sex_neutral_500_3500": int((((e < 500) | (e > 3500)) & base).sum()),
     }
@@ -111,7 +115,11 @@ def test_each_screen_is_offered_with_its_badge_and_none_is_chosen(nhanes):
     assert "PAL 1.55" in goldberg["label"] and "1 day" in goldberg["label"]  # stated, not assumed
     willett = ExclusionRule.model_validate(artifact["exclusions"][0]["rule"])
     assert willett.by.column == "gender"
-    assert willett.by.ranges == {"female": (500.0, 3500.0), "male": (800.0, 4200.0)}
+    assert willett.by.ranges == {"female": (500.0, 3500.0), "male": (800.0, 4000.0)}
+    assert "Willett 2013" in willett.reason
+    hpfs = ExclusionRule.model_validate(artifact["exclusions"][1]["rule"])
+    assert hpfs.by.ranges == {"female": (500.0, 3500.0), "male": (800.0, 4200.0)}
+    assert "Health Professionals Follow-up Study" in hpfs.reason
 
 
 def test_the_nhanes_energy_reading(nhanes):

@@ -509,6 +509,9 @@ function sealPlan(
           n_units: units ? Math.round(units.of.size * 0.2) : null,
           n_undated: 0,
           sentence: `The latest units by their last ${tick(state.temporal.time_column ?? "date")} are held out; every training unit's last visit comes earlier.`,
+          n_held_rows: null,
+          n_held_earlier: null,
+          earlier: [],
         }
       : null,
     exploratory: basis.exploratory,

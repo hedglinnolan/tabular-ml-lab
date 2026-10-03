@@ -734,6 +734,29 @@ UNWEIGHTED_SCORES = ("Scores are unweighted: they describe these rows, not the p
                      "weights stand for.")
 
 
+def _measurement_error_line(ctx: StageContext, spec: Any) -> str | None:
+    """The inference table's measurement-error limitation (audit IN-22), or None.
+
+    The self-reported intakes are the model's energy-bearing nutrient exposures; total energy
+    counts as one more error-prone intake while it stays in the outcome model. ``reports`` is how
+    many rows each analysis row averages (the working table's combining, ``recall_days``).
+    """
+    from turbotab.core.methods.dietary_caveats import measurement_error_line
+    from turbotab.core.methods.energy import total_energy_columns
+    from turbotab.core.stages.proposals import energy_bearing, recall_days
+
+    exposures = [c for c in spec.predictors
+                 if spec.roles.get(c) == "exposure" and energy_bearing(c)]
+    if not exposures:
+        return None
+    adj = spec.energy_adjustment()
+    energy = total_energy_columns(spec.predictors, spec.roles)
+    if adj is not None and adj.method in ("none", "density", "residual_energy_dropped"):
+        energy = [c for c in energy if spec.roles.get(c) != "energy"]  # it left the outcome model
+    reports, _ = recall_days(ctx.inputs.get("working"))
+    return measurement_error_line(exposures, energy, reports=reports)
+
+
 def _survey(ctx: StageContext, clusters: Any) -> tuple[Any, str | None]:
     """The survey answer as this fit applies it (``turbotab.core.methods.survey.for_fit``), and
     the note every model carries under prediction when the table has survey weights.
@@ -1114,6 +1137,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # imputation with the outcome and energy for the coefficient table; a single fill or the
     # missing-indicator method held until recorded; complete cases with their assumption and cost.
     missing = _missing_for_table(ctx, spec, X_tab, y_tab, task, keys) if inference else None
+    # Audit IN-22: under inference the coefficient table says its dietary intakes are measured with
+    # error and not corrected here (methods/dietary_caveats.py; Freedman et al. 2011).
+    error_line = _measurement_error_line(ctx, spec) if inference else None
 
     def fit(model: Any, X_fit: Any, y_fit: Any, rows: Any = None) -> Any:
         """Fit a pipeline on these training rows, its inner splits drawn as the folds are."""
@@ -1307,6 +1333,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
             except Exception as exc:  # noqa: BLE001 - a table that cannot be computed is a concern
                 coefficients = None
                 concerns.append(f"The coefficient table could not be computed: {exc}")
+            if coefficients and error_line:
+                concerns.append(error_line)
             if coefficients and pooled is None:
                 # The relative effects come from the fit the table came from: under inference
                 # every analyzed row, with the table's clusters and outcome scale. (Pooled tables

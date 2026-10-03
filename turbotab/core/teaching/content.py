@@ -6,8 +6,14 @@ Budgets: ``turbotab.core.teaching.BUDGETS`` (tested). American spelling.
 
 One precision the packs leave implicit, stated here on purpose (energy adjustment, §04): the
 residual and standard models give the same nutrient coefficient when energy is also in the model,
-or when there are no other covariates. The residual method as this app fits it takes energy out of
-the model, and then the two agree only when no other covariate correlates with energy.
+or when there are no other covariates. The residual method keeps total energy in the outcome model
+by default (BLUEPRINT §12 ruling 1); its energy-dropped form agrees with the standard model only
+when no other covariate correlates with energy.
+
+Audit WP15 (claims): every sentence here matches its primary source and the computation. Where a
+claims-ledger row was WRONG, OVERSTATED or SELF-CONTRADICTED, the corrected sentence sits beside a
+comment quoting its source, and ``tests/acceptance/test_wp15_claims.py`` replays each one. A claim
+two cards share is one section constant, so it carries one badge wherever it appears.
 """
 from __future__ import annotations
 
@@ -72,6 +78,43 @@ NESTED = term(
     "Part of another column's total, such as `fat_sat` within `fat_total`: a partition would "
     "count it twice, and a substitution moves it with its total.")
 
+# Claims that several cards make are one section each, so a claim carries one badge wherever it
+# appears (audit WP15 acceptance 2, G18: "resample the whole pipeline" read SETTLED in one card and
+# CONVENTION in two others; the clinical pack, §A5.5: "SETTLED that the full pipeline must be
+# inside the loop; the bootstrap-vs-CV preference is CONVENTION").
+WHOLE_PIPELINE = section(
+    "Resample the whole pipeline",
+    "Internal validation must resample the entire modeling pipeline: imputation, transformation, "
+    "selection and tuning.",
+    "SETTLED", CLIN_A55)
+SINGLE_SPLIT = section(
+    "A single split is the weakest",
+    "Bootstrap optimism correction is the recommended default and repeated cross-validation is "
+    "acceptable; a single train and test split is the weakest option at typical clinical sample "
+    "sizes.",
+    "CONVENTION", CLIN_A55)
+# Audit ledger #4 (OVERSTATED): "Regularization is mandatory" is true of least squares and logistic
+# regression, whose fit at p ≥ n is not unique (rank(X) ≤ n < p, so XᵀX is singular); dimension
+# reduction and one test per feature (this app's feature-wise family) are other ways through.
+P_OVER_N = section(
+    "More features than samples",
+    "With more features than samples, an unpenalized least-squares or logistic model is "
+    "degenerate rather than merely overfit: infinitely many coefficient vectors fit the data "
+    "exactly. Penalization, dimension reduction or one test per feature are the ways through; the "
+    "elastic net is the standard choice if one model must be named.",
+    "SETTLED", GEN08)
+# Audit ledger #12 (SELF-CONTRADICTED): the drawer said "rank models on calibration", while the
+# families are ranked by AUC; each fit now reports calibration beside it (models/metrics.py).
+# Van Calster et al. 2019 (BMC Med 17:230): "poor calibration may make an algorithm less clinically
+# useful than a competitor algorithm that has a lower AUC but is well calibrated".
+CALIBRATION_TOO = section(
+    "Probabilities, not just ranks",
+    "Judge models on calibration as well as discrimination: a well-calibrated model with a lower "
+    "AUC can be more useful than a miscalibrated one with a higher AUC (Van Calster et al. 2019). "
+    "Each fit here reports its calibration intercept and slope beside the AUC that ranks the "
+    "families.",
+    "SETTLED", CLIN_A51)
+
 LENS = {
     "key": "lens",
     "title": "What kind of data this is",
@@ -101,9 +144,12 @@ LENS = {
                      "offered first. Several can apply at once."),
     ],
     "drawer": {"sections": [
+        # Audit IN-20 (ledger #43): adjusting changes the estimand (Tomova et al. 2022); "every
+        # nutrient association is confounded by it" overstated what adjustment does.
         section("Dietary intake",
-                "Total energy is a strong determinant of every nutrient's intake, so nutrient "
-                "associations are confounded by it; energy adjustment is the field's "
+                "Total energy is a strong determinant of every nutrient's intake, so adjusting for "
+                "it changes what a nutrient's coefficient means: with energy fixed, more of one "
+                "source is less of another (Tomova et al. 2022). Energy adjustment is the field's "
                 "methodological signature. The dietary pack also checks energy units by the "
                 "Atwater reconstruction (4·protein + 4·carbohydrate + 9·fat + 7·alcohol) and "
                 "offers the implausible-intake screens.",
@@ -119,11 +165,7 @@ LENS = {
                 "de-facto default. It is widely used and statistically criticized: it collapses "
                 "every missing value to one point, deflating variance.",
                 "CONVENTION", MET03),
-        section("Genomics and transcriptomics",
-                "With more features than samples, an unpenalized model is degenerate rather than "
-                "merely overfit: infinitely many coefficient vectors fit the data exactly. "
-                "Regularization is mandatory.",
-                "SETTLED", GEN08),
+        {**P_OVER_N, "heading": "Genomics and transcriptomics"},
         section("Survey instruments",
                 "Whether a Likert item is ordinal or interval is genuinely disputed. Run the other "
                 "treatment as a sensitivity analysis; if the conclusion holds under both, the "
@@ -208,9 +250,16 @@ REPAIRS = {
                 "interval holds the central 95% of healthy people and is for annotation only. "
                 "The bounds themselves are institution-specific.",
                 "CONVENTION", CLIN_A12),
-        section("Failures are not values",
-                "TNTC and QNS are measurement failures, not censoring at a detection limit: treat "
-                "them as missing, not as extreme values.",
+        # Audit IN-23 (ledger #9, WRONG for TNTC). FDA Bacteriological Analytical Manual, ch. 3:
+        # "When number of CFU per plate exceeds 250, for all dilutions, record the counts as too
+        # numerous to count (TNTC)"; crowded plates are estimated "as greater than 100 times the
+        # highest dilution plated". A count above the range is right-censored, not missing.
+        section("Too many to count is a value",
+                "TNTC, too numerous to count, means a plate held more colonies than its countable "
+                "range, over 250 per plate in FDA's Bacteriological Analytical Manual: the count "
+                "is above that limit, right-censored like a result above the upper limit of "
+                "quantitation, not missing. QNS, quantity not sufficient, and a hemolyzed specimen "
+                "are measurement failures with no value: treat those as missing.",
                 "SETTLED", CLIN_A13),
     ]},
     "evidence": None,
@@ -241,10 +290,15 @@ TARGET = {
                 "can then be over-adjustment and collider bias at once. Present adjusted and "
                 "unadjusted models and flag it as a limitation; the pack does not pick a side.",
                 "DISPUTED", NUT04),
+        # Audit G14 (ledger #11, OVERSTATED): the superlative had no source. STROBE-nut (Lachat et
+        # al. 2016), nut-13: "Report the number of individuals excluded based on missing,
+        # incomplete, or implausible dietary/nutritional data"; STROBE item 13(c): "Consider use of
+        # a flow diagram."
         section("Which N",
-                "A participant-flow diagram with every dietary exclusion itemized, each box "
-                "carrying an n and a reason, is the single most-checked figure in a nutrition "
-                "methods review. The outcome sets its first step.",
+                "Report how many people each dietary exclusion removed, and why: STROBE-nut asks "
+                "for the number excluded for missing, incomplete or implausible dietary data, and "
+                "STROBE suggests a flow diagram, each box carrying an n and a reason. The outcome "
+                "sets its first step.",
                 "SETTLED", NUT02),
     ]},
     "evidence": None,
@@ -268,11 +322,7 @@ EVENT = {
                                 "against it."),
     ],
     "drawer": {"sections": [
-        section("Probabilities, not just ranks",
-                "Rank models on calibration and clinical utility, not on AUC alone: two models "
-                "with identical AUC can differ enormously in whether their probabilities of the "
-                "event are usable.",
-                "SETTLED", CLIN_A51),
+        CALIBRATION_TOO,
         section("A rare event is not a problem to resample away",
                 "Undersampling, oversampling and SMOTE overestimate the probability of the "
                 "minority class without improving discrimination. A rare event's real problem is "
@@ -299,9 +349,10 @@ TASK = {
         option("binary", "Binary",
                "Two classes; models predict the probability of one, scored by AUC and Brier "
                "score."),
+        # Audit G16 (ledger #14): the primary metric is log loss (models/metrics.py PRIMARY).
         option("multiclass", "Multiclass",
-               "Several unordered classes; models predict each class's probability, scored by "
-               "accuracy."),
+               "Several unordered classes; models predict each class's probability, scored by log "
+               "loss."),
         option("ordinal", "Ordinal",
                "Ordered levels, such as a 1–5 rating; a proportional-odds model keeps their order."),
         option("time_to_event", "Time to event",
@@ -359,11 +410,15 @@ PURPOSE = {
         ESTIMAND,
     ],
     "drawer": {"sections": [
+        # Audit ledger #16: Groenwold et al. 2012 (CMAJ 184:1265): the method "typically results in
+        # biased estimates in nonrandomized studies", while "In randomized trials, the missing-
+        # indicator method is a valid method to handle missing baseline covariate data".
         section("The advice that flips",
                 "For prediction, a missing-value indicator is legitimate and often improves "
                 "performance, because the same indicator is observable when the model is used. "
-                "For inference it gives biased estimates; multiple imputation or a principled "
-                "model of the missingness is required.",
+                "For inference in observational data it gives biased estimates (in a randomized "
+                "trial it is valid for baseline covariates); multiple imputation, offered here, or "
+                "a principled model of the missingness is required.",
                 "SETTLED", CLIN_A2),
         section("Hygiene for prediction",
                 "Split by participant, not by row, and fit everything learned from data — "
@@ -495,10 +550,12 @@ AGGREGATION = {
     "question": "How should each person's rows be combined?",
     "one_liner": "The right summary depends on what repeats: averaging replicates reduces error, "
                  "averaging time points destroys the signal.",
-    "why": "For repeated recalls, the mean is an acceptable exposure for ranking people: still "
-           "attenuated, but unbiased in direction. For visits, choose the baseline, the last "
-           "visit or the change by what the study asks. When the outcome itself varies within a "
-           "person, say which value is the outcome.",
+    # Audit IN-22 (ledger #21): toward zero only for one error-prone exposure under classical error.
+    "why": "For repeated recalls, the mean is an acceptable exposure for ranking people, still "
+           "measured with error: alone it is attenuated toward zero, but beside other error-prone "
+           "intakes it can be inflated or flip sign. For visits, choose the baseline, the last "
+           "visit or the change. When the outcome itself varies within a person, say which value "
+           "is the outcome.",
     "consumer": "The working table, the participant flow, the seal and every model read the "
                 "combined rows.",
     "options": [
@@ -511,16 +568,24 @@ AGGREGATION = {
                "Each measurement becomes the last value minus the first: change over time."),
     ],
     "terms": [
-        term("attenuation", "The shrinking of an association toward zero because the exposure "
-                            "is measured with error; averaging more days reduces it."),
+        term("attenuation", "The shrinking of a lone exposure's association toward zero because "
+                            "it is measured with error; averaging more days reduces it."),
         term("usual intake", "A person's long-run average intake, which single days only "
                              "estimate; modeling it properly is more than a mean."),
     ],
     "drawer": {"sections": [
+        # Keogh et al. 2020 (STRATOS Part 1, §3.1.3): with several error-prone covariates "the
+        # estimated coefficients … may be larger or smaller than the true target values in a rather
+        # unpredictable manner"; Freedman et al. 2011 (JNCI 103:1086): "with two or more
+        # mismeasured exposures, estimated relative risks may become attenuated, inflated, or can
+        # even change direction".
         section("When the mean is adequate",
                 "To rank people for regression, classification or a predictive model, the mean of "
-                "the available recalls is an acceptable exposure: attenuated, but unbiased in "
-                "direction under classical error, and what most cohort analyses use.",
+                "the available recalls is an acceptable exposure and what most cohort analyses "
+                "use. Under classical error it is attenuated toward zero only as the model's one "
+                "error-prone exposure: with several error-prone nutrients, or energy, in the "
+                "model, a coefficient can be attenuated, inflated or change sign (Keogh et al. "
+                "2020; Freedman et al. 2011).",
                 "CONVENTION", NUT03),
         section("When the mean is not adequate",
                 "Prevalence or percentile claims about usual intake, episodically consumed foods "
@@ -542,34 +607,33 @@ TEMPORAL = {
     "key": "temporal",
     "title": "Predicting forward in time",
     "question": "Are you predicting something later from measurements taken earlier?",
-    "one_liner": "A random split is optimistic when the task looks forward; the held-out rows "
-                 "should then be the latest.",
+    # Audit IN-24: whole people are held out by their last observation, so with repeated rows their
+    # earlier visits can predate training rows; the words say what is drawn (seal.py).
+    "one_liner": "A random split is optimistic when the task looks forward; the held-out people "
+                 "should then be those seen last.",
     "why": "With visits kept as rows, a random split lets the model learn from a person's later "
-           "visits and be scored on their earlier ones. Validation in time, holding out the "
-           "latest rows, is a distinct check from validation on random rows, and reporting "
+           "visits and be scored on their earlier ones. Validation in time, holding out those "
+           "seen last, is a distinct check from validation on random rows, and reporting "
            "guidelines treat it so.",
     "consumer": "The seal and the folds: ordered by time when yes, grouped by person either way.",
     "options": [
         option("true", "Yes, later from earlier",
-               "The held-out rows are the latest; folds run forward in time; each person's rows "
-               "stay together."),
+               "Those seen last are held out whole, earlier visits included; folds run forward "
+               "in time."),
         option("false", "No",
                "The held-out rows are drawn at random, each person's rows kept together."),
     ],
     "terms": [
         GROUPED_SPLIT,
-        term("chronological split", "A split that holds out the latest rows by date, so models "
-                                    "are scored only on what came after their training data."),
+        term("chronological split", "A split that holds out the people seen last, whole, by their "
+                                    "latest date; their earlier rows can predate training rows."),
     ],
     "drawer": {"sections": [
         section("Split by participant",
                 "Split by participant, not by row, and fit everything learned from data inside "
                 "the training fold only.",
                 "SETTLED", NUT08),
-        section("Resample the whole pipeline",
-                "Internal validation must resample the entire modeling pipeline: imputation, "
-                "transformation, selection and tuning.",
-                "SETTLED", CLIN_A55),
+        WHOLE_PIPELINE,
     ]},
     "evidence": None,
 }
@@ -708,8 +772,14 @@ EXCLUSIONS = {
     "options": [
         option("none", "Keep every row",
                "No row is excluded; the record states that no exclusion was applied."),
-        option("willett_by_sex", "Willett, by sex",
-               "Women outside 500–3,500 and men outside 800–4,200 kcal a day are excluded."),
+        # Audit MI-02 (ledger #29): Willett 2013's men's range is 800–4,000 (Banna et al. 2017,
+        # quoting Nutritional Epidemiology, 3rd ed.); 800–4,200 is the Health Professionals
+        # Follow-up Study's (Pan et al. 2011), beside the Nurses' Health Study's 500–3,500.
+        option("willett_2013_by_sex", "Willett 2013, by sex",
+               "Women outside 500–3,500 and men outside 800–4,000 kcal a day are excluded."),
+        option("nhs_hpfs_by_sex", "NHS/HPFS, by sex",
+               "Women outside 500–3,500 (NHS) and men outside 800–4,200 (HPFS) kcal a day are "
+               "excluded."),
         option("sex_neutral_500_5000", "500–5,000 kcal a day",
                "Anyone outside 500–5,000 kcal a day is excluded, whatever their sex."),
         option("sex_neutral_500_3500", "500–3,500 kcal a day",
@@ -727,9 +797,11 @@ EXCLUSIONS = {
                                    "real diet, usually a reporting error."),
         term("under-reporting", "Reporting less than was eaten. It is systematic, concentrated in "
                                 "people with higher BMI and in weight-conscious participants."),
+        # Audit ledger #34: Yamamoto et al. 2023 (eLife 12:e83616): "Whether one uses Goldberg
+        # cutoffs should therefore be decided based on research purposes and not general rules."
         term("Goldberg cut-off", "A screen comparing reported energy with estimated basal "
                                  "metabolic rate, within limits that widen as recall days fall; "
-                                 "the field's standard for misreporting."),
+                                 "widely used, and chosen by research purpose."),
     ],
     "drawer": {"sections": [
         section("Each criterion its own box",
@@ -737,16 +809,26 @@ EXCLUSIONS = {
                 "its reason and its count. A single excluded box tells a reader nothing about who "
                 "is missing from the model's population.",
                 "CONVENTION", CLIN_A41),
+        # Banna et al. 2017 (Front Nutr 4:45), quoting Willett 2013: "an allowable range of
+        # 800–4,000 kcal/day for men may be used"; Pan et al. 2011 (AJCN 94:1088), NHS and HPFS:
+        # "daily energy intake <800 or >4200 kcal/d for men and <500 or >3500 kcal/d for women".
         section("The screens in circulation",
-                "Willett and the Nurses' Health Study use 500–3,500 kcal a day for women and "
-                "800–4,200 for men. Variants use 4,000 or 5,000 as men's upper bound, or a "
-                "sex-neutral 500–5,000 or 500–3,500. The conventions genuinely differ across "
+                "Willett's textbook (2013) gives 500–3,500 kcal a day for women and 800–4,000 for "
+                "men. The Nurses' Health Study (women) and the Health Professionals Follow-up "
+                "Study (men) use 500–3,500 and 800–4,200. Variants use 5,000 as men's upper bound, "
+                "or a sex-neutral 500–5,000 or 500–3,500. The conventions genuinely differ across "
                 "literatures, so show how N moves with the choice.",
                 "CONVENTION", NUT02),
+        # Audit G15 (ledger #31): the 14-of-24 evidence is about Goldberg cut-offs, from one
+        # simulation; Yamamoto et al. 2023: bias "was reduced but not completely eliminated by
+        # Goldberg cutoffs in 14 of 24 nutrition-outcome pairs; bias was not reduced for the
+        # remaining 10 cases".
         section("What exclusion does not fix",
-                "Excluding misreporters reduces bias in diet–outcome associations but does not "
-                "remove it; in one evaluation only 14 of 24 nutrition–outcome pairs improved. "
-                "That exclusion is insufficient is settled; whether to exclude at all is disputed.",
+                "In one simulation built on a biomarker study, Goldberg cut-offs reduced but did "
+                "not remove bias in 14 of 24 nutrient–outcome associations and did not reduce it "
+                "in the other 10; fixed kcal screens were not evaluated (Yamamoto et al. 2023). "
+                "Whether to exclude at all is disputed: decide by the research purpose, not a "
+                "general rule.",
                 "DISPUTED", NUT02),
         section("A common default",
                 "Drop only unreliable recalls and impossible values, run the primary analysis on "
@@ -877,11 +959,8 @@ SPLIT = {
                 "inside the training fold. Selecting features on all samples can report near-zero "
                 "error when no signal exists at all.",
                 "SETTLED", GEN08),
-        section("A single split is weak",
-                "Internal validation should resample the whole pipeline. Bootstrap optimism "
-                "correction or repeated cross-validation is preferred; a single train/test split "
-                "is the weakest option at typical clinical sample sizes.",
-                "CONVENTION", CLIN_A55),
+        WHOLE_PIPELINE,
+        SINGLE_SPLIT,
         # Audit ME-11/G10: the unsourced "below about 50 rows" threshold was 2–4× too low; the
         # spread is now computed on the user's own rows (models/validation.py).
         section("How precise the scores are here",
@@ -899,11 +978,12 @@ ENERGY_ADJUSTMENT = {
     "question": "How should nutrient intakes be adjusted for total energy?",
     "one_liner": "People who eat more eat more of everything; each method answers a different "
                  "question about a nutrient.",
-    "why": "Total energy confounds every nutrient association, and the errors in reported "
-           "nutrients and energy move together. Each method has its own estimand: the standard "
-           "model and the residual method with energy kept swap calories between sources at "
-           "fixed total energy; partition adds calories; all components gives each source's "
-           "added and average swapped calories. Choose by the question.",
+    # Audit IN-20 (ledger #43): adjusting for total energy changes the estimand (Tomova et al. 2022).
+    "why": "Total energy drives every nutrient's intake, and the errors in reported nutrients and "
+           "energy move together. Adjusting for it changes the question: the standard model and "
+           "the residual method with energy kept swap calories between sources at fixed total "
+           "energy; partition adds calories; all components gives each source's added and average "
+           "swapped calories. Choose by the question.",
     "consumer": "Each model's pipeline, the column lineage, the coefficients and the substitution "
                 "curves read it.",
     "options": [
@@ -917,8 +997,11 @@ ENERGY_ADJUSTMENT = {
         option("residual_energy_dropped", "Residual, energy dropped",
                "Each nutrient's residual on energy, energy dropped: differs when covariates track "
                "energy."),
+        # Audit IN-21 (ledger #45): Tomova et al. 2022, model 3b: "a more accurate estimate than
+        # the (unadjusted) nutrient density model, but one which is still biased".
         option("density_multivariate", "Density plus energy",
-               "Nutrient per calorie, with total energy as its own term: an obscure quantity."),
+               "Nutrient per calorie, energy its own term: obscure, and still biased (Tomova "
+               "2022)."),
         option("density", "Density alone",
                "Nutrient per calorie, energy dropped: a rescaled effect whose meaning is "
                "obscure."),
@@ -978,7 +1061,9 @@ ENERGY_ADJUSTMENT = {
                 "Standard and residual models are biased even without confounding (composite "
                 "variable bias), and all four models only partly account for confounding by "
                 "common dietary causes; each evaluates a different estimand (Tomova et al. 2022, "
-                "AJCN).",
+                "AJCN). The density model's coefficient is an obscure quantity, and with energy "
+                "added as a term it is more accurate but still biased; the all-components model "
+                "is the paper's recommended route.",
                 "SETTLED", NUT04),
         section("The field's default",
                 "The Willett residual method, computed within the final analytic sample and within "
@@ -988,7 +1073,9 @@ ENERGY_ADJUSTMENT = {
                 "CONVENTION", NUT04),
         section("When the outcome is BMI or adiposity",
                 "Energy may be on the causal path and a collider at once. Present adjusted and "
-                "unadjusted models and flag it in the limitations; the pack does not pick a side.",
+                "unadjusted models and flag it in the limitations; the pack does not pick a side. "
+                "An outcome named as weight, BMI, waist, body fat or diabetes raises this on the "
+                "card.",
                 "DISPUTED", NUT04),
         section("Fit inside the folds",
                 "The nutrient-on-energy regression is learned from data, so it is fit on training "
@@ -1018,9 +1105,10 @@ MODELS = {
         option("elastic_net", "Elastic net",
                "A penalized linear model: shrinks correlated nutrients together, tuned inside "
                "training folds."),
+        # Audit G16 (ledger #54): the shared missing-values step runs before every family, so the
+        # trees never see a blank (models/pipeline.py shared_steps).
         option("boosted_trees", "Boosted trees",
-               "Many shallow trees: finds curves and interactions and handles missing values; no "
-               "coefficients."),
+               "Many shallow trees: finds curves and interactions; gives no coefficients."),
         option("featurewise", "Feature-wise tests",
                "Tests each exposure on its own, adjusted for the covariates, with "
                "Benjamini–Hochberg false-discovery control; no predictions."),
@@ -1057,16 +1145,12 @@ MODELS = {
                 "performed similarly. Whether tree ensembles beat penalized linear models is "
                 "disputed.",
                 "DISPUTED", GEN08),
-        section("More features than samples",
-                "When predictors outnumber rows, an unpenalized model is degenerate and "
-                "regularization is mandatory; the elastic net is the standard choice if one must "
-                "be named.",
-                "SETTLED", GEN08),
+        P_OVER_N,
         section("Calibrate the trees",
-                "Rank models on calibration as well as discrimination. Boosted trees often produce "
-                "miscalibrated probabilities: report the calibration curve, or recalibrate on "
-                "held-out data, never on training rows.",
+                "Boosted trees often produce miscalibrated probabilities: report the calibration "
+                "curve, or recalibrate on held-out data, never on training rows.",
                 "SETTLED", CLIN_A51),
+        CALIBRATION_TOO,
         section("Avoid stepwise selection",
                 "Stepwise selection produces unstable variable sets, biased coefficients and "
                 "intervals with the wrong coverage; prefer prespecification or penalization.",
@@ -1121,9 +1205,9 @@ SUBSTITUTION = {
                 "last are conventions; log-ratios are emerging and less familiar to reviewers.",
                 "CONVENTION", NUT05),
         section("Validated inputs",
-                "A review of 100 substitution studies found 53% used unvalidated food-frequency "
-                "variables; where validation was reported, correlations with reference methods "
-                "ranged from 0.12 to 0.77.",
+                "A review of 100 substitution studies (Louie & Bhowmik 2026) found 53% used "
+                "unvalidated food-frequency variables; where validation was reported, correlations "
+                "with reference methods ranged from 0.12 to 0.77.",
                 "SETTLED", NUT05),
     ]},
     "evidence": ev("SETTLED", NUT05),
@@ -1156,11 +1240,8 @@ OPEN_SEAL = {
                 "the C-statistic with its interval, the calibration intercept and slope, the "
                 "calibration curve and the Brier score.",
                 "SETTLED", CLIN_A53),
-        section("The whole pipeline, validated",
-                "Internal validation must resample the entire modeling pipeline, imputation and "
-                "tuning included. A single train and test split is the weakest option at typical "
-                "clinical sample sizes.",
-                "CONVENTION", CLIN_A55),
+        WHOLE_PIPELINE,
+        SINGLE_SPLIT,
     ]},
     "evidence": None,
 }

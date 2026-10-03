@@ -3,12 +3,17 @@ energy-adjustment questions — never pre-selected (M1_CONTRACT §3).
 
 Two readings, both from ``docs/turbotab/research/NUTRITION_PACK.md``:
 
-* **Exclusions** (§02, Diagnostic 1). The fixed kcal screens in circulation — Willett's
-  sex-specific 500–3,500 kcal/d for women and 800–4,200 for men, and the sex-neutral 500–5,000
+* **Exclusions** (§02, Diagnostic 1). The fixed kcal screens in circulation — Willett 2013's
+  sex-specific 500–3,500 kcal/d for women and 800–4,000 for men, the Nurses' Health Study and
+  Health Professionals Follow-up Study's 500–3,500 and 800–4,200, and the sex-neutral 500–5,000
   and 500–3,500 — each as an :class:`~turbotab.core.decisions.ExclusionRule` with the number of
   rows it would remove. The pack says the conventions *genuinely differ across literatures* and
   that the app must show how N moves with the choice, so every screen is offered with its count
-  and its CONVENTION badge, and none is chosen.
+  and its CONVENTION badge, and none is chosen. Each is attributed to its source (audit MI-02):
+  Banna et al. 2017 (*Front Nutr* 4:45), quoting Willett's *Nutritional Epidemiology* (3rd ed.,
+  2013): "an allowable range of 800–4,000 kcal/day for men may be used"; Pan et al. 2011 (*AJCN*
+  94:1088), across NHS, NHS II and HPFS: "daily energy intake <800 or >4200 kcal/d for men and
+  <500 or >3500 kcal/d for women".
 * **Energy** (§04). The energy column, the energy-bearing nutrients, the strata a residual can be
   computed within, which of the five models can run on these columns, and the field's usual
   method (the Willett residual, CONVENTION) — first in order, never selected.
@@ -379,6 +384,15 @@ def _kcal(value: float) -> str:
     return f"{value:,.0f}"
 
 
+# The sex-specific screens, each with its men's upper bound and the source its rule's reason names
+# (audit MI-02): (key, label, men's upper kcal/d, reason source). Women's range is 500–3,500 in both.
+SEX_SPECIFIC_SCREENS: tuple[tuple[str, str, float, str], ...] = (
+    ("willett_2013_by_sex", "Willett 2013", 4000.0, "Willett 2013's sex-specific cut-offs"),
+    ("nhs_hpfs_by_sex", "NHS/HPFS", 4200.0,
+     "the Nurses' Health Study and Health Professionals Follow-up Study cut-offs"),
+)
+
+
 def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str | None,
                         sex_levels: Mapping[str, str], base: pd.Series) -> list[dict[str, Any]]:
     """The pack's fixed kcal screens, each with the rows it would remove from ``base``."""
@@ -398,18 +412,19 @@ def exclusion_proposals(frame: pd.DataFrame, *, energy: str, unit: str, sex: str
     if sex is not None:
         women = [k for k, v in sex_levels.items() if v == "female"]
         men = [k for k, v in sex_levels.items() if v == "male"]
-        ranges: dict[str, tuple[float | None, float | None]] = {}
-        for k in women:
-            ranges[k] = bounds(500, 3500)
-        for k in men:
-            ranges[k] = bounds(800, 4200)
-        screens.append((
-            "willett_by_sex",
-            f"Willett, by sex: women 500–3,500 and men 800–4,200 {per_day}"
-            + (" (compared in kJ)" if unit == "kj" else ""),
-            ExclusionRule(column=energy, by=RangeByLevel(column=sex, ranges=ranges),
-                          reason="implausible intakes (Willett's sex-specific cut-offs)"),
-        ))
+        for key, name, men_high, source in SEX_SPECIFIC_SCREENS:
+            ranges: dict[str, tuple[float | None, float | None]] = {}
+            for k in women:
+                ranges[k] = bounds(500, 3500)
+            for k in men:
+                ranges[k] = bounds(800, men_high)
+            screens.append((
+                key,
+                f"{name}, by sex: women 500–3,500 and men 800–{_kcal(men_high)} {per_day}"
+                + (" (compared in kJ)" if unit == "kj" else ""),
+                ExclusionRule(column=energy, by=RangeByLevel(column=sex, ranges=ranges),
+                              reason=f"implausible intakes ({source})"),
+            ))
     for low, high in ((500, 5000), (500, 3500)):
         lo, hi = bounds(low, high)
         screens.append((
@@ -569,6 +584,18 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
                 if r is not None and not math.isnan(r):
                     r_with_energy[n] = round(float(r), 3)
     exclude = [c for c in (energy, target, *nutrients) if c]
+    # Audit IN-20: an energy-related outcome (weight, BMI, waist, adiposity, diabetes) pushes the
+    # DISPUTED note onto the energy card (NUTRITION_PACK §04: "escalate the mediation/collider
+    # warning"), as a card line now and as a badged field for the card's presentation.
+    from turbotab.core.methods.dietary_caveats import DISPUTED, dispute_line, energy_related
+
+    notes: list[str] = []
+    dispute = None
+    kind = energy_related(target)
+    if kind is not None and target is not None:
+        line = finish(dispute_line(target, kind))
+        notes.append(line)
+        dispute = {"outcome": target, "kind": kind, "note": line, "evidence": dict(DISPUTED)}
     return {
         "energy_column": energy,
         "nutrients": nutrients,
@@ -581,7 +608,8 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
         # The nested-parts note that ran ~70 words above the options is folded into the
         # partition option's reason and the "nested" term card; notes stay for data lines that
         # fit the card's budget (COMPOSED_BUDGETS["card_line"]).
-        "notes": [],
+        "notes": notes,
+        "outcome_dispute": dispute,
         "not_adjusted": not_adjusted(columns, roles, energy=energy, target=target, nutrients=nutrients),
     }
 

@@ -418,12 +418,19 @@ dominates.]** The pack should offer this as the default for the univariate path.
 
 ### When it does harm — the citations that let the tool be credibly cautious
 
-- **Nygaard, Rødland & Hovig (2016), *Biostatistics*** — ComBat on **unbalanced designs** can
-  "inadvertently exaggerate the differences observed." Their reanalysis: ComBat produced **>1,000
-  differentially expressed probesets where an appropriate mixed-model approach recovered 11.**
-- ***BMC Bioinformatics* 21 (2020)** — ComBat on **randomly generated data with no true signal**
-  produced "alarming numbers" of FDR- and Bonferroni-corrected false positives, **in both unbalanced
-  *and balanced* designs.** The strongest single warning available; the pack should carry it.
+- **Nygaard, Rødland & Hovig (2016), *Biostatistics*** — ComBat on **unbalanced designs**: "subsequent
+  analyses that do not account for batch effects may systematically underestimate the size of
+  estimation errors and exaggerate the confidence in group differences." Their reanalysis of a
+  microarray study (GEO GSE40566): **2,011 differentially expressed genes after ComBat, against 11 when
+  batch was instead blocked in limma.** *(Until 2026-10-03 this quoted "inadvertently exaggerate the
+  differences observed", which the paper does not say, and gave ">1,000 … where an appropriate
+  mixed-model approach recovered 11". Audit F15.)*
+- **Zindler et al., *BMC Bioinformatics* 21:271 (2020)**, "Simulating ComBat" — on **simulated DNA
+  methylation microarray data** (Illumina 450K and EPIC) with no true signal, ComBat "produced alarming
+  numbers of false discovery rate (FDR) and Bonferroni-corrected (BF) false positive results in
+  unbalanced as well as in balanced sample distributions". The strongest single warning available,
+  for methylation arrays; that it carries to metabolomics intensities is an inference, not a finding.
+  *(Until 2026-10-03 this was uncited and unscoped. Audit F15.)*
 - **Overcorrection by QC-based smoothers** — comparative work reports certain QC-based algorithms
   **significantly decreased replicate correlation**, i.e. removed real signal along with drift.
 - **Circular validation** — "QC RSD improved from 28% to 9% after correction" is *not* evidence the
@@ -438,10 +445,13 @@ dominates.]** The pack should offer this as the default for the univariate path.
 > batch-corrected group comparison, and a reviewer should not accept one."*
 
 > *"ComBat is the most cited batch-correction method and it works, but it also has the best-documented
-> failure mode: a 2020 simulation in BMC Bioinformatics showed ComBat applied to purely random data
-> produced large numbers of FDR-corrected false positives even in balanced designs, and Nygaard et al.
-> found ComBat inflating a result from 11 genes to over 1,000 under an unbalanced design. My default
-> for your univariate tests is to include batch as a covariate rather than modify your data."*
+> failure mode: a 2020 simulation of DNA methylation microarrays (Zindler et al., BMC Bioinformatics)
+> showed ComBat applied to random data produced large numbers of FDR-corrected false positives even in
+> balanced designs, and Nygaard et al. found ComBat inflating a gene-expression result from 11 genes
+> to 2,011 under an unbalanced design. Neither studied metabolomics, but the mechanism is not specific
+> to an assay. My default for your univariate tests is to include batch as a covariate rather than
+> modify your data."* *(Until 2026-10-03 this said "purely random data" without the methylation-array
+> setting, and "from 11 genes to over 1,000". Audit F15.)*
 
 > *"Correction reduced QC RSD from 26% to 8%. That is not evidence your biology is real — QC-based
 > correction is fit to make that exact number small. The meaningful checks are that your technical

@@ -9150,7 +9150,7 @@
       },
       "Chronology": {
         "additionalProperties": false,
-        "description": "The chronological draw the temporal answer asked for, and whether it was drawn.",
+        "description": "The chronological draw the temporal answer asked for, and whether it was drawn.\n\nWhole units are held out by their last observation, so with repeated rows a held-out unit's\nearlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).\n``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the\nsplit question offers, at this draw's seed, so the split's sentence can state it.",
         "properties": {
           "drawn": {
             "title": "Drawn",
@@ -9196,6 +9196,38 @@
           "sentence": {
             "title": "Sentence",
             "type": "string"
+          },
+          "n_held_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Held Rows"
+          },
+          "n_held_earlier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Held Earlier"
+          },
+          "earlier": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EarlierRows"
+            },
+            "title": "Earlier",
+            "type": "array"
           }
         },
         "required": [
@@ -9204,7 +9236,10 @@
           "boundary",
           "n_units",
           "n_undated",
-          "sentence"
+          "sentence",
+          "n_held_rows",
+          "n_held_earlier",
+          "earlier"
         ],
         "title": "Chronology",
         "type": "object"
@@ -9867,6 +9902,36 @@
         "title": "DesignStep",
         "type": "object"
       },
+      "EarlierRows": {
+        "additionalProperties": false,
+        "description": "For one held-out share drawn by time: how many held-out rows there are, and how many were\nobserved before the latest training row (audit IN-24).",
+        "properties": {
+          "holdout": {
+            "title": "Holdout",
+            "type": "number"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "n_held_rows": {
+            "title": "N Held Rows",
+            "type": "integer"
+          },
+          "n_earlier": {
+            "title": "N Earlier",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "holdout",
+          "seed",
+          "n_held_rows",
+          "n_earlier"
+        ],
+        "title": "EarlierRows",
+        "type": "object"
+      },
       "EnergyRanking": {
         "description": "The energy methods in order of soundness for the declared purpose, applicable ones first\n(audit WP6; BLUEPRINT §12 ruling 2): the all-components model first under inference, the\nenergy-keeping models first under prediction. ``line`` names the tension with custom.",
         "properties": {
@@ -10019,6 +10084,17 @@
             },
             "title": "Not Adjusted",
             "type": "array"
+          },
+          "outcome_dispute": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutcomeDispute"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -10031,7 +10107,8 @@
           "ranking",
           "r_with_energy",
           "notes",
-          "not_adjusted"
+          "not_adjusted",
+          "outcome_dispute"
         ],
         "title": "EnergyReading",
         "type": "object"
@@ -12700,6 +12777,34 @@
           "turn"
         ],
         "title": "OrientedArtifact",
+        "type": "object"
+      },
+      "OutcomeDispute": {
+        "description": "An energy-related outcome's DISPUTED note for the energy card (audit IN-20; NUTRITION_PACK\n§04: \"escalate the mediation/collider warning\"): what the outcome's name reads as, the card\nline (also in ``notes``) and its badge.",
+        "properties": {
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/FindingEvidence"
+          }
+        },
+        "required": [
+          "outcome",
+          "kind",
+          "note",
+          "evidence"
+        ],
+        "title": "OutcomeDispute",
         "type": "object"
       },
       "OutcomeRule": {
