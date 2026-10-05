@@ -74,6 +74,8 @@ interface SentenceProps {
   /** What "change" reopens, for its accessible name. */
   subject: string;
   onChange?: () => void;
+  /** Takes the answer back (the engine's `revert`): the slot returns to its previous answer. */
+  onUndo?: () => void;
   meta?: ReactNode;
   /** What is true of the answer now that the sentence cannot say (it did not run, its counts
    *  predate a later answer): under the sentence, in the coach's voice. */
@@ -86,6 +88,7 @@ export function DecisionSentence({
   children,
   subject,
   onChange,
+  onUndo,
   meta,
   note,
   testId,
@@ -123,6 +126,18 @@ export function DecisionSentence({
             title={`Reopens the question. A new answer is added to the record; this one stays in its history.`}
           >
             change
+          </button>
+        ) : null}
+        {onUndo ? (
+          <button
+            type="button"
+            className={styles.change}
+            onClick={onUndo}
+            aria-label={`Undo ${subject}`}
+            title="Takes this answer back: the answer before it returns, or the question opens again. Both stay in the history."
+            data-testid={testId ? `${testId}-undo` : undefined}
+          >
+            undo
           </button>
         ) : null}
       </motion.div>

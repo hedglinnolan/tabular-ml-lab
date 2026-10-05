@@ -11,7 +11,8 @@ import { cx, fmtBytes, fmtInt, fmtWhen, readingText } from "../util/format";
 import styles from "./StartScreen.module.css";
 
 // The server's readable types (turbotab/core/datastore.py: CSV_SUFFIXES and friends).
-const TABLE_EXT = /\.((csv|tsv|txt)(\.gz|\.zst)?|parquet|pq|xlsx|xls)$/i;
+// SAS transport (.xpt), as NHANES publishes its files, is read too (DATAIN).
+const TABLE_EXT = /\.((csv|tsv|txt)(\.gz|\.zst)?|parquet|pq|xlsx|xls|xpt|xport)$/i;
 
 function Crumbs({ path, onGo }: { path: string; onGo: (p: string) => void }) {
   const parts = path.split("/").filter(Boolean);
@@ -122,7 +123,7 @@ function FileBrowser() {
         {others > 0 ? (
           <p className={styles.others}>
             {fmtInt(others)} other {others === 1 ? "file is" : "files are"} not a table TurboTab
-            reads (CSV, TSV or TXT, optionally .gz; Parquet; Excel).
+            reads (CSV, TSV or TXT, optionally .gz; Parquet; Excel; SAS transport .xpt).
           </p>
         ) : null}
       </div>
@@ -194,7 +195,7 @@ function UploadZone({ only }: { only: boolean }) {
         onDrop={onDrop}
         data-testid="dropzone"
       >
-        <p className={styles.dropText}>Drop a CSV, TSV, Parquet or Excel file here</p>
+        <p className={styles.dropText}>Drop a CSV, TSV, Parquet, Excel or SAS transport (.xpt) file here</p>
         <button
           type="button"
           className={styles.secondary}
@@ -206,7 +207,7 @@ function UploadZone({ only }: { only: boolean }) {
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,.tsv,.txt,.gz,.zst,.parquet,.pq,.xlsx,.xls"
+          accept=".csv,.tsv,.txt,.gz,.zst,.parquet,.pq,.xlsx,.xls,.xpt,.xport"
           className="visually-hidden"
           tabIndex={-1}
           aria-hidden="true"

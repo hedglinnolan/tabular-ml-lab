@@ -24,9 +24,12 @@ export function Header({ children, jobs }: { children?: ReactNode; jobs?: ReactN
       <div className={styles.context}>{children}</div>
       <div className={styles.jobs}>{jobs}</div>
       <nav className={styles.nav} aria-label="App">
-        <Link href="/lab" className={styles.navLink}>
-          Motion lab
-        </Link>
+        {/* The review surfaces exist only in dev:mock (INBOX 123, 162). */}
+        {MOCK ? (
+          <Link href="/lab" className={styles.navLink}>
+            Motion lab
+          </Link>
+        ) : null}
         <button
           type="button"
           className={styles.theme}

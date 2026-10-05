@@ -490,7 +490,7 @@ test("the M1 journey: every question previewed on the stage, fitted, then re-flo
     await expect(page.getByTestId("sentence-stopped-substitution")).toHaveCount(0);
   }
   measurements.band_s = await timed(() =>
-    expect(page.getByText(/Bands: 95% intervals from \d+ refits/)).toBeVisible({ timeout: 300_000 }),
+    expect(page.getByText(/bands: 95% intervals from \d+ refits/i)).toBeVisible({ timeout: 300_000 }),
   );
   await expect(page.getByTestId("decision-substitution")).toContainText("refits");
   await page.getByTestId("substitution-curves").evaluate((el) => el.scrollIntoView({ block: "start" }));

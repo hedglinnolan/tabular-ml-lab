@@ -61,8 +61,11 @@ import {
   TemporalAsk,
   UnitAsk,
 } from "./ask/SequenceQuestions";
+import { AskCard } from "./ask/AskCard";
 import { FindingsCards } from "./Findings";
 import { layoutFlow } from "./flow";
+import { compose, taskFollowup } from "./generic/compose";
+import { GenericAsk } from "./generic/GenericAsk";
 import { findingState, followUps, heldFor, type DeferredChoice } from "./findingState";
 import { FailureNote, RefusalNote } from "./Refusal";
 import { RepairsSection, Resurfaced, type RepairAnswer } from "./Repairs";
@@ -167,6 +170,9 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   const split = useStage(pid, view, "split");
   const shelf = useStage(pid, view, "shelf");
   const design = useStage(pid, view, "design");
+  // The generic question's cards (compose.ts): the causal lane's and the time-varying lane's.
+  const causalDesign = useStage(pid, view, "causal_design");
+  const timeVarying = useStage(pid, view, "time_varying");
   const summaries = useColumnSummaries(pid, stages.ingest?.status === "fresh").data;
 
   const [reopened, setReopened] = useState<Partial<Record<QuestionKey, boolean>>>({});
@@ -234,6 +240,12 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
         );
         if (latest) setAnnounce(`Recorded: ${sentenceText(latest)}`);
         reset();
+        if (at === "undo") {
+          // An answer taken back: its question is where the user looks next (asked again, or
+          // settled on the answer before it).
+          goTo(key as QuestionKey, true);
+          return;
+        }
         if (stays) {
           // A changed earlier answer, or a repair, settles in place; focus stays there.
           window.setTimeout(
@@ -383,6 +395,24 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
     return <Prose text={note.text} />;
   };
 
+  /** The ledger's one ask card on the open step that asks (BLUEPRINT §14.2), inside its question. */
+  const askFor = (key: QuestionKey): ReactNode => {
+    const st = stepOf(key);
+    if (!st?.ask || st.status !== "open") return null;
+    return (
+      <AskCard
+        card={st.ask}
+        pending={decide.isPending}
+        record={(d, at) => record(key, d, at)}
+        answerAt={answerFor(key)}
+        // §11.4 rule 4: the block that confirms every line unlocks once a guess was confirmed.
+        mastered={decisions.some(
+          (r) => r.decision.kind === "confirm_reading" || r.decision.kind === "confirm_readings",
+        )}
+      />
+    );
+  };
+
   const props = (key: QuestionKey): AskProps => ({
     entry: entries.get(key),
     pending: decide.isPending,
@@ -401,6 +431,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
       reopened: !!reopened[key],
       coach: coachFor(key),
       resurfaced: resurfacedFor(key),
+      ask: askFor(key),
     },
   });
 
@@ -481,12 +512,17 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
         ) : (
           waitingFor("target_info", "Then the outcome's levels are read.")
         );
-      case "task":
+      case "task": {
+        // WP18: what the task still asks (the outcome's scale, an ordinal outcome's order).
+        const st = stepOf("task");
+        const asks = st ? taskFollowup({ key, step: st, state, targetInfo: ti }) : null;
+        if (asks) return <GenericAsk key={`task:${st?.followup}`} {...p} q={asks} />;
         return ti ? (
           <TaskAsk {...p} info={ti} current={state.task} />
         ) : (
           waitingFor("target_info", "Then the task is read from it.")
         );
+      }
       case "purpose":
         return <PurposeAsk {...p} current={state.purpose} />;
       case "grain":
@@ -597,6 +633,33 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
             current={state.survey}
           />
         );
+      default: {
+        // No step is ever blank: every other key is the generic question, composed from the
+        // server's words and the cards its stage serves (generic/compose.ts).
+        const st = stepOf(key);
+        if (!st) return null;
+        const q = compose({
+          key,
+          step: st,
+          state,
+          entry: entries.get(key),
+          targetInfo: ti,
+          roles: roles?.artifact,
+          proposals: proposals?.artifact,
+          causalDesign: causalDesign?.artifact,
+          timeVarying: timeVarying?.artifact,
+          columns,
+        });
+        const subject = SUBJECT[key];
+        return (
+          <GenericAsk
+            key={`${key}:${st.status}`}
+            {...p}
+            q={q}
+            fallbackTitle={`${subject.charAt(0).toUpperCase()}${subject.slice(1)}`}
+          />
+        );
+      }
     }
   };
 
@@ -699,19 +762,36 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
           size={14}
         />
       ) : null;
+    const undone = answerFor(key);
+    const note = sentenceNote(key, rec);
     return (
       <DecisionSentence
         layoutId={`q-${key}`}
         subject={SUBJECT[key]}
-        // The seal opens once (constitution §05): its sentence has no "change".
+        // The seal opens once (constitution §05): its sentence has no "change" and no "undo".
         onChange={key === "open_seal" ? undefined : () => reopen(key)}
+        // INBOX 41: take the answer back with the engine's revert; nothing is deleted.
+        onUndo={
+          key === "open_seal"
+            ? undefined
+            : () => record(key, { kind: "revert", decision_id: rec.id }, "undo")
+        }
         meta={
           <span className={k.metaSeal}>
             {postSeal(rec)}
             {glyph}#{rec.seq}
           </span>
         }
-        note={sentenceNote(key, rec)}
+        note={
+          undone?.key === "undo" ? (
+            <>
+              {note}
+              {undone.node}
+            </>
+          ) : (
+            note
+          )
+        }
         testId={`decision-${key}`}
       >
         {sentence(rec, decisions)}
