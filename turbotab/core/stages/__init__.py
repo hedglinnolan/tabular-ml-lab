@@ -490,7 +490,10 @@ def build_graph() -> Graph:
             # left as sva leaves it.
             # design 22 (wave-1 repairs integrated): both design 21s, the routing gate's and MS7
             # repair's.
-            Stage("design", 22, ("working", "split", "target_info"),
+            # design 23 (EXPORT): the model matrix the shared steps made is kept as a file of the
+            # artifact (canonical Parquet, read by no stage downstream), so the export hashes it
+            # and a replay compares it byte for byte (V2 definition of done §3.6).
+            Stage("design", 23, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS),

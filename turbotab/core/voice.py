@@ -305,8 +305,23 @@ def register_standing(kind: str) -> Callable[[StandingFn], StandingFn]:
     return wrap
 
 
+# EXPORT: a sentence that counts rows (the exclusions' and the complete cases') is authored on the
+# rows the answers before it select. A later answer can change those rows (the adjustment set,
+# answered after the missing-values question, leaves out a covariate whose blanks were dropping
+# rows; a role confirmed later brings a predictor in), and the sentence as said then contradicts the
+# participant flow. The methods text restates it with the counts the flow has now, given in the
+# context as ``counts[kind]`` (the facts its sentence reads: ``n_complete`` and ``n_before``, or
+# ``exclusion_counts``); the rest of the sentence stays as authored on the state before it.
+_COUNTED: set[str] = set()
+
+
+def restated_counts(kind: str) -> None:
+    """Declare that ``kind``'s sentence counts rows, and is restated with the counts as they stand."""
+    _COUNTED.add(kind)
+
+
 def restates(kind: str) -> bool:
-    return kind in _RESTATED_WHOLE or kind in _STANDING
+    return kind in _RESTATED_WHOLE or kind in _STANDING or kind in _COUNTED
 
 
 def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, *,
@@ -327,6 +342,13 @@ def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, 
         if before == after:
             return sentence
         return disclose(after, post_seal=post_seal, after_estimates=after_estimates) or sentence
+    if kind in _COUNTED:
+        facts = (_get(ctx, "counts") or {}).get(kind)
+        if not facts:
+            return sentence
+        again = disclose(sentence_for(decision, then, facts), post_seal=post_seal,
+                         after_estimates=after_estimates)
+        return again or sentence
     fn = _STANDING.get(kind)
     if fn is None:
         return sentence
@@ -832,6 +854,9 @@ def _set_exclusions(d: Any, state: Any, ctx: Any) -> str:
     return text + _domain_clause(state)
 
 
+restated_counts("set_exclusions")
+
+
 def _domain_clause(state: Any) -> str:
     """Under a population survey design, rows leave the estimate and stay in the variance
     (audit ME-06; NHANES Analytic Guidelines 2011–2016 §3.2.3): said where rows are excluded."""
@@ -916,6 +941,9 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
         text += (f"; it was kept under inference as a recorded limitation: "
                  f"{INDICATOR_CAUTION if indicator else SINGLE_FILL_CAUTION}")
     return text[0].upper() + text[1:]
+
+
+restated_counts("set_missing")
 
 
 def _energy_column(state: Any) -> str | None:

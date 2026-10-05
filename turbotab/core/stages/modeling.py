@@ -520,7 +520,33 @@ def design_stage(ctx: StageContext) -> Bundle:
         data=artifact.model_dump(mode="json"),
         frames={"training": pd.DataFrame({"row_id": train_ids.astype(np.int64)})},
         objects={"pipelines": pipelines, "spec": spec.to_dict(), "nested": nested},
+        files=_matrix_file(ctx, matrix),
     )
+
+
+def _matrix_file(ctx: StageContext, matrix: pd.DataFrame) -> dict[str, Any]:
+    """EXPORT: the model matrix the lineage ends in, written as its canonical Parquet file (a file
+    of the artifact, so a stage downstream never reads it): what the export hashes and a replay
+    reproduces byte for byte (``turbotab.core.export.matrix``). The cache is disposable; the
+    bundle carries only the hashes, never the rows. Never fails the design for the export's sake."""
+    import logging
+    import tempfile
+    import uuid
+    from pathlib import Path
+
+    from turbotab.core.export.matrix import FILE, write
+
+    data = (ctx.paths or {}).get("data")
+    folder = Path(data).parent if data else Path(tempfile.gettempdir())
+    path = folder / f".tt-design-{uuid.uuid4().hex[:12]}-{FILE}"
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        write(matrix, path)
+    except Exception:  # noqa: BLE001 - the export says the matrix is missing; the fit goes on
+        logging.getLogger(__name__).exception("the model matrix could not be written")
+        path.unlink(missing_ok=True)
+        return {}
+    return {FILE: path}
 
 
 def _coef(value: float) -> str:
