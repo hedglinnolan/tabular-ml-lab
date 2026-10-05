@@ -249,7 +249,8 @@ EFFECTS_READS = ("adjustment", "estimand", "multiplicity", "model_sequence", "di
                  "clusters", "purpose", "models", "task", "event", "target", "roles", "roles_unconfirmed",
                  "role_confirmations", "reading_confirmations", "shape_confirmations", "missing",
                  "survey", "outcome_order", "follow_up", "categorical", "energy_adjustment",
-                 "grain", "exposure_forms", "lens", "findings", "column_units", "split")
+                 "grain", "exposure_forms", "lens", "findings", "column_units", "split",
+                 "repeat_kind", "unit")
 # The families whose declared models are refit on the primary's model matrix: every family with a
 # coefficient table today, the families that model the unit (a random intercept, a working
 # correlation) included, so the unadjusted estimate is shown for each (STROBE 16a).
@@ -365,6 +366,17 @@ def _not_applicable(state: Any, exposure: str, why: str) -> Bundle:
                                        methods=why).model_dump(mode="json"))
 
 
+def supplied_copies_reason(implicate: str) -> str:
+    """Why the declared models are withheld when the rows are the data's own imputed copies."""
+    return (f"The rows are the data's own imputed copies (numbered by `{implicate}`). The fit's "
+            f"table analyzes each copy with its own outcome and pools them by Rubin's rules, so its "
+            f"primary model is the estimate. The declared models beside it (the unadjusted model, "
+            f"Model 1 and Model 3), the marginal risks, the diagnostics and the sensitivity "
+            f"analyses are not built over the copies, so none is shown: fit on the copies stacked, "
+            f"each participant would count once per copy and every interval would leave out the "
+            f"variation between the copies.")
+
+
 def effects_stage(ctx: StageContext) -> Bundle:
     from turbotab.core import estimand as est
     from turbotab.core.models import get_family
@@ -374,7 +386,8 @@ def effects_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, design_spec, modeling_frame
     from turbotab.core.stages.data import open_store
     from turbotab.core.stages.modeling import (_missing_for_table, _survey, _task, coded_outcome,
-                                               outcome_levels, read_assignment)
+                                               imputed_copies_column, outcome_levels,
+                                               read_assignment)
 
     state = ctx.state
     spec_e = est.current_estimand(state)
@@ -384,6 +397,12 @@ def effects_stage(ctx: StageContext) -> Bundle:
                "No effect is reported until the exposure and its effect are declared.")
         return _not_applicable(state, "", why)
     key = est.exposure_key(spec_e)
+    copies = imputed_copies_column(state)
+    if copies is not None:
+        # Relation ``sequence-supplied-copies``: the fit pools its table over the data's own
+        # imputed copies (MS3, wave 1b); this stage's models are not built over them, and on the
+        # copies stacked each participant would count once per copy.
+        return _not_applicable(state, key, supplied_copies_reason(copies))
     exposures = est.exposures_of(state, spec_e)
     task = _task(ctx)
     target = state.target
@@ -1244,17 +1263,18 @@ class _Run:
 
     def _outcome_sd(self) -> float:
         """The outcome's standard deviation: the population's under the surveyed-population answer
-        (weights scaled to average one, on n − 1: R survey's ``svyvar``), else the rows'."""
+        (R survey's ``svyvar``), else the rows', by the one rule the causal lane uses too
+        (``models.effects.outcome_sd``; MODELING_SEQUENCE §0 ruling 14)."""
+        from turbotab.core.models.effects import outcome_sd
+
         values = self.y.astype(float)
         design = self._design()
         if design is not None:
             from turbotab.core.models.survey import domain_of
 
             domain = domain_of(self.frame.index, design)
-            v, w = values[domain.keep], domain.weight
-            mean = float(np.average(v, weights=w))
-            return float(math.sqrt(float(np.sum(w * (v - mean) ** 2)) / (len(v) - 1)))
-        return float(np.std(values, ddof=1))
+            return outcome_sd(values[domain.keep], domain.weight)
+        return outcome_sd(values)
 
     def _marginal_sensitivity(self, feature: str, c: MarginalContrast,
                               imputed: bool) -> Sensitivity:
@@ -1687,6 +1707,11 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
                       "the surveyed-population answer",
                       "each model is design-based, or the family is blocked and recorded with the "
                       "fit's exits; never an unweighted refit beside a design-based primary"),
+            _relation("sequence-supplied-copies", "disables", "the declared models",
+                      "the rows are the data's own imputed copies (set_repeat_kind, kept as rows)",
+                      "the fit's table pools the primary over the copies; the declared models, "
+                      "the marginal risks, the diagnostics and the sensitivity analyses are "
+                      "withheld with the reason, never fit on the copies stacked"),
         ),
         sources=("Westreich & Greenland 2013, Am J Epidemiol 177:292", "STROBE item 16a")),
     _contract(
@@ -1815,4 +1840,4 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
 ))
 __all__ = ["EFFECTS_READS", "EffectsArtifact", "EffectsFamily", "SENSITIVITY_NAMES", "SequenceFit",
            "effects_stage", "energy_outputs", "matrix_sources", "matrix_table", "methods_sentence",
-           "sensitivity_clause", "sensitivity_reading"]
+           "sensitivity_clause", "sensitivity_reading", "supplied_copies_reason"]

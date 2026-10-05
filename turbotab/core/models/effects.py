@@ -839,6 +839,21 @@ def e_values(estimate: float, low: float | None = None, high: float | None = Non
             "converted": measure != "RR" and not (measure in ("OR", "HR") and rare)}
 
 
+def outcome_sd(values: np.ndarray, weights: np.ndarray | None = None) -> float:
+    """The outcome's standard deviation an E-value of a difference standardizes by
+    (MODELING_SEQUENCE §0 ruling 14: the SD the estimand speaks of, the same in the effects stage
+    and the causal lane). With ``weights`` (the surveyed-population answer's design weights at the
+    analyzed rows) the population's: ``Σ w (v − v̄_w)² / Σ w · n / (n − 1)``, as R survey's
+    ``svyvar`` estimates it; else the rows' (n − 1)."""
+    v = np.asarray(values, dtype=float)
+    if weights is None:
+        return float(np.std(v, ddof=1))
+    w = np.asarray(weights, dtype=float)
+    mean = float(np.sum(w * v) / np.sum(w))
+    n = len(v)
+    return float(math.sqrt(float(np.sum(w * (v - mean) ** 2)) / float(np.sum(w)) * n / (n - 1)))
+
+
 def partial_r2(t: float, dof: float) -> float:
     """The partial R² of a coefficient with the outcome from its t-statistic, ``t² / (t² + dof)``."""
     return float(t) ** 2 / (float(t) ** 2 + float(dof))
@@ -1090,8 +1105,8 @@ __all__ = [
     "Setting", "Standardized", "Unestimable", "adjusted_for_confounder", "benchmark_bounds",
     "column_basis", "cook_threshold", "counterfactual", "cox_zph", "e_value_rr", "e_values",
     "g_computation", "group_partial_r2", "linear_sensitivity", "logistic_fit",
-    "logistic_influence", "logistic_mle", "ols_influence", "partial_r2", "percentile",
-    "period_hazard_ratios", "resample_indices", "robustness_value", "separated_rows",
-    "settings_of", "split_follow_up", "split_rows", "standardized_risks", "time_scale",
-    "to_risk_ratio", "unmeasured_confounding",
+    "logistic_influence", "logistic_mle", "ols_influence", "outcome_sd", "partial_r2",
+    "percentile", "period_hazard_ratios", "resample_indices", "robustness_value",
+    "separated_rows", "settings_of", "split_follow_up", "split_rows", "standardized_risks",
+    "time_scale", "to_risk_ratio", "unmeasured_confounding",
 ]

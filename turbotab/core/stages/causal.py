@@ -413,6 +413,20 @@ def _cluster_floor_exits(exits: Sequence[Mapping[str, Any]],
 # ── causal_design ────────────────────────────────────────────────────────────
 
 
+def supplied_copies_reason(state: Any) -> str | None:
+    """Why the lane is not offered when the rows are the data's own imputed copies (relation
+    ``supplied_copies``), else None."""
+    from turbotab.core.stages.modeling import imputed_copies_column
+
+    implicate = imputed_copies_column(state)
+    if implicate is None:
+        return None
+    return (f"The rows are the data's own imputed copies (numbered by `{implicate}`). The causal "
+            f"lane's estimators are not pooled over imputed copies in v2, and fit on the copies "
+            f"stacked each participant would count once per copy; the fit's table analyzes each "
+            f"copy with its own outcome and pools them by Rubin's rules.")
+
+
 def _not_offered(exposure: str, reason: str) -> Bundle:
     return Bundle(data=CausalDesignArtifact(purpose="inference", offered=False, reason=reason,
                                             exposure=exposure).model_dump(mode="json"))
@@ -455,6 +469,8 @@ def _causal_design(ctx: StageContext) -> Bundle:
         reason = "Declare the exposure and its effect first; the causal lane estimates that effect."
     if reason is None and adjustment_answer(state) is None:
         reason = "Answer the adjustment set first; the causal lane adjusts for what it keeps."
+    if reason is None:
+        reason = supplied_copies_reason(state)
     if reason is not None:
         return _not_offered(exposure, reason)
     ctx.progress(0.1, "Reading the declared plan's rows")
@@ -620,6 +636,11 @@ def causal_stage(ctx: StageContext) -> Bundle:
                                + ", ".join(causal.ASSUMPTION_WORDS[a] for a in missing) + ".",
                          [{"label": "Declare these assumptions", "decision": decision.model_copy(
                              update={"assumptions": list(causal.ASSUMPTIONS)})}])
+    copies = supplied_copies_reason(state)
+    if copies is not None:
+        return _withheld(base, copies, [{"label": "Keep the primary model only, pooled over the "
+                                                  "copies by the fit",
+                                         "decision": decision.model_copy(update={"method": "none"})}])
     ctx.progress(0.05, "Reading the declared plan's rows")
     try:
         prep = prepare(ctx)
@@ -784,9 +805,14 @@ def causal_stage(ctx: StageContext) -> Bundle:
     # residual on the exposure's: its robustness value is that fit's.
     if method == "dml_plr":
         ls["final_stage"] = result.extra["final_stage"]
+    # A difference's E-value standardizes by the SD the estimand speaks of: the population's under
+    # the surveyed-population answer (the design weights the estimate carries), else the rows', by
+    # the effects stage's one rule (MODELING_SEQUENCE §0 ruling 14).
+    from turbotab.core.models.effects import outcome_sd
+
     sensitivity = causal.sensitivity_for(
         [e.model_dump() for e in estimates], method=method, exposure=prep.exposure,
-        outcome=str(state.target), outcome_sd=None if outcome_binary else float(np.std(y, ddof=1)),
+        outcome=str(state.target), outcome_sd=None if outcome_binary else outcome_sd(y, weights),
         ratio_refused=refused.get(rr_words), population=spec.population, **ls)
     methods = causal.methods_sentence(
         method=method, exposure=prep.exposure, outcome=str(state.target),
@@ -812,8 +838,8 @@ CAUSAL_READS: tuple[str, ...] = (
     "purpose", "target", "task", "event", "estimand", "adjustment", "clusters", "roles",
     "roles_unconfirmed", "role_confirmations", "reading_confirmations", "shape_confirmations",
     "missing", "survey", "categorical", "energy_adjustment", "exposure_forms", "grain", "lens",
-    "findings", "split", "column_units")
+    "findings", "split", "column_units", "repeat_kind", "unit")
 
 __all__ = ["CAUSAL_READS", "CausalArtifact", "CausalDesignArtifact", "CausalEstimate",
            "Prepared", "Withheld", "causal_design_stage", "causal_stage", "default_learner",
-           "n_limit", "prepare"]
+           "n_limit", "prepare", "supplied_copies_reason"]

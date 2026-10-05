@@ -645,7 +645,11 @@ def build_graph() -> Graph:
             # ── ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11, 12): the exposure's effect as declared ──
             # effects 2 (wave 1b, MS2): the declared models' imputation holds the survey design under
             # the population answer and the clustering, as the fit's does.
-            Stage("effects", 2, ("working", "design", "split", "target_info"),
+            # effects 3 (wave 2a repairs): Model 2 is the fit's own primary on every analyzed row,
+            # Model 3 alone on its own rows; every model design-based under the population answer;
+            # the marginal, influence and sensitivity edges as R holds them; a difference's E-value
+            # by the population's SD (ruling 14); withheld on the data's own imputed copies.
+            Stage("effects", 3, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand"),
                   label="Reporting the exposure's effect across the declared models"),
@@ -653,21 +657,30 @@ def build_graph() -> Graph:
             # causal_design is outcome-free: the options, the assumptions and positivity, shown
             # before any choice; causal runs the chosen estimator once the answer and the model
             # families are recorded (the whole plan declared before any estimate is shown).
-            Stage("causal_design", 1, ("working", "split", "target_info"), CAUSAL_READS,
+            # causal_design 2, causal 2 (wave 2a repairs): each estimand reads its own positivity;
+            # post-double selection is hdm's; the required sensitivity for every estimate or why,
+            # its interval form left out beside an interval that is not classical, a difference's
+            # E-value by the population's SD (ruling 14); not offered on the data's own copies.
+            Stage("causal_design", 2, ("working", "split", "target_info"), CAUSAL_READS,
                   causal_design_stage, heavy=True, requires=("estimand",),
                   label="Reading the causal lane's assumptions and overlap"),
-            Stage("causal", 1, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
+            Stage("causal", 2, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
                   causal_stage, heavy=True, requires=("causal", "models"),
                   label="Estimating the effect in the causal lane"),
             # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
             # It requires the unit answer, which is set only when units repeat: a table of one row
             # per unit never runs it (nothing there changes over time).
-            Stage("time_varying", 1, ("working", "split", "target_info", "structure"),
+            # time_varying 2 (wave 2a repair): an estimate only after this lane's diagnostics on
+            # the current data were shown; CR2 intervals with the unit floor; failed resamples
+            # counted; the MSM's ratio read as a hazard ratio for its E-value.
+            Stage("time_varying", 2, ("working", "split", "target_info", "structure"),
                   TIME_VARYING_READS, time_varying_stage, heavy=True,
                   requires=("estimand", "unit"), label="Following the exposure through time"),
             # ── Wave 2, EXPLAIN (V2 definition of done §2): the fitted families described ──
             # explain 2 (wave 1b, MS6): the floor quotes the fit's own primary score.
-            Stage("explain", 2, ("working", "fit", "design", "target_info"),
+            # explain 3 (wave 2a repair): the explained rows are a seeded random permutation, never
+            # the file's order; the paragraph names only the families that drew curves.
+            Stage("explain", 3, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models"),
                   label="Explaining each fitted model"),

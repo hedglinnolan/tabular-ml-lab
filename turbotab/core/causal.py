@@ -39,9 +39,17 @@ prediction"):
   penalty is derived for independent, unweighted rows, so under the surveyed-population answer it
   is block and record, with the weighted partially linear model and the sample-only attestation as
   its exits.
+* **Imputed values**: the lane is not pooled over imputations in v2, so under the multiple-imputation
+  answer incomplete rows are block and record (exit: the complete rows), and the data's own imputed
+  copies (NHANES DXA, kept as rows) are refused, the primary model, pooled over the copies by the
+  fit, its way forward.
 * **Sensitivity to unmeasured confounding is required** (ruling 10). The E-value and the
   Cinelli–Hazlett robustness value are ESTIMAND's (``turbotab/core/models/effects.py``); the one
-  call site is :func:`sensitivity_for`, and the methods text says what it reported.
+  call site is :func:`sensitivity_for`, and the methods text says what it reported. A difference's
+  E-value standardizes by the SD the estimand speaks of (ruling 14: the population's under the
+  surveyed-population answer), and beside an interval that is not classical (post-double
+  selection's HC3, the partially linear model's estimating equation) the robustness value's
+  interval form is not reported (ESTIMAND's ``rv-interval-classical``).
 
 **The method contracts** (BLUEPRINT §13) are :data:`CONTRACTS`: each estimator's slot, data scope,
 needs, routing, storyboard, sentence and relations. The relations it touches in MODELING_SEQUENCE
@@ -171,6 +179,12 @@ RELATIONS: dict[str, Any] = {r.name: r for r in (
               "Multiple imputation implies pooling every estimate; the causal lane is not pooled over "
               "imputations in v2, so incomplete rows are blocked and recorded.",
               "Estimate on the complete rows, its assumption stated", rung="block_and_record"),
+    _relation("supplied_copies", "conflicts", "the rows are the data's own imputed copies",
+              "the causal lane",
+              "The data's own imputed copies (NHANES DXA) are pooled by Rubin's rules in the fit's "
+              "table; the causal lane is not pooled over imputations in v2, and on the copies "
+              "stacked each participant would count once per copy, so it is not offered.",
+              "Keep the primary model only, pooled over the copies by the fit", rung="refused"),
     _relation("measure_marginal", "conflicts", "a conditional ratio measure", "the causal lane",
               "DML and TMLE estimate a marginal effect; a conditional odds or hazard ratio is "
               "another estimand.",
@@ -198,7 +212,7 @@ RELATIONS: dict[str, Any] = {r.name: r for r in (
 
 _COMMON = ("prediction_refuses", "plan_enables", "exposure_invalidates", "rung_d",
            "assumptions_first", "positivity_blocks", "clusters_group", "mi_blocks",
-           "sensitivity_required", "plan_lock", "time_varying_exposure")
+           "supplied_copies", "sensitivity_required", "plan_lock", "time_varying_exposure")
 # The leash per purpose (BLUEPRINT §11.3): refused under prediction; under inference rung (d),
 # allowed after the plan, the assumptions declared first, a positivity violation blocked and recorded.
 _LEASH = {"prediction": "refused", "inference": "available"}
@@ -509,14 +523,33 @@ NOT_ONE_COEFFICIENT: dict[str, str] = {
     "tmle": "targeted maximum likelihood averages its targeted outcome model's predictions, not "
             "one coefficient",
 }
-# The robustness value's name in the methods text, per estimator whose effect is one coefficient.
+# The interval each estimator whose effect is one least-squares coefficient reports, which is not
+# the classical one its robustness value's interval form assumes (ESTIMAND's relation
+# ``rv-interval-classical``): post-double selection's HC3, and the partially linear model's from
+# the estimating equation (DoubleML's mean(ψ²)/J²/n, or linearized over a survey design).
+SHOWN_INTERVAL: dict[str, str] = {
+    "pds_lasso": "HC3",
+    "dml_plr": "the estimating equation's",
+}
+# The robustness value's name in the methods text, per estimator whose effect is one coefficient,
+# with the interval form left out (Cinelli & Hazlett's RV at α and the benchmarks' adjusted
+# intervals rest on the classical standard error, so they would describe an interval not shown).
 ROBUSTNESS_NAMES: dict[str, str] = {
-    "pds_lasso": "the Cinelli–Hazlett robustness value (each selected covariate a named benchmark)",
+    "pds_lasso": ("the Cinelli–Hazlett robustness value (each selected covariate a named benchmark; "
+                  "its form for the 95% interval, and the benchmarks' intervals, are not reported, "
+                  "as they assume classical standard errors and the interval reported is HC3)"),
     "dml_plr": ("the Cinelli–Hazlett robustness value of the final least-squares step, the "
                 "outcome's residual on the exposure's (the form the omitted-variable bound of "
                 f"{CHERNOZHUKOV_OVB} takes in the partially linear model), the median over the "
-                "sample splits"),
+                "sample splits (its form for the 95% interval is not reported: it assumes a "
+                "classical standard error, and the interval reported is the estimating equation's)"),
 }
+# What the reading says where the robustness value's interval form is left out of the lane.
+FINAL_STAGE_INTERVAL_NOTE = (
+    "The robustness value for the 95% interval rests on the final least-squares step's classical "
+    "standard error, as sensemakr computes it; the interval reported uses the standard error of "
+    "double/debiased machine learning's estimating equation, so it is not reported: it would "
+    "describe an interval that is not the one shown.")
 
 
 def final_stage_robustness(final_stage: Sequence[Mapping[str, float]], *, exposure: str,
@@ -528,7 +561,11 @@ def final_stage_robustness(final_stage: Sequence[Mapping[str, float]], *, exposu
     the estimate is. In the partially linear model the omitted-variable bias bound of Chernozhukov
     et al. 2022 (``|bias| ≤ S·C_Y·C_D``, ``S² = E[ε²]/E[(D − m)²]``) is this regression's, so with
     both strengths equal its point robustness value is Cinelli & Hazlett's ``½(√(f⁴ + 4f²) − f²)``,
-    ``f² = θ²/S²``; the value at α is Cinelli & Hazlett's for the same fit."""
+    ``f² = θ²/S²``.
+
+    The value at α is not reported (``rv_alpha`` None, ``interval_note`` why): Cinelli & Hazlett's
+    rests on the fit's classical standard error, and the interval the lane reports is the
+    estimating equation's (ESTIMAND's relation ``rv-interval-classical``)."""
     import numpy as np
 
     from turbotab.core.models import effects
@@ -539,8 +576,8 @@ def final_stage_robustness(final_stage: Sequence[Mapping[str, float]], *, exposu
             "t": float(np.median(ts)), "dof": float(np.median(dofs)),
             "partial_r2": float(np.median([effects.partial_r2(t, f) for t, f in zip(ts, dofs)])),
             "rv": float(np.median([effects.robustness_value(t, f) for t, f in zip(ts, dofs)])),
-            "rv_alpha": float(np.median([effects.robustness_value(t, f, alpha=alpha)
-                                         for t, f in zip(ts, dofs)])),
+            "rv_alpha": None, "covariance": SHOWN_INTERVAL["dml_plr"],
+            "interval_note": FINAL_STAGE_INTERVAL_NOTE,
             "benchmarks": [], "alpha": alpha, "splits": len(ts),
             "step": "the final least-squares step (the outcome's residual on the exposure's)"}
 
@@ -582,13 +619,17 @@ def sensitivity_for(estimates: Sequence[Mapping[str, Any]], *, method: str, expo
                            "estimate": first.get("estimate"), "methods": [], "e_value": None,
                            "robustness": None, "reading": "", "not_computed": None}
     least_squares = matrix is not None and y is not None and exposure_column is not None
+    # The interval post-double selection reports is HC3, so its robustness value's interval form and
+    # its benchmarks' intervals are left out, with why (ESTIMAND's ``rv-interval-classical``).
+    covariance = SHOWN_INTERVAL.get(method, "classical")
     what = "the estimate"
     if first["measure"] == "mean_difference":
         found = effects.unmeasured_confounding(
             measure="mean_difference", estimate=float(first["estimate"]), ci_low=first.get("ci_low"),
             ci_high=first.get("ci_high"), se=first.get("se"), outcome_sd=outcome_sd,
             matrix=matrix if least_squares else None, y=y if least_squares else None,
-            exposure_column=exposure_column if least_squares else None, benchmarks=benchmarks)
+            exposure_column=exposure_column if least_squares else None, benchmarks=benchmarks,
+            covariance=covariance)
     else:
         ratio = next((e for e in estimates if e.get("measure") == "risk_ratio"), None)
         found = (effects.unmeasured_confounding(
@@ -599,7 +640,8 @@ def sensitivity_for(estimates: Sequence[Mapping[str, Any]], *, method: str, expo
                 else "the marginal risk ratio")
         if least_squares:  # a linear-probability least-squares coefficient: its robustness value
             found["robustness"] = effects.linear_sensitivity(
-                matrix, y, exposure_column, benchmarks).as_dict()
+                matrix, y, exposure_column, benchmarks, covariance=covariance,
+                shown_se=first.get("se")).as_dict()
             found["methods"] = ["robustness_value", *found["methods"]]
     if final_stage and found.get("robustness") is None:
         found["robustness"] = final_stage_robustness(final_stage, exposure=exposure,
@@ -1113,7 +1155,8 @@ _register()
 
 __all__ = [
     "ASSUMPTIONS", "ASSUMPTION_WORDS", "CANDIDATES_PER", "CONTRACTS", "METHODS", "METHOD_LABELS",
-    "RELATIONS", "ROBUSTNESS_NAMES", "STATED", "TRIM_AT", "assumption_card",
+    "FINAL_STAGE_INTERVAL_NOTE", "RELATIONS", "ROBUSTNESS_NAMES", "SHOWN_INTERVAL", "STATED",
+    "TRIM_AT", "assumption_card",
     "card_positivity", "card_violation", "causal_gate", "final_stage_robustness", "stated_reason",
     "current_causal", "many_candidates", "methods_sentence", "options", "plan_reason",
     "positivity_exits", "sensitivity_for", "sensitivity_sentence",

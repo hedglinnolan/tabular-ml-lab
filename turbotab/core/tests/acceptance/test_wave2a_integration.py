@@ -226,8 +226,7 @@ s <- sensemakr(m, treatment = "fiber", kd = 1,
 st <- s$sensitivity_stats; b <- s$bounds
 e <- suppressMessages(evalues.OLS(est = 0.42, se = 0.11, sd = 2.3))
 r <- suppressMessages(evalues.RR(est = 0.81, lo = 0.70, hi = 0.94))
-out(list(rv_q = st$rv_q, rv_qa = st$rv_qa, labels = b$bound_label, est = b$adjusted_estimate,
-         lo = b$adjusted_lower_CI, hi = b$adjusted_upper_CI,
+out(list(rv_q = st$rv_q, labels = b$bound_label, est = b$adjusted_estimate,
          ols_point = e[2, 1], ols_limit = if (is.na(e[2, 2])) e[2, 3] else e[2, 2],
          rr_point = r[2, 1], rr_limit = if (is.na(r[2, 2])) r[2, 3] else r[2, 2]))
 """
@@ -236,10 +235,13 @@ out(list(rv_q = st$rv_q, rv_qa = st$rv_qa, labels = b$bound_label, est = b$adjus
 @needs_r
 def test_the_causal_lane_s_required_sensitivity_is_estimand_s_against_r(tmp_path):
     """``causal.sensitivity_for`` against R: the E-value of a difference (``EValue::evalues.OLS``),
-    of a marginal risk ratio (``evalues.RR``), and post-double selection's robustness values and
-    named benchmarks (``sensemakr`` on the same least-squares fit), to 1e-8. Cross-fitted
-    estimators carry no robustness value, and a risk difference with no ratio no E-value, each said
-    with the reason; the analysis is never a pass or a fail."""
+    of a marginal risk ratio (``evalues.RR``), and post-double selection's robustness value and
+    named benchmarks' adjusted estimates (``sensemakr`` on the same least-squares fit), to 1e-8.
+    Post-double selection reports an HC3 interval, so the robustness value's interval form and the
+    benchmarks' intervals, which sensemakr computes from the classical standard error, are left out
+    with the reason (ESTIMAND's ``rv-interval-classical``; wave 2a repairs integration).
+    Cross-fitted estimators carry no robustness value, and a risk difference with no ratio no
+    E-value, each said with the reason; the analysis is never a pass or a fail."""
     from turbotab.core import causal
 
     rng = np.random.default_rng(31)
@@ -260,12 +262,13 @@ def test_the_causal_lane_s_required_sensitivity_is_estimand_s_against_r(tmp_path
     assert pds["required"] and pds["computed"] and pds["not_computed"] is None
     assert pds["methods"] == ["robustness_value", "e_value"]  # ranked: the robustness value first
     assert pds["robustness"]["rv"] == pytest.approx(r["rv_q"], rel=1e-8)
-    assert pds["robustness"]["rv_alpha"] == pytest.approx(r["rv_qa"], rel=1e-8)
+    assert pds["robustness"]["rv_alpha"] is None and pds["robustness"]["covariance"] == "HC3"
+    assert pds["robustness"]["interval_note"] in pds["reading"]
     bench = {b["covariate"]: b for b in pds["robustness"]["benchmarks"]}
-    for label, est, lo, hi in zip(r["labels"], r["est"], r["lo"], r["hi"]):
+    for label, est in zip(r["labels"], r["est"]):
         name = label.split(" ")[-1]
-        assert (bench[name]["estimate"], bench[name]["ci_low"], bench[name]["ci_high"]) == \
-            pytest.approx((est, lo, hi), rel=1e-8)
+        assert bench[name]["estimate"] == pytest.approx(est, rel=1e-8)
+        assert bench[name]["ci_low"] is None and bench[name]["ci_high"] is None
     assert pds["e_value"]["point"] == pytest.approx(r["ols_point"], rel=1e-8)
     assert pds["e_value"]["limit"] == pytest.approx(r["ols_limit"], rel=1e-8)
     assert "pass" not in pds["reading"].replace("never as a pass or a fail", "")

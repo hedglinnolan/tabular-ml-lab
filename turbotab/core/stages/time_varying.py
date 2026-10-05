@@ -809,7 +809,11 @@ def _msm(ctx: StageContext, frame: pd.DataFrame, setting: Setting, lane: Any,
                           ci_low=lo, ci_high=hi, **test)
         ev, reads = _ratio_e_value(setting, d, est, lo, hi)
     else:
-        sd = float(np.std(yv, ddof=1))
+        # Ruling 14's one rule (``models.effects.outcome_sd``): the rows' SD, since this lane is
+        # blocked and recorded under the surveyed-population answer (its exit the sample answer).
+        from turbotab.core.models.effects import outcome_sd
+
+        sd = outcome_sd(yv)
         row = EstimateRow(label=f"Mean difference {per}", measure="mean_difference",
                           estimate=r["estimate"], ci_low=lo, ci_high=hi, **test)
         ev = tv.e_value_md(r["estimate"] / sd, r["se"] / sd if interval else None)

@@ -430,6 +430,7 @@ RELATION_TESTS = {
     "gcomp-unit-floor": HERE + "test_estimand_2_g_computation::test_2_below_the_unit_floor_the_marginal_risks_carry_no_interval",
     "model3-own-rows": HERE + "test_estimand_3_table2::test_3_model_2_is_the_fits_primary_and_model_3_alone_takes_fewer_rows",
     "sequence-design-based": HERE + "test_estimand_3_table2::test_3_under_the_surveyed_population_every_model_is_design_based",
+    "sequence-supplied-copies": HERE + "test_wave2a_repairs_integration::test_the_data_s_own_imputed_copies_withhold_table_2_and_the_causal_lane",
     "rv-interval-classical": HERE + "test_estimand_5_sensitivity::test_5_the_stage_offers_it_for_a_linear_outcome_robustness_value_first",
     "curve-straight-line": HERE + "test_estimand_5_sensitivity::test_5_a_curve_is_bounded_through_its_straight_line_estimate",
     "export-replays": HERE + "test_estimand_chain::test_a_the_plan_exports_byte_identically_and_never_calls_itself_registered",

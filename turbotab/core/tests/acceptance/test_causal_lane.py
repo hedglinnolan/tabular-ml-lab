@@ -247,8 +247,11 @@ def test_1c_the_partially_linear_models_robustness_value_is_its_final_least_squa
     coefficient: the outcome's residual regressed on the exposure's, no intercept. Reference: R
     alone, on the app's folds: ``lm`` nuisance fits per fold, ``lm(u ~ 0 + v)`` per split, and
     sensemakr's ``robustness_value`` (q = 1; α = 1 and 0.05) of that fit, the median over the three
-    splits; tolerance 1e-8. On the yes/no outcome there is no risk ratio, so the robustness value
-    is the analysis computed and the E-value's absence is said; the methods text names it."""
+    splits; tolerance 1e-8. Its form at α = 0.05, which R computes from the same fit's classical
+    standard error, is not reported: the interval shown is the estimating equation's (ESTIMAND's
+    ``rv-interval-classical``), and the reading says why. On the yes/no outcome there is no risk
+    ratio, so the robustness value is the analysis computed and the E-value's absence is said; the
+    methods text names it."""
     n = 600
     data = simulated(n, 4, seed=8)
     splits = est.sample_splits(n, 5, 3, seed=4)
@@ -275,7 +278,9 @@ cat(toJSON(list(numeric = out[[1]], binary = out[[2]]), digits = NA))
                                        outcome_sd=None if binary else float(np.std(y, ddof=1)),
                                        final_stage=fit.extra["final_stage"])
         robust = found["robustness"]
-        assert (robust["rv"], robust["rv_alpha"]) == pytest.approx(ref[key], abs=1e-8), key
+        assert robust["rv"] == pytest.approx(ref[key][0], abs=1e-8), key
+        assert robust["rv_alpha"] is None, key  # R's ref[key][1] describes lm's interval, not DML's
+        assert robust["interval_note"] == FINAL_STEP_NOTE and FINAL_STEP_NOTE in found["reading"]
         assert found["computed"] is True
         assert found["methods"] == (["robustness_value"] if binary
                                     else ["robustness_value", "e_value"])
@@ -846,8 +851,13 @@ CLOSING = (" It rests on the declared assumptions of no unmeasured confounding g
 # numeric outcome's difference, and post-double selection's robustness value before it.
 E_VALUE_ONLY = (" Sensitivity to unmeasured confounding is reported by the E-value for the estimate "
                 "and for the confidence limit nearer the null, never as a pass or a fail.")
+# Post-double selection reports an HC3 interval and the partially linear model the estimating
+# equation's, so neither reports the robustness value's interval form, which assumes the classical
+# standard error (ESTIMAND's relation ``rv-interval-classical``; wave 2a repairs integration).
 RV_AND_E_VALUE = (" Sensitivity to unmeasured confounding is reported by the Cinelli–Hazlett "
-                  "robustness value (each selected covariate a named benchmark) and by the E-value "
+                  "robustness value (each selected covariate a named benchmark; its form for the "
+                  "95% interval, and the benchmarks' intervals, are not reported, as they assume "
+                  "classical standard errors and the interval reported is HC3) and by the E-value "
                   "for the estimate and for the confidence limit nearer the null, never as a pass "
                   "or a fail.")
 # The partially linear model's estimate is one least-squares coefficient of the outcome's residual
@@ -856,7 +866,13 @@ PLR_RV = (" Sensitivity to unmeasured confounding is reported by the Cinelli–H
           "value of the final least-squares step, the outcome's residual on the exposure's (the "
           "form the omitted-variable bound of Chernozhukov, Cinelli, Newey, Sharma & Syrgkanis "
           "2022, NBER w30302 takes in the partially linear model), the median over the sample "
-          "splits")
+          "splits (its form for the 95% interval is not reported: it assumes a classical standard "
+          "error, and the interval reported is the estimating equation's)")
+FINAL_STEP_NOTE = (
+    "The robustness value for the 95% interval rests on the final least-squares step's classical "
+    "standard error, as sensemakr computes it; the interval reported uses the standard error of "
+    "double/debiased machine learning's estimating equation, so it is not reported: it would "
+    "describe an interval that is not the one shown.")
 PLR_RV_AND_E_VALUE = (PLR_RV + " and by the E-value for the estimate and for the confidence limit "
                                "nearer the null, never as a pass or a fail.")
 PLR_RV_ONLY = PLR_RV + ", never as a pass or a fail."
@@ -1315,8 +1331,8 @@ def test_6_the_shortest_leash_and_every_relation_of_the_lane_fires(tmp_path):
     assert (plr["sensitivity"]["e_value"]["point"], plr["sensitivity"]["e_value"]["limit"]) == \
         pytest.approx((point, limit), rel=1e-10)
     assert plr["sensitivity"]["methods"] == ["robustness_value", "e_value"]
-    assert (plr["sensitivity"]["robustness"]["rv"], plr["sensitivity"]["robustness"]["rv_alpha"]) \
-        == pytest.approx((hand["rv"], hand["rv_alpha"]), abs=1e-8)
+    assert plr["sensitivity"]["robustness"]["rv"] == pytest.approx(hand["rv"], abs=1e-8)
+    assert plr["sensitivity"]["robustness"]["rv_alpha"] is None
     # Post-double selection, by hand at the same penalty, over the declared candidates only.
     on_y, _ = _rlasso_by_hand(X, y)
     on_d, _ = _rlasso_by_hand(X, d)
@@ -1343,12 +1359,26 @@ def test_6_the_shortest_leash_and_every_relation_of_the_lane_fires(tmp_path):
         f"{listed(on_d)} for the exposure, and the outcome was regressed on `fiber` and "
         f"{ticked(names(union)) if union else 'no covariate'}, with HC3 standard errors, on "
         f"{n:,} complete rows." + CLOSING + RV_AND_E_VALUE)
-    rv, rv_alpha = robustness_by_hand(np.column_stack([np.ones(n), d, X[:, union]]), y, 1)
+    A = np.column_stack([np.ones(n), d, X[:, union]])
+    rv, _ = robustness_by_hand(A, y, 1)
     found = pds["sensitivity"]
     assert found["methods"] == ["robustness_value", "e_value"] and found["not_computed"] is None
-    assert (found["robustness"]["rv"], found["robustness"]["rv_alpha"]) == pytest.approx(
-        (rv, rv_alpha), rel=1e-8)
+    assert found["robustness"]["rv"] == pytest.approx(rv, rel=1e-8)
+    # The interval shown is HC3, so the robustness value's interval form and the benchmarks'
+    # intervals, which rest on the classical standard error, are left out, and the reading says so.
+    beta, *_ = np.linalg.lstsq(A, y, rcond=None)
+    resid = y - A @ beta
+    classical = math.sqrt(float(resid @ resid) / (n - A.shape[1]) * np.linalg.inv(A.T @ A)[1, 1])
+    assert found["robustness"]["rv_alpha"] is None and found["robustness"]["covariance"] == "HC3"
+    assert found["robustness"]["interval_note"] == (
+        f"The robustness value for the 95% interval and the benchmarks' adjusted intervals rest on "
+        f"the classical least-squares standard error ({classical:.3g}), as sensemakr computes "
+        f"them; the interval reported uses HC3 standard errors, {se:.3g}, so they are not "
+        f"reported: they would describe an interval that is not the one shown.")
+    assert found["robustness"]["interval_note"] in found["reading"]
     assert {b["covariate"] for b in found["robustness"]["benchmarks"]} == set(names(union))
+    assert all(b["ci_low"] is None and b["ci_high"] is None
+               for b in found["robustness"]["benchmarks"])
     assert found["reading"].startswith("An unmeasured confounder would need a partial R² of "
                                        f"{rv:.1%} with both `fiber` and `sbp`")
     assert none["estimates"] == [] and none["withheld"] is None
@@ -1395,7 +1425,10 @@ def test_7_a_survey_design_and_multiple_imputation_in_the_chain(tmp_path):
       equation, PSUs kept whole in the folds, the variance linearized over the design with the
       incomplete rows a domain. Reference: R's survey package, ``svyglm(ũ ~ 0 + ṽ)`` over
       ``subset(design, complete)`` on residuals from weighted ``lm`` fits on the same folds, each
-      split aggregated as DoubleML does (written out here); 1e-6. The methods sentence, verbatim.
+      split aggregated as DoubleML does (written out here); 1e-6. The methods sentence, verbatim;
+    * the E-value standardizes the weighted estimate by the surveyed population's SD of the outcome
+      (MODELING_SEQUENCE §0 ruling 14; R survey's ``svyvar`` over the same domain), as the effects
+      stage does.
     """
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
     from turbotab.core.tests.truths import Truth
@@ -1481,8 +1514,8 @@ for (r in 1:3) {
   out[[r]] <- c(coef(fit)[[1]], SE(fit)[[1]], robustness_value(last, "v", q = 1, alpha = 1),
                 robustness_value(last, "v", q = 1, alpha = 0.05)) }
 cat(toJSON(list(coef = sapply(out, `[`, 1), se = sapply(out, `[`, 2),
-  rv = median(sapply(out, `[`, 3)), rva = median(sapply(out, `[`, 4))), digits = NA,
-  auto_unbox = TRUE))
+  rv = median(sapply(out, `[`, 3)), rva = median(sapply(out, `[`, 4)),
+  svyvar = coef(svyvar(~sbp, subset(des, keep)))[[1]]), digits = NA, auto_unbox = TRUE))
 """, {"data": data})
     coefs, ses = np.asarray(ref["coef"]), np.asarray(ref["se"])
     theta = float(np.median(coefs))  # DoubleML's aggregation, written out
@@ -1502,7 +1535,14 @@ cat(toJSON(list(coef = sapply(out, `[`, 1), se = sapply(out, `[`, 2),
         f"estimating equation, the folds kept each PSU's rows together, and the variance is "
         f"linearized over the design's strata and PSUs." + CLOSING + PLR_RV_AND_E_VALUE)
     robust = art["sensitivity"]["robustness"]
-    assert (robust["rv"], robust["rv_alpha"]) == pytest.approx((ref["rv"], ref["rva"]), abs=1e-8)
+    assert robust["rv"] == pytest.approx(ref["rv"], abs=1e-8) and robust["rv_alpha"] is None
+    # Ruling 14: the E-value standardizes the difference by the surveyed population's SD of the
+    # outcome over the analyzed rows (R survey's svyvar on the same domain), the effects stage's
+    # rule; written out from R's estimate and standard error.
+    point, limit = e_value_by_hand(theta, se, math.sqrt(ref["svyvar"]))
+    assert math.sqrt(ref["svyvar"]) != pytest.approx(float(rows["sbp"].std(ddof=1)), rel=1e-3)
+    assert (art["sensitivity"]["e_value"]["point"], art["sensitivity"]["e_value"]["limit"]) == \
+        pytest.approx((point, limit), rel=1e-6)
 
     # Sample-only post-double selection: by hand at the same penalty on the complete rows,
     # unweighted; the methods sentence says it is unweighted and for these participants only.
@@ -1705,8 +1745,8 @@ def test_8_a_yes_no_outcome_carries_its_required_sensitivity_and_refuses_undefin
     assert row["estimate"] == pytest.approx(hand["theta"], abs=1e-8)
     found = plr["sensitivity"]
     assert found["computed"] is True and found["methods"] == ["robustness_value"]
-    assert (found["robustness"]["rv"], found["robustness"]["rv_alpha"]) == pytest.approx(
-        (hand["rv"], hand["rv_alpha"]), abs=1e-8)
+    assert found["robustness"]["rv"] == pytest.approx(hand["rv"], abs=1e-8)
+    assert found["robustness"]["rv_alpha"] is None
     assert found["not_computed"] == ("No E-value: a risk difference with no risk ratio beside it "
                                      "carries no risks to form one from.")
     assert plr["methods"] == (
