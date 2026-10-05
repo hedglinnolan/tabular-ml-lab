@@ -5966,6 +5966,13 @@ export interface components {
              */
             reason: string | null;
             /**
+             * Exits
+             * @default []
+             */
+            exits: {
+                [key: string]: unknown;
+            }[];
+            /**
              * Family
              * @default null
              */

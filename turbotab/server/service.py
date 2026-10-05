@@ -1224,7 +1224,11 @@ class ProjectService:
         from turbotab.core.provenance import methods_text
 
         self.workspace.get(pid)
-        return methods_text(self.log(pid).records())
+        records = self.log(pid).records()
+        # A restated sentence reads what its record's sentence read besides the answers: the
+        # detected task, for the families' estimators under the survey answer (MS4).
+        facts = SentenceFacts(self.decision_context(pid), None, records)
+        return methods_text(records, {"detected_task": facts.detected_task})
 
     # ── stages and jobs ──
 

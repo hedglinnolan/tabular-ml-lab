@@ -1,7 +1,8 @@
 """The method contract (BLUEPRINT §13): how a domain method enters the pipeline.
 
-One registry for every domain method (wave 1 merged the four its packages wrote: the omics chain's,
-the scales', the usual-intake method's and the data-in contracts). Every method declares, in it,
+One registry for every domain method (wave 1 merged the five its packages wrote: the omics chain's,
+the scales', the usual-intake method's, the data-in contracts and the survey design's estimators).
+Every method declares, in it,
 the seven things §13 asks of it:
 
 * **slot** — where it runs: ``ingest · repairs · reshape · eligibility · seal · in_fold · model ·
@@ -241,8 +242,8 @@ def scope_of(key: str, option: str | None = None) -> Scope:
 DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.qc_drift", "turbotab.core.methods.omics", "turbotab.core.methods.batch",
     "turbotab.core.scales", "turbotab.core.usual_intake", "turbotab.core.assembly",
-    "turbotab.core.codebook", "turbotab.core.stages.effects", "turbotab.core.causal",
-    "turbotab.core.time_varying", "turbotab.core.models.explain",
+    "turbotab.core.codebook", "turbotab.core.models.survey", "turbotab.core.stages.effects",
+    "turbotab.core.causal", "turbotab.core.time_varying", "turbotab.core.models.explain",
 )
 
 

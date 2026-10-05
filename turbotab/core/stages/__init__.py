@@ -522,7 +522,8 @@ def build_graph() -> Graph:
             # substitution 13 (WP17): as fit 16.
             # substitution 14 (wave 1, MS4): under the population answer the curve is the
             # population's, weighted, with a linearized band.
-            Stage("substitution", 14, ("working", "fit", "design"),
+            # substitution 15 (SURVEY repair): a blocked curve's exit keeps every other chosen family.
+            Stage("substitution", 15, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -553,7 +554,9 @@ def build_graph() -> Graph:
             # sensitivity 9 (WP17): as fit 16.
             # sensitivity 10 (wave 1, MS4): a family with no design-based estimator is blocked under
             # the population answer.
-            Stage("sensitivity", 10, ("working", "design", "split", "target_info"),
+            # sensitivity 11, secondary 2 (SURVEY repair): a blocked family's exit keeps every other
+            # chosen family.
+            Stage("sensitivity", 11, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
@@ -563,13 +566,15 @@ def build_graph() -> Graph:
             # calibration 6 (ledger repair 2): as design 17.
             # calibration 7 (WP17): as fit 16.
             # calibration 8 (wave 1, MS4): blocked and recorded under the population answer.
-            Stage("calibration", 8,
+            # calibration 9 (SURVEY repair): the block's exits are decisions (the sample-only
+            # attestation; no correction).
+            Stage("calibration", 9,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
                   label="Correcting energy-adjusted intakes for day-to-day error"),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
-            Stage("secondary", 1, ("working", "design", "split", "target_info"),
+            Stage("secondary", 2, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),

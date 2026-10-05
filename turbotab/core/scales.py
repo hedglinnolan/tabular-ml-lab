@@ -494,13 +494,26 @@ def decision_sentence(d: Any, state: Any = None, ctx: Any = None) -> str:
     """The record's sentence for ``set_scales``."""
     if not d.scales:
         return "No multi-item scale is scored; each item enters the models on its own"
+    from turbotab.core.models.survey import population_answer
+
+    # MS4: under the surveyed population the scales stage blocks the correction (no design-based
+    # estimator), so the record says so; the methods text restates this sentence whole when the
+    # survey answer changes (``voice.restate``).
+    population = population_answer(state)
     parts = []
     for s in d.scales:
         role = "an exposure" if s.role == "exposure" else "a covariate"
-        corrected = (f"its coefficient is corrected by regression calibration from "
-                     f"{SOURCE_WORDS[s.reliability]}, as a secondary analysis beside the "
-                     f"uncorrected one" if s.correction != "none" else
-                     "its coefficient is not corrected for measurement error")
+        if s.correction == "none":
+            corrected = "its coefficient is not corrected for measurement error"
+        elif population:
+            corrected = (f"its correction by regression calibration from "
+                         f"{SOURCE_WORDS[s.reliability]} was asked for, but under the surveyed "
+                         f"population it has no design-based estimator, so it was blocked and "
+                         f"recorded and the coefficient is not corrected")
+        else:
+            corrected = (f"its coefficient is corrected by regression calibration from "
+                         f"{SOURCE_WORDS[s.reliability]}, as a secondary analysis beside the "
+                         f"uncorrected one")
         parts.append(f"{_scale_words(s)}, a {s.kind} "
                      f"{'index' if s.kind == 'formative' else 'scale'} entering the models as "
                      f"{role}; {corrected}")
@@ -508,9 +521,10 @@ def decision_sentence(d: Any, state: Any = None, ctx: Any = None) -> str:
 
 
 def _register_sentence() -> None:
-    from turbotab.core.voice import register_sentence
+    from turbotab.core.voice import register_sentence, restated_whole
 
     register_sentence("set_scales")(decision_sentence)
+    restated_whole("set_scales")
 
 
 _register_sentence()

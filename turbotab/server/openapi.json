@@ -16367,6 +16367,15 @@
             "default": null,
             "title": "Reason"
           },
+          "exits": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
           "family": {
             "anyOf": [
               {
@@ -16432,6 +16441,7 @@
           "purpose",
           "applies",
           "reason",
+          "exits",
           "family",
           "rows",
           "n_persons",

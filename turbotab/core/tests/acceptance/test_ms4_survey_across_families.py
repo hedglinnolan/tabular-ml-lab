@@ -18,6 +18,22 @@ The package's five acceptance items, in its order:
 5. Strata with a single PSU are handled by a stated rule, R survey's
    ``options(survey.lonely.psu = "adjust")``, matching R.
 
+**The repair round** (the verifier's findings on item 4) adds four permanent checks, each taken
+through the exits rather than around them:
+
+* (a) the record follows the survey answer as it stands: the methods text restates every
+  sentence that says what the answer does to a family, a curve, a calibration or a scale, both
+  ways (the sample-only exit; a population answer given after the models), word for word;
+* (b) each block's exit changes only what its label says (the design-based family in the blocked
+  one's place, every other chosen family kept), for the tables, the curves and the sensitivity
+  and secondary refits, and the exits are taken over HTTP;
+* (c) the five contracts are in the one registry (``turbotab.core.contracts``), checked by its
+  vocabulary, its scope test and its methods paragraph;
+* (e) the calibration block's exits are decisions, and both run.
+
+Cross-validated scores under the population answer stay labeled "unweighted", not design-based
+or blocked: that is (d), left for the owner's ruling.
+
 **References.** R 4.6 with ``survey`` 4.5, run in a subprocess on a CSV the test writes
 (``survey_r.py``); R is never imported by the app, and a machine without ``Rscript`` skips these
 tests. Where R's own default would add numerical noise of its own, the test says so and runs R
@@ -44,8 +60,8 @@ from scipy import stats
 
 from turbotab.core.models.inference import INDEPENDENT, Outcome
 from turbotab.core.models.ordinal import PROPORTIONAL_ODDS, SURVEY_ESTIMATOR as PO_ESTIMATOR
-from turbotab.core.models.survey import (LONELY_PSU, LONELY_RULE, build_design, survey_table,
-                                         total_variance)
+from turbotab.core.models.survey import (LONELY_PSU, LONELY_RULE, SAMPLE_EXIT, build_design,
+                                         survey_table, total_variance)
 from turbotab.core.models.survival import COX, SURVEY_ESTIMATOR as COX_ESTIMATOR, survival_outcome
 from turbotab.core.tests.acceptance.survey_r import (RSCRIPT, needs_r, nhanes_diet,
                                                      nhanes_mortality, run_r)
@@ -419,7 +435,8 @@ def test_3_the_population_substitution_agrees_with_svyglm_and_svycontrast(diet, 
         "The substitution studied is `fat_g` replaced by `carb_g`, in steps of `100` kcal at the "
         "same total energy; over the surveyed population its curve is the weighted mean of each "
         "participant's change in the survey-weighted fit, and its band comes from Taylor "
-        "linearization over the survey design.")
+        "linearization over the survey design (the `200` bootstrap refits asked for are not "
+        "drawn: a row bootstrap ignores the strata and PSUs).")
 
 
 LOGIT_R = R_DESIGN.format(w="WTDRD1") + """
@@ -508,19 +525,52 @@ def test_3_a_yes_no_outcome_s_population_curve_matches_r_s_linearization(diet, t
 
 
 SAMPLE_ONLY = {"kind": "set_survey", "estimand": "sample"}
+# The family with a design-based estimator for each task, as MODELING_SEQUENCE §1 step 9 orders
+# the shelf ("design-based for surveys"): what a blocked family's exit offers in its place.
+DESIGN_FAMILY = {"regression": "linear", "binary": "linear", "multiclass": "linear",
+                 "ordinal": "proportional_odds", "time_to_event": "cox"}
 
 
 def _offers_the_attestation(exits: list[dict]) -> bool:
     return any(e.get("decision") == SAMPLE_ONLY for e in exits)
 
 
-def assert_design_based_or_blocked(fit: dict, substitution: dict | None = None) -> dict[str, str]:
+def swapped(chosen: list[str], family: str, task: str) -> list[str]:
+    """The chosen families with ``family`` replaced by the task's design-based one, each once, in
+    order: the only change the "Use survey-weighted …" exit may make (it says no more)."""
+    out: list[str] = []
+    for key in chosen:
+        key = DESIGN_FAMILY[task] if key == family else key
+        if key not in out:
+            out.append(key)
+    return out
+
+
+def assert_exits_change_only_what_they_say(exits: list[dict], chosen: list[str], family: str,
+                                           task: str) -> None:
+    """A block's exits: the design-based family in the blocked one's place, every other chosen
+    family kept (MS4 repair: an exit built from a subset of the families silently deselected the
+    rest), then the sample-only attestation, nothing else."""
+    assert exits[0]["decision"] == {"kind": "select_models",
+                                    "models": swapped(chosen, family, task)}, (family, exits)
+    assert exits[0]["label"].startswith("Use survey-weighted"), exits[0]
+    assert exits[1:] == [{"label": SAMPLE_EXIT, "decision": SAMPLE_ONLY}], exits
+
+
+def assert_design_based_or_blocked(fit: dict, substitution: dict | None = None,
+                                   chosen: list[str] | None = None) -> dict[str, str]:
     """The chain test's invariant (MODELING_SEQUENCE §4; the review's "no table or curve under a
     population answer carries SRS intervals"), walked over every interval-bearing display the fit
     and the substitution make: each one with an interval is design-based (Taylor linearization,
     on t with the design's degrees of freedom), and each one that is not is blocked, with the
-    sample-only attestation among its exits. Returns each family's verdict."""
+    sample-only attestation among its exits. With ``chosen`` (the families chosen), each block's
+    exits are checked to change only what they say. Returns each family's verdict.
+
+    Cross-validated scores are the one display left labeled rather than design-based ("Cross-
+    validated scores are unweighted"): whether they are blocked, labeled, or computed by a
+    design-based cross-validation awaits the owner's ruling (the repair's deviation)."""
     verdict: dict[str, str] = {}
+    task = fit.get("task")
     for model in fit["models"]:
         info = model["inference"] or {}
         rows = model["coefficients"] or []
@@ -541,6 +591,9 @@ def assert_design_based_or_blocked(fit: dict, substitution: dict | None = None) 
             assert info["covariance"] == "none" and not with_intervals
             assert _offers_the_attestation(info["exits"]), (model["family"], info["exits"])
             assert "has no design-based estimator" in info["refused"]
+            if chosen is not None:
+                assert_exits_change_only_what_they_say(info["exits"], chosen, model["family"],
+                                                       task)
             verdict[model["family"]] = "blocked"
         else:  # no coefficient table at all (a family that only predicts): nothing to estimate
             assert not rows, model["family"]
@@ -556,6 +609,9 @@ def assert_design_based_or_blocked(fit: dict, substitution: dict | None = None) 
         elif curve.get("refused"):
             assert all(v is None for v in curve["delta"])
             assert _offers_the_attestation(curve["exits"]), curve["exits"]
+            if chosen is not None:
+                assert_exits_change_only_what_they_say(curve["exits"], chosen, curve["family"],
+                                                       task)
         else:
             assert all(v is None for v in curve["delta"][1:]), curve["family"]
     return verdict
@@ -580,10 +636,13 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
       design-based, so the pooled table is too;
     * regression calibration: blocked, as it has no design-based variance here.
 
-    The invariant is checked structurally (:func:`assert_design_based_or_blocked`), and each §2
-    relation the population contract declares (``models.survey.CONTRACTS``) is seen to fire."""
+    The invariant is checked structurally (:func:`assert_design_based_or_blocked`), each block's
+    exits are checked to change only what they say (the design-based family in the blocked one's
+    place, every other chosen family kept: the curve's and the sensitivity refit's exits once
+    dropped feature-wise and the elastic net), and each §2 relation the population contract
+    declares in the one registry (``contracts.contract("survey_population")``) is seen to fire."""
+    from turbotab.core.contracts import contract
     from turbotab.core.decisions import ExposureFormSpec, FollowUpSpec, MissingSpec
-    from turbotab.core.models.survey import CONTRACTS
 
     diet = nhanes_diet(seed=11, n_per_psu=40)
     analyzed = np.flatnonzero(diet["eligible"].to_numpy() == 1)
@@ -594,7 +653,7 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
                                       "n_boot": 50},
                         analyzed=analyzed,
                         exposure_forms={"fat_g": ExposureFormSpec(form="spline", knots=4)})
-    verdict = assert_design_based_or_blocked(run["fit"].data, run["substitution"])
+    verdict = assert_design_based_or_blocked(run["fit"].data, run["substitution"], chosen=shelf)
     assert verdict == {"linear": "design", "elastic_net": "blocked", "boosted_trees": "no table",
                        "featurewise": "blocked", "gee": "blocked", "mixed": "blocked"}
     linear = next(m for m in run["fit"].data["models"] if m["family"] == "linear")
@@ -609,6 +668,9 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     assert curves["linear"]["refused"] is None and curves["linear"]["ci_low"][1] is not None
     for blocked in ("elastic_net", "boosted_trees", "gee", "mixed"):
         assert "has no design-based estimator" in curves[blocked]["refused"]
+    # The elastic net's curve exit keeps feature-wise, which draws no curve of its own.
+    assert curves["elastic_net"]["exits"][0]["decision"]["models"] == [
+        "linear", "boosted_trees", "featurewise", "gee", "mixed"]
     # The population answer invalidates the row-resampling band (§2): the design's replaces it.
     assert run["substitution"]["band"]["method"] == "design"
     assert "The 50 bootstrap refits asked for are not drawn" in run["substitution"]["note"]
@@ -671,7 +733,8 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     assert pooled["inference"]["missing"]["method"] == "multiple_imputation"
 
     from turbotab.core.decisions import MeasurementErrorSpec
-    from turbotab.core.stages.calibration import POPULATION as CALIBRATION_BLOCK, calibration_stage
+    from turbotab.core.stages.calibration import POPULATION as CALIBRATION_BLOCK
+    from turbotab.core.stages.calibration import UNCORRECTED_EXIT, calibration_stage
     from turbotab.core.tests import modeling_fixtures as mf
 
     st = run["state"].model_copy(update={"measurement_error": MeasurementErrorSpec(
@@ -680,6 +743,10 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
                                               run["paths"])).data
     assert calibrated["applies"] is False and calibrated["reason"] == CALIBRATION_BLOCK
     assert "these participants" in CALIBRATION_BLOCK
+    # The block's exits are decisions, not prose (each is taken in the calibration chain below).
+    assert calibrated["exits"] == [
+        {"label": SAMPLE_EXIT, "decision": SAMPLE_ONLY},
+        {"label": UNCORRECTED_EXIT, "decision": {"kind": "set_measurement_error", "method": "none"}}]
 
     # The shelf says it before the families are chosen: those with a design-based estimator
     # first, the rest after them with the reason; the shelf is never shortened.
@@ -711,9 +778,28 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     assert table.rows == [] and _offers_the_attestation(table.info["exits"])
     assert table.info["exits"][0]["decision"] == {"kind": "select_models", "models": ["linear"]}
 
+    # The sensitivity analyses' and the secondary model's refit (``stages.sensitivity.fit_on_rows``,
+    # the one both stages call) blocks the same families, and its exits keep every other chosen
+    # family: feature-wise's once posted ["linear"], dropping the elastic net and the rest.
+    from turbotab.core.methods.survey import FitSurvey
+    from turbotab.core.models.pipeline import DesignSpec
+    from turbotab.core.stages.sensitivity import fit_on_rows
+
+    spec = DesignSpec.from_dict(run["design"].objects["spec"])
+    pipelines = run["design"].objects["pipelines"]
+    population = FitSurvey("population", design=design)
+    frame = diet.iloc[analyzed]
+    for key in ("featurewise", "mixed", "gee"):
+        _, (rows, info), worries = fit_on_rows(
+            run["state"], get_family(key), pipelines[key], frame, spec.inputs,
+            frame["crp"].to_numpy(), "regression", [], outcome=None, survey=population)
+        assert not rows and info["refused"] and info["covariance"] == "none", key
+        assert_exits_change_only_what_they_say(info["exits"], shelf, key, "regression")
+
     # Every exit offered runs (BLUEPRINT §14.3): the sample-only attestation fits the blocked
     # family unweighted, its table carrying the attestation; the design-based family is the
-    # linear one, already fit above.
+    # linear one, already fit above. (Taking the exits in one project, and what they do to the
+    # record, is the HTTP chain below.)
     from turbotab.core.survey import ATTESTATION
 
     sample = survey_stages(diet.drop(columns=["eligible", "over", "high_crp"]), tmp_path / "f",
@@ -725,13 +811,15 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     assert all(r["ci_low"] is not None for r in tests["coefficients"])
     assert any(ATTESTATION in c for c in tests["concerns"])
 
-    # The relations the population contract declares, each seen above.
-    relations = {(r.kind, r.target) for r in CONTRACTS["survey_population"].relations}
+    # The relations the population contract declares in the one registry: those seen above, and
+    # those the HTTP chains below see (the calibration's and the record's); the scale's is
+    # SCALES's (``test_wave1_integration``), the scores' label awaits the owner's ruling.
+    relations = {(r.kind, r.name) for r in contract("survey_population").relations}
     assert relations == {
-        ("implies", "every family and display"),
-        ("conflicts", "mixed, GEE, feature-wise, elastic net and boosted-tree estimates"),
-        ("invalidates", "the substitution band from row resampling"),
-        ("implies", "multiple imputation")}
+        ("implies", "design_based_or_blocked"), ("conflicts", "no_design_estimator"),
+        ("invalidates", "bootstrap_band"), ("implies", "multiple_imputation"),
+        ("conflicts", "regression_calibration"), ("conflicts", "scale_correction"),
+        ("implies", "restated"), ("implies", "unweighted_scores")}
 
 
 ALL_COMPONENTS_R = R_DESIGN.format(w="WTDRD1") + """
@@ -885,7 +973,489 @@ def test_4_the_nhanes_mortality_chain_runs_through_the_server(tmp_path):
         "standard errors were estimated by Taylor series linearization over `SDMVPSU` nested "
         "within `SDMVSTRA` (`31` PSUs in `15` strata), first-stage units taken as sampled with "
         "replacement, with t intervals on the PSUs minus the strata that hold the analysis rows.")
+    # The population clause is the sentence's standing clause, last (``voice.restate``), after
+    # the readings the values settled.
     assert said["select_models"].startswith(
-        "One model family was chosen: Cox proportional hazards. For the surveyed population, Cox "
-        "regression (Binder's pseudo-likelihood, Efron ties) was weighted by `WTMEC2YR`, with "
-        "standard errors by Taylor linearization over the survey design. ")
+        "One model family was chosen: Cox proportional hazards. Read from the values, ")
+    assert said["select_models"].endswith(
+        " For the surveyed population, Cox regression (Binder's pseudo-likelihood, Efron ties) was "
+        "weighted by `WTMEC2YR`, with standard errors by Taylor linearization over the survey "
+        "design.")
+
+
+# ── 4 · the record follows the survey answer as it stands ────────────────────
+
+# The population clauses, as the methods section writes them (MODELING_SEQUENCE §4: "block and
+# record"). Each is asserted word for word where it must appear and absent where it must not.
+WEIGHTED_AND_BLOCKED = (
+    "For the surveyed population, least squares was weighted by `WTDRD1`, with standard errors by "
+    "Taylor linearization over the survey design; the elastic net and feature-wise regression "
+    "have no design-based estimator, so their estimates were blocked and not reported.")
+SWAP_SAID = ("The substitution studied is `fat_g` replaced by `carb_g`, in steps of `100` kcal "
+             "{held}; ")
+SWAP_POPULATION = ("over the surveyed population its curve is the weighted mean of each "
+                   "participant's change in the survey-weighted fit, and its band comes from Taylor "
+                   "linearization over the survey design (the `50` bootstrap refits asked for are "
+                   "not drawn: a row bootstrap ignores the strata and PSUs).")
+SWAP_SAMPLE = "its band comes from `50` refits of each model on bootstrap resamples of every analyzed row."
+CALIBRATION_APPLIED = (
+    "Univariate regression calibration was applied to every energy-adjusted exposure, with the "
+    "day-to-day variance estimated from repeated recalls and intervals from `{n}` bootstrap "
+    "refits over people.")
+CALIBRATION_BLOCKED = (
+    "Univariate regression calibration of every energy-adjusted exposure was asked for, but under "
+    "the surveyed population it has no design-based variance (a bootstrap by PSU within strata "
+    "over the whole chain), so it was blocked and recorded, and the estimates are uncorrected.")
+SEEN = "After the estimates were seen, "
+
+
+def lowered(sentence: str) -> str:
+    """A sentence as it reads after a lead such as "After the estimates were seen, "."""
+    return sentence[0].lower() + sentence[1:]
+
+
+def test_4_the_methods_text_restates_what_the_survey_answer_does_on_the_answer_as_it_stands(
+        tmp_path):
+    """The verifier's finding (a): the sentences that say what the survey answer does to another
+    decision were frozen when that decision was recorded, so the sample-only exit, or a population
+    answer given after the models, left the in-force methods text contradicting the analysis.
+
+    Here a decision log (the server's ``DecisionLog``, each sentence authored as the server authors
+    it) answers "these participants", chooses three families, a substitution with a 50-refit band
+    and regression calibration, locks the plan, and then answers "the surveyed population". The
+    methods text (``provenance.methods_text``) states each in-force sentence on the answer as it
+    stands, word for word; the Record keeps each as said; a record kept only because it was seen
+    stays as said; a sentence made after the lock keeps its lead. Expected values: the methods
+    section's words, written out here."""
+    from turbotab.core import voice
+    from turbotab.core.decisions import DecisionLog
+    from turbotab.core.provenance import methods_text
+
+    log = DecisionLog(tmp_path / "decisions.jsonl")
+    read = "Read from the values, no question asked: `age` is a covariate"
+    population = {"kind": "set_survey", "estimand": "population", "weight": "WTDRD1",
+                  "strata": "SDMVSTRA", "psu": "SDMVPSU"}
+    sample = {"kind": "set_survey", "estimand": "sample"}
+    three = {"kind": "select_models", "models": ["linear", "elastic_net", "featurewise"]}
+
+    def say(d, before):
+        return voice.sentence_for(d, before, {"read_from_values": read})
+
+    def post(d):
+        return log.append(d, sentence=say)
+
+    def lines() -> dict[str, list]:
+        out: dict[str, list] = {}
+        for line in methods_text(log.records()).lines:
+            out.setdefault(line.kind, []).append(line)
+        return out
+
+    for d in ({"kind": "set_target", "column": "crp"},
+              {"kind": "set_task", "column": "crp", "task": "regression"},
+              {"kind": "set_purpose", "purpose": "inference"}, sample):
+        post(d)
+    chosen = post(three)
+    swap = post({"kind": "set_substitution", "donor": "fat_g", "recipient": "carb_g",
+                 "step_kcal": 100, "n_boot": 50})
+    calibration = post({"kind": "set_measurement_error", "method": "regression_calibration",
+                        "n_boot": 200})
+    scale = post({"kind": "set_scales", "scales": [{
+        "name": "sat_score", "items": ["sat_1", "sat_2", "sat_3"], "reverse": ["sat_3"], "low": 1,
+        "high": 5, "kind": "reflective", "role": "covariate",
+        "correction": "regression_calibration"}]})
+    scale_head = ("`sat_score` is the sum of its 3 items, `sat_3` reverse-coded on the 1–5 "
+                  "response scale, a reflective scale entering the models as a covariate; ")
+    scale_said = (f"{scale_head}its coefficient is corrected by regression calibration from its "
+                  f"internal consistency (ω), as a secondary analysis beside the uncorrected one.")
+    scale_blocked = (f"{scale_head}its correction by regression calibration from its internal "
+                     f"consistency (ω) was asked for, but under the surveyed population it has no "
+                     f"design-based estimator, so it was blocked and recorded and the coefficient "
+                     f"is not corrected.")
+    assert scale.sentence == scale_said
+    head = ("Three model families were chosen: linear regression, elastic net and feature-wise "
+            "least-squares tests with Benjamini–Hochberg false-discovery control. Read from the "
+            "values, no question asked: `age` is a covariate.")
+    swap_said = SWAP_SAID.format(held="at the same total energy") + SWAP_SAMPLE
+    assert (chosen.sentence, swap.sentence) == (head, swap_said)
+    assert calibration.sentence == CALIBRATION_APPLIED.format(n=200)
+    post({"kind": "lock_plan"})
+    post(population)  # after the estimates were seen: the reverse of the sample-only exit
+    now = lines()
+    assert [x.sentence for x in now["select_models"]] == [f"{head} {WEIGHTED_AND_BLOCKED}"]
+    assert [x.sentence for x in now["set_substitution"]] == [
+        SWAP_SAID.format(held="at the same total energy") + SWAP_POPULATION]
+    assert [x.sentence for x in now["set_measurement_error"]] == [CALIBRATION_BLOCKED]
+    assert [x.sentence for x in now["set_scales"]] == [scale_blocked]  # the scales stage blocks it
+    # The Record keeps each as said.
+    said = {r.id: r.sentence for r in log.records()}
+    assert (said[chosen.id], said[swap.id], said[calibration.id]) == (
+        head, swap_said, CALIBRATION_APPLIED.format(n=200))
+
+    # Chosen again after the estimates were seen, under the population: its record carries the
+    # lead and the clause; the first choice, kept only because it was seen, stays as said.
+    again = post(three)
+    assert again.sentence == f"{SEEN}{lowered(head)} {WEIGHTED_AND_BLOCKED}"
+    now = lines()
+    assert [(x.in_force, x.sentence) for x in now["select_models"]] == [
+        (False, head), (True, again.sentence)]
+    # The sample-only exit taken: the standing clause leaves, the lead stays; the rest follow.
+    post(sample)
+    now = lines()
+    assert [(x.in_force, x.sentence) for x in now["select_models"]] == [
+        (False, head), (True, f"{SEEN}{lowered(head)}")]
+    assert [x.sentence for x in now["set_substitution"]] == [swap_said]
+    assert [x.sentence for x in now["set_measurement_error"]] == [CALIBRATION_APPLIED.format(n=200)]
+    assert [x.sentence for x in now["set_scales"]] == [scale_said]
+    in_force = " ".join(x.sentence for k in now for x in now[k] if x.in_force)
+    for claim in ("weighted by `WTDRD1`", "Taylor linearization", "no design-based estimator"):
+        assert claim not in in_force, claim
+
+
+def diet_server_table(folder: Path) -> tuple[Path, pd.DataFrame]:
+    """The NHANES-shaped dietary table as a file: CRP not measured below age 20 (a domain)."""
+    f = nhanes_diet(seed=11, n_per_psu=30)
+    f.loc[f["eligible"] == 0, "crp"] = np.nan
+    f = f.drop(columns=["eligible", "over", "high_crp"])
+    path = folder / "nhanes_diet.csv"
+    f.to_csv(path, index=False)
+    return path, f
+
+
+def least_squares(frame: pd.DataFrame, weight: str | None = None) -> dict[str, float]:
+    """CRP on the macronutrients, energy, age and sex by (weighted) least squares, NumPy by hand:
+    the independent check that an answer weights the fit or not."""
+    rows = frame[frame["crp"].notna()]
+    names = ["protein_g", "fat_g", "carb_g", "energy_kcal", "age", "female"]
+    X = np.column_stack([np.ones(len(rows)), rows[names].to_numpy(dtype=float)])
+    w = rows[weight].to_numpy(dtype=float) if weight else np.ones(len(rows))
+    beta = np.linalg.solve(X.T @ (X * w[:, None]), X.T @ (w * rows["crp"].to_numpy(dtype=float)))
+    return dict(zip(["(intercept)", *names], beta))
+
+
+def all_terms(model: dict) -> list[dict]:
+    """Every row of a served model's table: under a declared estimand ESTIMAND's Table 2 display
+    serves the exposure's rows as ``coefficients`` and every other row (the intercept, the
+    covariates) as ``adjustment_terms``."""
+    return [*(model.get("coefficients") or []), *(model.get("adjustment_terms") or [])]
+
+
+def test_4_taking_the_sample_only_exit_restates_the_record_and_each_exit_changes_only_what_it_says(
+        tmp_path):
+    """The chain the verifier walked over HTTP, now taken rather than started afresh: the surveyed
+    population, then linear regression, the elastic net and feature-wise tests, then a fat-for-
+    carbohydrate substitution with a 50-refit band.
+
+    1. Under the population answer the fit and the curve are design-based or blocked, each block's
+       exits changing only what they say (the curve's once dropped feature-wise), and the methods
+       text says which families were weighted and which blocked, word for word. The linear
+       coefficients are NumPy's weighted least squares.
+    2. The sample-only exit, taken from feature-wise's own block: the linear coefficients are now
+       NumPy's unweighted least squares, feature-wise reports model-based intervals with the
+       attestation, the band is the 50-refit bootstrap; the in-force methods text no longer claims
+       any weighting, linearization or block, while the Record keeps what was said.
+    3. The reverse: the families and the substitution chosen again under the sample answer, then
+       the population answer again. The in-force sentences now say the weighting and the blocks.
+    4. The elastic net's curve exit, taken: the families become linear and feature-wise, exactly
+       what its label says, and the record says feature-wise is blocked."""
+    from turbotab.core.tests.acceptance.server_drive import local_server, open_project
+    from turbotab.core.tests.truths import Truth
+
+    path, frame = diet_server_table(tmp_path)
+    truth = Truth({"code_or_count:female": "code", "code_or_count:SDMVSTRA": "code",
+                   "code_or_count:SDMVPSU": "code", "code_or_count:age": "amount",
+                   "code_or_count:energy_kcal": "amount", "unit:energy_kcal": "kcal",
+                   "day_count:energy_kcal": "1",
+                   # WP17: fat is the exposure, its energy substituted; age, sex and the other
+                   # sources share the diet's common causes (confounders).
+                   "exposure:crp": "fat_g", "contrast:fat_g": "substitution",
+                   **{f"adjust:{c}": "yes,yes,no" for c in ("age", "female", "protein_g",
+                                                            "carb_g", "energy_kcal")}},
+                  fixture="nhanes_diet (generator)")
+    three = ["linear", "elastic_net", "featurewise"]
+    swap = {"kind": "set_substitution", "donor": "fat_g", "recipient": "carb_g",
+            "step_kcal": 100, "n_boot": 50}
+    held = "with `energy_kcal` held fixed"
+    with local_server(tmp_path / "home") as client:
+        d = open_project(client, path, truth)
+
+        def methods() -> dict[str, list[dict]]:
+            out: dict[str, list[dict]] = {}
+            for line in client.get(f"/api/projects/{d.pid}/methods").json()["lines"]:
+                out.setdefault(line["kind"], []).append(line)
+            return out
+
+        def force(kind: str) -> str:
+            (line,) = [x for x in methods()[kind] if x["in_force"]]
+            return line["sentence"]
+
+        def recorded(kind: str) -> str:
+            return [r for r in d.view()["decisions"] if r["decision"]["kind"] == kind][-1]["sentence"]
+
+        d.decide({"kind": "set_lens", "lenses": ["dietary"]})
+        d.reach("target")
+        d.decide({"kind": "set_target", "column": "crp"})
+        d.answer("task", {"kind": "set_task", "column": "crp", "task": "regression"})
+        d.reach("purpose")
+        d.decide({"kind": "set_purpose", "purpose": "inference"})
+        d.answer("grain", {"kind": "set_grain", "grain": "one_row_per_unit"})
+        d.reach("roles")
+        d.decide_roles({"SEQN": "identifier", "protein_g": "exposure", "fat_g": "exposure",
+                        "carb_g": "exposure", "energy_kcal": "energy", "age": "covariate",
+                        "female": "covariate", "WTDRD1": "design", "SDMVSTRA": "design",
+                        "SDMVPSU": "design"})
+        assert d.reach("survey")["status"] == "open"
+        population = d.artifact("proposals")["survey"]["options"][0]["decision"]
+        assert population["estimand"] == "population" and population["weight"] == "WTDRD1"
+        d.decide(population)
+        d.answer("exclusions", {"kind": "set_exclusions", "rules": []})
+        d.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
+        d.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        d.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "standard",
+                                       "energy_column": "energy_kcal",
+                                       "nutrients": ["protein_g", "fat_g", "carb_g"]})
+        d.reach("models")
+        d.decide({"kind": "select_models", "models": three})
+        d.decide(swap)
+
+        # 1 · the population answer
+        fit, sub = d.artifact("fit"), d.artifact("substitution")
+        assert assert_design_based_or_blocked(fit, sub, chosen=three) == {
+            "linear": "design", "elastic_net": "blocked", "featurewise": "blocked"}
+        curves = {c["family"]: c for c in sub["models"]}
+        assert curves["elastic_net"]["exits"][0]["decision"]["models"] == ["linear", "featurewise"]
+        weighted = least_squares(frame, "WTDRD1")
+        # ESTIMAND's Table 2 display serves the exposure's rows apart from the adjustment terms.
+        linear = {r["feature"]: r["estimate"] for r in all_terms(fit["models"][0])}
+        for name, value in weighted.items():
+            assert linear[name] == pytest.approx(value, rel=1e-6), name
+        first_models = recorded("select_models")
+        assert first_models.endswith(f" {WEIGHTED_AND_BLOCKED}")
+        assert force("select_models") == first_models
+        assert force("set_substitution") == SWAP_SAID.format(held=held) + SWAP_POPULATION
+
+        # 2 · the sample-only exit, as feature-wise's block offers it
+        tests = next(m for m in fit["models"] if m["family"] == "featurewise")
+        d.decide(tests["inference"]["exits"][1]["decision"])
+        assert d.view()["state"]["survey"]["estimand"] == "sample"
+        assert d.view()["state"]["models"] == three  # the attestation changes no family
+        fit, sub = d.artifact("fit"), d.artifact("substitution")
+        unweighted = least_squares(frame)
+        linear = next(m for m in fit["models"] if m["family"] == "linear")
+        assert linear["inference"]["covariance"] != "design"
+        estimates = {r["feature"]: r["estimate"] for r in all_terms(linear)}
+        for name, value in unweighted.items():
+            assert estimates[name] == pytest.approx(value, rel=1e-6), name
+        assert abs(unweighted["fat_g"] - weighted["fat_g"]) > 1e-3 * abs(weighted["fat_g"])
+        tests = next(m for m in fit["models"] if m["family"] == "featurewise")
+        assert tests["inference"]["covariance"] == "model" and not tests["inference"]["refused"]
+        assert all(r["ci_low"] is not None for r in tests["coefficients"])
+        from turbotab.core.survey import ATTESTATION
+
+        assert any(ATTESTATION in c for c in tests["concerns"])
+        assert sub["band"]["method"] == "bootstrap" and sub["band"]["n_boot"] == 50
+        assert all(c.get("refused") is None for c in sub["models"])
+        text = methods()
+        in_force = {k: [x["sentence"] for x in v if x["in_force"]] for k, v in text.items()}
+        assert in_force["select_models"] == [first_models[: -len(f" {WEIGHTED_AND_BLOCKED}")]]
+        assert in_force["set_substitution"] == [SWAP_SAID.format(held=held) + SWAP_SAMPLE]
+        assert in_force["set_survey"] == [
+            f"{SEEN}the estimates describe these participants, not the surveyed population: "
+            f"{ATTESTATION}; `WTDRD1`, `SDMVSTRA` and `SDMVPSU` were recorded and not used."]
+        everything = " ".join(s for k, v in in_force.items() for s in v if k != "set_survey")
+        for claim in ("weighted by `WTDRD1`", "Taylor linearization", "no design-based estimator",
+                      "blocked"):
+            assert claim not in everything, claim
+        assert recorded("select_models") == first_models  # the Record keeps it as said
+
+        # 3 · the reverse: chosen under the sample answer, then the population answered
+        d.decide({"kind": "select_models", "models": three})
+        d.decide(swap)
+        under_sample = recorded("select_models")
+        assert under_sample.startswith(SEEN) and "surveyed population" not in under_sample
+        d.decide(population)
+        fit, sub = d.artifact("fit"), d.artifact("substitution")
+        assert assert_design_based_or_blocked(fit, sub, chosen=three)["featurewise"] == "blocked"
+        assert force("select_models") == f"{under_sample} {WEIGHTED_AND_BLOCKED}"
+        assert force("set_substitution") == (
+            SEEN + lowered(SWAP_SAID.format(held=held)) + SWAP_POPULATION)
+
+        # 4 · the elastic net's curve exit: "Use survey-weighted least squares", and no more
+        curve = next(c for c in sub["models"] if c["family"] == "elastic_net")
+        d.decide(curve["exits"][0]["decision"])
+        assert d.view()["state"]["models"] == ["linear", "featurewise"]
+        fit = d.artifact("fit")
+        assert assert_design_based_or_blocked(fit, chosen=["linear", "featurewise"]) == {
+            "linear": "design", "featurewise": "blocked"}
+        assert force("select_models").endswith(
+            " For the surveyed population, least squares was weighted by `WTDRD1`, with standard "
+            "errors by Taylor linearization over the survey design; feature-wise regression has no "
+            "design-based estimator, so its estimates were blocked and not reported.")
+
+
+def test_4_the_calibration_block_exits_are_decisions_that_run_and_the_record_follows_them(
+        tmp_path):
+    """The verifier's findings (a) and (e) for regression calibration (MODELING_SEQUENCE §0
+    ruling 7 with §4): under the surveyed population the calibration stage blocks it, and
+    ``set_measurement_error`` is recorded (block and record), but its sentence said "was applied"
+    and its exit was prose. Now, on WP12c's two-recall table carrying a stratified two-PSU design:
+
+    * the block names its exits as decisions: the sample-only attestation, and no correction;
+    * the methods text says the calibration was asked for and blocked, word for word;
+    * the sample-only exit, taken, calibrates: λ (the attenuation factor) is the statsmodels REML
+      reference's (WP12c's ``reference``, from the CSV) to 1e-6, and the methods text now says the
+      calibration was applied, word for word;
+    * the population answered again blocks it again, and the record follows;
+    * the second exit, taken, records no correction: nothing is blocked, the stage states the
+      recall days, and the methods text says the exposures were not corrected."""
+    from turbotab.core.stages.calibration import POPULATION as CALIBRATION_BLOCK
+    from turbotab.core.stages.calibration import UNCORRECTED_EXIT
+    from turbotab.core.tests.acceptance.server_drive import local_server, open_project
+    from turbotab.core.tests.acceptance.test_wp12c_calibration import (RESIDUAL, ROLES,
+                                                                       recall_table, recall_truth,
+                                                                       reference)
+
+    frame = recall_table(n=400)
+    person = frame["participant_id"].str[1:].astype(int).to_numpy()
+    weight = np.round(np.random.default_rng(3).uniform(2000, 40000, person.max() + 1), 1)
+    frame["SDMVSTRA"], frame["SDMVPSU"] = 1 + person % 6, 1 + (person // 6) % 2
+    frame["WTDRD1"] = weight[person]
+    path = tmp_path / "recalls.csv"
+    frame.to_csv(path, index=False)
+    truth = recall_truth()
+    truth.update({"code_or_count:SDMVSTRA": "code", "code_or_count:SDMVPSU": "code"})
+    exits = [{"label": SAMPLE_EXIT, "decision": SAMPLE_ONLY},
+             {"label": UNCORRECTED_EXIT,
+              "decision": {"kind": "set_measurement_error", "method": "none"}}]
+    with local_server(tmp_path / "home") as client:
+        d = open_project(client, path, truth)
+
+        def force(kind: str) -> str:
+            lines = client.get(f"/api/projects/{d.pid}/methods").json()["lines"]
+            (line,) = [x for x in lines if x["kind"] == kind and x["in_force"]]
+            return line["sentence"]
+
+        d.decide({"kind": "set_lens", "lenses": ["dietary"]})
+        d.reach("target")
+        d.decide({"kind": "set_target", "column": "ldl"})
+        d.answer("task", {"kind": "set_task", "column": "ldl", "task": "regression"})
+        d.reach("purpose")
+        d.decide({"kind": "set_purpose", "purpose": "inference"})
+        d.reach("grain")
+        d.decide({"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"})
+        d.answer("repeat_kind", {"kind": "set_repeat_kind", "repeat_kind": "repeats"})
+        d.answer("unit", {"kind": "set_unit", "unit": "unit"})
+        d.answer("aggregation", {"kind": "set_aggregation", "method": "mean"})
+        d.answer("temporal", {"kind": "set_temporal", "temporal": False})
+        d.reach("roles")
+        d.decide_roles({**ROLES, "WTDRD1": "design", "SDMVSTRA": "design", "SDMVPSU": "design"})
+        assert d.reach("survey")["status"] == "open"
+        population = d.artifact("proposals")["survey"]["options"][0]["decision"]
+        assert population["estimand"] == "population"
+        d.decide(population)
+        d.answer("exclusions", {"kind": "set_exclusions", "rules": []})
+        d.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
+        d.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        d.answer("energy_adjustment", RESIDUAL)
+        d.reach("models")
+        d.decide({"kind": "select_models", "models": ["linear"]})
+        d.decide({"kind": "set_measurement_error", "method": "regression_calibration",
+                  "n_boot": 50})
+        blocked = d.artifact("calibration")
+        said_blocked = force("set_measurement_error")
+        d.decide(blocked["exits"][0]["decision"])  # the sample-only attestation
+        calibrated, fit = d.artifact("calibration"), d.artifact("fit")
+        said_applied = force("set_measurement_error")
+        d.decide(population)
+        again = d.artifact("calibration")
+        said_again = force("set_measurement_error")
+        d.decide(again["exits"][1]["decision"])  # no correction
+        uncorrected = d.artifact("calibration")
+        said_none = force("set_measurement_error")
+    assert (blocked["applies"], blocked["reason"], blocked["exits"]) == (False, CALIBRATION_BLOCK,
+                                                                          exits)
+    assert said_blocked == CALIBRATION_BLOCKED
+    assert calibrated["applies"] and calibrated["exits"] == []
+    (exposure,) = calibrated["exposures"]
+    features = {c["feature"] for c in all_terms(fit["models"][0])}
+    ref = reference(frame, energy_in_model="energy_kcal" in features)
+    assert calibrated["n_persons"] == ref["n"] == 400
+    assert exposure["attenuation"] == pytest.approx(ref["lam"], rel=1e-6)
+    assert exposure["naive"] == pytest.approx(ref["naive"], rel=1e-8)
+    assert said_applied == CALIBRATION_APPLIED.format(n=50)
+    assert (again["applies"], again["reason"], again["exits"]) == (False, CALIBRATION_BLOCK, exits)
+    assert said_again == CALIBRATION_BLOCKED
+    assert uncorrected["method"] == "none" and not uncorrected["applies"]
+    assert uncorrected["exits"] == [] and uncorrected["reason"] != CALIBRATION_BLOCK
+    assert uncorrected["methods"] == ("Energy-adjusted exposures were the mean of each "
+                                      "participant's recalls (2 recalls each, 400 participants) "
+                                      "and were not corrected for day-to-day error.")
+    assert said_none == (f"{SEEN}energy-adjusted exposures were not corrected for day-to-day "
+                         f"error in the recalls.")
+
+
+def test_4_the_survey_contracts_enter_the_one_registry(tmp_path):
+    """The verifier's finding (c): MS4's contracts were a separate local registry with their own
+    shapes, so the registry's checks, its scope test and its methods paragraph never saw them.
+    They are now in ``turbotab.core.contracts`` (BLUEPRINT §13: slot, data scope, needs, routing,
+    storyboard, sentence and relations, one vocabulary):
+
+    * every field is in the registry's vocabulary, every option is labeled customary and sound for
+      both purposes with a rung, every conflict is block-and-record with its exits, and every
+      relation names code that exists and makes it fire;
+    * the declared scope ("model": the outcome model itself) is the one lockbox §06's test observes
+      (``contracts.observed_scope``) on a survey-weighted least-squares fit, each row's fitted value
+      watched as the outcome, then the other rows, are changed;
+    * the registry's methods paragraph for the NHANES mortality chain reads, word for word, as the
+      methods section writes it (expected text written out here)."""
+    import importlib
+
+    from turbotab.core import contracts as C
+    from turbotab.core.models.survey import SURVEY_CONTRACTS, weighted_least_squares
+
+    registry = C.contracts()
+    assert set(SURVEY_CONTRACTS) <= set(registry)
+    import turbotab.core.models.survey as S
+
+    assert not hasattr(S, "CONTRACTS") and not hasattr(S, "MethodContract")
+    for key in SURVEY_CONTRACTS:
+        c = registry[key]
+        assert c.slot in C.SLOTS and c.scope in C.SCOPES and c.scope == "model", key
+        assert c.needs and c.question and c.storyboard and c.options and c.decision, key
+        assert c.clause is not None and c.sentence, key
+        for o in c.options:
+            assert o.label and o.customary, (key, o.key)
+            for purpose in C.PURPOSES:
+                assert o.sound[purpose] and o.rung[purpose] in C.RUNGS, (key, o.key, purpose)
+        for r in c.relations:
+            if r.kind == "conflicts":
+                assert r.rung == "block_and_record" and r.exits, (key, r.name)
+            module, name = r.enforced_by.split(":")
+            assert callable(getattr(importlib.import_module(module), name)), r.enforced_by
+    C.run_order(list(registry))  # raises on a precedes relation the order breaks
+
+    rng = np.random.default_rng(4)
+    frame = pd.DataFrame({"x1": rng.normal(size=60), "x2": rng.normal(size=60),
+                          "w": rng.uniform(1, 9, size=60)})
+    y = 1 + frame["x1"].to_numpy() - 0.5 * frame["x2"].to_numpy() + rng.normal(size=60)
+
+    def fitted(f: pd.DataFrame, reference: pd.Series, yy: np.ndarray) -> np.ndarray:
+        X = np.column_stack([np.ones(len(f)), f[["x1", "x2"]].to_numpy(dtype=float)])
+        return X @ weighted_least_squares(X, yy, f["w"].to_numpy(dtype=float)).estimate
+
+    observed = C.observed_scope(fitted, frame, np.zeros(60, dtype=bool), y, 5,
+                                columns=["x1", "x2"])
+    assert observed == "model" == registry["survey_linear"].scope
+
+    said = C.paragraph({"survey_population": "population", "survey_cox": "design_based"},
+                       {"weight": "WTMEC2YR", "strata": "SDMVSTRA", "psu": "SDMVPSU"}, "inference")
+    assert said == (
+        "The estimates describe the surveyed population: rows were weighted by `WTMEC2YR`, and "
+        "standard errors were estimated by Taylor series linearization over `SDMVPSU` nested "
+        "within `SDMVSTRA`, with t intervals on the PSUs minus the strata that hold the analysis "
+        "rows; hazard ratios came from survey-weighted Cox regression (Binder's "
+        "pseudo-likelihood, Efron ties).")
+    from turbotab.core.survey import ATTESTATION
+
+    assert C.paragraph({"survey_population": "sample", "survey_cox": "design_based"},
+                       {"estimand": "sample"}, "inference") == (
+        f"The estimates describe these participants: {ATTESTATION}.")

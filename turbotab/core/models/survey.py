@@ -914,6 +914,13 @@ def _listing(items: Sequence[str]) -> str:
     return f"{', '.join(items[:-1])} and {items[-1]}"
 
 
+def population_answer(state: Any) -> bool:
+    """Whether ``state`` answers the survey question "the surveyed population" under inference."""
+    survey = getattr(state, "survey", None)
+    return (getattr(state, "purpose", None) == "inference" and survey is not None
+            and getattr(survey, "estimand", None) == "population")
+
+
 def models_sentence(state: Any, models: Sequence[str], task: str | None) -> str | None:
     """What the population answer does to the chosen families, for the ``select_models``
     sentence: each design-based estimator named, weighted by the survey weight with Taylor-
@@ -922,8 +929,7 @@ def models_sentence(state: Any, models: Sequence[str], task: str | None) -> str 
     from turbotab.core.models import get_family
 
     survey = getattr(state, "survey", None)
-    if (getattr(state, "purpose", None) != "inference" or survey is None
-            or getattr(survey, "estimand", None) != "population" or task is None):
+    if not population_answer(state) or task is None:
         return None
     based: list[str] = []
     stopped: list[str] = []
@@ -955,138 +961,314 @@ def models_sentence(state: Any, models: Sequence[str], task: str | None) -> str 
     return text[0].upper() + text[1:]
 
 
-def substitution_clause(state: Any) -> str | None:
+def substitution_clause(state: Any, n_boot: int = 0) -> str | None:
     """The ``set_substitution`` sentence's clause under the population answer (the curve's
-    contract sentence), or None."""
-    survey = getattr(state, "survey", None)
-    if (getattr(state, "purpose", None) != "inference" or survey is None
-            or getattr(survey, "estimand", None) != "population"):
+    contract sentence), or None. ``n_boot``: the bootstrap refits the answer asked for, which the
+    design's band replaces and the clause says are not drawn."""
+    if not population_answer(state):
         return None
+    from turbotab.core.voice import count
+
+    undrawn = (f" (the {count(n_boot)} bootstrap refits asked for are not drawn: a row bootstrap "
+               f"ignores the strata and PSUs)" if n_boot else "")
     return ("over the surveyed population its curve is the weighted mean of each participant's "
             "change in the survey-weighted fit, and its band comes from Taylor linearization over "
-            "the survey design")
+            f"the survey design{undrawn}")
 
 
-# ── the method contracts (BLUEPRINT §13) ─────────────────────────────────────
+# ── the method contracts (BLUEPRINT §13), in the one registry ─────────────────
 
 
-@dataclass(frozen=True)
-class Relation:
-    """One relation a method declares (BLUEPRINT §13): ``kind`` is implies · enables · disables ·
-    invalidates · conflicts; ``target`` what it acts on; ``says`` the consequence in words, as the
-    record states it."""
+def _register_contracts() -> None:
+    """MS4's five contracts, in ``turbotab.core.contracts`` with its vocabulary: the population
+    answer (the hub whose relations bind every family and display), the three design-based
+    estimators, and the substitution curve over the population. Each writes its clause of the
+    methods paragraph (``contracts.paragraph``) from ``run``: ``estimand`` ("population" or
+    "sample"), ``weight``, ``strata``, ``psu``."""
+    from turbotab.core.contracts import ContractOption as Option
+    from turbotab.core.contracts import MethodContract, Relation, register_contract
 
-    kind: str
-    target: str
-    says: str
+    not_asked = ("Not asked: under prediction the scores describe the rows they were computed on, "
+                 "and the weights are noted, not used.")
+    model_scope = ("The weighted fit learns from the outcome and every study row in its domain "
+                   "(the analysis rows); the strata and PSUs enter only its variance. Lockbox §06's "
+                   "test: row i's fitted value moves with the outcome.")
+    population_need = "the survey answer: the surveyed population (a weight, and strata and PSUs)"
+
+    def estimator(key: str, label: str, family: str, tasks: str, words: str, reference: str,
+                  storyboard: tuple[str, ...], diagnostic: Relation | None) -> MethodContract:
+        def clause(run: Any, _words: str = words) -> str | None:
+            # The population contract's clause states the weight and the linearization once.
+            return _words if run.get("estimand", "population") == "population" else None
+        relations = [
+            Relation("implies", "design-based intervals",
+                     "Every interval is design-based: Taylor linearization over the strata and "
+                     "PSUs, on t with the design's degrees of freedom (the PSUs minus the strata "
+                     "that hold the analysis rows).",
+                     purposes=("inference",), enforced_by="turbotab.core.models.survey:design_table",
+                     id="design_based_intervals"),
+            Relation("implies", "lonely PSUs centered",
+                     "A stratum with a single PSU is centered at the mean PSU total of the strata "
+                     "that hold analysis rows (R survey's lonely.psu \"adjust\"), and the table "
+                     "names it.",
+                     purposes=("inference",), enforced_by="turbotab.core.models.survey:total_variance",
+                     id="lonely_psus"),
+            Relation("implies", "adjusted Wald F for joint tests",
+                     "A spline's overall and nonlinear tests are adjusted Wald F tests on "
+                     "(q, d − q + 1) degrees of freedom (Korn & Graubard 1990).",
+                     purposes=("inference",), enforced_by="turbotab.core.models.survey:adjusted_wald",
+                     id="adjusted_wald"),
+        ]
+        if diagnostic is not None:
+            relations.append(diagnostic)
+        return MethodContract(
+            key=key, label=label, slot="model", scope="model", scope_note=model_scope,
+            needs=(population_need, tasks, f"the {family} family chosen"),
+            question=("Do the estimates describe the surveyed population or these participants? "
+                      "(the survey question; this estimator answers \"the surveyed population\")"),
+            place=("MODELING_SEQUENCE §1 step 9, the shelf: under the population answer the "
+                   "families with a design-based estimator come first (\"design-based for "
+                   "surveys\")"),
+            decision="select_models", stage="fit", run_order=1.0,
+            options=(
+                Option("design_based", f"Design-based: {words}",
+                       "NCHS's analytic guidelines: weights, strata and PSUs, Taylor linearization "
+                       "(NHANES Analytic Guidelines 2011–2016 §3.2)",
+                       {"inference": "Sound for the surveyed population: weighted estimating "
+                                     "equations with a linearized variance (Binder 1983; Lumley "
+                                     "2010).",
+                        "prediction": not_asked},
+                       {"inference": "recommended", "prediction": "not_offered"}),
+                Option("unweighted", "Unweighted, with model-based standard errors",
+                       "Common where an analysis is of the participants themselves",
+                       {"inference": "Under the population answer it describes these participants "
+                                     "and its interval ignores the strata and PSUs, so it is "
+                                     "blocked and recorded; it is reported only with the "
+                                     "sample-only attestation.",
+                        "prediction": "The fit prediction uses: its scores describe these rows."},
+                       {"inference": "block_and_record", "prediction": "recommended"}),
+            ),
+            leash={"inference": "recommended", "prediction": "not_offered"},
+            storyboard=storyboard, relations=tuple(relations),
+            sources=("Binder 1983, Int Stat Rev 51:279", "Lumley 2010, Complex Surveys",
+                     reference),
+            clause=clause, sentence="turbotab.core.models.survey:models_sentence")
+
+    for c in (
+        MethodContract(
+            key="survey_population", label="The population estimand under a survey design",
+            slot="model", scope="model", run_order=0.0,
+            scope_note=("The answer chooses the outcome model's estimator. Each row's weight is its "
+                        "own, but every design-based estimate and its variance read the outcome and "
+                        "every PSU's rows."),
+            needs=("design columns read as the weight, the strata and the PSUs (settled readings)",
+                   "purpose: inference"),
+            question="Do the estimates describe the surveyed population or these participants?",
+            place=("Asked after the roles, as the survey question (the Router's survey step); "
+                   "MODELING_SEQUENCE §1 step 9 orders the shelf by it"),
+            decision="set_survey", stage="fit",
+            options=(
+                Option("population", "The surveyed population (weights, strata and PSUs)",
+                       "NCHS's analytic guidelines for NHANES: the sample weights with the "
+                       "design's strata and PSUs (NHANES Analytic Guidelines 2011–2016)",
+                       {"inference": "Sound for a population estimand: every family and display "
+                                     "is design-based, or blocked and recorded where none exists "
+                                     "(MODELING_SEQUENCE §0 ruling 6).",
+                        "prediction": not_asked},
+                       {"inference": "recommended", "prediction": "not_offered"}),
+                Option("sample", "These participants (the sample-only attestation)",
+                       "Unweighted analyses of survey participants, stated as such",
+                       {"inference": "Sound only as attested: the estimates describe these "
+                                     "participants, unweighted, and their standard errors ignore "
+                                     "the strata and PSUs; the record carries the attestation.",
+                        "prediction": not_asked},
+                       {"inference": "available", "prediction": "not_offered"}),
+            ),
+            leash={"inference": "recommended", "prediction": "not_offered"},
+            storyboard=("The survey question: the surveyed population, or these participants",
+                        "Each chosen family: its design-based estimator, or its block with exits",
+                        "Each display: design-based (the coefficient table, the form tests, the "
+                        "substitution curve, the relative effects), or blocked with exits",
+                        "The record: each sentence restated on the answer as it stands"),
+            relations=(
+                Relation("implies", "every family and display",
+                         "A design-based estimator, or block and record with the sample-only "
+                         "attestation as its exit (MODELING_SEQUENCE §2).",
+                         purposes=("inference",),
+                         enforced_by="turbotab.core.models.survey:no_design_estimator",
+                         condition="the survey answer \"the surveyed population\"",
+                         id="design_based_or_blocked"),
+                Relation("conflicts", "families with no design-based estimator",
+                         "The mixed model, GEE, feature-wise tests, the elastic net and boosted "
+                         "trees have no design-based estimator: their estimates are blocked and "
+                         "recorded.",
+                         purposes=("inference",), rung="block_and_record",
+                         exits=("the design-based family for the task in its place, every other "
+                                "chosen family kept", "the sample-only attestation"),
+                         enforced_by="turbotab.core.models.survey:no_design_estimator",
+                         id="no_design_estimator"),
+                Relation("invalidates", "the substitution band from row resampling",
+                         "A row bootstrap ignores the strata and PSUs, so the curve's band is the "
+                         "design's linearization instead, and the refits asked for are not drawn.",
+                         purposes=("inference",),
+                         enforced_by="turbotab.core.models.survey:population_curve",
+                         id="bootstrap_band"),
+                Relation("implies", "multiple imputation on the design's degrees of freedom",
+                         "Each completed copy is analyzed design-based, and Rubin's rules take the "
+                         "design's degrees of freedom as the complete-data degrees of freedom "
+                         "(MS2).",
+                         purposes=("inference",),
+                         enforced_by="turbotab.core.stages.modeling:pooled_table",
+                         id="multiple_imputation"),
+                Relation("conflicts", "regression calibration",
+                         "Regression calibration has no design-based variance here (a bootstrap "
+                         "by PSU within strata over the whole chain), so it is blocked and "
+                         "recorded.",
+                         purposes=("inference",), rung="block_and_record",
+                         exits=("the sample-only attestation", "no correction"),
+                         enforced_by="turbotab.core.stages.calibration:population_exits",
+                         id="regression_calibration"),
+                Relation("conflicts", "a scale's corrected coefficient",
+                         "A scale's correction and the uncorrected coefficient beside it are fit "
+                         "on the rows as sampled, so they are blocked and recorded.",
+                         purposes=("inference",), rung="block_and_record",
+                         exits=("the sample-only attestation",),
+                         enforced_by="turbotab.core.stages.scales:population_block",
+                         id="scale_correction"),
+                Relation("implies", "the record restated",
+                         "Every sentence that says what the survey answer does to a family, a "
+                         "curve or a correction is restated in the methods text on the answer as "
+                         "it stands; the Record keeps it as said.",
+                         purposes=("inference",),
+                         enforced_by="turbotab.core.provenance:restated", id="restated"),
+                Relation("implies", "cross-validated scores labeled unweighted",
+                         "Cross-validated scores, their calibration and the family comparisons "
+                         "are about the fitting procedure on these rows: they are labeled "
+                         "unweighted, not design-based (awaiting the owner's ruling).",
+                         purposes=("inference",),
+                         enforced_by="turbotab.core.stages.modeling:fit_stage",
+                         id="unweighted_scores"),
+            ),
+            sources=("MODELING_SEQUENCE §0 ruling 6, §2, §4",
+                     "NHANES Analytic Guidelines 2011–2016 §3.2",
+                     "Korn & Graubard 1999, Analysis of Health Surveys"),
+            clause=_population_clause, sentence="turbotab.core.voice:sentence_for"),
+        estimator("survey_linear", "Survey-weighted linear, logistic and multinomial models",
+                  "linear", "a continuous, yes/no or multiclass outcome",
+                  "estimates came from survey-weighted least squares, logistic or multinomial "
+                  "logistic regression (pseudo-maximum likelihood)", "R survey::svyglm",
+                  ("Weight each row by the people it stands for",
+                   "Solve the weighted estimating equations",
+                   "Sum each PSU's weighted scores",
+                   "Spread the PSU totals within strata",
+                   "Read intervals on t, the PSUs minus the strata"),
+                  None),
+        estimator("survey_cox", "Survey-weighted Cox regression (Binder's pseudo-likelihood)",
+                  "Cox", "a time-to-event outcome with its follow-up",
+                  "hazard ratios came from survey-weighted Cox regression (Binder's "
+                  "pseudo-likelihood, Efron ties)", "R survey::svycoxph",
+                  ("Weight each row in every risk set",
+                   "Solve the weighted partial-likelihood score (Efron ties)",
+                   "Take each row's weighted score residual",
+                   "Spread the PSU totals within strata"),
+                  Relation("implies", "proportional hazards checked on these participants",
+                           "The Schoenfeld check is a diagnostic on these participants, not a "
+                           "design-based test.", purposes=("inference",),
+                           enforced_by="turbotab.core.models.survival:survey_cox_table",
+                           id="proportional_hazards")),
+        estimator("survey_ordinal", "Survey-weighted proportional-odds model",
+                  "proportional-odds", "an ordered outcome with its declared order",
+                  "cumulative odds ratios came from a survey-weighted proportional-odds model "
+                  "(pseudo-maximum likelihood)", "R survey::svyolr",
+                  ("Weight each row's cumulative-logit likelihood",
+                   "Solve the weighted score",
+                   "Spread the PSU totals within strata"),
+                  Relation("implies", "proportional odds checked on these participants",
+                           "The Brant check is a diagnostic on these participants, not a "
+                           "design-based test.", purposes=("inference",),
+                           enforced_by="turbotab.core.models.ordinal:survey_ordinal_table",
+                           id="proportional_odds")),
+        MethodContract(
+            key="survey_substitution", label="The substitution curve over the surveyed population",
+            slot="evaluation", scope="model", scope_note=model_scope,
+            needs=(population_need, "a substitution answer", "the linear family chosen"),
+            question="Which energy substitution, in what steps? (the substitution question)",
+            place="MODELING_SEQUENCE §1 step 11's displays, beside the coefficient table",
+            decision="set_substitution", stage="substitution", run_order=1.0,
+            options=(
+                Option("design_band", "A band by Taylor linearization over the survey design",
+                       "Predictive margins with survey data (Graubard & Korn 1999)",
+                       {"inference": "Sound for the surveyed population: the band carries both the "
+                                     "error of the weighted fit and which people were sampled.",
+                        "prediction": not_asked},
+                       {"inference": "recommended", "prediction": "not_offered"}),
+                Option("row_bootstrap", "A band from refits on bootstrap resamples of rows",
+                       "The band this app draws without a survey design",
+                       {"inference": "Not under the population answer: a row bootstrap ignores the "
+                                     "strata and PSUs, so the design's band replaces it.",
+                        "prediction": "The band prediction draws on its training rows."},
+                       {"inference": "not_offered", "prediction": "recommended"}),
+            ),
+            leash={"inference": "recommended", "prediction": "not_offered"},
+            storyboard=("Refit the linear family with the weights",
+                        "Move k kcal on every row on support",
+                        "Average each row's change over the population (weighted)",
+                        "Linearize the average over the design for its band"),
+            relations=(
+                Relation("invalidates", "the substitution band from row resampling",
+                         "A row bootstrap ignores the strata and PSUs, so the band is the "
+                         "design's instead.", purposes=("inference",),
+                         enforced_by="turbotab.core.models.survey:design_curve",
+                         id="bootstrap_band"),
+                Relation("conflicts", "a curve from a family with no design-based estimator",
+                         "Blocked and recorded: no curve, its reason and its exits.",
+                         purposes=("inference",), rung="block_and_record",
+                         exits=("the design-based family in its place, every other chosen family "
+                                "kept", "the sample-only attestation"),
+                         enforced_by="turbotab.core.models.survey:population_curve",
+                         id="blocked_curve"),
+            ),
+            sources=("Graubard & Korn 1999, Biometrics 55:652", "R survey::svyglm + svycontrast"),
+            clause=_substitution_contract_clause,
+            sentence="turbotab.core.models.survey:substitution_clause"),
+    ):
+        register_contract(c)
 
 
-@dataclass(frozen=True)
-class MethodContract:
-    """A domain method's contract (BLUEPRINT §13): where it runs, what it may learn from, what it
-    needs, how it is routed (its rung by purpose), its storyboard, its sentence and its relations.
-    ``reference`` names the independent implementation the acceptance suite checks it against."""
+def _population_clause(run: Any) -> str | None:
+    """The population contract's clause of the methods paragraph."""
+    from turbotab.core.survey import ATTESTATION
 
-    key: str
-    name: str
-    slot: str
-    scope: str
-    needs: tuple[str, ...]
-    routing: dict[str, str]
-    storyboard: tuple[str, ...]
-    sentence: str
-    relations: tuple[Relation, ...]
-    reference: str
+    if run.get("estimand") == "sample":
+        return f"the estimates describe these participants: {ATTESTATION}"
+    weight, strata, psu = run.get("weight"), run.get("strata"), run.get("psu")
+    over = (f" over `{psu}` nested within `{strata}`" if psu and strata
+            else (f" over `{psu}`" if psu else ""))
+    return (f"the estimates describe the surveyed population: rows were weighted by `{weight}`, "
+            f"and standard errors were estimated by Taylor series linearization{over}, with t "
+            f"intervals on the PSUs minus the strata that hold the analysis rows")
 
 
-_POPULATION = "the survey answer \"the surveyed population\""
-CONTRACTS: dict[str, MethodContract] = {c.key: c for c in (
-    MethodContract(
-        key="survey_linear", name="survey-weighted linear, logistic and multinomial models",
-        slot="model", scope="training fold",
-        needs=("the survey answer: the surveyed population", "a weight", "strata and PSUs, or an "
-               "attestation that the table has none"),
-        routing={"inference": "the design-based table under the population answer",
-                 "prediction": "not asked: scores describe the rows they were computed on"},
-        storyboard=("weight each row by the people it stands for", "solve the weighted equations",
-                    "sum each PSU's weighted scores", "spread of PSU totals within strata",
-                    "t on PSUs minus strata"),
-        sentence="survey-weighted {model}, with Taylor-linearized standard errors",
-        relations=(Relation("implies", "intervals", "every interval is design-based, on t(d)"),),
-        reference="R survey::svyglm"),
-    MethodContract(
-        key="survey_cox", name="survey-weighted Cox regression (Binder's pseudo-likelihood)",
-        slot="model", scope="training fold",
-        needs=("the survey answer: the surveyed population", "a time-to-event outcome with its "
-               "follow-up"),
-        routing={"inference": "the Cox table under the population answer (no other rung)",
-                 "prediction": "not asked"},
-        storyboard=("weight each row in every risk set", "solve the weighted partial-likelihood "
-                    "score (Efron ties)", "each row's weighted score residual",
-                    "spread of PSU totals within strata"),
-        sentence=("hazard ratios from Cox regression weighted by {weight} (Binder's "
-                  "pseudo-likelihood, Efron ties), with Taylor-linearized standard errors"),
-        relations=(Relation("implies", "intervals", "every hazard-ratio interval is design-based"),
-                   Relation("implies", "proportional hazards", "the check is a diagnostic on "
-                            "these participants, not a design-based test")),
-        reference="R survey::svycoxph"),
-    MethodContract(
-        key="survey_ordinal", name="survey-weighted proportional-odds model",
-        slot="model", scope="training fold",
-        needs=("the survey answer: the surveyed population", "an ordered outcome with its order"),
-        routing={"inference": "the proportional-odds table under the population answer",
-                 "prediction": "not asked"},
-        storyboard=("weight each row's cumulative-logit likelihood", "solve the weighted score",
-                    "spread of PSU totals within strata"),
-        sentence=("cumulative odds ratios from a proportional-odds model weighted by {weight}, "
-                  "with Taylor-linearized standard errors"),
-        relations=(Relation("implies", "intervals", "every odds-ratio interval is design-based"),
-                   Relation("implies", "proportional odds", "the Brant check is a diagnostic on "
-                            "these participants, not a design-based test")),
-        reference="R survey::svyolr"),
-    MethodContract(
-        key="survey_substitution", name="substitution curve over the surveyed population",
-        slot="evaluation", scope="training fold",
-        needs=("the survey answer: the surveyed population", "a family with a design-based fit"),
-        routing={"inference": "the curve under the population answer; its band by linearization",
-                 "prediction": "not asked"},
-        storyboard=("refit with the weights", "move k kcal on every row", "average the change "
-                    "over the population", "linearize the average over the design"),
-        sentence=("its curve is the population mean of the change in the survey-weighted fit, its "
-                  "band by Taylor linearization over the survey design"),
-        relations=(Relation("invalidates", "the bootstrap band", "a row bootstrap ignores the "
-                            "strata and PSUs, so the band is the design's instead"),),
-        reference="R survey::svyglm + svycontrast"),
-    MethodContract(
-        key="survey_population", name="the population estimand under a survey design",
-        slot="model", scope="descriptive",
-        needs=("design columns", "purpose: inference"),
-        routing={"inference": "asked (the survey question); block and record a family or display "
-                              "with no design-based estimator, exit: the sample-only attestation",
-                 "prediction": "not asked"},
-        storyboard=("the survey question", "each family's design-based estimator, or its block"),
-        sentence=("the estimates describe the surveyed population"),
-        relations=(
-            Relation("implies", "every family and display", "a design-based estimator, or block "
-                     "and record with the sample-only attestation as its exit"),
-            Relation("conflicts", "mixed, GEE, feature-wise, elastic net and boosted-tree "
-                     "estimates", "no design-based estimator: blocked, exits the design-based "
-                     "family for the task or the sample-only attestation"),
-            Relation("invalidates", "the substitution band from row resampling",
-                     "replaced by the design's linearization"),
-            Relation("implies", "multiple imputation", "each completed copy is analyzed "
-                     "design-based, and its degrees of freedom are the design's")),
-        reference="R survey"),
-)}
+def _substitution_contract_clause(run: Any) -> str | None:
+    if run.get("estimand", "population") != "population":
+        return None
+    return ("the substitution curve is the population mean of each participant's change in the "
+            "survey-weighted fit, its band by Taylor linearization over the survey design "
+            "(Graubard & Korn 1999)")
+
+
+SURVEY_CONTRACTS = ("survey_population", "survey_linear", "survey_cox", "survey_ordinal",
+                    "survey_substitution")
+_register_contracts()
 
 
 __all__ = [
-    "CONTRACTS", "DesignFit", "DesignVariance", "Domain", "FEW_DESIGN_DF", "LONELY_METHOD",
-    "LONELY_PSU", "LONELY_RULE", "MethodContract", "Relation", "SAMPLE_EXIT", "SurveyDesign",
+    "DesignFit", "DesignVariance", "Domain", "FEW_DESIGN_DF", "LONELY_METHOD",
+    "LONELY_PSU", "LONELY_RULE", "SAMPLE_EXIT", "SURVEY_CONTRACTS", "SurveyDesign",
     "WeightedFit", "adjusted_wald", "blocked", "build_design", "curve_caption", "design_curve",
     "design_df", "design_family", "design_fit", "design_table", "domain_of", "has_design_estimator",
-    "no_design_estimator", "PopulationCurve", "population_curve", "population_shelf",
-    "survey_info", "survey_table",
+    "models_sentence", "no_design_estimator", "PopulationCurve", "population_answer",
+    "population_curve", "population_shelf", "substitution_clause", "survey_info", "survey_table",
     "total_variance",
     "weighted_least_squares", "weighted_logistic", "weighted_multinomial",
 ]
