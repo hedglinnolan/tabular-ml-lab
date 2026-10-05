@@ -38,6 +38,12 @@ ANSWER = {
     "target": d.SetTarget(column="hba1c"),
     "event": d.SetEvent(column="hba1c", level="1"),
     "task": d.SetTask(column="hba1c", task="regression"),
+    # WP17: the follow-up, the grouping, the exposure and its effect, the adjustment answers
+    "follow_up": d.SetFollowUp(column="hba1c", time_column="followup_years"),
+    "clusters": d.SetClusters(column=None),
+    "estimand": d.SetEstimand(exposure="protein_g", measure="mean_difference"),
+    "adjustment": d.SetAdjustment(exposure="protein_g", answers={"age": d.CovariateAnswers(
+        causes_exposure="yes", causes_outcome="yes", after_exposure="no")}),
     "purpose": d.SetPurpose(purpose="prediction"),
     "grain": d.SetGrain(grain="repeated", id_column="participant_id"),
     "repeat_kind": d.SetRepeatKind(repeat_kind="repeats"),

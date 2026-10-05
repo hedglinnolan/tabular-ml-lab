@@ -81,3 +81,28 @@ def test_the_methods_text_keeps_every_fork_after_the_estimates_were_seen(tmp_pat
     assert in_force[forked.id] is False and in_force[undone.id] is False
     assert text.seen_from == lock.seq
     assert text.text.endswith(undone.sentence)
+
+
+def test_the_plan_locks_on_an_estimate_in_view_and_never_on_a_refusal_or_a_withheld_table():
+    """What locks the inference plan (WP16) once WP17 withholds estimates: a table with
+    coefficients, an exposure's test or an unrefused inference table; never a refusal with nothing
+    estimated, nor a fit WP17 withheld (``estimand.withhold``); and the "further adjusted for"
+    model WP17 adds is an estimate like the sensitivity analysis's."""
+    from turbotab.core.estimand import withhold
+    from turbotab.core.plan_lock import ESTIMATE_STAGES, shows_estimates
+
+    shown = {"feature": "fiber_g", "estimate": -0.2}
+    fit = {"models": [{"coefficients": [shown], "inference": {"covariance": "HC3"},
+                       "exposure_tests": []}]}
+    assert shows_estimates("fit", fit)
+    refused = {"models": [{"coefficients": None, "exposure_tests": [],
+                           "inference": {"covariance": "none", "refused": "Answer the survey."}}]}
+    assert not shows_estimates("fit", refused)
+    assert not shows_estimates("fit", withhold("fit", fit, {"reason": "Which exposure?"}))
+    trend = {"models": [{"coefficients": None, "inference": None,
+                         "exposure_tests": [{"column": "fiber_g", "p": 0.01}]}]}
+    assert shows_estimates("fit", trend)
+    assert "secondary" in ESTIMATE_STAGES
+    secondary = {"families": [{"fits": [{"coefficients": [shown], "inference": None}]}]}
+    assert shows_estimates("secondary", secondary)
+    assert not shows_estimates("secondary", withhold("secondary", secondary, {"reason": "…"}))

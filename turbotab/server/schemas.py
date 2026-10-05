@@ -39,6 +39,7 @@ from turbotab.core.interview import QuestionKey  # noqa: F401
 from turbotab.core.jobs import JobView  # noqa: F401
 from turbotab.core.repairs import RepairOption  # noqa: F401 - re-exported contract model
 from turbotab.core.seal import Chronology, SealBasis, SealPlan  # noqa: F401 - the seal's shapes
+from turbotab.core.custom_sound import LabeledQuestion  # noqa: F401 - WP17's two labels
 from turbotab.core.teaching import TeachingEntry  # noqa: F401 - re-exported contract model
 
 Mode = Literal["local", "server"]
@@ -239,6 +240,15 @@ class ProfileArtifact(Model):
     basis: str
 
 
+class FollowUpCandidate(Model):
+    """A column that reads as how long each row was followed (``turbotab/core/estimand.py``)."""
+
+    column: str
+    min: float
+    max: float
+    varies: bool  # its values span more than 5% of its largest: follow-up ended at different times
+
+
 class TargetInfo(Model):
     """The ``target_info`` artifact."""
 
@@ -257,6 +267,8 @@ class TargetInfo(Model):
     unit_source: Literal["name", "decision"] | None = None
     proposed_unit: str | None = None
     unit_candidates: list[str] = []
+    # WP17 (audit RO-03): columns that read as a follow-up time, the follow-up question's options.
+    follow_up: list[FollowUpCandidate] = []
 
 
 class FindingEvidence(Model):
@@ -547,6 +559,78 @@ class EnergyUnitReading(Model):
     confirmed: bool = True
 
 
+class QuestionLabels(Model):
+    """WP17 (north star 5): each question's options with "customary in <field>" and "sound for
+    <purpose>", soundest first (``turbotab/core/custom_sound.py``)."""
+
+    missing: LabeledQuestion | None = None
+    exclusions: LabeledQuestion | None = None
+    energy_adjustment: LabeledQuestion | None = None
+
+
+class EstimandExposure(Model):
+    column: str
+    energy_contrast: bool  # an energy-bearing exposure beside total energy: substitution or addition
+
+
+class EstimandChoice(Model):
+    effect: Literal["total", "direct"] | None = None
+    contrast: Literal["substitution", "addition"] | None = None
+    label: str
+    consequence: str
+
+
+class EstimandMeasure(Model):
+    measure: str
+    label: str
+    fitted: bool  # False: named, and refused with the reason (not fitted by TurboTab yet)
+    reason: str
+
+
+class EstimandCard(Model):
+    """WP17 (MODELING_SEQUENCE §1 step 2): what the exposure and effect question offers."""
+
+    exposures: list[EstimandExposure]
+    effects: list[EstimandChoice]
+    contrasts: list[EstimandChoice]
+    measures: list[EstimandMeasure]
+
+
+class AdjustmentGroup(Model):
+    """Covariates the pack guesses alike, confirmed with one tap (``decision``); or the unguessed."""
+
+    key: str
+    label: str
+    columns: list[str]
+    guess: dict[str, str] | None
+    reason: str
+    derived: str | None  # the role the guess derives
+    derived_words: str | None
+    decision: dict[str, Any] | None
+
+
+class DerivedRole(Model):
+    role: str
+    words: str
+    adjusted: bool  # in the primary model
+    secondary: bool  # in the declared "further adjusted for" model
+    why: str
+
+
+class AdjustmentCard(Model):
+    """WP17 (MODELING_SEQUENCE §1 step 3): the disjunctive cause criterion, asked per covariate."""
+
+    exposure: str
+    effect: str
+    questions: dict[str, str]
+    groups: list[AdjustmentGroup]
+    answered: dict[str, DerivedRole]
+    adjusted: list[str]
+    left_out: list[str]
+    secondary: list[str]
+    source: str
+
+
 class ProposalsArtifact(Model):
     """The ``proposals`` artifact: offered for the exclusions, missing-values and energy questions."""
 
@@ -563,6 +647,10 @@ class ProposalsArtifact(Model):
     exposure_forms: list[ExposureFormOption] = []
     # WP13: the energy column's unit and how it was read; None without an energy column.
     energy_unit: EnergyUnitReading | None = None
+    # WP17: customary and sound on every option; under inference the estimand and adjustment cards.
+    labels: QuestionLabels | None = None
+    estimand: EstimandCard | None = None
+    adjustment: AdjustmentCard | None = None
 
 
 # ── the table the analysis reads (M2_CONTRACT §2; turbotab/core/stages/working.py) ──────────
@@ -802,3 +890,8 @@ from turbotab.core.stages.calibration import CalibrationArtifact  # noqa: E402
 from turbotab.core.stages.sensitivity import SensitivityArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"sensitivity": SensitivityArtifact, "calibration": CalibrationArtifact})
+
+# WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model beside the primary.
+from turbotab.core.stages.secondary import SecondaryArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"secondary": SecondaryArtifact})

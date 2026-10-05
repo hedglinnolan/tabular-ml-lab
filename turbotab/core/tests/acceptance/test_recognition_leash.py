@@ -512,7 +512,11 @@ def test_a2_the_case_control_inference_never_clusters_by_a_category(tmp_path):
     path = _write(frame, tmp_path, "cc.csv")
     with local_server(tmp_path / "home") as client:
         # The fixture's truth (BLUEPRINT §14.3): age in whole years is an amount.
-        drive = open_project(client, path, Truth({"code_or_count:age": "amount"}, fixture="ids.py"))
+        # WP17, the generator: every column is drawn apart from fiber and from CRP.
+        drive = open_project(client, path, Truth({
+            "code_or_count:age": "amount", "exposure:crp": "fiber_g",
+            **{f"adjust:{c}": "no,no,no" for c in ("patient", "respondent", "participant",
+                                                    "person", "age")}}, fixture="ids.py"))
         _drive_to_fit(drive, lens=["clinical"], target="crp",
                       grain={"kind": "set_grain", "grain": "one_row_per_unit",
                              "id_column": "study_no"})
@@ -789,7 +793,16 @@ def test_b1_a_bulk_confirm_records_what_rode_along_and_only_a_confirmation_settl
     from turbotab.core.tests.truths import Truth
 
     # The fixture's truth (BLUEPRINT §14.3): age in whole years and energy in whole kcal, amounts.
-    truth = Truth({"code_or_count:age": "amount", "code_or_count:energy_kcal": "amount"},
+    # WP17, the generator (``_adults``): sex, weight and the body composition InBody reads (its
+    # protein mass and fat percent) set energy needs and so the protein eaten; age moves nothing;
+    # the other macronutrients, and ``ALC`` once the user confirms it a nutrient, share total
+    # energy with protein, the field's default.
+    truth = Truth({"code_or_count:age": "amount", "code_or_count:energy_kcal": "amount",
+                   "exposure:hba1c": "protein_g",
+                   **{f"adjust:{c}": "yes,no,no" for c in ("sex", "Weight", "Protein", "Fat%")},
+                   "adjust:age": "no,no,no",
+                   **{f"adjust:{c}": "unknown,unknown,no" for c in ("fat_g", "carbohydrate_g",
+                                                                    "ALC")}},
                   fixture="inbody A2")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, path, truth)

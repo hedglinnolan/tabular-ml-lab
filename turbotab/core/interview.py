@@ -29,6 +29,13 @@ Rules:
 * ``survey`` (audit §5 WP10) is asked after the roles, under inference, when a column reads as a
   survey weight: the surveyed population (design-based) or these participants (unweighted, and
   recorded as such). It is ``not_applicable`` under prediction and without a weight column.
+* WP17 (audit §5; ``turbotab/core/estimand.py``): ``follow_up`` is asked of a yes/no outcome
+  beside a column that reads as a follow-up time (stated, "skipped", when none does) and of a time
+  to event, whose follow-up must be named; it is answered by the follow-up (a time to event) or by
+  "the same for everyone" (``censoring``, a yes/no outcome). ``clusters`` is asked after the roles
+  when a column reads as a group of participants. Under inference ``estimand`` (the exposure and
+  its effect) and ``adjustment`` (each covariate's answers, complete for the current exposure) are
+  asked; under prediction they are not applicable.
 * ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
   fit until then), ``not_applicable`` when nothing is held out, and answered once opened. Its slot
   is ``seal_opened``.
@@ -48,14 +55,16 @@ from typing import Any, Callable, Literal, Mapping, Sequence
 from pydantic import BaseModel, ConfigDict
 
 QuestionKey = Literal[
-    "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
-    "aggregation", "temporal", "roles", "survey", "exclusions", "missing", "split",
-    "energy_adjustment", "models", "substitution", "open_seal",
+    "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
+    "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "estimand",
+    "adjustment", "exclusions", "missing", "split", "energy_adjustment", "models", "substitution",
+    "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
-    "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
-    "aggregation", "temporal", "roles", "survey", "exclusions", "missing", "split",
-    "energy_adjustment", "models", "substitution", "open_seal",
+    "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
+    "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "estimand",
+    "adjustment", "exclusions", "missing", "split", "energy_adjustment", "models", "substitution",
+    "open_seal",
 )
 # The ProjectState slot a question's answer writes, where it is not the question's own name.
 SLOT_OF: dict[str, str] = {"open_seal": "seal_opened"}
@@ -69,6 +78,8 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "target": ("oriented",),
     "event": ("target_info",),
     "task": ("target_info",),
+    # WP17: the follow-up time's candidates are read with the outcome (``target_info.follow_up``).
+    "follow_up": ("target_info",),
     "grain": ("structure",),
     "repeat_kind": ("structure",),
     "unit": (),
@@ -78,6 +89,10 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "roles": ("roles",),
     # Its options (one per recognized weight, the pooled cycle) are read with the proposals.
     "survey": ("proposals",),
+    # WP17: a grouping is read from the roles; the estimand and adjustment cards are proposals'.
+    "clusters": ("roles",),
+    "estimand": ("proposals",),
+    "adjustment": ("proposals",),
     "exclusions": ("proposals",),
     "missing": (),
     # The checks come before the seal (audit RO-02): a repair to the outcome after the draw would
@@ -176,6 +191,8 @@ def _live_writer(records: Sequence[Any], state: Any) -> dict[str, str]:
         if decision.kind in ("open_seal", "reseal") and getattr(decision, "target", None) not in (
             None, state.target
         ):
+            continue
+        if decision.kind in ("set_follow_up", "set_censoring") and decision.column != state.target:
             continue
         out[slot] = record.id
     return out
@@ -378,8 +395,11 @@ def route(
     ``stages``: stage name -> StageStatus (or its dict). ``artifacts``: the fresh public artifacts
     the Router reads — ``target_info`` (the task skip, the event's binary outcome), ``oriented``
     (the shape reading orientation fires on) and ``structure`` (the stated repeats reading).
-    ``records``: the decision log, for each answered step's ``decision_id``.
+    ``records``: the decision log, for each answered step's ``decision_id``. WP17: ``roles`` (the
+    roles stage's proposals) tells the cluster question which columns read as groups.
     """
+    from turbotab.core import estimand
+
     if energy_bearing is None:
         from turbotab.core.stages.rows import energy_bearing as bearing
     else:
@@ -400,14 +420,28 @@ def route(
         "temporal": lambda: _temporal_gate(state, structure),
         "survey": lambda: _survey_gate(state),
         "open_seal": lambda: _open_seal_gate(state),
+        # WP17 (turbotab/core/estimand.py)
+        "follow_up": lambda: estimand.follow_up_gate(state, target_info),
+        "clusters": lambda: estimand.clusters_gate(state, artifacts.get("roles")),
+        "estimand": lambda: estimand.estimand_gate(state),
+        "adjustment": lambda: estimand.adjustment_gate(state),
     }
+    # A question whose answer is not simply its slot's value (WP17): the follow-up is answered by a
+    # time to event's follow-up or a yes/no outcome's "same for everyone"; the estimand while its
+    # exposure is in the model; the adjustment once every covariate has answers for that exposure.
+    answers: dict[str, Callable[[], Any]] = {
+        "follow_up": lambda: estimand.follow_up_answer(state, target_info),
+        "estimand": lambda: estimand.current_estimand(state),
+        "adjustment": lambda: estimand.adjustment_answer(state),
+    }
+    writer_slots = {"follow_up": ("follow_up", "censoring")}
 
     steps: list[InterviewStep] = []
     first_unanswered: str | None = None
     for key in QUESTION_KEYS:
         slot = SLOT_OF.get(key, key)
-        value = getattr(state, slot, None)
-        decision_id = writers.get(slot)
+        value = answers[key]() if key in answers else getattr(state, slot, None)
+        decision_id = next((writers[s] for s in writer_slots.get(key, (slot,)) if s in writers), None)
         if key == "orientation" and value is not None:  # its slot turns the table whatever the lens
             steps.append(InterviewStep(key=key, status="answered", decision_id=decision_id))
             continue

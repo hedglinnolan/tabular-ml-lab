@@ -126,6 +126,7 @@ export function targetInfo(
     unit_source: null,
     proposed_unit: null,
     unit_candidates: [],
+    follow_up: [],
   };
 }
 

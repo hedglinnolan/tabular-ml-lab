@@ -17,7 +17,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
 
-from turbotab.core import consequences, decisions, seal, voice  # seal: its validators and preview
+from turbotab.core import consequences, decisions, estimand, seal, voice  # seal: its validators and preview
 from turbotab.core import plan_lock  # noqa: F401 - the analysis-plan lock's validators (WP16)
 from turbotab.core.config import Settings
 from turbotab.core.datastore import DataStore, fingerprint_file
@@ -635,7 +635,9 @@ class ProjectService:
                   records: list[Any]) -> list[InterviewStep]:
         """The Router's answer (turbotab/core/interview.py) for this project now."""
         artifacts: dict[str, Any] = {}
-        for stage in ("target_info", "oriented", "structure"):  # what the Router reads, when fresh
+        # What the Router reads, when fresh (WP17: the roles stage's proposals name the groupings
+        # the cluster question asks about).
+        for stage in ("target_info", "oriented", "structure", "roles"):
             status = stages.get(stage)
             if status is not None and status.status == "fresh" and status.key:
                 artifacts[stage] = self._artifact(pid, stage, status.key, public=True)
@@ -980,6 +982,19 @@ class ProjectService:
             artifact = {"value": artifact}
         if stage == "fit" and artifact is not None:
             artifact = self._served_fit(pid, artifact, result.key)
+        if artifact is not None and stage in estimand.ESTIMATE_STAGES:
+            # WP17: no estimate is served while a question it rests on is unanswered (the follow-up;
+            # under inference the grouping, the exposure and its effect, the adjustment set), as
+            # held-out scores are withheld until the seal is opened; once answered, the fit is
+            # captioned from the estimand.
+            records = self.log(pid).records()
+            state = decisions.fold(records)
+            gate = estimand.served_gate(state, self.interview(pid, state, self.engine.status(pid),
+                                                              records))
+            if gate is not None:
+                artifact = estimand.withhold(stage, artifact, gate)
+            elif stage == "fit":
+                artifact = estimand.annotate_fit(artifact, state)
         if stage == "findings" and artifact is not None:  # M2 §4: each finding's disposition
             from turbotab.core import repairs
 

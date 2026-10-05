@@ -133,6 +133,35 @@ def usual_answer(client: TestClient, pid: str, key: str, view: dict) -> dict:
 
         swaps = [c for c, r in (state["roles"] or {}).items() if r == "exposure" and energy_bearing(c)]
         return {"kind": "set_substitution", "donor": swaps[0], "recipient": swaps[1]}
+    # WP17 (audit §5): the questions the declared purpose routes.
+    if key == "follow_up":  # a yes/no outcome followed for one period, as most fixtures are
+        return {"kind": "set_censoring", "column": state["target"]}
+    if key == "clusters":  # the grouping the roles name; under inference its intervals only, as
+        # a confirmed cluster role clustered them before the question existed
+        from turbotab.core.estimand import cluster_candidates
+
+        from turbotab.core.decisions import ProjectState
+
+        found = cluster_candidates(ProjectState(**state), _artifact(client, pid, "roles"))
+        inference = state.get("purpose") == "inference"
+        return {"kind": "set_clusters", "column": found[0] if found else None,
+                "adjust": "cluster_only" if inference and found else None}
+    if key == "estimand":  # the author's declared question (``exposure:<outcome>``: a column, or
+        # ``family``), else the first exposure the card offers; on the scale the engine fits
+        card = _artifact(client, pid, "proposals").get("estimand") or {}
+        declared = truth_of(pid).get(f"exposure:{state['target']}")
+        if declared == "family":
+            family = card["family"]
+            measure = next(m["measure"] for m in family["measures"] if m["fitted"])
+            return {"kind": "set_estimand", "family": True, "measure": measure,
+                    "contrast": "substitution" if family["energy_contrast"] else None}
+        first = next((e for e in card["exposures"] if e["column"] == declared),
+                     card["exposures"][0])
+        measure = next(m["measure"] for m in card["measures"] if m["fitted"])
+        return {"kind": "set_estimand", "exposure": first["column"], "measure": measure,
+                "contrast": "substitution" if first["energy_contrast"] else None}
+    if key == "adjustment":  # each covariate's answers, from the fixture's declared truth
+        return {"kind": "__adjustment__"}
     pytest.fail(f"the {key} question has no usual answer; answer it in the test")
 
 
@@ -165,8 +194,35 @@ def prepare(client: TestClient, pid: str, decision: dict, timeout: float = 120.0
             time.sleep(0.05)
             continue
         answer = usual_answer(client, pid, first["key"], view)
+        if answer["kind"] == "__adjustment__":
+            answer_adjustment_card(client, pid)
+            continue
         response = answer_settled(client, pid, first["key"], answer)
         assert response.status_code == 200, (first["key"], response.text)
+
+
+def answer_adjustment_card(client: TestClient, pid: str, timeout: float = 120.0) -> None:
+    """WP17: the adjustment card answered from the fixture's declared causal truth
+    (``truths.answer_adjustment``: a group the pack guesses alike in one tap), once the card names
+    the exposure the estimand declared."""
+    from turbotab.core.tests.truths import answer_adjustment
+
+    from turbotab.core.decisions import EXPOSURE_FAMILY
+
+    end = time.monotonic() + timeout
+    while True:
+        view = client.get(f"/api/projects/{pid}").json()
+        spec = (view["state"] or {}).get("estimand") or {}
+        exposure = EXPOSURE_FAMILY if spec.get("family") else spec.get("exposure")
+        card = _artifact(client, pid, "proposals").get("adjustment")
+        if (view["stages"]["proposals"]["status"] == "fresh" and card
+                and card.get("exposure") == exposure):
+            break
+        if time.monotonic() > end:
+            pytest.fail("the adjustment card never named the declared exposure")
+        time.sleep(0.05)
+    answer_adjustment(lambda d: client.post(f"/api/projects/{pid}/decisions", json=d), card,
+                      truth_of(pid))
 
 
 # The readings ledger (BLUEPRINT §14.1, §14.3): a reading the server asks about is answered from

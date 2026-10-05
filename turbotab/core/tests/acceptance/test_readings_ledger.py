@@ -347,6 +347,18 @@ def _meps() -> pd.DataFrame:
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
+def ADULTS_CAUSAL(outcome: str, suffix: str, weight: str, height: str) -> dict[str, str]:  # noqa: N802
+    """WP17: the causal answers for a table drawn by :func:`_adults` with an outcome drawn apart
+    (``ldl``), protein (``protein<suffix>``) the exposure. Sex and weight set energy needs and so
+    the protein eaten; age and height move nothing; the other macronutrients share total energy
+    with protein, the field's default (other dietary components are possible confounders)."""
+    return {f"exposure:{outcome}": f"protein{suffix}", "adjust:sex": "yes,no,no",
+            f"adjust:{weight}": "yes,no,no", "adjust:age": "no,no,no",
+            f"adjust:{height}": "no,no,no",
+            **{f"adjust:{n}{suffix}": "unknown,unknown,no" for n in ("fat", "carbohydrate",
+                                                                    "alcohol")}}
+
+
 def _write(frame: pd.DataFrame, folder: Path, name: str) -> Path:
     path = Path(folder) / name
     frame.to_csv(path, index=False)
@@ -439,7 +451,10 @@ def _refused(drive, body: dict) -> dict:
     and the stages behind them; the question waits for them, ``not_yet``, as a client does)."""
     from turbotab.core.tests.acceptance.server_drive import _post_when_reached
 
-    r = _post_when_reached(drive.c, f"/api/projects/{drive.pid}/decisions", body)
+    # Under inference the exposure and the adjustment set come first (WP17), answered from the
+    # fixture's truth as the questions before any other are.
+    r = _post_when_reached(drive.c, f"/api/projects/{drive.pid}/decisions", body,
+                           unblock=lambda: drive.answer_wp17_before(body))
     assert r.status_code == 409, r.text
     return r.json()["error"]
 
@@ -484,8 +499,13 @@ def test_g1_a_repeating_id_code_clusters_no_interval_unasked_through_the_server(
     assert frame["stratum_id"].nunique() == 16 and frame["participant_id"].is_unique
     path = _write(frame, tmp_path, "strata.csv")
     # The trial's truth (BLUEPRINT §14.3): the strata are codes, age and baseline SBP amounts.
+    # WP17, the generator: the arm is randomized; the stratum's shift and the baseline SBP move
+    # SBP at six months, age moves nothing.
     truth = Truth({"code_or_count:stratum_id": "code", "code_or_count:age": "amount",
-                   "code_or_count:sbp_baseline": "amount"}, fixture="s2_strata")
+                   "code_or_count:sbp_baseline": "amount", "exposure:sbp_6m": "arm",
+                   "role:arm": "exposure",
+                   "adjust:stratum_id": "no,yes,no", "adjust:sbp_baseline": "no,yes,no",
+                   "adjust:age": "no,no,no"}, fixture="s2_strata")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, path, truth)
         _drive(drive, lens=["clinical"], target="sbp_6m", stop_before="models",
@@ -606,6 +626,7 @@ def test_g2_two_day_totals_the_atwater_check_passes_are_asked_through_the_server
     day or a 2-day total; recorded as a 2-day total, the screen reads 1,000–10,000 and removes
     exactly the rows pandas counts outside it."""
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
+    from turbotab.core.tests.truths import Truth
 
     frame = _days_server()
     E = "energy_kcal_day1_day2"
@@ -616,7 +637,8 @@ def test_g2_two_day_totals_the_atwater_check_passes_are_asked_through_the_server
     assert one_day_out > two_day_out
     path = _write(frame, tmp_path, "days.csv")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        drive = open_project(client, path, Truth(ADULTS_CAUSAL("ldl", "_day1_day2", "weight_kg",
+                                                               "height_cm"), fixture="s1_days"))
         _drive(drive, lens=["dietary"], target="ldl", stop_before="exclusions",
                grain={"kind": "set_grain", "grain": "one_row_per_unit",
                       "id_column": "participant_id"})
@@ -661,7 +683,8 @@ def test_g3_a_weight_in_pounds_never_sets_the_goldberg_screen_unasked(tmp_path):
     assert 140 < float(frame["weight"].median()) < 170  # pounds: a kg median here is implausible
     path = _write(frame, tmp_path, "women_lb.csv")
     # The cohort's truth: energy one day's kcal (BLUEPRINT §14.3: a day count is recorded).
-    truth = Truth({"code_or_count:age": "amount"}, fixture="b6b_goldberg")
+    truth = Truth({"code_or_count:age": "amount",
+                   **ADULTS_CAUSAL("ldl", "_g", "weight", "height")}, fixture="b6b_goldberg")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, path, truth)
         _drive(drive, lens=["dietary"], target="ldl", stop_before="exclusions",
@@ -789,7 +812,10 @@ def test_g5_ldl_mg_through_the_server_states_no_unit_until_recorded(tmp_path):
     frame = _ldl_mg()
     path = _write(frame, tmp_path, "ldl.csv")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path, Truth({"code_or_count:age": "amount"}, fixture="s6"))
+        # WP17, the generator: age and statin use move LDL, drawn apart; sex moves nothing.
+        drive = open_project(client, path, Truth({
+            "code_or_count:age": "amount", "exposure:ldl_mg": "statin",
+            "adjust:age": "no,yes,no", "adjust:sex": "no,no,no"}, fixture="s6"))
         _drive(drive, lens=["clinical"], target="ldl_mg",
                grain={"kind": "set_grain", "grain": "one_row_per_unit", "id_column": "pid"})
         info = drive.artifact("target_info")

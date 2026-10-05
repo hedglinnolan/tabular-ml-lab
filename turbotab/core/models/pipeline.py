@@ -84,9 +84,16 @@ def model_predictors(state: ProjectState) -> list[str]:
     A role that rode along unconfirmed puts no column in a model (BLUEPRINT §14.1; the fit asks
     first, ``readings.predictors_or_ask``)."""
     from turbotab.core.decisions import left_out
+    from turbotab.core.estimand import fixed_effects_column
     from turbotab.core.readings import settled_roles
 
-    return predictors_from_roles(settled_roles(state), state.target, left_out(state))
+    predictors = predictors_from_roles(settled_roles(state), state.target, left_out(state))
+    # WP17 (audit RO-08): under inference a grouping answered "adjust for it" enters as fixed
+    # effects, one intercept per group, whatever its role (its intervals cluster by it too).
+    fe = fixed_effects_column(state)
+    if fe and fe != state.target and fe not in predictors:
+        predictors.append(fe)
+    return predictors
 
 
 def modeling_frame(store: Any, columns: Sequence[str], row_ids: Any, *,
@@ -341,11 +348,17 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     left, amounts = energy_plan(state, inputs)
     declared = {c for c in inputs if confirmation(state, "code_or_count", c) == "code"} \
         - left - amounts
+    # WP17: a grouping's fixed effects are one indicator per group, whatever its values look like.
+    from turbotab.core.estimand import fixed_effects_column
+
+    fe = fixed_effects_column(state)
+    if fe in inputs:
+        declared.add(fe)
     # Text the user said holds amounts is read as numbers on the working table
     # (``stages.working.text_amounts``); one still text (its values below a detection limit wait
     # for their answer) is never one-hot encoded instead (the sixth gate: 175 indicators for a
     # BMI confirmed as an amount). The fit asks first (``readings.predictors_or_ask``).
-    unread = [c for c in inputs if is_categorical(frame[c]) and c not in left | amounts
+    unread = [c for c in inputs if is_categorical(frame[c]) and c not in left | amounts | {fe}
               and confirmation(state, "code_or_count", c) == "amount"]
     if unread:
         raise ValueError(f"`{unread[0]}` is recorded as amounts, but some of its values are not "

@@ -84,6 +84,10 @@ function view(): ProjectView {
       reading_confirmations: null,
       shape_confirmations: null,
       sex_codings: null,
+      censoring: null,
+      clusters: null,
+      estimand: null,
+      adjustment: null,
     },
     decisions: [record(1)],
     stages: {

@@ -436,6 +436,18 @@
                   },
                   {
                     "$ref": "#/components/schemas/LockPlan-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCensoring-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetClusters-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEstimand-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAdjustment-Input"
                   }
                 ],
                 "discriminator": {
@@ -478,7 +490,11 @@
                     "confirm_reading": "#/components/schemas/ConfirmReading",
                     "confirm_readings": "#/components/schemas/ConfirmReadings",
                     "reseal": "#/components/schemas/Reseal-Input",
-                    "lock_plan": "#/components/schemas/LockPlan-Input"
+                    "lock_plan": "#/components/schemas/LockPlan-Input",
+                    "set_censoring": "#/components/schemas/SetCensoring-Input",
+                    "set_clusters": "#/components/schemas/SetClusters-Input",
+                    "set_estimand": "#/components/schemas/SetEstimand-Input",
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Input"
                   }
                 },
                 "title": "Decision"
@@ -898,6 +914,18 @@
                   },
                   {
                     "$ref": "#/components/schemas/LockPlan-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCensoring-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetClusters-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEstimand-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAdjustment-Input"
                   }
                 ],
                 "discriminator": {
@@ -940,7 +968,11 @@
                     "confirm_reading": "#/components/schemas/ConfirmReading",
                     "confirm_readings": "#/components/schemas/ConfirmReadings",
                     "reseal": "#/components/schemas/Reseal-Input",
-                    "lock_plan": "#/components/schemas/LockPlan-Input"
+                    "lock_plan": "#/components/schemas/LockPlan-Input",
+                    "set_censoring": "#/components/schemas/SetCensoring-Input",
+                    "set_clusters": "#/components/schemas/SetClusters-Input",
+                    "set_estimand": "#/components/schemas/SetEstimand-Input",
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Input"
                   }
                 },
                 "title": "Decision"
@@ -1624,6 +1656,80 @@
   },
   "components": {
     "schemas": {
+      "AdjustmentAnswer": {
+        "properties": {
+          "causes_exposure": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "Causes Exposure"
+          },
+          "causes_outcome": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "Causes Outcome"
+          },
+          "after_exposure": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "After Exposure"
+          },
+          "instrument": {
+            "type": "boolean",
+            "title": "Instrument",
+            "default": false
+          },
+          "proxy": {
+            "type": "boolean",
+            "title": "Proxy",
+            "default": false
+          },
+          "keep": {
+            "type": "boolean",
+            "title": "Keep",
+            "default": false
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "further": {
+            "type": "boolean",
+            "title": "Further",
+            "default": false
+          },
+          "exposure": {
+            "type": "string",
+            "title": "Exposure"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "causes_exposure",
+          "causes_outcome",
+          "after_exposure",
+          "instrument",
+          "proxy",
+          "keep",
+          "acknowledged",
+          "further",
+          "exposure"
+        ],
+        "title": "AdjustmentAnswer"
+      },
       "AggregationSpec": {
         "properties": {
           "method": {
@@ -1787,6 +1893,50 @@
           "decision"
         ],
         "title": "CautionExit"
+      },
+      "ClusterSpec": {
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "adjust": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fixed_effects",
+                  "cluster_only"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjust"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "adjust",
+          "acknowledged"
+        ],
+        "title": "ClusterSpec",
+        "description": "The cluster answer: the column grouping participants (a site, a centre, a household, a\nbatch), or None when nothing groups them; under inference how the model takes it."
       },
       "CoachAnchor": {
         "properties": {
@@ -2162,6 +2312,141 @@
         "title": "ConfirmRole",
         "description": "One column's role, confirmed on its own after its evidence was read (BLUEPRINT §14 rule 2:\na proposal below high \"needs its own confirmation; it never rides along in a bulk 'confirm\nall'\"). One column per record, so an individual confirmation is individual by construction."
       },
+      "CovariateAnswers-Input": {
+        "properties": {
+          "causes_exposure": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "Causes Exposure"
+          },
+          "causes_outcome": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "Causes Outcome"
+          },
+          "after_exposure": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "After Exposure"
+          },
+          "instrument": {
+            "type": "boolean",
+            "title": "Instrument",
+            "default": false
+          },
+          "proxy": {
+            "type": "boolean",
+            "title": "Proxy",
+            "default": false
+          },
+          "keep": {
+            "type": "boolean",
+            "title": "Keep",
+            "default": false
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "further": {
+            "type": "boolean",
+            "title": "Further",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "causes_exposure",
+          "causes_outcome",
+          "after_exposure"
+        ],
+        "title": "CovariateAnswers",
+        "description": "The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_\nSEQUENCE §1 step 3). The covariate's role is derived from these, never chosen directly."
+      },
+      "CovariateAnswers-Output": {
+        "properties": {
+          "causes_exposure": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "Causes Exposure"
+          },
+          "causes_outcome": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "Causes Outcome"
+          },
+          "after_exposure": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "After Exposure"
+          },
+          "instrument": {
+            "type": "boolean",
+            "title": "Instrument",
+            "default": false
+          },
+          "proxy": {
+            "type": "boolean",
+            "title": "Proxy",
+            "default": false
+          },
+          "keep": {
+            "type": "boolean",
+            "title": "Keep",
+            "default": false
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "further": {
+            "type": "boolean",
+            "title": "Further",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "causes_exposure",
+          "causes_outcome",
+          "after_exposure",
+          "instrument",
+          "proxy",
+          "keep",
+          "acknowledged",
+          "further"
+        ],
+        "title": "CovariateAnswers",
+        "description": "The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_\nSEQUENCE §1 step 3). The covariate's role is derived from these, never chosen directly."
+      },
       "CreateProject": {
         "properties": {
           "path": {
@@ -2340,6 +2625,18 @@
               },
               {
                 "$ref": "#/components/schemas/LockPlan-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetCensoring-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetClusters-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetEstimand-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetAdjustment-Output"
               }
             ],
             "title": "Decision",
@@ -2357,10 +2654,14 @@
                 "reseal": "#/components/schemas/Reseal-Output",
                 "revert": "#/components/schemas/Revert",
                 "select_models": "#/components/schemas/SelectModels",
+                "set_adjustment": "#/components/schemas/SetAdjustment-Output",
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
                 "set_categorical": "#/components/schemas/SetCategorical",
+                "set_censoring": "#/components/schemas/SetCensoring-Output",
+                "set_clusters": "#/components/schemas/SetClusters-Output",
                 "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
                 "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
+                "set_estimand": "#/components/schemas/SetEstimand-Output",
                 "set_event": "#/components/schemas/SetEvent",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
                 "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
@@ -2719,6 +3020,75 @@
         ],
         "title": "EnergyAdjustment"
       },
+      "EstimandSpec": {
+        "properties": {
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "family": {
+            "type": "boolean",
+            "title": "Family",
+            "default": false
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "total",
+              "direct"
+            ],
+            "title": "Effect",
+            "default": "total"
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "substitution",
+                  "addition"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contrast"
+          },
+          "measure": {
+            "type": "string",
+            "enum": [
+              "mean_difference",
+              "odds_ratio",
+              "hazard_ratio",
+              "cumulative_odds_ratio",
+              "relative_risk_ratio",
+              "risk_difference",
+              "risk_ratio",
+              "exposure_mean_difference"
+            ],
+            "title": "Measure"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "exposure",
+          "family",
+          "effect",
+          "contrast",
+          "measure"
+        ],
+        "title": "EstimandSpec",
+        "description": "The exposure and the effect the inference reports (MODELING_SEQUENCE §1 step 2): one\nexposure, or an exposure family (``family``: every exposure-role column, each reported, with\nits multiplicity method; ``exposure`` is then None)."
+      },
       "Evidence": {
         "properties": {
           "status": {
@@ -3008,6 +3378,18 @@
                   },
                   {
                     "$ref": "#/components/schemas/LockPlan-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCensoring-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetClusters-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetEstimand-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetAdjustment-Output"
                   }
                 ],
                 "discriminator": {
@@ -3024,10 +3406,14 @@
                     "reseal": "#/components/schemas/Reseal-Output",
                     "revert": "#/components/schemas/Revert",
                     "select_models": "#/components/schemas/SelectModels",
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Output",
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
                     "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_censoring": "#/components/schemas/SetCensoring-Output",
+                    "set_clusters": "#/components/schemas/SetClusters-Output",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
                     "set_energy_adjustment": "#/components/schemas/SetEnergyAdjustment-Output",
+                    "set_estimand": "#/components/schemas/SetEstimand-Output",
                     "set_event": "#/components/schemas/SetEvent",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
@@ -3994,6 +4380,7 @@
               "target",
               "event",
               "task",
+              "follow_up",
               "purpose",
               "grain",
               "repeat_kind",
@@ -4001,7 +4388,10 @@
               "aggregation",
               "temporal",
               "roles",
+              "clusters",
               "survey",
+              "estimand",
+              "adjustment",
               "exclusions",
               "missing",
               "split",
@@ -5468,6 +5858,55 @@
               }
             ],
             "title": "Sex Codings"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "same",
+                  "same_attested"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Censoring"
+          },
+          "clusters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClusterSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimandSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/AdjustmentAnswer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
           }
         },
         "type": "object",
@@ -5507,7 +5946,11 @@
           "role_confirmations",
           "reading_confirmations",
           "shape_confirmations",
-          "sex_codings"
+          "sex_codings",
+          "censoring",
+          "clusters",
+          "estimand",
+          "adjustment"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -6588,6 +7031,70 @@
         "title": "SensitivityAnalysis",
         "description": "One analysis beside the primary: the same model on the rows these rules keep instead."
       },
+      "SetAdjustment-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_adjustment",
+            "title": "Kind",
+            "default": "set_adjustment"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers-Input"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Answers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "answers"
+        ],
+        "title": "SetAdjustment",
+        "description": "Answers for some covariates, against one exposure: one tap per group of covariates that\nshare their answers (BLUEPRINT §14.2). Each covariate's answer is kept under its column, so a\nlater group's answers never undo an earlier group's."
+      },
+      "SetAdjustment-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_adjustment",
+            "title": "Kind",
+            "default": "set_adjustment"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers-Output"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Answers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "answers"
+        ],
+        "title": "SetAdjustment",
+        "description": "Answers for some covariates, against one exposure: one tap per group of covariates that\nshare their answers (BLUEPRINT §14.2). Each covariate's answer is kept under its column, so a\nlater group's answers never undo an earlier group's."
+      },
       "SetAggregation-Input": {
         "properties": {
           "kind": {
@@ -6728,6 +7235,160 @@
         ],
         "title": "SetCategorical",
         "description": "Columns whose numbers are codes for categories (RIDRETH3: 1, 2, 3, 4, 6, 7): each enters\nthe models as indicators, one per level after the first, never as one straight line."
+      },
+      "SetCensoring-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_censoring",
+            "title": "Kind",
+            "default": "set_censoring"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column"
+        ],
+        "title": "SetCensoring",
+        "description": "The follow-up question's \"no\" (audit RO-03): nobody's follow-up ended before the event could\nbe seen, so the yes/no outcome counts events over one period for everyone. Stands only while\n``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then\n``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that\nvaries (block and record)."
+      },
+      "SetCensoring-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_censoring",
+            "title": "Kind",
+            "default": "set_censoring"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "acknowledged"
+        ],
+        "title": "SetCensoring",
+        "description": "The follow-up question's \"no\" (audit RO-03): nobody's follow-up ended before the event could\nbe seen, so the yes/no outcome counts events over one period for everyone. Stands only while\n``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then\n``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that\nvaries (block and record)."
+      },
+      "SetClusters-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_clusters",
+            "title": "Kind",
+            "default": "set_clusters"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "adjust": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fixed_effects",
+                  "cluster_only"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjust"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetClusters"
+      },
+      "SetClusters-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_clusters",
+            "title": "Kind",
+            "default": "set_clusters"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "adjust": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fixed_effects",
+                  "cluster_only"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjust"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "adjust",
+          "acknowledged"
+        ],
+        "title": "SetClusters"
       },
       "SetColumnUnit-Input": {
         "properties": {
@@ -6949,6 +7610,152 @@
           "strata"
         ],
         "title": "SetEnergyAdjustment"
+      },
+      "SetEstimand-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_estimand",
+            "title": "Kind",
+            "default": "set_estimand"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "family": {
+            "type": "boolean",
+            "title": "Family",
+            "default": false
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "total",
+              "direct"
+            ],
+            "title": "Effect",
+            "default": "total"
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "substitution",
+                  "addition"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contrast"
+          },
+          "measure": {
+            "type": "string",
+            "enum": [
+              "mean_difference",
+              "odds_ratio",
+              "hazard_ratio",
+              "cumulative_odds_ratio",
+              "relative_risk_ratio",
+              "risk_difference",
+              "risk_ratio",
+              "exposure_mean_difference"
+            ],
+            "title": "Measure"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "measure"
+        ],
+        "title": "SetEstimand"
+      },
+      "SetEstimand-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_estimand",
+            "title": "Kind",
+            "default": "set_estimand"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "family": {
+            "type": "boolean",
+            "title": "Family",
+            "default": false
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "total",
+              "direct"
+            ],
+            "title": "Effect",
+            "default": "total"
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "substitution",
+                  "addition"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contrast"
+          },
+          "measure": {
+            "type": "string",
+            "enum": [
+              "mean_difference",
+              "odds_ratio",
+              "hazard_ratio",
+              "cumulative_odds_ratio",
+              "relative_risk_ratio",
+              "risk_difference",
+              "risk_ratio",
+              "exposure_mean_difference"
+            ],
+            "title": "Measure"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "family",
+          "effect",
+          "contrast",
+          "measure"
+        ],
+        "title": "SetEstimand"
       },
       "SetEvent": {
         "properties": {
@@ -9227,6 +10034,7 @@
               "target",
               "event",
               "task",
+              "follow_up",
               "purpose",
               "grain",
               "repeat_kind",
@@ -9234,7 +10042,10 @@
               "aggregation",
               "temporal",
               "roles",
+              "clusters",
               "survey",
+              "estimand",
+              "adjustment",
               "exclusions",
               "missing",
               "split",
@@ -9441,6 +10252,162 @@
           "count"
         ],
         "title": "ValueCount"
+      },
+      "AdjustmentCard": {
+        "description": "WP17 (MODELING_SEQUENCE §1 step 3): the disjunctive cause criterion, asked per covariate.",
+        "properties": {
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "effect": {
+            "title": "Effect",
+            "type": "string"
+          },
+          "questions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Questions",
+            "type": "object"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "answered": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DerivedRole"
+            },
+            "title": "Answered",
+            "type": "object"
+          },
+          "adjusted": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Adjusted",
+            "type": "array"
+          },
+          "left_out": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Left Out",
+            "type": "array"
+          },
+          "secondary": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Secondary",
+            "type": "array"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exposure",
+          "effect",
+          "questions",
+          "groups",
+          "answered",
+          "adjusted",
+          "left_out",
+          "secondary",
+          "source"
+        ],
+        "title": "AdjustmentCard",
+        "type": "object"
+      },
+      "AdjustmentGroup": {
+        "description": "Covariates the pack guesses alike, confirmed with one tap (``decision``); or the unguessed.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "guess": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guess"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "derived": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived"
+          },
+          "derived_words": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived Words"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "columns",
+          "guess",
+          "reason",
+          "derived",
+          "derived_words",
+          "decision"
+        ],
+        "title": "AdjustmentGroup",
+        "type": "object"
       },
       "AggregationMenu": {
         "description": "The domain-shaped menu: repeats → mean recommended with its reason; time points → none.",
@@ -10874,6 +11841,31 @@
         "title": "CurvePoint",
         "type": "object"
       },
+      "Customary": {
+        "additionalProperties": false,
+        "description": "Where the field uses the option: ``text`` says how, ``field`` in which field, ``source``\nwhere that is documented.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "text",
+          "source"
+        ],
+        "title": "Customary",
+        "type": "object"
+      },
       "DatasetInfo": {
         "description": "The ``ingest`` artifact.",
         "properties": {
@@ -10950,6 +11942,39 @@
           "day_first"
         ],
         "title": "DateExample",
+        "type": "object"
+      },
+      "DerivedRole": {
+        "properties": {
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "words": {
+            "title": "Words",
+            "type": "string"
+          },
+          "adjusted": {
+            "title": "Adjusted",
+            "type": "boolean"
+          },
+          "secondary": {
+            "title": "Secondary",
+            "type": "boolean"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "words",
+          "adjusted",
+          "secondary",
+          "why"
+        ],
+        "title": "DerivedRole",
         "type": "object"
       },
       "DesignArtifact": {
@@ -11353,6 +12378,235 @@
           "confirmed"
         ],
         "title": "EnergyUnitReading",
+        "type": "object"
+      },
+      "EstimandAnnotation": {
+        "additionalProperties": false,
+        "description": "WP17: the served fit under a declared estimand (``turbotab/core/estimand.py``): the caption\nworded from it, and which table rows are the exposure's effect; the rest are adjustment terms.",
+        "properties": {
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "effect": {
+            "enum": [
+              "total",
+              "direct"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "enum": [
+                  "substitution",
+                  "addition"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Contrast"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "adjusted": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Adjusted",
+            "type": "array"
+          },
+          "left_out": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Left Out",
+            "type": "object"
+          },
+          "secondary": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Secondary",
+            "type": "array"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          }
+        },
+        "required": [
+          "exposure",
+          "effect",
+          "measure",
+          "contrast",
+          "caption",
+          "adjusted",
+          "left_out",
+          "secondary",
+          "features"
+        ],
+        "title": "EstimandAnnotation",
+        "type": "object"
+      },
+      "EstimandCard": {
+        "description": "WP17 (MODELING_SEQUENCE §1 step 2): what the exposure and effect question offers.",
+        "properties": {
+          "exposures": {
+            "items": {
+              "$ref": "#/components/schemas/EstimandExposure"
+            },
+            "title": "Exposures",
+            "type": "array"
+          },
+          "effects": {
+            "items": {
+              "$ref": "#/components/schemas/EstimandChoice"
+            },
+            "title": "Effects",
+            "type": "array"
+          },
+          "contrasts": {
+            "items": {
+              "$ref": "#/components/schemas/EstimandChoice"
+            },
+            "title": "Contrasts",
+            "type": "array"
+          },
+          "measures": {
+            "items": {
+              "$ref": "#/components/schemas/EstimandMeasure"
+            },
+            "title": "Measures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "exposures",
+          "effects",
+          "contrasts",
+          "measures"
+        ],
+        "title": "EstimandCard",
+        "type": "object"
+      },
+      "EstimandChoice": {
+        "properties": {
+          "effect": {
+            "anyOf": [
+              {
+                "enum": [
+                  "total",
+                  "direct"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effect"
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "enum": [
+                  "substitution",
+                  "addition"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Contrast"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "consequence": {
+            "title": "Consequence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effect",
+          "contrast",
+          "label",
+          "consequence"
+        ],
+        "title": "EstimandChoice",
+        "type": "object"
+      },
+      "EstimandExposure": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "energy_contrast": {
+            "title": "Energy Contrast",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "energy_contrast"
+        ],
+        "title": "EstimandExposure",
+        "type": "object"
+      },
+      "EstimandMeasure": {
+        "properties": {
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "fitted": {
+            "title": "Fitted",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "measure",
+          "label",
+          "fitted",
+          "reason"
+        ],
+        "title": "EstimandMeasure",
         "type": "object"
       },
       "ExclusionProposal": {
@@ -11861,6 +13115,7 @@
                   "target",
                   "event",
                   "task",
+                  "follow_up",
                   "purpose",
                   "grain",
                   "repeat_kind",
@@ -11868,7 +13123,10 @@
                   "aggregation",
                   "temporal",
                   "roles",
+                  "clusters",
                   "survey",
+                  "estimand",
+                  "adjustment",
                   "exclusions",
                   "missing",
                   "split",
@@ -12212,6 +13470,29 @@
             ],
             "default": null,
             "title": "Levels"
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld"
+          },
+          "estimand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimandAnnotation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -12237,7 +13518,9 @@
           "comparisons",
           "precision",
           "imbalance",
-          "levels"
+          "levels",
+          "withheld",
+          "estimand"
         ],
         "title": "FitArtifact",
         "type": "object"
@@ -12432,6 +13715,35 @@
           "exposure_tests"
         ],
         "title": "FittedModel",
+        "type": "object"
+      },
+      "FollowUpCandidate": {
+        "description": "A column that reads as how long each row was followed (``turbotab/core/estimand.py``).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          },
+          "max": {
+            "title": "Max",
+            "type": "number"
+          },
+          "varies": {
+            "title": "Varies",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "min",
+          "max",
+          "varies"
+        ],
+        "title": "FollowUpCandidate",
         "type": "object"
       },
       "GoldbergRule": {
@@ -13145,6 +14457,88 @@
           "method"
         ],
         "title": "Interval",
+        "type": "object"
+      },
+      "LabeledOption": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "$ref": "#/components/schemas/Customary"
+          },
+          "sound": {
+            "$ref": "#/components/schemas/Sound"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound"
+        ],
+        "title": "LabeledOption",
+        "type": "object"
+      },
+      "LabeledQuestion": {
+        "additionalProperties": false,
+        "description": "A question's options, soundest first for the purpose, each with its two labels, and the one\nline naming the tension when the field's customary first choice is not the soundest.",
+        "properties": {
+          "question": {
+            "enum": [
+              "energy_adjustment",
+              "missing",
+              "split",
+              "exclusions"
+            ],
+            "title": "Question",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "prediction",
+              "inference"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/LabeledOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "customary_first": {
+            "title": "Customary First",
+            "type": "string"
+          },
+          "tension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tension"
+          }
+        },
+        "required": [
+          "question",
+          "purpose",
+          "options",
+          "customary_first",
+          "tension"
+        ],
+        "title": "LabeledQuestion",
         "type": "object"
       },
       "LeaveOut": {
@@ -14347,6 +15741,39 @@
               }
             ],
             "default": null
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionLabels"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "estimand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimandCard"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustmentCard"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -14358,9 +15785,57 @@
           "coach",
           "survey",
           "exposure_forms",
-          "energy_unit"
+          "energy_unit",
+          "labels",
+          "estimand",
+          "adjustment"
         ],
         "title": "ProposalsArtifact",
+        "type": "object"
+      },
+      "QuestionLabels": {
+        "description": "WP17 (north star 5): each question's options with \"customary in <field>\" and \"sound for\n<purpose>\", soundest first (``turbotab/core/custom_sound.py``).",
+        "properties": {
+          "missing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabeledQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "exclusions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabeledQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "energy_adjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabeledQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "missing",
+          "exclusions",
+          "energy_adjustment"
+        ],
+        "title": "QuestionLabels",
         "type": "object"
       },
       "Repair": {
@@ -14961,6 +16436,17 @@
               }
             ],
             "default": null
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabeledQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -14977,9 +16463,146 @@
           "precision_note",
           "refusal",
           "time_ordered_folds",
-          "validation"
+          "validation",
+          "labels"
         ],
         "title": "SealPlan",
+        "type": "object"
+      },
+      "SecondaryArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "const": "inference",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "further": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Further",
+            "type": "array"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/SecondaryFamily"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "exposure",
+          "further",
+          "rows",
+          "families",
+          "methods"
+        ],
+        "title": "SecondaryArtifact",
+        "type": "object"
+      },
+      "SecondaryFamily": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "fits": {
+            "items": {
+              "$ref": "#/components/schemas/SecondaryFit"
+            },
+            "title": "Fits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "fits"
+        ],
+        "title": "SecondaryFamily",
+        "type": "object"
+      },
+      "SecondaryFit": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "adjusted_for": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Adjusted For",
+            "type": "array"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "coefficients": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Coefficient"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coefficients"
+          },
+          "inference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Inference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label",
+          "adjusted_for",
+          "n_rows",
+          "coefficients",
+          "inference",
+          "concerns"
+        ],
+        "title": "SecondaryFit",
         "type": "object"
       },
       "Selection": {
@@ -15431,6 +17054,40 @@
           "estimate"
         ],
         "title": "ShelfFamily",
+        "type": "object"
+      },
+      "Sound": {
+        "additionalProperties": false,
+        "description": "Whether the option is sound for ``purpose``, and why.",
+        "properties": {
+          "purpose": {
+            "enum": [
+              "prediction",
+              "inference"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "sound",
+              "conditional",
+              "unsound"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "verdict",
+          "reason"
+        ],
+        "title": "Sound",
         "type": "object"
       },
       "Spacing": {
@@ -16627,6 +18284,14 @@
             },
             "title": "Unit Candidates",
             "type": "array"
+          },
+          "follow_up": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FollowUpCandidate"
+            },
+            "title": "Follow Up",
+            "type": "array"
           }
         },
         "required": [
@@ -16640,7 +18305,8 @@
           "unit",
           "unit_source",
           "proposed_unit",
-          "unit_candidates"
+          "unit_candidates",
+          "follow_up"
         ],
         "title": "TargetInfo",
         "type": "object"
@@ -16904,6 +18570,18 @@
             ],
             "default": null,
             "title": "Caution"
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cluster"
           }
         },
         "required": [
@@ -16912,7 +18590,8 @@
           "measures",
           "cost",
           "needs_cluster",
-          "caution"
+          "caution",
+          "cluster"
         ],
         "title": "ValidationOption",
         "type": "object"

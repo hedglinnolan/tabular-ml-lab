@@ -13,8 +13,10 @@ So the plan is locked the first time inference estimates are displayed:
 
 * **When.** The server records ``lock_plan`` the first time a client is served an estimate under
   inference: a coefficient or an inference table in the fit, a substitution curve, a sensitivity
-  analysis's estimate or a calibrated one (:func:`shows_estimates`). A user may also record it
-  earlier. It is recorded once and never undone.
+  analysis's estimate, a calibrated one or the "further adjusted for" model's
+  (:func:`shows_estimates`). A refusal, or an estimate withheld until the exposure, its effect and
+  the adjustment set are answered (WP17), shows nothing and locks nothing. A user may also record
+  it earlier. It is recorded once and never undone.
 * **What.** The plan is every slot the estimates read, as it stood (:func:`plan_of`): the outcome,
   the exposures and the adjustment set (the roles), the exclusions, the missing-data plan, the
   energy model, the exposure forms, the families, the secondaries, and the data coding (repairs,
@@ -39,9 +41,9 @@ from typing import Any, Mapping
 
 from turbotab.core import decisions
 from turbotab.core.decisions import Refusal
-
-# The stages whose artifacts carry estimates of the outcome model.
-ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration")
+# The stages whose artifacts carry estimates of the outcome model: one list with the one WP17
+# withholds by, so the "further adjusted for" model (``stages/secondary.py``) is among them.
+from turbotab.core.estimand import ESTIMATE_STAGES
 
 
 @lru_cache(maxsize=1)
@@ -70,18 +72,27 @@ def digest(plan: Mapping[str, Any]) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _estimated(table: Mapping[str, Any]) -> bool:
+    """Whether a fitted table carries an estimate: coefficients, an exposure's test, or an
+    inference table that is not a refusal. A refusal (an unanswered survey question, a held
+    missing-values answer) or a table WP17 withheld (no exposure, effect or adjustment set yet)
+    puts nothing in view, so it locks nothing."""
+    inference = table.get("inference")
+    return bool(table.get("coefficients") or table.get("exposure_tests") or (
+        isinstance(inference, Mapping) and not inference.get("refused")))
+
+
 def shows_estimates(stage: str, artifact: Any) -> bool:
     """Whether a stage's artifact, as served, puts an estimate of the outcome model in view."""
     if not isinstance(artifact, Mapping):
         return False
     if stage == "fit":
-        return any(m.get("coefficients") or m.get("inference")
-                   for m in artifact.get("models") or [] if isinstance(m, Mapping))
+        return any(_estimated(m) for m in artifact.get("models") or [] if isinstance(m, Mapping))
     if stage == "substitution":
         return any(any(v is not None for v in m.get("delta") or [])
                    for m in artifact.get("models") or [] if isinstance(m, Mapping))
-    if stage == "sensitivity":
-        return any(f.get("coefficients") or f.get("inference")
+    if stage in ("sensitivity", "secondary"):
+        return any(_estimated(f)
                    for family in artifact.get("families") or [] if isinstance(family, Mapping)
                    for f in family.get("fits") or [] if isinstance(f, Mapping))
     if stage == "calibration":

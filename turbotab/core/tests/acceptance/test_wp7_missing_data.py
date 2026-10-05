@@ -271,8 +271,16 @@ def diet_table(seed: int = 7, n: int = 1200, age_blank: bool = True,
                          "kcal": kcal.round(1), "ldl": ldl.round(2)})
 
 
+# WP17: the generator's causal truth (``diet_table``): age sets fiber and LDL (a confounder); sex
+# and protein set LDL only.
+TRUTH = {"adjust:age": "yes,yes,no", "adjust:sex": "no,yes,no", "adjust:protein_g": "no,yes,no"}
+
+
 def drive_to_missing(client, path: Path, purpose: str):
-    d = open_project(client, path)
+    from turbotab.core.tests.truths import Truth
+
+    d = open_project(client, path, Truth(TRUTH, fixture="diet_table"))
+    d.exposure = "fiber_g"
     d.decide({"kind": "set_lens", "lenses": ["dietary"]})
     d.reach("target")
     d.decide({"kind": "set_target", "column": "ldl"})
@@ -338,6 +346,12 @@ def inference_runs(tmp_path_factory):
         p.decide({"kind": "set_missing", "strategy": "impute"})
         finish(p)
         p.decide({"kind": "set_purpose", "purpose": "inference"})
+        # WP17: under inference no estimate is served before the exposure, its effect and the
+        # adjustment set are answered; answered, the table shows what the missing values hold.
+        from turbotab.core.tests.acceptance.server_drive import answer_plan
+
+        assert p.artifact("fit")["withheld"]
+        answer_plan(p, "fiber_g")
         out["flipped"] = p.artifact("fit")["models"][0]
     return out
 

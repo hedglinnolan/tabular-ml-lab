@@ -371,7 +371,11 @@ def test_4_changes_after_the_first_coefficient_is_shown_are_recorded_after_the_e
     path = plan_table(tmp_path)
     response = client.post("/api/projects", json={"path": str(path)})
     pid = response.json()["id"]
-    declare(pid, {"code_or_count:age": "amount"}, fixture=path.name)
+    # The question under inference and each covariate's causal place, from the generator
+    # (``plan_table``): age, fiber and sodium are drawn apart, and each moves bmi (WP17's estimand
+    # and adjustment questions; causes the exposure, causes the outcome, changed by the exposure).
+    declare(pid, {"code_or_count:age": "amount", "exposure:bmi": "fiber_g",
+                  "adjust:age": "no,yes,no", "adjust:sodium_g": "no,yes,no"}, fixture=path.name)
     wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
     accepted(client, pid, {"kind": "set_lens", "lenses": ["clinical"]})
     accepted(client, pid, {"kind": "set_target", "column": "bmi"})

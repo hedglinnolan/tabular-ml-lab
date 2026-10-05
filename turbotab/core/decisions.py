@@ -841,6 +841,117 @@ class SetSurvey(_DecisionModel):
     acknowledged: bool = False
 
 
+# ── WP17 (AUDIT_REPORT §5): the declared purpose routes the questions ──────────
+# The answers live here so the API and the log can parse them; their refusals, the roles the
+# adjustment answers derive and the gates are in ``turbotab/core/estimand.py``.
+
+
+class SetCensoring(_DecisionModel):
+    """The follow-up question's "no" (audit RO-03): nobody's follow-up ended before the event could
+    be seen, so the yes/no outcome counts events over one period for everyone. Stands only while
+    ``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then
+    ``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that
+    varies (block and record)."""
+
+    kind: Literal["set_censoring"] = "set_censoring"
+    column: str = Field(min_length=1)
+    acknowledged: bool = False
+
+
+# How a grouping above the person enters an inference model (audit RO-08): each group its own
+# intercept with intervals clustered by it, or the intervals clustered by it alone.
+ClusterAdjustment = Literal["fixed_effects", "cluster_only"]
+
+
+class ClusterSpec(_Value):
+    """The cluster answer: the column grouping participants (a site, a centre, a household, a
+    batch), or None when nothing groups them; under inference how the model takes it."""
+
+    column: str | None = None
+    adjust: ClusterAdjustment | None = None
+    acknowledged: bool = False  # "no grouping" kept although a column reads as one
+
+
+class SetClusters(_DecisionModel):
+    kind: Literal["set_clusters"] = "set_clusters"
+    column: str | None = None
+    adjust: ClusterAdjustment | None = None
+    acknowledged: bool = False
+
+
+EffectKind = Literal["total", "direct"]
+EnergyContrast = Literal["substitution", "addition"]
+# The effect measure (MODELING_SEQUENCE §0 ruling 9). The engine fits the conditional measures of
+# each family; the marginal risk difference and risk ratio (g-computation) are named so that a
+# request for them is refused with the reason, never silently answered with an odds ratio.
+EffectMeasure = Literal["mean_difference", "odds_ratio", "hazard_ratio", "cumulative_odds_ratio",
+                        "relative_risk_ratio", "risk_difference", "risk_ratio",
+                        "exposure_mean_difference"]
+# The exposure family's sentinel in the adjustment answers: answered for every exposure of the family.
+EXPOSURE_FAMILY = "*"
+
+
+class EstimandSpec(_Value):
+    """The exposure and the effect the inference reports (MODELING_SEQUENCE §1 step 2): one
+    exposure, or an exposure family (``family``: every exposure-role column, each reported, with
+    its multiplicity method; ``exposure`` is then None)."""
+
+    exposure: str | None = None
+    family: bool = False
+    effect: EffectKind = "total"
+    contrast: EnergyContrast | None = None  # an energy-bearing exposure: substitution or addition
+    measure: EffectMeasure
+
+
+class SetEstimand(_DecisionModel):
+    kind: Literal["set_estimand"] = "set_estimand"
+    exposure: str | None = None
+    family: bool = False
+    effect: EffectKind = "total"
+    contrast: EnergyContrast | None = None
+    measure: EffectMeasure
+
+    @model_validator(mode="after")
+    def _one_or_a_family(self) -> "SetEstimand":
+        if self.family == (self.exposure is not None and self.exposure != ""):
+            raise ValueError("name one exposure, or declare the exposure family, not both")
+        return self
+
+
+Answer3 = Literal["yes", "no", "unknown"]
+
+
+class CovariateAnswers(_Value):
+    """The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_
+    SEQUENCE §1 step 3). The covariate's role is derived from these, never chosen directly."""
+
+    causes_exposure: Answer3
+    causes_outcome: Answer3
+    after_exposure: Answer3  # could the exposure have changed it, or was it measured after it?
+    instrument: bool = False  # known to affect the outcome only through the exposure
+    proxy: bool = False  # stands in for an unmeasured cause of both
+    # A mediator or collider kept in a total-effect set: block and record (MODELING_SEQUENCE §4):
+    # refused until ``acknowledged``, which the record and the fit then state.
+    keep: bool = False
+    acknowledged: bool = False
+    # "Further adjusted for" it: a labeled secondary model beside the primary.
+    further: bool = False
+
+
+class AdjustmentAnswer(CovariateAnswers):
+    exposure: str  # the exposure these answers were given for
+
+
+class SetAdjustment(_DecisionModel):
+    """Answers for some covariates, against one exposure: one tap per group of covariates that
+    share their answers (BLUEPRINT §14.2). Each covariate's answer is kept under its column, so a
+    later group's answers never undo an earlier group's."""
+
+    kind: Literal["set_adjustment"] = "set_adjustment"
+    exposure: str = Field(min_length=1)
+    answers: dict[str, CovariateAnswers] = Field(min_length=1)
+
+
 class OpenSeal(_DecisionModel):
     """Open the held-out rows: once, at the end. Held-out scores are withheld until then.
 
@@ -937,6 +1048,7 @@ Decision = Annotated[
         SetSensitivity, SetMeasurementError, SetOutcomeUnit, SetColumnUnit, ConfirmRole,
         ConfirmReading, ConfirmReadings,
         Reseal, LockPlan,
+        SetCensoring, SetClusters, SetEstimand, SetAdjustment,
     ],
     Field(discriminator="kind"),
 ]
@@ -1040,6 +1152,14 @@ class ProjectState(BaseModel):
     # it (``"female=2,male=1"``, by column), kept apart so the detectors that read it (the CDC
     # growth charts' z-scores) recompute alone
     sex_codings: dict[str, str] | None = None
+    # WP17 (audit §5): the declared purpose routes the questions. The follow-up question's "the same
+    # for everyone" (holds while its column is the target); the grouping above the person; under
+    # inference the exposure and its effect, and each covariate's answers to the disjunctive cause
+    # criterion, by column (``turbotab/core/estimand.py``)
+    censoring: Literal["same", "same_attested"] | None = None
+    clusters: ClusterSpec | None = None
+    estimand: EstimandSpec | None = None
+    adjustment: dict[str, AdjustmentAnswer] | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1061,7 +1181,13 @@ def left_out(state: Any) -> list[str]:
     out = list(spec.drop_columns) if spec is not None else []
     from turbotab.core.repairs import unusable_columns  # repairs imports this module
 
-    return out + [c for c in unusable_columns(state) if c not in out]
+    out += [c for c in unusable_columns(state) if c not in out]
+    # WP17: under inference, the covariates the adjustment answers leave out of the primary model
+    # (a mediator in a total-effect set, a collider, an instrument, a non-cause; MODELING_SEQUENCE
+    # §1 step 3).
+    from turbotab.core.estimand import adjustment_left_out
+
+    return out + [c for c in adjustment_left_out(state) if c not in out]
 
 
 class Refusal(Exception):
@@ -1395,6 +1521,16 @@ register_kind(SetColumnUnit, "column_units", key=lambda d: d.column,
 register_kind(SetSensitivity, "sensitivity")
 register_kind(SetMeasurementError, "measurement_error",
               value=lambda d: MeasurementErrorSpec(**d.model_dump(exclude={"kind"})))
+# WP17: the follow-up, the grouping above the person, the estimand and the adjustment answers
+register_kind(SetCensoring, "censoring",
+              value=lambda d: "same_attested" if d.acknowledged else "same",
+              holds=lambda d, slots: slots.get("target") == d.column)
+register_kind(SetClusters, "clusters", value=lambda d: ClusterSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetEstimand, "estimand", value=lambda d: EstimandSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetAdjustment, "adjustment", value=lambda d: None,
+              entries=lambda d: [("adjustment", column, AdjustmentAnswer(
+                  exposure=d.exposure, **answers.model_dump()))
+                  for column, answers in d.answers.items()])
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -3742,3 +3878,5 @@ class DecisionLog:
 from turbotab.core import sequence as _sequence  # noqa: E402,F401
 # The survey question's refusals (``set_survey``; audit §5 WP10) live with its name reading.
 from turbotab.core import survey as _survey  # noqa: E402,F401
+# WP17's refusals (the follow-up, the clusters, the estimand and the adjustment answers).
+from turbotab.core import estimand as _estimand  # noqa: E402,F401

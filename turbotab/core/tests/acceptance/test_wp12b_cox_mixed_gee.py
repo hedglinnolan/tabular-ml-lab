@@ -56,6 +56,7 @@ from turbotab.core.stages.modeling import design_stage, fit_stage, resampled_uni
 from turbotab.core.stages.rows import split_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance import references as ref
+from turbotab.core.tests.acceptance.server_drive import answer_plan
 
 
 def _clusters(codes: Any, column: str = "pid") -> Clusters:
@@ -248,6 +249,7 @@ def test_3_the_cox_model_is_reached_through_the_server(tmp_path):
         d.decide({"kind": "set_roles", "roles": {"participant_id": "identifier",
                                                  "fiber_g": "exposure", "age": "covariate",
                                                  "followup_years": "time"}})
+        answer_plan(d, "fiber_g")  # WP17: the exposure, its effect and the adjustment set
         d.reach("exclusions")
         d.decide({"kind": "set_exclusions", "rules": []})
         d.reach("missing")
@@ -460,7 +462,9 @@ def _six_by_forty() -> pd.DataFrame:
 def _age_truth() -> Any:
     from turbotab.core.tests.truths import Truth
 
-    return Truth({"code_or_count:age": "amount"}, fixture="the audit's server scenario")
+    # WP17: age is drawn before the exposure and causes the outcome (and, in the cohort, the hazard).
+    return Truth({"code_or_count:age": "amount", "adjust:age": "yes,yes,no"},
+                 fixture="the audit's server scenario")
 
 
 class _Drive:
@@ -561,6 +565,7 @@ def test_4_the_six_unit_exit_is_a_mixed_model_with_sodium_p_085(tmp_path):
         d.reach("roles")
         d.decide({"kind": "set_roles", "roles": {"participant_id": "identifier",
                                                  "sodium_mg": "exposure", "age": "covariate"}})
+        answer_plan(d, "sodium_mg")  # WP17: the exposure, its effect and the adjustment set
         d.reach("exclusions")
         d.decide({"kind": "set_exclusions", "rules": []})
         d.reach("missing")

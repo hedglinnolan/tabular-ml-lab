@@ -161,6 +161,22 @@ def test_a1_the_value_test_reads_numbers_written_as_text_and_settles_nothing():
     assert sum(found.detail["marks"].values()) == 80
 
 
+# WP17 under inference: each table's question and each covariate's causal place (causes the
+# exposure, causes the outcome, changed by the exposure), from the generators (``gate6_fixtures``).
+# The tests' roles name no exposure, so the question is age's effect, the estimand card's first
+# offer; it carries no energy, so the plan's "none" energy answer stays coherent (a substitution or
+# an addition is asked only of an energy-bearing exposure). Every other column is drawn apart from
+# age. Where the generator gives a dietary column no effect but the reference fit holds it, it is
+# answered with the field's default for another dietary component, a possible confounder.
+TEXT_CAUSAL = {"exposure:sbp": "age", "adjust:bmi": "no,yes,no", "adjust:crp": "no,yes,no"}
+DRINKS_CAUSAL = {"exposure:sbp": "age", "adjust:alcohol": "no,yes,no",
+                 "adjust:carbohydrate_g": "no,yes,no", "adjust:protein_g": "unknown,unknown,no",
+                 "adjust:fat_g": "unknown,unknown,no"}
+NESTED_CAUSAL = {"exposure:ldl": "age", "adjust:sfa_g": "no,yes,no",
+                 "adjust:carbohydrate_g": "no,yes,no", "adjust:protein_g": "unknown,unknown,no",
+                 "adjust:fat_g": "unknown,unknown,no"}
+
+
 def test_a1_a_text_bmi_is_asked_and_fit_as_one_slope_through_the_server(tmp_path):
     """Gate items 1 and 2 (q3b: CRP and vitamin D left out; through the server, inference). Before:
     `bmi` was proposed a covariate, nothing was asked, and the fit entered 175 indicators (177
@@ -175,7 +191,7 @@ def test_a1_a_text_bmi_is_asked_and_fit_as_one_slope_through_the_server(tmp_path
     beta = ols(table.loc[keep, "sbp"].to_numpy(float), X.astype(float))
     assert (int(keep.sum()), round(beta[2], 4), round(beta[1], 4)) == (490, 0.3302, 0.4459)
     plan = answers("sbp", ["clinical"])
-    truth = Truth({"code_or_count:bmi": "amount", "code_or_count:age": "amount"},
+    truth = Truth({"code_or_count:bmi": "amount", "code_or_count:age": "amount", **TEXT_CAUSAL},
                   fixture="q3b (SAS-exported BMI)")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(table, tmp_path, "text_numbers_fit.csv"), truth)
@@ -205,7 +221,8 @@ def test_a1_a_text_bmi_confirmed_an_amount_first_is_one_slope(tmp_path):
     X = np.column_stack([np.ones(int(keep.sum())), table.loc[keep, "age"], numbers[keep]])
     beta = ols(table.loc[keep, "sbp"].to_numpy(float), X.astype(float))
     plan = answers("sbp", ["clinical"])
-    truth = Truth({"code_or_count:bmi": "amount", "code_or_count:age": "amount"}, fixture="q3c")
+    truth = Truth({"code_or_count:bmi": "amount", "code_or_count:age": "amount", **TEXT_CAUSAL},
+                  fixture="q3c")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(table, tmp_path, "text_amount_confirm.csv"), truth)
         drive_unsettled(drive, plan, roles={"crp": "excluded", "vitd": "excluded",
@@ -232,7 +249,8 @@ def test_a1_a_censored_crp_is_routed_to_the_detection_limit_question(tmp_path):
     table = g6.text_numbers_table()
     plan = answers("sbp", ["clinical"])
     truth = Truth({"code_or_count:crp": "amount", "code_or_count:age": "amount",
-                   "detection_limit:crp": "half_limit"}, fixture="q3 (censored CRP)")
+                   "detection_limit:crp": "half_limit", **TEXT_CAUSAL},
+                  fixture="q3 (censored CRP)")
 
     def reference(factor: float) -> np.ndarray:
         crp = _numbers(table["crp"], factor)
@@ -278,7 +296,12 @@ def test_a1_labels_settle_codes_listed_with_evidence_and_an_amount_answer_is_ref
                           "smoking": rng.choice(["never", "former", "current"], n),
                           "sbp": rng.normal(120, 12, n).round(1)})
     plan = answers("sbp", ["clinical"])
-    truth = Truth({"code_or_count:age": "amount"}, fixture="labels")
+    # WP17 under inference: the roles name no exposure, so the question is age's (the card's first
+    # offer). The generator draws `sbp` apart from both columns; `smoking` is answered as the
+    # subject matter has it (a cause of blood pressure, not of age), which keeps it in the fit
+    # whose readings the card lists.
+    truth = Truth({"code_or_count:age": "amount", "exposure:sbp": "age",
+                   "adjust:smoking": "no,yes,no"}, fixture="labels")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(frame, tmp_path, "labels.csv"), truth)
         drive_unsettled(drive, plan, roles={"smoking": "covariate", "age": "covariate",
@@ -394,7 +417,8 @@ def test_a2_a_carbohydrate_to_alcohol_swap_asks_alcohols_unit_and_moves_drinks_a
              "energy_kcal": "energy"}
     truth = Truth({"code_or_count:age": "amount", "unit:energy_kcal": "kcal",
                    "day_count:energy_kcal": "1", "code_or_count:energy_kcal": "amount",
-                   "unit:alcohol": R.drinks_value(US_DRINK_G)}, fixture="q2 (drinks)")
+                   "unit:alcohol": R.drinks_value(US_DRINK_G), **DRINKS_CAUSAL},
+                  fixture="q2 (drinks)")
     body = {"kind": "set_substitution", "donor": "carbohydrate_g", "recipient": "alcohol",
             "step_kcal": k, "acknowledged": True}
     with local_server(tmp_path / "home") as client:
@@ -448,8 +472,8 @@ def test_a3_a_part_confirmed_in_any_total_moves_with_that_total_or_none(tmp_path
              "fat_g": "exposure", "carbohydrate_g": "exposure", "sfa_g": "exposure",
              "energy_kcal": "energy"}
     truth = Truth({"code_or_count:age": "amount", "unit:energy_kcal": "kcal",
-                   "day_count:energy_kcal": "1", "code_or_count:energy_kcal": "amount"},
-                  fixture="q9 (nested)")
+                   "day_count:energy_kcal": "1", "code_or_count:energy_kcal": "amount",
+                   **NESTED_CAUSAL}, fixture="q9 (nested)")
     body = {"kind": "set_substitution", "donor": "sfa_g", "recipient": "carbohydrate_g",
             "step_kcal": k, "acknowledged": True}
     url = None
@@ -731,8 +755,8 @@ def test_d1_grams_read_by_the_identity_are_listed_and_alcohol_is_not(tmp_path):
              "fat_g": "exposure", "carbohydrate_g": "exposure", "alcohol": "exposure",
              "energy_kcal": "energy"}
     truth = Truth({"code_or_count:age": "amount", "unit:energy_kcal": "kcal",
-                   "day_count:energy_kcal": "1", "code_or_count:energy_kcal": "amount"},
-                  fixture="q2 visible")
+                   "day_count:energy_kcal": "1", "code_or_count:energy_kcal": "amount",
+                   **DRINKS_CAUSAL}, fixture="q2 visible")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(g6.alcohol_substitution_table(), tmp_path, "v.csv"),
                              truth)

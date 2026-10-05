@@ -114,6 +114,14 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "reading_confirmations";
     case "set_follow_up":
       return "follow_up";
+    case "set_censoring":
+      return "censoring";
+    case "set_clusters":
+      return "clusters";
+    case "set_estimand":
+      return "estimand";
+    case "set_adjustment":
+      return "adjustment";
     case "set_sensitivity":
       return "sensitivity";
     case "set_measurement_error":

@@ -182,9 +182,14 @@ def accepted(client, pid: str, decision: dict) -> dict:
 
 
 def open_project(client, path: Path, lens: str, target: str, purpose: str) -> str:
+    from turbotab.server.tests.conftest import declare
+
     response = client.post("/api/projects", json={"path": str(path)})
     assert response.status_code == 200, response.text
     pid = response.json()["id"]
+    # WP17: an omics table's question under inference is every feature in turn, with its
+    # false-discovery statement (MODELING_SEQUENCE §1 step 2: an exposure family).
+    declare(pid, {f"exposure:{target}": "family"}, fixture=path.name)
     wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
     accepted(client, pid, {"kind": "set_lens", "lenses": [lens]})
     # The readings ledger (BLUEPRINT §14.1): under an assay lens the orientation reading is never

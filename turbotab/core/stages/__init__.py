@@ -63,6 +63,19 @@ Audit WP12 (AUDIT_REPORT §5): a time-to-event outcome's follow-up (``set_follow
 ``design`` (a follow-up column is never a predictor) and ``fit`` (the outcome is the event with
 its follow-up); ``shelf`` and ``seal_plan`` read the event, which they count for such an outcome.
 
+WP17 (AUDIT_REPORT §5; turbotab/core/estimand.py): the follow-up, the grouping above the person,
+the exposure and its effect, and the adjustment answers. ``target_info`` reads the columns that may
+be follow-up times; the adjustment answers leave covariates out of an inference model
+(``decisions.left_out``) and a grouping answered "adjust for it" enters as fixed effects, so cohort,
+shelf, design, fit and the stages that refit read them; the proposals carry the estimand and
+adjustment cards and every option's customary and sound labels, the seal plan the split's.
+
+    secondary    heavy   deps: working, design, split, target_info   reads the adjustment answers …;
+                                                                      requires models, adjustment
+
+    ``secondary`` fits the primary model and the model further adjusted for the covariates the
+    answers declare beside it (unknown timing, or "further adjusted for"), on the same rows.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -82,8 +95,13 @@ from turbotab.core.stages.seal import SEAL_READS, seal_plan_stage
 # The readings ledger (BLUEPRINT §14.1) adds each reading's own confirmation (``confirm_reading``).
 ROLE_READS: tuple[str, ...] = ("roles", "roles_unconfirmed", "role_confirmations",
                                "reading_confirmations", "shape_confirmations")
+# WP17 (AUDIT_REPORT §5; turbotab/core/estimand.py): the grouping above the person (fixed effects
+# and clustered intervals), the declared exposure and its effect, and the adjustment answers, which
+# leave covariates out of an inference model (``decisions.left_out``).
+WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
+from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
@@ -205,9 +223,10 @@ def build_graph() -> Graph:
             # letters are the proposal.
             # target_info 7 (ledger repair 2): the task is settled only by its registry value test (two
             # values; decimals filling their grid), never by the dtype.
+            # target_info 8 (WP17, audit RO-03): the columns that read as a follow-up time.
             Stage(
                 "target_info",
-                7,
+                8,
                 ("working",),
                 ("target", "task", "outcome_unit"),
                 target_info_stage,
@@ -269,14 +288,19 @@ def build_graph() -> Graph:
             # (4.00: kJ, or a 4-day kcal total) settles neither and offers each.
             # proposals 16 (ledger repair 3): the registry's one test per kind; the partition's parts
             # of totals as the user confirmed them.
-            Stage("proposals", 16, ("working", "roles"),
+            # proposals 17 (WP17): every option of the energy, missing-values and exclusions
+            # questions labeled customary and sound, ordered by purpose, with a tension line; the
+            # estimand and adjustment cards.
+            Stage("proposals", 17, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
-                   "sex_codings"),
+                   "sex_codings", "task", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
-            Stage("cohort", 3, ("working", "target_info"),
-                  ("target", *ROLE_READS, "exclusions", "missing", "findings"), cohort_stage,
+            # cohort 4 (WP17): complete cases read the predictors the adjustment answers keep.
+            Stage("cohort", 4, ("working", "target_info"),
+                  ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
+                   *WP17_READS), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.
             # split 4 (audit WP15, IN-24): the chronology counts held-out rows that predate training.
@@ -290,10 +314,11 @@ def build_graph() -> Graph:
             # says so (BLUEPRINT §12 ruling 3); timing stays on the training rows.
             # shelf 8 (the readings ledger): its predictors are the settled roles'.
             # shelf 9 (BLUEPRINT §14.3): a predictor's codes counted as the user answered, wherever kept.
-            Stage("shelf", 9, ("working", "cohort", "target_info", "split"),
+            # shelf 10 (WP17): its predictors are the adjustment set's and the grouping's.
+            Stage("shelf", 10, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
-                   "outcome_order", "exposure_forms"),
+                   "outcome_order", "exposure_forms", *WP17_READS),
                   shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
             # design 6: the estimand and coefficient meanings are read off the matrix, and the
@@ -325,9 +350,11 @@ def build_graph() -> Graph:
             # frequent value.
             # design 18 (ledger repair 3): the parts of totals as the user confirmed them, whichever
             # column they name; a text column recorded as amounts never one-hot encoded.
-            Stage("design", 18, ("working", "split", "target_info"),
+            # design 19 (WP17): the adjustment answers leave covariates out under inference; a
+            # grouping answered "adjust for it" enters as fixed effects.
+            Stage("design", 19, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event", "lens", "findings", "exposure_forms", "follow_up"),
+                   "event", "lens", "findings", "exposure_forms", "follow_up", *WP17_READS),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -348,8 +375,10 @@ def build_graph() -> Graph:
             # fit 14 (BLUEPRINT §14.3): the intervals cluster by the grain's unit or a grouping the
             # user confirmed, never by a reader's identifier over the grain answer.
             # fit 15 (ledger repair 2): multiple imputation fills a number with two values as a yes/no.
-            Stage("fit", 15, ("working", "design", "split", "target_info", "cohort"),
-                  ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
+            # fit 16 (WP17): the intervals cluster by the grouping the cluster question named.
+            Stage("fit", 16, ("working", "design", "split", "target_info", "cohort"),
+                  ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
+                   *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
             # substitution 6: a swap can move a share of energy (WP12a); a random intercept's band
@@ -367,9 +396,10 @@ def build_graph() -> Graph:
             # substitution 12 (ledger repair 3): alcohol's standard drinks; grams by the registry's test
             # only where it excludes every other unit (never alcohol or a minor source); the parts of
             # totals as the user confirmed them.
-            Stage("substitution", 12, ("working", "fit", "design"),
+            # substitution 13 (WP17): as fit 16.
+            Stage("substitution", 13, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
-                   "column_units", *ROLE_READS),
+                   "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
                   label="Drawing the substitution curves"),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
@@ -380,8 +410,11 @@ def build_graph() -> Graph:
             # seal_plan 5 (WP13 + WP15 merged): both of the above in one stage.
             # seal_plan 6 (recognition's leash): as split 6.
             # seal_plan 7 (BLUEPRINT §14.3): as split 7.
-            Stage("seal_plan", 7, ("working", "cohort", "target_info", "structure"),
-                  (*ROLE_READS, "task", "event", "purpose", *SEAL_READS), seal_plan_stage,
+            # seal_plan 8 (WP17): every option of the split question labeled customary and sound,
+            # with a tension line; the grouping names internal–external validation's cluster.
+            Stage("seal_plan", 8, ("working", "cohort", "target_info", "structure"),
+                  (*ROLE_READS, "task", "event", "purpose", *SEAL_READS, "clusters"),
+                  seal_plan_stage,
                   requires=("target",),
                   label="Reading what a held-out set can measure"),
             # ── WP12: methods a reviewer expects (AUDIT_REPORT §5) ──
@@ -392,19 +425,26 @@ def build_graph() -> Graph:
             # sensitivity 5 (gate repair): as fit 13, a half-read survey design waits for its answer.
             # sensitivity 6 (recognition's leash): its clusters read settled roles only.
             # sensitivity 8 (ledger repair 2): as fit 15.
-            Stage("sensitivity", 8, ("working", "design", "split", "target_info"),
-                  SENSITIVITY_READS, sensitivity_stage, heavy=True,
+            # sensitivity 9 (WP17): as fit 16.
+            Stage("sensitivity", 9, ("working", "design", "split", "target_info"),
+                  (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
             # calibration 4 (methods gate): the outcome keeps its own values (a True/False event).
             # calibration 5, sensitivity 7 (the readings ledger): each reads the readings' own
             # confirmations; calibration applies only on an answered repeat kind.
             # calibration 6 (ledger repair 2): as design 17.
-            Stage("calibration", 6,
+            # calibration 7 (WP17): as fit 16.
+            Stage("calibration", 7,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
-                  CALIBRATION_READS, calibration_stage, heavy=True,
+                  (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
                   label="Correcting energy-adjusted intakes for day-to-day error"),
+            # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
+            Stage("secondary", 1, ("working", "design", "split", "target_info"),
+                  SECONDARY_READS, secondary_stage, heavy=True,
+                  requires=("models", "adjustment"),
+                  label="Fitting the model further adjusted for the declared covariates"),
         ]
     )
 

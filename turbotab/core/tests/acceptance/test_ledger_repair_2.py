@@ -153,7 +153,14 @@ def four_day_table(n: int = 500) -> pd.DataFrame:
 
 FOUR_DAY_TRUTH = {"unit:energy_kcal_total": "kcal", "day_count:energy_kcal_total": "4",
                   "code_or_count:age": "amount", "code_or_count:energy_kcal_total": "amount",
-                  "sex_coding:sex": "female=F,male=M"}
+                  "sex_coding:sex": "female=F,male=M",
+                  # WP17, the generator: sex sets the daily intake and so the protein eaten; age
+                  # moves HbA1c; weight and height move nothing; the other macronutrients share
+                  # the day's intake with protein, the field's default (possible confounders).
+                  "exposure:hba1c": "protein_g", "adjust:sex": "yes,no,no",
+                  "adjust:age": "no,yes,no", "adjust:weight": "no,no,no",
+                  "adjust:height": "no,no,no", "adjust:fat_g": "unknown,unknown,no",
+                  "adjust:carbohydrate_g": "unknown,unknown,no"}
 
 
 def clean_table(n: int = 400) -> pd.DataFrame:
@@ -180,7 +187,16 @@ def clean_table(n: int = 400) -> pd.DataFrame:
 
 CLEAN_TRUTH = {"code_or_count:age": "amount", "code_or_count:energy_kcal": "amount",
                "unit:energy_kcal": "kcal", "day_count:energy_kcal": "1",
-               "sex_coding:sex": "female=F,male=M"}
+               "sex_coding:sex": "female=F,male=M",
+               # WP17: the question is BMI's effect on SBP (its energy answer, "none", estimates
+               # no substitution, so the exposure carries no energy). The generator: age, BMI and
+               # fiber move SBP, and sex sets the day's intake and so the fiber eaten. The
+               # macronutrients are declared causes of BMI whose effect on SBP is unknown, as an
+               # analyst answers (the generator draws BMI apart, which no analyst could know).
+               "exposure:sbp": "bmi", "adjust:age": "no,yes,no", "adjust:sex": "no,yes,no",
+               "adjust:fiber_g": "no,yes,no",
+               **{f"adjust:{c}": "yes,unknown,no" for c in ("protein_g", "fat_g",
+                                                            "carbohydrate_g")}}
 
 
 def phq_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -269,8 +285,10 @@ def test_a1_decimal_diagnosis_codes_are_asked_and_fit_as_one_indicator_per_code(
     levels = (307.5, 307.51, 307.59)
     indicator = ols(y, np.column_stack([one, *[(frame.dsm_dx == c) for c in levels], frame.age,
                                         frame.energy_kcal]).astype(float))
-    truth = Truth({"code_or_count:dsm_dx": "code", "code_or_count:energy_kcal": "amount"},
-                  fixture="p2 (ICD-9-CM codes)")
+    # WP17, the generator: the diagnosis, age and energy are drawn apart, and each moves BMI.
+    truth = Truth({"code_or_count:dsm_dx": "code", "code_or_count:energy_kcal": "amount",
+                   "exposure:bmi": "dsm_dx", "adjust:age": "no,yes,no",
+                   "adjust:energy_kcal": "no,yes,no"}, fixture="p2 (ICD-9-CM codes)")
     plan = answers("bmi", ["clinical"])
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(frame, tmp_path, "dsm_codes.csv"), truth)
@@ -1617,7 +1635,11 @@ def test_e3_every_unit_the_substitutions_ask_offers_draws_its_own_curve(tmp_path
     plan = answers("sbp", ["dietary"])
     body = {"kind": "set_substitution", "donor": "Protein", "recipient": "fat_g",
             "step_kcal": 100.0, "acknowledged": True}
-    truth = Truth({"unit:Protein": "g", "unit:fat_g": "g"}, fixture="factor")
+    # WP17: `Protein`'s effect; age moves SBP (the generator); the other macronutrients are the
+    # field's default for other dietary components (possible confounders).
+    truth = Truth({"unit:Protein": "g", "unit:fat_g": "g", "exposure:sbp": "Protein",
+                   "adjust:age": "no,yes,no", "adjust:fat_g": "unknown,unknown,no",
+                   "adjust:carbohydrate_g": "unknown,unknown,no"}, fixture="factor")
 
     def check(item: dict[str, Any], art: dict[str, Any]) -> None:
         decision = item["decision"]

@@ -23,26 +23,30 @@ from pydantic import BaseModel, ConfigDict
 # The interview's questions, in asking order (M2_CONTRACT §1): what a finding may route to.
 # Opening the seal is the Router's last step (M2_CONTRACT §12.1).
 QuestionKey = Literal[
-    "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
-    "aggregation", "temporal", "roles", "survey", "exclusions", "missing", "split",
-    "energy_adjustment", "models", "substitution", "open_seal",
+    "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
+    "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "estimand",
+    "adjustment", "exclusions", "missing", "split", "energy_adjustment", "models", "substitution",
+    "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
-    "lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind", "unit",
-    "aggregation", "temporal", "roles", "survey", "exclusions", "missing", "split",
-    "energy_adjustment", "models", "substitution", "open_seal",
+    "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
+    "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "estimand",
+    "adjustment", "exclusions", "missing", "split", "energy_adjustment", "models", "substitution",
+    "open_seal",
 )
 # What is taught, in the sequence's order: every question, plus the one card that is not a
 # question — the repairs offered before the outcome.
 TeachingKey = Literal[
-    "lens", "orientation", "repairs", "target", "event", "task", "purpose", "grain",
-    "repeat_kind", "unit", "aggregation", "temporal", "roles", "survey", "exclusions", "missing",
-    "split", "energy_adjustment", "models", "substitution", "open_seal",
+    "lens", "orientation", "repairs", "target", "event", "task", "follow_up", "purpose", "grain",
+    "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "estimand",
+    "adjustment", "exclusions", "missing", "split", "energy_adjustment", "models", "substitution",
+    "open_seal",
 ]
 TEACHING_KEYS: tuple[str, ...] = (
-    "lens", "orientation", "repairs", "target", "event", "task", "purpose", "grain",
-    "repeat_kind", "unit", "aggregation", "temporal", "roles", "survey", "exclusions", "missing",
-    "split", "energy_adjustment", "models", "substitution", "open_seal",
+    "lens", "orientation", "repairs", "target", "event", "task", "follow_up", "purpose", "grain",
+    "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "estimand",
+    "adjustment", "exclusions", "missing", "split", "energy_adjustment", "models", "substitution",
+    "open_seal",
 )
 EvidenceStatus = Literal["SETTLED", "CONVENTION", "DISPUTED"]
 

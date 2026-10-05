@@ -412,6 +412,51 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdjustmentAnswer */
+        AdjustmentAnswer: {
+            /**
+             * Causes Exposure
+             * @enum {string}
+             */
+            causes_exposure: "yes" | "no" | "unknown";
+            /**
+             * Causes Outcome
+             * @enum {string}
+             */
+            causes_outcome: "yes" | "no" | "unknown";
+            /**
+             * After Exposure
+             * @enum {string}
+             */
+            after_exposure: "yes" | "no" | "unknown";
+            /**
+             * Instrument
+             * @default false
+             */
+            instrument: boolean;
+            /**
+             * Proxy
+             * @default false
+             */
+            proxy: boolean;
+            /**
+             * Keep
+             * @default false
+             */
+            keep: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /**
+             * Further
+             * @default false
+             */
+            further: boolean;
+            /** Exposure */
+            exposure: string;
+        };
         /** AggregationSpec */
         AggregationSpec: {
             /**
@@ -485,6 +530,22 @@ export interface components {
             decision: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ClusterSpec
+         * @description The cluster answer: the column grouping participants (a site, a centre, a household, a
+         *     batch), or None when nothing groups them; under inference how the model takes it.
+         */
+        ClusterSpec: {
+            /** Column */
+            column: string | null;
+            /** Adjust */
+            adjust: ("fixed_effects" | "cluster_only") | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * CoachAnchor
@@ -621,6 +682,100 @@ export interface components {
             role: "identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded" | "cluster";
         };
         /**
+         * CovariateAnswers
+         * @description The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_
+         *     SEQUENCE §1 step 3). The covariate's role is derived from these, never chosen directly.
+         */
+        "CovariateAnswers-Input": {
+            /**
+             * Causes Exposure
+             * @enum {string}
+             */
+            causes_exposure: "yes" | "no" | "unknown";
+            /**
+             * Causes Outcome
+             * @enum {string}
+             */
+            causes_outcome: "yes" | "no" | "unknown";
+            /**
+             * After Exposure
+             * @enum {string}
+             */
+            after_exposure: "yes" | "no" | "unknown";
+            /**
+             * Instrument
+             * @default false
+             */
+            instrument: boolean;
+            /**
+             * Proxy
+             * @default false
+             */
+            proxy: boolean;
+            /**
+             * Keep
+             * @default false
+             */
+            keep: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /**
+             * Further
+             * @default false
+             */
+            further: boolean;
+        };
+        /**
+         * CovariateAnswers
+         * @description The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_
+         *     SEQUENCE §1 step 3). The covariate's role is derived from these, never chosen directly.
+         */
+        "CovariateAnswers-Output": {
+            /**
+             * Causes Exposure
+             * @enum {string}
+             */
+            causes_exposure: "yes" | "no" | "unknown";
+            /**
+             * Causes Outcome
+             * @enum {string}
+             */
+            causes_outcome: "yes" | "no" | "unknown";
+            /**
+             * After Exposure
+             * @enum {string}
+             */
+            after_exposure: "yes" | "no" | "unknown";
+            /**
+             * Instrument
+             * @default false
+             */
+            instrument: boolean;
+            /**
+             * Proxy
+             * @default false
+             */
+            proxy: boolean;
+            /**
+             * Keep
+             * @default false
+             */
+            keep: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /**
+             * Further
+             * @default false
+             */
+            further: boolean;
+        };
+        /**
          * CreateProject
          * @description Open a file on this machine by its path (local mode only).
          */
@@ -654,7 +809,7 @@ export interface components {
              */
             after_estimates: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"];
         };
         /**
          * DeferFinding
@@ -764,6 +919,34 @@ export interface components {
             strata: string | null;
         };
         /**
+         * EstimandSpec
+         * @description The exposure and the effect the inference reports (MODELING_SEQUENCE §1 step 2): one
+         *     exposure, or an exposure family (``family``: every exposure-role column, each reported, with
+         *     its multiplicity method; ``exposure`` is then None).
+         */
+        EstimandSpec: {
+            /** Exposure */
+            exposure: string | null;
+            /**
+             * Family
+             * @default false
+             */
+            family: boolean;
+            /**
+             * Effect
+             * @default total
+             * @enum {string}
+             */
+            effect: "total" | "direct";
+            /** Contrast */
+            contrast: ("substitution" | "addition") | null;
+            /**
+             * Measure
+             * @enum {string}
+             */
+            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio" | "exposure_mean_difference";
+        };
+        /**
          * Evidence
          * @description A pack's badge: where the field stands, and the section that says so.
          */
@@ -829,7 +1012,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"]) | null;
         };
         /**
          * ExposureFormSpec
@@ -1197,7 +1380,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "survey" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "estimand" | "adjustment" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
             /**
              * Status
              * @enum {string}
@@ -1625,6 +1808,14 @@ export interface components {
             sex_codings: {
                 [key: string]: string;
             } | null;
+            /** Censoring */
+            censoring: ("same" | "same_attested") | null;
+            clusters: components["schemas"]["ClusterSpec"] | null;
+            estimand: components["schemas"]["EstimandSpec"] | null;
+            /** Adjustment */
+            adjustment: {
+                [key: string]: components["schemas"]["AdjustmentAnswer"];
+            } | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1990,6 +2181,44 @@ export interface components {
             /** Rules */
             rules: (components["schemas"]["ExclusionRule-Output"] | components["schemas"]["GoldbergRule-Output"])[];
         };
+        /**
+         * SetAdjustment
+         * @description Answers for some covariates, against one exposure: one tap per group of covariates that
+         *     share their answers (BLUEPRINT §14.2). Each covariate's answer is kept under its column, so a
+         *     later group's answers never undo an earlier group's.
+         */
+        "SetAdjustment-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_adjustment";
+            /** Exposure */
+            exposure: string;
+            /** Answers */
+            answers: {
+                [key: string]: components["schemas"]["CovariateAnswers-Input"];
+            };
+        };
+        /**
+         * SetAdjustment
+         * @description Answers for some covariates, against one exposure: one tap per group of covariates that
+         *     share their answers (BLUEPRINT §14.2). Each covariate's answer is kept under its column, so a
+         *     later group's answers never undo an earlier group's.
+         */
+        "SetAdjustment-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_adjustment";
+            /** Exposure */
+            exposure: string;
+            /** Answers */
+            answers: {
+                [key: string]: components["schemas"]["CovariateAnswers-Output"];
+            };
+        };
         /** SetAggregation */
         "SetAggregation-Input": {
             /**
@@ -2041,6 +2270,84 @@ export interface components {
             kind: "set_categorical";
             /** Columns */
             columns: string[];
+        };
+        /**
+         * SetCensoring
+         * @description The follow-up question's "no" (audit RO-03): nobody's follow-up ended before the event could
+         *     be seen, so the yes/no outcome counts events over one period for everyone. Stands only while
+         *     ``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then
+         *     ``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that
+         *     varies (block and record).
+         */
+        "SetCensoring-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_censoring";
+            /** Column */
+            column: string;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetCensoring
+         * @description The follow-up question's "no" (audit RO-03): nobody's follow-up ended before the event could
+         *     be seen, so the yes/no outcome counts events over one period for everyone. Stands only while
+         *     ``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then
+         *     ``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that
+         *     varies (block and record).
+         */
+        "SetCensoring-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_censoring";
+            /** Column */
+            column: string;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /** SetClusters */
+        "SetClusters-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_clusters";
+            /** Column */
+            column?: string | null;
+            /** Adjust */
+            adjust?: ("fixed_effects" | "cluster_only") | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /** SetClusters */
+        "SetClusters-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_clusters";
+            /** Column */
+            column: string | null;
+            /** Adjust */
+            adjust: ("fixed_effects" | "cluster_only") | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * SetColumnUnit
@@ -2143,6 +2450,62 @@ export interface components {
             log_transform: boolean;
             /** Strata */
             strata: string | null;
+        };
+        /** SetEstimand */
+        "SetEstimand-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_estimand";
+            /** Exposure */
+            exposure?: string | null;
+            /**
+             * Family
+             * @default false
+             */
+            family: boolean;
+            /**
+             * Effect
+             * @default total
+             * @enum {string}
+             */
+            effect: "total" | "direct";
+            /** Contrast */
+            contrast?: ("substitution" | "addition") | null;
+            /**
+             * Measure
+             * @enum {string}
+             */
+            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio" | "exposure_mean_difference";
+        };
+        /** SetEstimand */
+        "SetEstimand-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_estimand";
+            /** Exposure */
+            exposure: string | null;
+            /**
+             * Family
+             * @default false
+             */
+            family: boolean;
+            /**
+             * Effect
+             * @default total
+             * @enum {string}
+             */
+            effect: "total" | "direct";
+            /** Contrast */
+            contrast: ("substitution" | "addition") | null;
+            /**
+             * Measure
+             * @enum {string}
+             */
+            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio" | "exposure_mean_difference";
         };
         /**
          * SetEvent
@@ -3166,7 +3529,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "survey" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "estimand" | "adjustment" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
             /** Title */
             title: string;
             /** Question */
@@ -3226,6 +3589,60 @@ export interface components {
             value: unknown;
             /** Count */
             count: number;
+        };
+        /**
+         * AdjustmentCard
+         * @description WP17 (MODELING_SEQUENCE §1 step 3): the disjunctive cause criterion, asked per covariate.
+         */
+        AdjustmentCard: {
+            /** Exposure */
+            exposure: string;
+            /** Effect */
+            effect: string;
+            /** Questions */
+            questions: {
+                [key: string]: string;
+            };
+            /** Groups */
+            groups: components["schemas"]["AdjustmentGroup"][];
+            /** Answered */
+            answered: {
+                [key: string]: components["schemas"]["DerivedRole"];
+            };
+            /** Adjusted */
+            adjusted: string[];
+            /** Left Out */
+            left_out: string[];
+            /** Secondary */
+            secondary: string[];
+            /** Source */
+            source: string;
+        };
+        /**
+         * AdjustmentGroup
+         * @description Covariates the pack guesses alike, confirmed with one tap (``decision``); or the unguessed.
+         */
+        AdjustmentGroup: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Columns */
+            columns: string[];
+            /** Guess */
+            guess: {
+                [key: string]: string;
+            } | null;
+            /** Reason */
+            reason: string;
+            /** Derived */
+            derived: string | null;
+            /** Derived Words */
+            derived_words: string | null;
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * AggregationMenu
@@ -3808,6 +4225,19 @@ export interface components {
             y: number;
         };
         /**
+         * Customary
+         * @description Where the field uses the option: ``text`` says how, ``field`` in which field, ``source``
+         *     where that is documented.
+         */
+        Customary: {
+            /** Field */
+            field: string;
+            /** Text */
+            text: string;
+            /** Source */
+            source: string;
+        };
+        /**
          * DatasetInfo
          * @description The ``ingest`` artifact.
          */
@@ -3837,6 +4267,19 @@ export interface components {
             month_first: string;
             /** Day First */
             day_first: string;
+        };
+        /** DerivedRole */
+        DerivedRole: {
+            /** Role */
+            role: string;
+            /** Words */
+            words: string;
+            /** Adjusted */
+            adjusted: boolean;
+            /** Secondary */
+            secondary: boolean;
+            /** Why */
+            why: string;
         };
         /**
          * DesignArtifact
@@ -3981,6 +4424,88 @@ export interface components {
              * @default true
              */
             confirmed: boolean;
+        };
+        /**
+         * EstimandAnnotation
+         * @description WP17: the served fit under a declared estimand (``turbotab/core/estimand.py``): the caption
+         *     worded from it, and which table rows are the exposure's effect; the rest are adjustment terms.
+         */
+        EstimandAnnotation: {
+            /** Exposure */
+            exposure: string;
+            /**
+             * Effect
+             * @enum {string}
+             */
+            effect: "total" | "direct";
+            /** Measure */
+            measure: string;
+            /**
+             * Contrast
+             * @default null
+             */
+            contrast: ("substitution" | "addition") | null;
+            /** Caption */
+            caption: string | null;
+            /** Adjusted */
+            adjusted: string[];
+            /** Left Out */
+            left_out: {
+                [key: string]: string;
+            };
+            /** Secondary */
+            secondary: string[];
+            /** Features */
+            features: string[];
+        };
+        /**
+         * EstimandCard
+         * @description WP17 (MODELING_SEQUENCE §1 step 2): what the exposure and effect question offers.
+         */
+        EstimandCard: {
+            /** Exposures */
+            exposures: components["schemas"]["EstimandExposure"][];
+            /** Effects */
+            effects: components["schemas"]["EstimandChoice"][];
+            /** Contrasts */
+            contrasts: components["schemas"]["EstimandChoice"][];
+            /** Measures */
+            measures: components["schemas"]["EstimandMeasure"][];
+        };
+        /** EstimandChoice */
+        EstimandChoice: {
+            /**
+             * Effect
+             * @default null
+             */
+            effect: ("total" | "direct") | null;
+            /**
+             * Contrast
+             * @default null
+             */
+            contrast: ("substitution" | "addition") | null;
+            /** Label */
+            label: string;
+            /** Consequence */
+            consequence: string;
+        };
+        /** EstimandExposure */
+        EstimandExposure: {
+            /** Column */
+            column: string;
+            /** Energy Contrast */
+            energy_contrast: boolean;
+        };
+        /** EstimandMeasure */
+        EstimandMeasure: {
+            /** Measure */
+            measure: string;
+            /** Label */
+            label: string;
+            /** Fitted */
+            fitted: boolean;
+            /** Reason */
+            reason: string;
         };
         /**
          * ExclusionProposal
@@ -4162,7 +4687,7 @@ export interface components {
             /** Summary */
             summary: string;
             /** Routes To */
-            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "survey" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal") | null;
+            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "estimand" | "adjustment" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal") | null;
             /** Lever Label */
             lever_label: string | null;
             /** Group */
@@ -4300,6 +4825,13 @@ export interface components {
              * @default null
              */
             levels: string[] | null;
+            /**
+             * Withheld
+             * @default null
+             */
+            withheld: string | null;
+            /** @default null */
+            estimand: components["schemas"]["EstimandAnnotation"] | null;
         };
         /** FittedModel */
         FittedModel: {
@@ -4349,6 +4881,20 @@ export interface components {
              * @default []
              */
             exposure_tests: components["schemas"]["ExposureTest"][];
+        };
+        /**
+         * FollowUpCandidate
+         * @description A column that reads as how long each row was followed (``turbotab/core/estimand.py``).
+         */
+        FollowUpCandidate: {
+            /** Column */
+            column: string;
+            /** Min */
+            min: number;
+            /** Max */
+            max: number;
+            /** Varies */
+            varies: boolean;
         };
         /**
          * GoldbergRule
@@ -4644,6 +5190,38 @@ export interface components {
              * @default
              */
             method: string;
+        };
+        /** LabeledOption */
+        LabeledOption: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            customary: components["schemas"]["Customary"];
+            sound: components["schemas"]["Sound"];
+        };
+        /**
+         * LabeledQuestion
+         * @description A question's options, soundest first for the purpose, each with its two labels, and the one
+         *     line naming the tension when the field's customary first choice is not the soundest.
+         */
+        LabeledQuestion: {
+            /**
+             * Question
+             * @enum {string}
+             */
+            question: "energy_adjustment" | "missing" | "split" | "exclusions";
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "prediction" | "inference";
+            /** Options */
+            options: components["schemas"]["LabeledOption"][];
+            /** Customary First */
+            customary_first: string;
+            /** Tension */
+            tension: string | null;
         };
         /**
          * LeaveOut
@@ -5145,6 +5723,25 @@ export interface components {
             exposure_forms: components["schemas"]["ExposureFormOption"][];
             /** @default null */
             energy_unit: components["schemas"]["EnergyUnitReading"] | null;
+            /** @default null */
+            labels: components["schemas"]["QuestionLabels"] | null;
+            /** @default null */
+            estimand: components["schemas"]["EstimandCard"] | null;
+            /** @default null */
+            adjustment: components["schemas"]["AdjustmentCard"] | null;
+        };
+        /**
+         * QuestionLabels
+         * @description WP17 (north star 5): each question's options with "customary in <field>" and "sound for
+         *     <purpose>", soundest first (``turbotab/core/custom_sound.py``).
+         */
+        QuestionLabels: {
+            /** @default null */
+            missing: components["schemas"]["LabeledQuestion"] | null;
+            /** @default null */
+            exclusions: components["schemas"]["LabeledQuestion"] | null;
+            /** @default null */
+            energy_adjustment: components["schemas"]["LabeledQuestion"] | null;
         };
         /** Repair */
         Repair: {
@@ -5355,6 +5952,53 @@ export interface components {
             time_ordered_folds: boolean;
             /** @default null */
             validation: components["schemas"]["ValidationPlan"] | null;
+            /** @default null */
+            labels: components["schemas"]["LabeledQuestion"] | null;
+        };
+        /** SecondaryArtifact */
+        SecondaryArtifact: {
+            /**
+             * Purpose
+             * @constant
+             */
+            purpose: "inference";
+            /** Exposure */
+            exposure: string;
+            /** Further */
+            further: string[];
+            /** Rows */
+            rows: string;
+            /** Families */
+            families: components["schemas"]["SecondaryFamily"][];
+            /** Methods */
+            methods: string;
+        };
+        /** SecondaryFamily */
+        SecondaryFamily: {
+            /** Family */
+            family: string;
+            /** Label */
+            label: string;
+            /** Fits */
+            fits: components["schemas"]["SecondaryFit"][];
+        };
+        /** SecondaryFit */
+        SecondaryFit: {
+            /** Label */
+            label: string;
+            /** Adjusted For */
+            adjusted_for: string[];
+            /** N Rows */
+            n_rows: number;
+            /** Coefficients */
+            coefficients: components["schemas"]["Coefficient"][] | null;
+            /** @default null */
+            inference: components["schemas"]["Inference"] | null;
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
         };
         /**
          * Selection
@@ -5518,6 +6162,24 @@ export interface components {
              * @default null
              */
             estimate: string | null;
+        };
+        /**
+         * Sound
+         * @description Whether the option is sound for ``purpose``, and why.
+         */
+        Sound: {
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "prediction" | "inference";
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "sound" | "conditional" | "unsound";
+            /** Reason */
+            reason: string;
         };
         /** Spacing */
         Spacing: {
@@ -5923,6 +6585,11 @@ export interface components {
              * @default []
              */
             unit_candidates: string[];
+            /**
+             * Follow Up
+             * @default []
+             */
+            follow_up: components["schemas"]["FollowUpCandidate"][];
         };
         /**
          * TimeOrder
@@ -6022,6 +6689,11 @@ export interface components {
              * @default null
              */
             caution: string | null;
+            /**
+             * Cluster
+             * @default null
+             */
+            cluster: string | null;
         };
         /**
          * ValidationPlan
@@ -6373,7 +7045,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"];
             };
         };
         responses: {
@@ -6588,7 +7260,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"];
             };
         };
         responses: {

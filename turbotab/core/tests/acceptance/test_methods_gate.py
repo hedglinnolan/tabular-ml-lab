@@ -52,6 +52,7 @@ from turbotab.core.decisions import (EnergyAdjustment, ProjectState, Refusal, Se
 from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage, substitution_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance.server_drive import local_server, open_project
+from turbotab.core.tests.truths import Truth
 
 FOLLOW = {"kind": "set_follow_up", "column": "cvd_event", "time_column": "followup_years"}
 
@@ -202,6 +203,9 @@ def _residual_fixture() -> pd.DataFrame:
 
 RESIDUAL_ROLES = {"pid": "identifier", "fat_g": "exposure", "energy_kcal": "energy",
                   "male": "covariate", "age": "covariate", "pa": "covariate"}
+# WP17: the generator's causal truth (``_residual_fixture``): sex, age and activity set energy, and
+# so fat, and each sets the outcome; total energy is decided by the energy question.
+RESIDUAL_TRUTH = {f"adjust:{c}": "yes,yes,no" for c in ("male", "age", "pa")}
 
 
 def _ols(y: Any, exog: pd.DataFrame) -> Any:
@@ -323,7 +327,7 @@ def test_b_previews_under_inference_read_every_analyzed_row(tmp_path):
                "energy_column": "energy_kcal", "nutrients": ["fat_g"]}
     with local_server(tmp_path / "home") as client:
         for purpose in ("inference", "prediction"):
-            drive = open_project(client, path)
+            drive = open_project(client, path, Truth(RESIDUAL_TRUTH, fixture="_residual_fixture"))
             answers = {
                 "lens": {"kind": "set_lens", "lenses": ["dietary"]},
                 "target": {"kind": "set_target", "column": "y"},
@@ -575,7 +579,8 @@ def test_d_every_surface_names_the_declared_level_through_the_server(tmp_path):
     path = tmp_path / "smokers.csv"
     frame.to_csv(path, index=False)
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        # WP17: the generator's causal truth (``_smokers``): age sets the outcome, not fiber.
+        drive = open_project(client, path, Truth({"adjust:age": "no,yes,no"}, fixture="_smokers"))
         _answer_until(drive, "models", {
             "lens": {"kind": "set_lens", "lenses": ["clinical"]},
             "target": {"kind": "set_target", "column": "smoker"},
@@ -654,9 +659,12 @@ def test_e_the_sex_specific_screen_stays_on_the_menu_when_sex_is_left_out(tmp_pa
 
         for sex_role in ("covariate", "excluded"):
             # The fixture's truth (BLUEPRINT §14.3): one day's energy in kcal; age whole years.
+            # WP17: the generator's causal truth (``_intakes``): sex sets energy only; age, fiber
+            # and LDL are drawn independently.
             drive = open_project(client, path, Truth({
                 "unit:energy_kcal": "kcal", "day_count:energy_kcal": "1",
-                "code_or_count:age": "amount"}, fixture="_intakes"))
+                "code_or_count:age": "amount", "adjust:sex": "no,no,no",
+                "adjust:age": "no,no,no"}, fixture="_intakes"))
             _answer_until(drive, "roles", {
                 "lens": {"kind": "set_lens", "lenses": ["dietary"]},
                 "target": {"kind": "set_target", "column": "ldl"},

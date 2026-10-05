@@ -130,6 +130,8 @@ const wp9 = { calibration: null, holdout_detail: null, optimism: null, internal_
 const fit: FitArtifact = {
   task: "regression",
   levels: null,
+  withheld: null,
+  estimand: null,
   primary_metric: "r2",
   metric_labels: { r2: "R²", rmse: "RMSE" },
   n_train: 2352,

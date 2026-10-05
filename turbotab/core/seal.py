@@ -66,6 +66,7 @@ from pydantic import BaseModel, ConfigDict
 
 from turbotab.core import decisions
 from turbotab.core.decisions import ProjectState, Refusal, Revert, SetSplit
+from turbotab.core.custom_sound import LabeledQuestion
 from turbotab.core.models.validation import ValidationPlan, validation_plan
 
 BasisState = Literal["grouped", "one_row_per_unit", "abandoned", "undetermined"]
@@ -659,6 +660,8 @@ class SealPlan(_Model):
     # turbotab/core/models/validation.py::validation_plan). Under prediction below a stated size
     # the resampling options lead, and cross-validation alone leads the holdout options too.
     validation: ValidationPlan | None = None
+    # WP17 (north star 5): every option labeled customary and sound for the purpose, in this order.
+    labels: LabeledQuestion | None = None
 
 
 def floor_for(task: str | None) -> SealFloor:
@@ -838,12 +841,24 @@ def plan(state: Any, universe: Any, store: Any, task: str | None,
     elif validation.resampling_first and not cv_first:  # audit ME-11: the holdout keeps its tension
         options = [o for o in options if o.holdout == 0] + [o for o in options if o.holdout > 0]
         cv_first, reason = True, f"{validation.reason} {validation.holdout_note}"
+    # WP17 (north star 5): each option labeled customary and sound, in the order offered here.
+    from turbotab.core import custom_sound
+    from turbotab.core.estimand import cluster_answer
+
+    order = [*([] if cv_first else ["holdout"]), *[o.validation for o in validation.options],
+             *(["holdout"] if cv_first else [])]
+    labels = custom_sound.split(getattr(state, "purpose", None), order)
+    grouping = cluster_answer(state)
+    if grouping:  # the grouping question named the cluster internal–external validation folds by
+        validation = validation.model_copy(update={"options": [
+            o.model_copy(update={"cluster": grouping}) if o.validation == "internal_external" else o
+            for o in validation.options]})
     return SealPlan(
         task=str(task), n_measured=int(len(universe)), n_analyzed=int(len(analyzed)),
         basis=draw.basis, chronology=draw.chronology, exploratory=draw.exploratory,
         floor=floor_for(task), options=options, cv_first=cv_first, reason=reason,
         precision_note=PRECISION_NOTE, refusal=draw.refusal,
-        time_ordered_folds=draw.order is not None, validation=validation,
+        time_ordered_folds=draw.order is not None, validation=validation, labels=labels,
     ).model_dump(mode="json")
 
 

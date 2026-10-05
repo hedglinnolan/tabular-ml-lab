@@ -660,10 +660,14 @@ def test_wp13_5_through_the_api_the_screen_is_refused_until_the_unit_is_recorded
     count in kJ; the rule read in kJ is accepted and the cohort drops exactly NumPy's count."""
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
 
+    from turbotab.core.tests.truths import Truth
+
     tod, _ = _toddlers_and_two_day()
     path = _write(tod, tmp_path, "toddlers.csv")
     with local_server(tmp_path / "home") as client:
-        drive = open_project(client, path)
+        # WP17, the generator: sodium, sex and weight are drawn apart.
+        drive = open_project(client, path, Truth({"exposure:weight_kg": "sodium_mg",
+                                                  "adjust:sex": "no,no,no"}, fixture="toddlers"))
         drive.decide({"kind": "set_lens", "lenses": ["dietary"]})
         drive.reach("target")
         drive.decide({"kind": "set_target", "column": "weight_kg"})

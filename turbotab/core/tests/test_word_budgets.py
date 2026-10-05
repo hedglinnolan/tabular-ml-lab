@@ -296,6 +296,24 @@ def representative_decisions():
         # WP16 (audit §5): a re-seal after the opening, and the inference analysis-plan lock
         d.Reseal(reason="the first draw left one site out"),
         d.LockPlan(plan={"target": "hba1c"}, digest="0" * 64),
+        # WP17 (audit §5): the follow-up, the grouping, the exposure and effect, the adjustment set
+        d.SetCensoring(column="hba1c"),
+        d.SetCensoring(column="hba1c", acknowledged=True),
+        d.SetClusters(column="site", adjust="fixed_effects"),
+        d.SetClusters(column="site", adjust="cluster_only"),
+        d.SetClusters(column=None, acknowledged=True),
+        d.SetEstimand(exposure="protein_g", effect="total", contrast="substitution",
+                      measure="mean_difference"),
+        d.SetEstimand(exposure="fiber_g", effect="direct", measure="odds_ratio"),
+        d.SetAdjustment(exposure="protein_g", answers={
+            "age": d.CovariateAnswers(causes_exposure="yes", causes_outcome="yes",
+                                      after_exposure="no"),
+            "sex": d.CovariateAnswers(causes_exposure="yes", causes_outcome="yes",
+                                      after_exposure="no"),
+            "bmi": d.CovariateAnswers(causes_exposure="unknown", causes_outcome="yes",
+                                      after_exposure="unknown"),
+            "ldl": d.CovariateAnswers(causes_exposure="no", causes_outcome="yes",
+                                      after_exposure="yes", keep=True, acknowledged=True)}),
     ]
 
 

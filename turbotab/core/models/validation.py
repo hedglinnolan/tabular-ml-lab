@@ -244,6 +244,7 @@ class ValidationOption(_Model):
     cost: str  # what it costs, in refits
     needs_cluster: bool = False  # internal–external: the user names the column whose levels fold
     caution: str | None = None  # where it is not sound, in one line (north star 5)
+    cluster: str | None = None  # WP17: the grouping the cluster question named, folded by here
 
 
 BOOTSTRAP_CAUTION = ("Sound for regression-type families; a near-interpolating one (boosted trees) "
