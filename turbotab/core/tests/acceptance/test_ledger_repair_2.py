@@ -1052,6 +1052,15 @@ def _probe_coach_suffix(value: str) -> Any:
     return _unit_suffix("energy", _energy_state("unit", value))
 
 
+def _probe_equation_unit(value: str) -> Any:
+    """Wave 2, EXPLAIN: the fitted equation's unit for a predictor, confirmed through the fold."""
+    from turbotab.core.models.explain import equation_units
+
+    state = _confirm(d.SetTarget(column="y"), d.SetRoles(roles={"x": "exposure"}),
+                     kind="unit", column="x", value=value)
+    return equation_units(state, "y", ["x"])[1].get("x")
+
+
 # ── the Goldberg screen's body measures, energy unit and days ──
 
 def _goldberg(offers: dict[str, Any]) -> Any:
@@ -1410,6 +1419,9 @@ PROBES: dict[tuple[str, str], tuple[Callable[[str], Any], Callable[[str], Any]]]
         (_probe_restate_days, lambda v: _expected_restated("kcal", int(v))),
     ("turbotab.core.coach:_unit_suffix", "unit:energy"):
         (_probe_coach_suffix, lambda v: f" {'kJ' if v == 'kj' else v}"),
+    # Wave 2, EXPLAIN: the equation states the unit confirmed, in words, whichever it is.
+    ("turbotab.core.models.explain:equation_units", "unit:column"):
+        (_probe_equation_unit, lambda v: R.unit_words(v)),
     ("turbotab.core.stages.proposals:goldberg_proposal", "unit:weight"):
         (_probe_goldberg_weight, lambda v: _expected_goldberg("weight", v)),
     ("turbotab.core.stages.proposals:goldberg_proposal", "unit:height"):

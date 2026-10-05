@@ -124,6 +124,16 @@ V2 causal row (turbotab/core/time_varying.py): an exposure that changes over tim
     within units), then the diagnostics (weights, truncation options, positivity per time point),
     then, once the lane is complete, the marginal structural model or the g-formula's risks.
 
+Wave 2, EXPLAIN (V2 definition of done §2, "Explainability"; turbotab/core/models/explain.py):
+
+    explain      heavy   deps: working, fit, design, target_info   reads explain, purpose, the estimand …;
+                                                                    requires explain, models
+
+    ``explain`` describes each fitted family: SHAP values with their stability over reseeded refits,
+    the interaction ranking, each top exposure's curve per family on one grid (gated by the family's
+    cross-validated score against the baseline) and the family's architecture. Under inference it
+    is an estimate stage: withheld until the plan's questions are answered, and locking the plan.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -149,6 +159,7 @@ ROLE_READS: tuple[str, ...] = ("roles", "roles_unconfirmed", "role_confirmations
 WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.scales import SCALES_READS, scales_stage
+from turbotab.core.stages.explain import EXPLAIN_READS, explain_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
 from turbotab.core.stages.effects import EFFECTS_READS, effects_stage
@@ -597,6 +608,11 @@ def build_graph() -> Graph:
             Stage("time_varying", 1, ("working", "split", "target_info", "structure"),
                   TIME_VARYING_READS, time_varying_stage, heavy=True,
                   requires=("estimand", "unit"), label="Following the exposure through time"),
+            # ── Wave 2, EXPLAIN (V2 definition of done §2): the fitted families described ──
+            Stage("explain", 1, ("working", "fit", "design", "target_info"),
+                  (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
+                  requires=("explain", "models"),
+                  label="Explaining each fitted model"),
         ]
     )
 

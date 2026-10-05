@@ -689,6 +689,8 @@ function slotOf(d: Decision): Slot | null {
       return "scales";
     case "set_usual_intake":
       return "usual_intake";
+    case "set_explain":
+      return "explain";
     case "revert":
       return null;
   }
@@ -841,6 +843,10 @@ function valueOf(d: Decision): ProjectState[Slot] {
                summary: d.summary ?? "cumulative", truncation: d.truncation ?? null,
                simulations: d.simulations ?? 10000, bootstrap: d.bootstrap ?? 500,
                acknowledged: d.acknowledged ?? false };
+    case "set_explain": {
+      const { kind: _k, ...value } = d;
+      return value as ProjectState[Slot];
+    }
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -949,6 +955,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     diagnostic_responses: null,
     causal: null,
     time_varying: null,
+    explain: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

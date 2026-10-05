@@ -1144,3 +1144,7 @@ ARTIFACT_MODELS.update({"causal_design": CausalDesignArtifact, "causal": CausalA
 from turbotab.core.stages.time_varying import TimeVaryingArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"time_varying": TimeVaryingArtifact})
+# Wave 2, EXPLAIN: each fitted family described (turbotab/core/models/explain.py).
+from turbotab.core.models.explain import ExplainArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"explain": ExplainArtifact})

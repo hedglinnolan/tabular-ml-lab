@@ -1355,6 +1355,30 @@ class SetTimeVarying(_DecisionModel):
         return self
 
 
+# Wave 2, EXPLAIN (V2 definition of done §2, "Explainability"; turbotab/core/models/explain.py):
+# how the fitted models are described. ``curves``: accumulated local effects (sound with correlated
+# intakes) or partial dependence (customary, ranked lower); ``exposures``: the raw columns whose
+# curves are drawn (empty: the top exposures; under inference the declared one); ``reseeds``: the
+# refits the stability is measured over. ``as_effect`` asks for the explanations to be reported
+# as the exposures' effects, which is refused under both purposes (MODELING_SEQUENCE §4).
+ExplainCurves = Literal["ale", "partial_dependence"]
+
+
+class ExplainSpec(_Value):
+    curves: ExplainCurves = "ale"
+    exposures: list[str] = Field(default_factory=list)
+    reseeds: int = Field(default=5, ge=0, le=20)
+    as_effect: bool = False
+
+
+class SetExplain(_DecisionModel):
+    kind: Literal["set_explain"] = "set_explain"
+    curves: ExplainCurves = "ale"
+    exposures: list[str] = Field(default_factory=list)
+    reseeds: int = Field(default=5, ge=0, le=20)
+    as_effect: bool = False
+
+
 class OpenSeal(_DecisionModel):
     """Open the held-out rows: once, at the end. Held-out scores are withheld until then.
 
@@ -1607,6 +1631,7 @@ Decision = Annotated[
         SetModelSequence, RespondDiagnostic,
         SetCausal,
         SetTimeVarying,
+        SetExplain,
     ],
     Field(discriminator="kind"),
 ]
@@ -1749,6 +1774,8 @@ class ProjectState(BaseModel):
     causal: CausalSpec | None = None
     # V2 causal row: a time-varying exposure's estimation lane (``turbotab/core/time_varying.py``)
     time_varying: TimeVaryingSpec | None = None
+    # Wave 2, EXPLAIN: how the fitted models are described (``turbotab/core/models/explain.py``)
+    explain: ExplainSpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -2197,6 +2224,8 @@ register_kind(SetCausal, "causal", value=lambda d: CausalSpec(**d.model_dump(exc
 # V2 causal row: the time-varying exposure's lane (its refusals are in turbotab/core/time_varying.py)
 register_kind(SetTimeVarying, "time_varying",
               value=lambda d: TimeVaryingSpec(**d.model_dump(exclude={"kind"})))
+# Wave 2, EXPLAIN: its validators live with the method (``turbotab/core/models/explain.py``).
+register_kind(SetExplain, "explain", value=lambda d: ExplainSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))

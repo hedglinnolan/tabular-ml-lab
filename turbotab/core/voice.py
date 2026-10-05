@@ -1760,6 +1760,15 @@ def _lock_plan(d: Any, state: Any, ctx: Any) -> str:
             f"seen")
 
 
+@register_sentence("set_explain")
+def _set_explain(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLAIN: what the explanations are, and that they are not effects
+    (``turbotab/core/models/explain.py``)."""
+    from turbotab.core.models.explain import decision_sentence
+
+    return decision_sentence(d, state)
+
+
 # set_survey (audit §5 WP10)
 
 

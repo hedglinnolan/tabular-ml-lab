@@ -100,6 +100,7 @@ function view(): ProjectView {
       diagnostic_responses: null,
       causal: null,
       time_varying: null,
+      explain: null,
     },
     decisions: [record(1)],
     stages: {

@@ -380,6 +380,9 @@ def representative_decisions():
                          baseline=["age"]),
         d.SetTimeVarying(exposure="supplement", method="standard",
                          ordering="exposure_precedes_outcome", acknowledged=True),
+        # Wave 2, EXPLAIN: the fitted models described (models/explain.py)
+        d.SetExplain(),
+        d.SetExplain(curves="partial_dependence", exposures=["protein_g", "fiber_g"], reseeds=0),
     ]
 
 

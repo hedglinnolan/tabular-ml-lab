@@ -5,8 +5,9 @@ Each package's own acceptance file tests its method against its references. This
 places where two of them meet, each a rule one package wrote that the other's method must obey:
 
 * **One registry** (BLUEPRINT §13). Three of the four packages were built before wave 1's registry
-  landed and wrote their own contract shapes; every method now enters through the one registry
-  (``turbotab.core.contracts``) with its vocabulary for slots, scopes and rungs.
+  landed and wrote their own contract shapes (EXPLAIN a copy of OMICS's retired module); every
+  method now enters through the one registry (``turbotab.core.contracts``) with its vocabulary for
+  slots, scopes and rungs, each tagged with the package that declared it.
 * **One multiplicity method for a family** (ESTIMAND and MS7). ESTIMAND asks an exposure family's
   multiplicity on the estimand card; OMICS records it as ``set_multiplicity``. Both now write one
   slot, so the latest answer holds for the caption, the methods statement, the fit's table and the
@@ -57,7 +58,8 @@ def _fold(*decisions: d.BaseModel) -> d.ProjectState:
 WAVE2A = {"ESTIMAND": ("effect_measure", "g_computation", "model_sequence", "diagnostics",
                        "unmeasured_confounding", "exposure_family", "plan_export"),
           "CAUSAL": ("dml_plr", "dml_irm", "tmle", "pds_lasso"),
-          "TIMEVARY": ("time_varying",)}
+          "TIMEVARY": ("time_varying",),
+          "EXPLAIN": ("explain",)}
 
 
 def test_every_wave2a_method_enters_through_the_one_registry():
@@ -86,6 +88,12 @@ def test_every_wave2a_method_enters_through_the_one_registry():
             assert callable(getattr(importlib.import_module(module), name)), c.sentence
     C.run_order(list(registry))  # raises on a precedes relation the order breaks
     assert not hasattr(C, "register")  # ESTIMAND's own registry function is gone
+    with pytest.raises(ModuleNotFoundError):  # EXPLAIN's copy of the retired OMICS registry
+        importlib.import_module("turbotab.core.methods.contract")
+    from turbotab.core.estimand import ESTIMATE_STAGES
+
+    # Each package's estimates wait for the plan and lock it when first shown.
+    assert {"effects", "causal", "time_varying", "explain"} <= set(ESTIMATE_STAGES)
 
 
 # ── one multiplicity method for a family ─────────────────────────────────────
