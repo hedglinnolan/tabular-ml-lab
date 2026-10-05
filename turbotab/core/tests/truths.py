@@ -156,6 +156,7 @@ FIXTURE_TRUTHS: dict[str, dict[str, str]] = {
         # diet's common causes; body size may itself follow the diet (a cross-sectional measure of
         # unknown timing); blood pressure, HDL, triglycerides and the medications are downstream of
         # the diet and cause glucose's level or its treatment: mediators.
+        "exposure:glucose": "sugar", "contrast:sugar": "substitution",
         **{f"adjust:{c}": "yes,yes,no" for c in ("age", "gender", "cycle_begin_year")},
         **{f"adjust:{c}": "unknown,unknown,no" for c in (
             "protein", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly")},

@@ -1394,14 +1394,20 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
 
     task = state.task
     if task is None and target and target in frame.columns and state.purpose == "inference":
-        # The task as target_info detects it (``ml.triage``), for the measures the card offers.
+        # The task as target_info reads it (``ml.triage``'s detection, settled by the readings'
+        # value test where it settles), for the measures the card offers.
         from turbotab import engine
+        from turbotab.core.readings import task_reading
 
-        detection = engine.detect_task_type(frame[[target]].reset_index(drop=True), target)
+        values = frame[target].reset_index(drop=True)
+        detection = engine.detect_task_type(values.to_frame(), target)
         if detection.get("detected") == "classification":
-            task = "binary" if int(frame[target].nunique(dropna=True)) <= 2 else "multiclass"
+            task = "binary" if int(values.nunique(dropna=True)) <= 2 else "multiclass"
         else:
             task = "regression"
+        found = task_reading(target, task, detection.get("confidence"), values=values)
+        if found.settled:
+            task = str(found.value)
     out["estimand"] = estimand_card(state, task)
     out["adjustment"] = adjustment_card(state)
     return out

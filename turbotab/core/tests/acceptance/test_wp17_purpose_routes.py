@@ -367,7 +367,6 @@ def test_3_no_coefficient_before_the_plan_and_the_roles_come_from_the_answers(tm
     complete cases of the primary set and of the declared secondary; the derived roles from the
     fixture's declared causal truth (``truths.py``); VanderWeele 2019 for the criterion."""
     truth = fixture_truth("_tt_tmp_nhanes.csv")
-    truth["contrast:sugar"] = "substitution"
     raw = pd.read_csv(NHANES)
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, NHANES, truth)
@@ -558,6 +557,62 @@ def test_3_the_effect_measure_offers_only_what_the_engine_fits():
     assert refused.value.code == "not_inference"
     d.validate({"kind": "set_estimand", "exposure": "fiber_g", "measure": "odds_ratio"},
                {"state": state, "task": "binary"})
+
+
+def test_3_an_exposure_family_is_reported_one_at_a_time_by_the_feature_wise_family():
+    """MODELING_SEQUENCE §1 step 2: "one exposure or an exposure family (feature-wise, with its
+    multiplicity method)". The family's measure is what the feature-wise family estimates
+    (``models/featurewise.py``: a numeric outcome's difference per unit; a yes/no outcome's
+    difference in each exposure's mean, the limma design); no other exposure is a covariate; a
+    joint model, which adjusts each exposure for the others, is refused against it; one exposure
+    is no family. And a covariate whose role rode along unconfirmed is asked with the rest, so
+    confirming it later finds its answers given (the question does not reopen)."""
+    genes = {f"g{i}": "exposure" for i in range(3)}
+    state = ProjectState(target="case", task="binary", purpose="inference",
+                         roles={**genes, "age": "covariate", "batch": "covariate"},
+                         role_confirmations={**genes, "age": "covariate"},
+                         roles_unconfirmed=["batch"])
+    ctx = {"state": state, "task": "binary"}
+    assert estimand.fitted_measures("binary", family=True) == ["exposure_mean_difference"]
+    assert estimand.fitted_measures("regression", family=True) == ["mean_difference"]
+    assert estimand.fitted_measures("ordinal", family=True) == []
+    with pytest.raises(Refusal) as refused:
+        d.validate({"kind": "set_estimand", "family": True, "measure": "odds_ratio"}, ctx)
+    assert refused.value.code == "measure_mismatch"
+    d.validate({"kind": "set_estimand", "family": True, "measure": "exposure_mean_difference"}, ctx)
+    with pytest.raises(Refusal) as refused:
+        d.validate({"kind": "set_estimand", "exposure": "g0", "measure": "exposure_mean_difference"},
+                   ctx)
+    assert refused.value.code == "measure_mismatch"
+    one = state.model_copy(update={"roles": {"g0": "exposure", "age": "covariate"},
+                                   "role_confirmations": {"g0": "exposure", "age": "covariate"},
+                                   "roles_unconfirmed": None})
+    with pytest.raises(Refusal) as refused:
+        d.validate({"kind": "set_estimand", "family": True, "measure": "exposure_mean_difference"},
+                   {"state": one, "task": "binary"})
+    assert refused.value.code == "no_family"
+    assert refused.value.exits[0]["decision"]["exposure"] == "g0"
+
+    family = state.model_copy(update={"estimand": d.EstimandSpec(
+        family=True, measure="exposure_mean_difference")})
+    assert estimand.covariates(family) == ["age"]  # no gene is another's covariate
+    assert estimand.asked_covariates(family) == ["age", "batch"]  # batch rode along: asked too
+    answered = family.model_copy(update={"adjustment": {c: d.AdjustmentAnswer(
+        exposure=d.EXPOSURE_FAMILY, causes_exposure="no", causes_outcome="yes",
+        after_exposure="no") for c in ("age", "batch")}})
+    assert estimand.adjustment_answer(answered) is not None
+    confirmed = answered.model_copy(update={
+        "role_confirmations": {**answered.role_confirmations, "batch": "covariate"}})
+    assert estimand.adjustment_answer(confirmed) is not None  # confirming batch reopens nothing
+    assert set(estimand.derived_roles(confirmed)) == {"age", "batch"}
+    with pytest.raises(Refusal) as refused:
+        d.validate({"kind": "select_models", "models": ["featurewise", "linear"]},
+                   {"state": confirmed, "task": "binary"})
+    assert refused.value.code == "family_needs_featurewise"
+    d.validate({"kind": "select_models", "models": ["featurewise"]}, {"state": confirmed})
+    caption = estimand.caption(confirmed)
+    assert caption.startswith("The total effect of each of the 3 exposures (`g0`, `g1` and `g2`) "
+                              "on `case`, one at a time, as the difference in each exposure's mean")
 
 
 # ── 4 · clusters above the person ────────────────────────────────────────────

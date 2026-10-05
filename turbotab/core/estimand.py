@@ -248,14 +248,18 @@ NOT_FITTED = {
 }
 
 
+# What the feature-wise family (``models/featurewise.py``) estimates for an exposure family, each
+# exposure in turn adjusted for the covariates: a numeric outcome's difference in its mean per unit
+# of the exposure; a yes/no outcome's difference in the exposure's mean between the event and the
+# other level (the limma design). It fits no other task, so no family is offered for one.
+FAMILY_MEASURE_OF_TASK = {"regression": "mean_difference", "binary": "exposure_mean_difference"}
+
+
 def fitted_measures(task: str | None, family: bool = False) -> list[str]:
-    """The measures the engine fits for ``task``: the task's family's; for an exposure family with
-    a yes/no outcome also the feature-wise family's limma design (each exposure on the outcome)."""
-    fitted = MEASURE_OF_TASK.get(str(task))
-    out = [fitted] if fitted else []
-    if family and task == "binary":
-        out.append("exposure_mean_difference")
-    return out
+    """The measures the engine fits for ``task``: one exposure's, the task's model family's; an
+    exposure family's, the feature-wise family's."""
+    fitted = (FAMILY_MEASURE_OF_TASK if family else MEASURE_OF_TASK).get(str(task))
+    return [fitted] if fitted else []
 
 
 def measures_offered(task: str | None, family: bool = False) -> list[dict[str, Any]]:
@@ -270,7 +274,7 @@ def measures_offered(task: str | None, family: bool = False) -> list[dict[str, A
                                     "outcome and the covariates" if fitted == "exposure_mean_difference"
                                else "collapsible: the conditional and the marginal difference "
                                     "agree in a linear model")})
-    if task == "binary":
+    if task == "binary" and not family:
         out += [{"measure": m, "label": MEASURE_WORDS[m], "fitted": False, "reason": why}
                 for m, why in NOT_FITTED.items()]
     return out
@@ -371,6 +375,11 @@ def energy_contrast_applies(state: Any, exposure: str) -> bool:
     return energy_bearing(exposure) and any(r == "energy" for r in roles.values())
 
 
+def family_contrast_applies(state: Any) -> bool:
+    """An exposure family asks substitution or addition when any of its exposures carries energy."""
+    return any(energy_contrast_applies(state, c) for c in family_exposures(state))
+
+
 # ── the adjustment set (MODELING_SEQUENCE §1 step 3) ─────────────────────────
 
 ROLE_WORDS = {
@@ -462,19 +471,36 @@ def derive(answers: Any, effect: str = "total") -> Derived:
                     "it" if possible else "a cause of the exposure and of the outcome"))
 
 
-def covariates(state: Any) -> list[str]:
-    """The predictors the adjustment question asks about: every settled predictor but the exposure,
-    total energy (the energy question decides it under the dietary lens) and the grouping the
-    cluster answer gives fixed effects."""
+def _covariates_among(state: Any, roles: Mapping[str, str]) -> list[str]:
     spec = _get(state, "estimand")
     family = bool(_get(spec, "family")) if spec is not None else False
     exposure = _get(spec, "exposure") if spec is not None else None
     dietary = "dietary" in (_get(state, "lens") or [])
     fe = fixed_effects_column(state)
     # An exposure family: each exposure is reported in turn, so none is another's covariate.
-    return [c for c, r in predictor_roles(state).items()
+    return [c for c, r in roles.items()
             if c != exposure and c != fe and not (dietary and r == "energy")
             and not (family and r == "exposure")]
+
+
+def covariates(state: Any) -> list[str]:
+    """The covariates in the model whose answers derive their place: every settled predictor but
+    the exposure, total energy (the energy question decides it under the dietary lens) and the
+    grouping the cluster answer gives fixed effects."""
+    return _covariates_among(state, predictor_roles(state))
+
+
+def asked_covariates(state: Any) -> list[str]:
+    """The covariates the adjustment question asks about: as :func:`covariates`, and also each
+    recorded predictor role still riding along unconfirmed (BLUEPRINT §14.1). Its answers are
+    asked with the rest, so confirming its role later finds them given instead of reopening the
+    question; until it is confirmed it is in no model whatever they say."""
+    target = _get(state, "target")
+    gone = set(_base_left_out(state))
+    recorded = {c: r for c, r in (_get(state, "roles") or {}).items()
+                if r in PREDICTOR_ROLES and c != target and c not in gone}
+    settled = predictor_roles(state)
+    return _covariates_among(state, {**recorded, **settled})
 
 
 def current_answers(state: Any) -> dict[str, Any]:
@@ -490,7 +516,7 @@ def current_answers(state: Any) -> dict[str, Any]:
 
 def unanswered(state: Any) -> list[str]:
     answers = current_answers(state)
-    return [c for c in covariates(state) if c not in answers]
+    return [c for c in asked_covariates(state) if c not in answers]
 
 
 def derived_roles(state: Any) -> dict[str, Derived]:
@@ -525,7 +551,7 @@ def adjustment_gate(state: Any) -> Gate:
     spec = current_estimand(state)
     if spec is None:
         return None
-    if not covariates(state):
+    if not asked_covariates(state):
         besides = ("the exposures" if _get(spec, "family")
                    else _tick(_get(spec, "exposure")))
         return ("not_applicable", f"No column besides {besides} is in the model, so there is no "
@@ -604,7 +630,7 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
     exposure = exposure_key(spec)
     effect = str(_get(spec, "effect") or "total")
     answers = current_answers(state)
-    waiting = [c for c in covariates(state) if c not in answers]
+    waiting = [c for c in asked_covariates(state) if c not in answers]
     by_guess: dict[str | None, list[str]] = {}
     for c in waiting:
         by_guess.setdefault(guess_of(c), []).append(c)
@@ -661,12 +687,12 @@ def estimand_card(state: Any, task: str | None) -> dict[str, Any] | None:
                       for c in candidates],
         # Every exposure reported in turn, with its multiplicity method (MODELING_SEQUENCE §1 step
         # 2): offered with two or more exposures, as an omics table's features are.
-        "family": ({"n": len(family), "energy_contrast": any(
-                        energy_contrast_applies(state, c) for c in family),
+        "family": ({"n": len(family), "energy_contrast": family_contrast_applies(state),
                     "measures": measures_offered(task, family=True),
-                    "consequence": (f"Each of the {len(family):,} exposures is reported, with a "
-                                    f"false-discovery or multiplicity statement.")}
-                   if len(family) >= 2 else None),
+                    "consequence": (f"Each of the {len(family):,} exposures is reported in turn, "
+                                    f"adjusted for the covariates but not for the other exposures, "
+                                    f"with a false-discovery statement (the feature-wise family).")}
+                   if len(family) >= 2 and fitted_measures(task, family=True) else None),
         "effects": [
             {"effect": "total", "label": "Total effect",
              "consequence": "Everything the exposure changes downstream counts; mediators stay out."},
@@ -698,10 +724,12 @@ def caption(state: Any, task: str | None = None) -> str | None:
             "addition": "its calories added, every other energy source fixed"}.get(contrast)
     if _get(spec, "family"):
         family = family_exposures(state)
+        scale = (f"as the {MEASURE_WORDS[measure]}" if measure == "exposure_mean_difference"
+                 else f"as a {MEASURE_WORDS.get(measure, measure)} per unit of each")
         text = (f"The {effect} effect of each of the {len(family):,} exposures "
-                f"({_listing(family, limit=3)}) on {_tick(target)}" + (f" ({what})" if what else "")
-                + f", as a {MEASURE_WORDS.get(measure, measure)} per unit of each, with its "
-                  f"multiplicity stated")
+                f"({_listing(family, limit=3)}) on {_tick(target)}, one at a time"
+                + (f" ({what})" if what else "")
+                + f", {scale}, with the false-discovery rate stated")
     else:
         exposure = _get(spec, "exposure")
         text = (f"The {effect} effect of {_tick(exposure)} on {_tick(target)}"
@@ -1020,6 +1048,20 @@ def _estimand_names_a_predictor(decision: Any, ctx: Any) -> None:
     state = _state(ctx)
     if state is None or _get(state, "roles") is None:
         return
+    if decision.family:
+        family = family_exposures(state)
+        if len(family) < 2:
+            offered = exposure_candidates(state)
+            raise _refusal(
+                "no_family",
+                f"An exposure family reports each of two or more exposures in turn; "
+                f"{'only ' + _tick(family[0]) + ' is' if family else 'no column is'} in the model "
+                f"as an exposure.",
+                [{"label": f"The exposure is {_tick(c)}",
+                  "decision": decision.model_copy(update={"family": False, "exposure": c, "contrast": (
+                      decision.contrast or "substitution") if energy_contrast_applies(state, c)
+                      else None})} for c in offered[:4]])
+        return
     columns = _columns_of(ctx)
     exposure = decision.exposure
     if columns is not None and exposure not in columns:
@@ -1050,7 +1092,14 @@ def _estimand_measure_is_fitted(decision: Any, ctx: Any) -> None:
 
     state = _state(ctx)
     task = _get(state, "task") or _ctx(ctx, "task")
-    fitted = MEASURE_OF_TASK.get(str(task)) if task else None
+    measures = (FAMILY_MEASURE_OF_TASK if decision.family else MEASURE_OF_TASK)
+    fitted = measures.get(str(task)) if task else None
+    if decision.family and task and fitted is None:
+        raise _refusal(
+            "family_not_fitted",
+            f"An exposure family is reported by the feature-wise family, which fits a numeric or "
+            f"yes/no outcome, not a {str(task).replace('_', ' ')} one; name one exposure.",
+            [{"label": "Name one exposure", "decision": None}])
     if decision.measure in NOT_FITTED:
         exits = ([{"label": f"Report the {MEASURE_WORDS[fitted]}",
                    "decision": decision.model_copy(update={"measure": fitted})}] if fitted else [])
@@ -1071,11 +1120,13 @@ def _estimand_contrast_fits_the_exposure(decision: Any, ctx: Any) -> None:
     state = _state(ctx)
     if state is None or _get(state, "roles") is None:
         return
-    applies = energy_contrast_applies(state, decision.exposure)
+    applies = (family_contrast_applies(state) if decision.family
+               else energy_contrast_applies(state, decision.exposure))
+    named = "An exposure of the family" if decision.family else _tick(decision.exposure)
     if applies and decision.contrast is None:
         raise _refusal(
             "which_contrast",
-            f"{_tick(decision.exposure)} carries energy and total energy is in the model: say "
+            f"{named} carries energy and total energy is in the model: say "
             f"whether its effect is a substitution (more of it in place of other calories, total "
             f"energy fixed) or an addition (its calories added on top). The two are different "
             f"estimands (Tomova et al. 2022).",
@@ -1084,7 +1135,8 @@ def _estimand_contrast_fits_the_exposure(decision: Any, ctx: Any) -> None:
     if not applies and decision.contrast is not None:
         raise _refusal(
             "no_energy_contrast",
-            f"{_tick(decision.exposure)} carries no energy against a total in the model, so it is "
+            f"{'No exposure of the family' if decision.family else _tick(decision.exposure)} "
+            f"carries {'' if decision.family else 'no '}energy against a total in the model, so it is "
             f"neither a substitution nor an addition of calories.",
             [{"label": "Leave the contrast out",
               "decision": decision.model_copy(update={"contrast": None})}])
@@ -1107,18 +1159,19 @@ def _adjustment_follows_the_estimand(decision: Any, ctx: Any) -> None:
                        f"Declare the exposure first ({question_name('estimand')}); each covariate is "
                        f"asked about against it.",
                        [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
-    exposure = str(_get(spec, "exposure"))
+    exposure = exposure_key(spec)
     if decision.exposure != exposure:
+        said = "the exposure family" if _get(spec, "family") else _tick(exposure)
         raise _refusal("other_exposure",
-                       f"The exposure is {_tick(exposure)}, not {_tick(decision.exposure)}; "
+                       f"The exposure is {said}, not {_tick(decision.exposure)}; "
                        f"covariates are asked about against the exposure declared.",
                        [{"label": f"Answer for {_tick(exposure)}",
                          "decision": decision.model_copy(update={"exposure": exposure})}])
-    known = set(covariates(state))
+    known = set(asked_covariates(state))
     strangers = [c for c in decision.answers if c not in known]
     if strangers:
         what = ("the exposure itself" if strangers == [exposure] else
-                "not a covariate in the model (a covariate is a settled exposure or covariate "
+                "not a covariate in the model (a covariate is a recorded exposure or covariate "
                 "role; total energy is decided by the energy question)")
         raise _refusal("not_a_covariate", f"{_listing(strangers)}: {what}.",
                        [{"label": "Answer for the model's covariates only",
@@ -1204,10 +1257,11 @@ def _energy_model_fits_the_contrast(decision: Any, ctx: Any) -> None:
     other = "addition" if contrast == "substitution" else "substitution"
     ranked = (("all_components", "standard", "residual") if contrast == "substitution"
               else ("all_components", "partition"))
+    whose = "the exposures'" if _get(spec, "family") else f"{_tick(_get(spec, 'exposure'))}'s"
     raise _refusal(
         "contrast_mismatch",
         f"The estimand is {'a substitution' if contrast == 'substitution' else 'an addition'} of "
-        f"{_tick(_get(spec, 'exposure'))}'s calories, and the {label[0].lower() + label[1:]} "
+        f"{whose} calories, and the {label[0].lower() + label[1:]} "
         f"estimates {'no substitution' if contrast == 'substitution' else 'a substitution, not an addition'} "
         f"(Tomova et al. 2022).",
         [*({"label": METHOD_TABLE[m]["label"],
@@ -1215,6 +1269,33 @@ def _energy_model_fits_the_contrast(decision: Any, ctx: Any) -> None:
            for m in ranked),
          {"label": f"Make the estimand an {other}" if other == "addition" else f"Make the estimand a {other}",
           "decision": SetEstimand(**{**spec.model_dump(), "contrast": other})}])
+
+
+# select_models: an exposure family is reported by the feature-wise family
+
+
+def _models_fit_the_family(decision: Any, ctx: Any) -> None:
+    """Under inference, a declared exposure family (each exposure in turn, adjusted for the
+    covariates, with a false-discovery statement) is estimated by the feature-wise family alone; a
+    joint model adjusts each exposure for the others, which is another estimand."""
+    from turbotab.core.decisions import SelectModels
+
+    state = _state(ctx)
+    if _get(state, "purpose") != "inference":
+        return
+    spec = current_estimand(state)
+    if spec is None or not _get(spec, "family"):
+        return
+    others = [m for m in decision.models if m != "featurewise"]
+    if not others:
+        return
+    raise _refusal(
+        "family_needs_featurewise",
+        f"The estimand is the exposure family, each exposure in turn adjusted for the covariates; "
+        f"{_listing(others)} {'adjusts' if len(others) == 1 else 'adjust'} each exposure for the "
+        f"others, which is another estimand. The feature-wise family estimates this one.",
+        [{"label": "Fit the feature-wise family", "decision": SelectModels(models=["featurewise"])},
+         {"label": "Name one exposure instead", "decision": None}])
 
 
 def _register() -> None:
@@ -1232,6 +1313,7 @@ def _register() -> None:
     register_validator("set_adjustment", _answers_hold_together)
     register_validator("set_adjustment", _mediators_stay_out_of_a_total_effect)
     register_validator("set_energy_adjustment", _energy_model_fits_the_contrast)
+    register_validator("select_models", _models_fit_the_family)
 
 
 _register()
@@ -1239,7 +1321,7 @@ _register()
 __all__ = [
     "Derived", "ESTIMATE_STAGES", "GUESSES", "HOLDS", "MEASURE_OF_TASK", "MEASURE_WORDS",
     "NOT_FITTED", "QUESTIONS", "ROLE_PLURAL", "ROLE_SINGULAR", "ROLE_WORDS", "adjustment_answer",
-    "adjustment_card",
+    "adjustment_card", "asked_covariates",
     "adjustment_gate", "adjustment_left_out", "annotate_fit", "caption", "cluster_answer",
     "cluster_candidates", "clusters_gate", "covariates", "current_answers", "current_estimand",
     "derive", "derived_roles", "effective_task", "estimand_card", "estimand_gate",

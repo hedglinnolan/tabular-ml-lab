@@ -431,6 +431,8 @@ def _slot_value(slot: str, value: Any) -> str | None:
         column = _attr(value, "column")
         return f"grouped by {tick(column)}" if column else "no grouping above the person"
     if slot == "estimand":
+        if _attr(value, "family"):
+            return f"the {_attr(value, 'effect')} effect of each exposure in turn"
         return f"the {_attr(value, 'effect')} effect of {tick(_attr(value, 'exposure'))}"
     if slot == "adjustment":
         return f"answers for {count(len(value))} {plural(len(value), 'covariate')}"
@@ -1361,8 +1363,14 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
                                 "total energy)",
                 "addition": " (an addition: its calories added, every other energy source "
                             "fixed)"}.get(d.contrast or "", "")
-    text = (f"The analysis estimates the {d.effect} effect of {tick(d.exposure)}{on}{contrast}, as "
-            f"a {MEASURE_WORDS.get(d.measure, d.measure)} per unit of {tick(d.exposure)}")
+    if d.family:  # every exposure in turn, adjusted for the covariates (the feature-wise family)
+        scale = (f"as the {MEASURE_WORDS[d.measure]}" if d.measure == "exposure_mean_difference"
+                 else f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per unit of each")
+        text = (f"The analysis estimates the {d.effect} effect of each exposure in turn{on}"
+                f"{contrast}, {scale}, with the false-discovery rate stated")
+    else:
+        text = (f"The analysis estimates the {d.effect} effect of {tick(d.exposure)}{on}{contrast}, "
+                f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per unit of {tick(d.exposure)}")
     if d.measure in NON_COLLAPSIBLE:
         text += ", given the adjustment set"
     if d.effect == "direct":
@@ -1397,8 +1405,10 @@ def _set_adjustment(d: Any, state: Any, ctx: Any) -> str:
     kept = [c for c, a in d.answers.items() if a.keep and a.acknowledged and not
             (derived[c].role == "mediator" and effect == "direct")
             and derived[c].role in ("mediator", "collider", "timing_unknown")]
-    text = (f"For the effect of {tick(d.exposure)}, by the disjunctive cause criterion: "
-            + "; ".join(parts))
+    from turbotab.core.decisions import EXPOSURE_FAMILY
+
+    whose = "each exposure" if d.exposure == EXPOSURE_FAMILY else tick(d.exposure)
+    text = f"For the effect of {whose}, by the disjunctive cause criterion: " + "; ".join(parts)
     if kept:
         text += (f". {listing(kept)} {plural(len(kept), 'was', 'were')} kept in the primary set "
                  f"over that reading, as recorded, so the estimate is not a total effect")

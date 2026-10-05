@@ -891,11 +891,18 @@ export interface components {
         };
         /**
          * EstimandSpec
-         * @description The exposure and the effect the inference reports (MODELING_SEQUENCE §1 step 2).
+         * @description The exposure and the effect the inference reports (MODELING_SEQUENCE §1 step 2): one
+         *     exposure, or an exposure family (``family``: every exposure-role column, each reported, with
+         *     its multiplicity method; ``exposure`` is then None).
          */
         EstimandSpec: {
             /** Exposure */
-            exposure: string;
+            exposure: string | null;
+            /**
+             * Family
+             * @default false
+             */
+            family: boolean;
             /**
              * Effect
              * @default total
@@ -908,7 +915,7 @@ export interface components {
              * Measure
              * @enum {string}
              */
-            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio";
+            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio" | "exposure_mean_difference";
         };
         /**
          * Evidence
@@ -2275,7 +2282,12 @@ export interface components {
              */
             kind: "set_estimand";
             /** Exposure */
-            exposure: string;
+            exposure?: string | null;
+            /**
+             * Family
+             * @default false
+             */
+            family: boolean;
             /**
              * Effect
              * @default total
@@ -2288,7 +2300,7 @@ export interface components {
              * Measure
              * @enum {string}
              */
-            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio";
+            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio" | "exposure_mean_difference";
         };
         /** SetEstimand */
         "SetEstimand-Output": {
@@ -2298,7 +2310,12 @@ export interface components {
              */
             kind: "set_estimand";
             /** Exposure */
-            exposure: string;
+            exposure: string | null;
+            /**
+             * Family
+             * @default false
+             */
+            family: boolean;
             /**
              * Effect
              * @default total
@@ -2311,7 +2328,7 @@ export interface components {
              * Measure
              * @enum {string}
              */
-            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio";
+            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio" | "exposure_mean_difference";
         };
         /**
          * SetEvent

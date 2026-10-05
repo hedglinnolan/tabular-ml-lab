@@ -583,8 +583,11 @@ def test_5_a_goldberg_rule_that_reads_the_outcome_is_refused(table, tmp_path_fac
     outcome, the Goldberg screen reads the outcome (its BMR), so it is refused as a primary rule and
     inside a sensitivity analysis (audit RO-01), each with a way forward."""
     _, path = table
+    # WP17: with weight the outcome, LDL (set by the fiber eaten) is a consequence of the exposure.
+    truth = goldberg_truth()
+    truth["adjust:ldl"] = "no,no,yes"
     with local_server(tmp_path_factory.mktemp("wp12c_outcome_home")) as client:
-        d = open_project(client, path, goldberg_truth())
+        d = open_project(client, path, truth)
         d.decide({"kind": "set_lens", "lenses": ["dietary"]})
         d.reach("target")
         d.decide({"kind": "set_target", "column": "weight"})

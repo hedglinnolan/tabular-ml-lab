@@ -59,7 +59,8 @@ class SecondaryArtifact(_Model):
 
 
 def secondary_stage(ctx: StageContext) -> Bundle:
-    from turbotab.core.estimand import current_estimand, primary_features, secondary_columns
+    from turbotab.core.estimand import (current_estimand, exposure_key, exposures_of,
+                                        primary_features, secondary_columns)
     from turbotab.core.models import get_family
     from turbotab.core.models.base import reports_coefficients
     from turbotab.core.models.inference import Outcome, cluster_columns
@@ -68,7 +69,7 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.stages.modeling import (_missing_for_table, _survey, _task, coded_outcome,
                                                outcome_levels, read_assignment)
     from turbotab.core.stages.sensitivity import fit_on_rows
-    from turbotab.core.voice import listing, tick
+    from turbotab.core.voice import listing
 
     state = ctx.state
     spec_estimand = current_estimand(state)
@@ -82,7 +83,9 @@ def secondary_stage(ctx: StageContext) -> Bundle:
         return Bundle(data=SecondaryArtifact(
             purpose="inference", exposure=str(getattr(spec_estimand, "exposure", "") or ""),
             further=[], rows="", families=[], methods=why).model_dump(mode="json"))
-    exposure = str(spec_estimand.exposure)
+    # One exposure, or each exposure of a family (``*``): their rows are the estimates reported.
+    exposure = exposure_key(spec_estimand)
+    exposures = exposures_of(state, spec_estimand)
     task = _task(ctx)
     target = state.target
     design = ctx.inputs["design"]
@@ -149,7 +152,7 @@ def secondary_stage(ctx: StageContext) -> Bundle:
         for label, s, built in analyses:
             done += 1
             ctx.progress(0.1 + 0.85 * done / total, f"{family.label}: {label}")
-            adjusted = [c for c in s.predictors if c != exposure]
+            adjusted = [c for c in s.predictors if c not in exposures]
             try:
                 _, (coef, inference), concerns = fit_on_rows(
                     state, family, built[family.key], frame, s.inputs, y, task, unit_columns,
@@ -159,14 +162,15 @@ def secondary_stage(ctx: StageContext) -> Bundle:
                 fits.append({"label": label, "adjusted_for": adjusted, "n_rows": int(len(frame)),
                              "coefficients": None, "concerns": [f"It could not be fit: {exc}"]})
                 continue
-            features = set(primary_features([r["feature"] for r in coef or []], exposure))
+            features = {f for e in exposures
+                        for f in primary_features([r["feature"] for r in coef or []], e)}
             fits.append({"label": label, "adjusted_for": adjusted, "n_rows": int(len(frame)),
                          "coefficients": [r for r in coef or [] if r["feature"] in features],
                          "inference": inference, "concerns": concerns})
         out.append({"family": family.key, "label": family.label, "fits": fits})
     methods = (f"Beside the primary model, the same model further adjusted for {listing(further)} "
                f"was declared before the estimates were shown and fit on {note}; the estimate of "
-               f"{tick(exposure)} is reported from each.")
+               f"{listing(exposures, limit=3)} is reported from each.")
     artifact = SecondaryArtifact(purpose="inference", exposure=exposure, further=further,
                                  rows=note, families=out, methods=methods)
     ctx.progress(1.0, "Done")

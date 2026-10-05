@@ -780,8 +780,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
       return { column: d.column ?? null, adjust: d.adjust ?? null,
                acknowledged: d.acknowledged ?? false };
     case "set_estimand":
-      return { exposure: d.exposure, effect: d.effect ?? "total",
-               contrast: d.contrast ?? null, measure: d.measure };
+      return { exposure: d.exposure ?? null, family: d.family ?? false,
+               effect: d.effect ?? "total", contrast: d.contrast ?? null, measure: d.measure };
     case "set_adjustment":
       return null;
     case "set_survey": {

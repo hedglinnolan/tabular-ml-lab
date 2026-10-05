@@ -281,6 +281,41 @@ def countries() -> pd.DataFrame:
                          "sbp": rng.normal(125, 15, n).round(0)})
 
 
+# WP17 (MODELING_SEQUENCE §1 steps 2–3): under inference each table's exposure, and each
+# covariate's answers to the disjunctive cause criterion (causes the exposure, causes the outcome,
+# changed by the exposure), from its generator above: who is drawn from whom.
+# p1: age and fruit are drawn apart, and each moves BMI.
+MEPS_CAUSAL = {"exposure:bmi": "fruit_servings", "adjust:AGE19X": "no,yes,no"}
+
+
+def LAB_CAUSAL(header: str) -> dict[str, str]:  # noqa: N802 - a table of truths, by outcome
+    """p4: smoking and fiber move the count; age moves nothing."""
+    return {f"exposure:{header}": "fiber_g", "adjust:smoker": "no,yes,no",
+            "adjust:age": "no,no,no"}
+
+
+# p3: smoking, age and fiber are drawn apart, and each moves CRP.
+SMOKING_CAUSAL = {"exposure:crp_mg_l": "fiber_g", "adjust:smoking": "no,yes,no",
+                  "adjust:age": "no,yes,no"}
+# p2: age and the ethnic background move SBP. Education and the state of residence are declared
+# possible causes of diet and of blood pressure, as an analyst of the real UK Biobank and BRFSS
+# fields answers (the generator gives them no effect, which no analyst of such data could know);
+# the test is about their codes entering the fit.
+CODED_CAUSAL = {"exposure:sbp": "fruit_veg_servings", "adjust:age": "no,yes,no",
+                "adjust:ethnic_background": "no,yes,no", "adjust:education": "unknown,unknown,no",
+                "adjust:_STATE": "unknown,unknown,no"}
+# p10: the hours slept move the next day's intake. Caffeine is declared a cause of the hours slept
+# whose effect on the next day's intake is unknown, as a sleep researcher answers (the generator
+# draws it apart, which no analyst of a diary could know); the test is about `hours` in the model.
+HOURS_CAUSAL = {"exposure:next_day_kcal": "hours", "adjust:caffeine_mg": "yes,unknown,no"}
+# p11: sex and weight set energy needs, and so the protein eaten; age moves SBP; height moves
+# nothing; the other macronutrients share total energy with protein, the field's default.
+POUNDS_CAUSAL = {"exposure:sbp": "protein_g", "adjust:sex": "yes,no,no",
+                 "adjust:weight": "yes,no,no", "adjust:age_years": "no,yes,no",
+                 "adjust:height_cm": "no,no,no", "adjust:fat_g": "unknown,unknown,no",
+                 "adjust:carbohydrate_g": "unknown,unknown,no"}
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Driving the real server
 # ═════════════════════════════════════════════════════════════════════════════
@@ -319,6 +354,10 @@ def drive_unsettled(drive: Any, plan: dict[str, dict[str, Any]], *, roles: dict[
     proposals: list[dict[str, Any]] = []
     for key in ORDER:
         if key == stop_before:
+            # Under inference the exposure and the adjustment set come before it (WP17): answered
+            # from the fixture's truth, as every question before ``stop_before`` is.
+            if key in plan:
+                drive.answer_wp17_before(plan[key])
             return proposals
         if key in ("event", "task") and drive.view()["state"].get("target"):
             # The outcome's questions read the target's stage (the Router can show them open a
@@ -342,7 +381,9 @@ def drive_unsettled(drive: Any, plan: dict[str, dict[str, Any]], *, roles: dict[
 
 def fit_refused_without_a_number(drive: Any, body: dict[str, Any]) -> dict[str, Any]:
     """Section F's criterion: with readings unsettled, the fit asks or refuses and computes no
-    number. Returns the refusal."""
+    number. Returns the refusal. Under inference the exposure and the adjustment set come first
+    (WP17): they are answered from the fixture's truth before the models are asked for."""
+    drive.answer_wp17_before(body)
     r = drive.post(body)
     assert r.status_code == 409, r.text[:600]
     error = r.json()["error"]
@@ -410,7 +451,7 @@ def test_a1_a_household_line_number_never_clusters_the_intervals_through_the_ser
     path = write(frame, tmp_path, "meps.csv")
     plan = answers("bmi", ["clinical"], grain={"kind": "set_grain", "grain": "one_row_per_unit",
                                                 "id_column": "DUPERSID"})
-    truth = Truth({"code_or_count:AGE19X": "amount"}, fixture="MEPS (p1_ids.py)")
+    truth = Truth({"code_or_count:AGE19X": "amount", **MEPS_CAUSAL}, fixture="MEPS (p1_ids.py)")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, path, truth)
         proposals = drive_unsettled(drive, plan, roles={"PID": "excluded", "DUID": "cluster",
@@ -429,7 +470,8 @@ def test_a1_a_household_line_number_never_clusters_the_intervals_through_the_ser
         assert "by `PID`" not in said
 
         wrong = open_project(client, write(frame, tmp_path, "meps_pid.csv"),
-                             Truth({"code_or_count:AGE19X": "amount"}, fixture="MEPS, PID kept"))
+                             Truth({"code_or_count:AGE19X": "amount", **MEPS_CAUSAL},
+                                   fixture="MEPS, PID kept"))
         drive_unsettled(wrong, plan, roles={"PID": "identifier", "DUID": "excluded",
                                             "DUPERSID": "identifier"})
         wrong.decide(plan["models"])
@@ -448,7 +490,9 @@ def test_a1_a_rosters_line_number_never_wins_over_the_household_the_user_confirm
     frame = roster()
     assert frame["person_no"].nunique() == 18
     plan = answers("waist_cm", ["survey"])
-    truth = {"code_or_count:age_years": "amount", "code_or_count:sugary_drinks_wk": "amount"}
+    truth = {"code_or_count:age_years": "amount", "code_or_count:sugary_drinks_wk": "amount",
+             # WP17, the generator: age and the drinks are drawn apart, and each moves the waist.
+             "exposure:waist_cm": "sugary_drinks_wk", "adjust:age_years": "no,yes,no"}
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(frame, tmp_path, "roster.csv"),
                              Truth(truth, fixture="roster (p5_roster.py)"))
@@ -508,7 +552,8 @@ def test_a2_the_gates_two_headers_through_the_server_state_no_parsed_unit(tmp_pa
     with local_server(tmp_path / "home") as client:
         for i, (header, frame) in enumerate(tables.items()):
             drive = open_project(client, write(frame, tmp_path, f"units{i}.csv"),
-                                 Truth({"code_or_count:age": "amount"}, fixture=header))
+                                 Truth({"code_or_count:age": "amount", **LAB_CAUSAL(header)},
+                                       fixture=header))
             plan = answers(header, ["clinical"])
             drive_unsettled(drive, plan, roles={"participant_id": "identifier"})
             drive.decide(plan["models"])
@@ -541,7 +586,7 @@ def test_a3_the_users_codes_reach_the_fit_as_one_indicator_per_level(tmp_path):
         for truth, want in ((("code"), {"smoking_2": indicators[1], "smoking_3": indicators[2]}),
                             (("amount"), {"smoking": slope[1]})):
             drive = open_project(client, write(frame, tmp_path, f"smoking_{truth}.csv"), Truth(
-                {"code_or_count:smoking": truth, "code_or_count:age": "amount"},
+                {"code_or_count:smoking": truth, "code_or_count:age": "amount", **SMOKING_CAUSAL},
                 fixture=f"p3, smoking as {truth}"))
             drive_unsettled(drive, plan, roles={"participant_id": "identifier"})
             error = fit_refused_without_a_number(drive, plan["models"])
@@ -571,7 +616,8 @@ def test_a4_codes_after_a_blank_and_beyond_ten_levels_are_asked_and_fit_as_indic
     plan = answers("sbp", ["clinical"], grain={"kind": "set_grain", "grain": "one_row_per_unit",
                                                "id_column": "eid"})
     truth = Truth({"code_or_count:ethnic_background": "code", "code_or_count:education": "code",
-                   "code_or_count:_STATE": "code", "code_or_count:age": "amount"}, fixture="p2")
+                   "code_or_count:_STATE": "code", "code_or_count:age": "amount", **CODED_CAUSAL},
+                  fixture="p2")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(frame, tmp_path, "codes.csv"), truth)
         drive_unsettled(drive, plan, roles={"eid": "identifier"})
@@ -655,7 +701,7 @@ def test_a5_a_bare_unit_word_is_no_time_and_stays_in_the_model(tmp_path):
                    repeat_kind={"kind": "set_repeat_kind", "repeat_kind": "time_points",
                                 "time_column": "night"},
                    unit={"kind": "set_unit", "unit": "row"})
-    truth = Truth({"code_or_count:caffeine_mg": "amount"}, fixture="p10")
+    truth = Truth({"code_or_count:caffeine_mg": "amount", **HOURS_CAUSAL}, fixture="p10")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(frame, tmp_path, "hours.csv"), truth)
         drive_unsettled(drive, plan, roles={"hours": "exposure", "night": "time"})
@@ -884,8 +930,8 @@ def test_b9_a_weight_recorded_in_pounds_is_converted_exactly_in_the_goldberg_off
 
     plan = answers("sbp", ["dietary"])
     truth = Truth({"unit:weight": "lb", "unit:age_years": "years", "unit:energy_kcal": "kcal",
-                   "day_count:energy_kcal": "1", "code_or_count:age_years": "amount"},
-                  fixture="p11")
+                   "day_count:energy_kcal": "1", "code_or_count:age_years": "amount",
+                   **POUNDS_CAUSAL}, fixture="p11")
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, write(frame, tmp_path, "pounds.csv"), truth)
         drive_unsettled(drive, plan, roles={}, stop_before="exclusions")
@@ -1272,19 +1318,37 @@ def test_e3_the_nhanes_reference_journey_asks_few_questions(purpose, tmp_path):
 
     if not NHANES.is_file():
         pytest.skip("the NHANES export is not on this machine")
+    from turbotab.core.interview import QUESTION_KEYS
+    from turbotab.core.tests.acceptance.server_drive import WP17_QUESTIONS, answer_plan, answer_wp17
+
     plan = answers("glucose", ["dietary"], purpose={"kind": "set_purpose", "purpose": purpose})
+    if purpose == "inference":
+        # WP17: the declared estimand is sugar in place of other energy at fixed total energy
+        # (``truths.FIXTURE_TRUTHS``), which the standard model estimates; the crude model, which
+        # lets total energy leave, is refused against it (Tomova et al. 2022).
+        plan["energy_adjustment"] = {
+            "kind": "set_energy_adjustment", "method": "standard", "energy_column": "kcal",
+            "nutrients": ["sugar", "protein", "carb", "fat_total", "fat_sat", "fat_mon",
+                          "fat_poly"]}
     truth = fixture_truth(NHANES.name)
-    counted = {"questions": 0, "asks": 0, "readings_asked": 0}
+    counted = {"questions": 0, "asks": 0, "readings_asked": 0, "adjustment_taps": 0}
     with local_server(tmp_path / "home") as client:
         drive = open_project(client, NHANES, truth)
         url = f"/api/projects/{drive.pid}/decisions"
-        for key in ORDER:
+        for key in [k for k in QUESTION_KEYS if k in ORDER or k in WP17_QUESTIONS]:
             if key in ("event", "task"):  # the outcome's stage first, as a client
                 drive.artifact("target_info", timeout=600)
             step = drive.reach(key, timeout=600)
             if step["status"] not in ("open", "waiting"):
                 continue
             counted["questions"] += 1
+            if key == "adjustment":  # one tap per group the pack guesses alike (BLUEPRINT §14.2)
+                spec = drive.view()["state"]["estimand"]
+                counted["adjustment_taps"] += len(answer_plan(drive, spec["exposure"]))
+                continue
+            if key in WP17_QUESTIONS:
+                answer_wp17(drive, key)
+                continue
             body = plan.get(key)
             if key == "roles":
                 proposals = drive.artifact("roles")["columns"]
@@ -1293,7 +1357,13 @@ def test_e3_the_nhanes_reference_journey_asks_few_questions(purpose, tmp_path):
                     truth.setdefault(f"role:{column}", role)
             from turbotab.core.tests.acceptance.server_drive import _post_when_reached
 
-            r = _post_when_reached(client, url, body)
+            def reopened(body: dict = body) -> bool:
+                """A question answered earlier that a confirmation reopened, counted again."""
+                answered = drive.answer_wp17_before(body)
+                counted["questions"] += int(answered)
+                return answered
+
+            r = _post_when_reached(client, url, body, unblock=reopened)
             while r.status_code == 409 and r.json()["error"]["code"] in ASKING:
                 counted["asks"] += 1
                 listed = asked(r.json()["error"]["exits"])
@@ -1303,7 +1373,7 @@ def test_e3_the_nhanes_reference_journey_asks_few_questions(purpose, tmp_path):
 
                 for decision in truth_answers(r.json()["error"], truth):
                     assert client.post(url, json=decision).status_code == 200
-                r = _post_when_reached(client, url, body)
+                r = _post_when_reached(client, url, body, unblock=reopened)
             assert r.status_code == 200, (key, r.text[:600])
         drive.artifact("fit", timeout=900)
     (tmp_path / f"nhanes_questions_{purpose}.json").write_text(json.dumps(counted))

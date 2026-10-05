@@ -146,9 +146,17 @@ def usual_answer(client: TestClient, pid: str, key: str, view: dict) -> dict:
         inference = state.get("purpose") == "inference"
         return {"kind": "set_clusters", "column": found[0] if found else None,
                 "adjust": "cluster_only" if inference and found else None}
-    if key == "estimand":  # the first exposure the card offers, on the scale the engine fits
+    if key == "estimand":  # the author's declared question (``exposure:<outcome>``: a column, or
+        # ``family``), else the first exposure the card offers; on the scale the engine fits
         card = _artifact(client, pid, "proposals").get("estimand") or {}
-        first = card["exposures"][0]
+        declared = truth_of(pid).get(f"exposure:{state['target']}")
+        if declared == "family":
+            family = card["family"]
+            measure = next(m["measure"] for m in family["measures"] if m["fitted"])
+            return {"kind": "set_estimand", "family": True, "measure": measure,
+                    "contrast": "substitution" if family["energy_contrast"] else None}
+        first = next((e for e in card["exposures"] if e["column"] == declared),
+                     card["exposures"][0])
         measure = next(m["measure"] for m in card["measures"] if m["fitted"])
         return {"kind": "set_estimand", "exposure": first["column"], "measure": measure,
                 "contrast": "substitution" if first["energy_contrast"] else None}
@@ -199,10 +207,13 @@ def answer_adjustment_card(client: TestClient, pid: str, timeout: float = 120.0)
     the exposure the estimand declared."""
     from turbotab.core.tests.truths import answer_adjustment
 
+    from turbotab.core.decisions import EXPOSURE_FAMILY
+
     end = time.monotonic() + timeout
     while True:
         view = client.get(f"/api/projects/{pid}").json()
-        exposure = ((view["state"] or {}).get("estimand") or {}).get("exposure")
+        spec = (view["state"] or {}).get("estimand") or {}
+        exposure = EXPOSURE_FAMILY if spec.get("family") else spec.get("exposure")
         card = _artifact(client, pid, "proposals").get("adjustment")
         if (view["stages"]["proposals"]["status"] == "fresh" and card
                 and card.get("exposure") == exposure):

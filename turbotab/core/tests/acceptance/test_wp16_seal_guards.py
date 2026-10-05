@@ -93,6 +93,17 @@ def audit_tables(folder: Path) -> dict[str, Path]:
     return out
 
 
+# WP17: each table's question under inference and each covariate's causal place, from the
+# generator (``audit_tables``): I1 draws age and fiber apart, and age moves bmi; I2 draws age and
+# sodium apart, age moves sbp, and the extra `bmi` comes from a stream of its own (a cause of
+# neither). Answers: causes the exposure, causes the outcome, changed by the exposure.
+CAUSAL_TRUTHS = {
+    "bmi.csv": {"exposure:bmi": "fiber_g", "adjust:age": "no,yes,no"},
+    "sbp_imp.csv": {"exposure:sbp": "sodium_g", "adjust:age": "no,yes,no",
+                    "adjust:bmi": "no,no,no"},
+}
+
+
 def score_table(folder: Path) -> Path:
     """A five-level numeric outcome, which reads as regression or as multiclass."""
     rng = np.random.default_rng(7)
@@ -151,8 +162,8 @@ def open_project(client, path: Path, lens: str, target: str, purpose: str) -> st
     from turbotab.core.tests.truths import FIXTURE_TRUTHS
 
     # These tables' truth: ages in whole years and the outcomes' whole values are amounts.
-    declare(pid, {**FIXTURE_TRUTHS.get(path.name, {}), "code_or_count:age": "amount"},
-            fixture=path.name)
+    declare(pid, {**FIXTURE_TRUTHS.get(path.name, {}), "code_or_count:age": "amount",
+                  **CAUSAL_TRUTHS.get(path.name, {})}, fixture=path.name)
     wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
     accepted(client, pid, {"kind": "set_lens", "lenses": [lens]})
     accepted(client, pid, {"kind": "set_target", "column": target})

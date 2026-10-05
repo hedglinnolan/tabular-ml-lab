@@ -2927,8 +2927,20 @@
       "EstimandSpec": {
         "properties": {
           "exposure": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Exposure"
+          },
+          "family": {
+            "type": "boolean",
+            "title": "Family",
+            "default": false
           },
           "effect": {
             "type": "string",
@@ -2963,7 +2975,8 @@
               "cumulative_odds_ratio",
               "relative_risk_ratio",
               "risk_difference",
-              "risk_ratio"
+              "risk_ratio",
+              "exposure_mean_difference"
             ],
             "title": "Measure"
           }
@@ -2972,12 +2985,13 @@
         "type": "object",
         "required": [
           "exposure",
+          "family",
           "effect",
           "contrast",
           "measure"
         ],
         "title": "EstimandSpec",
-        "description": "The exposure and the effect the inference reports (MODELING_SEQUENCE §1 step 2)."
+        "description": "The exposure and the effect the inference reports (MODELING_SEQUENCE §1 step 2): one\nexposure, or an exposure family (``family``: every exposure-role column, each reported, with\nits multiplicity method; ``exposure`` is then None)."
       },
       "Evidence": {
         "properties": {
@@ -7130,9 +7144,20 @@
             "default": "set_estimand"
           },
           "exposure": {
-            "type": "string",
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Exposure"
+          },
+          "family": {
+            "type": "boolean",
+            "title": "Family",
+            "default": false
           },
           "effect": {
             "type": "string",
@@ -7167,7 +7192,8 @@
               "cumulative_odds_ratio",
               "relative_risk_ratio",
               "risk_difference",
-              "risk_ratio"
+              "risk_ratio",
+              "exposure_mean_difference"
             ],
             "title": "Measure"
           }
@@ -7176,7 +7202,6 @@
         "type": "object",
         "required": [
           "kind",
-          "exposure",
           "measure"
         ],
         "title": "SetEstimand"
@@ -7190,9 +7215,20 @@
             "default": "set_estimand"
           },
           "exposure": {
-            "type": "string",
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Exposure"
+          },
+          "family": {
+            "type": "boolean",
+            "title": "Family",
+            "default": false
           },
           "effect": {
             "type": "string",
@@ -7227,7 +7263,8 @@
               "cumulative_odds_ratio",
               "relative_risk_ratio",
               "risk_difference",
-              "risk_ratio"
+              "risk_ratio",
+              "exposure_mean_difference"
             ],
             "title": "Measure"
           }
@@ -7237,6 +7274,7 @@
         "required": [
           "kind",
           "exposure",
+          "family",
           "effect",
           "contrast",
           "measure"
