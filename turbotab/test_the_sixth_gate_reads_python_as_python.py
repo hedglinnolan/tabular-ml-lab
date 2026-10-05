@@ -26,7 +26,7 @@ import sys
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-TOOL = ROOT / "docs" / "turbotab" / "tools" / "parsecheck.py"
+TOOL = ROOT / ".githooks" / "parsecheck.py"
 HOOK = ROOT / ".githooks" / "pre-commit"
 
 sys.path.insert(0, str(TOOL.parent))
@@ -54,8 +54,8 @@ def test_it_sweeps_the_files_it_claims_to():
         f"363 when this was written — `git ls-files` has stopped finding them")
     names = {p.relative_to(ROOT).as_posix() for p in paths}
     for expected in ("ml/eda_actions.py",          # the file that broke
-                     "turbotab/api.py",
-                     "docs/turbotab/tools/ledger.py",
+                     "turbotab/core/graph.py",
+                     ".githooks/parsecheck.py",
                      "pages/06_Train_and_Compare.py"):
         assert expected in names, f"{expected} is not in the swept set"
     assert not any("venv" in p.parts for p in paths), (

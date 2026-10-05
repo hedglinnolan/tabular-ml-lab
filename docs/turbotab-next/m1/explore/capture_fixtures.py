@@ -59,7 +59,7 @@ from turbotab.core.stages.findings import findings_stage  # noqa: E402
 
 DEFAULT_NHANES = Path("/Users/nhedglin/tabular-ml-lab/_tt_tmp_nhanes.csv")
 GENOMICS = ROOT / "turbotab/sample_data/genomics_expression.csv"
-PACK = ROOT / "docs/turbotab/research/NUTRITION_PACK.md"
+PACK = ROOT / "docs/turbotab-next/reference/research/NUTRITION_PACK.md"
 OUT = Path(__file__).resolve().parent / "fixtures.json"
 
 BUDGET = 4 * 1024**3
@@ -200,7 +200,7 @@ def load(path: Path, workdir: Path) -> tuple[pd.DataFrame, DataStore, Path]:
 
 # ── NUTRITION_PACK §02: the cut-offs, read from the pack ─────────────────────
 
-PACK_02 = "docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions"
+PACK_02 = "docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions"
 
 
 def pack_cutoffs() -> dict[str, Any]:

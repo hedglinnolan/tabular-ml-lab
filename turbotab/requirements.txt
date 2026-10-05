@@ -6,7 +6,7 @@
 # this file exists rather than a line pointing at ../requirements.txt.
 #
 # Streamlit is absent on purpose. If it ever becomes necessary to install it to
-# make this run, the portability claim in docs/turbotab/ARCHITECTURE.md has
+# make this run, the portability claim in docs/turbotab/archive/ARCHITECTURE.md has
 # stopped being true and the test that says so should be failing.
 
 # ── engine ───────────────────────────────────────────────────────────────────

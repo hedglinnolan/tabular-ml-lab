@@ -30,7 +30,7 @@ from turbotab.core.stages.modeling import design_stage
 from turbotab.core.tests import modeling_fixtures as mf
 
 REPO = Path(__file__).resolve().parents[4]
-PACK = REPO / "docs" / "turbotab" / "research" / "NUTRITION_PACK.md"
+PACK = REPO / "docs" / "turbotab-next" / "reference" / "research" / "NUTRITION_PACK.md"
 
 ROLES = {"fat_g": "exposure", "energy_kcal": "energy", "age": "covariate", "sex": "excluded"}
 STRATIFIED = EnergyAdjustment(method="residual", energy_column="energy_kcal", nutrients=["fat_g"],

@@ -215,31 +215,16 @@ def test_the_obligation_survives_the_save_file():
         "it had already been discharged")
 
 
-def test_the_firing_half_is_deliberately_absent_and_tracked():
+def test_the_firing_half_is_deliberately_absent():
     """The other half of the split, asserted rather than assumed.
 
-    `STATE-105` is the row. This test exists so that "the firing half is not
-    built" is a statement the suite makes rather than a thing a reader has to
-    notice — and so that building it turns this test red, which is the signal to
-    close the row and rewrite this.
+    The findings ledger tracked the firing half as `STATE-105`; that ledger is
+    history since the legacy app was retired (BLUEPRINT §9.1), so this asserts
+    only what the module itself shows.
 
     Clause: `lockbox-05`
     """
-    import json
-    with open(os.path.join(PROJECT_ROOT, "docs", "turbotab", "data",
-                           "findings.json"), encoding="utf-8") as fh:
-        data = json.load(fh)
-    rows = {r["id"]: r for r in (data["findings"] if isinstance(data, dict) else data)}
-
-    firing = rows.get("STATE-105")
-    assert firing is not None, "the firing half has no row"
-    assert firing["status"] in ("OPEN", "PARTIAL"), (
-        "STATE-105 is closed, so the firing half is claimed to be built. If it "
-        "is, this test should be replaced by one that drives an export and "
-        "watches it refuse.")
-    assert "lockbox-05" in json.dumps(firing)
-
-    # And nothing here pretends to fire it. `outstanding` reports; it does not
+    # Nothing here pretends to fire it. `outstanding` reports; it does not
     # block, because there is no export to block.
     assert not hasattr(OB, "refuse_export"), (
         "something in the arming half has started doing the firing half's job, "

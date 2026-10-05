@@ -1,6 +1,6 @@
 """Missing data by purpose (AUDIT_REPORT §5 WP7; closes ME-01, ME-08, and the minor E14, B23, F14).
 
-**One rule** (BLUEPRINT §12 ruling 4), stated once here and quoted by the MISSING drawer, ROADMAP §07
+**One rule** (BLUEPRINT §12 ruling 4), stated once here and quoted by the MISSING drawer, lockbox constitution §07
 and M2_CONTRACT §4 (:data:`RULE`):
 
 * **Inference** — multiple imputation with the outcome and total energy in the imputation model,

@@ -1,4 +1,4 @@
-"""What each interview question teaches. Sourced from ``docs/turbotab/research/``.
+"""What each interview question teaches. Sourced from ``docs/turbotab-next/reference/research/``.
 
 Every drawer section names its pack section and carries the status the pack gives the claim
 (SETTLED · CONVENTION · DISPUTED). Where the pack gives a claim no status, the claim is not here.

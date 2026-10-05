@@ -1,5 +1,5 @@
 /**
- * The seal (M2_CONTRACT §3, §10; ROADMAP lockbox constitution §01–§05):
+ * The seal (M2_CONTRACT §3, §10; lockbox constitution §01–§05):
  *
  *   SealAsk       the split question: it states the seal's basis (grouped by a column, repetition
  *                 found but grouping abandoned, or undetermined — never drawn as a clean lock),

@@ -2709,7 +2709,7 @@
           "option"
         ],
         "title": "ApplyRepair",
-        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06)."
+        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (lockbox constitution §06)."
       },
       "ApplyRepair-Output": {
         "properties": {
@@ -2744,7 +2744,7 @@
           "params"
         ],
         "title": "ApplyRepair",
-        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06)."
+        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (lockbox constitution §06)."
       },
       "AskCard": {
         "properties": {
@@ -18292,7 +18292,7 @@
       },
       "ApplyRepair": {
         "additionalProperties": false,
-        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).",
+        "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (lockbox constitution §06).",
         "properties": {
           "kind": {
             "const": "apply_repair",

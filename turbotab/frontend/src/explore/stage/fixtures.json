@@ -112,7 +112,7 @@
       "low": 500.0,
       "high": 5000.0,
       "by": null,
-      "reason": "Implausible energy intake (docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)"
+      "reason": "Implausible energy intake (docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)"
      }
     ],
     "missing": "complete_case",
@@ -147,7 +147,7 @@
    "n_train": 17078,
    "n_holdout": 4270,
    "exclusion_cutoffs_from_pack": {
-    "source": "docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions",
+    "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions",
     "sex_specific": {
      "status": "CONVENTION",
      "female": [
@@ -267,7 +267,7 @@
       "kind": "absolute",
       "standing": null,
       "caveats": [],
-      "source": "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
+      "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#04 · Energy adjustment"
      },
      "refusal": null,
      "preview": {
@@ -8096,7 +8096,7 @@
        "Biased even absent confounding: composite variable bias (Tomova et al. 2022, AJCN 115(1):189-198).",
        "Only partially accounts for confounding by common dietary causes (Tomova et al. 2022, AJCN 115(1):189-198)."
       ],
-      "source": "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
+      "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#04 · Energy adjustment"
      },
      "refusal": null,
      "preview": {
@@ -15925,7 +15925,7 @@
        "Biased even absent confounding: composite variable bias (Tomova et al. 2022, AJCN 115(1):189-198).",
        "Only partially accounts for confounding by common dietary causes (Tomova et al. 2022, AJCN 115(1):189-198)."
       ],
-      "source": "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
+      "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#04 · Energy adjustment"
      },
      "refusal": null,
      "preview": {
@@ -24081,7 +24081,7 @@
       "kind": "composition",
       "standing": "CONVENTION",
       "caveats": [],
-      "source": "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
+      "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#04 · Energy adjustment"
      },
      "refusal": null,
      "preview": {
@@ -32194,7 +32194,7 @@
        "Interpretation obscure (Tomova et al. 2022, AJCN 115(1):189-198).",
        "Only partially accounts for confounding by common dietary causes (Tomova et al. 2022, AJCN 115(1):189-198)."
       ],
-      "source": "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
+      "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#04 · Energy adjustment"
      },
      "refusal": null,
      "preview": {
@@ -40262,7 +40262,7 @@
        "Estimates the total causal effect; unbiased only when there is no confounding or all other nutrients have equal effects (Tomova et al. 2022, AJCN 115(1):189-198).",
        "Only partially accounts for confounding by common dietary causes (Tomova et al. 2022, AJCN 115(1):189-198)."
       ],
-      "source": "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
+      "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#04 · Energy adjustment"
      },
      "refusal": {
       "error": {
@@ -40399,7 +40399,7 @@
       "Estimates the total causal effect; unbiased only when there is no confounding or all other nutrients have equal effects (Tomova et al. 2022, AJCN 115(1):189-198).",
       "Only partially accounts for confounding by common dietary causes (Tomova et al. 2022, AJCN 115(1):189-198)."
      ],
-     "source": "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
+     "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#04 · Energy adjustment"
     },
     "refusal": null,
     "preview": {
@@ -48556,13 +48556,13 @@
         "low": 500.0,
         "high": 5000.0,
         "by": null,
-        "reason": "Implausible energy intake, sex-neutral 500–5,000 kcal/d (docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)"
+        "reason": "Implausible energy intake, sex-neutral 500–5,000 kcal/d (docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)"
        }
       ]
      },
      "evidence": {
       "status": "CONVENTION",
-      "source": "docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions",
+      "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions",
       "quote": "Variants in circulation: sex-neutral 500–5,000"
      },
      "counts": {
@@ -48634,7 +48634,7 @@
           "label": "kcal outside 500–5,000 kcal",
           "n": 21348,
           "dropped": 501,
-          "reason": "Implausible energy intake, sex-neutral 500–5,000 kcal/d (docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)",
+          "reason": "Implausible energy intake, sex-neutral 500–5,000 kcal/d (docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)",
           "decision_id": null
          },
          {
@@ -48835,13 +48835,13 @@
           ]
          }
         },
-        "reason": "Implausible energy intake, women 500–3,500 and men 800–4,200 kcal/d (docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)"
+        "reason": "Implausible energy intake, women 500–3,500 and men 800–4,200 kcal/d (docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)"
        }
       ]
      },
      "evidence": {
       "status": "CONVENTION",
-      "source": "docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions",
+      "source": "docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions",
       "quote": "Willett / Nurses' Health Study [CONVENTION]: women <500 or >3,500 kcal/d; men <800 or >4,200 kcal/d"
      },
      "counts": {
@@ -48919,7 +48919,7 @@
           "label": "kcal outside sex-specific kcal ranges",
           "n": 20430,
           "dropped": 1419,
-          "reason": "Implausible energy intake, women 500–3,500 and men 800–4,200 kcal/d (docs/turbotab/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)",
+          "reason": "Implausible energy intake, women 500–3,500 and men 800–4,200 kcal/d (docs/turbotab-next/reference/research/NUTRITION_PACK.md#02 · Implausible intake exclusions)",
           "decision_id": null
          },
          {

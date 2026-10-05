@@ -1,5 +1,5 @@
 /**
- * The seal's state machine, as the stage reads it (M2_CONTRACT §3; ROADMAP lockbox constitution
+ * The seal's state machine, as the stage reads it (M2_CONTRACT §3; lockbox constitution
  * §01–§05) — pure, so the two rules that end up in a paper are tested without a browser:
  *
  *   none ─fit─▶ sealed ─open_seal─▶ opened ─a later change─▶ post_seal

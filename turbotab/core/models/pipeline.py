@@ -10,7 +10,7 @@ leakage tests rely on.
 The pipeline runs on RAW inputs: the columns as :func:`modeling_frame` reads them. Substitution
 curves shift raw intakes and push them through the whole pipeline, energy adjustment included.
 
-Missingness by mechanism (ROADMAP lockbox constitution §07, M2_CONTRACT §4), from the
+Missingness by mechanism (lockbox constitution §07, M2_CONTRACT §4), from the
 missing-values answer:
 
 * ``categorical == "missing_category"``: every categorical or two-valued predictor (a yes/no,

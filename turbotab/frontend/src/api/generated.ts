@@ -697,7 +697,7 @@ export interface components {
         /**
          * ApplyRepair
          * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
-         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         *     statistical ones are recorded and executed in-fold (lockbox constitution §06).
          */
         "ApplyRepair-Input": {
             /**
@@ -717,7 +717,7 @@ export interface components {
         /**
          * ApplyRepair
          * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
-         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         *     statistical ones are recorded and executed in-fold (lockbox constitution §06).
          */
         "ApplyRepair-Output": {
             /**
@@ -6585,7 +6585,7 @@ export interface components {
         /**
          * ApplyRepair
          * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
-         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         *     statistical ones are recorded and executed in-fold (lockbox constitution §06).
          */
         ApplyRepair: {
             /**
