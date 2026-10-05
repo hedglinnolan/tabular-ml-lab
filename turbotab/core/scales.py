@@ -17,9 +17,21 @@ reliability and, under inference, its corrected coefficient as a declared second
   a prediction model, the considerations surrounding error-prone variables can be quite different");
 * an item holding a value outside the instrument's response scale is **refused** until the code is
   recoded to missing (the sentinel repair) or the response scale is corrected: a code counted as an
-  answer moves every score;
+  answer moves every score. The same holds for every other column the answer reads as values: a
+  repeat administration recorded as one score must lie in the range that score can take, and a
+  calibration substudy's reference measure must have a settled amount reading (BLUEPRINT §14.3)
+  and hold no missing-value code;
+* a reflective scale's answers are whole numbers on its response scale; a formative index's
+  components may be continuous scores (the HEI-2015's are prorated, 0–5 or 0–10);
 * a functional form recorded on an item is **re-asked** (§2, "a domain transform … invalidates the
-  functional-form answer"): scoring replaces the item, so its form no longer applies.
+  functional-form answer"): scoring replaces the item, so its form no longer applies;
+* an answer that takes an item out of the predictors (another role, an exclusion, the outcome, a
+  left-out column) or puts a repeat administration into the model is **refused** until the scales
+  answer changes (§2, *invalidates*): the scale is asked again, never kept silently.
+
+Several scores corrected in one model are calibrated jointly (ruling 7, Rosner), and on grouped rows
+both intervals keep each group's rows together (§2, repeated units or clusters): the uncorrected one
+is the coefficient table's CR2 interval, the corrected one a bootstrap of whole clusters.
 
 The question is not yet one of the Router's (``interview.QUESTION_KEYS``): the modeling sequence's
 questions after the seal are the M3.5 build. It is answered through the decisions API, as the
@@ -81,10 +93,12 @@ CONTRACT = register_contract(MethodContract(
         "regression calibration of the score's coefficient": "training_fold",
     },
     needs=("three or more numeric items on one response scale, each a confirmed exposure or "
-           "covariate",
+           "covariate (a reflective scale's answers whole numbers; a formative index's components "
+           "may be continuous scores)",
            "the instrument's key: its reverse-coded items and its response scale",
-           "for a test–retest reliability: the repeat administration's columns",
-           "for a calibration substudy: a reference measure, blank outside the substudy"),
+           "for a test–retest reliability: the repeat administration's columns, or its score",
+           "for a calibration substudy: a reference measure read as an amount, blank outside the "
+           "substudy"),
     question=("Which items form a scale, how is it scored, and is its coefficient corrected for "
               "measurement error?"),
     place=("Step 4, the domain transforms (MODELING_SEQUENCE §1): after the roles and the "
@@ -175,6 +189,22 @@ CONTRACT = register_contract(MethodContract(
                  "A repeat administration or a reference measure is read by the reliability only, "
                  "never as a predictor.",
                  enforced_by="turbotab.core.scales:_scale_items_are_settled_predictors"),
+        Relation("implies", "the reference measure read as an amount",
+                 "The calibration regresses a substudy's reference measure on the score, so its "
+                 "code-or-amount reading is settled (by its values or the user) and it holds no "
+                 "missing-value code before it is read (BLUEPRINT §14.3).",
+                 enforced_by="turbotab.core.scales:_reference_reads_as_an_amount"),
+        Relation("implies", "multivariate calibration when several scores are corrected",
+                 "Two or more corrected scores in one model are calibrated jointly (Rosner, "
+                 "Spiegelman & Willett 1990; MODELING_SEQUENCE §0 ruling 7): each one's calibration "
+                 "conditions on the others.",
+                 enforced_by="turbotab.core.methods.scales:calibrate_jointly"),
+        Relation("implies", "cluster-aware intervals on grouped rows",
+                 "Rows grouped by a unit or cluster keep it in both intervals: the uncorrected one "
+                 "is the coefficient table's CR2 interval, and the correction's bootstrap resamples "
+                 "whole clusters (ruling 7); too few clusters block the correction with the table's "
+                 "own exits.",
+                 enforced_by="turbotab.core.methods.scales:bootstrap_draws"),
         Relation("conflicts", "disattenuation of a formative index by α or ω",
                  "Refused under inference: " + FORMATIVE,
                  enforced_by="turbotab.core.scales:_correction_fits_purpose_and_construct",
@@ -184,14 +214,23 @@ CONTRACT = register_contract(MethodContract(
                  enforced_by="turbotab.core.scales:_correction_fits_purpose_and_construct",
                  rung="refused", exits=("the uncorrected score",)),
         Relation("conflicts", "codes counted as answers",
-                 "Refused until each value outside the response scale is recoded to missing.",
+                 "Refused until each value outside the response scale (or, for a repeat "
+                 "administration recorded as one score, outside the range that score can take; for "
+                 "a reference measure, a missing-value code beyond its values) is recoded to "
+                 "missing.",
                  enforced_by="turbotab.core.scales:_answers_fit_the_response_scale",
-                 rung="refused", exits=("recode the codes to missing (the sentinel finding)",
-                        "a wider response scale")),
+                 rung="refused", exits=("recode the codes to missing (the findings' code repair)",
+                        "a wider response scale", "the internal consistency instead",
+                        "the uncorrected estimate")),
         Relation("invalidates", "a functional form recorded on an item",
                  "Scoring replaces the item with the score, so a form recorded on the item is "
                  "re-asked, never silently kept.",
                  enforced_by="turbotab.core.scales:_items_carry_no_form"),
+        Relation("invalidates", "the scales answer when an item leaves the predictors",
+                 "An answer that takes an item out of the predictors (another role, an exclusion, "
+                 "the outcome, a left-out column) or puts a repeat administration in the model is "
+                 "refused until the scales answer changes; the scale is asked again, never kept.",
+                 enforced_by="turbotab.core.scales:_answers_keep_the_scales_whole"),
         Relation("invalidates", "the calibration when the adjustment set changes",
                  "The calibration reads the model's covariates, so a change to the roles recomputes "
                  "it.",
@@ -288,30 +327,135 @@ def _scale_items_are_settled_predictors(decision: SetScales, ctx: Any) -> None:
 
 
 def _sentinel_exit(ctx: Any, columns: Sequence[str]) -> list[dict[str, Any]]:
-    """The sentinel finding's repair, when the findings stage read codes in these items."""
+    """The findings' code repair (the survey pack's sentinel codes in a Likert block, or a column's
+    numeric missing-value codes), when the findings stage read codes in these columns and the
+    repair is not applied yet."""
     from turbotab.core.decisions import ApplyRepair
     from turbotab.core.sequence import artifact
 
     found = artifact(ctx, "findings") or {}
+    state = _state(ctx)
+    done = {fid for fid, d in ((getattr(state, "findings", None) or {}) if state is not None
+                               else {}).items() if getattr(d, "action", None) == "applied"}
     for f in found.get("findings") or []:
+        fid = str(f.get("id", ""))
         named = set(f.get("affected_columns") or f.get("columns") or [])
-        if str(f.get("id", "")).endswith("sentinel_codes") and named & set(columns):
-            return [{"label": "Recode the codes to missing (the sentinel finding)",
-                     "decision": ApplyRepair(finding_id=str(f["id"]), option="set_missing")}]
+        coded = fid.endswith("sentinel_codes") or fid.startswith("sentinel_missing__")
+        if coded and fid not in done and named & set(columns):
+            return [{"label": "Recode the codes to missing (the findings' code repair)",
+                     "decision": ApplyRepair(finding_id=fid, option="set_missing")}]
     return []
 
 
+def score_range(s: Any) -> tuple[float, float]:
+    """The values a scale's score can take: k answers on the ``low``–``high`` response scale,
+    summed (k·low to k·high) or averaged (low to high)."""
+    k = len(s.items)
+    if (getattr(s, "scoring", None) or "sum") == "mean":
+        return float(s.low), float(s.high)
+    return float(k * s.low), float(k * s.high)
+
+
+def codes_beyond(values: Any) -> list[float]:
+    """Conventional missing-value codes (999, 77, -9 …; Classic's list) lying beyond every other
+    value of a measurement, with the findings' "far" gap between (at least ten typical spacings
+    and half the rest's range; a negative code in a column of non-negative values, two spacings).
+    The findings' own reading (``detectors.codes``) also asks that a code recur, so that one
+    extreme value is never blanked on a guess; a calibration substudy's reference measure has no
+    response scale to bound it, and one code moves the calibration's slope, so here one row is
+    enough to refuse (nothing is recoded: the refusal asks)."""
+    from ml.import_doctor import NUMERIC_SENTINELS  # Classic's list, read and not copied
+
+    from turbotab.core.detectors.codes import FAR_RANGE, FAR_SPACINGS
+
+    import numpy as np
+
+    x = np.asarray(values, dtype=float)
+    x = x[np.isfinite(x)]
+    if len(x) < 10:
+        return []
+    known = {float(v) for v in NUMERIC_SENTINELS}
+    distinct = np.unique(x)
+
+    def spacing(v: Any) -> float:
+        gaps = np.diff(np.sort(v))
+        gaps = gaps[gaps > 0]
+        return float(np.median(gaps)) if len(gaps) else 1.0
+
+    flagged: list[float] = []
+    top = []
+    for v in distinct[::-1]:
+        if v > 0 and v in known:
+            top.append(float(v))
+            continue
+        break
+    for j, v in enumerate(sorted(top)):
+        rest = distinct[distinct < v]
+        if len(rest) and v - rest.max() >= max(FAR_SPACINGS * spacing(rest),
+                                                FAR_RANGE * (rest.max() - rest.min())):
+            flagged += sorted(top)[j:]
+            break
+    bottom = []
+    for v in distinct:
+        if v < 0 and v in known:
+            bottom.append(float(v))
+            continue
+        break
+    rest = distinct[distinct > max(bottom)] if bottom else distinct
+    if bottom and len(rest):
+        for v in bottom:
+            gap = rest.min() - v
+            if (rest.min() >= 0 and gap >= 2 * spacing(rest)) or gap >= max(
+                    FAR_SPACINGS * spacing(rest), FAR_RANGE * (rest.max() - rest.min())):
+                flagged.append(v)
+    return sorted(flagged)
+
+
+def _blank(store: Any, columns: Sequence[str]) -> list[str]:
+    """The columns with no value on any row."""
+    try:
+        info = store.info()
+    except Exception:  # noqa: BLE001 - no summary: the stage that reads the values says so
+        return []
+    empty = {c.name for c in info.columns if int(c.n_missing) >= int(info.n_rows)}
+    return [c for c in columns if c in empty]
+
+
+def _swap(decision: SetScales, name: str, **update: Any) -> SetScales:
+    return SetScales(scales=[x.model_copy(update=update) if x.name == name else x
+                             for x in decision.scales])
+
+
+def _without_the_repeat(decision: SetScales, s: Any) -> list[dict[str, Any]]:
+    """The ways forward that stop reading a repeat administration or a reference measure: ω for a
+    reflective scale, the uncorrected estimate for any."""
+    out = []
+    if s.kind == "reflective":
+        out.append({"label": f"Correct `{s.name}` from its internal consistency (ω) instead",
+                    "decision": _swap(decision, s.name, reliability="internal_consistency",
+                                      retest=[], reference=None)})
+    out.append({"label": f"Report `{s.name}`'s uncorrected estimate only",
+                "decision": _swap(decision, s.name, correction="none",
+                                  reliability="internal_consistency", retest=[], reference=None)})
+    return out
+
+
 def _answers_fit_the_response_scale(decision: SetScales, ctx: Any) -> None:
-    """Every recorded answer of every item is a whole number on the instrument's response scale.
-    A value outside it is a code ("don't know", "refused"), never recoded on a guess; counted as
-    an answer it moves every score. An item the user recorded as codes for categories cannot be
-    summed either."""
+    """Every recorded answer of every item (and of a repeat administration's items) lies on the
+    instrument's response scale; a reflective scale's answers are whole numbers there, while a
+    formative index's components may be continuous scores (the HEI-2015's are prorated, 0–5 or
+    0–10). A repeat administration given as one column holds the score itself, so its values lie
+    in the range that score can take. A value outside is a code ("don't know", "refused"), never
+    recoded on a guess; counted as an answer it moves every score, the test–retest ICC and the
+    correction. An item the user recorded as codes for categories cannot be summed either. A
+    calibration substudy's reference measure is read as an amount, so its reading is settled and
+    it holds no codes (:func:`_reference_reads_as_an_amount`)."""
     from turbotab.core.readings import confirm_exit, confirmed_codes
 
     state = _state(ctx)
     codes = set(confirmed_codes(state)) if state is not None else set()
     for s in decision.scales:
-        coded = [c for c in s.items if c in codes]
+        coded = [c for c in [*s.items, *s.retest] if c in codes]
         if coded:
             raise Refusal(
                 "items_are_codes",
@@ -324,41 +468,166 @@ def _answers_fit_the_response_scale(decision: SetScales, ctx: Any) -> None:
     if store is None:
         return
     for s in decision.scales:
-        answers = [*s.items, *(s.retest if len(s.retest) == len(s.items) else [])]
-        try:
-            facts = store.whole_numbers(answers)
-        except Exception:  # noqa: BLE001 - no values to read: the stage that reads them says so
-            return
-        text = [c for c in answers if c not in facts]
-        if text:
-            raise Refusal("items_not_numeric",
-                          f"{_and(text)} {'holds' if len(text) == 1 else 'hold'} text, not answers "
-                          f"on a numeric response scale; recode {'it' if len(text) == 1 else 'them'} "
-                          f"to numbers first.",
-                          exits=[{"label": "Choose numeric items", "decision": None}])
-        fractional = [c for c in answers if not facts[c]["whole"]]
-        if fractional:
-            raise Refusal("items_not_whole",
-                          f"{_and(fractional)} {'holds' if len(fractional) == 1 else 'hold'} values "
-                          f"with decimals, which are not answers on the {s.low}–{s.high} response "
-                          f"scale.", exits=[{"label": "Choose the scale's items", "decision": None}])
-        outside = [c for c in answers if facts[c]["n_values"] and (
-            facts[c]["min"] < s.low or facts[c]["max"] > s.high)]
-        if outside:
-            lo = min(min(facts[c]["min"] for c in outside), s.low)
-            hi = max(max(facts[c]["max"] for c in outside), s.high)
-            said = "; ".join(f"`{c}` {facts[c]['min']:g}–{facts[c]['max']:g}" for c in outside[:4])
-            wider = [x.model_copy(update={"low": int(lo), "high": int(hi)}) if x.name == s.name
-                     else x for x in decision.scales]
-            raise Refusal(
-                "answers_outside_the_scale",
-                f"{_and(outside)} {'holds' if len(outside) == 1 else 'hold'} values outside the "
-                f"{s.low}–{s.high} response scale ({said}). A value outside it is usually a code "
-                f"('don't know', 'refused'); counted as an answer it moves every score. Recode the "
-                f"codes to missing first, or record the instrument's wider response scale.",
-                exits=[*_sentinel_exit(ctx, outside),
-                       {"label": f"The response scale runs {int(lo)}–{int(hi)}",
-                        "decision": SetScales(scales=wider)}])
+        _items_answer_the_scale(decision, s, ctx, store)
+        if len(s.retest) == 1:
+            _repeat_score_fits_the_score(decision, s, ctx, store)
+        if s.reference:
+            _reference_reads_as_an_amount(decision, s, ctx, store)
+
+
+def _items_answer_the_scale(decision: SetScales, s: Any, ctx: Any, store: Any) -> None:
+    import math
+
+    answers = [*s.items, *(s.retest if len(s.retest) == len(s.items) else [])]
+    blank = _blank(store, answers)
+    if blank:
+        one = len(blank) == 1
+        kept = [c for c in s.items if c not in blank]
+        # Offered where the shorter scale is still one the answer can record: three items a
+        # factor, and no repeat administration read item by item.
+        fits = len(kept) >= 3 * s.group_factors() and not s.retest
+        exits = ([{"label": f"Score `{s.name}` from its other {len(kept)} items",
+                   "decision": _swap(decision, s.name, items=kept,
+                                     reverse=[c for c in s.reverse if c in kept])}]
+                 if fits and not set(blank) - set(s.items) else [])
+        raise Refusal("items_blank",
+                      f"{_and(blank)} {'has' if one else 'have'} no answer on any row, so "
+                      f"{'it' if one else 'they'} cannot be scored into `{s.name}`.",
+                      exits=exits + [{"label": "Choose the scale's items", "decision": None}])
+    try:
+        facts = store.whole_numbers(answers)
+    except Exception:  # noqa: BLE001 - no values to read: the stage that reads them says so
+        return
+    text = [c for c in answers if c not in facts]
+    if text:
+        raise Refusal("items_not_numeric",
+                      f"{_and(text)} {'holds' if len(text) == 1 else 'hold'} text, not answers "
+                      f"on a numeric response scale; recode {'it' if len(text) == 1 else 'them'} "
+                      f"to numbers first.",
+                      exits=[{"label": "Choose numeric items", "decision": None}])
+    fractional = [c for c in answers if not facts[c]["whole"]]
+    if fractional and s.kind == "reflective":
+        formative = {"kind": "formative", "structure": "unidimensional", "factors": None}
+        if s.reliability == "internal_consistency":
+            formative["correction"] = "none"  # an index's ω corrects nothing (ruling 8)
+        raise Refusal(
+            "items_not_whole",
+            f"{_and(fractional)} {'holds' if len(fractional) == 1 else 'hold'} values with "
+            f"decimals, which are not answers on the {s.low}–{s.high} response scale of a "
+            f"reflective scale. A formative index's components may be continuous scores (the "
+            f"HEI-2015's are prorated); if `{s.name}` is one, say so.",
+            exits=[{"label": f"`{s.name}` is a formative index of continuous component scores",
+                    "decision": _swap(decision, s.name, **formative)},
+                   {"label": "Choose the scale's items", "decision": None}])
+    outside = [c for c in answers if facts[c]["n_values"] and (
+        facts[c]["min"] < s.low or facts[c]["max"] > s.high)]
+    if outside:
+        lo = math.floor(min(min(facts[c]["min"] for c in outside), s.low))
+        hi = math.ceil(max(max(facts[c]["max"] for c in outside), s.high))
+        said = "; ".join(f"`{c}` {facts[c]['min']:g}–{facts[c]['max']:g}" for c in outside[:4])
+        word = "answer" if s.kind == "reflective" else "component score"
+        raise Refusal(
+            "answers_outside_the_scale",
+            f"{_and(outside)} {'holds' if len(outside) == 1 else 'hold'} values outside the "
+            f"{s.low}–{s.high} response scale ({said}). A value outside it is usually a code "
+            f"('don't know', 'refused'); counted as an {word} it moves every score. Recode the "
+            f"codes to missing first, or record the instrument's wider response scale.",
+            exits=[*_sentinel_exit(ctx, outside),
+                   {"label": f"The response scale runs {lo}–{hi}",
+                    "decision": _swap(decision, s.name, low=lo, high=hi)}])
+
+
+def _repeat_score_fits_the_score(decision: SetScales, s: Any, ctx: Any, store: Any) -> None:
+    """A repeat administration given as one column is the score itself: its values lie where the
+    score can, ``score_range``; outside, they are codes that move the ICC and the correction."""
+    column = s.retest[0]
+    if _blank(store, [column]):
+        raise Refusal("retest_blank",
+                      f"`{column}`, the repeat administration of `{s.name}`, has no value on any "
+                      f"row.", exits=[*_without_the_repeat(decision, s),
+                                      {"label": "Name the repeat administration's column",
+                                       "decision": None}])
+    try:
+        facts = store.whole_numbers([column])
+    except Exception:  # noqa: BLE001 - no values to read: the stage that reads them says so
+        return
+    if column not in facts:
+        raise Refusal("retest_not_numeric",
+                      f"`{column}`, the repeat administration of `{s.name}`, holds text, not "
+                      f"scores.", exits=[*_without_the_repeat(decision, s),
+                                         {"label": "Name the repeat administration's column",
+                                          "decision": None}])
+    f = facts[column]
+    lo, hi = score_range(s)
+    if f["n_values"] and (f["min"] < lo or f["max"] > hi):
+        found = retest_columns(_columns_of(ctx) or [], s.items)
+        items = ([{"label": f"Score the repeat administration from its items "
+                            f"({_and(found[:2])} …)",
+                   "decision": _swap(decision, s.name, retest=found)}] if found else [])
+        how = "summed" if (s.scoring or "sum") == "sum" else "averaged"
+        raise Refusal(
+            "retest_outside_the_score",
+            f"`{column}`, the repeat administration of `{s.name}`, holds values from "
+            f"{f['min']:g} to {f['max']:g}, outside the {lo:g}–{hi:g} its score can take "
+            f"({len(s.items)} answers on the {s.low}–{s.high} response scale, {how}). A value "
+            f"outside it is a code ('don't know', 'refused', not administered); counted as a "
+            f"score it moves the test–retest ICC and the correction. Recode the codes to missing "
+            f"first.",
+            exits=[*_sentinel_exit(ctx, [column]), *items, *_without_the_repeat(decision, s)])
+
+
+def _reference_reads_as_an_amount(decision: SetScales, s: Any, ctx: Any, store: Any) -> None:
+    """BLUEPRINT §14.3: the correction reads a calibration substudy's reference measure as an amount
+    (its values regressed on the score), so its code-or-amount reading must be settled (by its
+    values or the user's confirmation; the readings ledger decides which, and its confirmation
+    exit asks), and it may hold no missing-value code (:func:`codes_beyond`)."""
+    from turbotab.core.readings import confirm_exit, confirmation, code_or_count_reading, whole_facts
+
+    column = s.reference
+    state = _state(ctx)
+    other = {"label": "Name another reference measure", "decision": None}
+    if _blank(store, [column]):
+        raise Refusal("reference_blank",
+                      f"`{column}`, the reference measure of `{s.name}`'s calibration substudy, "
+                      f"has no value on any row.",
+                      exits=[other, *_without_the_repeat(decision, s)])
+    if confirmation(state, "code_or_count", column) == "code":
+        raise Refusal(
+            "reference_is_codes",
+            f"`{column}` is recorded as codes for categories, but a calibration substudy "
+            f"regresses its reference measure on the score as an amount. Say which holds.",
+            exits=[confirm_exit("code_or_count", column, "amount",
+                                f"`{column}` is a measurement, the reference of `{s.name}`"),
+                   other, *_without_the_repeat(decision, s)])
+    facts = whole_facts([column], None, store).get(column)
+    if facts is None:
+        raise Refusal("reference_not_numeric",
+                      f"`{column}`, the reference measure of `{s.name}`, holds text, not "
+                      f"measurements.", exits=[other, *_without_the_repeat(decision, s)])
+    reading = code_or_count_reading(state, column, facts, scope="fit")
+    if reading is not None and not reading.settled:
+        raise Refusal(
+            "reference_unsettled",
+            f"`{column}`, the reference measure of `{s.name}`, holds {reading.evidence}: whether "
+            f"they are amounts or codes for categories is not settled by the values, and the "
+            f"calibration regresses them on the score as amounts. Confirm it first.",
+            exits=[confirm_exit("code_or_count", column, "amount",
+                                f"`{column}` is a measurement, the reference of `{s.name}`"),
+                   other, *_without_the_repeat(decision, s)])
+    try:
+        values = store.materialize([column], None)[column]
+    except Exception:  # noqa: BLE001 - no values to read: the stage that reads them says so
+        return
+    found = codes_beyond(values)
+    if found:
+        said = ", ".join(f"{v:g}" for v in found)
+        raise Refusal(
+            "reference_codes",
+            f"`{column}`, the reference measure of `{s.name}`, holds {said}, beyond every other "
+            f"value with a wide gap between: that is how a missing-value code ('don't know', not "
+            f"measured) looks, and one such value moves the calibration's slope. Recode it to "
+            f"missing first.",
+            exits=[*_sentinel_exit(ctx, [column]), other, *_without_the_repeat(decision, s)])
 
 
 def retest_columns(columns: Sequence[str], items: Sequence[str]) -> list[str] | None:
@@ -463,6 +732,128 @@ def _form_is_not_of_a_scored_item(decision: SetExposureForm, ctx: Any) -> None:
                         "decision": SetExposureForm(column=decision.column, form="linear")}])
 
 
+# ── §2 "invalidates": an answer that takes a scale's item out of the predictors ────────────────
+
+# The answers that move a column into or out of the predictors: its role (recorded, confirmed or
+# reverted), the outcome, the missing-values answer's and a repair's left-out columns, and WP17's
+# adjustment answers (read for the current exposure).
+ROLE_CHANGING = ("set_roles", "confirm_role", "confirm_reading", "confirm_readings", "revert",
+                 "set_target", "set_missing", "apply_repair", "set_adjustment", "set_estimand",
+                 "import_codebook")
+
+
+def scale_breaks(state: Any) -> dict[str, tuple[list[str], list[str]]]:
+    """Each recorded scale an answer has broken, by name: ``(lost, entered)``. ``lost``: its items
+    that are no longer a settled exposure or covariate (another role, a role riding along
+    unconfirmed, left out by the missing-values, repair or adjustment answers, or the outcome);
+    ``entered``: its repeat administration's or reference measure's columns made predictors or
+    the outcome."""
+    from turbotab.core.readings import settled_roles
+
+    scales = getattr(state, "scales", None) or []
+    if not scales:
+        return {}
+    roles = settled_roles(state)
+    recorded = getattr(state, "roles", None) or {}
+    gone = set(left_out(state))
+    target = getattr(state, "target", None)
+    out: dict[str, tuple[list[str], list[str]]] = {}
+    for s in scales:
+        lost = [c for c in s.items
+                if roles.get(c) not in PREDICTOR_ROLES or c in gone or c == target]
+        entered = [c for c in [*s.retest, *([s.reference] if s.reference else [])]
+                   if recorded.get(c) in (*PREDICTOR_ROLES, "energy") or c == target]
+        if lost or entered:
+            out[s.name] = (lost, entered)
+    return out
+
+
+def _scales_exits(scales: Sequence[Any], s: Any, lost: Sequence[str],
+                  entered: Sequence[str]) -> list[dict[str, Any]]:
+    """The scales answers that leave the change acceptable: the scale without the lost items (where
+    three a factor remain), or without its repeat administration or reference; no scale at all."""
+    def replaced(**update: Any) -> SetScales:
+        return SetScales(scales=[x.model_copy(update=update) if x.name == s.name else x
+                                 for x in scales])
+
+    exits: list[dict[str, Any]] = []
+    kept = [c for c in s.items if c not in lost]
+    if lost and len(kept) >= 3 * s.group_factors() and not set(entered):
+        update: dict[str, Any] = {"items": kept, "reverse": [c for c in s.reverse if c in kept]}
+        if len(s.retest) == len(s.items) and len(s.retest) > 1:
+            update["retest"] = [r for c, r in zip(s.items, s.retest) if c not in lost]
+        elif s.retest:
+            # A repeat administration recorded as one score sums the item that leaves.
+            update.update(retest=[], reliability="internal_consistency",
+                          correction=s.correction if s.kind == "reflective" else "none")
+        exits.append({"label": f"Take {_and(list(lost))} out of `{s.name}` "
+                               f"({len(kept)} items remain), then record this answer",
+                      "decision": replaced(**update)})
+    if entered and not lost:
+        update = {"retest": [], "reference": None, "reliability": "internal_consistency"}
+        if s.kind == "formative":
+            update["correction"] = "none"
+        exits.append({"label": f"Stop reading {_and(list(entered))} as `{s.name}`'s reliability, "
+                               f"then record this answer", "decision": replaced(**update)})
+    exits.append({"label": f"Stop scoring `{s.name}` (its items enter the models on their own), "
+                           f"then record this answer",
+                  "decision": SetScales(scales=[x for x in scales if x.name != s.name])})
+    exits.append({"label": "Keep the answers as they are", "decision": None})
+    return exits
+
+
+def _answers_keep_the_scales_whole(decision: Any, ctx: Any) -> None:
+    """MODELING_SEQUENCE §2 (*invalidates*; BLUEPRINT §13): the scales answer rests on its items
+    being settled predictors, scored into one column, and on its repeat administration and
+    reference staying out of the model. An answer that would change that (an item excluded or given
+    another role, its role reverted or left riding along, the item made the outcome or left out by
+    another answer; a repeat administration made a predictor) is refused until the scales answer
+    changes: the scale is asked again, never kept silently or left to fail in the pipeline."""
+    from turbotab.core.decisions import _roles_record_what_rode_along, state_after
+
+    now = _state(ctx)
+    recorded = list(getattr(now, "scales", None) or []) if now is not None else []
+    if not recorded:
+        return
+    if decision.kind == "set_roles":
+        # As it would be recorded: the roles that ride along unconfirmed are named on it.
+        decision = _roles_record_what_rode_along(decision, ctx)
+    after = state_after(decision, ctx)
+    if after is None:
+        return
+    before = scale_breaks(now)
+    for name, (lost, entered) in scale_breaks(after).items():
+        was_lost, was_entered = before.get(name, ([], []))
+        new_lost = [c for c in lost if c not in was_lost]
+        new_entered = [c for c in entered if c not in was_entered]
+        if not new_lost and not new_entered:
+            continue
+        s = next((x for x in recorded if x.name == name),
+                 next(x for x in (getattr(after, "scales", None) or []) if x.name == name))
+        if new_lost:
+            one = len(new_lost) == 1
+            said = (f"{_and(new_lost)} {'is an item' if one else 'are items'} of `{name}`, whose "
+                    f"score replaces its items in the models. This answer would take "
+                    f"{'it' if one else 'them'} out of the predictors (no longer a confirmed "
+                    f"exposure or covariate, left out, or the outcome), so the score could not be "
+                    f"formed as declared.")
+        else:
+            one = len(new_entered) == 1
+            said = (f"{_and(new_entered)} {'is' if one else 'are'} read by `{name}`'s reliability "
+                    f"only (its repeat administration or reference measure). This answer would put "
+                    f"{'it' if one else 'them'} in the model, where {'it' if one else 'they'} would "
+                    f"adjust the score for itself.")
+        raise Refusal(
+            "scale_invalidated",
+            f"{said} The scales answer rests on it, so it changes first and is asked again, never "
+            f"kept silently: take the column out of the scale or stop scoring the scale, then "
+            f"record this answer.",
+            exits=_scales_exits(recorded, s, new_lost, new_entered))
+
+
+for _kind in ROLE_CHANGING:
+    register_validator(_kind, _answers_keep_the_scales_whole)
+
 register_validator("set_scales", _named)
 register_validator("set_scales", _structure_fits_the_items)
 register_validator("set_scales", _correction_fits_purpose_and_construct)
@@ -518,6 +909,30 @@ _register_sentence()
 COEFFICIENT_WORDS = {"omega_total": "ω-total", "omega_hierarchical": "ω-hierarchical"}
 
 
+def joint_label(others: Sequence[str]) -> str:
+    """The label of a score calibrated together with ``others`` (MODELING_SEQUENCE §2)."""
+    return (f"Calibrated jointly with {_and(list(others))} (multivariate regression calibration; "
+            f"Rosner, Spiegelman & Willett 1990): each corrected score's calibration conditions on "
+            f"the others, their errors assumed independent of one another.")
+
+
+def clustered_label(column: str, n_clusters: int | None = None) -> str:
+    """The label of a correction on grouped rows (MODELING_SEQUENCE §2, ruling 7)."""
+    many = f" ({int(n_clusters):,} of them)" if n_clusters else ""
+    return (f"Both intervals keep each `{column}`'s rows together: the uncorrected one is the "
+            f"coefficient table's cluster-robust interval (CR2), and the corrected one's bootstrap "
+            f"resamples whole `{column}` clusters{many}.")
+
+
+def uncorrected_alongside(others: Sequence[str]) -> str:
+    """The concern on a correction beside another scale's score left uncorrected in the model."""
+    one = len(others) == 1
+    return (f"{_and(list(others))} {'is' if one else 'are'} also a scale score in the model, "
+            f"entered uncorrected, so this correction reads {'it' if one else 'them'} as measured "
+            f"without error; with two or more error-prone exposures, estimates “may become "
+            f"attenuated, inflated, or can even change direction” (Freedman et al. 2011).")
+
+
 def methods_sentence(spec: Any, result: Mapping[str, Any]) -> str:
     """One scale's methods sentence, from its stage result (``turbotab.core.stages.scales``)."""
     s = spec
@@ -530,9 +945,18 @@ def methods_sentence(spec: Any, result: Mapping[str, Any]) -> str:
     corr = result.get("correction") or {}
     boots = int(corr.get("n_boot_ok") or 0)
     each = " in each completed copy" if int(corr.get("copies") or 1) > 1 else ""
+    clustered = corr.get("clustered_by")
+    resampling = f", resampling whole `{clustered}` clusters" if clustered else ""
     tail = (f"the corrected coefficient was obtained by regression calibration including all model "
             f"covariates, with bootstrap CIs re-estimating the reliability ({boots:,} "
-            f"replicates{each}); uncorrected and corrected estimates are both reported.")
+            f"replicates{each}{resampling}); uncorrected and corrected estimates are both reported.")
+    if clustered:
+        tail += f" Both intervals are clustered by `{clustered}`."
+    jointly = list(corr.get("jointly") or [])
+    if jointly:
+        tail += (f" It was calibrated jointly with {_and(jointly)} (multivariate regression "
+                 f"calibration; Rosner, Spiegelman & Willett 1990), their errors assumed "
+                 f"independent.")
     model = {"proportional_odds": "proportional-odds", "linear": "logistic"}.get(
         str(corr.get("family")), "")
     approximate = (f" In a {model} model the calibrated score is an approximation (Carroll et al. "
@@ -570,5 +994,7 @@ def _uncorrected(result: Mapping[str, Any]) -> str:
     return ("Its coefficient was not corrected for measurement error." + (f" {why}" if why else ""))
 
 
-__all__ = ["CONTRACT", "FORMATIVE", "PREDICTION", "SECONDARY", "TRANSIENT", "decision_sentence",
-           "methods_sentence", "retest_columns"]
+__all__ = ["CONTRACT", "FORMATIVE", "PREDICTION", "ROLE_CHANGING", "SECONDARY", "TRANSIENT",
+           "clustered_label", "codes_beyond", "decision_sentence", "joint_label",
+           "methods_sentence", "retest_columns", "scale_breaks", "score_range",
+           "uncorrected_alongside"]
