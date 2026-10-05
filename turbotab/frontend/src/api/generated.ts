@@ -6203,6 +6203,8 @@ export interface components {
              */
             positivity: components["schemas"]["PositivityView"];
             /** @default null */
+            positivity_att: components["schemas"]["PositivityView"] | null;
+            /** @default null */
             missing: components["schemas"]["MissingView"] | null;
             /**
              * @default {

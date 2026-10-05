@@ -17,6 +17,7 @@ gfoRmula
 ipw
 WeightIt
 DoubleML
+hdm
 EValue
 sensemakr
 dcurves

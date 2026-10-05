@@ -34,12 +34,22 @@ written here from its primary source and checked against an independent referenc
   81:608–650): a lasso of the outcome on the candidates and a lasso of the exposure on them, each
   with the plug-in penalty ``λ = 2c√n Φ⁻¹(1 − γ/(2p))`` (c = 1.1, γ = 0.1/ln n) and penalty
   loadings iterated from the post-lasso residuals (Belloni, Chen, Chernozhukov & Hansen 2012,
-  *Econometrica* 80:2369, Algorithm A.1, as R's hdm ``rlasso`` sets it); then least squares of the
-  outcome on the exposure and the union of both selections, with HC3 standard errors (the app's
-  heteroskedasticity-robust standard for a linear model; Long & Ervin 2000). "Standard
-  post-model selection estimators fail to provide uniform inference even in simple cases with a
-  small, fixed number of controls"; double selection gives "confidence intervals that are valid
-  uniformly across a large class of models" (BCH 2014, abstract).
+  *Econometrica* 80:2369, Algorithm A.1), step for step as R's hdm 0.3.2 ``rlasso`` computes it
+  (its starting residuals, its first fit at λ/2, its stopping rule: :func:`rigorous_lasso`); then
+  least squares of the outcome on the exposure and the union of both selections, with HC3
+  standard errors (the app's heteroskedasticity-robust standard for a linear model; Long & Ervin
+  2000). "Standard post-model selection estimators fail to provide uniform inference even in
+  simple cases with a small, fixed number of controls"; double selection gives "confidence
+  intervals that are valid uniformly across a large class of models" (BCH 2014, abstract). The
+  acceptance test checks the selections against hdm itself and the interval's coverage against a
+  simulation's truth where the candidates outnumber the rows.
+
+**Ratios of risks** (a yes/no outcome): TMLE's marginal risk and odds ratios are tmle's; the
+interactive model's marginal risk ratio is the ratio of its two doubly robust means (the AIPW
+means ``μ₁``, ``μ₀`` from the same cross-fitted nuisances; for the effect among the exposed, the
+exposed's observed risk over their doubly robust risk unexposed), its log's variance by the delta
+method from the same scores. A level with no events (or, for the odds ratio, only events) has a
+risk of zero (one), where a ratio is 0 or undefined: no ratio is reported then, with the reason.
 
 **A survey design** (MODELING_SEQUENCE §0 ruling 6): the analysis weights enter every nuisance fit
 (``sample_weight``) and the estimating equation (``Σ w_i ψ_i(θ) = 0``); the folds keep each PSU's
@@ -515,6 +525,31 @@ def is_binary(values: np.ndarray) -> bool:
     return len(v) == 2 and set(v.tolist()) == {0.0, 1.0}
 
 
+_LEVEL_ROWS = {1: "exposed", 0: "unexposed"}
+
+
+def ratio_refusals(y: np.ndarray, d: np.ndarray) -> tuple[str | None, str | None]:
+    """Why the risk ratio and the odds ratio of a yes/no outcome between the exposure's two levels
+    are not estimable on these rows, or None: a level with no events has a risk of zero, so a ratio
+    of risks is 0 or undefined (and so is its E-value); a level with only events has infinite
+    odds."""
+    y = np.asarray(y, dtype=float)
+    d = np.asarray(d, dtype=float)
+    rr = odds = None
+    for level in (1, 0):
+        at = y[d == level]
+        who = _LEVEL_ROWS[level]
+        if len(at) and float(np.sum(at)) == 0:
+            said = (f"no {who} row has the event, so the {who} risk is zero and a ratio of the "
+                    f"two risks is 0 or undefined")
+            rr = rr or said
+            odds = odds or said
+        elif len(at) and float(np.sum(at)) == len(at):
+            odds = odds or (f"every {who} row has the event, so the {who} odds are infinite and no "
+                            f"odds ratio is defined")
+    return rr, odds
+
+
 # ── double/debiased machine learning ─────────────────────────────────────────
 
 
@@ -523,7 +558,12 @@ def dml_plr(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
             outcome_binary: bool = False, seed: int = 0) -> Estimate:
     """The partially linear model's θ (DoubleML's ``DoubleMLPLR``, score "partialling out",
     ``dml2``): ``ℓ(X) = E[Y|X]`` and ``m(X) = E[D|X]`` cross-fitted, then
-    ``θ = Σ w (D − m)(Y − ℓ) / Σ w (D − m)²`` per split, aggregated by the median."""
+    ``θ = Σ w (D − m)(Y − ℓ) / Σ w (D − m)²`` per split, aggregated by the median.
+
+    That last step is one least-squares fit, of the outcome's residual on the exposure's with no
+    intercept (weighted under a design's weights): ``extra["final_stage"]`` keeps, per split, its
+    classical t and degrees of freedom ``n − 1``, as R's ``lm(u ~ 0 + v)`` reports them, from
+    which the lane's sensitivity analysis computes the robustness value."""
     y, d, X = _check(y, d, X)
     n = len(y)
     w = _weights(design, n)
@@ -532,7 +572,7 @@ def dml_plr(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     # ``regr.lm`` (the linear-probability form).
     l_classifier = bool(outcome_binary and learner != "linear" and isinstance(learner, str))
     d_binary = is_binary(d)
-    thetas, ses, r2 = [], [], []
+    thetas, ses, r2, final = [], [], [], []
     for s, rep in enumerate(splits):
         [l_hat] = cross_fit(factory, l_classifier, X, y, rep, None if design is None else design.weight,
                             seed + 1000 * s)
@@ -547,7 +587,11 @@ def dml_plr(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
         thetas.append(theta)
         ses.append(se)
         r2.append(1.0 - float(np.sum(w * v ** 2) / np.sum(w * (d - np.average(d, weights=w)) ** 2)))
-    extra = {"exposure_r2": float(np.median(r2)), "exposure_binary": d_binary}
+        resid = u - theta * v
+        classical = math.sqrt(float(np.sum(w * resid ** 2)) / (n - 1) / float(np.sum(w * v ** 2)))
+        final.append({"estimate": theta, "t": theta / classical, "dof": float(n - 1)})
+    extra = {"exposure_r2": float(np.median(r2)), "exposure_binary": d_binary,
+             "final_stage": final}
     return _finish("dml_plr", thetas, ses, n, design, extra)
 
 
@@ -558,7 +602,11 @@ def dml_irm(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     """The interactive model's average effect (``score = "ATE"``) or the effect among the exposed
     (``"ATT"``) (DoubleML's ``DoubleMLIRM``, ``dml2``, propensities truncated to
     ``[bound, 1 − bound]``). The outcome models ``g₀``, ``g₁`` are fit on the training rows at each
-    exposure level; for the ATT, ``p`` is the exposed share of each test fold."""
+    exposure level; for the ATT, ``p`` is the exposed share of each test fold.
+
+    For a yes/no outcome ``extra["risk_ratio"]`` is the marginal risk ratio of the same scores
+    (:func:`_irm_log_risk_ratio`), aggregated over splits on the log scale as the estimate is;
+    ``extra["ratio_refused"]`` says why there is none (:func:`ratio_refusals`)."""
     y, d, X = _check(y, d, X)
     if not is_binary(d):
         raise ValueError("The interactive model needs a yes/no exposure coded 0 and 1.")
@@ -567,6 +615,9 @@ def dml_irm(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     weight = None if design is None else design.weight
     factory = learner_factory(learner) if isinstance(learner, str) else learner
     thetas, ses = [], []
+    log_rrs: list[float] = []
+    log_rr_ses: list[float] = []
+    refused = ratio_refusals(y, d)[0] if outcome_binary else None
     propensities = []
     for s, rep in enumerate(splits):
         [m_hat] = cross_fit(factory, True, X, d, rep, weight, seed + 1000 * s)
@@ -582,18 +633,66 @@ def dml_irm(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
         if score == "ATE":
             psi_b = g1 - g0 + d * (y - g1) / m - (1 - d) * u0 / (1 - m)
             psi_a = -np.ones(n)
+            phi1 = g1 + d * (y - g1) / m
+            phi0 = g0 + (1 - d) * u0 / (1 - m)
+            share = np.ones(n)
         else:
             p = np.empty(n)
             for _, test in rep:
                 p[test] = float(np.sum(w[test] * d[test]) / np.sum(w[test]))
             psi_b = d * u0 / p - m * (1 - d) * u0 / (p * (1 - m))
             psi_a = -d / p
+            phi1 = d * y / p
+            phi0 = (d * g0 + m * (1 - d) * u0 / (1 - m)) / p
+            share = d / p
         theta, se = _solve_score(psi_a, psi_b, w, design, n)
         thetas.append(theta)
         ses.append(se)
-    extra = {"propensity": np.median(np.vstack(propensities), axis=0), "bound": bound,
-             "score": score}
+        if outcome_binary and refused is None:
+            found = _irm_log_risk_ratio(phi1, phi0, share, w, design)
+            if isinstance(found, str):
+                refused = found
+            else:
+                log_rrs.append(found[0])
+                log_rr_ses.append(found[1])
+    extra: dict[str, Any] = {"propensity": np.median(np.vstack(propensities), axis=0),
+                             "bound": bound, "score": score}
+    df = design.df if design is not None and design.psu is not None else None
+    if outcome_binary and refused is None:
+        log_rr, se_log = aggregate(log_rrs, log_rr_ses, n)
+        (lo, hi), _p = _interval(log_rr, se_log, df)
+        extra["risk_ratio"] = {"estimate": math.exp(log_rr), "se_log": se_log,
+                               "ci": (math.exp(lo), math.exp(hi))}
+    elif outcome_binary:
+        extra["ratio_refused"] = refused
     return _finish("dml_irm_ate" if score == "ATE" else "dml_irm_att", thetas, ses, n, design, extra)
+
+
+def _irm_log_risk_ratio(phi1: np.ndarray, phi0: np.ndarray, share: np.ndarray, w: np.ndarray,
+                        design: Design | None) -> tuple[float, float] | str:
+    """The log of the risk ratio ``μ₁/μ₀`` (marginal, or among the exposed) from the interactive
+    model's doubly robust means and its standard error by the delta method, or why it is not
+    formed.
+
+    ``μ_a = Σ w φ_a / Σ w j``, with ``j = 1`` for the average effect (``φ₁ = g₁ + D(Y − g₁)/m``,
+    ``φ₀ = g₀ + (1 − D)(Y − g₀)/(1 − m)``) and ``j = D/p`` for the effect among the exposed
+    (``φ₁ = DY/p``, ``φ₀ = (D g₀ + m(1 − D)(Y − g₀)/(1 − m))/p``), so ``μ₁ − μ₀`` is the estimate.
+    The log ratio's linearized contribution of row i is
+    ``u_i = w_i ((φ₁ᵢ − μ₁ j_i)/μ₁ − (φ₀ᵢ − μ₀ j_i)/μ₀) / Σ w j = w_i (φ₁ᵢ/μ₁ − φ₀ᵢ/μ₀) / Σ w j``
+    (the ``j`` terms cancel); its variance is ``Σ u²`` without a design, as DoubleML's
+    ``mean(ψ²)/J²/n`` is, and the design's linearization with one."""
+    total = float(np.sum(w * share))
+    mu1 = float(np.sum(w * phi1)) / total
+    mu0 = float(np.sum(w * phi0)) / total
+    if not (mu1 > 0 and mu0 > 0):
+        return (f"a level's doubly robust risk is not positive in a sample split "
+                f"(exposed {mu1:.4g}, unexposed {mu0:.4g}), so no ratio of risks is formed")
+    u = w * (phi1 / mu1 - phi0 / mu0) / total  # Σ u = 0 at these means
+    if design is None or (design.weight is None and design.psu is None):
+        var = float(np.sum(u ** 2))
+    else:
+        var = total_variance(u, design)
+    return math.log(mu1) - math.log(mu0), math.sqrt(var)
 
 
 # ── targeted maximum likelihood ──────────────────────────────────────────────
@@ -710,6 +809,7 @@ def tmle(y: Any, a: Any, W: Any, *, learner: str | Factory = "linear",
     w = _weights(design, n)
     w = w / np.sum(w) * n  # tmle: obsWeights/sum(obsWeights) * n
     designed = design is not None and (design.weight is not None or design.psu is not None)
+    refused = ratio_refusals(y, a) if family == "binomial" else (None, None)
 
     def finish(parts: TMLEParts) -> tuple[float, float]:
         if designed:
@@ -722,7 +822,7 @@ def tmle(y: Any, a: Any, W: Any, *, learner: str | Factory = "linear",
         df = design.df if designed and design.psu is not None else None
         ci, p = _interval(theta, se, df)
         return Estimate(method="tmle_ate", estimate=theta, se=se, ci=ci, p_value=p, n=n, df=df,
-                        extra=_tmle_extra(parts, bound, family, designed, design))
+                        extra=_tmle_extra(parts, bound, family, designed, design, refused))
     factory = learner_factory(learner) if isinstance(learner, str) else learner
     if splits is None:
         raise ValueError("A flexible learner's Q and g are cross-fitted: give the sample splits.")
@@ -747,27 +847,38 @@ def tmle(y: Any, a: Any, W: Any, *, learner: str | Factory = "linear",
         ses.append(se)
         last = parts
     est = _finish("tmle_ate", thetas, ses, n, design if designed else None,
-                  _tmle_extra(last, bound, family, designed, design))
+                  _tmle_extra(last, bound, family, designed, design, refused))
     return est
 
 
 def _tmle_extra(parts: TMLEParts, bound: float, family: str, designed: bool,
-                design: Design | None) -> dict[str, Any]:
+                design: Design | None,
+                refused: tuple[str | None, str | None] = (None, None)) -> dict[str, Any]:
+    """What a TMLE fit reports beside the average effect: for a yes/no outcome the marginal risk
+    and odds ratios (tmle's), each left out with ``ratio_refused`` / ``odds_refused`` when a level's
+    events make it 0 or undefined (:func:`ratio_refusals`)."""
     extra: dict[str, Any] = {"propensity": parts.propensity, "bound": bound, "mu1": parts.mu1,
                              "mu0": parts.mu0, "epsilon": parts.epsilon.tolist()}
     if family == "binomial" and parts.rr is not None:
         n = len(parts.ic_ate)
-        var_rr = (total_variance(parts.ic_log_rr / n, design) if designed else parts.var_log_rr)
         q = float(stats.norm.ppf(0.5 + LEVEL / 2))
-        se = math.sqrt(var_rr)
-        extra["risk_ratio"] = {"estimate": parts.rr, "se_log": se,
-                               "ci": (math.exp(math.log(parts.rr) - q * se),
-                                      math.exp(math.log(parts.rr) + q * se))}
-        var_or = (total_variance(parts.ic_log_or / n, design) if designed else parts.var_log_or)
-        se_or = math.sqrt(var_or)
-        extra["odds_ratio"] = {"estimate": parts.odds_ratio, "se_log": se_or,
-                               "ci": (math.exp(math.log(parts.odds_ratio) - q * se_or),
-                                      math.exp(math.log(parts.odds_ratio) + q * se_or))}
+        rr_refused, or_refused = refused
+        if rr_refused is None:
+            var_rr = (total_variance(parts.ic_log_rr / n, design) if designed else parts.var_log_rr)
+            se = math.sqrt(var_rr)
+            extra["risk_ratio"] = {"estimate": parts.rr, "se_log": se,
+                                   "ci": (math.exp(math.log(parts.rr) - q * se),
+                                          math.exp(math.log(parts.rr) + q * se))}
+        else:
+            extra["ratio_refused"] = rr_refused
+        if or_refused is None:
+            var_or = (total_variance(parts.ic_log_or / n, design) if designed else parts.var_log_or)
+            se_or = math.sqrt(var_or)
+            extra["odds_ratio"] = {"estimate": parts.odds_ratio, "se_log": se_or,
+                                   "ci": (math.exp(math.log(parts.odds_ratio) - q * se_or),
+                                          math.exp(math.log(parts.odds_ratio) + q * se_or))}
+        else:
+            extra["odds_refused"] = or_refused
     return extra
 
 
@@ -776,6 +887,7 @@ def _tmle_extra(parts: TMLEParts, bound: float, family: str, designed: bool,
 PDS_C = 1.1
 PDS_ITERATIONS = 15
 PDS_TOL = 1e-5
+PDS_START_COLUMNS = 5  # hdm's ``init_values``: the residuals start from the 5 most correlated columns
 
 
 def plugin_lambda(n: int, p: int, c: float = PDS_C, gamma: float | None = None) -> float:
@@ -792,14 +904,43 @@ class LassoSelection:
     iterations: int
 
 
+def starting_residuals(Xc: np.ndarray, yc: np.ndarray, number: int = PDS_START_COLUMNS) -> np.ndarray:
+    """hdm's ``init_values``: the residuals of least squares of ``y`` (with an intercept) on the
+    ``number`` columns most correlated with it in absolute value (a constant column, whose
+    correlation is undefined, last; ties in column order)."""
+    n, p = Xc.shape
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr = np.abs(Xc.T @ (yc - yc.mean())) / (np.sqrt(np.sum(Xc ** 2, axis=0))
+                                                   * math.sqrt(float(np.sum((yc - yc.mean()) ** 2))))
+    corr = np.where(np.isfinite(corr), corr, -np.inf)
+    top = np.argsort(-corr, kind="stable")[:min(number, p)]
+    A = np.column_stack([np.ones(n), Xc[:, top]])
+    return yc - A @ np.linalg.lstsq(A, yc, rcond=None)[0]
+
+
+def _loadings(Xc: np.ndarray, e: np.ndarray) -> np.ndarray:
+    """The heteroskedastic penalty loadings ``ψ_j = sqrt(mean(x_j² e²))``."""
+    return np.sqrt(np.mean(Xc ** 2 * (e ** 2)[:, None], axis=0))
+
+
 def rigorous_lasso(X: np.ndarray, y: np.ndarray, *, c: float = PDS_C, gamma: float | None = None,
                    iterations: int = PDS_ITERATIONS, tol: float = PDS_TOL) -> LassoSelection:
-    """The heteroskedastic plug-in lasso's selection (Belloni et al. 2012, Algorithm A.1; hdm's
-    ``rlasso`` with ``post = TRUE``): on centered data, minimize
-    ``(1/n)‖y − Xβ‖² + (λ/n) Σ ψ_j|β_j|``; start from ``ψ_j = sqrt(mean(x_j² (y − ȳ)²))``, and
-    after each fit reset ``ψ_j = sqrt(mean(x_j² ε̂²))`` from the post-lasso residuals, until the
-    loadings move by less than ``tol`` (Euclidean) or ``iterations`` fits. The selection is the last
-    fit's support."""
+    """The heteroskedastic plug-in lasso's selection (Belloni, Chen, Chernozhukov & Hansen 2012,
+    Algorithm A.1), step for step as R's hdm 0.3.2 ``rlasso`` computes it with its defaults
+    (``post = TRUE``, ``homoscedastic = FALSE``, ``X.dependent.lambda = FALSE``):
+
+    * on centered data, each fit minimizes ``‖y − Xβ‖² + λ Σ ψ_j|β_j|`` (λ the plug-in level);
+    * the first loadings come from :func:`starting_residuals` (hdm's ``init_values``), not from
+      ``y − ȳ``, whose loadings are inflated by every signal in ``y`` and over-penalize the very
+      columns that carry it;
+    * the first fit uses ``λ/2`` (hdm: ``if (mm == 1 && post) lambda/2``); later fits use ``λ``,
+      the loadings reset each time from the post-lasso residuals;
+    * it stops when the post-lasso residuals' standard deviation changes by less than ``tol``, or
+      after ``iterations`` fits; an empty selection ends it at once (hdm returns there).
+
+    The selection is the last fit's support. Each lasso is solved exactly (coordinate descent to
+    1e-12); hdm's shooting algorithm stops at a tolerance and zeroes coefficients below 1e-6, which
+    can differ only on a coefficient that close to zero."""
     from sklearn.linear_model import Lasso
 
     X = np.asarray(X, dtype=float)
@@ -808,31 +949,31 @@ def rigorous_lasso(X: np.ndarray, y: np.ndarray, *, c: float = PDS_C, gamma: flo
     Xc = X - X.mean(axis=0)
     yc = y - y.mean()
     lam = plugin_lambda(n, p, c, gamma)
-    loadings = np.sqrt(np.mean(Xc ** 2 * (yc ** 2)[:, None], axis=0))
+    loadings = _loadings(Xc, starting_residuals(Xc, yc))
+    previous_sd = float(np.std(yc, ddof=1))
     support: list[int] = []
     done = 0
     for done in range(1, iterations + 1):
+        level = lam / 2.0 if done == 1 else lam
         usable = loadings > 0
         Z = np.zeros_like(Xc)
         Z[:, usable] = Xc[:, usable] / loadings[usable]
-        model = Lasso(alpha=lam / (2.0 * n), fit_intercept=False, tol=1e-12, max_iter=1_000_000,
+        model = Lasso(alpha=level / (2.0 * n), fit_intercept=False, tol=1e-12, max_iter=1_000_000,
                       selection="cyclic")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model.fit(Z, yc)
         coef = np.where(usable, model.coef_, 0.0)
         support = [int(j) for j in np.flatnonzero(np.abs(coef) > 0)]
-        if support:
-            B = Xc[:, support]
-            beta = np.linalg.lstsq(B, yc, rcond=None)[0]
-            resid = yc - B @ beta
-        else:
-            resid = yc
-        new = np.sqrt(np.mean(Xc ** 2 * (resid ** 2)[:, None], axis=0))
-        moved = float(np.sqrt(np.sum((new - loadings) ** 2)))
-        loadings = new
-        if moved < tol:
+        if not support:
             break
+        B = Xc[:, support]
+        resid = yc - B @ np.linalg.lstsq(B, yc, rcond=None)[0]
+        loadings = _loadings(Xc, resid)
+        sd = float(np.std(resid, ddof=1))
+        if abs(previous_sd - sd) < tol:
+            break
+        previous_sd = sd
     return LassoSelection(selected=support, lam=lam, loadings=loadings, iterations=done)
 
 
@@ -975,6 +1116,6 @@ __all__ = [
     "LassoSelection",
     "Overlap", "Variation", "aggregate", "cross_fit", "dml_irm", "dml_plr", "hc3_ols", "is_binary",
     "kish_ess", "learner_factory", "logistic_fit", "make_learner", "overlap", "pds_lasso",
-    "plugin_lambda", "rigorous_lasso", "sample_splits", "tmle", "tmle_gbound", "total_variance",
-    "trim_rows", "variation",
+    "plugin_lambda", "ratio_refusals", "rigorous_lasso", "sample_splits", "starting_residuals",
+    "tmle", "tmle_gbound", "total_variance", "trim_rows", "variation",
 ]
