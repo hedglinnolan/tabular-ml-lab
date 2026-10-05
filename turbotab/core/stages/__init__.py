@@ -148,9 +148,12 @@ def build_graph() -> Graph:
             # findings 14 (ledger repair 2, BLUEPRINT §14.3 amendment): the energy unit by the Atwater
             # identity only where its ratio admits one reading; a unit or day count confirmed on its
             # own is read with the recorded ones (one store).
+            # findings 15 (ledger repair 3): text holds numbers when they are most of its values once
+            # the missing and censoring marks are set aside (one definition with the code-or-amount
+            # reading), so a BMI with many SAS "." is offered "Read as numbers".
             Stage(
                 "findings",
-                14,
+                15,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
@@ -175,7 +178,9 @@ def build_graph() -> Graph:
             # asked as codes or amounts, whatever its count or type.
             # structure 12 (ledger repair 2): values with decimals that do not fill their grid (codes
             # written with a decimal point) are asked as codes or amounts too.
-            Stage("structure", 12, ("oriented",),
+            # structure 13 (ledger repair 3): numbers written as text that change within units are
+            # asked too.
+            Stage("structure", 13, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings", "temporal",
                    "shape_confirmations"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
@@ -183,7 +188,10 @@ def build_graph() -> Graph:
             # and first, last and change only by a settled time column.
             # working 4 (BLUEPRINT §14.3): as structure 11.
             # working 5 (ledger repair 2): as structure 12.
-            Stage("working", 5, ("oriented", "findings", "structure"),
+            # working 6 (ledger repair 3): a text column the user said holds amounts is read as numbers
+            # (marks blank; values below a detection limit at the user's answer), and an asked one
+            # is combined only as the user says.
+            Stage("working", 6, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -225,7 +233,9 @@ def build_graph() -> Graph:
             # a many-label text column and a design name are asked.
             # roles 8 (ledger repair 2): a flag (a skip-pattern gate marks blanks the same way) and a
             # date that changes within units (an assay's run date does too) are proposed medium.
-            Stage("roles", 8, ("working",), ("lens", "target", "purpose", "grain"), roles_stage,
+            # roles 9 (ledger repair 3): every reading settled by values through the registry's one
+            # test per kind (``readings.by_values``).
+            Stage("roles", 9, ("working",), ("lens", "target", "purpose", "grain"), roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -257,7 +267,9 @@ def build_graph() -> Graph:
             # proposals 15 (ledger repair 2): the energy unit and days are read through the one
             # accessor, whichever answer recorded them; an Atwater ratio that fits several readings
             # (4.00: kJ, or a 4-day kcal total) settles neither and offers each.
-            Stage("proposals", 15, ("working", "roles"),
+            # proposals 16 (ledger repair 3): the registry's one test per kind; the partition's parts
+            # of totals as the user confirmed them.
+            Stage("proposals", 16, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings"),
                   proposals_stage, label="Looking up what the field usually does"),
@@ -311,7 +323,9 @@ def build_graph() -> Graph:
             # design 17 (ledger repair 2): a column the energy answer removes or computes with never
             # reaches the one-hot step as codes; a number with two values is filled by its most
             # frequent value.
-            Stage("design", 17, ("working", "split", "target_info"),
+            # design 18 (ledger repair 3): the parts of totals as the user confirmed them, whichever
+            # column they name; a text column recorded as amounts never one-hot encoded.
+            Stage("design", 18, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up"),
                   design_stage,
@@ -350,7 +364,10 @@ def build_graph() -> Graph:
             # read settled only.
             # substitution 11 (ledger repair 2): each kcal per unit derives from the recorded unit (g, kg,
             # kcal, kJ) or grams the Atwater identity reads, never from a name.
-            Stage("substitution", 11, ("working", "fit", "design"),
+            # substitution 12 (ledger repair 3): alcohol's standard drinks; grams by the registry's test
+            # only where it excludes every other unit (never alcohol or a minor source); the parts of
+            # totals as the user confirmed them.
+            Stage("substitution", 12, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS),
                   substitution_stage, heavy=True, requires=("substitution",),

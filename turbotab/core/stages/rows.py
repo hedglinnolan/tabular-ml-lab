@@ -713,8 +713,9 @@ def propose_roles(
             # time axis of repeated rows (an age at each visit): one that changes within most units
             # may be that axis, so it is asked (``readings.KIND_RULES["role:covariate"]``).
             axis = timed and time_share is not None and time_share >= TIME_VARIES
-            put("covariate", "high" if (tokens & {"age", "sex", "gender", "bmi"}
-                                        and fact.get("characteristic") and not axis) else "medium",
+            settles = fact.get("covariate") is not None and fact["covariate"].settles
+            put("covariate", "high" if (tokens & {"age", "sex", "gender", "bmi"} and settles)
+                else "medium",
                 "A person's characteristic, usually adjusted for rather than studied."
                 + (f" It changes within each {unit_word}: say whether it is the time axis."
                    if axis else ""))
@@ -847,7 +848,7 @@ def intake_checks(store: Any, columns: Sequence[Mapping[str, Any]], *, energy: s
     """The values' verdict on every numeric column the name reads as a nutrient, codebook names
     included, against the total-energy column when there is one, in its settled unit, with
     duplicates resolved (:func:`turbotab.core.recognizers.corroborated_nutrients`; BLUEPRINT §14)."""
-    from turbotab.core.recognizers import corroborated_nutrients
+    from turbotab.core.readings import by_values_table
 
     numeric = [str(c["name"]) for c in columns
                if str(c.get("dtype") or "") in ("numeric", "integer")
@@ -865,9 +866,13 @@ def intake_checks(store: Any, columns: Sequence[Mapping[str, Any]], *, energy: s
         # the Atwater identity; a name's or a median's unit only sets what a contradiction reads.
         unit = reading["unit"] if reading.get("unit_settled") else None
         proposed = reading.get("unit")
-    return corroborated_nutrients(frame, energy=energy if energy in frame.columns else None,
-                                  energy_unit=unit, skip=[c for c in (target,) if c],
-                                  proposed_unit=proposed if energy else None)
+    # The registry's one test for a nutrient intake (``readings.KIND_RULES["role:exposure"]``), over
+    # the whole table: its verdicts carry each column's intake check for the words.
+    verdicts = by_values_table("role:exposure", frame,
+                               energy=energy if energy in frame.columns else None,
+                               energy_unit=unit, skip=[c for c in (target,) if c],
+                               proposed_unit=proposed if energy else None)
+    return {c: v.detail for c, v in verdicts.items()}
 
 
 def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str | None,
@@ -918,12 +923,15 @@ def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str
     facts: dict[str, dict[str, Any]] = {}
     if not wanted:
         return facts, None
-    from turbotab.core.readings import names_rows
+    # The identifier and covariate readings are settled only by the registry's tests (BLUEPRINT
+    # §14.3: one test per kind, ``readings.by_values``); a flag's and a time's values are only their
+    # guesses' evidence (no value test settles either).
+    from turbotab.core.readings import by_values
 
     frame = store.materialize(wanted)
     for name in ids:
         facts.setdefault(name, {})["id"] = identifier_values(frame[name])
-        facts[name]["rows"] = names_rows(frame[name])
+        facts[name]["rows"] = by_values("role:identifier", frame[name])
     for name in texts:
         facts.setdefault(name, {})["text"] = text_values(frame[name])
     for name, base in flags.items():
@@ -931,8 +939,6 @@ def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str
             frame[name], frame[base] if base else None, base)
     for name in designs:
         facts.setdefault(name, {})["design_values"] = design_values_fit(name, frame[name])
-    for name in traits:
-        facts.setdefault(name, {})["characteristic"] = characteristic_fits(name, frame[name])
     repeating = None
     best = None
     for name in ids:
@@ -951,6 +957,10 @@ def value_facts(store: Any, columns: Sequence[Mapping[str, Any]], *, target: str
                                               if repeating else None)
         facts[name]["rising"] = (within_unit_rising(frame[name], frame[repeating])
                                  if repeating else None)
+    for name in traits:
+        facts.setdefault(name, {})["covariate"] = by_values(
+            "role:covariate", name, frame[name],
+            frame[repeating] if repeating and name != repeating else None)
     return facts, repeating
 
 
@@ -1035,8 +1045,10 @@ def _repeats(store: Any, proposals: Sequence[Mapping[str, Any]]) -> dict[str, An
 
 
 def _nesting(store: Any, columns: Sequence[Mapping[str, Any]], target: str | None) -> dict[str, str]:
-    """Child -> parent over every row: the names admit it and the part never exceeds the total."""
-    from turbotab.core.methods.nesting import candidates, nested_components
+    """Child -> parent over every row: the names admit it and the part never exceeds the total. The
+    guess the proposals show (``readings.nesting``, no answer read: the roles stage reads none)."""
+    from turbotab.core.methods.nesting import candidates
+    from turbotab.core.readings import nesting
 
     names = [str(c["name"]) for c in columns if str(c["name"]) != target
              and str(c.get("dtype") or "") in ("numeric", "integer")]
@@ -1044,7 +1056,7 @@ def _nesting(store: Any, columns: Sequence[Mapping[str, Any]], target: str | Non
     needed = list(dict.fromkeys([*pairs, *(c for kids in pairs.values() for c in kids)]))
     if not needed:
         return {}
-    return nested_components(store.materialize(needed), needed)
+    return nesting(None, frame=store.materialize(needed), columns=needed)
 
 
 def _composition_reference(store: Any, proposals: Sequence[Mapping[str, Any]]) -> tuple[str, int] | None:

@@ -173,9 +173,8 @@ def energy_column_reading(columns: Mapping[str, Mapping[str, Any]], roles: Mappi
 
     ``basis`` is ``"values"``, ``"codebook"``, ``"name"`` (only the name says so: nothing to check
     it against) or ``"roles"``; ``why`` is the clause a proposal states."""
-    from turbotab.core.recognizers import (
-        energy_against_macros, energy_median_contradicts, macro_candidates, tokens,
-    )
+    from turbotab.core.readings import by_values
+    from turbotab.core.recognizers import energy_median_contradicts, macro_candidates, tokens
 
     named = [c for c, r in roles.items() if r == "energy" and c in columns]
     if named:
@@ -193,10 +192,11 @@ def energy_column_reading(columns: Mapping[str, Mapping[str, Any]], roles: Mappi
     if frame is not None:
         # Every macronutrient total the names read, so the values choose among duplicates for
         # each candidate (BLUEPRINT §14: an InBody body ``Protein`` beside a recall's ``protein_g``).
+        # The registry's one test for total energy (``readings.KIND_RULES["role:energy"]``).
         totals = macro_candidates(frame, exclude=candidates)
         for c in candidates:
             if c in frame.columns:
-                verdicts[c] = energy_against_macros(frame, c, candidates=totals)
+                verdicts[c] = by_values("role:energy", frame, c, candidates=totals).detail
     rejected = [{"column": c, "why": verdicts[c].why, "r": verdicts[c].r} for c in candidates
                 if verdicts.get(c) is not None and not verdicts[c].corroborated
                 and not _codebook_energy(c)]
@@ -283,16 +283,17 @@ def nutrient_candidates(columns: Mapping[str, Mapping[str, Any]], roles: Mapping
     ``settled`` (BLUEPRINT §14 rule 2): the columns whose roles a number-changing default may read
     (:func:`turbotab.core.readings.settled_columns`); an exposure outside it, carried by a bulk
     confirm below high confidence, is no default nutrient until confirmed on its own."""
-    from turbotab.core.recognizers import corroborated_nutrients
+    from turbotab.core.readings import by_values_table
 
     allowed = set(settled) if settled is not None else None
     checks = {}
     # Without the settled roles (a caller that has no record of confirmations), only the values'
-    # own reading pre-fills the card, whatever roles are given (BLUEPRINT §14 rule 2).
+    # own reading pre-fills the card, whatever roles are given (BLUEPRINT §14 rule 2), by the
+    # registry's one test (``readings.KIND_RULES["role:exposure"]``).
     if (not roles or allowed is None) and frame is not None:
-        checks = corroborated_nutrients(frame, energy=energy if energy in frame.columns else None,
-                                        energy_unit=energy_unit,
-                                        skip=[c for c in (target,) if c])
+        checks = {c: v.detail for c, v in by_values_table(
+            "role:exposure", frame, energy=energy if energy in frame.columns else None,
+            energy_unit=energy_unit, skip=[c for c in (target,) if c]).items()}
     out = []
     for c, info in columns.items():
         if c in (energy, target) or _dtype(info) not in _NUMERIC or _FLAG.search(c):
@@ -606,9 +607,9 @@ def _energy_unit_named(frame: pd.DataFrame, energy: str, recorded: Any = None) -
         return out("kj", "name", f"{col} says kJ in its name.")
     # The registry's value test for the unit (BLUEPRINT §14.3: ``readings.KIND_RULES
     # ["unit:energy"]``): kcal and kJ sit 4.184× apart against the macronutrients' energy.
-    from turbotab.core.readings import atwater_unit
+    from turbotab.core.readings import by_values
 
-    verdict = atwater_unit(frame, energy) if energy in frame.columns else None
+    verdict = by_values("unit:energy", frame, energy) if energy in frame.columns else None
     if verdict is not None and verdict.settles:
         return out(str(verdict.value), "atwater", f"{col} {verdict.evidence}.")
     if verdict is not None and verdict.candidates:
@@ -979,13 +980,16 @@ def _marked(text: str, columns: Iterable[str]) -> str:
     return text
 
 
-def partition_check(frame: pd.DataFrame, energy: str, nutrients: Sequence[str]) -> dict[str, Any] | None:
-    """Why a partition of ``nutrients`` cannot run on ``frame``'s rows, or None (energy.py)."""
+def partition_check(frame: pd.DataFrame, energy: str, nutrients: Sequence[str],
+                    state: Any = None) -> dict[str, Any] | None:
+    """Why a partition of ``nutrients`` cannot run on ``frame``'s rows, or None (energy.py). The
+    parts of totals as the ledger holds them (``readings.nesting``: each confirmation stands over
+    the names' and values' guess)."""
     from turbotab.core.methods.energy import partition_refusal
-    from turbotab.core.methods.nesting import nested_components
+    from turbotab.core.readings import nesting
 
     present = [n for n in nutrients if n in frame.columns]
-    nested = nested_components(frame, present)
+    nested = nesting(state, frame=frame, columns=present)
     return partition_refusal(frame, energy, list(nutrients), nested=nested)
 
 
@@ -995,20 +999,19 @@ def energy_reading(frame: pd.DataFrame, columns: Mapping[str, Mapping[str, Any]]
                    purpose: str | None = None,
                    settled: Iterable[str] | None = None,
                    energy_unit: str | None = None,
-                   waiting: Iterable[str] = ()) -> dict[str, Any]:
+                   waiting: Iterable[str] = (), state: Any = None) -> dict[str, Any]:
     from turbotab.core.methods.energy import applicable_methods, rank_methods
+    from turbotab.core.readings import nesting
     from turbotab.core.voice import finish
-
-    from turbotab.core.methods.nesting import nested_components
 
     verdicts = applicable_methods(list(columns), energy, nutrients)
     if verdicts["partition"]["ok"] and energy in frame.columns:
         # The checks the fit makes on the data (the Atwater reconstruction), and the two it
         # cannot: a total beside its parts, and nutrients that out-weigh total energy.
-        refused = partition_check(frame, energy, nutrients)
+        refused = partition_check(frame, energy, nutrients, state)
         if refused is not None:
             present = [n for n in nutrients if n in frame.columns]
-            nested = nested_reason(nested_components(frame, present), nutrients)
+            nested = nested_reason(nesting(state, frame=frame, columns=present), nutrients)
             verdicts["partition"] = {"ok": False, "reason": nested or refused["reason"]}
             # The all-components model is a partition over every source: it refuses alike.
             if verdicts.get("all_components", {}).get("ok"):
@@ -1204,12 +1207,10 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     # macronutrients carry (BLUEPRINT §14 rule 2).
     energy_settled = settled
     if settled is None and roles and energy is not None:
-        from turbotab.core.recognizers import energy_against_macros, macro_candidates
+        from turbotab.core.readings import by_values
 
-        verdict = (energy_against_macros(frame, energy,
-                                         candidates=macro_candidates(frame, exclude=[energy]))
-                   if energy in frame.columns else None)
-        energy_settled = {energy} if verdict is not None and verdict.by_values else set()
+        verdict = by_values("role:energy", frame, energy) if energy in frame.columns else None
+        energy_settled = {energy} if verdict is not None and verdict.settles else set()
     sex, sex_levels = sex_column(info, frame, roles, state=state)
     if target and target in frame.columns:
         base = frame[target].notna()
@@ -1271,7 +1272,7 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
             waiting.append(energy)
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
                                  target=target, purpose=purpose, settled=energy_settled,
-                                 energy_unit=settled_unit, waiting=waiting)
+                                 energy_unit=settled_unit, waiting=waiting, state=state)
     return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
             "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing,
                                  unit_reading=unit_reading,

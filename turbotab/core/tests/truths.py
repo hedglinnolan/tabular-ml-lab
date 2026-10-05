@@ -19,7 +19,7 @@ class Truth(dict):
     """``{"<kind>:<column>": value}`` for each reading the fixture's author knows:
     ``code_or_count:smoking`` → ``code``; ``cluster:PID`` → ``no``; ``unit:weight`` → ``lb``;
     ``day_count:kcal`` → ``1``; ``sex_coding:sex`` → ``female=2,male=1``; ``role:hhid`` →
-    ``cluster``."""
+    ``cluster``; ``detection_limit:crp`` → ``half_limit`` (the below-detection repair's option)."""
 
     def __init__(self, readings: dict[str, Any] | None = None, *, fixture: str = "this fixture"):
         super().__init__({k: str(v) for k, v in (readings or {}).items()})
@@ -48,8 +48,9 @@ def asked(exits: list[dict[str, Any]]) -> list[tuple[str, str]]:
 def answers(error: dict[str, Any], truth: Truth) -> list[dict[str, Any]]:
     """The decisions that answer a refusal's questions from ``truth``: one ``confirm_readings``
     listing every reading asked, each with its declared value; for an energy column whose unit or
-    days are asked (``set_column_unit`` exits), the unit and days declared. Empty when the refusal
-    asks for no reading."""
+    days are asked (``set_column_unit`` exits), the unit and days declared; for a column whose values
+    below a detection limit are asked (``apply_repair`` exits of a ``below_detection__<column>``
+    finding), the offered repair the truth names. Empty when the refusal asks for no reading."""
     exits = error.get("exits") or []
     out: list[dict[str, Any]] = []
     readings = asked(exits)
@@ -65,6 +66,19 @@ def answers(error: dict[str, Any], truth: Truth) -> list[dict[str, Any]]:
         out.append({"kind": "set_column_unit", "column": column,
                     "unit": truth.answer("unit", column),
                     "days": int(truth.answer("day_count", column))})
+    limits: dict[str, list[dict[str, Any]]] = {}
+    for item in exits:
+        d = item.get("decision") or {}
+        if d.get("kind") == "apply_repair" and str(d.get("finding_id", "")).startswith(
+                "below_detection__"):
+            limits.setdefault(str(d["finding_id"]).split("__", 1)[1], []).append(d)
+    for column, offered in limits.items():
+        chosen = truth.answer("detection_limit", column)
+        match = [d for d in offered if d.get("option") == chosen]
+        if not match:
+            raise AssertionError(f"{truth.fixture} declares detection_limit:{column} = {chosen}, "
+                                 f"which the refusal does not offer")
+        out.append(match[0])
     return out
 
 

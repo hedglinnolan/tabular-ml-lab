@@ -1382,6 +1382,7 @@ class DataStore:
         self._cmap: dict[str, ColumnInfo] | None = None
         self._names: list[str] | None = None
         self._whole: dict[str, dict[str, Any]] = {}  # whole_numbers, per column
+        self._text: dict[str, dict[str, Any]] = {}  # text_numbers, per column
 
     # ── connections ───────────────────────────────────────────────────────────
     @contextmanager
@@ -1792,13 +1793,13 @@ class DataStore:
     def _fractional_facts(self, name: str, k: int) -> dict[str, Any]:
         """For a column with decimals: whether its values settle "amount" (BLUEPRINT §14.3,
         amendment after the fifth gate: ICD-9-CM 307.1, 307.51 and 250.02 are codes written with
-        a decimal point), by the one value test (``readings.grid_reading`` over each distinct
-        value's row count, read here without materializing the column)."""
-        from turbotab.core.readings import GRID_MAX_VALUES, fractional_verdict, grid_reading
+        a decimal point), by the registry's one value test (``readings.by_values``) over each
+        distinct value and its row count, read here without materializing the column."""
+        from turbotab.core.readings import GRID_MAX_VALUES, by_values
 
         if k >= GRID_MAX_VALUES:
-            grid = {"k": k, "fills": True}
-            first = None
+            values = np.arange(k, dtype=float) + 0.5  # as many values as no code list holds
+            counts = np.ones(k)
         else:
             x = f"CAST({_ident(name)} AS DOUBLE)"
             with self._cursor() as cur:
@@ -1807,11 +1808,38 @@ class DataStore:
                     f"AND isfinite({x}) GROUP BY v ORDER BY v").fetchall()
             values = np.asarray([r[0] for r in rows], dtype=float)
             counts = np.asarray([r[1] for r in rows], dtype=float)
-            grid = grid_reading(values, counts)
-            fractions = values[values != np.floor(values)]
-            first = float(fractions[0]) if len(fractions) else None
-        verdict = fractional_verdict(grid, first)
+        verdict = by_values("code_or_count", pd.Series(values), counts=counts)
         return {"amount_by_values": bool(verdict.settles), "evidence": verdict.evidence}
+
+    def text_numbers(self, columns: Sequence[str]) -> dict[str, dict[str, Any]]:
+        """For each text column: whether its values are labels (codes by their values) or numbers
+        written as text (BLUEPRINT §14.3, the sixth gate: a SAS-exported BMI with ten ``.``), by
+        the registry's one value test (``readings.by_values``, ``code_or_count``) over each distinct
+        value and its row count. ``text_numbers`` True carries what the test read (the numbers'
+        ``distinct``, ``whole``, ``min``, ``max``; the marks, the values ``below`` a detection
+        limit, ``decimal`` and ``thousands``) and ``evidence``; False, the labels' count. Cached."""
+        from turbotab.core.readings import by_values
+
+        cmap = self._column_map()
+        cache = self._text
+        todo = [c for c in dict.fromkeys(columns) if c in cmap and c not in cache
+                and cmap[c].dtype in ("categorical", "text")]
+        for name in todo:
+            q = _ident(name)
+            with self._cursor() as cur:
+                rows = cur.execute(f"SELECT CAST({q} AS VARCHAR) AS v, count(*) FROM {self._rel} "
+                                   f"WHERE {q} IS NOT NULL GROUP BY v ORDER BY v").fetchall()
+            verdict = by_values("code_or_count", pd.Series([r[0] for r in rows], dtype=object),
+                                counts=np.asarray([r[1] for r in rows], dtype=float))
+            found = verdict.detail if isinstance(verdict.detail, dict) else {}
+            if found.get("text_numbers"):
+                cache[name] = {**found, "whole": bool(found.get("whole")),
+                               "n_values": int(found.get("distinct") or 0),
+                               "evidence": verdict.evidence}
+            else:
+                cache[name] = {"text_numbers": False, "labels": True, "n_values": len(rows),
+                               "evidence": verdict.evidence}
+        return {c: dict(cache[c]) for c in columns if c in cache}
 
     # ── modeling reads ────────────────────────────────────────────────────────
     def estimate_bytes(self, columns: Sequence[str] | None = None,

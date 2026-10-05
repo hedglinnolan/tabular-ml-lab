@@ -582,7 +582,11 @@ def _confirmed(reading: str, column: str, value: Any) -> str:
                 f"{col} was confirmed as not marking rows that belong together, so the intervals "
                 f"do not cluster by it")
     elif d.reading == "unit":
-        said = f"{col} was confirmed to be in {_UNIT_WORDS.get(value, value)}"
+        from turbotab.core.readings import parse_drinks, unit_words
+
+        words = unit_words(value) if parse_drinks(value) is not None else \
+            _UNIT_WORDS.get(value, value)
+        said = f"{col} was confirmed to be in {words}"
     elif d.reading == "day_count":
         days = int(value) if value.isdigit() else value
         said = (f"{col} was confirmed as one day's intake" if days == 1 else
@@ -591,7 +595,10 @@ def _confirmed(reading: str, column: str, value: Any) -> str:
         said = (f"{col} was confirmed to hold codes for categories" if value == "code" else
                 f"{col} was confirmed to hold amounts or counts")
     elif d.reading == "nested_in":
-        said = f"{col} was confirmed as part of {tick(value)}"
+        from turbotab.core.readings import NOT_NESTED
+
+        said = (f"{col} was confirmed as part of no total" if value == NOT_NESTED else
+                f"{col} was confirmed as part of {tick(value)}")
     elif d.reading == "time_column":
         said = f"{col} was confirmed as the column that orders each unit's rows"
     elif d.reading == "sex_coding":

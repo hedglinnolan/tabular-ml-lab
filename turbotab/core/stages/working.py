@@ -1491,11 +1491,13 @@ def code_or_count_facts(frame: Any, unit: str, exclude: Sequence[str] = ()) -> d
     (``whole``, ``zero_one``, ``n_values``, ``min``, ``max``) for the question's best guess. Values
     with decimals are asked too unless they settle "amount" by the one value test
     (``readings.amounts_by_values``: ICD-9-CM 307.1 and 250.02 are codes written with a decimal
-    point, and averaging them makes no diagnosis)."""
+    point, and averaging them makes no diagnosis). Numbers written as text are asked too (the
+    sixth gate: a SAS ``.`` makes a BMI text, whose most frequent value is no mean): text the value
+    test does not settle as labels."""
     import numpy as np
     import pandas as pd
 
-    from turbotab.core.readings import amounts_by_values
+    from turbotab.core.readings import by_values
 
     if unit not in frame.columns:
         return {}
@@ -1505,7 +1507,24 @@ def code_or_count_facts(frame: Any, unit: str, exclude: Sequence[str] = ()) -> d
         if c in skip:
             continue
         x = frame[c]
-        if not pd.api.types.is_numeric_dtype(x) or pd.api.types.is_bool_dtype(x):
+        if pd.api.types.is_bool_dtype(x):
+            continue
+        if not pd.api.types.is_numeric_dtype(x):
+            head = x.dropna().astype(str).head(50).str.strip().str.lstrip("<>").str.replace(",", ".")
+            if head.empty or pd.to_numeric(head, errors="coerce").notna().mean() < 0.5:
+                continue
+            verdict = by_values("code_or_count", x)
+            found = verdict.detail if isinstance(verdict.detail, dict) else {}
+            if verdict.settles or not found.get("text_numbers"):
+                continue
+            varied = frame.groupby(unit, dropna=True)[c].nunique(dropna=True)
+            if len(varied) and int(varied.max()) > 1:
+                out[str(c)] = {"text_numbers": True, "whole": bool(found.get("whole")),
+                               "n_values": int(found.get("distinct") or 0),
+                               "distinct": int(found.get("distinct") or 0),
+                               "min": found.get("min"), "max": found.get("max"),
+                               "below": dict(found.get("below") or {}),
+                               "evidence": verdict.evidence}
             continue
         present = x.dropna()
         if present.empty:
@@ -1522,7 +1541,7 @@ def code_or_count_facts(frame: Any, unit: str, exclude: Sequence[str] = ()) -> d
                                  "n_values": int(len(distinct)), "min": float(distinct.min()),
                                  "max": float(distinct.max())}
         if not whole:
-            verdict = amounts_by_values(pd.Series(values))
+            verdict = by_values("code_or_count", pd.Series(values))
             if verdict.settles:
                 continue
             facts.update(amount_by_values=False, evidence=verdict.evidence)
@@ -1663,6 +1682,15 @@ def prepare_combine(con: Any, src_sql: str, plan: Mapping[str, Any], target: str
                 raise StructureError(f"`{c}` is not a number, so its {chosen} is not one of its "
                                      f"values; keep the first, the last or the most frequent.")
             rules[c] = chosen
+        elif kinds[c]["kind"] == "category" and c in amounts:
+            # Text the user said holds amounts that the working table could not read as numbers
+            # yet: its values below a detection limit (or its commas) wait for their answer.
+            raise StructureError(
+                f"`{c}` holds amounts, as you said, but some of its values are not numbers yet "
+                f"(values below a detection limit, or commas that read two ways): answer how they "
+                f"read (the findings' repair for `{c}`) before combining.")
+        elif kinds[c]["kind"] == "category" and c in asked and c not in codes:
+            waiting.append(c)
         elif kinds[c]["kind"] in ("constant", "category"):
             rules[c] = column_rule(kinds[c]["kind"], method)
         elif c in codes:
@@ -1750,6 +1778,53 @@ def _aggregate(ctx: StageContext, con: Any, src_sql: str, info: Mapping[str, Any
     }
 
 
+def text_amounts(state: Any, source: Path, names: Sequence[str],
+                 repairs: Mapping[str, str]) -> dict[str, str]:
+    """``{column: SQL}`` reading as numbers each text column the user said holds amounts
+    (BLUEPRINT §14.3, every confirmation is honored; the sixth gate: a SAS-exported BMI confirmed
+    "amount" still entered the fit as 175 indicators). For every consumer, on the working table:
+    missing marks (``.``, ``NA``, blanks) and other text become blank; a value below a detection
+    limit (``<0.20``) takes the detection-limit answer (the below-detection repair, which reads the
+    column itself and stands here), so a column holding one waits for that answer, as does one whose
+    commas read two ways. A column a repair already rewrites is the repair's."""
+    import duckdb
+    import numpy as np
+    import pandas as pd
+
+    from turbotab.core.readings import by_values, confirmation, detection_limit
+    from turbotab.core.repairs import number_sql
+
+    wanted = [c for c in names if c not in repairs
+              and confirmation(state, "code_or_count", c) == "amount"]
+    if not wanted:
+        return {}
+    rel = f"read_parquet({_lit(str(source))})"
+    out: dict[str, str] = {}
+    con = duckdb.connect()
+    try:
+        types = {str(r[0]): str(r[1]).upper() for r in con.execute(
+            f"DESCRIBE SELECT {', '.join(_ident(c) for c in wanted)} FROM {rel}").fetchall()}
+        for c in wanted:
+            if not types.get(c, "").startswith("VARCHAR"):
+                continue
+            q = _ident(c)
+            rows = con.execute(f"SELECT {q} AS v, count(*) FROM {rel} WHERE {q} IS NOT NULL "
+                               f"GROUP BY v ORDER BY v").fetchall()
+            verdict = by_values("code_or_count", pd.Series([r[0] for r in rows], dtype=object),
+                                counts=np.asarray([r[1] for r in rows], dtype=float))
+            found = verdict.detail if isinstance(verdict.detail, dict) else {}
+            if not found.get("text_numbers") or found.get("ambiguous_comma"):
+                continue
+            factor = detection_limit(state, c)
+            if found.get("below") and factor is None:
+                continue  # waits for the detection-limit answer (the fit asks for it)
+            out[c] = number_sql(q, str(found.get("decimal") or "."), bool(found.get("thousands")),
+                                factor if found.get("below") else None)
+    finally:
+        con.close()
+    return out
+
+
 def source_sql(source: Path, names: Sequence[str], repairs: Mapping[str, str]) -> str:
     """The oriented table with the row-local repairs applied, as a subquery."""
     select = ", ".join([*(f"{repairs[c]} AS {_ident(c)}" if c in repairs else _ident(c)
@@ -1772,6 +1847,7 @@ def working_stage(ctx: StageContext) -> Bundle:
 
     ctx.progress(0.02, "Reading the recorded repairs and the grain")
     repairs = repair_expressions(findings, ctx.state.findings)
+    repairs.update(text_amounts(ctx.state, source, names, repairs))
     unknown = [c for c in repairs if c not in names]
     if unknown:
         raise StructureError(f"A recorded repair names `{unknown[0]}`, which is not a column.")

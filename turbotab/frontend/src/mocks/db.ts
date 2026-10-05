@@ -893,8 +893,9 @@ export function fold(records: DecisionRecord[]): ProjectState {
       continue;
     }
     if (d.kind === "set_column_unit") {
-      // A keyed slot: one unit per column (turbotab/core/decisions.py, column_units).
-      const unit = { unit: d.unit, days: d.days ?? 1 };
+      // A keyed slot: one unit per column (turbotab/core/decisions.py, column_units); a unit set
+      // this way is never a standard drink, so no grams per drink are recorded.
+      const unit = { unit: d.unit, days: d.days ?? 1, grams_per_drink: null };
       state.column_units = { ...(state.column_units ?? {}), [d.column]: unit };
       continue;
     }

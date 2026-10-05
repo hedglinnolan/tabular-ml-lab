@@ -528,12 +528,14 @@ export interface components {
          */
         ColumnUnitSpec: {
             /** Unit */
-            unit: ("kcal" | "kj" | "g" | "kg" | "lb" | "cm" | "m" | "in" | "years" | "months" | "weeks" | "days" | "pct_energy") | null;
+            unit: ("kcal" | "kj" | "g" | "kg" | "lb" | "cm" | "m" | "in" | "years" | "months" | "weeks" | "days" | "pct_energy" | "drinks") | null;
             /**
              * Days
              * @default 1
              */
             days: number | null;
+            /** Grams Per Drink */
+            grams_per_drink: number | null;
         };
         /**
          * ConfirmReading

@@ -610,31 +610,63 @@ def _spelling_kind(value: str) -> str:
     return "not a number"
 
 
-def read_text_numbers(values: pd.Series) -> dict[str, Any] | None:
-    """How a text column reads as numbers, over every value; None when it is not numbers.
+# A value above a limit of quantification (">200"), and censoring marks that carry no limit at all
+# ("<LOD", "ND", "BLQ"): set aside, with the missing marks, when the readings ledger asks whether a
+# text column holds numbers (BLUEPRINT §14.3; ``readings.text_numbers``). Neither has a number the
+# column can be read at, so a column read as numbers leaves them blank, named.
+_ABOVE = r">\s*([0-9]*\.?[0-9]+)"
+_CENSORED_WORDS = re.compile(
+    r"^(<\s*)?(lod|loq|lloq|dl|mdl|lor|bdl|blq|bql|nd|n\.d\.?|not\s+detected|"
+    r"below\s+(the\s+)?(detection|quantification)(\s+limit)?|>\s*uloq)$", re.IGNORECASE)
+
+
+def is_missing_mark(spelling: str) -> bool:
+    """A spelling of "no value": a blank, SAS's and Stata's "." and their lettered special missing
+    values (".a" to ".z"), "NA", a spreadsheet error, a C runtime's NaN."""
+    s = str(spelling).strip()
+    return s == "" or bool(_MISSING_SPELLINGS.match(s))
+
+
+def is_censoring_mark(spelling: str) -> bool:
+    """A value censored at a limit: below one (``<0.20``), above one (``>200``), or one that names
+    no limit (``<LOD``, ``ND``, ``BLQ``)."""
+    s = str(spelling).strip()
+    return bool(re.fullmatch(_LOD, s) or re.fullmatch(_ABOVE, s) or _CENSORED_WORDS.match(s))
+
+
+def parse_text_numbers(values: Any, counts: Any = None) -> dict[str, Any] | None:
+    """Every value of a text column read as a number, a missing mark, a censoring mark or another
+    label, counted (``counts``: how many rows hold each of ``values``, when they are distinct
+    values; one row each otherwise). None when it holds no value, or when its numbers carry leading
+    zeros ("007", FIPS "01"), as an identifier's or a code's do.
 
     ``decimal`` and ``thousands`` say how its marks read (``ambiguous_comma`` when every comma could
-    split thousands: ``1,234``); ``numbers`` the values that read; ``below`` the values below a
-    detection limit, by limit; ``unparsed`` every other spelling, with its count, most frequent
-    first. Text whose numbers carry leading zeros ("007") is an identifier, never numbers.
-    """
+    split thousands: ``1,234``); ``numbers`` the values that read as numbers, with ``distinct``,
+    ``whole``, ``min`` and ``max`` of them; ``below`` and ``above`` the values censored at a limit,
+    by limit; ``marks`` the missing marks, ``censored`` the censoring marks with no limit, and
+    ``other`` every other label, each by spelling, most frequent first; ``unparsed`` every spelling
+    that is neither a number nor below a limit (what reading the column as numbers blanks)."""
     import duckdb
     import pyarrow as pa
 
     from turbotab.core.datastore import DECIMAL_COMMA, THOUSANDS_COMMA
 
-    text = [None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v)
-            for v in values.tolist()]
+    raw = values.tolist() if hasattr(values, "tolist") else list(values)
+    text = [None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v) for v in raw]
+    weights = ([1] * len(text) if counts is None else
+               [int(c) for c in (counts.tolist() if hasattr(counts, "tolist") else counts)])
     con = duckdb.connect()
     try:
-        con.register("__v", pa.table({"v": pa.array(text, pa.string())}))
+        con.register("__v", pa.table({"v": pa.array(text, pa.string()),
+                                      "w": pa.array(weights, pa.int64())}))
         t = "trim(v)"
         n, with_comma, comma_ok, plain_decimal, leading = con.execute(
-            f"SELECT count(v), count_if(contains(v, ',')), "
-            f"count_if(contains(v, ',') AND regexp_full_match({t}, '{DECIMAL_COMMA}')), "
-            f"count_if(contains(v, ',') AND regexp_full_match({t}, '{DECIMAL_COMMA}') AND NOT "
-            f"regexp_full_match({t}, '{THOUSANDS_COMMA}')), "
-            f"count_if(regexp_full_match({t}, '[+-]?0[0-9]+')) FROM __v").fetchone()
+            f"SELECT sum(w) FILTER (WHERE v IS NOT NULL), "
+            f"sum(w) FILTER (WHERE contains(v, ',')), "
+            f"sum(w) FILTER (WHERE contains(v, ',') AND regexp_full_match({t}, '{DECIMAL_COMMA}')), "
+            f"sum(w) FILTER (WHERE contains(v, ',') AND regexp_full_match({t}, '{DECIMAL_COMMA}') "
+            f"AND NOT regexp_full_match({t}, '{THOUSANDS_COMMA}')), "
+            f"sum(w) FILTER (WHERE regexp_full_match({t}, '[+-]?0[0-9]+')) FROM __v").fetchone()
         n = int(n or 0)
         if n == 0 or int(leading or 0):
             return None
@@ -646,22 +678,58 @@ def read_text_numbers(values: pd.Series) -> dict[str, Any] | None:
                 thousands, ambiguous = True, True
         x = "v"
         number = number_sql(x, decimal, thousands)
-        lod = f"regexp_full_match({_text_of(x, decimal, thousands)}, '{_LOD}')"
-        numbers = int(con.execute(f"SELECT count({number}) FROM __v").fetchone()[0] or 0)
+        written = _text_of(x, decimal, thousands)
+        lod = f"regexp_full_match({written}, '{_LOD}')"
+        numbers, distinct, whole, lo, hi = con.execute(
+            f"SELECT coalesce(sum(w) FILTER (WHERE ({number}) IS NOT NULL), 0), "
+            f"count(DISTINCT {number}) FILTER (WHERE isfinite({number})), "
+            f"coalesce(bool_and(({number}) = floor({number})) FILTER (WHERE isfinite({number})), "
+            f"true), min({number}) FILTER (WHERE isfinite({number})), "
+            f"max({number}) FILTER (WHERE isfinite({number})) FROM __v").fetchone()
         below = con.execute(
-            f"SELECT regexp_extract({_text_of(x, decimal, thousands)}, '^{_LOD}$', 1) AS l, count(*) "
-            f"FROM __v WHERE {lod} GROUP BY l ORDER BY count(*) DESC, l").fetchall()
+            f"SELECT regexp_extract({written}, '^{_LOD}$', 1) AS l, sum(w) "
+            f"FROM __v WHERE {lod} GROUP BY l ORDER BY sum(w) DESC, l").fetchall()
         unparsed = con.execute(
-            f"SELECT {t} AS s, count(*) FROM __v WHERE v IS NOT NULL AND ({number}) IS NULL AND NOT "
-            f"{lod} GROUP BY s ORDER BY count(*) DESC, s").fetchall()
+            f"SELECT {t} AS s, sum(w) FROM __v WHERE v IS NOT NULL AND ({number}) IS NULL AND NOT "
+            f"{lod} GROUP BY s ORDER BY sum(w) DESC, s").fetchall()
     finally:
         con.close()
-    n_below = sum(int(c) for _, c in below)
-    if numbers == 0 or (numbers + n_below) < NUMBER_SHARE * n:
-        return None
-    return {"n_values": n, "numbers": numbers, "decimal": decimal, "thousands": thousands,
-            "ambiguous_comma": ambiguous, "below": {str(l): int(c) for l, c in below},
+    marks: dict[str, int] = {}
+    above: dict[str, int] = {}
+    censored: dict[str, int] = {}
+    other: dict[str, int] = {}
+    for spelling, count in unparsed:
+        s, c = str(spelling), int(count)
+        found = re.fullmatch(_ABOVE, s)
+        if found:
+            above[found.group(1)] = above.get(found.group(1), 0) + c
+        elif is_missing_mark(s):
+            marks[s] = c
+        elif _CENSORED_WORDS.match(s):
+            censored[s] = c
+        else:
+            other[s] = c
+    return {"n_values": n, "numbers": int(numbers or 0), "decimal": decimal,
+            "thousands": thousands, "ambiguous_comma": ambiguous,
+            "distinct": int(distinct or 0), "whole": bool(whole),
+            "min": None if lo is None else float(lo), "max": None if hi is None else float(hi),
+            "below": {str(l): int(c) for l, c in below}, "above": above, "marks": marks,
+            "censored": censored, "other": other,
             "unparsed": {str(s): int(c) for s, c in unparsed}}
+
+
+def read_text_numbers(values: pd.Series) -> dict[str, Any] | None:
+    """How a text column reads as numbers, over every value; None when it is not numbers.
+
+    One definition with the readings ledger's code-or-amount test (BLUEPRINT §14.3: "numbers
+    written as text" is the alternative to "labels" it must exclude): a text column holds numbers
+    when they are most of its values once the missing marks and the censoring marks are set aside
+    (``readings.text_numbers``). The reading is :func:`parse_text_numbers`'."""
+    from turbotab.core.readings import by_values
+
+    verdict = by_values("code_or_count", values)
+    found = verdict.detail
+    return dict(found) if isinstance(found, Mapping) and found.get("text_numbers") else None
 
 
 def _named_values(unparsed: Mapping[str, int], limit: int = 10) -> str:

@@ -146,16 +146,16 @@ def _is_energy(column: str, state: Any = None, datastore: Any = None) -> bool:
     if datastore is None or column not in set(getattr(datastore, "columns", ()) or ()):
         return False
     from turbotab.core.decisions import _names_a_macro_total
-    from turbotab.core.recognizers import energy_against_macros, macro_candidates
+    from turbotab.core.readings import by_values
 
     try:
         names = [c for c in datastore.columns if c != column and _names_a_macro_total(c)]
         frame = datastore.materialize([column, *names])
-        verdict = energy_against_macros(frame, column,
-                                        candidates=macro_candidates(frame, exclude=[column]))
+        # The registry's one test for total energy (``readings.KIND_RULES["role:energy"]``).
+        verdict = by_values("role:energy", frame, column)
     except Exception:  # noqa: BLE001 - nothing to corroborate it by
         return False
-    return verdict is not None and bool(verdict.by_values)
+    return bool(verdict.settles)
 
 
 _UNIT_WORDS = {"kcal": "kcal", "kj": "kJ"}

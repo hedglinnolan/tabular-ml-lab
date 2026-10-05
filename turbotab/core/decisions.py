@@ -775,7 +775,7 @@ AGE_UNITS = ("years", "months", "weeks", "days")
 ColumnUnit = Literal["kcal", "kj", "years", "months", "weeks", "days"]
 # Every unit a reading of a column may be confirmed in (``confirm_reading`` unit; readings.UNIT_VALUES).
 RecordedUnit = Literal["kcal", "kj", "g", "kg", "lb", "cm", "m", "in", "years", "months", "weeks",
-                       "days", "pct_energy"]
+                       "days", "pct_energy", "drinks"]
 
 
 class ColumnUnitSpec(_Value):
@@ -786,6 +786,9 @@ class ColumnUnitSpec(_Value):
 
     unit: RecordedUnit | None = None
     days: int | None = 1
+    # Alcohol counted in standard drinks (``confirm_reading`` unit ``drinks:<grams>``): the grams of
+    # ethanol one drink holds, by the country's definition (8–20 g; readings.DRINK_GRAMS).
+    grams_per_drink: float | None = None
 
 
 class SetColumnUnit(_DecisionModel):
@@ -1264,11 +1267,16 @@ def reading_entry(reading: str, column: str, value: str) -> tuple[str, str, Any]
     reading written as its value."""
     slot, key = reading_slot(reading, column)
     if reading == "unit":
+        from turbotab.core.readings import DRINKS, parse_drinks
+
+        grams = parse_drinks(value)
         return slot, key, lambda prev: ColumnUnitSpec(
-            unit=value, days=getattr(prev, "days", None) if prev is not None else None)
+            unit=DRINKS if grams is not None else value, grams_per_drink=grams,
+            days=getattr(prev, "days", None) if prev is not None else None)
     if reading == "day_count":
         return slot, key, lambda prev: ColumnUnitSpec(
-            unit=getattr(prev, "unit", None) if prev is not None else None, days=int(value))
+            unit=getattr(prev, "unit", None) if prev is not None else None, days=int(value),
+            grams_per_drink=getattr(prev, "grams_per_drink", None) if prev is not None else None)
     return slot, key, value
 
 
@@ -1590,13 +1598,67 @@ def _reading_names_a_column(decision: "ConfirmReading", ctx: Any) -> None:
                       exits=[{"label": "Confirm another column", "decision": None}])
     allowed = VALUES.get(decision.reading)
     if decision.reading == "nested_in":
-        if columns is not None and decision.value not in columns:
-            raise Refusal("unknown_column", f"This dataset has no column named `{decision.value}`.",
-                          exits=[{"label": "Name the total it is part of", "decision": None}])
+        # Any column of the table is a total the user may name, or none (BLUEPRINT §14.3: the
+        # sixth gate's confirmation naming another total than the design's was accepted and read
+        # nowhere; every consumer of the nesting now reads it, ``readings.nesting``).
+        from turbotab.core.readings import NOT_NESTED, nesting_parents
+
+        if decision.value == NOT_NESTED:
+            return
+        eligible = (None if columns is None else
+                    nesting_parents(decision.column, sorted(columns),
+                                    None if target is _UNKNOWN else target))
+        if decision.value == decision.column or (eligible is not None
+                                                 and decision.value not in eligible):
+            what = ("itself" if decision.value == decision.column else
+                    "the outcome" if decision.value == target else
+                    f"`{decision.value}`, which is no column of this dataset")
+            raise Refusal("unknown_column",
+                          f"`{decision.column}` cannot be part of {what}: name another column of "
+                          f"the table as its total, or none.",
+                          exits=[{"label": "Name the total it is part of", "decision": None},
+                                 {"label": f"`{decision.column}` is part of no total",
+                                  "decision": ConfirmReading(reading="nested_in",
+                                                             column=decision.column,
+                                                             value=NOT_NESTED)}])
+        state = _state(ctx)
+        if state is not None:
+            from turbotab.core.readings import nesting
+
+            if nesting(state).get(decision.value) == decision.column:
+                raise Refusal("part_of_the_other",
+                              f"`{decision.value}` is recorded as part of `{decision.column}`, so "
+                              f"`{decision.column}` cannot also be part of it.",
+                              exits=[{"label": f"Change what `{decision.value}` is part of",
+                                      "decision": None}])
         return
+    if decision.reading == "code_or_count" and decision.value == "amount":
+        store = _store_of(ctx)
+        reader = getattr(store, "text_numbers", None)
+        try:
+            found = (reader([decision.column]) if callable(reader) else {}).get(decision.column)
+        except Exception:  # noqa: BLE001 - no reading of its values: the fit's design asks
+            found = None
+        if found is not None and found.get("labels"):
+            raise Refusal(
+                "not_numbers",
+                f"`{decision.column}` holds labels, not numbers ({found.get('evidence')}): read as "
+                f"amounts, every value would be blank.",
+                exits=[{"label": f"`{decision.column}` holds codes for categories",
+                        "decision": ConfirmReading(reading="code_or_count", column=decision.column,
+                                                   value="code")},
+                       {"label": f"Leave `{decision.column}` out of the model",
+                        "decision": ConfirmReading(reading="role", column=decision.column,
+                                                   value="excluded")}])
     if decision.reading == "day_count":
         ok = decision.value.isdigit() and 1 <= int(decision.value) <= 366
         allowed_words = "a whole number of days from 1 to 366"
+    elif decision.reading == "unit":
+        from turbotab.core.readings import parse_drinks
+
+        ok = decision.value in (allowed or ()) or parse_drinks(decision.value) is not None
+        allowed_words = (", ".join(f"`{v}`" for v in allowed or ()) + ", or `drinks:<grams>` for "
+                         "standard drinks of 8 to 20 g of alcohol")
     elif decision.reading == "sex_coding":
         from turbotab.core.readings import parse_sex_coding
 
@@ -2435,7 +2497,6 @@ def _partition_runs_on_the_data(decision: SetEnergyAdjustment, ctx: Any,
     import numpy as np
 
     from turbotab.core.methods.energy import METHOD_TABLE, partition_refusal
-    from turbotab.core.methods.nesting import nested_components
 
     opener = _ctx(ctx, "store")
     try:
@@ -2465,7 +2526,7 @@ def _partition_runs_on_the_data(decision: SetEnergyAdjustment, ctx: Any,
     if len(pool) > PARTITION_CHECK_ROWS:
         pool = np.sort(np.random.default_rng(0).choice(pool, size=PARTITION_CHECK_ROWS, replace=False))
     frame = store.materialize([E, *nutrients], pool)
-    nested = nesting_of(ctx) or nested_components(frame, nutrients)
+    nested = effective_nesting(ctx, frame, nutrients)
     refused = partition_refusal(frame, E, nutrients, nested=nested)
     if refused is None:
         return
@@ -2611,8 +2672,8 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
     values are percentages of energy (0 to 100, not fractions)."""
     from turbotab.core.methods.percent_energy import check_percent_values, is_percent_of_energy
     from turbotab.core.readings import (
-        _macros_in_grams_by_values, confirm_exit, confirm_exits, confirmation, factor_exits,
-        kcal_per_unit, unsettled,
+        confirm_exits, confirmation, factor_exits, factor_verdicts, kcal_per_unit, nested_exits,
+        unsettled,
     )
 
     state = _state(ctx)
@@ -2634,20 +2695,20 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
         store = opener() if callable(opener) else None
     except Exception:  # noqa: BLE001 - no data: only stated or confirmed units settle
         store = None
-    # BLUEPRINT §14.3: each kcal per unit is derived from the recorded unit (g, kg, kcal, kJ), or
-    # from grams the Atwater identity reads; a recorded share of energy or another unit is refused
-    # with its route, and an unrecorded one is asked, every unit it may be in offered.
+    # BLUEPRINT §14.3: each kcal per unit is derived from the recorded unit (g, kg, kcal, kJ,
+    # alcohol's standard drinks), or from grams the registry's Atwater test reads (never for
+    # alcohol or a minor source: the sixth gate); a recorded share of energy or another unit is
+    # refused with its route, and an unrecorded one is asked, every unit it may be in offered.
     try:
-        grams = _macros_in_grams_by_values(state, store)
+        verdicts = factor_verdicts(state, store, [c for c in moved if c not in shares])
     except Exception:  # noqa: BLE001 - no values to read: only a recorded unit settles
-        grams = set()
-    readings = [kcal_per_unit(state, c, macros_in_grams=grams)
+        verdicts = {}
+    readings = [kcal_per_unit(state, c, verdict=verdicts.get(c))
                 for c in moved if c not in shares]
     refused = [r for r in readings if not r.settled and confirmation(state, "unit", r.column)]
     if refused:
         r = refused[0]
-        exits = [*(confirm_exit("unit", r.column, u, f"`{r.column}` is in {u}")
-                   for u in ("g", "kg", "kcal", "kj"))]
+        exits = [e for e in factor_exits(r.column) if e.get("decision")]
         if r.route:
             exits.append({"label": r.route, "decision": None})
         exits.append({"label": "Choose two nutrients whose units carry energy", "decision": None})
@@ -2664,13 +2725,13 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
             exits=[*(e for c in factors for e in factor_exits(c)),
                    {"label": "Choose two nutrients whose units are stated", "decision": None}])
     # A total moves with its parts (and a part with its total) by the nesting reading: the values
-    # agree (a part never exceeds its total), which is necessary, not sufficient; confirmed once.
-    from turbotab.core.readings import confirmation as _confirmed
-
-    nested = nesting_of(ctx)
-    pairs = [(child, parent) for child, parent in nested.items()
+    # agree (a part never exceeds its total), which is necessary, not sufficient; confirmed once,
+    # naming the total the guess found, another column, or none (``readings.nesting``: the user's
+    # answer stands over the guess for every consumer that moves energy).
+    guessed = nesting_of(ctx)
+    pairs = [(child, parent) for child, parent in guessed.items()
              if child in moved or parent in moved]
-    open_pairs = [(c, p) for c, p in pairs if _confirmed(state, "nested_in", c) != p]
+    open_pairs = [(c, p) for c, p in pairs if confirmation(state, "nested_in", c) is None]
     if open_pairs:
         raise Refusal(
             "reading_unsettled",
@@ -2678,8 +2739,7 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
             + "; ".join(f"`{c}` reads as part of `{p}`" for c, p in open_pairs)
             + ". Their values agree (a part never exceeds its total), which a part must, but does "
               "not prove it. Confirm each before the curve moves them together.",
-            exits=[*(confirm_exit("nested_in", c, p, f"`{c}` is part of `{p}`")
-                     for c, p in open_pairs),
+            exits=[*(e for c, p in open_pairs for e in nested_exits(c, p) if e.get("decision")),
                    {"label": "Choose two nutrients that are not parts of each other",
                     "decision": None}])
     if decision.scale == "percent_energy" and shares:
@@ -2693,6 +2753,18 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
                               f"values are read before any curve.",
                               exits=[{"label": "Choose two columns that hold percentages of energy",
                                       "decision": None}]) from None
+
+
+def effective_nesting(ctx: Any, frame: Any = None, columns: Any = None) -> dict[str, str]:
+    """Child column -> the total it is part of, as the ledger holds it (``readings.nesting``): the
+    design's (else the roles stage's, else ``frame``'s names and values) guess, each column's own
+    confirmation standing over it."""
+    from turbotab.core.readings import nesting
+
+    found = nesting_of(ctx)
+    if found or frame is None:
+        return nesting(_state(ctx), found, columns=columns)
+    return nesting(_state(ctx), frame=frame, columns=columns)
 
 
 def nesting_of(ctx: Any) -> dict[str, str]:
@@ -2716,7 +2788,7 @@ def nesting_of(ctx: Any) -> dict[str, str]:
 
 
 def _substitution_moves_between_separate_nutrients(decision: SetSubstitution, ctx: Any) -> None:
-    nested = nesting_of(ctx)
+    nested = effective_nesting(ctx)
     d, r = decision.donor, decision.recipient
     if nested.get(d) == r or nested.get(r) == d:
         child, parent = (d, r) if nested.get(d) == r else (r, d)
@@ -2760,7 +2832,7 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
     import numpy as np
 
     from turbotab.core.methods.energy import MAX_OMITTED_SHARE, energy_factor, nutrient_role, omitted_energy
-    from turbotab.core.methods.nesting import compositions, nested_components
+    from turbotab.core.methods.nesting import compositions
     from turbotab.core.methods.percent_energy import is_percent_of_energy
 
     state = _state(ctx)
@@ -2826,7 +2898,7 @@ def _substitution_has_every_energy_source(decision: SetSubstitution, ctx: Any) -
                     "decision": SetRoles(roles={**roles, c: "excluded"})} for c in candidates]
             + [another])
 
-    nested = nesting_of(ctx) or nested_components(frame[present], present)
+    nested = effective_nesting(ctx, frame[present], present)
     reading = omitted_energy(frame[[E, *present]], E, present, nested=nested)
     share = None if reading is None else reading["mean_share"]
     if share is None or share <= MAX_OMITTED_SHARE:

@@ -662,16 +662,19 @@ def _base(kind: str) -> str:
 
 
 def domain(kind: str) -> tuple[str, ...]:
-    """Every value the validator accepts for a confirmation of this kind."""
+    """Every value the validator accepts for a confirmation of this kind. Updated by
+    LEDGER-REPAIR-3 (the sixth gate): a unit includes alcohol's standard drinks, every size from 8
+    to 20 g to the hundredth (``drinks:<grams>``); a column-valued kind (``readings.COLUMN_VALUED``:
+    ``nested_in``) every column of its probe's table the validator accepts, and no total."""
     base = _base(kind)
     if base == "day_count":
         return tuple(str(i) for i in range(1, 367))
     if base == "unit":
-        return tuple(R.UNIT_VALUES)
+        return tuple(R.UNIT_VALUES) + R.drink_units()
     if base == "sex_coding":
         return ("female=1,male=2", "female=2,male=1")
     if base == "nested_in":
-        return NESTED_DOMAIN
+        return nested_domain()
     return tuple(R.VALUES[base])
 
 
@@ -685,6 +688,17 @@ def test_d0_the_domain_is_what_the_validator_accepts():
         with pytest.raises(d.Refusal):
             d.validate({"kind": "confirm_reading", "reading": "day_count", "column": "x",
                         "value": bad}, {"columns": ["x", "y"], "target": "y"})
+    # Standard drinks hold 8–20 g of alcohol (Kalinowski & Humphreys 2016): 1,201 sizes to the
+    # hundredth of a gram, written without trailing zeros; nothing outside them.
+    assert len(R.drink_units()) == 1201 and "drinks:14" in R.drink_units() \
+        and "drinks:13.45" in R.drink_units()
+    for bad in ("drinks:7.99", "drinks:20.01", "drinks:14.0", "drinks:", "drinks:abc"):
+        with pytest.raises(d.Refusal):
+            d.validate({"kind": "confirm_reading", "reading": "unit", "column": "x",
+                        "value": bad}, {"columns": ["x", "y"], "target": "y"})
+    # A column-valued kind: every other column of the table but the outcome, and no total, exactly.
+    assert set(nested_domain()) == ({c for c in NESTED_COLUMNS if c not in ("sfa_g", "y")}
+                                    | {R.NOT_NESTED})
 
 
 def _confirm(*before: Any, kind: str, column: str, value: str) -> ProjectState:
@@ -1129,27 +1143,63 @@ def _probe_substitution_validator_unit(value: str) -> Any:
 
 def _probe_substitution_stage_unit(value: str) -> Any:
     """The stage's factor: the ledger's, read by the stage itself (an AST check below holds that
-    the stage reads no other)."""
+    the stage reads no other), for an InBody `Protein` and, since LEDGER-REPAIR-3, an `alcohol`
+    column confirmed in the same unit (standard drinks measure alcohol only)."""
     state = _confirm(d.SetTarget(column="y"),
-                     d.SetRoles(roles={"Protein": "exposure", "fat_g": "exposure"}),
+                     d.SetRoles(roles={"Protein": "exposure", "fat_g": "exposure",
+                                       "alcohol": "exposure"}),
+                     d.ConfirmReading(reading="unit", column="alcohol", value=value),
                      kind="unit", column="Protein", value=value)
-    found = R.kcal_per_unit(state, "Protein")
-    return round(found.factor, 9) if found.settled else None
+    out = []
+    for column in ("Protein", "alcohol"):
+        found = R.kcal_per_unit(state, column)
+        out.append(round(found.factor, 9) if found.settled else None)
+    return tuple(out)
 
 
-NESTED_DOMAIN = ("fat_g", "carbohydrate_g", "y")
+def _expected_stage_unit(value: str) -> Any:
+    """Protein: 4 kcal/g, 4,000 per kg, 1 per kcal, 1/4.184 per kJ, no drinks; alcohol: 7 kcal/g
+    (NUTRITION_PACK §01), 7,000 per kg, 1 per kcal, 1/4.184 per kJ, and 7 × the drink's grams per
+    standard drink (a US drink of 14 g: 98 kcal)."""
+    grams = R.parse_drinks(value)
+    alcohol = {"g": ATWATER["alcohol"], "kg": 1000 * ATWATER["alcohol"], "kcal": 1.0,
+               "kj": round(1 / KJ_PER_KCAL, 9)}
+    return (FACTORS.get(value),
+            round(ATWATER["alcohol"] * grams, 9) if grams is not None else alcohol.get(value))
+
+
+# The nesting probes' table (LEDGER-REPAIR-3, the sixth gate's q9): `sfa_g` reads as part of
+# `fat_g` by its name and values; a confirmation may name any other column but the outcome, or none.
+NESTED_COLUMNS = ("sfa_g", "fat_g", "carbohydrate_g", "protein_g", "y")
+
+
+def nested_domain() -> tuple[str, ...]:
+    """Every value the validator accepts for `sfa_g`'s ``nested_in`` on the probes' table."""
+    out = []
+    for value in [*NESTED_COLUMNS, R.NOT_NESTED, "no_such_column"]:
+        try:
+            d.validate({"kind": "confirm_reading", "reading": "nested_in", "column": "sfa_g",
+                        "value": value}, {"columns": list(NESTED_COLUMNS), "target": "y"})
+        except d.Refusal:
+            continue
+        out.append(value)
+    return tuple(out)
+
+
+def _nested_state(value: str) -> ProjectState:
+    return _confirm(d.SetTarget(column="y"),
+                    d.SetRoles(roles={c: "exposure" for c in NESTED_COLUMNS if c != "y"}),
+                    *[d.ConfirmReading(reading="unit", column=c, value="g")
+                      for c in NESTED_COLUMNS if c != "y"],
+                    kind="nested_in", column="sfa_g", value=value)
 
 
 def _probe_substitution_nested(value: str) -> Any:
-    """`sfa_g` reads as part of `fat_g` (the design's nesting); confirming it as part of each
-    column settles the swap only when it names the total the values found."""
-    state = _confirm(d.SetTarget(column="y"),
-                     d.SetRoles(roles={"sfa_g": "exposure", "fat_g": "exposure",
-                                       "carbohydrate_g": "exposure"}),
-                     *[d.ConfirmReading(reading="unit", column=c, value="g")
-                       for c in ("sfa_g", "fat_g", "carbohydrate_g")],
-                     kind="nested_in", column="sfa_g", value=value)
-    ctx = {"state": state, "columns": ["sfa_g", "fat_g", "carbohydrate_g", "y"], "target": "y",
+    """`sfa_g` reads as part of `fat_g` (the design's nesting); the swap `sfa_g` → `carbohydrate_g`
+    with `sfa_g` confirmed as part of each column: refused as moving nothing only when it names
+    the recipient, settled for every other total and for none (LEDGER-REPAIR-3: any confirmation
+    settles the reading; before it, only `fat_g` did)."""
+    ctx = {"state": _nested_state(value), "columns": list(NESTED_COLUMNS), "target": "y",
            "artifact": lambda stage: ({"nested": [{"column": "sfa_g", "parent": "fat_g"}]}
                                 if stage == "design" else None)}
     try:
@@ -1158,6 +1208,89 @@ def _probe_substitution_nested(value: str) -> Any:
     except d.Refusal as refused:
         return refused.code
     return None
+
+
+def _nested_frame() -> pd.DataFrame:
+    rng = np.random.default_rng(66009)  # the sixth gate's q9 seed, its first draws
+    n = 60
+    P, C, F = rng.normal(80, 20, n).clip(20), rng.normal(250, 60, n).clip(50), \
+        rng.normal(75, 20, n).clip(15)
+    return pd.DataFrame({"sfa_g": (F * rng.uniform(0.25, 0.45, n)).round(1), "fat_g": F.round(1),
+                         "carbohydrate_g": C.round(1), "protein_g": P.round(1)})
+
+
+NESTED_K = 18.0  # kcal moved: 2 g of `sfa_g` (9 kcal/g) for 4.5 g of `carbohydrate_g` (4 kcal/g)
+
+
+def _probe_shift_nested(value: str) -> Any:
+    """The curve's move (``modeling.shift_for``, what the substitution stage draws): each column's
+    values after 18 kcal move from `sfa_g` to `carbohydrate_g`, the design's guess `sfa_g` ⊂
+    `fat_g` handed in, the confirmation read over it; "refused" when nothing can move."""
+    from turbotab.core.stages.modeling import shift_for
+
+    X = _nested_frame()
+    try:
+        shift = shift_for(_nested_state(value), X, donor="sfa_g", recipient="carbohydrate_g",
+                          kcal_per_unit={"sfa_g": 9.0, "carbohydrate_g": 4.0},
+                          design_nested={"sfa_g": "fat_g"}, total=None)
+    except ValueError:
+        return "refused"
+    return {c: np.round(v - X[c].to_numpy(float), 9).tolist()
+            for c, v in sorted(shift.values(X, NESTED_K).items())}
+
+
+def _expected_shift(value: str) -> Any:
+    """NumPy: the donor gives up k/9 g, the recipient gains k/4 g, and the total `sfa_g` is
+    confirmed part of (if any) moves by the same grams as its part; part of the recipient itself,
+    the move goes nowhere and is refused."""
+    if value == "carbohydrate_g":
+        return "refused"
+    n = len(_nested_frame())
+    out = {"sfa_g": [round(-NESTED_K / 9.0, 9)] * n,
+           "carbohydrate_g": [round(NESTED_K / 4.0, 9)] * n}
+    if value != R.NOT_NESTED:
+        out[value] = [round(-NESTED_K / 9.0, 9)] * n
+    return dict(sorted(out.items()))
+
+
+def _probe_design_nesting(value: str) -> Any:
+    """The design's nesting (``modeling.design_nesting``): what the design artifact, its pairs, its
+    estimand and the omitted-energy check read."""
+    from turbotab.core.stages.modeling import design_nesting
+
+    X = _nested_frame()
+    return design_nesting(_nested_state(value), X, list(X.columns))
+
+
+# ── text that holds numbers (LEDGER-REPAIR-3, the sixth gate's q3c) ──
+
+TEXT_BMI = ["27.1", ".", "31.4", "22.0", ".", "25.5", "29.9", "24.3"]
+
+
+def _probe_text_amounts(value: str) -> Any:
+    """The working table's reading of a text BMI with SAS `.` marks (``working.text_amounts``,
+    evaluated by the SQL the working table runs): numbers, or the text as recorded."""
+    import tempfile
+
+    from turbotab.core.repairs import evaluate
+    from turbotab.core.stages.working import text_amounts
+
+    state = _confirm(d.SetTarget(column="y"), d.SetRoles(roles={"bmi": "covariate"}),
+                     kind="code_or_count", column="bmi", value=value)
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "oriented.parquet"
+        pd.DataFrame({"bmi": TEXT_BMI, d.ROW_ID: np.arange(len(TEXT_BMI))}).to_parquet(path)
+        expressions = text_amounts(state, path, ["bmi"], {})
+        got = evaluate(path, ["bmi"], expressions)["bmi"]
+    return [None if pd.isna(v) else v for v in got.tolist()]
+
+
+def _expected_text_amounts(value: str) -> Any:
+    """pandas: an amount reads every value as a number, `.` blank; codes keep the text."""
+    if value == "amount":
+        return [None if pd.isna(v) else float(v)
+                for v in pd.to_numeric(pd.Series(TEXT_BMI), errors="coerce")]
+    return list(TEXT_BMI)
 
 
 FACTORS = {"g": 9.0 / 9.0 * ATWATER["protein"], "kg": 1000 * ATWATER["protein"], "kcal": 1.0,
@@ -1229,9 +1362,19 @@ PROBES: dict[tuple[str, str], tuple[Callable[[str], Any], Callable[[str], Any]]]
         (_probe_substitution_validator_unit,
          lambda v: None if v in FACTORS else "reading_unsettled"),
     ("turbotab.core.stages.modeling:substitution_stage", "unit:factor"):
-        (_probe_substitution_stage_unit, lambda v: FACTORS.get(v)),
+        (_probe_substitution_stage_unit, _expected_stage_unit),
     ("turbotab.core.decisions:_substitution_reads_settled_readings", "nested_in"):
-        (_probe_substitution_nested, lambda v: None if v == "fat_g" else "reading_unsettled"),
+        (_probe_substitution_nested, lambda v: "part_of_the_other" if v == "carbohydrate_g"
+         else None),
+    # LEDGER-REPAIR-3 (the sixth gate): the curve's move and the design read the nesting the user
+    # confirmed, whichever column it names; a text column confirmed "amount" is numbers for every
+    # consumer, read on the working table.
+    ("turbotab.core.stages.modeling:shift_for", "nested_in"):
+        (_probe_shift_nested, _expected_shift),
+    ("turbotab.core.stages.modeling:design_nesting", "nested_in"):
+        (_probe_design_nesting, lambda v: {} if v == R.NOT_NESTED else {"sfa_g": v}),
+    ("turbotab.core.stages.working:text_amounts", "code_or_count"):
+        (_probe_text_amounts, _expected_text_amounts),
 }
 
 

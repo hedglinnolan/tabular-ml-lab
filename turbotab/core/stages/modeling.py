@@ -285,6 +285,37 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
 # ── design ────────────────────────────────────────────────────────────────────
 
 
+def shift_for(state: Any, X: pd.DataFrame, *, donor: str, recipient: str,
+              kcal_per_unit: Mapping[str, float], design_nested: Mapping[str, str] | None,
+              total: str | None, scale: str = "kcal", percent: Sequence[str] = ()) -> Any:
+    """What moving energy from ``donor`` to ``recipient`` does to each row of ``X``
+    (``methods.substitution.Shift``; k percent of each row's own energy on the share-of-energy
+    scale), the parts of totals moving with them as the ledger holds the nesting
+    (``readings.nesting``: the design's guess, each column's own confirmation standing over it,
+    whichever column of the table it names, or none)."""
+    from turbotab.core.methods.percent_energy import PercentEnergyShift
+    from turbotab.core.methods.substitution import Shift
+    from turbotab.core.readings import nesting
+
+    nested = nesting(state, dict(design_nested or {}), columns=list(X.columns))
+    if scale == "percent_energy":
+        # k percent of each row's own total energy (audit B24, D19): isocaloric on every row.
+        return PercentEnergyShift(X, donor=donor, recipient=recipient,
+                                  kcal_per_unit=kcal_per_unit, percent=list(percent),
+                                  nested=nested, total=total)
+    return Shift(X, donor=donor, recipient=recipient, kcal_per_unit=kcal_per_unit, nested=nested,
+                 total=total)
+
+
+def design_nesting(state: Any, X: pd.DataFrame, numeric: Sequence[str]) -> dict[str, str]:
+    """The parts of totals among the design's numeric predictors, on its rows: the names and the
+    values (a part never above its total) propose them, and each column's own confirmation stands
+    over the guess, naming any column of the table or none (``readings.nesting``)."""
+    from turbotab.core.readings import nesting
+
+    return nesting(state, frame=X, columns=numeric)
+
+
 def substitution_pairs(predictors: Sequence[str], energy_column: str | Sequence[str] | None,
                        nested: Mapping[str, str] | None = None) -> list[dict[str, str]]:
     """Ordered (donor, recipient) pairs of predictors that carry energy in a known unit, or as a
@@ -308,7 +339,6 @@ def substitution_pairs(predictors: Sequence[str], energy_column: str | Sequence[
 def design_stage(ctx: StageContext) -> Bundle:
     """Each chosen family's pipeline, and the lineage from raw columns to the model matrix."""
     from turbotab.core.decisions import left_out
-    from turbotab.core.methods.nesting import nested_components
     from turbotab.core.models.artifacts import DesignArtifact
     from turbotab.core.models.lineage import missing_counts, trace
     from turbotab.core.models.pipeline import (
@@ -376,7 +406,7 @@ def design_stage(ctx: StageContext) -> Bundle:
         raise ValueError(refused)
     numeric_set = set(spec.numeric)  # a set: 20,000 predictors made the list test quadratic
     numeric = [c for c in spec.predictors if c in numeric_set]
-    nested = nested_components(X, numeric)  # on the design's rows: what the substitution will move
+    nested = design_nesting(state, X, numeric)  # on the design's rows: what the substitution moves
     warnings_list = warnings_for(spec, X, [f.key for f in families], {f.key: f for f in families},
                                  nested, rows_word=rows_word)
 
@@ -1603,7 +1633,6 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     from turbotab.core.methods.substitution import (
         MIN_REFIT_SHARE,
         PERCENTILE_MIN_REFITS,
-        Shift,
         refit_band,
         substitution_curve,
     )
@@ -1611,7 +1640,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     from turbotab.core.models.artifacts import SubstitutionArtifact
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
 
-    from turbotab.core.methods.percent_energy import PercentEnergyShift, is_percent_of_energy
+    from turbotab.core.methods.percent_energy import is_percent_of_energy
 
     sub = ctx.state.substitution
     n_boot = int(getattr(sub, "n_boot", 0) or 0)
@@ -1620,7 +1649,12 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                if scale == "percent_energy" and is_percent_of_energy(c)]
     fit, design = ctx.inputs["fit"], ctx.inputs["design"]
     spec = DesignSpec.from_dict(design.objects["spec"])
-    nested = dict(design.objects.get("nested") or {})
+    # The parts of totals as the ledger holds them: the design's, each column's own confirmation
+    # standing over it (BLUEPRINT §14.3; the sixth gate's ``sfa_g`` confirmed as part of another
+    # total moved nothing new).
+    from turbotab.core.readings import nesting
+
+    nested = nesting(ctx.state, dict(design.objects.get("nested") or {}), columns=spec.inputs)
     task = fit.data["task"]
     for column in (sub.donor, sub.recipient):
         if column not in spec.inputs:
@@ -1631,12 +1665,12 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     # or from grams the Atwater identity reads, never from its name; the substitution answer's
     # refusal asks it, and a curve recorded before the rule is not drawn on a guess.
     from turbotab.core.readings import Unsettled, factor_exits, kcal_per_unit as factor_of, listing
-    from turbotab.core.readings import _macros_in_grams_by_values
+    from turbotab.core.readings import factor_verdicts
 
     moved = [c for c in (sub.donor, sub.recipient) if c not in percent]
     with open_store(ctx) as store:
-        grams = _macros_in_grams_by_values(ctx.state, store)
-    readings = {c: factor_of(ctx.state, c, macros_in_grams=grams) for c in moved}
+        verdicts = factor_verdicts(ctx.state, store, moved)
+    readings = {c: factor_of(ctx.state, c, verdict=verdicts.get(c)) for c in moved}
     waiting = [c for c, r in readings.items() if not r.settled]
     if waiting:
         raise Unsettled(f"{listing(waiting)}'s kcal per unit is not settled: "
@@ -1677,14 +1711,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     step = float(sub.step_percent) if scale == "percent_energy" else float(sub.step_kcal)
     ks = [step * i for i in range(SUBSTITUTION_STEPS + 1)]
     total_energy = _total_energy_column(ctx.state, X, (sub.donor, sub.recipient))
-    if scale == "percent_energy":
-        # k percent of each row's own total energy (audit B24, D19): isocaloric on every row.
-        shift = PercentEnergyShift(X, donor=sub.donor, recipient=sub.recipient,
-                                   kcal_per_unit=kcal_per_unit, percent=percent, nested=nested,
-                                   total=total_energy)
-    else:
-        shift = Shift(X, donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
-                      nested=nested, total=total_energy)
+    shift = shift_for(ctx.state, X, donor=sub.donor, recipient=sub.recipient,
+                      kcal_per_unit=kcal_per_unit, design_nested=nested, total=total_energy,
+                      scale=scale, percent=percent)
     from turbotab.core.units import outcome_unit as _unit_of_outcome
     from turbotab.core.units import recorded_unit
 
@@ -1806,6 +1835,10 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             # Settled by the values, not recorded (BLUEPRINT §14.3: settlement is visible).
             notes.append(f"{c} is read in grams by its values (the Atwater identity holds with "
                          f"total energy), at {reading.factor:g} kcal per gram.")
+        else:
+            # The user's unit, and the kcal per unit it sets (the sixth gate: no record said what a
+            # unit of alcohol moved).
+            notes.append(f"{c} moves at {reading.factor:g} kcal per unit, {reading.why}.")
     if spec.multiple_imputation() and X_fit.isna().any().any():
         # WP7: the coefficient table pools the multiple imputations; the curve does not.
         which = ("the fit on every analyzed row, whose blanks are filled once without the outcome"

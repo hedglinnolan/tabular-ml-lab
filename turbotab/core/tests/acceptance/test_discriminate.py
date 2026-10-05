@@ -42,6 +42,7 @@ import pytest
 from turbotab.core import decisions as d
 from turbotab.core import readings as R
 from turbotab.core.decisions import ColumnUnitSpec, GrainSpec, ProjectState
+from turbotab.core.tests.acceptance import gate6_fixtures as g6
 from turbotab.core.tests.acceptance.server_drive import Truth, local_server, open_project
 from turbotab.core.tests.stage_harness import Ingested
 from turbotab.core.tests.truths import ASKING, asked
@@ -983,6 +984,11 @@ ALTERNATIVE_FIXTURES: dict[str, dict[str, tuple[Any, Any]]] = {
         # the fifth gate's ICD-9-CM eating-disorder codes (gate5/p1 §8, rng 55001)
         "codes written with a decimal point (ICD-9-CM 307.1 anorexia nervosa, 307.51 bulimia "
         "nervosa, 250.02, 401.9)": (lambda: R.amounts_by_values(_gate5_p1()["dsm"]), "amount"),
+        # LEDGER-REPAIR-3: the sixth gate's SAS-exported BMI (ten "."), q3 rng 66003; its CRP's
+        # "<0.20" is replayed in test_ledger_repair_3. Labels must not settle it as codes.
+        "numbers written as text, a few values missing marks (SAS and Stata '.', '.A'–'.Z', 'NA', "
+        "blank) or censored at a limit ('<0.20', '>200', '<LOD')":
+            (lambda: R.amounts_by_values(g6.text_numbers_table()["bmi"]), "code"),
     },
     "unit:height": {
         "inches": (lambda: R.height_in_band(pd.Series(np.random.default_rng(9).normal(66, 3, 200))),
@@ -1021,6 +1027,14 @@ ALTERNATIVE_FIXTURES: dict[str, dict[str, tuple[Any, Any]]] = {
         "kJ": (lambda: R.factor_in_grams(_factor_frame(4 * 4.184), "energy", "protein_g"), None),
         "percent of energy": (lambda: R.factor_in_grams(_percent_frame(), "energy", "protein_g"),
                               None),
+        # LEDGER-REPAIR-3: the sixth gate's US standard drinks named `alcohol_g` (q1, rng 66001),
+        # which reconstruct total energy at 1.02 read as grams, and a protein carrying 3% of energy.
+        "standard drinks of alcohol (8–20 g a drink, by country)":
+            (lambda: R.factor_in_grams(g6.alcohol_factor_frame("alcohol_g"), "energy_kcal",
+                                       "alcohol_g"), None),
+        "a minor source the identity cannot see (under about 9% of energy: any unit, or none, "
+        "keeps the ratio in its band)":
+            (lambda: R.factor_in_grams(g6.minor_protein_frame(), "energy", "protein_g"), None),
     },
     "sex_coding": {
         "1 male, 2 female (NHANES, the CDC growth charts)":

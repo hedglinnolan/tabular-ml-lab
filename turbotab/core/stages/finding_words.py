@@ -67,10 +67,12 @@ class FindingContext:
 
     def energy_settled(self, column: str | None) -> bool:
         """Whether ``column``'s total-energy reading is settled here: the findings are read before
-        any role is recorded, so only by its values (BLUEPRINT §14.1): it tracks the energy its
-        macronutrients carry (r ≥ 0.7), or the Atwater identity holds on its typical row (the
-        pack's reconstruction ratio; a few implausible rows, the very ones the finding counts,
-        lower r without breaking the identity). Under any other lens the pack's finding stands."""
+        any role is recorded, so only by its values (BLUEPRINT §14.1), through the registry's one
+        test (``readings.KIND_RULES["role:energy"]``: it tracks the energy its macronutrients carry,
+        r ≥ 0.7). The Atwater ratio alone no longer settles it (BLUEPRINT §14.3, the sixth gate's
+        rule of one test per kind): a device's energy expenditure sits near the intake its
+        macronutrients carry on the typical row of a weight-stable cohort, so the ratio cannot
+        reject it. Under any other lens the pack's finding stands."""
         if "dietary" not in self.lens:
             return True
         from turbotab.core.readings import stated_reading
@@ -86,14 +88,6 @@ class FindingContext:
             # day's, or several days', energy intake.
             return True
         by_values = reading.get("basis") == "values"
-        if not by_values and column in self.frame.columns:
-            from turbotab.core.methods.energy import atwater_check
-
-            try:
-                check = atwater_check(self.frame, str(column))
-            except Exception:  # noqa: BLE001 - a check that cannot run corroborates nothing
-                check = None
-            by_values = check is not None and check.verdict in ("pass", "energy_in_kj")
         found = stated_reading("role", str(column), "energy", "high" if by_values else "medium")
         return found.settled
 
@@ -960,14 +954,17 @@ def energy_correlations(frame: pd.DataFrame, energy: str | None, *, target: str 
     ``ALC`` holding lymphocyte counts is named here as no nutrient that carries energy.
     ``named``: the whole names the values neither confirm nor contradict instead (their r stated as
     it is, below 0.3)."""
-    from turbotab.core.recognizers import corroborated_nutrients, read_nutrient
+    from turbotab.core.readings import by_values_table
+    from turbotab.core.recognizers import read_nutrient
     from turbotab.core.stages.proposals import energy_bearing
 
     if not energy or energy not in frame.columns:
         return {}
     e = pd.to_numeric(frame[energy], errors="coerce")
-    checks = corroborated_nutrients(frame, energy=energy, energy_unit=energy_unit,
-                                    skip=[c for c in (target,) if c])
+    # The registry's one test for a nutrient intake (``readings.KIND_RULES["role:exposure"]``).
+    checks = {c: v.detail for c, v in by_values_table(
+        "role:exposure", frame, energy=energy, energy_unit=energy_unit,
+        skip=[c for c in (target,) if c]).items()}
     out: dict[str, float] = {}
     for c, check in checks.items():
         if not energy_bearing(c):

@@ -62,6 +62,7 @@ KINDS: dict[str, str] = {
     "nested_in": "the total the column is a part of",
     "orientation": "whether the table holds one row per sample",
     "sex_coding": "which level of a sex column is female",
+    "detection_limit": "the value a result below a detection limit is read at",
 }
 # The kinds ``confirm_reading`` records (the others are answered by their own decisions).
 CONFIRMABLE = ("role", "cluster", "unit", "day_count", "code_or_count", "time_column",
@@ -167,7 +168,10 @@ def confirmation(state: Any, kind: str, column: str | None) -> Any:
         if spec is None:
             return None
         if kind == "unit":
-            return _get(spec, "unit")
+            unit = _get(spec, "unit")
+            if unit == DRINKS and _get(spec, "grams_per_drink") is not None:
+                return drinks_value(float(_get(spec, "grams_per_drink")))
+            return unit
         days = _get(spec, "days")
         return None if days is None else int(days)
     own = _confirmations(state).get(key(kind, column))
@@ -265,6 +269,9 @@ class Verdict:
     # The readings the values leave open when they settle nothing, each a value the question
     # offers (the energy unit: ``(unit, days)`` pairs a reconstruction ratio fits).
     candidates: tuple[Any, ...] = ()
+    # What the test read, for a consumer's words and its exits, never for a settlement of its
+    # own: a text column's numbers and marks, a nutrient's intake check, the Atwater reading.
+    detail: Any = None
 
 
 @dataclass(frozen=True)
@@ -272,7 +279,12 @@ class KindRule:
     """One kind of reading as the registry declares it. ``alternatives``: every plausible other
     meaning of what the reader saw. ``test``: the value test that rejects each of them
     (``rejects``: how, one line per alternative), or None when no honest test exists and the
-    reading is settled only by ``settled_by``."""
+    reading is settled only by ``settled_by``. ``table``: the same test over a whole table, where
+    a column's verdict reads the others (duplicates of one nutrient, the identity they sum to).
+    ``helpers``: the functions (``module:function``) the test, or a kind without one its guess,
+    reads its values with; outside this module they are called only through :func:`by_values` and
+    :func:`by_values_table`, or where :data:`EVIDENCE_ONLY` says no number follows (BLUEPRINT
+    §14.3: one test per kind, no private settler; the structural test holds it)."""
 
     kind: str
     reads: str
@@ -280,10 +292,31 @@ class KindRule:
     test: Any = None
     rejects: tuple[tuple[str, str], ...] = ()
     settled_by: str = "the user's own answer"
+    table: Any = None
+    helpers: tuple[str, ...] = ()
 
     @property
     def value_settleable(self) -> bool:
         return self.test is not None
+
+
+def by_values(kind: str, *args: Any, **kwargs: Any) -> Verdict:
+    """The one way a consumer settles a kind by its values (BLUEPRINT §14.3): the registry's test
+    for it (:data:`KIND_RULES`), never a test of the consumer's own. A kind with no value test is
+    settled only by the user, so asking it here is an error."""
+    rule = KIND_RULES[kind]
+    if rule.test is None:
+        raise ValueError(f"no value test settles the {kind} reading: {rule.settled_by}")
+    return rule.test(*args, **kwargs)
+
+
+def by_values_table(kind: str, *args: Any, **kwargs: Any) -> dict[str, Verdict]:
+    """The registry's test for ``kind`` over a whole table: each column's verdict
+    (:attr:`KindRule.table`), the same test :func:`by_values` runs on one column."""
+    rule = KIND_RULES[kind]
+    if rule.table is None:
+        raise ValueError(f"the {kind} reading has no test over a whole table")
+    return rule.table(*args, **kwargs)
 
 
 # Whole numbers all different on n rows within a span this many times narrower than n² / 2: a
@@ -506,29 +539,119 @@ def fractional_verdict(grid: Mapping[str, Any], first: float | None = None) -> V
                    f"code list's sit apart)")
 
 
-def amounts_by_values(values: Any) -> Verdict:
-    """Codes or amounts: labels are codes by their type; values with decimals are amounts only
-    where there are more than :data:`CODE_LEVELS` of them and they fill their grid as a
-    measurement's do (:func:`grid_reading`): ICD-9-CM 307.1, 307.51 and 250.02 are codes written
-    with a decimal point. Whole numbers settle nothing, whatever their count or type: FIPS states
-    hold 51 codes, UK Biobank's ethnic background 22 from -3 to 4003, and a blank writes codes 1–5
-    as 1.0–5.0."""
+def amounts_by_values(values: Any, counts: Any = None) -> Verdict:
+    """Codes or amounts. ``counts``: how many rows hold each of ``values`` when they are a
+    column's distinct values (the store reads them so, without materializing the column).
+
+    * Text settles "code" only as labels: a text column whose values are mostly numbers once its
+      missing marks (``.``, ``.A``–``.Z``, ``NA``, blanks) and censoring marks (``<0.20``,
+      ``>200``, ``<LOD``) are set aside is numbers written as text (:func:`text_numbers`: the
+      gate's SAS-exported BMI with ten ``.`` read as 175 categories), so it settles nothing.
+    * Values with decimals are amounts only where there are more than :data:`CODE_LEVELS` of them
+      and they fill their grid as a measurement's do (:func:`grid_reading`): ICD-9-CM 307.1, 307.51
+      and 250.02 are codes written with a decimal point.
+    * Whole numbers settle nothing, whatever their count or type: FIPS states hold 51 codes, UK
+      Biobank's ethnic background 22 from -3 to 4003, and a blank writes codes 1–5 as 1.0–5.0."""
     import numpy as np
     import pandas as pd
 
-    s = _present(values)
-    if s.empty:
-        return Verdict(False, None, "no values")
+    if counts is not None:
+        distinct = pd.Series(values)
+        weights = np.asarray(counts, dtype=float)
+        keep = distinct.notna().to_numpy()
+        distinct, weights = distinct[keep].reset_index(drop=True), weights[keep]
+        if distinct.empty:
+            return Verdict(False, None, "no values")
+        s = distinct
+    else:
+        s = _present(values)
+        weights = None
+        if s.empty:
+            return Verdict(False, None, "no values")
     if pd.api.types.is_bool_dtype(s) or not pd.api.types.is_numeric_dtype(s):
-        return Verdict(True, "code", "labels, not numbers")
-    x = _numbers(s)
-    fractional = x[x != np.floor(x)] if x is not None else x
-    if fractional is not None and len(fractional):
-        return fractional_verdict(_grid_of(x), float(fractional[0]))
+        found = text_numbers(s, weights)
+        if found is not None:
+            return Verdict(False, None, found["evidence"], candidates=("amount", "code"),
+                           detail=found)
+        return Verdict(True, "code", "labels, not numbers", detail={"text_numbers": False})
+    if weights is None:
+        x = _numbers(s)
+        fractional = x[x != np.floor(x)] if x is not None else x
+        if fractional is not None and len(fractional):
+            return fractional_verdict(_grid_of(x), float(fractional[0]))
+    else:
+        u = pd.to_numeric(s, errors="coerce").to_numpy(dtype=float)
+        finite = np.isfinite(u)
+        u, w = u[finite], weights[finite]
+        fractions = u[u != np.floor(u)]
+        if len(fractions):
+            if len(u) >= GRID_MAX_VALUES:
+                return fractional_verdict({"k": len(u), "fills": True}, None)
+            return fractional_verdict(grid_reading(u, w), float(np.sort(fractions)[0]))
+        x = u
     k = int(len(np.unique(x))) if x is not None else 0
     lo = _fmt_value(float(x.min())) if x is not None and len(x) else "?"
     hi = _fmt_value(float(x.max())) if x is not None and len(x) else "?"
     return Verdict(False, None, f"`{k:,}` whole-number values from {lo} to {hi}")
+
+
+# A text column is numbers written as text when its numbers are this share of the values left once
+# the missing and censoring marks are set aside: the repair registry's own threshold for "numbers
+# stored as text" (``repairs.NUMBER_SHARE``), so the finding, its "Read as numbers" repair and this
+# reading are one definition.
+TEXT_NUMBER_SHARE = 0.8
+
+
+def text_numbers(values: Any, counts: Any = None) -> dict[str, Any] | None:
+    """Numbers written as text (BLUEPRINT §14.3, the sixth gate: a BMI exported from SAS with ten
+    ``.`` for missing, a CRP with fifteen ``<0.20``): what :func:`repairs.parse_text_numbers
+    <turbotab.core.repairs.parse_text_numbers>` reads, when the numbers are at least
+    :data:`TEXT_NUMBER_SHARE` of the values left once the missing marks and the censoring marks are
+    set aside; else None (labels). With ``text_numbers`` True, the counts, and the ``evidence`` a
+    question shows."""
+    from turbotab.core.repairs import parse_text_numbers
+
+    found = parse_text_numbers(values, counts)
+    if found is None or not found["numbers"]:
+        return None
+    marks = sum(found["marks"].values())
+    below, above = sum(found["below"].values()), sum(found["above"].values())
+    censored = below + above + sum(found["censored"].values())
+    rest = found["n_values"] - marks - censored
+    if rest <= 0 or found["numbers"] < TEXT_NUMBER_SHARE * rest:
+        return None
+    return {**found, "text_numbers": True, "n_marks": marks, "n_below": below, "n_above": above,
+            "n_censored": censored, "evidence": text_numbers_evidence(found)}
+
+
+def _spellings(found: Mapping[str, int], limit: int = 3) -> str:
+    items = list(found.items())
+    shown = ", ".join(f"`{s or '(blank)'}` ×{c:,}" for s, c in items[:limit])
+    return shown + (f" and {len(items) - limit:,} more" if len(items) > limit else "")
+
+
+def text_numbers_evidence(found: Mapping[str, Any]) -> str:
+    """What a text column that holds numbers shows a question: its numbers, its missing marks,
+    the values censored at a limit, and what reading it as amounts makes of each."""
+    n, numbers = int(found["n_values"]), int(found["numbers"])
+    parts = [f"`{numbers:,}` of `{n:,}` values are numbers written as text"]
+    if found.get("marks"):
+        parts.append(f"missing marks {_spellings(found['marks'])} (SAS and Stata write a missing "
+                     f"value as `.`), blank as amounts")
+    below = found.get("below") or {}
+    if below:
+        first = next(iter(below))
+        parts.append(f"`{sum(below.values()):,}` below a detection limit (`<{first}`), read as "
+                     f"amounts at the detection-limit answer")
+    above = found.get("above") or {}
+    if above:
+        first = next(iter(above))
+        parts.append(f"`{sum(above.values()):,}` above a limit (`>{first}`), blank as amounts")
+    if found.get("censored"):
+        parts.append(f"censored with no limit {_spellings(found['censored'])}, blank as amounts")
+    if found.get("other"):
+        parts.append(f"other text {_spellings(found['other'])}, blank as amounts")
+    return "; ".join(parts) + ": numbers with missing marks, or labels"
 
 
 def labels_spell_sex(values: Any) -> Verdict:
@@ -576,17 +699,23 @@ def _level(value: Any) -> str:
     return str(int(f)) if f.is_integer() else repr(f)
 
 
-def energy_follows_macronutrients(frame: Any, column: str) -> Verdict:
+def energy_follows_macronutrients(frame: Any, column: str,
+                                  candidates: Mapping[str, Sequence[str]] | None = None) -> Verdict:
     """Total energy intake: its values follow the energy the macronutrients in grams carry (FAO
     factors 4/4/9/7) at r ≥ 0.7 (``recognizers.energy_against_macros``). A device's energy
-    expenditure (Fitbit ``Calories``) or an energy requirement computed from body size does not."""
+    expenditure (Fitbit ``Calories``) or an energy requirement computed from body size does not.
+    ``candidates``: every macronutrient total to choose among (default: every one but ``column``),
+    so the values choose among duplicates (an InBody body ``Protein`` beside a recall's
+    ``protein_g``)."""
     from turbotab.core.recognizers import energy_against_macros, macro_candidates
 
-    check = energy_against_macros(frame, column,
-                                  candidates=macro_candidates(frame, exclude=[column]))
+    if candidates is None:
+        candidates = macro_candidates(frame, exclude=[column])
+    check = energy_against_macros(frame, column, candidates=candidates)
     if check is None:
         return Verdict(False, None, "no macronutrients to read it against")
-    return Verdict(bool(check.by_values), "energy" if check.by_values else None, check.why)
+    return Verdict(bool(check.by_values), "energy" if check.by_values else None, check.why,
+                   detail=check)
 
 
 def characteristic_predictor(name: Any, values: Any, units: Any = None) -> Verdict:
@@ -675,38 +804,106 @@ def atwater_unit(frame: Any, energy: str) -> Verdict:
     except Exception:  # noqa: BLE001 - a check that cannot run settles nothing
         check = None
     if check is None or check.verdict in ("mixed_units", "macros_not_grams"):
-        return Verdict(False, None, "the macronutrients do not reconstruct it")
+        return Verdict(False, None, "the macronutrients do not reconstruct it", detail=check)
     ratio = float(getattr(check, "ratio", float("nan")))
     fits = unit_day_candidates(ratio)
     if fits == [("kcal", 1)]:
         return Verdict(True, "kcal", "matches the energy its macronutrients carry: kcal, over the "
-                                     "same days as they span", candidates=tuple(fits))
+                                     "same days as they span", candidates=tuple(fits),
+                       detail=check)
     if not fits:
         return Verdict(False, None, f"is {ratio:.2f}× the energy its macronutrients carry, which "
-                                    f"no unit or day count explains")
+                                    f"no unit or day count explains", detail=check)
     words = " or ".join(f"{'kJ' if u == 'kj' else 'kcal'}" + (f" over {d} days" if d > 1 else "")
                         for u, d in fits)
     return Verdict(False, None, f"is about {ratio:.2f}× the energy its macronutrients carry: "
                                 f"{words}, which the values cannot tell apart",
-                   candidates=tuple(fits))
+                   candidates=tuple(fits), detail=check)
+
+
+# The share of total energy below which the Atwater identity cannot see a source's unit: the pack's
+# pass band (0.90–1.10) holds a reconstruction whose every other source is exact even with this
+# source's energy missing altogether (1 / (1 − s) ≤ 1.10 for s ≤ 1 − 1/1.10, about 9%), so the
+# source could be in kilograms, in standard drinks or absent and the identity would still pass.
+MINOR_SHARE = 1.0 - 1.0 / 1.10
+# Alcohol's own unit: research exports record it in grams, in kcal, or in standard drinks, whose
+# grams of ethanol are set by each country ("the modal standard drink size was 10 g pure ethanol,
+# but variation was wide (8-20 g)", Kalinowski & Humphreys 2016, Addiction 111:1293). A drink of
+# 14 g carries 98 kcal at alcohol's 7 kcal/g, a gram 7: a 14-fold difference the identity sees only
+# where alcohol is a large share of energy, so alcohol's unit is always the user's (the sixth gate).
+DRINK_GRAMS = (8.0, 20.0)
+
+
+def _factor_alternatives(role: str, factor: float) -> tuple[tuple[str, float], ...]:
+    """The other units an energy source in grams might be in, each as how many grams one of its
+    units holds: kilograms 1,000; kcal 1/f; kJ 1/(4.184 f), ``f`` the source's kcal per gram."""
+    from turbotab.core.methods.energy import KCAL_PER_KJ
+
+    return (("kg", 1000.0), ("kcal", 1.0 / factor), ("kJ", 1.0 / (KCAL_PER_KJ * factor)))
 
 
 def factor_in_grams(frame: Any, energy: str, column: str) -> Verdict:
-    """An energy source's unit for its kcal per unit: grams, settled only where the Atwater
-    identity holds between total energy and the macronutrients with this column among them (the
-    pack's pass band, ratio 0.90–1.10). In kilograms (an InBody export's body protein), kcal, kJ or
-    percent of energy the reconstruction misses by a factor of 1,000, about 4, 4.184 × that, or the
-    percentages' sum, so it settles nothing."""
+    """An energy source's unit for its kcal per unit: grams, settled by the Atwater identity only
+    where it excludes every other unit (BLUEPRINT §14.3; the sixth gate's US standard drinks of
+    alcohol, which reconstruct at a ratio of 1.02 read as grams):
+
+    * the identity holds between total energy and the macronutrients with this column among them
+      (the pack's pass band, ratio 0.90–1.10);
+    * the column is no alcohol: its standard drinks hold 8–20 g by country (:data:`DRINK_GRAMS`),
+      and alcohol is a minor source, so its unit is the user's;
+    * the column carries at least :data:`MINOR_SHARE` of the reconstructed energy on the median
+      row: below that the band cannot see its unit at all;
+    * read in each other unit it could be in (kg, kcal, kJ: :func:`_factor_alternatives`), the
+      reconstruction leaves the band, so that unit is rejected.
+
+    In kilograms (an InBody export's body protein), kcal, kJ or percent of energy the
+    reconstruction misses by a factor of 1,000, about 4, 4.184 × that, or the percentages' sum."""
+    import numpy as np
+    import pandas as pd
+
     from turbotab.core.methods.energy import atwater_check
+    from turbotab.nutrition import ATWATER, PASS_HIGH, PASS_LOW
 
     try:
         check = atwater_check(frame, energy)
     except Exception:  # noqa: BLE001 - a check that cannot run settles nothing
         check = None
-    if check is not None and check.verdict == "pass" \
-            and column in set((getattr(check, "macro_columns", None) or {}).values()):
-        return Verdict(True, "g", "the Atwater identity holds with total energy: grams")
-    return Verdict(False, None, "the Atwater identity does not read it in grams")
+    macros = dict(getattr(check, "macro_columns", None) or {})
+    if check is None or check.verdict != "pass" or column not in set(macros.values()):
+        return Verdict(False, None, "the Atwater identity does not read it in grams", detail=check)
+    role = next(r for r, c in macros.items() if c == column)
+    if role == "alcohol":
+        return Verdict(False, None,
+                       f"the Atwater identity holds with `{column}` read in grams, but alcohol is "
+                       f"also recorded in kcal or in standard drinks (8–20 g a drink by country), "
+                       f"and a minor source's unit is one the identity cannot see", detail=check)
+    declared = pd.to_numeric(frame[energy], errors="coerce")
+    parts = {c: pd.to_numeric(frame[c], errors="coerce").fillna(0.0) * ATWATER[r]
+             for r, c in macros.items()}
+    recon = sum(parts.values())
+    usable = declared.notna() & (recon > 0) & (declared > 0)
+    e, r = declared[usable].to_numpy(float), recon[usable].to_numpy(float)
+    mine = parts[column][usable].to_numpy(float)
+    share = float(np.median(mine / r)) if len(r) else 0.0
+    if share < MINOR_SHARE:
+        return Verdict(False, None,
+                       f"`{column}` carries about {share:.0%} of the energy its macronutrients "
+                       f"reconstruct, below the {MINOR_SHARE:.0%} the identity's 0.90–1.10 band can "
+                       f"see: in another unit, or missing, the identity would hold as well",
+                       detail=check)
+    ratio = float(np.median(e / r))
+    seen = []
+    for unit, grams_per_unit in _factor_alternatives(role, float(ATWATER[role])):
+        other = float(np.median(e / (r + mine * (grams_per_unit - 1.0))))
+        if PASS_LOW <= other <= PASS_HIGH:
+            return Verdict(False, None,
+                           f"the Atwater identity holds with `{column}` read in grams (ratio "
+                           f"{ratio:.2f}) and as well were it in {unit} (ratio {other:.2f})",
+                           detail=check)
+        seen.append(f"{unit} ({other:.2f})")
+    return Verdict(True, "g", f"the Atwater identity holds with total energy in grams (ratio "
+                              f"{ratio:.2f}) and fails were it in {', '.join(seen)}",
+                   detail=check)
 
 
 def flag_marks_blanks(values: Any, base: Any = None) -> Verdict:
@@ -753,17 +950,44 @@ def outcome_task_by_values(values: Any) -> Verdict:
                                                            else ()))
 
 
-def intake_rises_with_energy(name: Any, values: Any, energy: Any = None) -> Verdict:
-    """A nutrient intake: amounts plausible as a day's intake of the nutrient the name proposes,
-    rising with total energy at r ≥ 0.3 (``recognizers.intake_check``). A lab count named like a
-    nutrient (``ALC``, lymphocytes), a body measure (BIA ``Fat%``) or a yes/no does not rise with
-    energy, or is no day's intake."""
-    from turbotab.core.recognizers import intake_check
+def nutrients_by_values(frame: Any, *, energy: str | None = None, energy_unit: str | None = None,
+                        skip: Iterable[str] = (), proposed_unit: str | None = None
+                        ) -> dict[str, Verdict]:
+    """A nutrient intake, for every column of ``frame`` the name reads as a nutrient: the one test
+    the roles, the energy card and the energy finding read (``recognizers.corroborated_nutrients``):
 
-    check = intake_check(name, values, energy=energy)
-    if check is None:
+    * amounts plausible as a day's intake of the nutrient the name proposes, rising with total
+      energy at r ≥ 0.3; or a macronutrient total in a passing Atwater reconstruction of total
+      energy (r ≥ 0.7, ratio 0.90–1.10) carrying at least 5% of it on the median row;
+    * of two columns read as one nutrient, only the one whose energy totals with ``energy`` by a
+      clear margin; neither when nothing chooses.
+
+    A lab count named like a nutrient (``ALC``, lymphocytes), a body measure (BIA ``Fat%``) or a
+    yes/no does not rise with energy, is no day's intake, or is too small a member to ride with the
+    identity. Each verdict's ``detail`` is the column's intake check, for the words."""
+    from turbotab.core.recognizers import corroborated_nutrients
+
+    checks = corroborated_nutrients(frame, energy=energy, energy_unit=energy_unit, skip=skip,
+                                    proposed_unit=proposed_unit)
+    return {str(c): Verdict(bool(chk.by_values), "exposure" if chk.by_values else None, chk.why,
+                            detail=chk) for c, chk in checks.items()}
+
+
+def intake_rises_with_energy(name: Any, values: Any, energy: Any = None, *,
+                             energy_unit: str | None = None) -> Verdict:
+    """:func:`nutrients_by_values` on one column beside total energy (``energy``: its values, in
+    ``energy_unit`` when it is settled)."""
+    import pandas as pd
+
+    frame = pd.DataFrame({str(name): pd.Series(values).reset_index(drop=True)})
+    total = None
+    if energy is not None:
+        total = "__total_energy__"
+        frame[total] = pd.Series(energy).reset_index(drop=True)
+    found = nutrients_by_values(frame, energy=total, energy_unit=energy_unit).get(str(name))
+    if found is None:
         return Verdict(False, None, "its name reads as no energy-bearing nutrient")
-    return Verdict(bool(check.by_values), "exposure" if check.by_values else None, check.why)
+    return found
 
 
 KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
@@ -792,7 +1016,8 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
               "a date constant within units (a birth or randomization date)",
               "an assay's run or batch date, which changes within units as a visit date does"),
              settled_by="the user's confirmation of the role, or the repeats or temporal answer "
-                        "naming it as the column that orders the rows"),
+                        "naming it as the column that orders the rows",
+             helpers=("turbotab.core.readings:dates_order_rows",)),
     KindRule("role:free_text", "the column is free text, so it leaves the predictors",
              ("a category with many labels (country of birth, occupation)",
               "an identifier written as text"),
@@ -807,16 +1032,24 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
              ("a yes/no characteristic", "an imputed copy of a measurement",
               "a survey's skip-pattern gate (NHANES ALQ111, whose 'No' skips ALQ130), a "
               "characteristic that marks its follow-up's blanks exactly as a flag does"),
-             settled_by="the user's confirmation of the role (a flag, or a characteristic)"),
+             settled_by="the user's confirmation of the role (a flag, or a characteristic)",
+             helpers=("turbotab.core.recognizers:flag_values",)),
     KindRule("role:exposure", "the column is a nutrient intake",
              ("a lab count named like a nutrient (ALC: lymphocytes)",
               "a body measure named like a nutrient (BIA Fat%)", "a yes/no named like a nutrient"),
              intake_rises_with_energy,
              (("a lab count named like a nutrient (ALC: lymphocytes)",
-               "it does not rise with total energy (r < 0.3)"),
+               "it does not rise with total energy (r < 0.3), and a member of the Atwater identity "
+               "must carry at least 5% of energy"),
               ("a body measure named like a nutrient (BIA Fat%)",
                "no day's intake, or no rise with energy"),
-              ("a yes/no named like a nutrient", "two values are no intake"))),
+              ("a yes/no named like a nutrient", "two values are no intake")),
+             table=nutrients_by_values,
+             helpers=("turbotab.core.recognizers:corroborated_nutrients",
+                      "turbotab.core.recognizers:intake_check",
+                      "turbotab.core.recognizers:nutrient_check",
+                      "turbotab.core.recognizers:identity_members",
+                      "turbotab.core.recognizers:resolve_duplicates")),
     KindRule("role:energy", "the column is total energy intake",
              ("a device's energy expenditure (Fitbit Calories)",
               "an energy requirement computed from body size"),
@@ -824,7 +1057,8 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
              (("a device's energy expenditure (Fitbit Calories)",
                "it does not follow the macronutrients' energy (r < 0.7)"),
               ("an energy requirement computed from body size",
-               "it follows them only loosely (r < 0.7)"))),
+               "it follows them only loosely (r < 0.7)")),
+             helpers=("turbotab.core.recognizers:energy_against_macros",)),
     KindRule("role:covariate", "the column is a person's characteristic in the model (a sex, an "
                                "age, a BMI)",
              ("a column left out of the model (an identifier, a constant)",
@@ -833,15 +1067,23 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
              (("a column left out of the model (an identifier, a constant)",
                "a sex holds 2–3 levels, an age's or a BMI's median sits in a human range"),
               ("the time axis of repeated rows (an age at each visit)",
-               "it must not change within most units"))),
+               "it must not change within most units")),
+             helpers=("turbotab.core.stages.rows:characteristic_fits",)),
     KindRule("role:excluded", "the column holds one value, so it explains nothing",
              ("a predictor",), constant_values,
              (("a predictor", "a constant has no variation for any model to use"),)),
+    # The sixth gate: a BMI exported from SAS with ten "." for missing, and a CRP with fifteen
+    # "<0.20", arrived as text; "labels, not numbers" settled them codes, and the fit entered 175
+    # and 300 indicators where one slope belonged. Numbers written as text are an alternative to
+    # labels, so text settles codes only where its values are not mostly numbers once the missing
+    # and censoring marks are set aside (:func:`text_numbers`).
     KindRule("code_or_count", "the column's numbers are codes for categories, or amounts",
              ("codes for categories (one indicator per level; a unit's rows take the most "
               "frequent)", "amounts (one slope; a unit's rows averaged)",
               "codes written with a decimal point (ICD-9-CM 307.1 anorexia nervosa, 307.51 "
-              "bulimia nervosa, 250.02, 401.9)"),
+              "bulimia nervosa, 250.02, 401.9)",
+              "numbers written as text, a few values missing marks (SAS and Stata '.', '.A'–'.Z', "
+              "'NA', blank) or censored at a limit ('<0.20', '>200', '<LOD')"),
              amounts_by_values,
              (("codes for categories (one indicator per level; a unit's rows take the most "
                "frequent)", "whole numbers, of any count or type, settle nothing"),
@@ -850,7 +1092,15 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
               ("codes written with a decimal point (ICD-9-CM 307.1 anorexia nervosa, 307.51 "
                "bulimia nervosa, 250.02, 401.9)",
                "values with decimals settle amounts only beyond ten values and filling their grid "
-               "as a measurement's do; a code list's sit apart"))),
+               "as a measurement's do; a code list's sit apart"),
+              ("numbers written as text, a few values missing marks (SAS and Stata '.', '.A'–'.Z', "
+               "'NA', blank) or censored at a limit ('<0.20', '>200', '<LOD')",
+               "text settles codes only where numbers are under 80% of its values once the missing "
+               "and censoring marks are set aside (the repair registry's own threshold); numbers "
+               "written with leading zeros (FIPS '01') read as codes")),
+             helpers=("turbotab.core.readings:grid_reading", "turbotab.core.readings:fractional_verdict",
+                      "turbotab.core.readings:text_numbers",
+                      "turbotab.core.repairs:parse_text_numbers")),
     KindRule("outcome_unit", "the unit the outcome's values are in",
              ("another unit the header's letters spell (`uL`: per microlitre, not U/L)",
               "a unit with a denominator the header leaves out (`IU` for IU/L)",
@@ -882,18 +1132,33 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
               ("an N-day total beside daily-mean macronutrients (a ratio near a whole number N ≥ 2)",
                "only a ratio near 1 settles")),
              settled_by="the user's recorded unit and days in one answer (a name's kcal or kJ only "
-                        "proposes it)"),
+                        "proposes it)",
+             helpers=("turbotab.core.methods.energy:atwater_check",)),
+    # The sixth gate: alcohol recorded in US standard drinks reconstructed total energy at 1.02
+    # read as grams (about 4% of energy: the band cannot see it), and a private settler beside the
+    # registry settled even an unmarked `alcohol` the identity had left out; a 20 kcal swap moved
+    # it at 7 kcal a drink, not 98.
     KindRule("unit:factor", "the unit an energy source's amounts are in, which sets the kcal each "
                             "unit carries (g: its Atwater factor; kg: 1,000 × it; kcal: 1; kJ: "
-                            "1/4.184)",
-             ("kilograms (an InBody export's body protein)", "kcal", "kJ", "percent of energy"),
+                            "1/4.184; alcohol's standard drinks: 7 × the drink's grams)",
+             ("kilograms (an InBody export's body protein)", "kcal", "kJ", "percent of energy",
+              "standard drinks of alcohol (8–20 g a drink, by country)",
+              "a minor source the identity cannot see (under about 9% of energy: any unit, or none, "
+              "keeps the ratio in its band)"),
              factor_in_grams,
              (("kilograms (an InBody export's body protein)",
-               "the reconstruction misses by 1,000 and fails"),
-              ("kcal", "the reconstruction misses by the Atwater factor and fails"),
-              ("kJ", "the reconstruction misses by 4.184 × the factor and fails"),
-              ("percent of energy", "percentages are no grams: the pack reads them apart")),
-             settled_by="the user's recorded unit (a name's _g or _kcal never settles it)"),
+               "read in kilograms the reconstruction leaves the band: rejected"),
+              ("kcal", "read in kcal the reconstruction leaves the band: rejected"),
+              ("kJ", "read in kJ the reconstruction leaves the band: rejected"),
+              ("percent of energy", "percentages are no grams: the pack reads them apart"),
+              ("standard drinks of alcohol (8–20 g a drink, by country)",
+               "alcohol is never settled by its values"),
+              ("a minor source the identity cannot see (under about 9% of energy: any unit, or none, "
+               "keeps the ratio in its band)",
+               "a source under 1 − 1/1.10 of the reconstructed energy is never settled by its "
+               "values")),
+             settled_by="the user's recorded unit (a name's _g or _kcal never settles it)",
+             helpers=("turbotab.core.methods.energy:atwater_check",)),
     KindRule("sex_coding", "which level of a sex column is female",
              ("1 male, 2 female (NHANES, the CDC growth charts)", "1 female, 2 male",
               "0/1 either way"),
@@ -909,6 +1174,20 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
     KindRule("time_column", "the column that orders a unit's records",
              ("an index of the records in file order", "another column that orders them"),
              settled_by="the user naming it (the repeats answer, or its own confirmation)"),
+    # The sixth gate: a confirmation naming a total other than the one the design found was
+    # accepted and read nowhere. A part never exceeds its total, which the values check: necessary,
+    # not sufficient, so the nesting is the user's, whichever column they name.
+    KindRule("nested_in", "the total the column is a part of (saturated fat of total fat)",
+             ("a part of another total than the names suggest (sugars of carbohydrate)",
+              "no part of any total: a nutrient of its own"),
+             settled_by="the user's confirmation, naming any column of the table or none "
+                        "(the names and the values, a part never above its total, only propose)",
+             helpers=("turbotab.core.methods.nesting:nested_components",)),
+    # How a value below a detection limit (``<0.20``) is read once its column is read as numbers:
+    # half the limit, or the limit over √2; the values hold no answer (each is somewhere below).
+    KindRule("detection_limit", "the value a result below a detection limit is read at",
+             ("half the limit", "the limit over √2"),
+             settled_by="the user's below-detection repair for the column (``apply_repair``)"),
     # The fifth gate: a PHQ-9 total written 0.0–27.0 after one blank was read "regression (high)"
     # and the task question skipped, while the same values as integers were asked; the dtype
     # decided. The app offers an ordinal task, so the alternative changes the model.
@@ -1129,6 +1408,13 @@ def whole_facts(columns: Iterable[str], info: Mapping[str, Any] | None = None,
             out.update(store.whole_numbers(names))
         except Exception:  # noqa: BLE001 - a store that cannot answer leaves the info's reading
             out = {}
+        # Text that holds numbers (BLUEPRINT §14.3, the sixth gate): asked too, as codes or as
+        # numbers with missing marks; text the values read as labels is codes by its values.
+        try:
+            out.update({c: f for c, f in store.text_numbers([c for c in names if c not in out]).items()
+                        if f.get("text_numbers")})
+        except Exception:  # noqa: BLE001 - no text reading: the stage that reads the values asks
+            pass
     for c in names:
         if c in out:
             continue
@@ -1160,6 +1446,10 @@ def code_question(facts: Mapping[str, Any] | None, *, scope: str = "fit") -> boo
       frequent value, which differ, so there it asks."""
     if not facts:
         return False
+    if facts.get("text_numbers"):
+        # Numbers written as text: codes (one indicator per spelling, the marks among them) or
+        # numbers with missing marks (one slope, the marks blank) differ whatever their count.
+        return True
     if not facts.get("whole") and facts.get("amount_by_values") is not False:
         return False  # decimals that settle "amount" (or no reading of them at all)
     k = int(facts.get("n_values") or 0)
@@ -1174,6 +1464,12 @@ def code_guess(facts: Mapping[str, Any] | None) -> tuple[str, str]:
     1001–4003), include negative sentinels, or carry decimals that did not settle amounts (ICD-9-CM
     307.1); else amounts. A guess the user confirms or changes, never a settlement."""
     f = dict(facts or {})
+    if f.get("text_numbers"):
+        # BLUEPRINT §14.3 (the sixth gate): numbers written as text are led by "numbers with
+        # missing marks", unless they are a few whole values (codes 1/2/3 with a SAS ".").
+        evidence = str(f.get("evidence") or "numbers written as text")
+        few = bool(f.get("whole")) and int(f.get("distinct") or 0) <= CODE_LEVELS
+        return ("code", f"{evidence}; few whole values, as codes") if few else ("amount", evidence)
     if f.get("whole") is False:
         return "code", str(f.get("evidence") or "values with decimals that sit apart, as codes do")
     k = int(f.get("n_values") or 0)
@@ -1315,6 +1611,37 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
         asked_for = [c for c in asked_for if c not in exposures]
     facts = whole_facts(asked_for, info, store)
     codes = unsettled_codes(state, asked_for, facts)
+    if not role_readings and not codes:
+        # Numbers written as text read as amounts once the user said so (the working table reads
+        # them: marks blank), but a value below a detection limit has no number until the
+        # detection-limit answer gives it one (BLUEPRINT §14.3: censored marks are routed there).
+        commas = [c for c in asked_for if (facts.get(c) or {}).get("text_numbers")
+                  and (facts.get(c) or {}).get("ambiguous_comma")
+                  and confirmation(state, "code_or_count", c) == "amount"]
+        if commas:
+            c = commas[0]
+            raise Unsettled(
+                f"`{c}` is read as numbers, as you said, but every comma in it could split "
+                f"thousands (`1,234`) or mark decimals (`1,234` as 1.234); the values cannot say "
+                f"which. Choose how its commas read.",
+                [Reading((c,), "code_or_count", "amount", "medium",
+                         (facts.get(c) or {}).get("evidence") or "", False, "proposed")],
+                [e for c in commas for e in comma_exits(c)])
+        limits = [c for c in asked_for if (facts.get(c) or {}).get("text_numbers")
+                  and (facts.get(c) or {}).get("below")
+                  and confirmation(state, "code_or_count", c) == "amount"
+                  and detection_limit(state, c) is None]
+        if limits:
+            c = limits[0]
+            f = facts[c]
+            first = next(iter(f["below"]))
+            raise Unsettled(
+                f"`{c}` is read as numbers, as you said, but `{sum(f['below'].values()):,}` of its "
+                f"values lie below a detection limit (such as `<{first}`): each is somewhere below "
+                f"its limit, so its number is your answer. Choose how they are read.",
+                [Reading((c,), "detection_limit", "half_limit", "medium", f.get("evidence") or "",
+                         False, "proposed")],
+                [e for c in limits for e in detection_exits(c, facts[c])])
     if role_readings or codes:
         needed = [r for r in role_readings if r is not None] + codes
         if role_readings:
@@ -1323,7 +1650,10 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
                        "on a guess.")
         else:
             names = [r.column for r in codes]
-            message = (f"{listing(names)} {'holds' if len(names) == 1 else 'hold'} whole numbers, "
+            text = [c for c in names if (facts.get(c) or {}).get("text_numbers")]
+            what = ("numbers written as text" if len(text) == len(names) else
+                    "whole numbers" if not text else "whole numbers or numbers written as text")
+            message = (f"{listing(names)} {'holds' if len(names) == 1 else 'hold'} {what}, "
                        f"which may be codes for categories (one indicator per level) or amounts "
                        f"(one slope); the fit waits for the answer for each.")
         raise Unsettled(f"{message} {ask_text(needed)}", needed, ask_exits(needed, state))
@@ -1707,9 +2037,9 @@ def day_count_candidates(name: Any, values: Any = None, *, unit: str = "kcal") -
 @dataclass(frozen=True)
 class KcalPerUnit:
     """An energy source's kcal per unit as the ledger holds it: ``factor`` once settled (by the
-    user's recorded unit, or by the Atwater identity reading its grams), else None with ``why``;
-    ``route`` names the way forward when the recorded unit carries no constant kcal per unit (a
-    share of energy moves on the share-of-energy scale)."""
+    user's recorded unit, or by the registry's Atwater test reading its grams), else None with
+    ``why``; ``route`` names the way forward when the recorded unit carries no constant kcal per
+    unit (a share of energy moves on the share-of-energy scale)."""
 
     column: str
     factor: float | None
@@ -1720,110 +2050,301 @@ class KcalPerUnit:
 
 # The kcal one unit of an energy source carries, by its recorded unit (BLUEPRINT §14.3: derived
 # from the confirmation, never from the name): grams at the nutrient's Atwater factor
-# (NUTRITION_PACK §01: 4/4/9/7), kilograms 1,000 times that, kcal itself, and kJ at 1/4.184
-# (4.184 kJ per thermochemical kcal). A share of energy has no constant kcal per unit; the other
-# units are no amount of food at all.
+# (NUTRITION_PACK §01: 4/4/9/7), kilograms 1,000 times that, kcal itself, kJ at 1/4.184 (4.184 kJ
+# per thermochemical kcal), and alcohol's standard drinks at 7 kcal per gram of the drink's ethanol
+# (:data:`DRINK_GRAMS`). A share of energy has no constant kcal per unit; the other units are no
+# amount of food at all.
 FACTOR_UNITS = ("g", "kg", "kcal", "kj")
+DRINKS = "drinks"
+# Standard drinks the substitution's question offers, each with its source: the US (NIAAA: "In the
+# United States, one standard drink contains about 14 grams, or about 0.6 fluid ounces, of pure
+# alcohol"), the UK unit (NHS: "One unit equals 10ml or 8g of pure alcohol"), and the most common
+# governmental size (Kalinowski & Humphreys 2016: "the modal standard drink size was 10 g pure
+# ethanol"). Any size from 8 to 20 g is recorded the same way (``drinks:<grams>``).
+OFFERED_DRINKS: tuple[tuple[float, str], ...] = (
+    (14.0, "a US standard drink, 14 g of alcohol (NIAAA)"),
+    (8.0, "a UK unit, 8 g of alcohol (NHS)"),
+    (10.0, "a 10 g standard drink, the most common governmental size (Australia, much of Europe)"),
+)
+
+
+def _grams_text(grams: float) -> str:
+    return f"{grams:.2f}".rstrip("0").rstrip(".")
+
+
+def drinks_value(grams: float) -> str:
+    """``drinks:<grams>``: a unit of standard drinks of ``grams`` g of ethanol each, written with
+    no trailing zeros (``drinks:14``, ``drinks:13.45``)."""
+    return f"{DRINKS}:{_grams_text(float(grams))}"
+
+
+def parse_drinks(value: Any) -> float | None:
+    """The grams of ethanol a ``drinks:<grams>`` unit's drink holds, or None when ``value`` is no
+    such unit: grams from 8 to 20 (:data:`DRINK_GRAMS`), to the hundredth of a gram, written as
+    :func:`drinks_value` writes them."""
+    import re
+
+    m = re.fullmatch(r"drinks:(\d{1,2}(?:\.\d{1,2})?)", str(value or ""))
+    if not m:
+        return None
+    grams = float(m.group(1))
+    if not DRINK_GRAMS[0] <= grams <= DRINK_GRAMS[1] or drinks_value(grams) != str(value):
+        return None
+    return grams
+
+
+def drink_units() -> tuple[str, ...]:
+    """Every ``drinks:<grams>`` unit a confirmation may record, in order."""
+    lo, hi = (int(round(g * 100)) for g in DRINK_GRAMS)
+    return tuple(drinks_value(i / 100) for i in range(lo, hi + 1))
+
+
+def unit_words(value: Any) -> str:
+    """A recorded unit in words: kJ, kcal, standard drinks of 14 g."""
+    grams = parse_drinks(value)
+    if grams is not None:
+        return f"standard drinks of {_grams_text(grams)} g"
+    return {"kj": "kJ", "pct_energy": "% of energy"}.get(str(value), str(value))
 
 
 def kcal_per_unit(state: Any, column: str, store: Any = None, *,
-                  macros_in_grams: Iterable[str] | None = None) -> KcalPerUnit:
+                  verdict: Verdict | None = None) -> KcalPerUnit:
     """``column``'s kcal per unit for a substitution (or anything that moves energy through it).
 
     Settled by the user's recorded unit (:func:`unit_record`, the one store): ``g`` → the
-    nutrient's Atwater factor, ``kg`` → 1,000 × it, ``kcal`` → 1, ``kj`` → 1/4.184; ``pct_energy``
-    is refused with the share-of-energy route, and any other unit (lb, cm, years …) refused as no
-    amount of food. Unrecorded, it is settled only by the values: the Atwater identity holding
-    between total energy and the macronutrients read in grams (``macros_in_grams``, else read from
-    ``store``). A name's ``_g``, ``_kcal`` or codebook never settles it (the fifth gate: an InBody
-    ``Protein`` confirmed in kg moved energy at 4 kcal per unit)."""
+    nutrient's Atwater factor, ``kg`` → 1,000 × it, ``kcal`` → 1, ``kj`` → 1/4.184, alcohol's
+    ``drinks:<grams>`` → 7 × the drink's grams; ``pct_energy`` is refused with the share-of-energy
+    route, and any other unit (lb, cm, years …) refused as no amount of food. Unrecorded, it is
+    settled only by the registry's value test (``KIND_RULES["unit:factor"]``, :func:`factor_in_grams`:
+    grams, where the Atwater identity excludes every other unit), read through
+    :func:`factor_verdicts` (``verdict``, else read from ``store``). A name's ``_g``, ``_kcal`` or
+    codebook never settles it (the fifth gate: an InBody ``Protein`` confirmed in kg moved energy at
+    4 kcal per unit), nor do the values for alcohol or a minor source (the sixth gate: drinks moved
+    at 7 kcal per drink)."""
     from turbotab.core.methods.energy import KCAL_PER_KJ, default_atwater, nutrient_role
 
     unit = confirmation(state, "unit", column)
 
-    def atwater() -> tuple[float | None, str]:
+    def atwater() -> tuple[float | None, str, str | None]:
         try:
             role = nutrient_role(column)
         except ValueError as err:
-            return None, f"{err}, so its Atwater factor is ambiguous"
+            return None, f"{err}, so its Atwater factor is ambiguous", None
         factors = default_atwater()
         if role is None or role not in factors:
             return None, (f"`{column}` reads as no nutrient the Atwater factors cover, so its kcal "
-                          f"per gram must be declared")
-        return float(factors[role]), f"{role} at {factors[role]:g} kcal/g"
+                          f"per gram must be declared"), role
+        return float(factors[role]), f"{role} at {factors[role]:g} kcal/g", role
 
     if unit is not None:
         unit = str(unit)
+        grams = parse_drinks(unit)
+        if grams is not None:
+            per_gram, why, role = atwater()
+            if role != "alcohol" or per_gram is None:
+                return KcalPerUnit(column, None, False,
+                                   f"`{column}` is recorded in standard drinks, which measure "
+                                   f"alcohol only")
+            return KcalPerUnit(column, per_gram * grams, True,
+                               f"recorded in {unit_words(unit)}: {why} × {_grams_text(grams)} g "
+                               f"= {per_gram * grams:g} kcal per drink")
         if unit in ("g", "kg"):
-            per_gram, why = atwater()
+            per_gram, why, _ = atwater()
             if per_gram is None:
                 return KcalPerUnit(column, None, False, why)
             scale = 1000.0 if unit == "kg" else 1.0
             return KcalPerUnit(column, per_gram * scale, True,
-                                 f"recorded in {unit}: {why}" + (" × 1,000 per kg" if scale > 1
-                                                                 else ""))
+                               f"recorded in {unit}: {why}" + (" × 1,000 per kg" if scale > 1
+                                                               else ""))
         if unit == "kcal":
             return KcalPerUnit(column, 1.0, True, "recorded in kcal")
         if unit == "kj":
             return KcalPerUnit(column, 1.0 / KCAL_PER_KJ, True,
-                                 f"recorded in kJ: 1/{KCAL_PER_KJ} kcal per kJ")
+                               f"recorded in kJ: 1/{KCAL_PER_KJ} kcal per kJ")
         if unit == "pct_energy":
             return KcalPerUnit(column, None, False,
-                                 f"`{column}` is recorded as a share of energy, which carries no "
-                                 f"constant kcal per unit",
-                                 route="Move a share of energy instead (the substitution's share-"
-                                       "of-energy scale)")
+                               f"`{column}` is recorded as a share of energy, which carries no "
+                               f"constant kcal per unit",
+                               route="Move a share of energy instead (the substitution's share-"
+                                     "of-energy scale)")
         return KcalPerUnit(column, None, False,
-                             f"`{column}` is recorded in {unit}, which is no amount of food energy")
-    grams = set(macros_in_grams) if macros_in_grams is not None else \
-        _macros_in_grams_by_values(state, store)
-    if column in grams:
-        per_gram, why = atwater()
+                           f"`{column}` is recorded in {unit}, which is no amount of food energy")
+    if verdict is None and store is not None:
+        verdict = factor_verdicts(state, store, [column]).get(column)
+    if verdict is not None and verdict.settles:
+        per_gram, why, _ = atwater()
         if per_gram is not None:
-            return KcalPerUnit(column, per_gram, True,
-                                 f"in grams by the values (the Atwater identity holds with total "
-                                 f"energy): {why}")
+            return KcalPerUnit(column, per_gram, True, f"in grams by its values ({verdict.evidence}): "
+                                                       f"{why}")
+    said = f": {verdict.evidence}" if verdict is not None and verdict.evidence else ""
     return KcalPerUnit(column, None, False,
-                         f"`{column}`'s unit is not recorded, and a name never says it (an InBody "
-                         f"`Protein` is kilograms of body protein)")
+                       f"`{column}`'s unit is not recorded, and a name never says it (an InBody "
+                       f"`Protein` is kilograms of body protein; alcohol is kept in drinks){said}")
 
 
-def _macros_in_grams_by_values(state: Any, store: Any) -> set[str]:
-    """The macronutrient totals the Atwater identity reads in grams, against the settled total
-    energy column (NUTRITION_PACK §01): their values reconstruct it within the pack's pass band."""
+def factor_verdicts(state: Any, store: Any, columns: Iterable[str]) -> dict[str, Verdict]:
+    """``unit:factor`` by the values for each of ``columns``: the registry's one test
+    (:func:`by_values`, :func:`factor_in_grams`) against the settled total-energy column, over the
+    columns that name a macronutrient total beside it (NUTRITION_PACK §01). Empty with no store or
+    no settled total-energy column: only a recorded unit settles then."""
+    columns = [str(c) for c in columns]
     if store is None:
-        return set()
+        return {}
+    names = set(getattr(store, "columns", ()) or ())
     energy = next((c for c, r in settled_roles(state).items() if r == "energy"), None)
-    if energy is None or energy not in set(getattr(store, "columns", ()) or ()):
-        return set()
+    if energy is None or energy not in names:
+        return {}
     from turbotab.core.decisions import _names_a_macro_total
-    from turbotab.core.methods.energy import atwater_check
-    from turbotab.core.recognizers import macro_totals
 
-    names = [c for c in store.columns if c != energy and _names_a_macro_total(c)]
-    frame = store.materialize([energy, *names])
-    macros = macro_totals(frame, exclude=[energy])
+    totals = [c for c in store.columns if c != energy and _names_a_macro_total(c)]
+    wanted = list(dict.fromkeys([energy, *totals, *(c for c in columns if c in names)]))
     try:
-        check = atwater_check(frame[[energy, *macros.values()]], energy)
-    except Exception:  # noqa: BLE001 - a check that cannot run settles nothing
-        check = None
-    return set(macros.values()) if check is not None and check.verdict == "pass" else set()
+        frame = store.materialize(wanted)
+    except Exception:  # noqa: BLE001 - no values to read: only a recorded unit settles
+        return {}
+    return {c: by_values("unit:factor", frame, energy, c) for c in columns if c in frame.columns}
 
 
 def unsettled_factors(state: Any, columns: Iterable[str], store: Any = None) -> list[str]:
     """The columns whose kcal per unit is not settled (:func:`kcal_per_unit`)."""
     columns = list(columns)
-    grams = _macros_in_grams_by_values(state, store)
+    verdicts = factor_verdicts(state, store, columns)
     return [c for c in columns
-            if not kcal_per_unit(state, c, macros_in_grams=grams).settled]
+            if not kcal_per_unit(state, c, verdict=verdicts.get(c)).settled]
 
 
 def factor_exits(column: str) -> list[dict[str, Any]]:
-    """The ways to record an energy source's unit, each of which sets its kcal per unit."""
+    """The ways to record an energy source's unit, each of which sets its kcal per unit; for
+    alcohol, the standard drinks too (:data:`OFFERED_DRINKS`, any other size named the same way)."""
+    from turbotab.core.methods.energy import nutrient_role
+
     words = {"g": "grams", "kg": "kilograms", "kcal": "kcal", "kj": "kJ"}
-    return [*(confirm_exit("unit", column, u, f"`{column}` is in {words[u]}") for u in FACTOR_UNITS),
-            {"label": f"`{column}` is a share of energy: move a share of energy instead (the "
-                      f"substitution's share-of-energy scale)", "decision": None}]
+    out = [confirm_exit("unit", column, u, f"`{column}` is in {words[u]}") for u in FACTOR_UNITS]
+    try:
+        alcohol = nutrient_role(column) == "alcohol"
+    except ValueError:
+        alcohol = False
+    if alcohol:
+        out += [confirm_exit("unit", column, drinks_value(g), f"`{column}` counts drinks: {said}")
+                for g, said in OFFERED_DRINKS]
+        out.append({"label": f"`{column}` counts another country's standard drinks: record "
+                             f"`drinks:<grams of alcohol>` (8–20 g)", "decision": None})
+    out.append({"label": f"`{column}` is a share of energy: move a share of energy instead (the "
+                         f"substitution's share-of-energy scale)", "decision": None})
+    return out
+
+
+# ── parts of totals (nested_in) ──────────────────────────────────────────────
+
+# The answer that a column is no part of any total (a nutrient of its own), beside naming a column.
+NOT_NESTED = "not_nested"
+# The confirmable kinds whose value names a column of the table: confirming any eligible column
+# must produce that column's behavior (the property test enumerates every one).
+COLUMN_VALUED = ("nested_in",)
+
+
+def nesting_parents(column: str, columns: Iterable[str], target: str | None = None) -> list[str]:
+    """The values a ``nested_in`` confirmation of ``column`` may record: every other column of the
+    table but the outcome, and :data:`NOT_NESTED`."""
+    from turbotab.core.decisions import ROW_ID
+
+    return [str(c) for c in columns if str(c) not in (str(column), str(target), ROW_ID)] \
+        + [NOT_NESTED]
+
+
+def nesting(state: Any, found: Mapping[str, str] | None = None, *, frame: Any = None,
+            columns: Iterable[str] | None = None) -> dict[str, str]:
+    """Child -> the total it is part of, as the ledger holds it (BLUEPRINT §14.3, every confirmation
+    is honored; the sixth gate's ``sfa_g`` confirmed as part of `carbohydrate_g` and read nowhere):
+    the guess (``found``, else the names and values of ``frame``'s ``columns``:
+    ``methods.nesting.nested_components``), each column's own confirmation standing over it: the
+    total the user named, any column of the table, or no total (:data:`NOT_NESTED`). Restricted to
+    ``columns`` when given (a part and its total both among them)."""
+    names = None if columns is None else [str(c) for c in columns]
+    if found is None and frame is not None:
+        from turbotab.core.methods.nesting import nested_components
+
+        found = nested_components(frame, names)
+    out = {str(c): str(p) for c, p in dict(found or {}).items()}
+    for name, value in _confirmations(state).items():
+        if not name.startswith("nested_in:"):
+            continue
+        child = name.split(":", 1)[1]
+        if str(value) == NOT_NESTED:
+            out.pop(child, None)
+        else:
+            out[child] = str(value)
+    if names is not None:
+        keep = set(names)
+        out = {c: p for c, p in out.items() if c in keep and p in keep}
+    return {c: p for c, p in out.items() if c != p}
+
+
+def nested_exits(column: str, parent: str) -> list[dict[str, Any]]:
+    """The ways to settle what ``column`` is part of: the total the guess names, none, or another
+    column the user names (``confirm_reading`` nested_in, any column of the table)."""
+    return [confirm_exit("nested_in", column, parent, f"`{column}` is part of `{parent}`"),
+            confirm_exit("nested_in", column, NOT_NESTED,
+                         f"`{column}` is no part of `{parent}` or any other total"),
+            {"label": f"`{column}` is part of another column: name it (confirm `{column}` nested in "
+                      f"that column)", "decision": None}]
+
+
+# ── values below a detection limit ───────────────────────────────────────────
+
+
+def detection_limit(state: Any, column: str) -> float | None:
+    """The fraction of its limit a value below a detection limit (``<0.20``) is read at, as the
+    user answered for ``column`` (the below-detection repair: half the limit, 0.5; the limit over
+    √2, 1/√2), or None while unanswered. The values hold no answer: each such value is somewhere
+    below its limit."""
+    dispositions = _get(state, "findings") or {}
+    found = dispositions.get(f"below_detection__{column}") if isinstance(dispositions, Mapping) \
+        else None
+    if found is None or _get(found, "action") != "applied":
+        return None
+    spec = ((_get(found, "params") or {}).get("columns") or {}).get(column) or {}
+    factor = spec.get("factor") if isinstance(spec, Mapping) else None
+    return None if factor is None else float(factor)
+
+
+def comma_exits(column: str) -> list[dict[str, Any]]:
+    """The two readings of a text column whose every comma could split thousands or mark decimals:
+    the text-number repair's two offers (``repairs``), and codes instead."""
+    from turbotab.core.decisions import ApplyRepair
+
+    out = []
+    for key, decimal, thousands, words in (("thousands", ".", True, "commas split thousands"),
+                                           ("decimal_comma", ",", False, "commas mark decimals")):
+        decision = ApplyRepair(finding_id=f"text_numbers__{column}", option=key,
+                               params={"columns": {column: {"decimal": decimal,
+                                                            "thousands": thousands}}})
+        out.append({"label": f"`{column}` is numbers whose {words}",
+                    "decision": decision.model_dump(mode="json")})
+    out.append(code_or_count_exits(column)[1])
+    return out
+
+
+def detection_exits(column: str, facts: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The answers to how ``column``'s values below a detection limit read once it is read as
+    numbers: the below-detection repair's two offers (``repairs``: half the limit, the limit over
+    √2), each with the parameters the finding offers, and codes instead."""
+    from turbotab.core.decisions import ApplyRepair
+    from turbotab.core.repairs import LOD_FACTORS
+
+    below = dict(facts.get("below") or {})
+    first = next(iter(below), None)
+    spec = {"decimal": str(facts.get("decimal") or "."), "thousands": bool(facts.get("thousands"))}
+    out = []
+    for key, words in (("half_limit", "half its limit"), ("limit_root2", "its limit over √2")):
+        factor = LOD_FACTORS[key]
+        example = f" (`<{first}` is `{float(first) * factor:.4g}`)" if first is not None else ""
+        decision = ApplyRepair(finding_id=f"below_detection__{column}", option=key,
+                               params={"columns": {column: {**spec, "factor": factor}}})
+        out.append({"label": f"`{column}` is numbers: read each value below a detection limit as "
+                             f"{words}{example}", "decision": decision.model_dump(mode="json")})
+    out.append(code_or_count_exits(column)[1])
+    return out
 
 
 # ── a sex column's coding ────────────────────────────────────────────────────
@@ -1935,6 +2456,8 @@ def read_from_data(state: Any, *, roles: Any = None, target_info: Any = None,
     * total energy's unit by the Atwater identity (kcal, ratio near 1);
     * a height's unit by its human band;
     * a predictor's values with decimals that fill their grid: an amount;
+    * a text predictor's labels (three or more): codes;
+    * an energy source's grams, by the Atwater identity where it excludes every other unit;
     * a sex column's coding, spelled by its labels.
 
     ``roles``, ``target_info`` and ``proposals`` are those stages' artifacts (or None); ``store``
@@ -1999,6 +2522,34 @@ def read_from_data(state: Any, *, roles: Any = None, target_info: Any = None,
             add("code_or_count", c, "amount", "is an amount (one slope)", str(f.get("evidence") or ""),
                 [confirm_exit("code_or_count", c, "code",
                               f"`{c}` holds codes for categories (one indicator per level)")])
+        # Text read as labels: codes by their values (the sixth gate: labels settled as codes were
+        # never listed). Two labels are one indicator either way, so they are not listed.
+        try:
+            text = store.text_numbers([c for c in preds if c not in left | amounts])
+        except Exception:  # noqa: BLE001 - a store that cannot answer lists nothing
+            text = {}
+        for c, f in text.items():
+            if not f.get("labels") or int(f.get("n_values") or 0) < 3 \
+                    or confirmation(state, "code_or_count", c) is not None:
+                continue
+            add("code_or_count", c, "code", "holds codes for categories (one indicator per label)",
+                f"`{int(f.get('n_values') or 0):,}` labels, not numbers",
+                [confirm_exit("role", c, "excluded", f"Leave `{c}` out of the model")])
+        # An energy source's grams, read by the Atwater identity (its kcal per unit: the Atwater
+        # factor), where it excludes every other unit (``factor_in_grams``).
+        from turbotab.core.stages.rows import energy_bearing
+
+        sources = [c for c in preds if (getattr(state, "roles", None) or {}).get(c) == "exposure"
+                   and energy_bearing(c) and confirmation(state, "unit", c) is None]
+        try:
+            verdicts = factor_verdicts(state, store, sources) if sources else {}
+        except Exception:  # noqa: BLE001 - no values to read: nothing is listed
+            verdicts = {}
+        for c, v in verdicts.items():
+            if v.settles:
+                add("unit", c, "g", "is in grams (its kcal per unit is its Atwater factor)",
+                    v.evidence, [e for e in factor_exits(c) if e.get("decision")
+                                 and e["decision"].get("value") != "g"])
         settled_now = settled_roles(state)
         from turbotab.core.recognizers import tokens
 
@@ -2230,6 +2781,10 @@ CONSUMERS: tuple[Consumer, ...] = (
              kinds=("role",)),
     Consumer(_C + "models.pipeline:design_spec", ("roles", "predictor_codes", "energy_fill"),
              True, SETTLED_ONLY, kinds=("code_or_count",)),
+    # The sixth gate: a text column confirmed "amount" reaches every consumer as numbers, through
+    # the working table (marks blank; values below a detection limit at the user's answer).
+    Consumer(_C + "stages.working:text_amounts", ("predictor_codes", "combine_codes"), True,
+             SETTLED_ONLY, kinds=("code_or_count",)),
     Consumer(_C + "stages.modeling:design_stage",
              ("roles", "predictor_codes", "design_role", "acquisition", "flag", "time_role",
               "covariates", "nesting", "free_text", "total_energy_names"), True, ASK),
@@ -2353,6 +2908,12 @@ CONSUMERS: tuple[Consumer, ...] = (
              ASK, kinds=("unit:factor", "nested_in")),
     Consumer(_C + "stages.modeling:substitution_stage", ("energy_factor",), True, ASK,
              kinds=("unit:factor",)),
+    # The sixth gate: the curve's Shift and the design read the nesting the user confirmed,
+    # whichever column it names (``readings.nesting``).
+    Consumer(_C + "stages.modeling:shift_for", ("nesting",), True, SETTLED_ONLY,
+             kinds=("nested_in",)),
+    Consumer(_C + "stages.modeling:design_nesting", ("nesting",), True, SETTLED_ONLY,
+             kinds=("nested_in",)),
     Consumer(_C + "decisions:_substitution_has_every_energy_source",
              ("substitution_validators", "energy_factor"), False, ASK),
     Consumer(_C + "methods.energy:total_energy_columns", ("total_energy_names",), True,
@@ -2383,6 +2944,17 @@ CONSUMERS: tuple[Consumer, ...] = (
 )
 
 
+# Calls to a kind's helpers (:attr:`KindRule.helpers`) outside this module that decide no reading:
+# ``(caller, helper)`` -> what the call reads and why no number follows from it. The structural
+# test (BLUEPRINT §14.3, the sixth gate: one test per kind, no private settler) fails on any other
+# call, and on any entry whose caller is a number-changing consumer.
+EVIDENCE_ONLY: dict[tuple[str, str], str] = {
+    ("turbotab.core.stages.rows:value_facts", "turbotab.core.recognizers:flag_values"):
+        "the flag role's guess and its evidence (no value test settles a flag: a skip-pattern "
+        "gate marks its follow-up's blanks the same way); value_facts changes no number",
+}
+
+
 __all__ = [
     "ATTENTION", "ASK", "CODE_LEVELS", "CONFIRMABLE", "CONSUMERS", "Consumer", "KINDS", "NO_UNIT",
     "PREDICTOR_ROLES", "Reading", "SETTLED_ONLY", "USER_APPLIED", "UNIT_VALUES", "Unsettled",
@@ -2398,5 +2970,8 @@ __all__ = [
     "KcalPerUnit", "ROLE_ALTERNATIVES", "energy_plan", "factor_exits", "factor_in_grams",
     "fractional_verdict", "grid_reading", "kcal_per_unit", "outcome_task_by_values",
     "read_from_data", "read_from_values_sentence", "recorded_energy", "unit_day_candidates",
-    "unit_record",
+    "unit_record", "COLUMN_VALUED", "DRINK_GRAMS", "EVIDENCE_ONLY", "MINOR_SHARE", "NOT_NESTED",
+    "TEXT_NUMBER_SHARE", "by_values", "by_values_table", "comma_exits", "detection_exits",
+    "detection_limit", "drink_units", "drinks_value", "factor_verdicts", "nested_exits", "nesting",
+    "nesting_parents", "nutrients_by_values", "parse_drinks", "text_numbers", "unit_words",
 ]

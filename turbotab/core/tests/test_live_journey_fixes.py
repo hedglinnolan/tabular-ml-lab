@@ -315,9 +315,13 @@ def test_a_total_and_its_own_part_are_refused_as_a_substitution():
     ctx["state"] = mf.state().model_copy(update={"column_units": units})
     with pytest.raises(Refusal) as refused:
         validate(swap, ctx)
+    # LEDGER-REPAIR-3 (the sixth gate): the nesting is the user's whichever column it names, so
+    # its ask offers the guess and "no part of any total" beside it (``readings.nested_exits``).
     assert [e["decision"] for e in refused.value.exits if e["decision"]] == [
         {"kind": "confirm_reading", "reading": "nested_in", "column": "fat_sat",
-         "value": "fat_total"}]
+         "value": "fat_total"},
+        {"kind": "confirm_reading", "reading": "nested_in", "column": "fat_sat",
+         "value": "not_nested"}]
     ctx["state"] = mf.state().model_copy(update={
         "column_units": units, "reading_confirmations": {"nested_in:fat_sat": "fat_total"}})
     validate(swap, ctx)

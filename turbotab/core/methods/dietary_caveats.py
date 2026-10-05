@@ -192,9 +192,9 @@ def recognized_otherwise(outcome: str, frame: Any = None, *, energy: str | None 
     line was never stated. A nutrient reading counts only where its values are an intake that rises
     with total energy (:func:`turbotab.core.recognizers.intake_check`), a total-energy reading only
     where its median is a day's energy."""
+    from turbotab.core.readings import by_values
     from turbotab.core.recognizers import (
-        AmbiguousNutrient, energy_median_contradicts, intake_check, nutrient_check, read_nutrient,
-        reads_as_total_energy,
+        AmbiguousNutrient, energy_median_contradicts, read_nutrient, reads_as_total_energy,
     )
     from turbotab.core.units import analyte_of
 
@@ -215,10 +215,8 @@ def recognized_otherwise(outcome: str, frame: Any = None, *, energy: str | None 
     if reading is None or not has:
         return False
     e = frame[energy] if energy and energy in frame.columns and energy != outcome else None
-    check = intake_check(outcome, frame[outcome], energy=e, energy_unit=energy_unit)
-    if check is None:
-        check = nutrient_check(outcome, frame[outcome], energy=e)
-    return bool(check is not None and check.by_values)
+    # The registry's one test for a nutrient intake (``readings.KIND_RULES["role:exposure"]``).
+    return by_values("role:exposure", outcome, frame[outcome], e, energy_unit=energy_unit).settles
 
 
 # NHANES variable names carry their file's prefix: LBX/LBD a laboratory result (TRIGLY_J

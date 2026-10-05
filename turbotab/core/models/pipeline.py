@@ -341,6 +341,16 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     left, amounts = energy_plan(state, inputs)
     declared = {c for c in inputs if confirmation(state, "code_or_count", c) == "code"} \
         - left - amounts
+    # Text the user said holds amounts is read as numbers on the working table
+    # (``stages.working.text_amounts``); one still text (its values below a detection limit wait
+    # for their answer) is never one-hot encoded instead (the sixth gate: 175 indicators for a
+    # BMI confirmed as an amount). The fit asks first (``readings.predictors_or_ask``).
+    unread = [c for c in inputs if is_categorical(frame[c]) and c not in left | amounts
+              and confirmation(state, "code_or_count", c) == "amount"]
+    if unread:
+        raise ValueError(f"`{unread[0]}` is recorded as amounts, but some of its values are not "
+                         f"numbers yet (values below a detection limit, or commas that read two "
+                         f"ways); answer how they read before the fit.")
     categorical = [c for c in inputs if is_categorical(frame[c]) or c in declared]
     numeric = [c for c in inputs if c not in categorical]
     # A number with exactly two values is one indicator either way (``readings.code_question``);

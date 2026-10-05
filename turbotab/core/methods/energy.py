@@ -1380,8 +1380,12 @@ _RECONSTRUCTION_ROLES = ("protein", "carbohydrate", "fat")
 
 
 def _atwater_reading(X: pd.DataFrame, energy_column: str) -> Any:
-    """The nutrition pack's Atwater reconstruction on these rows, against this energy column."""
-    return atwater_check(X, energy_column)
+    """The nutrition pack's Atwater reconstruction on these rows, against this energy column, as
+    the registry's one test for total energy's unit reads it (``readings.KIND_RULES
+    ["unit:energy"]``; BLUEPRINT §14.3: no private settler)."""
+    from turbotab.core.readings import by_values
+
+    return by_values("unit:energy", X, energy_column).detail
 
 
 _UNIT_FAMILIES = ("grams", "unmarked", "density", "other")

@@ -1937,7 +1937,8 @@
                   "months",
                   "weeks",
                   "days",
-                  "pct_energy"
+                  "pct_energy",
+                  "drinks"
                 ]
               },
               {
@@ -1957,13 +1958,25 @@
             ],
             "title": "Days",
             "default": 1
+          },
+          "grams_per_drink": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grams Per Drink"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "unit",
-          "days"
+          "days",
+          "grams_per_drink"
         ],
         "title": "ColumnUnitSpec",
         "description": "A column's recorded unit and, for total energy, the number of days each value totals: the\none place both readings are kept (BLUEPRINT §14.3, every confirmation is honored), written by\n``set_column_unit`` (both in one answer) and by ``confirm_reading`` / ``confirm_readings`` for a\nunit or a day count (each merged into what was recorded before). ``None``: not recorded."
