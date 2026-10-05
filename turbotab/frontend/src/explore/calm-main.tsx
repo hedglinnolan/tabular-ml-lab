@@ -8,10 +8,22 @@ import { StrictMode, useEffect, useSyncExternalStore, type ComponentType } from 
 import { createRoot } from "react-dom/client";
 import { CalmChooser, STRUCTURES, type StructureId } from "./calm-kit/Chooser";
 import { KitDemo } from "./calm-kit/KitDemo";
-import { Screen as MapScreen } from "./calm-map/Screen";
-import { Screen as PaperScreen } from "./calm-paper/Screen";
-import { Screen as QaScreen } from "./calm-qa/Screen";
-import { Screen as QuestScreen } from "./calm-quest/Screen";
+import * as mapMod from "./calm-map/Screen";
+import * as paperMod from "./calm-paper/Screen";
+import * as qaMod from "./calm-qa/Screen";
+import * as questMod from "./calm-quest/Screen";
+
+const MapScreen = mapMod.Screen;
+const PaperScreen = paperMod.Screen;
+const QaScreen = qaMod.Screen;
+const QuestScreen = questMod.Screen;
+/** A structure is built once its agent has replaced the placeholder (which exports PLACEHOLDER). */
+const BUILT: Record<StructureId, boolean> = {
+  qa: !("PLACEHOLDER" in qaMod),
+  paper: !("PLACEHOLDER" in paperMod),
+  quest: !("PLACEHOLDER" in questMod),
+  map: !("PLACEHOLDER" in mapMod),
+};
 
 type RouteId = StructureId | "kit";
 
@@ -43,7 +55,7 @@ function Calm() {
     const title = id === "kit" ? "The calm kit" : STRUCTURES.find((s) => s.id === id)?.title;
     document.title = title ? `${title} · Calm structures` : "Calm structures";
   }, [id]);
-  if (!id) return <CalmChooser hrefs={HREFS} />;
+  if (!id) return <CalmChooser hrefs={HREFS} built={BUILT} />;
   const Screen = SCREENS[id];
   return <Screen key={id} />;
 }

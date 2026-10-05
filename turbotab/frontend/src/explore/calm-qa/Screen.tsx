@@ -6,6 +6,9 @@
  */
 import { ReferenceScreen } from "../calm-kit/ReferenceScreen";
 
+/** Marks this file as the placeholder; the chooser reads it. Delete it with the placeholder. */
+export const PLACEHOLDER = true;
+
 export function Screen() {
-  return <ReferenceScreen name="The Q&A card (placeholder)" />;
+  return <ReferenceScreen name="The shared reference walk (this structure is not built yet)" />;
 }

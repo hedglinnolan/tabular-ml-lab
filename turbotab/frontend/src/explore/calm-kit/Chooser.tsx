@@ -13,7 +13,14 @@ export const STRUCTURES: { id: StructureId; title: string; line: string }[] = [
   { id: "map", title: "The map", line: "The analysis as a map of its stages; each stage opens its questions." },
 ];
 
-export function CalmChooser({ hrefs }: { hrefs: Record<StructureId | "kit", string> }) {
+export function CalmChooser({
+  hrefs,
+  built = { qa: true, paper: true, quest: true, map: true },
+}: {
+  hrefs: Record<StructureId | "kit", string>;
+  built?: Record<StructureId, boolean>;
+}) {
+  const pending = STRUCTURES.filter((s) => !built[s.id]);
   return (
     <div className={k.page}>
       <header className={k.top}>
@@ -31,14 +38,29 @@ export function CalmChooser({ hrefs }: { hrefs: Record<StructureId | "kit", stri
           The same NHANES question, the same engine answers and the same parts, organized four ways. Each walks from the first draft
           to the locked Table 2.
         </p>
+        {pending.length > 0 && (
+          <p className={k.chooserNote} data-testid="chooser-pending">
+            {pending.length === STRUCTURES.length ? "None of the four structures is built yet." : `${pending.length} of the four structures are not built yet.`}{" "}
+            Only the shared parts exist so far: you can <a href={hrefs.qa}>walk the shared reference questions</a> or{" "}
+            <a href={hrefs.kit}>see every canvas layout in the kit</a>.
+          </p>
+        )}
         <div className={k.cards}>
-          {STRUCTURES.map((s) => (
-            <a key={s.id} className={k.pcard} href={hrefs[s.id]} data-testid={`structure-${s.id}`}>
-              <h2>{s.title}</h2>
-              <p>{s.line}</p>
-              <span>Open</span>
-            </a>
-          ))}
+          {STRUCTURES.map((s) =>
+            built[s.id] ? (
+              <a key={s.id} className={k.pcard} href={hrefs[s.id]} data-testid={`structure-${s.id}`}>
+                <h2>{s.title}</h2>
+                <p>{s.line}</p>
+                <span>Open</span>
+              </a>
+            ) : (
+              <div key={s.id} className={k.pcard} data-off="true" aria-disabled="true" data-testid={`structure-${s.id}`}>
+                <h2>{s.title}</h2>
+                <p>{s.line}</p>
+                <span>Not built yet</span>
+              </div>
+            ),
+          )}
         </div>
       </main>
     </div>

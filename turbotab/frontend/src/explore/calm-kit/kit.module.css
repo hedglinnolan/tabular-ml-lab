@@ -996,3 +996,22 @@
   font-weight: 600;
   font-size: 15px;
 }
+
+.chooserNote {
+  margin: 0 0 4px;
+  max-width: 62ch;
+  color: var(--ink);
+}
+.chooserNote a {
+  color: var(--action);
+}
+.pcard[data-off] {
+  cursor: default;
+  background: transparent;
+}
+.pcard[data-off]:hover {
+  border-color: var(--line);
+}
+.pcard[data-off] span {
+  color: var(--faint);
+}
