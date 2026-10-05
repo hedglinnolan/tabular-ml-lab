@@ -213,7 +213,7 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "causal":  # the causal lane's estimate (turbotab/core/stages/causal.py)
         return any(e.get("estimate") is not None
                    for e in artifact.get("estimates") or [] if isinstance(e, Mapping))
-    if stage == "time_varying":  # its diagnostics read no outcome; only its estimates lock
+    if stage == "time_varying":  # its diagnostics relate no exposure to the outcome; estimates lock
         estimates = artifact.get("estimates")
         return isinstance(estimates, Mapping) and bool(estimates.get("rows"))
     if stage == "explain":  # wave 2: an explanation shows what a model learned from the outcome

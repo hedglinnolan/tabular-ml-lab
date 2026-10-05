@@ -8,35 +8,52 @@ stage builds what the results show of the exposure:
   declared adjustment sequence (Model 1: age, sex and energy; Model 2: plus confounders; optional
   Model 3: plus possible mediators, labeled) and the primary model, shown for the exposure only".
   The crude model is always shown (STROBE item 16a: "Give unadjusted estimates and, if applicable,
-  confounder-adjusted estimates and their precision"). Model 2 is the primary: the full adjustment
-  set the answers derive. Model 1 holds the columns the user declared (``set_model_sequence``;
-  never read from a name). Model 3 adds the columns the answers set beside the primary (unknown
-  timing, or "further adjusted for"), labeled as not a total effect. The exposure's definition is
-  the same in every model: each model is the primary pipeline's own model matrix (its energy
-  model, forms and fill fitted once on these rows), restricted to the exposure's columns and those
-  of the model's covariates; Model 1's "energy" brings every term the energy model made of total
-  energy and the other sources. Only the exposure's rows are effects; every other row is listed
-  apart, under "adjustment terms, not effect estimates" (Westreich & Greenland 2013).
+  confounder-adjusted estimates and their precision"), for every family with a coefficient table,
+  the mixed model and GEE included: each is refit on the columns of each model. Model 2 is the
+  primary: the full adjustment set the answers derive, the fit stage's own table. Model 1 holds the
+  columns the user declared (``set_model_sequence``; never read from a name). Model 3 adds the
+  columns the answers set beside the primary (unknown timing, or "further adjusted for"), labeled
+  as not a total effect. The exposure's definition is the same in every model: each model is the
+  primary pipeline's own model matrix (its energy model, forms and fill fitted once on these rows),
+  restricted to the exposure's columns and those of the model's covariates; Model 1's "energy"
+  brings every term the energy model made of total energy and the other sources. Only the
+  exposure's rows are effects; every other row is listed apart, under "adjustment terms, not
+  effect estimates" (Westreich & Greenland 2013).
 * **The marginal risk difference and ratio**, when the estimand declares one: standardization over
   the analyzed rows from the logistic model (``models/effects.py``), with percentile intervals from
-  a bootstrap that refits the whole chain, by unit when rows repeat.
+  a bootstrap that refits the whole chain, by unit when rows repeat. Below the unit floor no
+  interval is reported, as for every other interval (``inference.floor_refusal``); a resample
+  whose outcome happens to be separated is kept at the likelihood's limit and counted.
 * **Diagnostics of the primary model**, reported and never acted on silently: proportional hazards
   by Schoenfeld residuals (a Cox model), leverage and Cook's distance (least squares, logistic). A
   failed check of the exposure carries its exits, each a ``respond_diagnostic`` decision; the
   recorded response is then shown beside the estimate (the hazard ratio before and after the median
   event time; the primary refit without the influential rows), or the estimate stays labeled.
-* **Sensitivity to unmeasured confounding** for the primary estimate: the robustness value with
-  each adjusted covariate as a named benchmark, ranked first for a linear outcome, and the E-value
-  for the estimate and the confidence limit nearer the null (``models/effects.py``).
+* **Sensitivity to unmeasured confounding** for every reported estimate: the robustness value with
+  each adjusted covariate as a named benchmark, ranked first for a least-squares estimate, and the
+  E-value for the estimate and the confidence limit nearer the null (``models/effects.py``). A
+  categorical exposure's each level, against the reference, is one estimate; a curve has none, so
+  its straight-line estimate beside it (the same model, the spline's nonlinear terms left out) is
+  the one analyzed, and said so.
 
-**The rows** are every analyzed row (BLUEPRINT §12 ruling 3). Under complete cases, when Model 3
-adds columns that are sometimes missing, every model is fit on the rows where they are recorded, so
-the models differ by their adjustment alone, and the artifact says how many. Under multiple
-imputation each model is fit in each completed copy and pooled by Rubin's rules; the diagnostics
-and the robustness value read the first copy, and say so.
+**The rows** are every analyzed row (BLUEPRINT §12 ruling 3), so Model 2 is the fit's primary
+estimate, number for number. Under complete cases, when Model 3 adds columns that are sometimes
+missing, Model 3 alone is fit on the rows where they are recorded, with the primary's adjustment
+refit on those same rows beside it, so the two differ by the added columns alone; it says how many.
+Under multiple imputation each model is fit in each completed copy and pooled by Rubin's rules, the
+crude model, Model 1 and Model 2 in the fit's own copies and Model 3 in copies imputed with its
+added columns; the diagnostics and the robustness value read the first copy, and say so.
+
+**The surveyed population** (MODELING_SEQUENCE §0 ruling 6, "binds every family and every
+display"): every model of a family with a design-based estimator (least squares, logistic, Cox,
+proportional odds) is design-based, and the E-value reads the design-based estimate with the
+population's event share or standard deviation; a family without one is blocked and recorded with
+the fit's exits.
 """
 from __future__ import annotations
 
+import math
+import re
 from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
@@ -64,6 +81,11 @@ class SequenceFit(_Model):
     effects: list[Coefficient] | None  # the exposure's rows only
     inference: Inference | None = None
     concerns: list[str] = []
+    # Model 3 fit on fewer rows (its added columns sometimes missing, under complete cases): the
+    # primary's adjustment refit on Model 3's own rows, the exposure's rows only, so the two differ
+    # by the added columns alone.
+    comparison: list[Coefficient] | None = None
+    comparison_label: str | None = None
 
 
 class AppendixModel(_Model):
@@ -82,8 +104,15 @@ class MarginalContrast(_Model):
     rd_high: float | None = None
     rr_low: float | None = None
     rr_high: float | None = None
+    # The risk ratio's upper limit is infinite: in more than 2.5% of the resamples the risk at the
+    # first setting was 0 (a separated resample's limit); ``rr_high`` is then null.
+    rr_unbounded: bool = False
     n_boot: int = 0
-    n_failed: int = 0
+    n_limit: int = 0  # resamples whose outcome was separated, kept at the likelihood's limit
+    n_failed: int = 0  # resamples that could not be fit at all, left out
+    failed_reason: str | None = None
+    n_rr_infinite: int = 0
+    n_rr_undefined: int = 0
     by_unit: str | None = None
 
 
@@ -91,8 +120,10 @@ class Marginal(_Model):
     declared: Literal["risk_difference", "risk_ratio"]
     method: str
     contrasts: list[MarginalContrast] = []
-    refused: str | None = None
+    refused: str | None = None  # no marginal risks at all
+    interval_refused: str | None = None  # the risks are shown; their interval is not (too few units)
     exits: list[InferenceExit] = []
+    concerns: list[str] = []
 
 
 class DiagnosticTest(_Model):
@@ -113,6 +144,8 @@ class Diagnostic(_Model):
     flagged: int | None = None
     largest: float | None = None
     n: int | None = None
+    # Rows with leverage 1 (the fit passes through them): no Cook's distance, as R reports NaN.
+    leverage_one: int | None = None
     exits: list[InferenceExit] = []
     response: str | None = None  # the recorded action (``respond_diagnostic``)
     change: list[Coefficient] | None = None  # what the response shows beside the estimate
@@ -138,22 +171,26 @@ class BenchmarkResult(_Model):
     r2dz: float
     r2yz: float
     estimate: float
-    se: float
-    ci_low: float
-    ci_high: float
+    # The adjusted interval rests on the classical standard error: null when the interval shown is
+    # not classical (``RobustnessResult.interval_note``).
+    se: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
     kd: float
 
 
 class RobustnessResult(_Model):
     exposure: str
     estimate: float
-    se: float
+    se: float  # the classical standard error the robustness value's algebra uses
     t: float
     dof: float
     partial_r2: float
     rv: float
-    rv_alpha: float
+    rv_alpha: float | None = None  # null when the interval shown is not the classical one
     alpha: float
+    covariance: str = "classical"  # the covariance of the interval shown
+    interval_note: str | None = None
     benchmarks: list[BenchmarkResult] = []
 
 
@@ -164,6 +201,10 @@ class Sensitivity(_Model):
     robustness: RobustnessResult | None = None
     reading: str
     not_computed: str | None = None
+    # What the analysis is of, when it is not the shown row itself: "the straight-line estimate
+    # beside the curve" (``companion``, its row), or "the marginal risk ratio".
+    of: str | None = None
+    companion: Coefficient | None = None
 
 
 class EffectsFamily(_Model):
@@ -208,10 +249,15 @@ EFFECTS_READS = ("adjustment", "estimand", "multiplicity", "model_sequence", "di
                  "clusters", "purpose", "models", "task", "event", "target", "roles", "roles_unconfirmed",
                  "role_confirmations", "reading_confirmations", "shape_confirmations", "missing",
                  "survey", "outcome_order", "follow_up", "categorical", "energy_adjustment",
-                 "grain", "exposure_forms", "lens", "findings", "column_units", "split")
-SEQUENCE_FAMILIES = ("linear", "proportional_odds", "cox", "featurewise")
+                 "grain", "exposure_forms", "lens", "findings", "column_units", "split",
+                 "repeat_kind", "unit")
+# The families whose declared models are refit on the primary's model matrix: every family with a
+# coefficient table today, the families that model the unit (a random intercept, a working
+# correlation) included, so the unadjusted estimate is shown for each (STROBE 16a).
+SEQUENCE_FAMILIES = ("linear", "proportional_odds", "cox", "featurewise", "mixed", "gee")
 LABELS = {"crude": "Unadjusted", "model_1": "Model 1", "model_2": "Model 2 (primary)",
           "model_3": "Model 3"}
+STRAIGHT_LINE = "the straight-line estimate beside the curve"
 
 
 # ── the model matrix's columns, by what they came from ───────────────────────
@@ -251,14 +297,34 @@ def energy_outputs(fitted: Any) -> set[str]:
     return out
 
 
+def spline_terms(fitted: Any, features: Sequence[str]) -> tuple[str, list[str]] | None:
+    """When the exposure enters as a restricted cubic spline: (its straight-line column, the
+    spline's nonlinear columns), read from the fitted form step; None otherwise."""
+    from turbotab.core.methods.exposure_form import form_step
+
+    step = form_step(fitted)
+    if step is None:
+        return None
+    wanted = {str(f) for f in features}
+    for column, (form, _) in step._plan().items():
+        if form != "spline":
+            continue
+        outputs = [str(o) for o in step._outputs(column)]
+        if outputs[0] in wanted and set(outputs[1:]) & wanted:
+            return outputs[0], outputs[1:]
+    return None
+
+
 # ── a table on a model matrix, for each family ───────────────────────────────
 
 
 def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classes: Any,
                  clusters: Any, outcome: Any, survey: Any, levels: Any, event: Any,
                  features: Sequence[str]) -> Any:
-    """The family's inference table on ``matrix`` (every analyzed row), or None for a family whose
-    table is not made from a matrix alone (a model of the unit)."""
+    """The family's inference table on ``matrix`` (every analyzed row), as the fit stage computes
+    it for the primary: design-based under ``survey`` for the families that have a design-based
+    estimator (the stage blocks the others before they get here). None for a family whose table
+    is not made from a matrix alone."""
     from turbotab.core.models.inference import _on_rows, _on_scale
 
     if family.key == "featurewise":
@@ -268,17 +334,24 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
                                   clusters, event)
         return _on_rows(table, len(matrix), "all")
     if family.key == "cox":
-        from turbotab.core.models.survival import cox_table
-
-        table = cox_table(matrix, y, clusters)
-        return _on_rows(_on_scale(table, "time_to_event", [0, 1], outcome), len(matrix), "all")
+        return family.inference_matrix(matrix, y, task="time_to_event", classes=[0, 1],
+                                       clusters=clusters, outcome=outcome, rows="all", survey=survey)
     if family.key == "proportional_odds":
-        table = family.inference_matrix(matrix, y, task=task, classes=levels, clusters=clusters,
-                                        outcome=outcome)
-        return _on_rows(table, len(matrix), "all")
+        return family.inference_matrix(matrix, y, task=task, classes=levels, clusters=clusters,
+                                       outcome=outcome, rows="all", survey=survey)
     if family.key == "linear":
         return family.inference_matrix(matrix, y, task=task, classes=classes, clusters=clusters,
                                        outcome=outcome, rows="all", survey=survey)
+    if family.key == "mixed":
+        from turbotab.core.models.repeated import mixed_table
+
+        return _on_rows(_on_scale(mixed_table(matrix, y, clusters), task, None, outcome),
+                        len(matrix), "all")
+    if family.key == "gee":
+        from turbotab.core.models.repeated import gee_table
+
+        return _on_rows(_on_scale(gee_table(matrix, y, clusters, task, classes), task, classes,
+                                  outcome), len(matrix), "all")
     return None
 
 
@@ -293,6 +366,17 @@ def _not_applicable(state: Any, exposure: str, why: str) -> Bundle:
                                        methods=why).model_dump(mode="json"))
 
 
+def supplied_copies_reason(implicate: str) -> str:
+    """Why the declared models are withheld when the rows are the data's own imputed copies."""
+    return (f"The rows are the data's own imputed copies (numbered by `{implicate}`). The fit's "
+            f"table analyzes each copy with its own outcome and pools them by Rubin's rules, so its "
+            f"primary model is the estimate. The declared models beside it (the unadjusted model, "
+            f"Model 1 and Model 3), the marginal risks, the diagnostics and the sensitivity "
+            f"analyses are not built over the copies, so none is shown: fit on the copies stacked, "
+            f"each participant would count once per copy and every interval would leave out the "
+            f"variation between the copies.")
+
+
 def effects_stage(ctx: StageContext) -> Bundle:
     from turbotab.core import estimand as est
     from turbotab.core.models import get_family
@@ -302,8 +386,8 @@ def effects_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.pipeline import DesignSpec, build_pipeline, design_spec, modeling_frame
     from turbotab.core.stages.data import open_store
     from turbotab.core.stages.modeling import (_missing_for_table, _survey, _task, coded_outcome,
-                                               outcome_levels, read_assignment)
-    from turbotab.core.voice import listing
+                                               imputed_copies_column, outcome_levels,
+                                               read_assignment)
 
     state = ctx.state
     spec_e = est.current_estimand(state)
@@ -313,6 +397,12 @@ def effects_stage(ctx: StageContext) -> Bundle:
                "No effect is reported until the exposure and its effect are declared.")
         return _not_applicable(state, "", why)
     key = est.exposure_key(spec_e)
+    copies = imputed_copies_column(state)
+    if copies is not None:
+        # Relation ``sequence-supplied-copies``: the fit pools its table over the data's own
+        # imputed copies (MS3, wave 1b); this stage's models are not built over them, and on the
+        # copies stacked each participant would count once per copy.
+        return _not_applicable(state, key, supplied_copies_reason(copies))
     exposures = est.exposures_of(state, spec_e)
     task = _task(ctx)
     target = state.target
@@ -340,14 +430,16 @@ def effects_stage(ctx: StageContext) -> Bundle:
         columns = list(dict.fromkeys([*spec.inputs, *extra, target, *unit_columns, *follow]))
         frame = modeling_frame(store, columns, assignment.index.to_numpy(), outcome=target)
     strategy = state.missing.strategy if state.missing is not None else None
-    note = f"all {len(frame):,} analyzed rows"
+    # Every model but Model 3 is fit on every analyzed row, as the fit is (ruling 3). Model 3's
+    # added columns may be missing where the primary's are not: under complete cases it alone is
+    # fit on the rows where they are recorded; under multiple imputation they are imputed.
+    rows3 = None
     if strategy != "multiple_imputation" and extra:
-        recorded = frame[extra].notna().all(axis=1)
+        recorded = frame[extra].notna().all(axis=1).to_numpy()
         if not recorded.all():
-            frame = frame.loc[recorded]
-            note = (f"the {len(frame):,} analyzed rows with {listing(extra)} recorded, so the "
-                    f"models differ by their adjustment alone")
-    spec3 = (design_spec(state, frame[[*spec.inputs, *extra]],
+            rows3 = recorded
+    frame3 = frame.loc[rows3] if rows3 is not None else frame
+    spec3 = (design_spec(state, frame3[[*spec.inputs, *extra]],
                          [*spec.predictors, *[c for c in extra if c not in spec.predictors]],
                          column_info=info) if further else None)
     outcome = Outcome(name=target, labels=outcome_levels(task, frame[target].to_numpy(), state.event))
@@ -363,24 +455,34 @@ def effects_stage(ctx: StageContext) -> Bundle:
 
         coded = time_to_event_outcome(state, frame, coded)
     y = np.asarray(coded)
+    y3 = y[rows3] if rows3 is not None else y
     clusters = resolve_clusters(state, frame[list(unit_columns)]) if unit_columns else None
+    clusters3 = (resolve_clusters(state, frame3[list(unit_columns)])
+                 if unit_columns and rows3 is not None else clusters)
     survey, _ = _survey(ctx, clusters)
-    largest = spec3 or spec
-    # MS2 (wave 1b): the declared models' imputation model is the fit's: it holds the survey design
-    # under the population answer and the clustering by unit, and leaves parts of totals to their
-    # own models in the energy identity, so the sequence's primary is the fit's primary.
+    keys = [f.key for f in families]
+    # The primary's missing values exactly as the fit handles them (the same rows, columns and
+    # seed, and since wave 1b's MS2 the same imputation model: the survey design under the
+    # population answer, the clustering by unit, parts of totals left to their own models in the
+    # energy identity), so under multiple imputation Model 2 pools the fit's own completed copies.
+    # Model 3's copies are imputed with its columns; it differs in rows from the rest only under
+    # complete cases, where no imputation model reads the design.
     from turbotab.core.readings import nesting
 
-    nested = nesting(state, dict((design.objects or {}).get("nested") or {}),
-                     columns=largest.inputs)
-    missing = _missing_for_table(ctx, largest, frame[list(largest.inputs)], y, task,
-                                 [f.key for f in families], loss={"n_dropped": None},
-                                 survey=survey, clusters=clusters, nested=nested)
+    parts = dict((design.objects or {}).get("nested") or {})
+    missing = _missing_for_table(ctx, spec, frame[list(spec.inputs)], y, task, keys,
+                                 loss={"n_dropped": None}, survey=survey, clusters=clusters,
+                                 nested=nesting(state, parts, columns=spec.inputs))
+    missing3 = (_missing_for_table(ctx, spec3, frame3[list(spec3.inputs)], y3, task, keys,
+                                   loss={"n_dropped": None}, survey=survey, clusters=clusters3,
+                                   nested=nesting(state, parts, columns=spec3.inputs))
+                if spec3 is not None else None)
     facts = est.measure_facts(str(spec_e.measure))
     run = _Run(ctx=ctx, state=state, spec_e=spec_e, key=key, exposures=exposures, task=task,
                frame=frame, y=y, spec=spec, spec3=spec3, pipelines=pipelines, outcome=outcome,
                levels=levels, clusters=clusters, survey=survey, missing=missing,
-               model_one=model_one, further=further, unit_columns=list(unit_columns))
+               model_one=model_one, further=further, extra=extra, unit_columns=list(unit_columns),
+               rows3=rows3, frame3=frame3, y3=y3, clusters3=clusters3, missing3=missing3)
     out = []
     for i, family in enumerate(families):
         ctx.progress(0.05 + 0.9 * i / len(families), f"{family.label}: the declared models")
@@ -390,14 +492,20 @@ def effects_stage(ctx: StageContext) -> Bundle:
     artifact = EffectsArtifact(
         purpose="inference", exposure=key, exposures=exposures, measure=str(spec_e.measure),
         measure_label=est.MEASURE_WORDS.get(str(spec_e.measure)), scale=facts["scale"],
-        conditioning=facts["conditioning"], collapsible=facts["collapsible"], rows=note,
-        appendix_title=APPENDIX_TITLE,
+        conditioning=facts["conditioning"], collapsible=facts["collapsible"],
+        rows=f"all {len(frame):,} analyzed rows", appendix_title=APPENDIX_TITLE,
         multiplicity=est.multiplicity_statement(state, spec_e, len(exposures)) if family_spec else None,
         model_1=ModelOne(**card) if card is not None else None,
         families=out, methods="")
     artifact.methods = methods_sentence(state, artifact)
     ctx.progress(1.0, "Done")
     return Bundle(data=artifact.model_dump(mode="json"))
+
+
+def _first_sentence(text: str) -> str:
+    """The first sentence of a refusal, without its period: what a methods sentence quotes."""
+    head = re.split(r"(?<=[.!?])\s+", str(text).strip(), maxsplit=1)[0]
+    return head.rstrip(".")
 
 
 class _Run:
@@ -407,11 +515,25 @@ class _Run:
         self.__dict__.update(kw)
 
     # the copies the models are fit in: the completed copies under multiple imputation
-    def copies(self) -> list[pd.DataFrame]:
-        imputations = getattr(self.missing, "imputations", None) if self.missing else None
+    @staticmethod
+    def copies(missing: Any, frame: pd.DataFrame) -> list[pd.DataFrame]:
+        imputations = getattr(missing, "imputations", None) if missing else None
         if imputations is not None:
             return list(imputations.frames)
-        return [self.frame]
+        return [frame]
+
+    def _design(self) -> Any:
+        return self.survey.design if self.survey is not None else None
+
+    def _blocked(self, family: Any, info: Mapping[str, Any]) -> dict[str, Any]:
+        """A family with no estimate (block and record, BLUEPRINT §11.3): Model 2 carries the
+        reason and the fit's exits; nothing else is shown for it."""
+        reason = str(info.get("refused") or info.get("caption") or "")
+        inference = Inference(**{k: v for k, v in info.items() if k in Inference.model_fields})
+        return EffectsFamily(family=family.key, label=family.label, sequence=[SequenceFit(
+            key="model_2", label=LABELS["model_2"], adjusted_for=[], n_rows=len(self.frame),
+            effects=None, inference=inference, concerns=[reason])], appendix=[],
+            concerns=[reason]).model_dump(mode="json")
 
     def family_block(self, family: Any, build_pipeline: Any) -> dict[str, Any]:
         from sklearn.base import clone
@@ -420,29 +542,25 @@ class _Run:
         from turbotab.core.models.effects import split_rows
         from turbotab.core.models.inner_cv import fit_pipeline
         from turbotab.core.models.linear import model_matrix
+        from turbotab.core.models.survey import blocked, has_design_estimator, no_design_estimator
         from turbotab.core.stages.modeling import _inference_table, with_units
 
         concerns: list[str] = []
-        refusal = None
+        design = self._design()
         if self.survey is not None and self.survey.refusal:
-            refusal = (self.survey.refusal, self.survey.exits)
-        elif self.missing is not None and self.missing.refusal:
-            refusal = (self.missing.refusal, self.missing.exits)
-        if refusal is not None:
-            return EffectsFamily(family=family.key, label=family.label, sequence=[SequenceFit(
-                key="model_2", label=LABELS["model_2"], adjusted_for=[], n_rows=len(self.frame),
-                effects=None, concerns=[refusal[0]])], appendix=[],
-                concerns=[refusal[0]]).model_dump(mode="json")
-        design = self.survey.design if self.survey is not None else None
-        if design is not None and family.key != "linear":
-            concerns.append("Fit without the survey weights: these estimates describe these "
-                            "participants, not the surveyed population.")
-            design = None
+            return self._blocked(family, blocked(self.survey.refusal, self.survey.exits).info)
+        if self.missing is not None and self.missing.refusal:
+            return self._blocked(family, blocked(self.missing.refusal, self.missing.exits,
+                                                 estimator="not fitted").info)
+        if design is not None and not has_design_estimator(family, self.task):
+            # Ruling 6: under the surveyed population a family with no design-based estimator is
+            # blocked and recorded, its exits the fit's (the family that has one; the sample-only
+            # attestation), never shown unweighted.
+            return self._blocked(family, no_design_estimator(family, self.task,
+                                                             list(self.state.models or [])).info)
         units = (pd.Series(self.clusters.codes, index=self.frame.index)
                  if self.clusters is not None and self.clusters.clustered else None)
         pipeline = self.pipelines[family.key]
-        pipeline3 = (build_pipeline(self.spec3, family, self.task, "inference", len(self.frame),
-                                    len(self.spec3.inputs) + 1) if self.spec3 is not None else None)
         predictors = list(est.predictor_roles(self.state))
         allowed_one = set(self.model_one or [])
         energy_named = bool(allowed_one & set(est.energy_terms_columns(self.state)))
@@ -451,12 +569,10 @@ class _Run:
         adjusted_for: dict[str, list[str]] = {}
         features: list[str] = []
         first: dict[str, Any] = {}
+        curve: tuple[str, list[str]] | None = None  # a spline's straight-line and nonlinear columns
         supported = family.key in SEQUENCE_FAMILIES
-        for k, X_k in enumerate(self.copies()):
-            if self.ctx.cancelled():
-                from turbotab.core.jobs import Cancelled
-
-                raise Cancelled()
+        for k, X_k in enumerate(self.copies(self.missing, self.frame)):
+            self._unless_cancelled()
             X = X_k[list(self.spec.inputs)]
             fitted = fit_pipeline(with_units(clone(pipeline), units), X, self.y)
             if self.levels is not None:
@@ -465,7 +581,7 @@ class _Run:
             if not supported:
                 table = self._table(lambda: _inference_table(
                     family, fitted, X, self.y, task=self.task, clusters=self.clusters,
-                    outcome=self.outcome, rows="all"), "model_2", failures)
+                    outcome=self.outcome, rows="all", survey=design), "model_2", failures)
                 per_copy.setdefault("model_2", []).append(table)
                 if k == 0 and table is not None:
                     features = sorted({f for e in self.exposures for f in est.primary_features(
@@ -487,70 +603,70 @@ class _Run:
             subsets = {"crude": feats, "model_2": list(M.columns)}
             if self.model_one is not None:
                 subsets["model_1"] = [c for c in M.columns if c in feats or in_model_one(c)]
+            curve = spline_terms(fitted, feats) if family.key != "featurewise" else None
+            if curve is not None:
+                # The curve's straight-line estimate, for its sensitivity analysis: the same model
+                # with the spline's nonlinear terms left out (pooled like every other model).
+                subsets["straight"] = [c for c in M.columns if c not in set(curve[1])]
             kw = dict(task=self.task, classes=classes, clusters=self.clusters, outcome=self.outcome,
                       survey=design, levels=self.levels, event=self.state.event, features=feats)
             for name, cols in subsets.items():
                 per_copy.setdefault(name, []).append(self._table(
                     lambda _c=cols: self._with_relative(
-                        family, fitted, M[_c], matrix_table(family, M[_c], self.y, **kw), kw),
-                    name, failures))
-            if pipeline3 is not None:
-                X3 = X_k[list(self.spec3.inputs)]
-                fitted3 = fit_pipeline(with_units(clone(pipeline3), units), X3, self.y)
-                if self.levels is not None:
-                    fitted3[-1].level_names_ = list(self.levels)
-                M3 = model_matrix(fitted3, X3)
-                feats3 = [c for c in M3.columns
-                          if c in {f for e in self.exposures
-                                   for f in est.primary_features(M3.columns, e, predictors)}]
-                kw3 = {**kw, "features": feats3}
-                per_copy.setdefault("model_3", []).append(self._table(
-                    lambda: self._with_relative(family, fitted3, M3,
-                                                matrix_table(family, M3, self.y, **kw3), kw3),
-                    "model_3", failures))
+                        family, fitted, M[_c], self.y, matrix_table(family, M[_c], self.y, **kw),
+                        kw), name, failures))
             if k == 0:
                 features = feats
                 first = {"fitted": fitted, "matrix": M, "sources": sources, "classes": classes}
                 adjusted_for = {"crude": [], "model_2": self._raw(M.columns, feats, sources)}
                 if "model_1" in subsets:
                     adjusted_for["model_1"] = self._raw(subsets["model_1"], feats, sources)
-                if pipeline3 is not None:
-                    adjusted_for["model_3"] = [*adjusted_for["model_2"],
-                                               *[c for c in self.further
-                                                 if c not in adjusted_for["model_2"]]]
+        comparison = None
+        if self.spec3 is not None and supported:
+            comparison = self._model_three(family, build_pipeline, per_copy, failures, predictors,
+                                           design)
+            adjusted_for["model_3"] = [*adjusted_for.get("model_2", []),
+                                       *[c for c in self.further
+                                         if c not in adjusted_for.get("model_2", [])]]
         if not supported:
-            concerns.append(f"{family.label} models the unit itself, so only the primary model is "
-                            f"refit here: the unadjusted model and Model 1 are refit for least "
-                            f"squares, logistic, proportional-odds, Cox and feature-wise models.")
+            concerns.append(f"{family.label} has no model matrix here, so only the primary model is "
+                            f"refit: the unadjusted model and Model 1 are refit for least squares, "
+                            f"logistic, proportional-odds, Cox, feature-wise, mixed and GEE models.")
         sequence, appendix = [], []
         for name in ("crude", "model_1", "model_2", "model_3"):
             tables = per_copy.get(name)
             if not tables:
                 continue
-            table = self._pool(tables, name) if name not in failures else None
+            missing = self.missing3 if name == "model_3" else self.missing
+            spec = self.spec3 if name == "model_3" else self.spec
+            n_model = len(self.frame3) if name == "model_3" else len(self.frame)
+            table = self._pool(tables, missing, spec) if name not in failures else None
             if table is None:
                 sequence.append(SequenceFit(
                     key=name, label=LABELS[name], adjusted_for=adjusted_for.get(name, []),
-                    note=self._note(name), n_rows=len(self.frame), effects=None,
+                    note=self._note(name), n_rows=n_model, effects=None,
                     concerns=[f"It could not be fit: {failures.get(name, 'no table')}"]))
                 continue
-            if self.missing is not None:
-                self.missing.record(table)
-            if family.key == "featurewise" and not table.info.get("refused"):
-                # The family's one multiplicity method, as the fit's table carries it (MS7): with
-                # unadjusted p-values recorded, no q column; every member is shown either way.
-                from turbotab.core.methods.omics import apply_multiplicity, multiplicity_policy
-
-                table = apply_multiplicity(table, multiplicity_policy(self.state))
+            if missing is not None:
+                missing.record(table)
+            table = self._multiplicity(family, table)
             rows = table.rows or []
             mine = {f for e in self.exposures
                     for f in est.primary_features([r["feature"] for r in rows], e, predictors)}
             shown, terms = split_rows(rows, mine)
-            sequence.append(SequenceFit(
+            fit = SequenceFit(
                 key=name, label=LABELS[name], adjusted_for=adjusted_for.get(name, []),
-                note=self._note(name), n_rows=int(table.info.get("n_rows") or len(self.frame)),
+                note=self._note(name), n_rows=int(table.info.get("n_rows") or n_model),
                 effects=shown if table.rows else None,
-                inference=table.info, concerns=list(table.concerns)))
+                inference=table.info, concerns=list(table.concerns))
+            if name == "model_3" and comparison is not None:
+                fit.comparison = [Coefficient(**{k: v for k, v in r.items()
+                                                 if k in Coefficient.model_fields})
+                                  for r in (comparison.rows or []) if r["feature"] in mine]
+                fit.comparison_label = (
+                    f"The primary's adjustment refit on Model 3's {len(self.frame3):,} rows, so "
+                    f"Model 3 differs from it by {self._listing(self.extra)} alone.")
+            sequence.append(fit)
             if terms:
                 appendix.append(AppendixModel(key=name, label=LABELS[name], terms=terms))
         out = EffectsFamily(family=family.key, label=family.label, sequence=sequence,
@@ -575,13 +691,84 @@ class _Run:
                 check = "proportional_hazards" if family.key == "cox" else "influence"
                 out.diagnostics = [Diagnostic(check=check, status="not_assessed", method="",
                                               reading=f"Not assessed: {exc}")]
+            straight = None
+            if curve is not None and "straight" not in failures:
+                straight = self._pool(per_copy.get("straight") or [], self.missing, self.spec)
             try:
-                out.sensitivity = self.sensitivity(family, first, features, primary, out.marginal)
+                out.sensitivity = self.sensitivity(family, first, features, primary, out.marginal,
+                                                   curve, straight)
             except Exception as exc:  # noqa: BLE001
                 self._unless_cancelled()
                 out.sensitivity = [Sensitivity(feature=", ".join(features), methods=[], reading="",
                                                not_computed=f"Not computed: {exc}")]
         return out.model_dump(mode="json")
+
+    def _model_three(self, family: Any, build_pipeline: Any, per_copy: dict[str, list[Any]],
+                     failures: dict[str, str], predictors: Sequence[str], design: Any) -> Any:
+        """Model 3 in each of its copies (its own rows; under multiple imputation, copies imputed
+        with its added columns), and, when its rows are fewer than the primary's, the primary's
+        adjustment refit on those rows (returned)."""
+        from sklearn.base import clone
+
+        from turbotab.core import estimand as est
+        from turbotab.core.models.inner_cv import fit_pipeline
+        from turbotab.core.models.linear import model_matrix
+        from turbotab.core.stages.modeling import with_units
+
+        if self.missing3 is not None and self.missing3.refusal:
+            # Model 3's own columns cannot be handled as the answer says (an imputation refused):
+            # it is listed with that reason, the other models stand.
+            per_copy.setdefault("model_3", []).append(None)
+            failures.setdefault("model_3", self.missing3.refusal)
+            return None
+        pipeline3 = build_pipeline(self.spec3, family, self.task, "inference", len(self.frame3),
+                                   len(self.spec3.inputs) + 1)
+        units3 = (pd.Series(self.clusters3.codes, index=self.frame3.index)
+                  if self.clusters3 is not None and self.clusters3.clustered else None)
+        comparison = None
+        for k, X_k in enumerate(self.copies(self.missing3, self.frame3)):
+            self._unless_cancelled()
+            X3 = X_k[list(self.spec3.inputs)]
+            fitted3 = fit_pipeline(with_units(clone(pipeline3), units3), X3, self.y3)
+            if self.levels is not None:
+                fitted3[-1].level_names_ = list(self.levels)
+            classes3 = list(getattr(fitted3[-1], "classes_", [])) or None
+            M3 = model_matrix(fitted3, X3)
+            feats3 = [c for c in M3.columns
+                      if c in {f for e in self.exposures
+                               for f in est.primary_features(M3.columns, e, predictors)}]
+            kw3 = dict(task=self.task, classes=classes3, clusters=self.clusters3,
+                       outcome=self.outcome, survey=design, levels=self.levels,
+                       event=self.state.event, features=feats3)
+            per_copy.setdefault("model_3", []).append(self._table(
+                lambda: self._with_relative(family, fitted3, M3, self.y3,
+                                            matrix_table(family, M3, self.y3, **kw3), kw3),
+                "model_3", failures))
+            if self.rows3 is not None and k == 0:
+                sources3 = matrix_sources(fitted3, self.spec3.inputs)
+                added = set(self.extra)
+                own = [c for c in M3.columns
+                       if not (sources3.get(str(c), ({str(c)}, set()))[0] & added)]
+                comparison = self._table(lambda: matrix_table(family, M3[own], self.y3, **kw3),
+                                         "model_3_comparison", failures)
+                if comparison is not None:
+                    comparison = self._multiplicity(family, comparison)
+        return comparison
+
+    def _multiplicity(self, family: Any, table: Any) -> Any:
+        if family.key == "featurewise" and not table.info.get("refused"):
+            # The family's one multiplicity method, as the fit's table carries it (MS7): with
+            # unadjusted p-values recorded, no q column; every member is shown either way.
+            from turbotab.core.methods.omics import apply_multiplicity, multiplicity_policy
+
+            return apply_multiplicity(table, multiplicity_policy(self.state))
+        return table
+
+    @staticmethod
+    def _listing(columns: Sequence[str]) -> str:
+        from turbotab.core.voice import listing
+
+        return listing(list(columns))
 
     def _unless_cancelled(self) -> None:
         if self.ctx.cancelled():
@@ -599,7 +786,7 @@ class _Run:
             failures.setdefault(name, str(exc))
             return None
 
-    def _with_relative(self, family: Any, fitted: Any, matrix: pd.DataFrame, table: Any,
+    def _with_relative(self, family: Any, fitted: Any, matrix: pd.DataFrame, y: Any, table: Any,
                        kw: Mapping[str, Any]) -> Any:
         """Under the all-components model, each nutrient's average relative effect (the
         substitution; Tomova et al. 2022) beside the model's coefficients, from this model's own
@@ -615,7 +802,7 @@ class _Run:
         factors = dict(getattr(getattr(step, "pooled_", step), "factors_", {}) or {})
         found = relative_effect_rows(
             matrix, list(adj.nutrients), factors,
-            table=lambda m: matrix_table(family, m, self.y, **kw).rows, coefficients=table.rows)
+            table=lambda m: matrix_table(family, m, y, **kw).rows, coefficients=table.rows)
         table.rows = [*table.rows, *found]
         return table
 
@@ -642,9 +829,14 @@ class _Run:
         if name == "model_2":
             return "the full adjustment set the answers derive: the reported estimate."
         what = "a possible mediator" if len(self.further) == 1 else "possible mediators"
-        return f"further adjusted for {listing(self.further)}, {what}: not a total effect."
+        note = f"further adjusted for {listing(self.further)}, {what}: not a total effect."
+        if self.rows3 is not None:
+            note += (f" Fit on the {len(self.frame3):,} of the {len(self.frame):,} analyzed rows with "
+                     f"{listing(self.extra)} recorded; the primary's adjustment refit on those "
+                     f"rows is shown beside it.")
+        return note
 
-    def _pool(self, tables: Sequence[Any], name: str) -> Any:
+    def _pool(self, tables: Sequence[Any], missing: Any, spec: Any) -> Any:
         from turbotab.core.models.inference import InferenceTable
 
         tables = [t for t in tables if t is not None]
@@ -657,7 +849,8 @@ class _Run:
         from turbotab.core.methods.imputation import pool_rows
         from turbotab.core.methods.missing import mi_concerns, multiple_imputation_info
 
-        imputations = self.missing.imputations
+        imputations = missing.imputations
+        y = self.y3 if spec is self.spec3 else self.y
         pooled = pool_rows([t.rows for t in tables])
         info = dict(tables[0].info)
         info["caption"] = (f"Multiple imputation, m = {len(tables)}: each completed copy analyzed "
@@ -667,9 +860,9 @@ class _Run:
         # largest Monte Carlo error among the pooled rows, as the fit's record does.
         from turbotab.core.stages.modeling import _design_df
 
-        info["missing"] = multiple_imputation_info(imputations, self.spec3 or self.spec, len(self.y),
-                                                   rows=pooled, df_com=_design_df(tables[0]))
-        concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(self.y))
+        info["missing"] = multiple_imputation_info(imputations, spec, len(y), rows=pooled,
+                                                   df_com=_design_df(tables[0]))
+        concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(y))
         return InferenceTable(pooled, info, concerns)
 
     # ── the marginal risk difference and ratio ──
@@ -679,6 +872,7 @@ class _Run:
 
         from turbotab.core import estimand as est
         from turbotab.core.models import effects
+        from turbotab.core.models.inference import floor_refusal
         from turbotab.core.models.pipeline import transformer
 
         measure = str(self.spec_e.measure)
@@ -742,6 +936,10 @@ class _Run:
         seed = int(getattr(self.state.split, "seed", 0) or 0) if self.state.split is not None else 0
         units = (self.clusters.codes if self.clusters is not None and self.clusters.clustered
                  else None)
+        # The unit floor binds this interval as it binds every other (§2: refusal below a floor):
+        # a bootstrap of a handful of units is as narrow as the sandwich the fit refuses.
+        refusal = floor_refusal(self.clusters, task="binary") if self.clusters is not None else None
+        n_boot = 0 if refusal is not None else effects.BOOT
         try:
             settings = effects.settings_of(self.frame[exposure], exposure)
         except effects.Unestimable as exc:
@@ -758,14 +956,57 @@ class _Run:
         for setting in settings:
             try:
                 found = effects.g_computation(
-                    fit, X, self.y.astype(float), exposure, setting, n_boot=effects.BOOT,
+                    fit, X, self.y.astype(float), exposure, setting, n_boot=n_boot,
                     seed=seed, units=units,
-                    unit_column=self.clusters.column if units is not None else None,
+                    unit_column=self.clusters.column if units is not None and n_boot else None,
                     energy=energy, progress=progress, cancelled=self.ctx.cancelled)
             except effects.Unestimable as exc:
                 out.refused = f"The marginal risks cannot be standardized: {exc}."
                 return out
-            out.contrasts.append(MarginalContrast(**{k: v for k, v in found.as_dict().items()}))
+            values = found.as_dict()
+            unbounded = values["rr_high"] is not None and math.isinf(values["rr_high"])
+            if unbounded:
+                values["rr_high"] = None
+            out.contrasts.append(MarginalContrast(
+                **{k: v for k, v in values.items() if k in MarginalContrast.model_fields},
+                rr_unbounded=unbounded))
+        if refusal is not None:
+            out.interval_refused = refusal[0]
+            out.exits = [InferenceExit(**e) for e in refusal[1]]
+            out.method = (f"Standardization over the analyzed rows (g-computation) from the "
+                          f"logistic model: each row's predicted risk with the exposure set each "
+                          f"way, averaged; no interval is reported ({_first_sentence(refusal[0])})")
+        out.concerns = self._marginal_concerns(out.contrasts)
+        return out
+
+    @staticmethod
+    def _marginal_concerns(contrasts: Sequence[MarginalContrast]) -> list[str]:
+        """What the bootstrap met and how it was handled, each said once per contrast."""
+        out = []
+        for c in contrasts:
+            lead = f"{c.setting}: " if len(contrasts) > 1 else ""
+            if c.n_limit:
+                out.append(
+                    f"{lead}In {c.n_limit:,} of the {c.n_boot:,} bootstrap resamples the covariates "
+                    f"separated the outcome (a level or a combination with no event, or only "
+                    f"events, in that resample). Each is kept at the likelihood's limit, where the "
+                    f"separated rows' risks are 0 or 1, the fit R's glm approaches as its "
+                    f"coefficients run away; leaving them out would cut the interval's most "
+                    f"extreme resamples.")
+            if c.n_failed:
+                out.append(
+                    f"{lead}{c.n_failed:,} of the {c.n_boot:,} resamples could not be fit "
+                    f"({c.failed_reason}) and are left out, so the intervals rest on the other "
+                    f"{c.n_boot - c.n_failed:,} and may be too narrow.")
+            if c.rr_unbounded:
+                out.append(
+                    f"{lead}The risk ratio's upper limit is unbounded: in {c.n_rr_infinite:,} of "
+                    f"the resamples the risk at the first setting was 0, so its ratio was "
+                    f"infinite.")
+            if c.n_rr_undefined:
+                out.append(
+                    f"{lead}In {c.n_rr_undefined:,} resamples both risks were 0, so no risk ratio "
+                    f"exists there; its interval rests on the others.")
         return out
 
     # ── diagnostics ──
@@ -872,20 +1113,37 @@ class _Run:
         p, n = int(found["p"]), int(found["n"])
         threshold = effects.cook_threshold(p, n)
         D = np.asarray(found["cooks"], dtype=float)
-        flagged = np.flatnonzero(D > threshold)
+        # A NaN distance (leverage 1) is above no reference, as R's comparison leaves it out.
+        flagged = np.flatnonzero(np.nan_to_num(D, nan=-np.inf) > threshold)
+        aliased = int(found.get("aliased") or 0)
+        rank = (f"; p is the model's rank, {aliased:,} aliased column"
+                f"{'s' if aliased != 1 else ''} left out as R's lm leaves {'them' if aliased != 1 else 'it'}"
+                if aliased else "")
         method = (f"Leverage and Cook's distance of every row, as R's hatvalues and "
                   f"cooks.distance give them, against the median of F({p}, {n - p:,}) = "
-                  f"{threshold:.3g} ({effects.COOK}){on}")
-        largest = float(np.nanmax(D)) if len(D) else None
+                  f"{threshold:.3g} ({effects.COOK}{rank}){on}")
+        finite = D[np.isfinite(D)]
+        largest = float(finite.max()) if len(finite) else None
+        one = int(found.get("leverage_one") or 0)
         base = dict(check="influence", method=method, threshold=threshold,
                     reference=f"the median of F({p}, {n - p:,})", flagged=int(len(flagged)),
-                    largest=largest, n=n)
+                    largest=largest, n=n, leverage_one=one)
+        exact = ""
+        if one:
+            exact = (f" {one:,} row{'s' if one != 1 else ''} with leverage 1 (the fit passes "
+                     f"through {'them' if one != 1 else 'it'}, as through the one row of a level "
+                     f"held by one row) {'have' if one != 1 else 'has'} no Cook's distance, as R "
+                     f"reports it: removing {'one' if one != 1 else 'it'} moves only the "
+                     f"coefficient that fits it.")
+        top = f"{largest:.3g}" if largest is not None else "none"
         if not len(flagged):
             return Diagnostic(status="passed", tests=[], **base,
                               reading=(f"No row moves the estimates past Cook's reference "
-                                       f"(largest distance {largest:.3g}, against {threshold:.3g})."))
-        reading = (f"{len(flagged):,} row{'s' if len(flagged) != 1 else ''} move the estimates past "
-                   f"Cook's reference (largest distance {largest:.3g}, against {threshold:.3g}).")
+                                       f"(largest distance {top}, against {threshold:.3g})."
+                                       + exact))
+        reading = (f"{len(flagged):,} row{'s move' if len(flagged) != 1 else ' moves'} the estimates "
+                   f"past Cook's reference (largest distance {top}, against {threshold:.3g})."
+                   + exact)
         out = Diagnostic(status="failed", reading=reading, exits=self._exits("influence", True),
                          **base)
         action = responses.get("influence")
@@ -913,7 +1171,11 @@ class _Run:
     # ── sensitivity to unmeasured confounding ──
 
     def sensitivity(self, family: Any, first: Mapping[str, Any], features: Sequence[str],
-                    primary: SequenceFit | None, marginal: Marginal | None) -> list[Sensitivity]:
+                    primary: SequenceFit | None, marginal: Marginal | None,
+                    curve: tuple[str, list[str]] | None = None,
+                    straight: Any = None) -> list[Sensitivity]:
+        """Every reported estimate's sensitivity analysis (ruling 10: "offered for every inference
+        result"), or why one is not defined for it."""
         from turbotab.core import estimand as est
 
         if primary is None or not primary.effects:
@@ -925,70 +1187,158 @@ class _Run:
             return [Sensitivity(feature=rows[0].feature, methods=[], reading="",
                                 not_computed=f"No E-value or robustness value is defined here for "
                                              f"a {est.MEASURE_WORDS[est.MEASURE_OF_TASK[self.task]]}.")]
-        if family.key != "featurewise" and len(features) > 1:
-            return [Sensitivity(feature=", ".join(features), methods=[], reading="",
-                                not_computed="The exposure enters as several terms (a curve or "
-                                             "categories), so no single coefficient carries the "
-                                             "effect for an E-value or a robustness value.")]
-        out: list[Sensitivity] = []
         M, sources = first["matrix"], first["sources"]
         imputed = getattr(self.missing, "imputations", None) is not None
-        for row in rows:
-            out.append(self._one(family, row, M, sources, marginal, imputed))
+        covariance = str(primary.inference.covariance) if primary.inference is not None else "none"
+        if curve is not None:
+            return [self._curve(family, M, sources, features, curve, straight, marginal, imputed)]
+        return [self._one(family, row, M, sources, marginal, imputed, covariance, features)
+                for row in rows]
+
+    def _curve(self, family: Any, M: pd.DataFrame, sources: Mapping[str, Any],
+               features: Sequence[str], curve: tuple[str, list[str]], table: Any,
+               marginal: Marginal | None, imputed: bool) -> Sensitivity:
+        """A curve has no one coefficient to bound. Under a declared marginal measure the curve's
+        own one-unit standardization is the estimate; otherwise its straight-line estimate beside
+        it (``table``: the same model, the spline's nonlinear terms left out) is analyzed, and the
+        reading says so."""
+        straight, nonlinear = curve
+        whole = str(self.spec_e.exposure or straight)
+        contrast = self._contrast_for(marginal, straight, features)
+        if contrast is not None and contrast.rr is not None:
+            return self._marginal_sensitivity(whole, contrast, imputed)
+        row = next((r for r in (table.rows or []) if r["feature"] == straight), None) if table else None
+        if row is None or row.get("estimate") is None:
+            return Sensitivity(feature=whole, methods=[], reading="",
+                               not_computed="The exposure enters as a curve, and its straight-line "
+                                            "estimate, which the sensitivity analysis would bound, "
+                                            "could not be fit.")
+        companion = Coefficient(**{k: v for k, v in row.items() if k in Coefficient.model_fields})
+        keep = [c for c in M.columns if c not in set(nonlinear)]
+        out = self._one(family, companion, M[keep], sources, None, imputed,
+                        str(table.info.get("covariance") or "none"), [straight],
+                        what=STRAIGHT_LINE)
+        if companion.ratio is not None:
+            said = f"a ratio of {companion.ratio:.4g} per unit"
+            low, high = companion.ratio_low, companion.ratio_high
+        else:
+            said = f"{companion.estimate:.4g} per unit"
+            low, high = companion.ci_low, companion.ci_high
+        if low is not None and high is not None:
+            said += f", 95% CI {low:.4g} to {high:.4g}"
+        lead = ("The exposure enters as a curve (a restricted cubic spline), which no single "
+                "coefficient carries; this analysis bounds the straight-line estimate beside it, "
+                f"the same model with the spline's nonlinear terms left out ({said}).")
+        out.reading = f"{lead} {out.reading}".strip()
+        out.of, out.companion = STRAIGHT_LINE, companion
+        return out
+
+    def _contrast_for(self, marginal: Marginal | None, feature: str,
+                      features: Sequence[str]) -> MarginalContrast | None:
+        """The declared marginal contrast a row of the exposure's is read through: the one
+        contrast of a single-term or curved exposure, or a categorical exposure's level against
+        the first (its indicator, ``<exposure>_<level>``)."""
+        if marginal is None or not marginal.contrasts:
+            return None
+        if len(marginal.contrasts) == 1:
+            return marginal.contrasts[0]
+        exposure = str(self.spec_e.exposure or "")
+        for c in marginal.contrasts:
+            found = re.match(r"^`(.+)` against `(.+)`$", c.setting)
+            if found and feature == f"{exposure}_{found.group(1)}":
+                return c
+        return None
+
+    def _event_share(self) -> float:
+        """The event's share among the analyzed rows: the population's (weighted) under the
+        surveyed-population answer, as the design-based estimate it qualifies."""
+        values = (self.y["event"] if self.task == "time_to_event" else self.y).astype(float)
+        design = self._design()
+        if design is not None:
+            from turbotab.core.models.survey import domain_of
+
+            domain = domain_of(self.frame.index, design)
+            return float(np.average(values[domain.keep], weights=domain.weight))
+        return float(np.mean(values))
+
+    def _outcome_sd(self) -> float:
+        """The outcome's standard deviation: the population's under the surveyed-population answer
+        (R survey's ``svyvar``), else the rows', by the one rule the causal lane uses too
+        (``models.effects.outcome_sd``; MODELING_SEQUENCE §0 ruling 14)."""
+        from turbotab.core.models.effects import outcome_sd
+
+        values = self.y.astype(float)
+        design = self._design()
+        if design is not None:
+            from turbotab.core.models.survey import domain_of
+
+            domain = domain_of(self.frame.index, design)
+            return outcome_sd(values[domain.keep], domain.weight)
+        return outcome_sd(values)
+
+    def _marginal_sensitivity(self, feature: str, c: MarginalContrast,
+                              imputed: bool) -> Sensitivity:
+        from turbotab.core.models import effects
+
+        high = math.inf if c.rr_unbounded else c.rr_high
+        found = effects.unmeasured_confounding(measure="risk_ratio", estimate=float(c.rr),
+                                               ci_low=c.rr_low, ci_high=high)
+        out = self._sensitivity(feature, found, imputed, None, what="the marginal risk ratio")
+        out.of = "the marginal risk ratio"
         return out
 
     def _one(self, family: Any, row: Coefficient, M: pd.DataFrame, sources: Mapping[str, Any],
-             marginal: Marginal | None, imputed: bool) -> Sensitivity:
+             marginal: Marginal | None, imputed: bool, covariance: str, features: Sequence[str],
+             what: str = "the estimate") -> Sensitivity:
         from turbotab.core.models import effects
 
         feature = str(row.feature)
+        design = self._design()
         if self.task == "regression":
-            sd = float(np.std(self.y.astype(float), ddof=1))
+            sd = self._outcome_sd()
             matrix = y = None
             benchmarks = None
             reason = None
-            if family.key == "featurewise":
-                reason = ("benchmarks need the covariates' own coefficients, which the feature-wise "
-                          "tests project out")
-            elif self.survey is not None and self.survey.design is not None:
+            if family.key not in ("linear", "featurewise"):
+                reason = (f"it is defined for one least-squares coefficient "
+                          f"({effects.CINELLI_HAZLETT}), and this family ({family.label}) does "
+                          f"not fit by least squares")
+            elif design is not None:
                 reason = "the robustness value is defined for an unweighted least-squares fit"
             elif feature not in M.columns:
                 reason = ("the average relative effect is a contrast of several coefficients, not "
                           "one regressor's")
+            elif family.key == "featurewise":
+                # Each member's own test: the outcome on that member and the adjustment columns
+                # (the other members are separate questions), its covariates the benchmarks.
+                others = set(features) - {feature}
+                matrix = M[[c for c in M.columns if c not in others]]
+                y = self.y.astype(float)
+                benchmarks = self._benchmarks(M, sources, features)
             else:
                 matrix, y = M, self.y.astype(float)
-                benchmarks = self._benchmarks(M, sources, [feature])
+                benchmarks = self._benchmarks(M, sources, features)
             found = effects.unmeasured_confounding(
                 measure="mean_difference", estimate=float(row.estimate), ci_low=row.ci_low,
                 ci_high=row.ci_high, se=row.se, outcome_sd=sd, matrix=matrix, y=y,
-                exposure_column=feature if matrix is not None else None, benchmarks=benchmarks)
-            if family.key == "featurewise" and row.df and row.se:
-                t = float(row.estimate) / float(row.se)
-                rv = effects.robustness_value(t, float(row.df))
-                rva = effects.robustness_value(t, float(row.df), alpha=0.05)
-                found["robustness"] = effects.LinearSensitivity(
-                    exposure=feature, estimate=float(row.estimate), se=float(row.se), t=t,
-                    dof=float(row.df), partial_r2=effects.partial_r2(t, float(row.df)), rv=rv,
-                    rv_alpha=rva).as_dict()
-                found["methods"] = ["robustness_value", *found["methods"]]
-            return self._sensitivity(feature, found, imputed, reason)
+                exposure_column=feature if matrix is not None else None, benchmarks=benchmarks,
+                covariance=covariance)
+            return self._sensitivity(feature, found, imputed, reason, what=what)
         if family.key == "featurewise":
             return Sensitivity(feature=feature, methods=[], reading="",
                                not_computed="The feature-wise design models each exposure on the "
                                             "outcome, so the exposure is no regressor whose "
                                             "confounding these analyses bound.")
-        share = (float(np.mean(self.y["event"])) if self.task == "time_to_event"
-                 else float(np.mean(self.y.astype(float))))
+        contrast = self._contrast_for(marginal, feature, features)
+        if contrast is not None and contrast.rr is not None:
+            return self._marginal_sensitivity(feature, contrast, imputed)
+        share = self._event_share()
         measure = "hazard_ratio" if self.task == "time_to_event" else "odds_ratio"
-        if marginal is not None and marginal.contrasts and marginal.contrasts[0].rr is not None:
-            c = marginal.contrasts[0]
-            found = effects.unmeasured_confounding(measure="risk_ratio", estimate=c.rr,
-                                                   ci_low=c.rr_low, ci_high=c.rr_high)
-            return self._sensitivity(feature, found, imputed, None, what="the marginal risk ratio")
-        found = effects.unmeasured_confounding(measure=measure, estimate=float(row.ratio),
+        ratio = row.ratio if row.ratio is not None else math.exp(float(row.estimate))
+        found = effects.unmeasured_confounding(measure=measure, estimate=float(ratio),
                                                ci_low=row.ratio_low, ci_high=row.ratio_high,
                                                outcome_share=share)
-        return self._sensitivity(feature, found, imputed, None)
+        return self._sensitivity(feature, found, imputed, None, what=what)
 
     def _benchmarks(self, M: pd.DataFrame, sources: Mapping[str, Any],
                     feats: Sequence[str]) -> dict[str, list[str]]:
@@ -1018,15 +1368,17 @@ class _Run:
             robustness=RobustnessResult(**{**r, "benchmarks": [BenchmarkResult(**b) for b in
                                                               r.get("benchmarks") or []]})
             if r is not None else None,
-            reading=" ".join(parts), not_computed=(f"No robustness value: {reason}." if reason
-                                                   else None))
+            reading=" ".join(p for p in parts if p),
+            not_computed=(f"No robustness value: {reason}." if reason else None))
 
 
 def sensitivity_reading(found: Mapping[str, Any], feature: str, target: str,
                         what: str = "the estimate") -> str:
     """What one sensitivity analysis says (``models.effects.unmeasured_confounding``'s result), in
     the words every inference result and the causal lane share: the robustness value with the
-    benchmark that moves the estimate most, then the E-value, never a pass or a fail."""
+    benchmark that moves the estimate most, then the E-value, never a pass or a fail. Where the
+    interval shown is not the classical one, the robustness value's interval form and the
+    benchmarks' intervals are not given, and the reading says why."""
     from turbotab.core.models import effects
     from turbotab.core.voice import tick
 
@@ -1037,16 +1389,28 @@ def sensitivity_reading(found: Mapping[str, Any], feature: str, target: str,
         bench = r.get("benchmarks") or []
         lead = (f"An unmeasured confounder would need a partial R² of {r['rv']:.1%} with both "
                 f"{tick(feature)} and {tick(target)}, beyond the measured covariates, to bring the "
-                f"estimate to zero, and {r['rv_alpha']:.1%} to bring its 95% interval to "
-                f"include zero ({effects.CINELLI_HAZLETT})")
+                f"estimate to zero")
+        if r.get("rv_alpha") is not None:
+            lead += f", and {r['rv_alpha']:.1%} to bring its 95% interval to include zero"
+        lead += f" ({effects.CINELLI_HAZLETT})"
         if bench:
             b = max(bench, key=lambda x: abs(r["estimate"] - x["estimate"]))
             lead += (f"; one as strong as {tick(b['covariate'])} would move it to "
-                     f"{b['estimate']:.4g} (95% CI {b['ci_low']:.4g} to {b['ci_high']:.4g})")
+                     f"{b['estimate']:.4g}")
+            if b.get("ci_low") is not None and b.get("ci_high") is not None:
+                lead += f" (95% CI {b['ci_low']:.4g} to {b['ci_high']:.4g})"
         parts.append(lead + ".")
+        if r.get("interval_note"):
+            parts.append(str(r["interval_note"]))
     if e is not None:
-        limit = ("1, as its interval includes the null" if e.get("interval_includes_null")
-                 else f"{e['limit']:.2f}" if e.get("limit") is not None else "not computed")
+        if e.get("interval_includes_null"):
+            limit = "1, as its interval includes the null"
+        elif e.get("limit") is not None:
+            limit = f"{e['limit']:.2f}"
+        elif e.get("rr_low") is None and e.get("rr_high") is None:
+            limit = "none, as no interval is reported"
+        else:
+            limit = "not computed"
         parts.append(f"E-value for {what}: {e['point']:.2f}, and for the confidence limit "
                      f"nearer the null {limit} ({effects.VANDERWEELE_DING}); an E-value is read "
                      f"against the confounders one can name, never as a pass or a fail.")
@@ -1059,14 +1423,34 @@ SENSITIVITY_NAMES = {
     "e_value": "the E-value for the estimate and for the confidence limit nearer the null"}
 
 
-def sensitivity_clause(methods: Sequence[str], names: Mapping[str, str] | None = None) -> str:
-    """The methods text's sentence for the analyses that ran, in rank order."""
+def sensitivity_clause(methods: Sequence[str], names: Mapping[str, str] | None = None,
+                       of: str | None = None) -> str:
+    """The methods text's sentence for the analyses that ran, in rank order; ``of`` names what
+    they bound when it is not the reported estimate itself."""
     words = {**SENSITIVITY_NAMES, **(names or {})}
-    return (f"Sensitivity to unmeasured confounding is reported by "
+    subject = f" of {of}" if of else ""
+    return (f"Sensitivity to unmeasured confounding{subject} is reported by "
             f"{' and by '.join(words[m] for m in methods)}, never as a pass or a fail.")
 
 
 # ── the methods sentence ─────────────────────────────────────────────────────
+
+
+def _robustness_name(lines: Sequence[Sensitivity]) -> str | None:
+    """The robustness value's name in the methods text, from what was computed: named benchmarks
+    or none, and its interval form when the intervals shown are not classical."""
+    found = [s.robustness for s in lines if s.robustness is not None]
+    if not found:
+        return None
+    benchmarked = any(r.benchmarks for r in found)
+    words = ("each adjusted covariate a named benchmark" if benchmarked else
+             "no adjusted covariate to benchmark it against")
+    plain = next((r for r in found if r.rv_alpha is None), None)
+    if plain is not None:
+        words += (f"; its form for the 95% interval, and the benchmarks' intervals, are not "
+                  f"reported, as they assume classical standard errors and the intervals "
+                  f"reported are {plain.covariance}")
+    return f"the Cinelli–Hazlett robustness value ({words})"
 
 
 def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
@@ -1080,30 +1464,63 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
     whose = ("each exposure" if artifact.exposure == "*" else tick(artifact.exposure))
     fam = artifact.families[0]
     keys = [s.key for s in fam.sequence]
-    seq = ["unadjusted"]
+    two = next((s for s in fam.sequence if s.key == "model_2"), None)
+    if two is None or not two.effects:
+        why = ((two.inference.refused if two is not None and two.inference is not None else None)
+               or (two.concerns[0] if two is not None and two.concerns else None)
+               or "no model could be fit")
+        return f"No estimate of {whose} is reported: {why}"
+    seq = []
+    if "crude" in keys:
+        seq.append("unadjusted")
     if "model_1" in keys:
         one = next(s for s in fam.sequence if s.key == "model_1")
         seq.append(f"Model 1, adjusted for {listing(one.adjusted_for) if one.adjusted_for else 'nothing besides it'}")
-    two = next((s for s in fam.sequence if s.key == "model_2"), None)
     seq.append("Model 2, the primary, adjusted for "
-               + (listing(two.adjusted_for, limit=8) if two is not None and two.adjusted_for
-                  else "nothing besides it"))
+               + (listing(two.adjusted_for, limit=8) if two.adjusted_for else "nothing besides it"))
     if "model_3" in keys:
         three = next(s for s in fam.sequence if s.key == "model_3")
-        added = [c for c in three.adjusted_for
-                 if c not in next(s for s in fam.sequence if s.key == "model_2").adjusted_for]
+        added = [c for c in three.adjusted_for if c not in two.adjusted_for]
         what = "a possible mediator" if len(added) == 1 else "possible mediators"
-        seq.append(f"Model 3, further adjusted for {listing(added)}, {what}, so not a total effect")
-    text = (f"The estimate of {whose} is reported across a declared sequence of models fit on "
-            f"{artifact.rows}: {'; '.join(seq)}. Only the exposure's estimates are shown as "
-            f"effects; every other coefficient is listed apart as an adjustment term, not an "
-            f"effect estimate ({WESTREICH}).")
+        part = f"Model 3, further adjusted for {listing(added)}, {what}, so not a total effect"
+        if three.n_rows < two.n_rows:
+            part += (f", on the {three.n_rows:,} rows with {listing(added)} recorded, beside the "
+                     f"primary's adjustment refit on those rows")
+        seq.append(part)
+    if len(seq) == 1:
+        text = f"The estimate of {whose} is reported from the primary model fit on {artifact.rows}: {seq[0]}."
+    else:
+        text = (f"The estimate of {whose} is reported across a declared sequence of models fit on "
+                f"{artifact.rows}: {'; '.join(seq)}.")
+    text += (f" Only the exposure's estimates are shown as effects; every other coefficient is "
+             f"listed apart as an adjustment term, not an effect estimate ({WESTREICH}).")
+    survey = two.inference.survey if two.inference is not None else None
+    if two.inference is not None and two.inference.covariance == "design" and survey is not None:
+        weight = f" by {tick(survey.weight)}" if survey.weight else ""
+        text += (f" Each model is design-based: weighted{weight}, with Taylor-linearized intervals "
+                 f"over the survey's strata and PSUs, so the estimates describe the surveyed "
+                 f"population.")
     if fam.marginal is not None and not fam.marginal.refused and fam.marginal.contrasts:
         c = fam.marginal.contrasts[0]
         text += (f" The marginal risk difference and risk ratio ({c.setting}) were estimated by "
-                 f"standardization over the analyzed rows (g-computation) from the logistic model, "
-                 f"with 95% percentile intervals from {c.n_boot:,} bootstrap resamples refitting "
-                 f"the whole chain" + (f" by `{c.by_unit}`" if c.by_unit else "") + ".")
+                 f"standardization over the analyzed rows (g-computation) from the logistic model")
+        if fam.marginal.interval_refused:
+            text += f"; no interval is reported ({_first_sentence(fam.marginal.interval_refused)})."
+        else:
+            text += (f", with 95% percentile intervals from {c.n_boot:,} bootstrap resamples "
+                     f"refitting the whole chain" + (f" by `{c.by_unit}`" if c.by_unit else ""))
+            limits = {x.n_limit for x in fam.marginal.contrasts}
+            fails = {x.n_failed for x in fam.marginal.contrasts}
+            if max(limits):
+                some = (f"{max(limits):,}" if len(limits) == 1 else
+                        f"between {min(limits):,} and {max(limits):,}")
+                text += (f"; in {some} of them the covariates separated the outcome, and the model "
+                         f"was taken at the likelihood's limit (the separated rows' risks 0 or 1)")
+            if max(fails):
+                some = (f"{max(fails):,}" if len(fails) == 1 else
+                        f"between {min(fails):,} and {max(fails):,}")
+                text += f"; {some} could not be fit and are left out of the intervals"
+            text += "."
     for d in fam.diagnostics:
         if d.status == "not_assessed":
             continue
@@ -1115,6 +1532,9 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
         else:
             text += (f" Influence was checked by Cook's distance against {d.reference} ({COOK}): "
                      f"{d.flagged:,} row{'s' if d.flagged != 1 else ''} above it")
+            if d.leverage_one:
+                text += (f", and {d.leverage_one:,} row{'s' if d.leverage_one != 1 else ''} with "
+                         f"leverage 1, which {'have' if d.leverage_one != 1 else 'has'} no distance")
         if d.status == "failed":
             from turbotab.core.estimand import ACTION_WORDS
 
@@ -1125,7 +1545,12 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
             text += "."
     lines = [s for s in fam.sensitivity if s.methods]
     if lines:
-        text += " " + sensitivity_clause(lines[0].methods)
+        names = {}
+        robustness = _robustness_name(lines)
+        if robustness is not None:
+            names["robustness_value"] = robustness
+        of = STRAIGHT_LINE if any(s.of == STRAIGHT_LINE for s in lines) else None
+        text += " " + sensitivity_clause(lines[0].methods, names, of=of)
     if artifact.multiplicity:
         text += " " + artifact.multiplicity
     return text
@@ -1226,7 +1651,12 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
             _relation("gcomp-bootstrap-chain", "implies", "the marginal intervals",
                       "the marginal measure declared",
                       "each resample refits the whole pipeline and the model, whole units when "
-                      "rows repeat"),
+                      "rows repeat; a resample whose outcome is separated is kept at the "
+                      "likelihood's limit and counted, never dropped silently"),
+            _relation("gcomp-unit-floor", "disables", "the marginal intervals",
+                      "rows repeat within fewer units than the unit floor",
+                      "the risks are shown without an interval, with the tables' reason and "
+                      "exits"),
             _relation("gcomp-survey-blocked", "conflicts", "a population survey estimand",
                       "the surveyed-population answer",
                       "blocked and recorded, exits: the sample-only answer or the conditional odds "
@@ -1268,6 +1698,20 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
                       "Model 1 is declared again, never silently kept"),
             _relation("sequence-in-lock", "implies", "the analysis-plan lock",
                       "the plan is locked", "the declared sequence is part of the plan"),
+            _relation("model3-own-rows", "implies", "Model 3's rows",
+                      "complete cases, and Model 3's added columns sometimes missing",
+                      "every other model is fit on every analyzed row (Model 2 is the fit's "
+                      "primary); Model 3 alone on the rows where they are recorded, the primary's "
+                      "adjustment refit on those rows beside it"),
+            _relation("sequence-design-based", "implies", "every declared model",
+                      "the surveyed-population answer",
+                      "each model is design-based, or the family is blocked and recorded with the "
+                      "fit's exits; never an unweighted refit beside a design-based primary"),
+            _relation("sequence-supplied-copies", "disables", "the declared models",
+                      "the rows are the data's own imputed copies (set_repeat_kind, kept as rows)",
+                      "the fit's table pools the primary over the copies; the declared models, "
+                      "the marginal risks, the diagnostics and the sensitivity analyses are "
+                      "withheld with the reason, never fit on the copies stacked"),
         ),
         sources=("Westreich & Greenland 2013, Am J Epidemiol 177:292", "STROBE item 16a")),
     _contract(
@@ -1334,6 +1778,13 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
                       "the robustness value leads, the E-value follows"),
             _relation("no-threshold", "disables", "a pass/fail verdict", "always",
                       "no E-value or robustness value is called a pass or a fail"),
+            _relation("rv-interval-classical", "disables", "the robustness value's interval form",
+                      "the interval shown is not the classical one (HC3, cluster-robust, pooled)",
+                      "RV for the interval and the benchmarks' intervals are not reported, and the "
+                      "reading says why; RV_q and the adjusted estimates stay"),
+            _relation("curve-straight-line", "implies", "the straight-line estimate",
+                      "the exposure enters as a curve (a spline)",
+                      "its straight-line estimate beside it is shown and bounded, and named so"),
         ),
         sources=("VanderWeele & Ding 2017, Ann Intern Med 167:268",
                  "Cinelli & Hazlett 2020, J R Stat Soc B 82:39")),
@@ -1389,4 +1840,4 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
 ))
 __all__ = ["EFFECTS_READS", "EffectsArtifact", "EffectsFamily", "SENSITIVITY_NAMES", "SequenceFit",
            "effects_stage", "energy_outputs", "matrix_sources", "matrix_table", "methods_sentence",
-           "sensitivity_clause", "sensitivity_reading"]
+           "sensitivity_clause", "sensitivity_reading", "supplied_copies_reason"]

@@ -13632,23 +13632,51 @@
             "title": "Truncation"
           },
           "simulations": {
-            "type": "integer",
-            "maximum": 200000.0,
-            "minimum": 1000.0,
-            "title": "Simulations",
-            "default": 10000
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200000.0,
+                "minimum": 1000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulations"
           },
           "bootstrap": {
-            "type": "integer",
-            "maximum": 2000.0,
-            "minimum": 100.0,
-            "title": "Bootstrap",
-            "default": 500
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2000.0,
+                "minimum": 100.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootstrap"
           },
           "acknowledged": {
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "ordering_acknowledged": {
+            "type": "boolean",
+            "title": "Ordering Acknowledged",
+            "default": false
+          },
+          "diagnostics_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostics Seen"
           }
         },
         "additionalProperties": false,
@@ -13752,23 +13780,51 @@
             "title": "Truncation"
           },
           "simulations": {
-            "type": "integer",
-            "maximum": 200000.0,
-            "minimum": 1000.0,
-            "title": "Simulations",
-            "default": 10000
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200000.0,
+                "minimum": 1000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulations"
           },
           "bootstrap": {
-            "type": "integer",
-            "maximum": 2000.0,
-            "minimum": 100.0,
-            "title": "Bootstrap",
-            "default": 500
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2000.0,
+                "minimum": 100.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootstrap"
           },
           "acknowledged": {
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "ordering_acknowledged": {
+            "type": "boolean",
+            "title": "Ordering Acknowledged",
+            "default": false
+          },
+          "diagnostics_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostics Seen"
           }
         },
         "additionalProperties": false,
@@ -13786,7 +13842,9 @@
           "truncation",
           "simulations",
           "bootstrap",
-          "acknowledged"
+          "acknowledged",
+          "ordering_acknowledged",
+          "diagnostics_seen"
         ],
         "title": "SetTimeVarying"
       },
@@ -14929,23 +14987,51 @@
             "title": "Truncation"
           },
           "simulations": {
-            "type": "integer",
-            "maximum": 200000.0,
-            "minimum": 1000.0,
-            "title": "Simulations",
-            "default": 10000
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200000.0,
+                "minimum": 1000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulations"
           },
           "bootstrap": {
-            "type": "integer",
-            "maximum": 2000.0,
-            "minimum": 100.0,
-            "title": "Bootstrap",
-            "default": 500
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2000.0,
+                "minimum": 100.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootstrap"
           },
           "acknowledged": {
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "ordering_acknowledged": {
+            "type": "boolean",
+            "title": "Ordering Acknowledged",
+            "default": false
+          },
+          "diagnostics_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostics Seen"
           }
         },
         "additionalProperties": false,
@@ -14962,7 +15048,9 @@
           "truncation",
           "simulations",
           "bootstrap",
-          "acknowledged"
+          "acknowledged",
+          "ordering_acknowledged",
+          "diagnostics_seen"
         ],
         "title": "TimeVaryingSpec"
       },
@@ -16214,16 +16302,40 @@
             "type": "number"
           },
           "se": {
-            "title": "Se",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
           },
           "ci_low": {
-            "title": "Ci Low",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
           },
           "ci_high": {
-            "title": "Ci High",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
           },
           "kd": {
             "title": "Kd",
@@ -17168,6 +17280,17 @@
               "reason": null
             }
           },
+          "positivity_att": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositivityView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "missing": {
             "anyOf": [
               {
@@ -17211,6 +17334,7 @@
           "overlap",
           "variation",
           "positivity",
+          "positivity_att",
           "missing",
           "survey",
           "leash"
@@ -18635,6 +18759,64 @@
         "title": "DesignStep",
         "type": "object"
       },
+      "Diagnosed": {
+        "additionalProperties": false,
+        "description": "What the diagnostics were computed for: the lane's parts and the key of those parts and the\nrows (:func:`diagnostics_key`). A declaration made after them carries the key.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Confounders",
+            "type": "array"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Baseline",
+            "type": "array"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Censoring"
+          },
+          "pattern": {
+            "title": "Pattern",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "exposure",
+          "method",
+          "confounders",
+          "baseline",
+          "censoring",
+          "pattern"
+        ],
+        "title": "Diagnosed",
+        "type": "object"
+      },
       "Diagnostic": {
         "additionalProperties": false,
         "properties": {
@@ -18731,6 +18913,18 @@
             "default": null,
             "title": "N"
           },
+          "leverage_one": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Leverage One"
+          },
           "exits": {
             "default": [],
             "items": {
@@ -18790,6 +18984,7 @@
           "flagged",
           "largest",
           "n",
+          "leverage_one",
           "exits",
           "response",
           "change",
@@ -18887,6 +19082,17 @@
             "title": "Positivity",
             "type": "array"
           },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulationCost"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "concerns": {
             "default": [],
             "items": {
@@ -18903,6 +19109,7 @@
           "censoring_weights",
           "truncation",
           "positivity",
+          "cost",
           "concerns"
         ],
         "title": "Diagnostics",
@@ -18955,20 +19162,44 @@
             "type": "number"
           },
           "lo": {
-            "title": "Lo",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lo"
           },
           "hi": {
-            "title": "Hi",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Hi"
           },
           "point": {
             "title": "Point",
             "type": "number"
           },
           "ci": {
-            "title": "Ci",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci"
           }
         },
         "required": [
@@ -20033,6 +20264,18 @@
             "default": null,
             "title": "Se"
           },
+          "df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
+          },
           "p": {
             "anyOf": [
               {
@@ -20053,6 +20296,7 @@
           "ci_low",
           "ci_high",
           "se",
+          "df",
           "p"
         ],
         "title": "EstimateRow",
@@ -20130,6 +20374,14 @@
             ],
             "default": null,
             "title": "Failed Resamples"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
           }
         },
         "required": [
@@ -20140,7 +20392,8 @@
           "n_units",
           "simulations",
           "bootstrap",
-          "failed_resamples"
+          "failed_resamples",
+          "concerns"
         ],
         "title": "Estimates",
         "type": "object"
@@ -23656,12 +23909,32 @@
             "default": null,
             "title": "Refused"
           },
+          "interval_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interval Refused"
+          },
           "exits": {
             "default": [],
             "items": {
               "$ref": "#/components/schemas/InferenceExit"
             },
             "title": "Exits",
+            "type": "array"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
             "type": "array"
           }
         },
@@ -23670,7 +23943,9 @@
           "method",
           "contrasts",
           "refused",
-          "exits"
+          "interval_refused",
+          "exits",
+          "concerns"
         ],
         "title": "Marginal",
         "type": "object"
@@ -23753,14 +24028,46 @@
             "default": null,
             "title": "Rr High"
           },
+          "rr_unbounded": {
+            "default": false,
+            "title": "Rr Unbounded",
+            "type": "boolean"
+          },
           "n_boot": {
             "default": 0,
             "title": "N Boot",
             "type": "integer"
           },
+          "n_limit": {
+            "default": 0,
+            "title": "N Limit",
+            "type": "integer"
+          },
           "n_failed": {
             "default": 0,
             "title": "N Failed",
+            "type": "integer"
+          },
+          "failed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Failed Reason"
+          },
+          "n_rr_infinite": {
+            "default": 0,
+            "title": "N Rr Infinite",
+            "type": "integer"
+          },
+          "n_rr_undefined": {
+            "default": 0,
+            "title": "N Rr Undefined",
             "type": "integer"
           },
           "by_unit": {
@@ -23786,8 +24093,13 @@
           "rd_high",
           "rr_low",
           "rr_high",
+          "rr_unbounded",
           "n_boot",
+          "n_limit",
           "n_failed",
+          "failed_reason",
+          "n_rr_infinite",
+          "n_rr_undefined",
           "by_unit"
         ],
         "title": "MarginalContrast",
@@ -26001,11 +26313,24 @@
             },
             "title": "Baseline",
             "type": "array"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Censoring"
           }
         },
         "required": [
           "confounders",
-          "baseline"
+          "baseline",
+          "censoring"
         ],
         "title": "Proposal",
         "type": "object"
@@ -26601,12 +26926,37 @@
             "type": "number"
           },
           "rv_alpha": {
-            "title": "Rv Alpha",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rv Alpha"
           },
           "alpha": {
             "title": "Alpha",
             "type": "number"
+          },
+          "covariance": {
+            "default": "classical",
+            "title": "Covariance",
+            "type": "string"
+          },
+          "interval_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interval Note"
           },
           "benchmarks": {
             "default": [],
@@ -26627,6 +26977,8 @@
           "rv",
           "rv_alpha",
           "alpha",
+          "covariance",
+          "interval_note",
           "benchmarks"
         ],
         "title": "RobustnessResult",
@@ -27562,6 +27914,29 @@
             ],
             "default": null,
             "title": "Not Computed"
+          },
+          "of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Of"
+          },
+          "companion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Coefficient"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -27570,7 +27945,9 @@
           "e_value",
           "robustness",
           "reading",
-          "not_computed"
+          "not_computed",
+          "of",
+          "companion"
         ],
         "title": "Sensitivity",
         "type": "object"
@@ -27957,6 +28334,33 @@
             },
             "title": "Concerns",
             "type": "array"
+          },
+          "comparison": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Coefficient"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Comparison"
+          },
+          "comparison_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Comparison Label"
           }
         },
         "required": [
@@ -27967,7 +28371,9 @@
           "n_rows",
           "effects",
           "inference",
-          "concerns"
+          "concerns",
+          "comparison",
+          "comparison_label"
         ],
         "title": "SequenceFit",
         "type": "object"
@@ -29619,23 +30025,54 @@
             "title": "Truncation"
           },
           "simulations": {
-            "default": 10000,
-            "maximum": 200000,
-            "minimum": 1000,
-            "title": "Simulations",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 200000,
+                "minimum": 1000,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Simulations"
           },
           "bootstrap": {
-            "default": 500,
-            "maximum": 2000,
-            "minimum": 100,
-            "title": "Bootstrap",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 2000,
+                "minimum": 100,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Bootstrap"
           },
           "acknowledged": {
             "default": false,
             "title": "Acknowledged",
             "type": "boolean"
+          },
+          "ordering_acknowledged": {
+            "default": false,
+            "title": "Ordering Acknowledged",
+            "type": "boolean"
+          },
+          "diagnostics_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Diagnostics Seen"
           }
         },
         "required": [
@@ -29651,7 +30088,9 @@
           "truncation",
           "simulations",
           "bootstrap",
-          "acknowledged"
+          "acknowledged",
+          "ordering_acknowledged",
+          "diagnostics_seen"
         ],
         "title": "SetTimeVarying",
         "type": "object"
@@ -29819,6 +30258,15 @@
             "title": "Time Column",
             "type": "string"
           },
+          "time_kind": {
+            "enum": [
+              "numbers",
+              "dates",
+              "labels"
+            ],
+            "title": "Time Kind",
+            "type": "string"
+          },
           "time_points": {
             "title": "Time Points",
             "type": "integer"
@@ -29842,6 +30290,17 @@
           "repeat_units": {
             "title": "Repeat Units",
             "type": "integer"
+          },
+          "ending_early": {
+            "title": "Ending Early",
+            "type": "integer"
+          },
+          "censoring_candidates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Censoring Candidates",
+            "type": "array"
           },
           "exposure_binary": {
             "title": "Exposure Binary",
@@ -29899,12 +30358,15 @@
           "exposure",
           "unit",
           "time_column",
+          "time_kind",
           "time_points",
           "units",
           "rows",
           "late_units",
           "gap_units",
           "repeat_units",
+          "ending_early",
+          "censoring_candidates",
           "exposure_binary",
           "exposure_levels",
           "exposure_varies",
@@ -30076,6 +30538,51 @@
           "n_columns"
         ],
         "title": "ShrinkagePath",
+        "type": "object"
+      },
+      "SimulationCost": {
+        "additionalProperties": false,
+        "description": "What the g-formula will take at the default size, measured on these rows, and the parts\nthat scale with each count (``models.time_varying.gformula_cost``).",
+        "properties": {
+          "simulations": {
+            "title": "Simulations",
+            "type": "integer"
+          },
+          "bootstrap": {
+            "title": "Bootstrap",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "fit_seconds": {
+            "title": "Fit Seconds",
+            "type": "number"
+          },
+          "unit_seconds": {
+            "title": "Unit Seconds",
+            "type": "number"
+          },
+          "resample_seconds": {
+            "title": "Resample Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "simulations",
+          "bootstrap",
+          "seconds",
+          "text",
+          "fit_seconds",
+          "unit_seconds",
+          "resample_seconds"
+        ],
+        "title": "SimulationCost",
         "type": "object"
       },
       "Sound": {
@@ -31843,6 +32350,17 @@
             ],
             "default": null
           },
+          "diagnosed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Diagnosed"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "estimates": {
             "anyOf": [
               {
@@ -31899,6 +32417,7 @@
           "options",
           "affected",
           "diagnostics",
+          "diagnosed",
           "estimates",
           "withheld",
           "exits",

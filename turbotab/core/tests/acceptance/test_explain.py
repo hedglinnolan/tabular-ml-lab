@@ -21,6 +21,7 @@ Tests that call R are skipped where ``Rscript`` is not installed.
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -120,10 +121,26 @@ def binary(tmp_path_factory: Any) -> Run:
 
 @pytest.fixture(scope="module")
 def noise(tmp_path_factory: Any) -> Run:
-    """An outcome no predictor carries: no family beats the outcome's average."""
+    """An outcome no predictor carries: no family beats the outcome's average, and one of the
+    elastic net's refits shrinks every coefficient to zero."""
     frame = mf.nhanes_like(400, seed=5)
     frame["glucose"] = np.random.default_rng(55).normal(100, 10, len(frame))
-    return _graph(tmp_path_factory.mktemp("noise"), frame, explain=ExplainSpec(reseeds=0))
+    return _graph(tmp_path_factory.mktemp("noise"), frame, explain=ExplainSpec(reseeds=2))
+
+
+PLANTED = 0.5  # mg/dL per year of age over 50, in men only: the planted age × sex interaction
+
+
+@pytest.fixture(scope="module")
+def sorted_by_sex(tmp_path_factory: Any) -> Run:
+    """An export sorted by sex, then age, as exports often are, with an interaction planted on the
+    sort key (simulation truth): glucose rises ``PLANTED`` mg/dL a year faster with age in men."""
+    frame = mf.nhanes_like(600, seed=6)
+    men = (frame["gender"] == "male").to_numpy()
+    frame["glucose"] = frame["glucose"] + PLANTED * (frame["age"] - 50) * men
+    frame = frame.sort_values(["gender", "age"], kind="stable").reset_index(drop=True)
+    return _graph(tmp_path_factory.mktemp("sorted"), frame,
+                  energy_adjustment=mf.energy("residual"), explain=ExplainSpec(reseeds=2))
 
 
 @pytest.fixture(scope="module")
@@ -184,6 +201,26 @@ def raw_scores(pipeline: Any, X: pd.DataFrame, task: str) -> np.ndarray:
 def listed_phi(family: dict[str, Any]) -> pd.DataFrame:
     obs = family["observations"]
     return pd.DataFrame(obs["phi"], columns=obs["inputs"])
+
+
+def three_places(value: float) -> str:
+    """A number as the methods paragraph prints it, written here: three decimals, a true minus."""
+    return f"{value:.3f}".replace("-", "−")
+
+
+def like_a_random_sample(share: float, k: int, p: float, N: int) -> bool:
+    """Whether ``share`` of ``k`` rows drawn from ``N`` (a share ``p`` of them in a group) is within
+    four standard deviations of ``p`` under drawing without replacement (hypergeometric)."""
+    sd = math.sqrt(p * (1 - p) / k * (N - k) / (N - 1))
+    return abs(share - p) <= 4 * sd
+
+
+def interaction_truth(a: np.ndarray, b: np.ndarray, coefficient: float) -> float:
+    """Simulation truth: the size of the interaction of ``coefficient · a · b`` at these rows.
+    For f = c·a·b + (terms in one input), Friedman & Popescu's F_ab − F_a − F_b at row i is
+    c (a_i − ā)(b_i − b̄) less its mean, so its root mean square is this."""
+    part = coefficient * (a - a.mean()) * (b - b.mean())
+    return float(np.sqrt(np.mean((part - part.mean()) ** 2)))
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -378,6 +415,50 @@ def test_1i_rows_that_repeat_are_resampled_by_their_unit(grouped):
     assert E.UNITS_SAYS in grouped.art["relations"]
 
 
+def test_1j_a_correlation_defined_for_only_some_pairs_of_refits_says_so():
+    """Spearman's ρ has no value when a refit ranks nothing (every input's importance equal). A
+    family whose ρ is defined for some pairs of refits reports the mean over those and says how
+    many; one with none says it is undefined (never "n/a"), and the paragraph says why."""
+    def family(key: str, label: str, importance: list[list[float]]) -> Any:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # SciPy warns of a constant input, and returns nan
+            rho = [stats.spearmanr(importance[i], importance[j]).statistic
+                   for i in range(3) for j in range(i + 1, 3)]
+        pairwise = [None if np.isnan(r) else float(r) for r in rho]
+        known = [p for p in pairwise if p is not None]
+        return E.FamilyExplanation(
+            family=key, label=label, explained=True, method="exact linear SHAP",
+            floor=E.Floor(passed=True, verdict="better", metric="MSE", model=0.6, baseline=1.0,
+                          reason=None),
+            stability=E.Stability(reseeds=3, resampled_by="row", inputs=["a", "b", "c"],
+                                  importance=importance, pairwise=pairwise, versus_fit=[],
+                                  rho_mean=float(np.mean(known)) if known else None,
+                                  rho_min=float(np.min(known)) if known else None, top=3))
+
+    # The linear model's second refit predicts one value for every row; every elastic net refit
+    # shrinks every coefficient to zero.
+    linear = family("linear", "Linear model", [[1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [3.0, 2.0, 1.0]])
+    assert linear.stability.pairwise == [None, -1.0, None]
+    art = E.ExplainArtifact(
+        purpose="prediction", task="regression", describes=E.DESCRIBES, rows=90, rows_of=90,
+        rows_basis="", curve_method="ale", curves=[], methods="",
+        families=[linear, family("elastic_net", "Elastic net", [[0.0] * 3] * 3)])
+    setting = E.Setting(task="regression", purpose="prediction", target="y", event=None,
+                        X=pd.DataFrame(), y=np.zeros(0))
+    assert E.methods_sentence(art, setting) == (
+        "SHAP values were computed for all 90 training rows on each model's own scale: exact "
+        "linear SHAP values for the linear model and the elastic net. Their stability was measured "
+        "over 3 refits of each model on bootstrap resamples of rows, each with its own seed: the "
+        "mean Spearman correlation of the inputs' mean absolute SHAP values between refits was "
+        "−1.000 for the linear model (over the 1 of its 3 pairs of refits for which it is "
+        "defined) and undefined for the elastic net. A pair of refits has no such correlation "
+        "when either gives every input the same mean absolute SHAP value, as a refit that "
+        "predicts one value for every row does: there is no ranking to compare. These "
+        "explanations describe each model's predictions, not causal effects.")
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # (2) interaction ranking
 # ═════════════════════════════════════════════════════════════════════════════
@@ -459,6 +540,85 @@ def test_2d_a_model_that_adds_its_inputs_reports_no_interaction(regression):
         assert it["additive"] is True and it["pairs"] == []
     assert ("The linear model and elastic net add their inputs' effects, so no interaction was "
             "found to rank.") in regression.art["methods"]
+
+
+def test_2e_an_export_sorted_by_the_interacting_input_keeps_its_interaction(sorted_by_sex):
+    """Through the stage graph, a file sorted by sex then age with an age × sex interaction
+    planted (simulation truth). The training rows in file order begin with H_ROWS women, so rows
+    taken from the top of the file would hold one sex and no age × sex interaction at all. The
+    H statistic's rows, the beeswarm's and the per-row list's are a random sample of the
+    explained rows: each one's share of men is within four hypergeometric SDs of the training
+    rows'. The boosted trees rank the planted pair first and keep it in the first three in every
+    refit; its size is the fitted pipeline's own H at those rows (loops, to 1e-8) and at least
+    40% of the true function's there (trees fit to 480 rows, the outcome's noise SD 8 mg/dL,
+    recover about half; rows of one sex give 0)."""
+    run = sorted_by_sex
+    every = run.fit_ids()
+    sexes = run.rows(every)["gender"]
+    assert (sexes.iloc[:E.H_ROWS] == "female").all()  # the file's own order
+    p, N = float((sexes == "male").mean()), len(every)
+    family = run.family("boosted_trees")
+    it = family["interactions"]
+    order = run.art["row_ids"]
+    assert sorted(order) == sorted(int(i) for i in every)
+    listed = family["observations"]["row_ids"]
+    for k in (it["rows"], len(family["beeswarm"][0]["phi"]), len(listed)):
+        share = float((run.rows(order[:k])["gender"] == "male").mean())
+        assert like_a_random_sample(share, k, p, N), (k, share, p)
+    assert listed == order[:len(listed)]
+    top = it["pairs"][0]
+    assert {top["a"], top["b"]} == {"age", "gender"} and top["rank"] == 1
+    assert top["in_top"] == 2
+    raw = run.rows(order[:it["rows"]])
+    truth = interaction_truth(raw["age"].to_numpy(dtype=float),
+                              (raw["gender"] == "male").to_numpy(dtype=float), PLANTED)
+    assert top["strength"] >= 0.4 * truth
+    pipe = run.fitted("boosted_trees")
+    _, rest = split(pipe)
+    A = inputs_of(pipe, raw).reset_index(drop=True)
+    h2, size = _h_by_hand(lambda frame: rest.predict(frame), A, top["a"], top["b"])
+    assert abs(top["h2"] - h2) < 1e-8 and abs(top["strength"] - size) < 1e-8
+
+
+def test_2f_the_interaction_ranking_does_not_depend_on_the_files_order():
+    """Simulation truth: y = x + 2·x·s + 0.5·z + noise (SD 0.3), s a 0/1 indicator, 800 rows; the
+    one interaction is x × s, whose size at any rows is ``interaction_truth(x, s, 2)``. The same
+    rows explained from a shuffled file and from one sorted by s then x: in both, the H
+    statistic's rows hold s = 1 in a share within four hypergeometric SDs of the file's, x × s
+    ranks first with its size within 15% of the truth at those rows, and every other pair's size
+    is under a fifth of it."""
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.pipeline import Pipeline
+
+    rng = np.random.default_rng(12)
+    n = 800
+    X = pd.DataFrame({"x": rng.normal(size=n), "s": rng.integers(0, 2, n).astype(float),
+                      "z": rng.normal(size=n)})
+    y = (X["x"] + 2 * X["x"] * X["s"] + 0.5 * X["z"] + rng.normal(scale=0.3, size=n)).to_numpy()
+
+    def refit(model: Any, X_b: pd.DataFrame, y_b: Any, units: Any) -> Any:
+        return model.fit(X_b, y_b)
+
+    def trees() -> Any:
+        return Pipeline([("model", HistGradientBoostingRegressor(random_state=0))])
+
+    p = float(X["s"].mean())
+    for order in (rng.permutation(n), np.lexsort((X["x"].to_numpy(), X["s"].to_numpy()))):
+        X_o = X.iloc[order].set_index(pd.RangeIndex(100, 100 + n))
+        y_o = y[order]
+        fam = E.FamilyFit(key="boosted_trees", label="Boosted trees",
+                          fitted=refit(trees(), X_o, y_o, None), unfitted=trees(),
+                          versus={"verdict": "better"}, score=0.9, baseline=0.0)
+        art = E.explain([fam], E.Setting(task="regression", purpose="prediction", target="y",
+                                         event=None, X=X_o, y=y_o, reseeds=2), refit)
+        it = art.families[0].interactions
+        rows = X_o.loc[art.row_ids[:it.rows]]
+        assert like_a_random_sample(float(rows["s"].mean()), it.rows, p, n)
+        top = it.pairs[0]
+        assert {top.a, top.b} == {"x", "s"} and top.in_top == 2
+        truth = interaction_truth(rows["x"].to_numpy(), rows["s"].to_numpy(), 2.0)
+        assert abs(top.strength - truth) <= 0.15 * truth, (top.strength, truth)
+        assert all(q.strength < 0.2 * top.strength for q in it.pairs[1:])
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -567,7 +727,14 @@ def test_3c_curves_share_one_grid_per_input_and_mask_where_data_are_absent():
 
 def test_3d_a_family_below_the_floor_draws_no_curve_and_says_why(noise):
     """No family beats the outcome's average on an outcome no predictor carries: every curve is
-    withheld with its family's reason, quoted verbatim, and the methods say so."""
+    withheld with its family's reason, quoted verbatim, and no interaction is ranked. The whole
+    methods paragraph, verbatim: it says no curve was drawn (never that one was drawn for each
+    family), and the elastic net, one of whose refits shrinks every coefficient to zero, has an
+    undefined correlation between refits, said in words. The correlations are SciPy's Spearman
+    of the reported importances, the training rows the design's own count."""
+    import warnings
+
+    assert noise.art["curves"]
     for curve in noise.art["curves"]:
         for drawn in curve["curves"]:
             assert drawn["drawn"] is False and drawn["values"] == []
@@ -582,11 +749,36 @@ def test_3d_a_family_below_the_floor_draws_no_curve_and_says_why(noise):
         assert linear["model"] > linear["baseline"]
     assert linear["reason"] == (
         f"Linear model draws no curve: its cross-validated MSE of "
-        f"{E._fmt(linear['model'])} {how} the MSE of the outcome's average, "
-        f"{E._fmt(linear['baseline'])}, so a curve would describe noise.")
-    assert ("No curve was drawn for the linear model, the elastic net and the boosted trees, whose "
-            "cross-validated MSE did not beat the outcome's average.") in noise.art["methods"]
+        f"{three_places(linear['model'])} {how} the MSE of the outcome's average, "
+        f"{three_places(linear['baseline'])}, so a curve would describe noise.")
     assert all(f["interactions"] is None for f in noise.art["families"])
+    rho = {}
+    for family in noise.art["families"]:
+        imp = np.asarray(family["stability"]["importance"])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # SciPy warns of a constant input, and returns nan
+            rho[family["family"]] = float(stats.spearmanr(imp[0], imp[1]).statistic)
+    # One of the elastic net's two refits shrinks every coefficient to zero, so predicts one value
+    # for every row: all its importances are zero, and the one pair of refits ranks nothing.
+    assert any(not row.any() for row in np.asarray(
+        noise.family("elastic_net")["stability"]["importance"]))
+    assert np.isnan(rho["elastic_net"]) and not np.isnan(rho["linear"]) \
+        and not np.isnan(rho["boosted_trees"])
+    rows = len(noise.fit_ids())
+    assert noise.art["methods"] == (
+        f"SHAP values were computed for all {rows} training rows on each model's own scale: "
+        "exact linear SHAP values for the linear model and the elastic net; path-dependent "
+        "TreeSHAP values for the boosted trees. Their stability was measured over 2 refits of "
+        "each model on bootstrap resamples of rows, each with its own seed: the mean Spearman "
+        "correlation of the inputs' mean absolute SHAP values between refits was "
+        f"{three_places(rho['linear'])} for the linear model, undefined for the elastic net and "
+        f"{three_places(rho['boosted_trees'])} for the boosted trees. A pair of refits has no "
+        "such correlation when either gives every input the same mean absolute SHAP value, as a "
+        "refit that predicts one value for every row does: there is no ranking to compare. No "
+        "curve was drawn and no interaction was ranked for the linear model, the elastic net and "
+        "the boosted trees, whose cross-validated MSE was not shown to beat the outcome's average. "
+        "These explanations describe each model's predictions, not causal effects.")
+    assert "n/a" not in noise.art["methods"] and "drawn for" not in noise.art["methods"]
 
 
 def test_3e_the_floor_reads_the_fits_verdict_against_the_baseline(regression):
@@ -611,6 +803,54 @@ def test_3f_the_top_exposures_are_the_exposures_the_best_family_leans_on(regress
     want = sorted(exposures, key=lambda a: -weights.get(a, 0.0))[:E.TOP_EXPOSURES]
     assert shown == want
     assert E.SCALE_SAYS in regression.art["relations"]
+
+
+def test_3g_curves_drawn_by_some_families_name_only_those():
+    """Under inference, a linear model above the floor and boosted trees not shown to beat it
+    (MSE 24.92 against 25.01, MS6's primary for a regression: below the baseline's number, lower
+    being better, yet not shown to beat it): the paragraph
+    names the linear model as the one that drew curves, says the trees drew none and ranked no
+    interaction, and calls a covariate's curve an adjustment term. Whole paragraph, verbatim; the
+    trees' curves are withheld with their reason."""
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.linear_model import LinearRegression
+    from sklearn.pipeline import Pipeline
+
+    rng = np.random.default_rng(21)
+    n = 300
+    X = pd.DataFrame({"protein": rng.normal(70, 15, n), "age": rng.uniform(20, 80, n)},
+                     index=pd.RangeIndex(5000, 5000 + n))
+    y = (0.3 * X["protein"] + 0.2 * X["age"] + rng.normal(0, 5, n)).to_numpy()
+    linear = Pipeline([("model", LinearRegression())]).fit(X, y)
+    trees = Pipeline([("model", HistGradientBoostingRegressor(random_state=0))]).fit(X, y)
+    families = [
+        E.FamilyFit(key="linear", label="Linear model", fitted=linear, unfitted=linear,
+                    versus={"verdict": "better"}, score=0.62, baseline=0.0),
+        E.FamilyFit(key="boosted_trees", label="Boosted trees", fitted=trees, unfitted=trees,
+                    versus={"verdict": "no_better"}, score=24.92, baseline=25.01)]
+    art = E.explain(families, E.Setting(
+        task="regression", purpose="inference", target="glucose", event=None, X=X, y=y,
+        declared=["protein"], exposures=["protein", "age"], reseeds=0, metric_label="MSE",
+        baseline_label="the outcome's average"), lambda *a: None)
+    assert [(c.input, c.role) for c in art.curves] == [("protein", "exposure"),
+                                                        ("age", "adjustment")]
+    for curve in art.curves:
+        drawn = {k.family: k for k in curve.curves}
+        assert drawn["linear"].drawn and not drawn["boosted_trees"].drawn
+        assert drawn["boosted_trees"].reason == (
+            "Boosted trees draws no curve: its cross-validated MSE of 24.920 is not shown to beat "
+            "the MSE of the outcome's average, 25.010, so a curve would describe noise.")
+    assert art.methods == (
+        "SHAP values were computed for all 300 analyzed rows on each model's own scale: exact "
+        "linear SHAP values for the linear model; path-dependent TreeSHAP values for the boosted "
+        "trees. The linear model adds its inputs' effects, so no interaction was found to rank. "
+        "Accumulated local effects (Apley and Zhu 2020) of `protein` and `age` were drawn for the "
+        "linear model on one grid of the inputs' quantiles, with no curve where an interval held "
+        "fewer than 5 rows. `age` is an adjustment term, not an effect estimate: its curve "
+        "describes the models. No curve was drawn and no interaction was ranked for the boosted "
+        "trees, whose cross-validated MSE was not shown to beat the outcome's average. These "
+        "explanations describe each model's predictions, not causal effects. Under inference "
+        "they were not used as effect estimates.")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -990,8 +1230,9 @@ def test_6e_the_chain_fires_every_relation_it_declares(grouped, inference):
                       for f in grouped.art["families"]])
         + ". Pairwise interactions among each model's 6 most important inputs were ranked by the "
         "root mean square of their interaction part, with Friedman and Popescu's H² beside it, on "
-        "150 rows. The linear model and elastic net add their inputs' effects, so no interaction "
-        "was found to rank. Accumulated local effects (Apley and Zhu 2020) of "
+        "a seeded random sample of 150 of the 480 rows. The linear model and elastic net add their "
+        "inputs' effects, so no interaction was found to rank. Accumulated local effects (Apley "
+        "and Zhu 2020) of "
         + E._listing([f"`{c['input']}`" for c in grouped.art["curves"]])
         + " were drawn for each family on one grid of the inputs' quantiles, with no curve where "
         "an interval held fewer than 5 rows. These explanations describe each model's "

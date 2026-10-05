@@ -28,7 +28,16 @@ units for a numeric outcome, the log-odds of the event for a yes/no one.
 Stability: the family is refit on :data:`RESEEDS` bootstrap resamples of its training rows (whole
 units when rows repeat, MODELING_SEQUENCE §2), each with its own seed, and the mean |SHAP| of the
 same rows is recomputed; the report is the Spearman correlation of those importances between every
-pair of refits, and each input's rank across them.
+pair of refits, and each input's rank across them. A pair in which either refit gives every input
+the same importance (a refit that predicts one value for every row, as an elastic net that shrinks
+every coefficient to zero does) has no correlation, and the methods say so in words.
+
+**Which rows.** The explained rows (all of them, or a seeded sample above :data:`EXPLAIN_ROWS`)
+are put in a seeded random order, never the file's, and every smaller set is the first rows of
+that order: the H statistic's :data:`H_ROWS`, the beeswarm's :data:`BEESWARM_ROWS`, the per-row
+list's :data:`OBSERVATION_ROWS`. So each is a simple random sample of the explained rows. Exports
+sorted by site, sex or date are common, and the first rows of such a file hold one site, one sex or
+one season: an interaction with the sort key would vanish from the H statistic's rows.
 
 **Interactions**: Friedman & Popescu's H statistic (2008, *Ann Appl Stat* 2:916–954) between the
 top inputs, from partial dependence evaluated at the rows themselves and centered,
@@ -78,6 +87,7 @@ SELECTION_NOTE = ("Choosing predictors from these explanations and refitting is 
 
 RESEEDS = 5
 EXPLAIN_ROWS = 1_000  # rows whose predictions are explained (a seeded sample above this)
+# The three sets below are the first rows of the explained rows' seeded random order.
 BEESWARM_ROWS = 300  # points per input in the beeswarm
 OBSERVATION_ROWS = 200  # rows whose full attributions are listed
 SHOWN_INPUTS = 20  # inputs listed by importance; the rest are summed into one column
@@ -799,7 +809,9 @@ class ExplainArtifact(_Model):
     rows: int  # rows explained
     rows_of: int  # rows the models were fit on
     rows_basis: str
-    row_ids: list[int] = Field(default_factory=list)  # the rows explained, in the order used
+    # The rows explained, in their seeded random order: the H statistic's rows are the first
+    # ``interactions.rows``, the beeswarm's and the per-row list's the first of theirs.
+    row_ids: list[int] = Field(default_factory=list)
     curve_method: str
     families: list[FamilyExplanation]
     curves: list[InputCurves]
@@ -1221,6 +1233,8 @@ def _interactions(w: _Work, s: Setting, order: Sequence[str]) -> Interactions | 
     inputs = list(order[:H_INPUTS])
     if len(inputs) < 2:
         return None
+    # The explained rows are in a seeded random order (``explain``), so these are a random sample
+    # of them whatever order the file was in; the refits are measured at the same rows.
     rows = w.A.iloc[:H_ROWS]
     method = ("Friedman and Popescu's H statistic, the pairs ranked by the root mean square of "
               "their interaction part on the model's scale")
@@ -1325,7 +1339,10 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
     n = len(s.X)
     rng = np.random.default_rng(s.seed)
     size = min(n, EXPLAIN_ROWS, max(100, CELLS // max(1, s.X.shape[1])))
-    sample = np.sort(rng.choice(n, size=size, replace=False))
+    # A seeded random order of the rows, never the file's: the explained rows are its first
+    # ``size``, and the H statistic's, the beeswarm's and the per-row list's are the first of those,
+    # so each is a random sample however the file was sorted.
+    sample = rng.permutation(n)[:size]
     rows_word = "analyzed rows" if s.purpose == "inference" else "training rows"
     outcome_unit, units = equation_units(s.state, s.target, list(s.X.columns))
     scale = scale_of(s, outcome_unit)
@@ -1420,8 +1437,32 @@ def _listing(items: Sequence[str]) -> str:
     return ", ".join(items[:-1]) + " and " + items[-1]
 
 
+UNDEFINED_RHO = ("A pair of refits has no such correlation when either gives every input the same "
+                 "mean absolute SHAP value, as a refit that predicts one value for every row does: "
+                 "there is no ranking to compare.")
+
+
+def _the(families: Sequence[FamilyExplanation]) -> str:
+    return _listing([f"the {f.label.lower()}" for f in families])
+
+
+def _rho_words(f: FamilyExplanation) -> str:
+    """One family's mean ρ between refits, saying when it is undefined, or defined for only some
+    pairs of refits (the mean is then over those)."""
+    st = f.stability
+    known = [p for p in st.pairwise if p is not None]
+    name = f"the {f.label.lower()}"
+    if not known:
+        return f"undefined for {name}"
+    if len(known) < len(st.pairwise):
+        return (f"{_fmt(st.rho_mean)} for {name} (over the {len(known)} of its "
+                f"{len(st.pairwise)} pairs of refits for which it is defined)")
+    return f"{_fmt(st.rho_mean)} for {name}"
+
+
 def methods_sentence(a: ExplainArtifact, s: Setting) -> str:
-    """The methods paragraph the explanations write, from what was computed."""
+    """The methods paragraph the explanations write, from what was computed: it names only the
+    families and inputs a curve was drawn for, and says which families drew none and why."""
     done = [f for f in a.families if f.explained]
     if not done:
         return ""
@@ -1437,35 +1478,54 @@ def methods_sentence(a: ExplainArtifact, s: Setting) -> str:
     if stable:
         st = stable[0].stability
         by = "rows" if st.resampled_by == "row" else f"whole {st.resampled_by} units"
-        rhos = _listing([f"{_fmt(f.stability.rho_mean)} for the {f.label.lower()}" for f in stable])
         out.append(f"Their stability was measured over {st.reseeds} refits of each model on "
                    f"bootstrap resamples of {by}, each with its own seed: the mean Spearman "
                    f"correlation of the inputs' mean absolute SHAP values between refits was "
-                   f"{rhos}.")
-    ranked = [f for f in done if f.interactions is not None and not f.interactions.additive]
-    additive = [f for f in done if f.interactions is not None and f.interactions.additive]
+                   f"{_listing([_rho_words(f) for f in stable])}.")
+        if any(p is None for f in stable for p in f.stability.pairwise):
+            out.append(UNDEFINED_RHO)
+    # A family below the floor is not scanned for interactions (``explain``), so the sentence names
+    # the families that were whenever that is not every one.
+    scanned = [f for f in done if f.interactions is not None]
+    ranked = [f for f in scanned if not f.interactions.additive]
+    additive = [f for f in scanned if f.interactions.additive]
     if ranked:
         it = ranked[0].interactions
-        out.append(f"Pairwise interactions among each model's {len(it.inputs)} most important "
-                   f"inputs were ranked by the root mean square of their interaction part, with "
-                   f"Friedman and Popescu's H² beside it, on {it.rows:,} rows.")
+        among = (f"each model's {len(it.inputs)} most important inputs"
+                 if len(scanned) == len(done) > 1 else
+                 f"the {len(it.inputs)} most important inputs of {_the(scanned)}")
+        on = (f"a seeded random sample of {it.rows:,} of the {a.rows:,} rows" if it.rows < a.rows
+              else f"all {a.rows:,} rows")
+        out.append(f"Pairwise interactions among {among} were ranked by the root mean square of "
+                   f"their interaction part, with Friedman and Popescu's H² beside it, on {on}.")
     if additive:
         verb = "adds its" if len(additive) == 1 else "add their"
         out.append(f"The {_listing([f.label.lower() for f in additive])} {verb} inputs' effects, "
                    f"so no interaction was found to rank.")
-    if a.curves:
-        names = _listing([f"`{c.input}`" for c in a.curves])
+    drawn = [c for c in a.curves if any(k.drawn for k in c.curves)]
+    if drawn:
+        drew = [f for f in done
+                if any(k.drawn and k.family == f.family for c in drawn for k in c.curves)]
+        whom = "each family" if len(drew) == len(done) > 1 else _the(drew)
         words = ("Accumulated local effects (Apley and Zhu 2020)" if a.curve_method == "ale" else
                  "Partial dependence curves (Friedman 2001), the customary choice, which average "
                  "over combinations of the inputs the data may not contain,")
-        out.append(f"{words} of {names} were drawn for each family on one grid of the inputs' "
-                   f"quantiles, with no curve where an interval held fewer than "
-                   f"{MIN_SEGMENT_ROWS} rows.")
-        dropped = [f for f in done if f.floor is not None and not f.floor.passed]
-        if dropped:
-            out.append(f"No curve was drawn for "
-                       f"{_listing([f'the {f.label.lower()}' for f in dropped])}, whose "
-                       f"cross-validated {s.metric_label} did not beat {s.baseline_label}.")
+        out.append(f"{words} of {_listing([f'`{c.input}`' for c in drawn])} were drawn for "
+                   f"{whom} on one grid of the inputs' quantiles, with no curve where an interval "
+                   f"held fewer than {MIN_SEGMENT_ROWS} rows.")
+        terms = [c.input for c in drawn if c.role == "adjustment"]
+        if s.purpose == "inference" and terms:
+            one = len(terms) == 1
+            out.append(f"{_listing([f'`{t}`' for t in terms])} "
+                       f"{'is an adjustment term' if one else 'are adjustment terms'}, not "
+                       f"{'an effect estimate' if one else 'effect estimates'}: "
+                       f"{'its curve describes' if one else 'their curves describe'} the models.")
+    below = [f for f in done if f.floor is not None and not f.floor.passed]
+    if below:
+        what = "No curve was drawn and no interaction was ranked" if a.curves else \
+            "No interaction was ranked"
+        out.append(f"{what} for {_the(below)}, whose cross-validated {s.metric_label} was not "
+                   f"shown to beat {s.baseline_label}.")
     out.append("These explanations describe each model's predictions, not causal effects.")
     if s.purpose == "inference":
         out.append("Under inference they were not used as effect estimates.")

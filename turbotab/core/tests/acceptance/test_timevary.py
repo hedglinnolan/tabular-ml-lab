@@ -4,36 +4,47 @@ The package's acceptance, numbered as its spec:
 
 1. A marginal structural model with stabilized inverse-probability-of-treatment weights (and
    censoring weights) for a time-varying exposure on long data. The weights agree with R
-   ``ipw::ipwtm`` to 1e-8, and the MSM estimate and its robust SE with R ``geepack::geeglm``
+   ``ipw::ipwtm`` to 1e-8, and the MSM estimate and its CR0 robust SE with R ``geepack::geeglm``
    (independence working correlation) to 1e-6. This holds on ``ipw``'s own ``haartdat`` (an
    exposure that, once started, stays, and loss to follow-up), on ``gfoRmula``'s
    ``basicdata_nocomp`` (an exposure that switches), on a repeated continuous outcome, and through
-   the app's own stage on a cohort table.
+   the app's own stage on a cohort table. The stage reports the small-sample interval
+   MODELING_SEQUENCE §2 asks of repeated units: CR2 with Bell–McCaffrey degrees of freedom (checked
+   against every matrix written out), and none below the unit floor.
 2. The parametric g-formula. On ``gfoRmula``'s example data, the risks under "always", "never" and
    the natural course agree with R ``gfoRmula`` within Monte Carlo error, with **50,000 simulated
    units on each side**, and every fitted model's coefficients agree to 1e-6. On a simulated cohort
    whose truth is computed exactly by enumeration, the risks fall within four bootstrap standard
-   errors of it.
+   errors of it. What the run will take is measured before it; bootstrap resamples that cannot fit
+   the models are counted, and above 1% no interval is reported.
 3. Diagnostics before estimates: the weight distribution (stabilized mean near 1), the truncation
-   options with their stated trade-off, and positivity at each time point. These are computed and
-   shown first, and no estimate is computed, served or locked until the truncation is declared.
-4. Routing. The lane needs repeated measures with a settled time column and a declared time
-   ordering. Time-varying confounders affected by prior exposure require g-methods; standard
-   regression adjustment for them is block and record, with an exit to this lane. A simulation
-   with a known null shows why.
+   options with their stated trade-off, and positivity at each time point; for the g-formula,
+   positivity and what the simulation will take. These are shown first, and the truncation (or the
+   simulation's size) is refused until this lane's diagnostics on the current data have been shown.
+   The declaration carries their key, and no estimate is computed unless the diagnostics computed
+   now have that key. A model that cannot be fit is named, and the diagnostics stay.
+4. Routing. The lane needs repeated measures with a settled time column (numbers, labels in a
+   declared order, or dates) and a declared time ordering. Time-varying confounders affected by
+   prior exposure require g-methods; standard regression adjustment for them is block and record,
+   with an exit to this lane. Standard regression of a concurrently measured exposure is block and
+   record too. A simulation with a known null shows why. Loss to follow-up without an indicator is
+   stated as an assumption.
 5. The methods sentence, asserted verbatim.
 
 Also: the §13 contract with the chain test that every relation it declares fires, and the E-values
-against R ``EValue``.
+against R ``EValue`` and by hand (a pooled logistic model's ratio read as a hazard ratio, its
+rarity the cumulative risk by the end of follow-up).
 
 Every expected value comes from an independent path: R (``timevary_fixtures.run_r``; skipped
-without ``Rscript``), statsmodels or NumPy written out here, an exact enumeration, or a simulation's
-known truth. The app's values come through its own path: ``models/time_varying.py``, the
-``time_varying`` stage run by the real graph, the Router, the validators and the voice.
+without ``Rscript``), statsmodels or NumPy written out here (``references.cr2_by_definition``), an
+exact enumeration, or a simulation's known truth. The app's values come through its own path:
+``models/time_varying.py``, the ``time_varying`` stage run by the real graph, the Router, the
+validators and the voice.
 """
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -41,12 +52,14 @@ import numpy as np
 import pandas as pd
 import pytest
 from scipy.special import expit
+from scipy.stats import t as student_t
 
 from turbotab.core import decisions as d
 from turbotab.core import plan_lock
 from turbotab.core.decisions import ProjectState, Refusal
 from turbotab.core.interview import route
 from turbotab.core.models import time_varying as tv
+from turbotab.core.tests.acceptance.references import cr2_by_definition
 from turbotab.core.tests.acceptance.timevary_fixtures import (exact_risks, feedback_cohort,
                                                               gformula_cohort, needs_r,
                                                               r_dataset,
@@ -93,6 +106,7 @@ def feedback_state(**update: Any) -> ProjectState:
 MSM_LANE = d.TimeVaryingSpec(exposure="dash", method="msm_iptw",
                              ordering="exposure_precedes_outcome", confounders=["sbp"],
                              baseline=["female", "age"], censoring="lost")
+FEEDBACK_COLUMNS = ["pid", "visit", "dash", "sbp", "female", "age", "lost", "cvd"]
 
 
 def gformula_state(**update: Any) -> ProjectState:
@@ -113,9 +127,16 @@ def gformula_state(**update: Any) -> ProjectState:
     return state.model_copy(update=update)
 
 
+# The g-formula's lane as first declared (its simulation's size comes after its diagnostics).
 G_LANE = d.TimeVaryingSpec(exposure="diet", method="gformula", ordering="exposure_precedes_outcome",
-                           confounders=["htn"], baseline=["female"], simulations=20_000,
-                           bootstrap=100)
+                           confounders=["htn"], baseline=["female"])
+G_SIZE = {"simulations": 20_000, "bootstrap": 100}
+G_COLUMNS = ["pid", "visit", "diet", "htn", "female", "event"]
+
+
+def _ctx(state: ProjectState, columns: list[str] | None = None, **artifacts: Any) -> dict[str, Any]:
+    return {"state": state, "columns": columns or FEEDBACK_COLUMNS,
+            "artifact": lambda stage: artifacts.get(stage)}
 
 
 def run_stage(frame: pd.DataFrame, state: ProjectState, folder: Path, name: str) -> dict[str, Any]:
@@ -131,9 +152,76 @@ def run_stage(frame: pd.DataFrame, state: ProjectState, folder: Path, name: str)
         graph.close()
 
 
+@dataclass
+class Staged:
+    """A lane as a user meets it: ``first`` the artifact of the lane declared without what follows
+    its diagnostics; ``second`` the artifact once that declaration is validated against ``first``
+    (the server's stamp) and recorded; ``state`` the state then; ``seconds`` the second run's time."""
+
+    first: dict[str, Any]
+    second: dict[str, Any]
+    state: ProjectState
+    seconds: float
+
+
+def staged(frame: pd.DataFrame, state: ProjectState, folder: Path, name: str,
+           columns: list[str] | None = None, **declared: Any) -> Staged:
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{name}.csv"
+    frame.to_csv(path, index=False)
+    graph = GraphRun(path, folder / name)
+    try:
+        first = graph.public(graph.run(state, upto=["time_varying"]))["time_varying"]
+        lane = d.SetTimeVarying(**{**state.time_varying.model_dump(), **declared})
+        stamped = d.validate(lane, _ctx(state, columns or list(frame.columns), time_varying=first))
+        done = state.model_copy(update={"time_varying": d.TimeVaryingSpec(
+            **stamped.model_dump(exclude={"kind"}))})
+        second = graph.public(graph.run(done, upto=["time_varying"]))["time_varying"]
+        return Staged(first, second, done, graph.seconds["time_varying"])
+    finally:
+        graph.close()
+
+
 def lagged_within(values: pd.Series, units: pd.Series, first: float) -> np.ndarray:
     """Each row's value at its unit's previous row (``first`` at the unit's first row)."""
     return values.groupby(units, sort=False).shift(1).fillna(first).to_numpy(float)
+
+
+def _refused(decision: Any, ctx: dict[str, Any]) -> Refusal:
+    with pytest.raises(Refusal) as refused:
+        d.validate(decision, ctx)
+    return refused.value
+
+
+def _step(state: ProjectState, artifacts: dict[str, Any] | None = None) -> Any:
+    return next(s for s in route(state, ALL_FRESH, artifacts or {}) if s.key == "time_varying")
+
+
+def _hr_e_value_by_hand(hr: float, lo: float | None, hi: float | None,
+                        rare: bool) -> tuple[float, float | None]:
+    """VanderWeele & Ding (2017), written out: a hazard ratio of a common outcome as
+    ``(1 − 0.5^√HR)/(1 − 0.5^√(1/HR))``; the E-value ``RR + √(RR(RR − 1))`` of the ratio away from
+    1; the confidence limit nearer 1 the same, or 1 when the interval holds 1."""
+    def rr(x: float) -> float:
+        return x if rare else (1 - 0.5 ** math.sqrt(x)) / (1 - 0.5 ** math.sqrt(1 / x))
+
+    def e(r: float) -> float:
+        r = r if r >= 1 else 1 / r
+        return r + math.sqrt(r * (r - 1))
+
+    point = e(rr(hr))
+    if lo is None or hi is None:
+        return point, None
+    near = rr(lo) if hr > 1 else rr(hi)
+    holds = (near <= 1) if hr > 1 else (near >= 1)
+    return point, 1.0 if holds else e(near)
+
+
+def _km_risk(frame: pd.DataFrame, time: str, y: str) -> float:
+    """The cumulative risk by the last time point, by pandas: the share of each time point's rows
+    with the event, ``1 − Π(1 − h_t)``."""
+    h = frame.groupby(time)[y].mean().sort_index().to_numpy(float)
+    return float(1 - np.prod(1 - h))
 
 
 # ── 1 · the weights and the marginal structural model, against R ──────────────
@@ -271,10 +359,10 @@ out(list(coef = unname(s[, "Estimate"]), se = unname(s[, "Std.err"])))
 @needs_r
 @pytest.mark.parametrize("case", ["haart", "basic", "glucose"])
 def test_1_the_msm_estimate_and_its_robust_se_match_geeglm(case, tmp_path):
-    """The weighted outcome model and its unit-clustered sandwich (``fit_msm``) against
-    ``geeglm(..., weights, id, corstr = "independence")`` on R's own weights, to 1e-6 for every
-    coefficient and its robust SE: a pooled logistic MSM in current (HAART) and in cumulative
-    exposure (``basicdata_nocomp``), and a linear MSM of a repeated measure (glucose)."""
+    """The weighted outcome model and its unit-clustered sandwich (``fit_msm``, ``variance =
+    "CR0"``) against ``geeglm(..., weights, id, corstr = "independence")`` on R's own weights, to
+    1e-6 for every coefficient and its robust SE: a pooled logistic MSM in current (HAART) and in
+    cumulative exposure (``basicdata_nocomp``), and a linear MSM of a repeated measure (glucose)."""
     if case == "haart":
         data = _haart(tmp_path)
         r = run_r(MSM_R[case], {"haart": data}, tmp_path / "r")
@@ -289,7 +377,7 @@ def test_1_the_msm_estimate_and_its_robust_se_match_geeglm(case, tmp_path):
             at_risk=(data["event"] == 0).to_numpy())
         w = exposure.weights * lost.weights
         X, names = tv.design(data, ["haartind", "sex", "age", "tindex", "tindex2"])
-        fit = tv.fit_msm(X, names, data["event"], w, data["patient"], "binomial")
+        fit = tv.fit_msm(X, names, data["event"], w, data["patient"], "binomial", variance="CR0")
     elif case == "basic":
         data = _basic(tmp_path)
         r = run_r(MSM_R[case], {"basic": data}, tmp_path / "r")
@@ -297,7 +385,7 @@ def test_1_the_msm_estimate_and_its_robust_se_match_geeglm(case, tmp_path):
                            numerator=["L3", "lagA", "t0", "t02"],
                            denominator=["L3", "L1", "L2", "lagA", "t0", "t02"], kind="all").weights
         X, names = tv.design(data, ["cumA", "L3", "t0", "t02"])
-        fit = tv.fit_msm(X, names, data["Y"], w, data["id"], "binomial")
+        fit = tv.fit_msm(X, names, data["Y"], w, data["id"], "binomial", variance="CR0")
     else:
         data = repeated_measure_cohort()
         data = data.sort_values(["pid", "wave"], kind="mergesort").reset_index(drop=True)
@@ -309,7 +397,7 @@ def test_1_the_msm_estimate_and_its_robust_se_match_geeglm(case, tmp_path):
                            denominator=["female", "age", "waist", "lagwalk", "wave", "wave2"],
                            kind="all").weights
         X, names = tv.design(data, ["walk", "female", "age", "wave", "wave2"])
-        fit = tv.fit_msm(X, names, data["glucose"], w, data["pid"], "gaussian")
+        fit = tv.fit_msm(X, names, data["glucose"], w, data["pid"], "gaussian", variance="CR0")
     np.testing.assert_allclose(fit.coef, r["coef"], rtol=0, atol=1e-6)
     np.testing.assert_allclose(fit.se, r["se"], rtol=0, atol=1e-6)
 
@@ -343,9 +431,9 @@ m <- geeglm(cvd ~ cumdash + female + age + t + I(t^2), family = binomial, data =
             control = geese.control(epsilon = 1e-14, maxit = 100))
 s <- summary(m)$coefficients
 qs <- unname(quantile(w, c(0.01, 0.25, 0.5, 0.75, 0.99)))
-out(list(coef = unname(s[2, "Estimate"]), se = unname(s[2, "Std.err"]), mean = mean(w),
-         sd = sd(w), min = min(w), max = max(w), q = qs, tmean = mean(wt), tmin = min(wt),
-         tmax = max(wt)))
+out(list(coef = unname(s[2, "Estimate"]), mean = mean(w), sd = sd(w), min = min(w), max = max(w),
+         q = qs, tmean = mean(wt), tmin = min(wt), tmax = max(wt), X = unname(model.matrix(m)),
+         mu = unname(as.vector(fitted(m))), wt = d$wt, y = d$cvd, unit = d$unit))
 """
 
 
@@ -357,10 +445,15 @@ def test_1_through_the_stage_the_weights_and_the_estimate_are_R_s(tmp_path):
     on the same CSV to 1e-8: ``ipwtm`` exposure and loss weights, multiplied, summarized by R's
     ``mean``, ``sd``, ``min``, ``max`` and type-7 ``quantile``. Its estimate (truncated at the 1st
     and 99th percentiles) agrees with ``geeglm`` on R's truncated weights to 1e-6, on the log
-    scale, with its SE."""
-    frame = feedback_cohort(n=1500)
-    lane = MSM_LANE.model_copy(update={"truncation": "p1_p99"})
-    art = run_stage(frame, feedback_state(time_varying=lane), tmp_path, "cohort")
+    scale. Its interval is CR2 with Bell–McCaffrey df: from R's design, fitted values and weights,
+    the working linear model ``W^½X``, ``√w(y − μ)/√v`` is written out and
+    ``references.cr2_by_definition`` gives the SE and df (to 1e-6), and the interval is
+    ``exp(β ± t_df·SE)``. The E-value, from that ratio and interval, is the hazard ratio's, worked
+    by hand with the cumulative risk pandas computes."""
+    frame = feedback_cohort(n=300)
+    run = staged(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "cohort",
+                 truncation="p1_p99")
+    art = run.second
     r = run_r(STAGE_R, {"cohort": frame}, tmp_path / "r")
     w = art["diagnostics"]["weights"]
     for key, ref in (("mean", r["mean"]), ("sd", r["sd"]), ("min", r["min"]), ("max", r["max"])):
@@ -372,12 +465,75 @@ def test_1_through_the_stage_the_weights_and_the_estimate_are_R_s(tmp_path):
     assert chosen["summary"]["mean"] == pytest.approx(r["tmean"], abs=1e-8)
     assert chosen["summary"]["min"] == pytest.approx(r["tmin"], abs=1e-8)
     assert chosen["summary"]["max"] == pytest.approx(r["tmax"], abs=1e-8)
+    X, mu, wt = np.asarray(r["X"], float), np.asarray(r["mu"], float), np.asarray(r["wt"], float)
+    y, unit = np.asarray(r["y"], float), np.asarray(r["unit"])
+    v = mu * (1 - mu)
+    V, df = cr2_by_definition(X * np.sqrt(wt * v)[:, None], np.sqrt(wt) * (y - mu) / np.sqrt(v),
+                              unit)
+    se, nu = math.sqrt(V[1, 1]), float(df[1])
+    q = float(student_t.ppf(0.975, nu))
     [row] = art["estimates"]["rows"]
     assert math.log(row["estimate"]) == pytest.approx(r["coef"], abs=1e-6)
-    assert row["se"] == pytest.approx(r["se"], abs=1e-6)
-    assert math.log(row["ci_low"]) == pytest.approx(r["coef"] - tv.Z95 * r["se"], abs=1e-6)
+    assert row["se"] == pytest.approx(se, abs=1e-6)
+    assert row["df"] == pytest.approx(nu, rel=1e-6)
+    assert math.log(row["ci_low"]) == pytest.approx(r["coef"] - q * se, abs=1e-6)
+    assert math.log(row["ci_high"]) == pytest.approx(r["coef"] + q * se, abs=1e-6)
     assert art["estimates"]["n_units"] == frame["pid"].nunique()
     assert art["estimates"]["n_rows"] == len(frame)
+    risk = _km_risk(frame, "visit", "cvd")
+    point, limit = _hr_e_value_by_hand(row["estimate"], row["ci_low"], row["ci_high"],
+                                       rare=risk < 0.15)
+    assert art["estimates"]["e_value"]["point"] == pytest.approx(point, abs=1e-10)
+    assert art["estimates"]["e_value"]["ci"] == pytest.approx(limit, abs=1e-10)
+
+
+def test_1_a_few_units_widen_the_interval_by_their_df_and_below_the_floor_none_is_reported(
+        tmp_path, monkeypatch):
+    """MODELING_SEQUENCE §2: repeated units imply a small-sample sandwich, with refusal below a
+    floor. On 60 people (8 events) the stage's interval is CR2 on t with Bell–McCaffrey df: the
+    weights by statsmodels (``_independent_weights``), the weighted logistic fit by statsmodels'
+    GLM, and the CR2 SE and df by every matrix written out agree with the stage's to 1e-6. The df
+    are far below 60, so the interval is wider than CR0 on a normal reference (the clustered
+    sandwich written out here, no correction) would make it. With the unit floor raised above the cohort
+    (the floor is the seal's, ``inference.min_clusters``), no interval, SE or p-value is reported,
+    the estimate stands alone with its reason, and the E-value is the estimate's only."""
+    import statsmodels.api as sm
+
+    frame = feedback_cohort(n=60, seed=3)
+    run = staged(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "few",
+                 truncation="none")
+    ref = _independent_weights(frame)
+    ref["cum"] = ref.groupby("pid")["dash"].cumsum().astype(float)
+    X = sm.add_constant(ref[["cum", "female", "age", "t", "t2"]].astype(float))
+    fit = sm.GLM(ref["cvd"].astype(float), X, family=sm.families.Binomial(),
+                 var_weights=ref["w"]).fit(tol=1e-14, maxiter=100)
+    mu, w, y = fit.fittedvalues.to_numpy(), ref["w"].to_numpy(), ref["cvd"].to_numpy(float)
+    v = mu * (1 - mu)
+    codes = pd.factorize(ref["pid"])[0]
+    Xw, ew = X.to_numpy() * np.sqrt(w * v)[:, None], np.sqrt(w) * (y - mu) / np.sqrt(v)
+    V, df = cr2_by_definition(Xw, ew, codes)
+    [row] = run.second["estimates"]["rows"]
+    assert math.log(row["estimate"]) == pytest.approx(fit.params["cum"], abs=1e-6)
+    assert row["se"] == pytest.approx(math.sqrt(V[1, 1]), abs=1e-6)
+    assert row["df"] == pytest.approx(df[1], rel=1e-6) and row["df"] < 60
+    bread = np.linalg.inv(Xw.T @ Xw)
+    by_unit = np.zeros((codes.max() + 1, Xw.shape[1]))
+    np.add.at(by_unit, codes, Xw * ew[:, None])
+    cr0 = bread @ by_unit.T @ by_unit @ bread
+    normal = 1.959963984540054 * math.sqrt(cr0[1, 1])
+    assert math.log(row["ci_high"] / row["ci_low"]) / 2 > normal
+
+    monkeypatch.setattr("turbotab.core.models.inference.min_clusters", lambda: 100)
+    run = staged(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "floor",
+                 truncation="none")
+    floor = "`pid` has 60 units, fewer than the 100 a cluster-robust interval needs"
+    assert any(c.startswith(floor) for c in run.first["diagnostics"]["concerns"])
+    [row] = run.second["estimates"]["rows"]
+    assert row["estimate"] > 0
+    assert all(row[k] is None for k in ("ci_low", "ci_high", "se", "df", "p"))
+    assert run.second["estimates"]["concerns"] == [f"{floor}: no interval or p-value is reported."]
+    assert run.second["estimates"]["e_value"]["ci"] is None
+    assert f"and no interval: {floor}." in run.second["methods"]
 
 
 # ── 2 · the parametric g-formula ─────────────────────────────────────────────
@@ -480,6 +636,84 @@ def test_2_the_g_formula_recovers_an_exact_truth():
     assert boot["failed"] == 0
 
 
+def test_2_through_the_stage_the_g_formula_covers_the_truth_and_says_first_what_it_will_take(
+        tmp_path):
+    """The lane run by the real graph on the exact-truth cohort (4,000 people), declared as a user
+    declares it. First, positivity at each time point and what the simulation will take at the
+    default size (10,000 simulated units, 500 resamples), measured on these rows, and no risk. Then
+    20,000 simulated units and 100 resamples, declared after them: the 95% intervals of the risks
+    under "always" and "never" and of their difference cover the enumerated truth; the natural
+    course reproduces the observed risk at every time point within 0.01, the check of the models a
+    correctly specified cohort must pass; the E-value reads the risk ratio. The time measured
+    beforehand, rescaled to the declared size by its own parts, is within a factor of 3 of what the
+    run took (V2 gate 5: an estimate shown first)."""
+    run = staged(gformula_cohort(), gformula_state(time_varying=G_LANE), tmp_path, "g",
+                 columns=G_COLUMNS, **G_SIZE)
+    cost = run.first["diagnostics"]["cost"]
+    assert run.first["estimates"] is None and len(run.first["diagnostics"]["positivity"]) == 5
+    assert (cost["simulations"], cost["bootstrap"]) == (10_000, 500)
+    assert cost["seconds"] == pytest.approx(cost["fit_seconds"] + 3 * 10_000 * cost["unit_seconds"]
+                                            + 500 * cost["resample_seconds"])
+    declared = (cost["fit_seconds"] + 3 * G_SIZE["simulations"] * cost["unit_seconds"]
+                + G_SIZE["bootstrap"] * cost["resample_seconds"])
+    assert 1 / 3 < run.seconds / declared < 3, (run.seconds, declared)
+    art = run.second
+    rows = {r["label"]: r for r in art["estimates"]["rows"]}
+    truth = {"always": exact_risks(5, 1), "never": exact_risks(5, 0)}
+    for label, value in (("Risk if always exposed", truth["always"]),
+                         ("Risk if never exposed", truth["never"]),
+                         ("Risk difference (always − never)", truth["always"] - truth["never"])):
+        assert rows[label]["ci_low"] < value < rows[label]["ci_high"], (label, rows[label], value)
+    curves = {c["strategy"]: c["risks"] for c in art["estimates"]["curves"]}
+    assert np.max(np.abs(np.subtract(curves["natural"], curves["observed"]))) < 0.01
+    ratio = rows["Risk ratio (always / never)"]
+    ev = art["estimates"]["e_value"]
+    assert ev["rr"] == pytest.approx(ratio["estimate"]) and ev["point"] > 1
+    assert len(art["diagnostics"]["positivity"]) == 5
+    assert art["estimates"]["bootstrap"] == 100 and art["estimates"]["failed_resamples"] == 0
+
+
+def test_2_resamples_that_cannot_fit_are_counted_and_above_one_percent_withhold_the_interval(
+        tmp_path, monkeypatch):
+    """On 60 people (12 events), more than 1 in 100 bootstrap resamples cannot fit the g-formula's
+    models (the module's own count on its resamples shows this cohort's do fail): the resamples
+    that fail are the ones whose drawn units hold too few events, so an interval from the rest
+    would be too narrow (the verifier saw 41 of 100 drop silently, the interval from the survivors).
+    Above 1% failed, no interval is reported: every row's limits are empty, the count is named in
+    the estimates' concerns and in the methods sentence, and the E-value is the estimate's alone.
+    At or below 1% the interval is reported with the count named; when every resample fails, the
+    stage still answers (no lookup of a missing interval)."""
+    from turbotab.core.stages.time_varying import bootstrap_verdict
+
+    frame = gformula_cohort(n=60, seed=3)
+    expected = tv.gformula_bootstrap(frame, GTRUTH_SPEC, reps=100, n_sim=None, seed=1)["failed"]
+    assert expected > 1  # this cohort's resamples do fail, by the module's own count
+    run = staged(frame, gformula_state(time_varying=G_LANE), tmp_path, "few", columns=G_COLUMNS,
+                 simulations=1_000, bootstrap=100)
+    est = run.second["estimates"]
+    failed = est["failed_resamples"]
+    assert failed > 1 and est["bootstrap"] == 100
+    assert all(r["ci_low"] is None and r["ci_high"] is None for r in est["rows"])
+    assert est["concerns"][0].startswith(f"{failed:,} of 100 bootstrap resamples could not fit the "
+                                         f"models")
+    assert est["concerns"][0].endswith("No interval is reported; a model with fewer terms, or more "
+                                       "units, is the way to one.")
+    assert (f"; no interval is reported, because {failed:,} of 100 bootstrap resamples of units "
+            f"could not fit the models") in run.second["methods"]
+    assert est["e_value"]["ci"] is None and est["e_value"]["point"] >= 1
+    assert bootstrap_verdict(100, 0) == (True, None)
+    assert bootstrap_verdict(100, 1)[0] and "from the other 99" in bootstrap_verdict(100, 1)[1]
+    assert not bootstrap_verdict(100, 2)[0] and not bootstrap_verdict(100, 100)[0]
+
+    def none_fit(data: Any, spec: Any, *, reps: int, **kw: Any) -> dict[str, Any]:
+        return {"intervals": {}, "reps": reps, "failed": reps, "draws": {}}
+
+    monkeypatch.setattr(tv, "gformula_bootstrap", none_fit)
+    art = run_stage(frame, run.state, tmp_path, "none")
+    assert art["estimates"]["failed_resamples"] == 100
+    assert all(r["ci_low"] is None for r in art["estimates"]["rows"])
+
+
 # ── 3 · diagnostics before estimates ─────────────────────────────────────────
 
 
@@ -539,7 +773,8 @@ def test_3_the_weights_and_positivity_are_shown_before_any_estimate(tmp_path):
       the denominator model's fitted probability of exposure.
 
     Then: no estimate (``estimates`` null, the reason why), nothing a plan lock reads as an
-    estimate, and the Router keeps the question open."""
+    estimate, the key of what the diagnostics were computed for, and the Router keeps the question
+    open."""
     frame = feedback_cohort(n=1500)
     art = run_stage(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "cohort")
     ref = _independent_weights(frame)
@@ -577,9 +812,192 @@ def test_3_the_weights_and_positivity_are_shown_before_any_estimate(tmp_path):
     assert art["estimates"] is None
     assert art["withheld"].startswith("Read the weights and positivity first")
     assert not plan_lock.shows_estimates("time_varying", art)
-    state = feedback_state(time_varying=MSM_LANE)
-    step = next(s for s in route(state, ALL_FRESH, {"time_varying": art}) if s.key == "time_varying")
+    assert art["diagnosed"]["key"] and art["diagnosed"]["confounders"] == ["sbp"]
+    step = _step(feedback_state(time_varying=MSM_LANE), {"time_varying": art})
     assert step.status == "open"
+
+
+def test_3_a_truncation_or_a_simulation_size_before_its_diagnostics_is_refused(tmp_path):
+    """The verifier's two flows, closed at the decision. A marginal structural model posted with
+    its truncation in the first decision is refused (``diagnostics_first``) while no artifact holds
+    this lane's weights; its exit is the lane without the truncation, which the validators pass. So
+    is one whose served diagnostics were for other columns, or another method. Once this lane's
+    diagnostics are served, the truncation passes and carries their key: the server's, whatever a
+    client sends. The g-formula's simulation size is refused the same way, and standard regression,
+    which declares nothing after diagnostics, carries no key. The affected-confounder refusal's
+    g-method exits declare no truncation or size, so they lead to the diagnostics first."""
+    frame = feedback_cohort(n=900)
+    state = feedback_state()
+    msm = d.SetTimeVarying(**{**MSM_LANE.model_dump(), "truncation": "p1_p99"})
+    refused = _refused(msm, _ctx(state))
+    assert refused.code == "diagnostics_first"
+    assert refused.message.startswith("The truncation is declared after the weights' distribution")
+    exit_ = refused.exits[0]["decision"]
+    assert exit_["truncation"] is None and exit_["method"] == "msm_iptw"
+    assert d.validate(exit_, _ctx(state)).truncation is None
+
+    shown = run_stage(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "msm")
+    other = run_stage(frame, feedback_state(time_varying=MSM_LANE.model_copy(
+        update={"baseline": ["female"], "confounders": ["sbp", "age"]})), tmp_path, "other")
+    assert _refused(msm, _ctx(state, time_varying=other)).code == "diagnostics_first"
+    forged = msm.model_copy(update={"diagnostics_seen": "a key the client made up"})
+    stamped = d.validate(forged, _ctx(state, time_varying=shown))
+    assert stamped.diagnostics_seen == shown["diagnosed"]["key"] != "a key the client made up"
+    open_again = d.validate(msm.model_copy(update={"truncation": None,
+                                                   "diagnostics_seen": "x"}), _ctx(state))
+    assert open_again.diagnostics_seen is None
+
+    g = d.SetTimeVarying(exposure="dash", method="gformula", ordering="exposure_precedes_outcome",
+                         confounders=["sbp"], baseline=["female", "age"], simulations=5_000)
+    refused = _refused(g, _ctx(state, time_varying=shown))  # the weights' diagnostics, not its own
+    assert refused.code == "diagnostics_first"
+    assert refused.exits[0]["decision"]["simulations"] is None
+    standard = d.SetTimeVarying(exposure="dash", method="standard",
+                                ordering="exposure_precedes_outcome", acknowledged=True)
+    assert d.validate(standard, _ctx(state)).diagnostics_seen is None
+    exits = _refused(standard.model_copy(update={"acknowledged": False}), _ctx(state)).exits
+    for e in exits[:2]:
+        assert e["decision"]["truncation"] is None and e["decision"]["simulations"] is None
+        d.validate(e["decision"], _ctx(state))
+
+
+def test_3_the_g_formula_shows_positivity_and_its_time_before_any_risk(tmp_path):
+    """The verifier's first flow, at the stage: the g-formula declared without its size returns
+    positivity at each time point (pandas counts the exposed and unexposed rows) and what the
+    simulation will take, and no risk; the Router keeps the question open and the plan is not
+    locked. Declared afterwards, the risks come with the same positivity, and the methods sentence
+    says the size was declared after them."""
+    frame = gformula_cohort(n=2000)
+    run = staged(frame, gformula_state(time_varying=G_LANE), tmp_path, "g", columns=G_COLUMNS,
+                 simulations=5_000, bootstrap=100)
+    first = run.first
+    assert first["estimates"] is None and first["diagnostics"]["cost"]["seconds"] > 0
+    assert first["withheld"] == ("Read positivity and what the simulation will take first: no risk "
+                                 "is simulated until its size is declared.")
+    assert not plan_lock.shows_estimates("time_varying", first)
+    by_visit = frame.groupby("visit")["diet"]
+    for p in first["diagnostics"]["positivity"]:
+        assert p["exposed"] == int(by_visit.sum().iloc[p["time"]])
+        assert p["unexposed"] == int((by_visit.size() - by_visit.sum()).iloc[p["time"]])
+    assert _step(gformula_state(time_varying=G_LANE), {"time_varying": first}).status == "open"
+    assert run.second["diagnostics"]["positivity"] == first["diagnostics"]["positivity"]
+    assert run.second["estimates"]["rows"]
+    assert ("The simulation's size was declared after positivity at each time point and what the "
+            "simulation would take were read, and no risk was simulated before it.") in \
+        run.second["methods"]
+    assert _step(run.state, {"time_varying": run.second}).status == "answered"
+
+
+def test_3_data_changed_after_the_declaration_withholds_the_estimate_and_asks_again(tmp_path):
+    """"For the current data": the truncation was declared after the weights on one table were
+    read; the table then changes (100 people leave it). The stage computes the new weights, finds
+    their key is not the one the truncation carries, withholds the estimate and offers the exit that
+    declares it again. The Router, reading that artifact, asks the question again. Declared again
+    against the new diagnostics, the estimate comes."""
+    frame = feedback_cohort(n=1200)
+    run = staged(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "a", truncation="none")
+    assert run.second["estimates"]["rows"]
+    fewer = frame[~frame["pid"].isin(frame["pid"].unique()[:100])]
+    moved = run_stage(fewer, run.state, tmp_path, "b")
+    assert moved["estimates"] is None
+    assert moved["diagnosed"]["key"] != run.state.time_varying.diagnostics_seen
+    assert moved["withheld"].startswith("These weights are not the ones read when the truncation "
+                                        "was declared")
+    assert moved["exits"][0]["label"] == "Keep the weights not truncated, having read these"
+    assert _step(run.state, {"time_varying": moved}).status == "open"
+    again = d.validate(moved["exits"][0]["decision"], _ctx(run.state, time_varying=moved))
+    assert again.diagnostics_seen == moved["diagnosed"]["key"]
+    final = run_stage(fewer, run.state.model_copy(update={"time_varying": d.TimeVaryingSpec(
+        **again.model_dump(exclude={"kind"}))}), tmp_path, "c")
+    assert final["estimates"]["rows"] and final["estimates"]["n_units"] == 1100
+
+
+def test_3_through_the_server_no_estimate_comes_before_its_diagnostics(tmp_path):
+    """The verifier's two flows, through the real HTTP API on a fresh project (the DASH cohort,
+    600 people, visits kept as rows, its adjustment answers the fixture's truth):
+
+    * the g-formula posted first is recorded, and its artifact holds positivity at each time point
+      and what the simulation will take, and no estimate; the question stays open;
+    * a marginal structural model posted with its truncation in the first decision is refused 409
+      ``diagnostics_first``, and nothing is estimated; its exit (the lane without the truncation)
+      is recorded and serves the weights and positivity, with their key;
+    * the truncation posted then is recorded with that key (the server's stamp) and the sentence
+      saying it came after the diagnostics; the estimate follows, with its CR2 df, and the methods
+      sentence says the truncation was declared after the diagnostics were read."""
+    import time
+
+    from turbotab.core.tests.acceptance.server_drive import local_server, open_project
+    from turbotab.core.tests.truths import Truth
+
+    path = tmp_path / "cohort.csv"
+    feedback_cohort(n=600).to_csv(path, index=False)
+    truth = Truth({"adjust:sbp": "yes,yes,yes", "adjust:female": "yes,yes,no",
+                   "adjust:age": "yes,yes,no", "code_or_count:female": "code",
+                   "code_or_count:age": "amount", "cluster:pid": "yes"},
+                  fixture="the DASH cohort")
+    with local_server(tmp_path / "home") as client:
+        drive = open_project(client, path, truth)
+        drive.decide({"kind": "set_lens", "lenses": ["clinical"]})
+        drive.reach("target")
+        drive.decide({"kind": "set_target", "column": "cvd"})
+        drive.answer("event", {"kind": "set_event", "column": "cvd", "level": "1"})
+        drive.reach("purpose")
+        drive.decide({"kind": "set_purpose", "purpose": "inference"})
+        drive.answer("grain", {"kind": "set_grain", "grain": "repeated", "id_column": "pid"})
+        drive.answer("repeat_kind", {"kind": "set_repeat_kind", "repeat_kind": "time_points",
+                                     "time_column": "visit"})
+        drive.answer("unit", {"kind": "set_unit", "unit": "row"})
+        drive.answer("temporal", {"kind": "set_temporal", "temporal": False})
+        drive.reach("roles")
+        drive.decide_roles(dict(feedback_state().roles))
+        drive.exposure = "dash"
+        drive.answer("exclusions", {"kind": "set_exclusions", "rules": []})
+        drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
+        drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        drive.answer_plan("dash")
+        assert drive.reach("time_varying")["status"] == "open"
+        # The card is read before the lane is declared, as a person reads it: a declaration naming
+        # no covariate takes the card's proposal (the confounders `sbp` among them), which exists
+        # only once the stage has read the data. Posted sooner, on a loaded machine, the decision
+        # met no proposal and was refused for leaving `sbp` out (wave 2a repairs integration).
+        drive.artifact("time_varying")
+
+        g = drive.post({"kind": "set_time_varying", "exposure": "dash", "method": "gformula",
+                        "ordering": "exposure_precedes_outcome"})
+        assert g.status_code == 200, g.text[:600]
+        art = drive.artifact("time_varying")
+        assert art["estimates"] is None and len(art["diagnostics"]["positivity"]) == 6
+        assert art["diagnostics"]["cost"]["seconds"] > 0
+        assert drive.reach("time_varying")["status"] == "open"
+
+        first = drive.post({"kind": "set_time_varying", "exposure": "dash", "method": "msm_iptw",
+                            "ordering": "exposure_precedes_outcome", "truncation": "p1_p99"})
+        assert first.status_code == 409, first.text[:600]
+        error = first.json()["error"]
+        assert error["code"] == "diagnostics_first"
+        assert drive.view()["state"]["time_varying"]["method"] == "gformula"  # nothing recorded
+        drive.decide(error["exits"][0]["decision"])
+        shown = drive.artifact("time_varying")
+        assert shown["estimates"] is None and shown["diagnostics"]["weights"]
+        key = shown["diagnosed"]["key"]
+
+        declared = drive.post({**error["exits"][0]["decision"], "truncation": "p1_p99",
+                               "diagnostics_seen": "made up by a client"})
+        assert declared.status_code == 200, declared.text[:600]
+        record = drive.view()["decisions"][-1]
+        assert record["decision"]["diagnostics_seen"] == key
+        assert ("the weights are truncated at the 1st and 99th percentiles, as declared after their "
+                "diagnostics were read") in record["sentence"]
+        end = time.monotonic() + 240
+        while True:
+            art = drive.artifact("time_varying")
+            if art.get("estimates") or time.monotonic() > end:
+                break
+            time.sleep(0.1)
+    [row] = art["estimates"]["rows"]
+    assert row["df"] > 0 and row["ci_low"] < row["estimate"] < row["ci_high"]
+    assert ("The truncation was declared after the weights' distribution and positivity at each "
+            "time point were read, and no estimate was computed before it.") in art["methods"]
 
 
 def test_3_a_time_point_without_an_exposed_row_and_a_mean_far_from_one_are_named(tmp_path):
@@ -609,8 +1027,38 @@ def test_3_a_time_point_without_an_exposed_row_and_a_mean_far_from_one_are_named
     # Steeper still, blood pressure separates the diet: no weight, no estimate, and the reason.
     art = run_stage(steep(0.9, 6), feedback_state(time_varying=MSM_LANE), tmp_path, "separated")
     assert art["diagnostics"] is None and art["estimates"] is None
-    assert art["reason"].startswith("The weights cannot be estimated")
-    assert "a positivity violation" in art["reason"]
+    assert art["reason"].startswith("The weights cannot be estimated: the denominator model of "
+                                    "`dash`")
+    assert art["reason"].endswith("a positivity violation).")
+
+
+def test_3_a_model_that_cannot_be_fit_is_named_and_the_diagnostics_stay(tmp_path):
+    """Wrong reason, closed. An outcome with 2 events: the marginal structural model's weights and
+    positivity are computed and kept, and the weighted outcome model's failure is named as the
+    outcome model's, with its event count, never as a positivity violation. The g-formula's
+    positivity is kept too, and its failure names the outcome model with the events pandas
+    counts."""
+    frame = feedback_cohort(n=900)
+    frame["cvd"] = 0
+    first_rows = frame.groupby("pid").head(1).index[:2]
+    frame.loc[first_rows, "cvd"] = 1
+    frame = frame[~(frame["pid"].isin(frame.loc[first_rows, "pid"]) & (frame["visit"] > 1))]
+    run = staged(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "msm", truncation="none")
+    art = run.second
+    assert len(art["diagnostics"]["positivity"]) == 6 and art["diagnostics"]["weights"]
+    assert art["estimates"] is None
+    assert art["reason"].startswith("The weighted outcome model cannot be fit:")
+    assert f"(`cvd` has 2 events in {len(frame):,} rows)" in art["reason"]
+    assert "positivity" not in art["reason"]
+
+    g = frame.rename(columns={"dash": "diet", "sbp": "htn_raw", "cvd": "event"})
+    g["htn"] = (g["htn_raw"] > 130).astype(int)
+    first = run_stage(g[["pid", "visit", "diet", "htn", "female", "event"]],
+                      gformula_state(time_varying=G_LANE), tmp_path, "g")
+    assert len(first["diagnostics"]["positivity"]) == 6 and first["estimates"] is None
+    assert first["reason"].startswith("The g-formula's models cannot be fit: the outcome model:")
+    assert f"(2 events in {len(g):,} rows for" in first["reason"]
+    assert "positivity" not in first["reason"]
 
 
 def test_3_no_estimate_is_served_or_locks_the_plan_while_the_lane_is_open():
@@ -635,10 +1083,6 @@ def test_3_no_estimate_is_served_or_locks_the_plan_while_the_lane_is_open():
 
 
 # ── 4 · routing ──────────────────────────────────────────────────────────────
-
-
-def _step(state: ProjectState, artifacts: dict[str, Any] | None = None) -> Any:
-    return next(s for s in route(state, ALL_FRESH, artifacts or {}) if s.key == "time_varying")
 
 
 def test_4_the_question_is_asked_only_of_an_exposure_followed_through_time():
@@ -671,18 +1115,6 @@ def test_4_the_question_is_asked_only_of_an_exposure_followed_through_time():
                            "time; the standard model estimates it.")
 
 
-def _ctx(state: ProjectState, **artifacts: Any) -> dict[str, Any]:
-    return {"state": state, "columns": ["pid", "visit", "dash", "sbp", "female", "age", "lost",
-                                        "cvd"],
-            "artifact": lambda stage: artifacts.get(stage)}
-
-
-def _refused(decision: Any, ctx: dict[str, Any]) -> Refusal:
-    with pytest.raises(Refusal) as refused:
-        d.validate(decision, ctx)
-    return refused.value
-
-
 def test_4_the_lane_needs_repeated_measures_a_settled_time_column_and_a_declared_order():
     """Each need is refused until met, each refusal with its way forward:
 
@@ -690,9 +1122,10 @@ def test_4_the_lane_needs_repeated_measures_a_settled_time_column_and_a_declared
       it) and records kept as rows (the exit keeps them);
     * a settled time column: one only proposed by the repeats reading is asked, and the exit is the
       ledger's own ``confirm_reading``. Confirmed, the lane passes (BLUEPRINT §14.1);
-    * a declared time ordering: "same time" and "unknown" are refused, because an exposure measured
-      with its outcome cannot be told from a consequence of it. The exit declares the order."""
-    lane = d.SetTimeVarying(**{**MSM_LANE.model_dump(), "truncation": "none"})
+    * for a g-method, a declared time ordering: "same time" and "unknown" are refused, because an
+      exposure measured with its outcome cannot be told from a consequence of it. The exits declare
+      the order, or keep standard regression recorded as concurrent (which passes)."""
+    lane = d.SetTimeVarying(**MSM_LANE.model_dump())
     assert d.validate(lane, _ctx(feedback_state())) is not None
     no_repeats = _refused(lane, _ctx(feedback_state(grain=d.GrainSpec(grain="one_row_per_unit"))))
     assert no_repeats.code == "no_repeated_measures"
@@ -715,10 +1148,68 @@ def test_4_the_lane_needs_repeated_measures_a_settled_time_column_and_a_declared
         "code_or_count:age": "amount", "time_column:visit": "orders"}})
     assert d.validate(lane, _ctx(confirmed, structure=proposed)) is not None
 
+    unaffected = feedback_state(adjustment={
+        **feedback_state().adjustment, "sbp": d.AdjustmentAnswer(
+            exposure="dash", causes_exposure="yes", causes_outcome="yes", after_exposure="no")})
     for ordering in ("same_time", "unknown"):
         refused = _refused(lane.model_copy(update={"ordering": ordering}), _ctx(feedback_state()))
         assert refused.code == "time_ordering"
+        assert "g-methods need each time point's exposure to precede" in refused.message
         assert refused.exits[0]["decision"]["ordering"] == "exposure_precedes_outcome"
+        standard = refused.exits[1]["decision"]
+        assert standard["method"] == "standard" and standard["ordering_acknowledged"]
+        d.validate(standard, _ctx(unaffected))
+
+
+def test_4_standard_regression_of_a_concurrent_exposure_is_block_and_record(tmp_path):
+    """The verifier's "too tight", fixed to the nearest honest version. Diet and a biomarker
+    measured at the same visit are a common design, and standard regression can describe how they
+    go together. So for standard regression "same time" (or "unknown") is block and record: refused
+    until attested, with the order and the attestation as exits; recorded, its sentence says so,
+    the fit's row is labeled open to reverse causation, and the stage fires the conflict. With a
+    confounder affected by prior exposure too, each attestation is its own, and a g-method exit
+    declares the order only in words that say so."""
+    from turbotab.core import estimand, voice
+    from turbotab.core.contracts import fired
+    from turbotab.core.time_varying import KEY
+
+    unaffected = feedback_state(adjustment={
+        **feedback_state().adjustment, "sbp": d.AdjustmentAnswer(
+            exposure="dash", causes_exposure="yes", causes_outcome="yes", after_exposure="no")})
+    concurrent = d.SetTimeVarying(exposure="dash", method="standard", ordering="same_time")
+    refused = _refused(concurrent, _ctx(unaffected))
+    assert refused.code == "time_ordering"
+    assert "reverse causation" in refused.message
+    assert [e["label"] for e in refused.exits] == [
+        "The exposure precedes the outcome it is paired with",
+        "Keep standard regression; record that the exposure is measured with its outcome"]
+    recorded = d.validate(refused.exits[1]["decision"], _ctx(unaffected))
+    assert recorded.ordering == "same_time" and recorded.ordering_acknowledged
+    assert voice.sentence_for(recorded, unaffected) == (
+        "`dash` changes over time; no time-varying confounder is affected by earlier `dash`, so "
+        "standard regression estimates its effect on `cvd`; `dash` is measured at the same time as "
+        "the outcome it is paired with, so its estimate cannot be told from a consequence of the "
+        "outcome (reverse causation), as recorded.")
+    kept = unaffected.model_copy(update={"time_varying": d.TimeVaryingSpec(
+        **recorded.model_dump(exclude={"kind"}))})
+    fit = estimand.annotate_fit({"models": [], "task": "binary"}, kept)
+    assert fit["estimand"]["time_varying"] == (
+        "Recorded: `dash` is measured at the same time as the outcome it is paired with, so this "
+        "row for `dash` cannot be told from a consequence of the outcome (reverse causation).")
+    art = run_stage(feedback_cohort(n=600), kept, tmp_path, "concurrent")
+    said = {f.relation.target: f.says for f in fired({KEY: "standard"}, "inference",
+                                                     consequences=["concurrent_exposure_and_outcome"])}
+    assert said["concurrent_exposure_and_outcome"] in art["relations"]
+
+    both = _refused(recorded, _ctx(feedback_state()))
+    assert both.code == "affected_confounder"
+    labels = [e["label"] for e in both.exits]
+    assert labels[0] == ("Declare that the exposure precedes its outcome; estimate by a marginal "
+                         "structural model (weights)")
+    assert both.exits[0]["decision"]["ordering"] == "exposure_precedes_outcome"
+    assert both.exits[2]["decision"]["ordering"] == "same_time"
+    d.validate(both.exits[0]["decision"], _ctx(feedback_state()))
+    d.validate(both.exits[2]["decision"], _ctx(feedback_state()))
 
 
 def test_4_standard_regression_over_a_confounder_affected_by_prior_exposure_is_block_and_record():
@@ -745,7 +1236,7 @@ def test_4_standard_regression_over_a_confounder_affected_by_prior_exposure_is_b
     assert msm["method"] == "msm_iptw" and msm["confounders"] == ["sbp"]
     assert gform["method"] == "gformula" and gform["confounders"] == ["sbp"]
     d.validate(gform, _ctx(state))
-    d.validate({**msm, "truncation": "p1_p99"}, _ctx(state))
+    d.validate(msm, _ctx(state))
     recorded = d.validate(attest, _ctx(state))
     assert voice.sentence_for(recorded, state) == (
         "`dash` changes over time and its effect on `cvd` is estimated by standard regression, as "
@@ -754,8 +1245,7 @@ def test_4_standard_regression_over_a_confounder_affected_by_prior_exposure_is_b
         "Hernán & Brumback 2000); `dash` at each time point precedes the outcome it is paired "
         "with, as declared.")
     left_out = _refused(d.SetTimeVarying(**{**MSM_LANE.model_dump(), "confounders": [],
-                                            "baseline": ["female", "age"],
-                                            "truncation": "none"}), _ctx(state))
+                                            "baseline": ["female", "age"]}), _ctx(state))
     assert left_out.code == "affected_confounder_left_out"
     assert left_out.exits[0]["decision"]["confounders"] == ["sbp"]
 
@@ -768,6 +1258,78 @@ def test_4_standard_regression_over_a_confounder_affected_by_prior_exposure_is_b
     ranked = lane_options(["sbp"])
     assert [o["key"] for o in ranked] == ["msm_iptw", "gformula", "standard"]
     assert ranked[-1]["rung"] == "block_and_record"
+
+
+def test_4_loss_to_follow_up_without_an_indicator_is_stated_and_the_values_propose_one(tmp_path):
+    """No loss-to-follow-up indicator declared on a cohort that loses people. The setting counts
+    the units whose rows end before the last visit without the event (pandas agrees), and reads
+    ``lost`` (excluded; 1 only on a unit's last row, never with the event) as the one indicator the
+    values show, a proposal only. The concern and the methods sentence state the assumption the
+    estimate then rests on, and the relation fires. The affected-confounder refusal's g-method
+    exits carry ``lost``, and say so in their labels."""
+    from turbotab.core.contracts import fired
+    from turbotab.core.time_varying import KEY
+
+    frame = feedback_cohort(n=1200)
+    lane = MSM_LANE.model_copy(update={"censoring": None})
+    run = staged(frame, feedback_state(time_varying=lane), tmp_path, "lost", truncation="none")
+    last = frame.groupby("pid")["visit"].transform("max") == frame["visit"]
+    early = int((last & (frame["visit"] < 6) & (frame["cvd"] == 0)).sum())
+    setting = run.first["setting"]
+    assert setting["ending_early"] == early > 0
+    assert setting["censoring_candidates"] == ["lost"] and setting["proposal"]["censoring"] == "lost"
+    said = (f"{early:,} units' rows end before the last time point without the event, and no "
+            f"loss-to-follow-up indicator is declared: the estimate assumes their loss is "
+            f"unrelated to the outcome. `lost` reads as one: 1 only on a unit's last row, never "
+            f"with the event.")
+    assert said in run.first["diagnostics"]["concerns"]
+    assert (f"No loss-to-follow-up indicator was declared: {early:,} units' rows end before the last "
+            f"time point without the event, and the estimate assumes their loss is unrelated to the "
+            f"outcome.") in run.second["methods"]
+    relation = {f.relation.target: f.says for f in fired(
+        {KEY: "msm_iptw"}, "inference", consequences=["loss_assumed_independent"])}
+    assert relation["loss_assumed_independent"] in run.second["relations"]
+
+    standard = d.SetTimeVarying(exposure="dash", method="standard",
+                                ordering="exposure_precedes_outcome")
+    exits = _refused(standard, _ctx(feedback_state(), time_varying=run.first)).exits
+    assert exits[0]["label"] == ("Estimate by a marginal structural model (weights), weighting "
+                                 "loss to follow-up by `lost`")
+    assert exits[0]["decision"]["censoring"] == exits[1]["decision"]["censoring"] == "lost"
+    assert exits[2]["decision"]["censoring"] is None
+
+
+def test_4_a_time_column_of_dates_orders_the_rows(tmp_path):
+    """The verifier's dead end. Visit dates written as ISO text are read by the ingest as dates,
+    and the working table hands them on as Timestamps; the time column named with the repeats answer
+    orders each unit's rows by date. The stage's weights then equal statsmodels' computed on the
+    visit numbers the dates stand for (``_independent_weights``), to 1e-6, with one time point per
+    date. Text dates are read by the app's own reader, and dates that read two ways (month or day
+    first) are sent to the date-reading repair, not to the labels' order."""
+    from turbotab.core.stages.time_varying import _time_points
+
+    frame = feedback_cohort(n=900)
+    dated = frame.assign(visit_date=(pd.Timestamp("2019-03-01") + pd.to_timedelta(
+        (frame["visit"] - 1) * 365, unit="D")).dt.strftime("%Y-%m-%d")).drop(columns=["visit"])
+    state = feedback_state(
+        time_varying=MSM_LANE,
+        repeat_kind=d.RepeatSpec(repeat_kind="time_points", time_column="visit_date"),
+        roles={**feedback_state().roles, "visit_date": "time"})
+    state.roles.pop("visit")
+    art = run_stage(dated, state, tmp_path, "dates")
+    assert art["setting"]["time_kind"] == "dates"
+    assert art["setting"]["time_points"] == dated["visit_date"].nunique() == 6
+    w = _independent_weights(frame)["w"].to_numpy()
+    for key, value in _numpy_summary(w).items():
+        assert art["diagnostics"]["weights"][key] == pytest.approx(value, rel=1e-6, abs=1e-9), key
+
+    stamps = pd.Series([pd.Timestamp("2020-01-02"), pd.Timestamp("2019-05-01")], dtype=object)
+    assert _time_points(stamps, ["2019-05-01"])[0].tolist() == [1, 0]
+    points, kind = _time_points(pd.Series(["14 Feb 2021", "02 Jan 2020", "14 Feb 2021"],
+                                          dtype=object), None)
+    assert kind == "dates" and points.tolist() == [1, 0, 1]
+    assert _time_points(pd.Series(["3/1/2019", "4/2/2019"], dtype=object), None) == (None,
+                                                                                    "ambiguous")
 
 
 def test_4_an_exposure_that_is_not_0_or_1_is_offered_no_g_method_it_cannot_run():
@@ -783,7 +1345,7 @@ def test_4_an_exposure_that_is_not_0_or_1_is_offered_no_g_method_it_cannot_run()
     setting = {"setting": {"exposure": "dash", "exposure_binary": False, "exposure_levels": 409,
                            "exposure_varies": True}}
     ctx = _ctx(state, time_varying=setting)
-    g = _refused(d.SetTimeVarying(**{**MSM_LANE.model_dump(), "truncation": "none"}), ctx)
+    g = _refused(d.SetTimeVarying(**MSM_LANE.model_dump()), ctx)
     assert g.code == "exposure_not_binary" and "takes 409 values" in g.message
     standard = d.SetTimeVarying(exposure="dash", method="standard",
                                 ordering="exposure_precedes_outcome")
@@ -806,7 +1368,7 @@ def test_4_under_the_surveyed_population_the_estimates_are_blocked_with_the_samp
     binds every family and display, and where no design-based estimator exists the result is
     blocked and recorded, its exit the sample-only attestation. The weights, the outcome model and
     the simulation here read the rows as sampled. So under the population answer each g-method
-    shows its outcome-free diagnostics (the weights, positivity), computes no estimate, and offers
+    shows its diagnostics (the weights, positivity), computes no estimate once declared, and offers
     the attestation, which the survey question records."""
     from turbotab.core.models.survey import SAMPLE_EXIT
 
@@ -815,17 +1377,18 @@ def test_4_under_the_surveyed_population_the_estimates_are_blocked_with_the_samp
         pd.factorize(frame["pid"])[0]]
     survey = d.SurveySpec(estimand="population", weight="wt", acknowledged=True)
     roles = {**feedback_state().roles, "wt": "design"}
-    lane = MSM_LANE.model_copy(update={"truncation": "p1_p99"})
-    art = run_stage(frame, feedback_state(time_varying=lane, survey=survey, roles=roles),
-                    tmp_path, "population")
+    run = staged(frame, feedback_state(time_varying=MSM_LANE, survey=survey, roles=roles),
+                 tmp_path, "population", truncation="p1_p99")
+    art = run.second
     assert art["diagnostics"]["weights"] and art["diagnostics"]["positivity"]
     assert art["estimates"] is None
     assert art["reason"].startswith("The g-methods here have no design-based estimator")
     assert art["exits"] == [{"label": SAMPLE_EXIT,
                              "decision": {"kind": "set_survey", "estimand": "sample"}}]
-    g = run_stage(frame, feedback_state(time_varying=G_LANE.model_copy(update={
-        "exposure": "dash", "confounders": ["sbp"], "baseline": ["female", "age"]}),
-        survey=survey, roles=roles), tmp_path, "population_g")
+    g_lane = G_LANE.model_copy(update={"exposure": "dash", "confounders": ["sbp"],
+                                       "baseline": ["female", "age"]})
+    g = staged(frame, feedback_state(time_varying=g_lane, survey=survey, roles=roles), tmp_path,
+               "population_g", simulations=1_000, bootstrap=100).second
     assert g["diagnostics"]["positivity"] and g["estimates"] is None and g["exits"] == art["exits"]
 
 
@@ -876,7 +1439,7 @@ def test_4_another_exposure_re_asks_the_lane():
                                      "roles": {**state.roles, "sbp": "exposure",
                                                "dash": "covariate"}})
     assert _step(other).status in ("open", "waiting")
-    refused = _refused(d.SetTimeVarying(**{**lane.model_dump(), "exposure": "sbp",
+    refused = _refused(d.SetTimeVarying(**{**MSM_LANE.model_dump(), "exposure": "sbp",
                                            "confounders": []}), _ctx(feedback_state()))
     assert refused.code == "other_exposure"
     assert refused.exits[0]["decision"]["exposure"] == "dash"
@@ -894,35 +1457,39 @@ MSM_METHODS = (
     "having stayed through the previous time point, from the same models given current `dash` as "
     "well; the weights were truncated at the 1st and 99th percentiles (mean {mean}, from {lo} to "
     "{hi}). The outcome model was a weighted pooled logistic model of `cvd` on the number of time "
-    "points exposed so far, `female`, `age` and time and its square, with a variance clustered by "
-    "`pid` that treats the weights as known, so its interval is conservative (Hernán, Brumback & "
-    "Robins 2000). `sbp` is a time-varying confounder affected by prior `dash`, which standard "
-    "regression cannot adjust for. The weights' distribution and positivity at each time point "
-    "were read before any estimate was shown. The estimate assumes no unmeasured confounding at "
-    "each time point given the history, positivity, and that each time point's `dash` precedes "
-    "the outcome it is paired with, as declared.")
+    "points exposed so far, `female`, `age` and time and its square, with a CR2 variance clustered "
+    "by `pid` and Bell–McCaffrey degrees of freedom (Bell & McCaffrey 2002) that treats the "
+    "weights as known, so its interval is conservative (Hernán, Brumback & Robins 2000). `sbp` is "
+    "a time-varying confounder affected by prior `dash`, which standard regression cannot adjust "
+    "for. The truncation was declared after the weights' distribution and positivity at each time "
+    "point were read, and no estimate was computed before it. The estimate assumes no unmeasured "
+    "confounding at each time point given the history, positivity, and that each time point's "
+    "`dash` precedes the outcome it is paired with, as declared.")
 
 G_METHODS = (
     "The effect of `diet` on `event` was estimated by the parametric g-formula (Robins 1986; "
     "McGrath et al. 2020). Each time-varying confounder, `htn` (logistic), was modeled given the "
     "baseline covariates (`female`), the confounders before it at that time point, every "
-    "variable's previous value, time and its square; `event` at each time point was modeled by a pooled logistic model given `diet`, the "
-    "confounders, the baseline covariates, the previous values, time and its square. The risks of "
-    "`event` by the last of 5 time points had every unit always, and never, been exposed were "
-    "simulated for 20,000 units drawn from the observed first time point (Monte Carlo error at "
-    "most {mc}), with 95% intervals from 100 bootstrap resamples of units (percentiles). `htn` is "
-    "a time-varying confounder affected by prior `diet`, which standard regression cannot adjust "
-    "for. The natural course's simulated risk was compared with the observed risk as a check of "
-    "the models. Positivity at each time point was read before any estimate was shown. The "
-    "estimate assumes no unmeasured confounding at each time point given the history, positivity, "
-    "and that each time point's `diet` precedes the outcome it is paired with, as declared.")
+    "variable's previous value, time and its square; `event` at each time point was modeled by a "
+    "pooled logistic model given `diet`, the confounders, the baseline covariates, the previous "
+    "values, time and its square. The risks of `event` by the last of 5 time points had every unit "
+    "always, and never, been exposed were simulated for 20,000 units drawn from the observed first "
+    "time point (Monte Carlo error at most {mc}), with 95% intervals from 100 bootstrap resamples "
+    "of units (percentiles). `htn` is a time-varying confounder affected by prior `diet`, which "
+    "standard regression cannot adjust for. The natural course's simulated risk was compared with "
+    "the observed risk as a check of the models. The simulation's size was declared after "
+    "positivity at each time point and what the simulation would take were read, and no risk was "
+    "simulated before it. The estimate assumes no unmeasured confounding at each time point given "
+    "the history, positivity, and that each time point's `diet` precedes the outcome it is paired "
+    "with, as declared.")
 
 
 def test_5_the_methods_sentences_verbatim(tmp_path):
     """The record's sentence for each lane (``voice.sentence_for``), and the stage's methods text
     (the §13 contract's clause through ``contracts.paragraph``) for the weights and for the
     g-formula. The numbers in the latter are the weights' mean and range after truncation, and the
-    larger Monte Carlo error of the two strategies, each from the artifact's own fields."""
+    larger Monte Carlo error of the two strategies, each from the artifact's own fields. Before the
+    truncation is declared the sentence says it comes after the diagnostics, not that it did."""
     from turbotab.core import voice
 
     state = feedback_state()
@@ -932,55 +1499,38 @@ def test_5_the_methods_sentences_verbatim(tmp_path):
         "a marginal structural model with stabilized inverse-probability weights: the weights "
         "model `dash` at each time point from `sbp` (time-varying), `female` and `age` (baseline) "
         "and its history, loss to follow-up (`lost`) is weighted the same way, and the weights are "
-        "truncated at the 1st and 99th percentiles; `dash` at each time point precedes the outcome "
-        "it is paired with, as declared.")
+        "truncated at the 1st and 99th percentiles, as declared after their diagnostics were read; "
+        "`dash` at each time point precedes the outcome it is paired with, as declared.")
     open_lane = d.SetTimeVarying(**MSM_LANE.model_dump())
     assert voice.sentence_for(open_lane, state).endswith(
         "and the truncation is declared after the weights' diagnostics are read; `dash` at each "
         "time point precedes the outcome it is paired with, as declared.")
-    g = d.SetTimeVarying(**G_LANE.model_dump())
+    g = d.SetTimeVarying(**{**G_LANE.model_dump(), **G_SIZE})
     assert voice.sentence_for(g, gformula_state()) == (
         "`diet` changes over time, so its effect on `event` is estimated by the parametric "
         "g-formula: `htn` is simulated forward from each time point's history, and the risks had "
         "every unit always and never been exposed are compared, over 20,000 simulated units with "
-        "100 bootstrap resamples; `diet` at each time point precedes the outcome it is paired with, "
-        "as declared.")
+        "100 bootstrap resamples, a size declared after positivity and the simulation's time were "
+        "read; `diet` at each time point precedes the outcome it is paired with, as declared.")
+    assert voice.sentence_for(d.SetTimeVarying(**G_LANE.model_dump()), gformula_state()) == (
+        "`diet` changes over time, so its effect on `event` is estimated by the parametric "
+        "g-formula: `htn` is simulated forward from each time point's history, and the risks had "
+        "every unit always and never been exposed are compared; the simulation's size is declared "
+        "after positivity and the time the simulation will take are read; `diet` at each time "
+        "point precedes the outcome it is paired with, as declared.")
 
-    art = run_stage(feedback_cohort(n=1500),
-                    feedback_state(time_varying=MSM_LANE.model_copy(update={"truncation": "p1_p99"})),
-                    tmp_path, "msm")
-    used = next(o for o in art["diagnostics"]["truncation"] if o["chosen"])["summary"]
-    assert art["methods"] == MSM_METHODS.format(mean=f"{used['mean']:.2f}",
-                                                lo=f"{used['min']:.2f}", hi=f"{used['max']:.2f}")
-    art = run_stage(gformula_cohort(), gformula_state(time_varying=G_LANE), tmp_path, "g")
-    curves = {c["strategy"]: c for c in art["estimates"]["curves"]}
+    run = staged(feedback_cohort(n=1500), feedback_state(time_varying=MSM_LANE), tmp_path, "msm",
+                 truncation="p1_p99")
+    used = next(o for o in run.second["diagnostics"]["truncation"] if o["chosen"])["summary"]
+    assert run.second["methods"] == MSM_METHODS.format(
+        mean=f"{used['mean']:.2f}", lo=f"{used['min']:.2f}", hi=f"{used['max']:.2f}")
+    assert ("The truncation is declared after the weights' distribution and positivity at each "
+            "time point are read; no estimate is computed before it.") in run.first["methods"]
+    g_run = staged(gformula_cohort(), gformula_state(time_varying=G_LANE), tmp_path, "g",
+                   columns=G_COLUMNS, **G_SIZE)
+    curves = {c["strategy"]: c for c in g_run.second["estimates"]["curves"]}
     mc = max(curves["always"]["mc_se"], curves["never"]["mc_se"])
-    assert art["methods"] == G_METHODS.format(mc=f"{mc:.4f}")
-
-
-# ── the g-formula through the stage ──────────────────────────────────────────
-
-
-def test_2_through_the_stage_the_g_formula_covers_the_truth_and_checks_its_models(tmp_path):
-    """The lane run by the real graph on the exact-truth cohort (4,000 people; 20,000 simulated
-    units; 100 bootstrap resamples). The 95% intervals of the risks under "always" and "never"
-    and of their difference cover the enumerated truth. The natural course reproduces the observed
-    risk at every time point within 0.01, the check of the models a correctly specified cohort must
-    pass. The E-value reads the risk ratio, and positivity comes before the risks."""
-    art = run_stage(gformula_cohort(), gformula_state(time_varying=G_LANE), tmp_path, "g")
-    rows = {r["label"]: r for r in art["estimates"]["rows"]}
-    truth = {"always": exact_risks(5, 1), "never": exact_risks(5, 0)}
-    for label, value in (("Risk if always exposed", truth["always"]),
-                         ("Risk if never exposed", truth["never"]),
-                         ("Risk difference (always − never)", truth["always"] - truth["never"])):
-        assert rows[label]["ci_low"] < value < rows[label]["ci_high"], (label, rows[label], value)
-    curves = {c["strategy"]: c["risks"] for c in art["estimates"]["curves"]}
-    assert np.max(np.abs(np.subtract(curves["natural"], curves["observed"]))) < 0.01
-    ratio = rows["Risk ratio (always / never)"]
-    ev = art["estimates"]["e_value"]
-    assert ev["rr"] == pytest.approx(ratio["estimate"]) and ev["point"] > 1
-    assert len(art["diagnostics"]["positivity"]) == 5
-    assert art["estimates"]["bootstrap"] == 100 and art["estimates"]["failed_resamples"] == 0
+    assert g_run.second["methods"] == G_METHODS.format(mc=f"{mc:.4f}")
 
 
 # ── the §13 contract and its chain test ──────────────────────────────────────
@@ -990,8 +1540,9 @@ def test_contract_declares_every_part_section_13_asks_for():
     """Slot, data scope, needs, routing (a question, options labeled customary and sound for each
     purpose with a rung), storyboard, sentence (its clause) and relations, in the one registry
     (``turbotab.core.contracts``, wave 1's): the decision kind and the stage it names exist, its
-    sentence and every relation's ``enforced_by`` name live code, its conflict carries its exits,
-    and its run order places the lane in the model slot."""
+    sentence and every relation's ``enforced_by`` name live code, its conflicts carry their exits,
+    and its run order places the lane in the model slot. The scope note does not claim the
+    diagnostics read no outcome (under an event, the rows at risk of loss are the outcome's)."""
     import importlib
 
     from turbotab.core.contracts import CONTRACTS, contracts, options_for, run_order
@@ -1015,7 +1566,10 @@ def test_contract_declares_every_part_section_13_asks_for():
     assert run_order([KEY]) == [KEY]
     kinds = {(r.kind, r.target) for r in c.relations}
     assert ("conflicts", "standard_adjustment_for_affected_confounders") in kinds
+    assert ("conflicts", "concurrent_exposure_and_outcome") in kinds
     assert ("invalidates", "estimand") in kinds
+    assert "read no outcome" not in c.scope_note
+    assert "risk of loss to follow-up" in c.scope_note
 
 
 def test_chain_every_relation_the_lane_declares_fires(tmp_path):
@@ -1025,11 +1579,15 @@ def test_chain_every_relation_the_lane_declares_fires(tmp_path):
 
     * **implies** ``weight_diagnostics_before_estimates``: diagnostics first, no estimate until the
       truncation, then estimates with the same diagnostics;
+    * **implies** ``positivity_and_time_before_estimates``: the g-formula's positivity and time
+      first, no risk until its size;
     * **implies** ``positivity_by_time_point``: a row per time point;
-    * **implies** ``intervals_by_unit``: the MSM's variance clustered by unit (its units counted),
-      and the g-formula's bootstrap by unit. This is §2's "repeated units … imply cluster-aware
-      intervals";
+    * **implies** ``intervals_by_unit``: the MSM's CR2 variance clustered by unit (its units counted,
+      its df reported), and the g-formula's bootstrap by unit. This is §2's "repeated units …
+      imply cluster-aware intervals";
     * **implies** ``censoring_weighted``: censoring weights in the diagnostics and the sentence;
+    * **implies** ``loss_assumed_independent``: fired in
+      ``test_4_loss_to_follow_up_without_an_indicator_is_stated_and_the_values_propose_one``;
     * **implies** ``unmeasured_confounding_sensitivity``: the E-value (§0 ruling 10);
     * **invalidates** ``estimand``: another exposure re-asks the lane (§2's "exposure declared …
       invalidates");
@@ -1037,7 +1595,9 @@ def test_chain_every_relation_the_lane_declares_fires(tmp_path):
       labeled not the effect (``estimand.annotate_fit``);
     * **enables** ``risks_under_always_and_never``: the g-formula's four rows;
     * **conflicts** ``standard_adjustment_for_affected_confounders``: block and record, then the
-      recorded note on the fit.
+      recorded note on the fit;
+    * **conflicts** ``concurrent_exposure_and_outcome``: fired in
+      ``test_4_standard_regression_of_a_concurrent_exposure_is_block_and_record``.
 
     The artifact's ``relations`` are the fired relations' sentences, in the contract's words."""
     from turbotab.core import estimand
@@ -1048,26 +1608,27 @@ def test_chain_every_relation_the_lane_declares_fires(tmp_path):
     frame = feedback_cohort(n=1200)
 
     # the weights: before, then after the truncation
-    before = run_stage(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "before")
+    run = staged(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "msm",
+                 truncation="p1_p99")
+    before, after = run.first, run.second
     assert before["diagnostics"]["weights"] and before["estimates"] is None
-    lane = MSM_LANE.model_copy(update={"truncation": "p1_p99"})
-    after = run_stage(frame, feedback_state(time_varying=lane), tmp_path, "after")
     said = {f.relation.target: f.says for f in fired({KEY: "msm_iptw"}, "inference",
                                                      consequences=sorted(targets))}
     assert set(said) == {"weight_diagnostics_before_estimates", "positivity_by_time_point",
-                         "intervals_by_unit", "censoring_weighted",
+                         "intervals_by_unit", "censoring_weighted", "loss_assumed_independent",
                          "unmeasured_confounding_sensitivity", "estimand",
                          "standard_estimate_as_the_effect"}
     assert after["diagnostics"]["weights"] == before["diagnostics"]["weights"]
     assert len(after["diagnostics"]["positivity"]) == 6
     assert after["estimates"]["n_units"] == frame["pid"].nunique()
+    assert after["estimates"]["rows"][0]["df"] > 0
     assert after["diagnostics"]["censoring_weights"] is not None and "loss to follow-up" in after["methods"]
     assert after["estimates"]["e_value"]["point"] >= 1
     for target in ("weight_diagnostics_before_estimates", "positivity_by_time_point",
                    "intervals_by_unit", "censoring_weighted", "unmeasured_confounding_sensitivity",
                    "estimand"):
         assert said[target] in after["relations"], target
-    state = feedback_state(time_varying=lane)
+    state = run.state
     fit = estimand.annotate_fit({"models": [], "task": "binary"}, state)
     assert fit["estimand"]["time_varying"] == (
         "The estimate of `dash` is the time-varying lane's (a marginal structural model with "
@@ -1080,11 +1641,13 @@ def test_chain_every_relation_the_lane_declares_fires(tmp_path):
     assert _step(state).status == "answered" and _step(moved).status != "answered"
 
     # the g-formula
-    g = run_stage(gformula_cohort(n=2000), gformula_state(
-        time_varying=G_LANE.model_copy(update={"simulations": 5_000})), tmp_path, "g")
+    g_run = staged(gformula_cohort(n=2000), gformula_state(time_varying=G_LANE), tmp_path, "g",
+                   columns=G_COLUMNS, simulations=5_000, bootstrap=100)
+    g = g_run.second
     said = {f.relation.target: f.says for f in fired({KEY: "gformula"}, "inference",
                                                      consequences=sorted(targets))}
     assert "risks_under_always_and_never" in said and "weight_diagnostics_before_estimates" not in said
+    assert said["positivity_and_time_before_estimates"] in g_run.first["relations"]
     assert [r["measure"] for r in g["estimates"]["rows"]] == ["risk", "risk", "risk_difference",
                                                               "risk_ratio"]
     assert said["risks_under_always_and_never"] in g["relations"]
@@ -1093,7 +1656,8 @@ def test_chain_every_relation_the_lane_declares_fires(tmp_path):
     # standard regression: the conflict, then the record
     said = {f.relation.target: f.says for f in fired({KEY: "standard"}, "inference",
                                                      consequences=sorted(targets))}
-    assert set(said) == {"standard_adjustment_for_affected_confounders", "estimand"}
+    assert set(said) == {"standard_adjustment_for_affected_confounders",
+                         "concurrent_exposure_and_outcome", "estimand"}
     standard = d.SetTimeVarying(exposure="dash", method="standard",
                                 ordering="exposure_precedes_outcome")
     assert _refused(standard, _ctx(feedback_state())).code == "affected_confounder"
@@ -1108,7 +1672,7 @@ def test_chain_every_relation_the_lane_declares_fires(tmp_path):
         "for `dash` is biased by it.")
 
 
-# ── sensitivity to unmeasured confounding, against R ─────────────────────────
+# ── sensitivity to unmeasured confounding, against R and by hand ─────────────
 
 EVALUE_R = """
 suppressMessages(library(EValue))
@@ -1117,6 +1681,8 @@ out(list(rr = row(evalues.RR(est = 0.65, lo = 0.56, hi = 0.76)),
          rr_cross = row(evalues.RR(est = 1.3, lo = 0.9, hi = 1.8)),
          or_common = row(evalues.OR(est = 1.8, lo = 1.2, hi = 2.6, rare = FALSE)),
          or_rare = row(evalues.OR(est = 0.7, lo = 0.55, hi = 0.88, rare = TRUE)),
+         hr_common = row(evalues.HR(est = 1.6, lo = 1.25, hi = 2.05, rare = FALSE)),
+         hr_rare = row(evalues.HR(est = 0.7, lo = 0.55, hi = 0.9, rare = TRUE)),
          md = row(evalues.MD(est = 0.4, se = 0.1))))
 """
 
@@ -1125,7 +1691,8 @@ out(list(rr = row(evalues.RR(est = 0.65, lo = 0.56, hi = 0.76)),
 def test_e_values_match_EValue(tmp_path):
     """The E-values the lane reports (VanderWeele & Ding 2017) against R ``EValue`` to 1e-10: a
     risk ratio below 1 and one whose interval crosses 1, an odds ratio read as a risk ratio for a
-    rare and for a common outcome, and a standardized mean difference."""
+    rare and for a common outcome, a hazard ratio for a common and for a rare outcome, and a
+    standardized mean difference."""
     r = run_r(EVALUE_R, {}, tmp_path / "r")
 
     def ci(values: list[Any]) -> float:
@@ -1134,7 +1701,31 @@ def test_e_values_match_EValue(tmp_path):
     cases = {"rr": tv.e_value(0.65, 0.56, 0.76), "rr_cross": tv.e_value(1.3, 0.9, 1.8),
              "or_common": tv.e_value_or(1.8, 1.2, 2.6, rare=False),
              "or_rare": tv.e_value_or(0.7, 0.55, 0.88, rare=True),
+             "hr_common": tv.e_value_hr(1.6, 1.25, 2.05, rare=False),
+             "hr_rare": tv.e_value_hr(0.7, 0.55, 0.9, rare=True),
              "md": tv.e_value_md(0.4, 0.1)}
     for key, mine in cases.items():
         assert mine["point"] == pytest.approx(float(r[key][0]), abs=1e-10), key
         assert mine["ci"] == pytest.approx(ci(r[key]), abs=1e-10), key
+
+
+def test_e_value_reads_the_pooled_logistic_ratio_as_a_hazard_ratio_by_cumulative_risk(tmp_path):
+    """The verifier's case: an event on 6–7% of rows but in about a third of people by the last
+    visit. The pooled logistic model of an event at each time point is a discrete-time hazard
+    model, so its ratio is read as a hazard ratio, and VanderWeele & Ding's rule for a hazard ratio
+    judges rarity by the outcome at the end of follow-up: here common (the cumulative risk pandas
+    computes, above 15%), though below 15% of rows. The E-value is then
+    ``(1 − 0.5^√HR)/(1 − 0.5^√(1/HR))``'s, worked by hand, and ``reads`` says why."""
+    frame = feedback_cohort(n=1500, c0=-3.0)
+    risk = _km_risk(frame, "visit", "cvd")
+    assert frame["cvd"].mean() < 0.15 <= risk
+    run = staged(frame, feedback_state(time_varying=MSM_LANE), tmp_path, "common",
+                 truncation="none")
+    [row] = run.second["estimates"]["rows"]
+    ev = run.second["estimates"]["e_value"]
+    point, limit = _hr_e_value_by_hand(row["estimate"], row["ci_low"], row["ci_high"], rare=False)
+    assert ev["point"] == pytest.approx(point, abs=1e-10)
+    assert ev["ci"] == pytest.approx(limit, abs=1e-10)
+    assert ev["reads"] == (f"the pooled logistic odds ratio as a hazard ratio of an outcome common "
+                           f"by the end of follow-up ({risk:.1%} cumulative risk), as "
+                           f"(1 − 0.5^√HR)/(1 − 0.5^√(1/HR))")

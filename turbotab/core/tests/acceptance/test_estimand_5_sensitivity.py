@@ -156,7 +156,7 @@ s <- sensemakr(m, treatment = "fiber", kd = 1,
                benchmark_covariates = list(age = "age", sex = "sexmale", smoking = "smoking",
                                            activity = "activity"))
 st <- s$sensitivity_stats; b <- s$bounds
-out(list(rv_q = st$rv_q, rv_qa = st$rv_qa, r2yd = st$r2yd.x, labels = b$bound_label,
+out(list(rv_q = st$rv_q, rv_qa = st$rv_qa, r2yd = st$r2yd.x, se = st$se, labels = b$bound_label,
          r2dz = b$r2dz.x, r2yz = b$r2yz.dx, est = b$adjusted_estimate, lo = b$adjusted_lower_CI,
          hi = b$adjusted_upper_CI))
 """
@@ -167,7 +167,15 @@ def test_5_the_stage_offers_it_for_a_linear_outcome_robustness_value_first(tmp_p
     """Through the effects stage on a linear outcome: the robustness value leads, with every
     adjusted covariate as a named benchmark, each agreeing with ``sensemakr`` to 1e-8; the reading
     names the benchmark that moves the estimate most ("one as strong as `smoking`"), and the E-value
-    follows (``evalues.OLS`` with the outcome's standard deviation)."""
+    follows (``evalues.OLS`` with the outcome's standard deviation).
+
+    What rests on the point estimate alone is algebraic (Cinelli & Hazlett 2020, §4: the
+    omitted-variable bias of the least-squares coefficient), so RV_q, the partial R², each
+    benchmark's bounds and adjusted estimate are reported whatever interval is shown. RV_{q,α} and
+    the benchmarks' adjusted intervals rest on the classical standard error (sensemakr's); the
+    interval this table shows is HC3, so they are not reported (an adjusted interval narrower than
+    the primary's own would mislead), and the reading says why with both standard errors (the HC3
+    one from statsmodels)."""
     from turbotab.core.tests.acceptance import estimand_fixtures as ef
 
     frame = ef.cohort(700, seed=5)
@@ -181,21 +189,37 @@ def test_5_the_stage_offers_it_for_a_linear_outcome_robustness_value_first(tmp_p
     r = run_r(STAGE_R, {"rows": frame}, tmp_path / "r")
     rob = sens["robustness"]
     assert rob["rv"] == pytest.approx(r["rv_q"], rel=1e-8)
-    assert rob["rv_alpha"] == pytest.approx(r["rv_qa"], rel=1e-8)
     assert rob["partial_r2"] == pytest.approx(r["r2yd"], rel=1e-8)
+    assert rob["covariance"] == "HC3" and rob["rv_alpha"] is None
     names = {"1x age": "age", "1x sex": "sex", "1x smoking": "smoking", "1x activity": "activity"}
     ours = {b["covariate"]: b for b in rob["benchmarks"]}
     assert set(ours) == set(names.values())
-    for label, r2dz, r2yz, est, lo, hi in zip(r["labels"], r["r2dz"], r["r2yz"], r["est"], r["lo"],
-                                              r["hi"]):
+    for label, r2dz, r2yz, est in zip(r["labels"], r["r2dz"], r["r2yz"], r["est"]):
         mine = ours[names[label]]
         assert (mine["r2dz"], mine["r2yz"]) == pytest.approx((r2dz, r2yz), rel=1e-8), label
-        assert (mine["estimate"], mine["ci_low"], mine["ci_high"]) == pytest.approx(
-            (est, lo, hi), rel=1e-8), label
+        assert mine["estimate"] == pytest.approx(est, rel=1e-8), label
+        assert mine["ci_low"] is None and mine["ci_high"] is None and mine["se"] is None
     strongest = max(rob["benchmarks"], key=lambda b: abs(rob["estimate"] - b["estimate"]))
     assert strongest["covariate"] == "smoking"
-    assert f"one as strong as `smoking` would move it to {strongest['estimate']:.4g}" in sens["reading"]
+    assert f"one as strong as `smoking` would move it to {strongest['estimate']:.4g}." in sens["reading"]
+    import statsmodels.api as sm
+
+    X = ef.design_matrix(frame, ["fiber", "age", "sex", "smoking", "activity"])
+    hc3 = float(sm.OLS(frame["glucose"].to_numpy(float), X).fit(cov_type="HC3").bse["fiber"])
+    assert rob["interval_note"] == (
+        f"The robustness value for the 95% interval and the benchmarks' adjusted intervals rest on "
+        f"the classical least-squares standard error ({r['se']:.3g}), as sensemakr computes them; "
+        f"the interval reported uses HC3 standard errors, {hc3:.3g}, so they are not reported: "
+        f"they would describe an interval that is not the one shown.")
+    assert "to bring its 95% interval" not in sens["reading"] and "95% CI" not in sens["reading"]
+    assert rob["interval_note"] in sens["reading"]
     assert "pass or a fail" in sens["reading"] and sens["e_value"]["measure"] == "OLS"
+    assert ("Sensitivity to unmeasured confounding is reported by the Cinelli–Hazlett robustness "
+            "value (each adjusted covariate a named benchmark; its form for the 95% interval, and "
+            "the benchmarks' intervals, are not reported, as they assume classical standard errors "
+            "and the intervals reported are HC3) and by the E-value for the estimate and for the "
+            "confidence limit nearer the null, never as a pass or a fail."
+            in run["effects"]["methods"])
 
 
 EVALUE_STAGE_R = """
@@ -259,3 +283,225 @@ def test_5_the_function_the_causal_lane_calls_ranks_the_robustness_value_first()
     with pytest.raises(ValueError):
         effects.unmeasured_confounding(measure="risk_difference", estimate=0.05, ci_low=0.01,
                                        ci_high=0.09, outcome_share=0.3)
+
+
+# ── offered for every inference result (REPAIR-ESTIMAND) ─────────────────────
+
+FAMILY_R = """
+suppressPackageStartupMessages(library(sensemakr))
+d <- read.csv(rows_csv)
+d$sex <- factor(d$sex, levels = c("female", "male"))
+res <- lapply(paste0("n", 1:6), function(j) {
+  m <- lm(as.formula(paste("glucose ~", j, "+ age + sex + smoking")), data = d)
+  s <- sensemakr(m, treatment = j, kd = 1,
+                 benchmark_covariates = list(age = "age", sex = "sexmale", smoking = "smoking"))
+  st <- s$sensitivity_stats; b <- s$bounds
+  list(rv_q = st$rv_q, rv_qa = st$rv_qa, labels = b$bound_label, r2dz = b$r2dz.x,
+       r2yz = b$r2yz.dx, est = b$adjusted_estimate, lo = b$adjusted_lower_CI, hi = b$adjusted_upper_CI)
+})
+out(res)
+"""
+
+
+@needs_r
+def test_5_a_feature_wise_family_is_benchmarked_member_by_member(tmp_path):
+    """Each member of an exposure family is its own question: the outcome on that member and the
+    covariates. Its robustness value is that least-squares fit's, benchmarked against each adjusted
+    covariate, as R's ``sensemakr`` reports it on ``lm(glucose ~ n_j + age + sex + smoking)``, to
+    1e-8; the feature-wise intervals are classical, so RV_{q,α} and the benchmarks' intervals are
+    reported too. Nothing says a robustness value is missing, and the methods sentence's
+    "each adjusted covariate a named benchmark" is true."""
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+    from turbotab.core.tests.acceptance.test_estimand_6_families import MEMBERS, _family_frame, _state
+
+    frame = _family_frame()
+    run = ef.run(frame, tmp_path / "stage", _state("fdr_bh"), fit=False)
+    lines = run["effects"]["families"][0]["sensitivity"]
+    assert [s["feature"] for s in lines] == MEMBERS
+    r = run_r(FAMILY_R, {"rows": frame}, tmp_path / "r")
+    names = {"1x age": "age", "1x sex": "sex", "1x smoking": "smoking"}
+    for sens, ref in zip(lines, r):
+        assert sens["methods"] == ["robustness_value", "e_value"] and sens["not_computed"] is None
+        rob = sens["robustness"]
+        assert rob["covariance"] == "model"
+        assert (rob["rv"], rob["rv_alpha"]) == pytest.approx((ref["rv_q"], ref["rv_qa"]),
+                                                             rel=1e-8, abs=1e-12)
+        ours = {b["covariate"]: b for b in rob["benchmarks"]}
+        assert set(ours) == set(names.values())
+        for label, r2dz, r2yz, est, lo, hi in zip(ref["labels"], ref["r2dz"], ref["r2yz"],
+                                                  ref["est"], ref["lo"], ref["hi"]):
+            mine = ours[names[label]]
+            assert (mine["r2dz"], mine["r2yz"]) == pytest.approx((r2dz, r2yz), rel=1e-8), label
+            assert (mine["estimate"], mine["ci_low"], mine["ci_high"]) == pytest.approx(
+                (est, lo, hi), rel=1e-8), label
+    assert ("Sensitivity to unmeasured confounding is reported by the Cinelli–Hazlett robustness "
+            "value (each adjusted covariate a named benchmark) and by the E-value for the estimate "
+            "and for the confidence limit nearer the null, never as a pass or a fail."
+            in run["effects"]["methods"])
+
+
+EVALUE_FAMILIES_R = """
+library(EValue)
+v <- read.csv(values_csv)
+ols <- suppressMessages(evalues.OLS(est = v$est, se = v$se, sd = v$sd))
+or <- suppressMessages(evalues.OR(v$or, v$or_lo, v$or_hi, rare = as.logical(v$rare)))
+lim <- function(e) if (is.na(e[2, 2])) e[2, 3] else e[2, 2]
+out(list(ols_point = ols[2, 1], ols_limit = lim(ols), or_point = or[2, 1], or_limit = lim(or)))
+"""
+
+
+@needs_r
+def test_5_every_family_offers_it_or_says_why(tmp_path):
+    """Ruling 10: "offered for every inference result". The random-intercept mixed model (a
+    difference in the mean) and GEE on a yes/no outcome (a population-average odds ratio) each
+    carry the E-value of the estimate they report, as R's ``EValue`` gives it (``evalues.OLS`` with
+    the outcome's standard deviation; ``evalues.OR`` read as rare or common by the event's share),
+    to 1e-8; neither is a least-squares fit, so no robustness value, and each says so."""
+    from turbotab.core import decisions as d
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+    from turbotab.core.tests.acceptance.test_estimand_3_table2 import _repeated
+
+    frame = _repeated()
+    repeated = d.GrainSpec(grain="repeated", id_column="pid")
+    mixed = ef.run(frame, tmp_path / "mixed",
+                   ef.state(target="glucose", task="regression", measure="mean_difference",
+                            models=["mixed"], grain=repeated), fit=False)
+    gee = ef.run(frame, tmp_path / "gee",
+                 ef.state(target="dm", task="binary", event="yes", measure="odds_ratio",
+                          models=["gee"], grain=repeated), fit=False)
+    [m] = mixed["effects"]["families"][0]["sensitivity"]
+    [g] = gee["effects"]["families"][0]["sensitivity"]
+    row = ef.sequence(mixed["effects"])["model_2"]["effects"][0]
+    odds = ef.sequence(gee["effects"])["model_2"]["effects"][0]
+    share = float((frame["dm"] == "yes").mean())
+    values = pd.DataFrame([{"est": row["estimate"], "se": row["se"],
+                            "sd": float(frame["glucose"].std(ddof=1)), "or": odds["ratio"],
+                            "or_lo": odds["ratio_low"], "or_hi": odds["ratio_high"],
+                            "rare": str(share < 0.15).upper()}])
+    r = run_r(EVALUE_FAMILIES_R, {"values": values}, tmp_path / "r")
+    assert m["methods"] == ["e_value"] and g["methods"] == ["e_value"]
+    assert (m["e_value"]["point"], m["e_value"]["limit"]) == pytest.approx(
+        (r["ols_point"], r["ols_limit"]), rel=1e-8)
+    assert (g["e_value"]["point"], g["e_value"]["limit"]) == pytest.approx(
+        (r["or_point"], r["or_limit"]), rel=1e-8)
+    assert m["not_computed"] == (
+        "No robustness value: it is defined for one least-squares coefficient (Cinelli & Hazlett "
+        "2020, J R Stat Soc B 82:39), and this family (Random-intercept mixed model) does not fit "
+        "by least squares.")
+    assert ("Sensitivity to unmeasured confounding is reported by the E-value for the estimate and "
+            "for the confidence limit nearer the null, never as a pass or a fail."
+            in mixed["effects"]["methods"])
+
+
+LEVELS_R = """
+suppressPackageStartupMessages(library(sensemakr))
+d <- read.csv(rows_csv)
+d$sex <- factor(d$sex, levels = c("female", "male"))
+d$band <- factor(d$band, levels = c("high", "low", "mid"))
+m <- lm(glucose ~ band + age + sex + smoking + activity, data = d)
+res <- lapply(c("bandlow", "bandmid"), function(t) {
+  s <- sensemakr(m, treatment = t, kd = 1,
+                 benchmark_covariates = list(age = "age", sex = "sexmale", smoking = "smoking",
+                                             activity = "activity"))
+  st <- s$sensitivity_stats; b <- s$bounds
+  list(rv_q = st$rv_q, r2yd = st$r2yd.x, labels = b$bound_label, r2dz = b$r2dz.x,
+       r2yz = b$r2yz.dx, est = b$adjusted_estimate)
+})
+out(res)
+"""
+
+
+@needs_r
+def test_5_a_categorical_exposure_is_bounded_level_by_level(tmp_path):
+    """A categorical exposure has one estimate per level, each against the reference: each is
+    bounded on its own, as R's ``sensemakr(m, treatment = "bandlow")`` treats the indicator with the
+    other level's in the model, to 1e-8 (RV_q, partial R², benchmark bounds and adjusted
+    estimates; the interval shown is HC3, so the interval forms are not reported)."""
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(700, seed=5)
+    frame["band"] = np.where(frame["fiber"] < 17, "low", np.where(frame["fiber"] < 23, "mid",
+                                                                   "high"))
+    roles = {**{c: r for c, r in ef.ROLES.items() if c not in ("bmi", "fiber")},
+             "band": "exposure"}
+    answers = {c: a for c, a in ef.ANSWERS.items() if c != "bmi"}
+    st = ef.state(target="glucose", task="regression", exposure="band", measure="mean_difference",
+                  roles=roles, answers=answers)
+    run = ef.run(frame.drop(columns=["fiber"]), tmp_path / "stage", st, fit=False)
+    lines = run["effects"]["families"][0]["sensitivity"]
+    assert [s["feature"] for s in lines] == ["band_low", "band_mid"]
+    r = run_r(LEVELS_R, {"rows": frame}, tmp_path / "r")
+    names = {"1x age": "age", "1x sex": "sex", "1x smoking": "smoking", "1x activity": "activity"}
+    for sens, ref in zip(lines, r):
+        rob = sens["robustness"]
+        assert sens["methods"] == ["robustness_value", "e_value"]
+        assert (rob["rv"], rob["partial_r2"]) == pytest.approx((ref["rv_q"], ref["r2yd"]), rel=1e-8)
+        ours = {b["covariate"]: b for b in rob["benchmarks"]}
+        for label, r2dz, r2yz, est in zip(ref["labels"], ref["r2dz"], ref["r2yz"], ref["est"]):
+            mine = ours[names[label]]
+            assert (mine["r2dz"], mine["r2yz"], mine["estimate"]) == pytest.approx(
+                (r2dz, r2yz, est), rel=1e-8), label
+
+
+CURVE_R = """
+suppressPackageStartupMessages(library(sensemakr)); library(EValue)
+d <- read.csv(rows_csv)
+d$sex <- factor(d$sex, levels = c("female", "male"))
+m <- lm(glucose ~ fiber + age + sex + smoking + activity, data = d)
+s <- sensemakr(m, treatment = "fiber", kd = 1,
+               benchmark_covariates = list(age = "age", sex = "sexmale", smoking = "smoking",
+                                           activity = "activity"))
+v <- read.csv(values_csv)
+e <- suppressMessages(evalues.OLS(est = v$est, se = v$se, sd = sd(d$glucose)))
+out(list(rv_q = s$sensitivity_stats$rv_q, labels = s$bounds$bound_label,
+         est = s$bounds$adjusted_estimate, point = e[2, 1],
+         limit = if (is.na(e[2, 2])) e[2, 3] else e[2, 2]))
+"""
+
+
+@needs_r
+def test_5_a_curve_is_bounded_through_its_straight_line_estimate(tmp_path):
+    """The spline, the first-ranked form under inference, has no single coefficient for an E-value
+    or a robustness value to bound. Its straight-line estimate beside it (the same model, the
+    spline's nonlinear terms left out) is analyzed instead, shown, and named in the reading and the
+    methods sentence. References: statsmodels' least squares with HC3 on that design for the
+    estimate (1e-8); R ``sensemakr`` on the same ``lm`` and ``EValue::evalues.OLS`` (1e-8)."""
+    import statsmodels.api as sm
+
+    from turbotab.core import decisions as d
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(700, seed=5)
+    roles = {c: r for c, r in ef.ROLES.items() if c != "bmi"}
+    answers = {c: a for c, a in ef.ANSWERS.items() if c != "bmi"}
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", roles=roles,
+                  answers=answers,
+                  exposure_forms={"fiber": d.ExposureFormSpec(form="spline", knots=4)})
+    run = ef.run(frame, tmp_path / "stage", st, fit=False)
+    shown = ef.sequence(run["effects"])["model_2"]["effects"]
+    assert [r["feature"] for r in shown] == ["fiber", "fiber'", "fiber''"]
+    [sens] = run["effects"]["families"][0]["sensitivity"]
+    assert sens["of"] == "the straight-line estimate beside the curve"
+    X = ef.design_matrix(frame, ["fiber", "age", "sex", "smoking", "activity"])
+    line = sm.OLS(frame["glucose"].to_numpy(float), X).fit(cov_type="HC3", use_t=True)
+    companion = sens["companion"]
+    assert companion["feature"] == "fiber"
+    assert companion["estimate"] == pytest.approx(line.params["fiber"], rel=1e-8)
+    assert companion["se"] == pytest.approx(line.bse["fiber"], rel=1e-8)
+    values = pd.DataFrame([{"est": companion["estimate"], "se": companion["se"]}])
+    r = run_r(CURVE_R, {"rows": frame, "values": values}, tmp_path / "r")
+    assert sens["robustness"]["rv"] == pytest.approx(r["rv_q"], rel=1e-8)
+    ours = {b["covariate"]: b["estimate"] for b in sens["robustness"]["benchmarks"]}
+    assert [ours[label[3:]] for label in r["labels"]] == pytest.approx(r["est"], rel=1e-8)
+    assert (sens["e_value"]["point"], sens["e_value"]["limit"]) == pytest.approx(
+        (r["point"], r["limit"]), rel=1e-8)
+    low, high = line.conf_int().loc["fiber"]
+    assert sens["reading"].startswith(
+        f"The exposure enters as a curve (a restricted cubic spline), which no single coefficient "
+        f"carries; this analysis bounds the straight-line estimate beside it, the same model with "
+        f"the spline's nonlinear terms left out ({line.params['fiber']:.4g} per unit, 95% CI "
+        f"{low:.4g} to {high:.4g}).")
+    assert "E-value for the straight-line estimate beside the curve: " in sens["reading"]
+    assert ("Sensitivity to unmeasured confounding of the straight-line estimate beside the curve "
+            "is reported by the Cinelli–Hazlett robustness value (each adjusted covariate a named "
+            "benchmark; " in run["effects"]["methods"])

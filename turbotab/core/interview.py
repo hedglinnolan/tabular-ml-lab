@@ -486,7 +486,8 @@ def route(
         "estimand": lambda: estimand.current_estimand(state),
         "adjustment": lambda: estimand.adjustment_answer(state),
         "causal": lambda: causal.current_causal(state),
-        "time_varying": lambda: time_varying.lane_answer(state),
+        # Re-asked when the fresh artifact's diagnostics are not the ones its declaration came after.
+        "time_varying": lambda: time_varying.lane_answer(state, artifacts.get("time_varying")),
     }
     writer_slots = {"follow_up": ("follow_up", "censoring")}
 

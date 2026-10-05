@@ -4967,21 +4967,22 @@ export interface components {
             summary: "current" | "cumulative";
             /** Truncation */
             truncation?: ("none" | "p1_p99" | "p5_p95") | null;
-            /**
-             * Simulations
-             * @default 10000
-             */
-            simulations: number;
-            /**
-             * Bootstrap
-             * @default 500
-             */
-            bootstrap: number;
+            /** Simulations */
+            simulations?: number | null;
+            /** Bootstrap */
+            bootstrap?: number | null;
             /**
              * Acknowledged
              * @default false
              */
             acknowledged: boolean;
+            /**
+             * Ordering Acknowledged
+             * @default false
+             */
+            ordering_acknowledged: boolean;
+            /** Diagnostics Seen */
+            diagnostics_seen?: string | null;
         };
         /** SetTimeVarying */
         "SetTimeVarying-Output": {
@@ -5022,21 +5023,22 @@ export interface components {
             summary: "current" | "cumulative";
             /** Truncation */
             truncation: ("none" | "p1_p99" | "p5_p95") | null;
-            /**
-             * Simulations
-             * @default 10000
-             */
-            simulations: number;
-            /**
-             * Bootstrap
-             * @default 500
-             */
-            bootstrap: number;
+            /** Simulations */
+            simulations: number | null;
+            /** Bootstrap */
+            bootstrap: number | null;
             /**
              * Acknowledged
              * @default false
              */
             acknowledged: boolean;
+            /**
+             * Ordering Acknowledged
+             * @default false
+             */
+            ordering_acknowledged: boolean;
+            /** Diagnostics Seen */
+            diagnostics_seen: string | null;
         };
         /**
          * SetUnit
@@ -5471,21 +5473,22 @@ export interface components {
             summary: "current" | "cumulative";
             /** Truncation */
             truncation: ("none" | "p1_p99" | "p5_p95") | null;
-            /**
-             * Simulations
-             * @default 10000
-             */
-            simulations: number;
-            /**
-             * Bootstrap
-             * @default 500
-             */
-            bootstrap: number;
+            /** Simulations */
+            simulations: number | null;
+            /** Bootstrap */
+            bootstrap: number | null;
             /**
              * Acknowledged
              * @default false
              */
             acknowledged: boolean;
+            /**
+             * Ordering Acknowledged
+             * @default false
+             */
+            ordering_acknowledged: boolean;
+            /** Diagnostics Seen */
+            diagnostics_seen: string | null;
         };
         /** UsualIntakeSpec */
         UsualIntakeSpec: {
@@ -5930,12 +5933,21 @@ export interface components {
             r2yz: number;
             /** Estimate */
             estimate: number;
-            /** Se */
-            se: number;
-            /** Ci Low */
-            ci_low: number;
-            /** Ci High */
-            ci_high: number;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
             /** Kd */
             kd: number;
         };
@@ -6377,6 +6389,8 @@ export interface components {
              *     }
              */
             positivity: components["schemas"]["PositivityView"];
+            /** @default null */
+            positivity_att: components["schemas"]["PositivityView"] | null;
             /** @default null */
             missing: components["schemas"]["MissingView"] | null;
             /**
@@ -6953,6 +6967,27 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /**
+         * Diagnosed
+         * @description What the diagnostics were computed for: the lane's parts and the key of those parts and the
+         *     rows (:func:`diagnostics_key`). A declaration made after them carries the key.
+         */
+        Diagnosed: {
+            /** Key */
+            key: string;
+            /** Exposure */
+            exposure: string;
+            /** Method */
+            method: string;
+            /** Confounders */
+            confounders: string[];
+            /** Baseline */
+            baseline: string[];
+            /** Censoring */
+            censoring: string | null;
+            /** Pattern */
+            pattern: string;
+        };
         /** Diagnostic */
         Diagnostic: {
             /**
@@ -6999,6 +7034,11 @@ export interface components {
              * @default null
              */
             n: number | null;
+            /**
+             * Leverage One
+             * @default null
+             */
+            leverage_one: number | null;
             /**
              * Exits
              * @default []
@@ -7054,6 +7094,8 @@ export interface components {
              * @default []
              */
             positivity: components["schemas"]["PositivityAtTime"][];
+            /** @default null */
+            cost: components["schemas"]["SimulationCost"] | null;
             /**
              * Concerns
              * @default []
@@ -7082,14 +7124,23 @@ export interface components {
             reads: string;
             /** Rr */
             rr: number;
-            /** Lo */
-            lo: number;
-            /** Hi */
-            hi: number;
+            /**
+             * Lo
+             * @default null
+             */
+            lo: number | null;
+            /**
+             * Hi
+             * @default null
+             */
+            hi: number | null;
             /** Point */
             point: number;
-            /** Ci */
-            ci: number;
+            /**
+             * Ci
+             * @default null
+             */
+            ci: number | null;
         };
         /** EValueResult */
         EValueResult: {
@@ -7485,6 +7536,11 @@ export interface components {
              */
             se: number | null;
             /**
+             * Df
+             * @default null
+             */
+            df: number | null;
+            /**
              * P
              * @default null
              */
@@ -7520,6 +7576,11 @@ export interface components {
              * @default null
              */
             failed_resamples: number | null;
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
         };
         /**
          * ExclusionProposal
@@ -8837,10 +8898,20 @@ export interface components {
              */
             refused: string | null;
             /**
+             * Interval Refused
+             * @default null
+             */
+            interval_refused: string | null;
+            /**
              * Exits
              * @default []
              */
             exits: components["schemas"]["InferenceExit"][];
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
         };
         /** MarginalContrast */
         MarginalContrast: {
@@ -8875,15 +8946,40 @@ export interface components {
              */
             rr_high: number | null;
             /**
+             * Rr Unbounded
+             * @default false
+             */
+            rr_unbounded: boolean;
+            /**
              * N Boot
              * @default 0
              */
             n_boot: number;
             /**
+             * N Limit
+             * @default 0
+             */
+            n_limit: number;
+            /**
              * N Failed
              * @default 0
              */
             n_failed: number;
+            /**
+             * Failed Reason
+             * @default null
+             */
+            failed_reason: string | null;
+            /**
+             * N Rr Infinite
+             * @default 0
+             */
+            n_rr_infinite: number;
+            /**
+             * N Rr Undefined
+             * @default 0
+             */
+            n_rr_undefined: number;
             /**
              * By Unit
              * @default null
@@ -9766,6 +9862,11 @@ export interface components {
             confounders: string[];
             /** Baseline */
             baseline: string[];
+            /**
+             * Censoring
+             * @default null
+             */
+            censoring: string | null;
         };
         /**
          * ProposalsArtifact
@@ -9985,10 +10086,23 @@ export interface components {
             partial_r2: number;
             /** Rv */
             rv: number;
-            /** Rv Alpha */
-            rv_alpha: number;
+            /**
+             * Rv Alpha
+             * @default null
+             */
+            rv_alpha: number | null;
             /** Alpha */
             alpha: number;
+            /**
+             * Covariance
+             * @default classical
+             */
+            covariance: string;
+            /**
+             * Interval Note
+             * @default null
+             */
+            interval_note: string | null;
             /**
              * Benchmarks
              * @default []
@@ -10344,6 +10458,13 @@ export interface components {
              * @default null
              */
             not_computed: string | null;
+            /**
+             * Of
+             * @default null
+             */
+            of: string | null;
+            /** @default null */
+            companion: components["schemas"]["Coefficient"] | null;
         };
         /**
          * SensitivityAnalysis
@@ -10473,6 +10594,16 @@ export interface components {
              * @default []
              */
             concerns: string[];
+            /**
+             * Comparison
+             * @default null
+             */
+            comparison: components["schemas"]["Coefficient"][] | null;
+            /**
+             * Comparison Label
+             * @default null
+             */
+            comparison_label: string | null;
         };
         /**
          * SetAdjustment
@@ -11342,19 +11473,29 @@ export interface components {
             truncation: ("none" | "p1_p99" | "p5_p95") | null;
             /**
              * Simulations
-             * @default 10000
+             * @default null
              */
-            simulations: number;
+            simulations: number | null;
             /**
              * Bootstrap
-             * @default 500
+             * @default null
              */
-            bootstrap: number;
+            bootstrap: number | null;
             /**
              * Acknowledged
              * @default false
              */
             acknowledged: boolean;
+            /**
+             * Ordering Acknowledged
+             * @default false
+             */
+            ordering_acknowledged: boolean;
+            /**
+             * Diagnostics Seen
+             * @default null
+             */
+            diagnostics_seen: string | null;
         };
         /**
          * SetUsualIntake
@@ -11436,6 +11577,11 @@ export interface components {
             unit: string;
             /** Time Column */
             time_column: string;
+            /**
+             * Time Kind
+             * @enum {string}
+             */
+            time_kind: "numbers" | "dates" | "labels";
             /** Time Points */
             time_points: number;
             /** Units */
@@ -11448,6 +11594,10 @@ export interface components {
             gap_units: number;
             /** Repeat Units */
             repeat_units: number;
+            /** Ending Early */
+            ending_early: number;
+            /** Censoring Candidates */
+            censoring_candidates: string[];
             /** Exposure Binary */
             exposure_binary: boolean;
             /** Exposure Levels */
@@ -11531,6 +11681,27 @@ export interface components {
             nonzero: number[];
             /** N Columns */
             n_columns: number;
+        };
+        /**
+         * SimulationCost
+         * @description What the g-formula will take at the default size, measured on these rows, and the parts
+         *     that scale with each count (``models.time_varying.gformula_cost``).
+         */
+        SimulationCost: {
+            /** Simulations */
+            simulations: number;
+            /** Bootstrap */
+            bootstrap: number;
+            /** Seconds */
+            seconds: number;
+            /** Text */
+            text: string;
+            /** Fit Seconds */
+            fit_seconds: number;
+            /** Unit Seconds */
+            unit_seconds: number;
+            /** Resample Seconds */
+            resample_seconds: number;
         };
         /**
          * Sound
@@ -12133,6 +12304,8 @@ export interface components {
             affected: string[];
             /** @default null */
             diagnostics: components["schemas"]["Diagnostics"] | null;
+            /** @default null */
+            diagnosed: components["schemas"]["Diagnosed"] | null;
             /** @default null */
             estimates: components["schemas"]["Estimates"] | null;
             /**
