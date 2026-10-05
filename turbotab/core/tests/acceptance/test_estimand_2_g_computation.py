@@ -221,3 +221,174 @@ def test_2_a_surveyed_population_blocks_the_marginal_risks_and_records_the_way_o
     primary = ef.sequence(run["effects"])["model_2"]
     assert primary["effects"][0]["ratio"] is not None
     assert primary["inference"]["covariance"] == "design"
+
+
+# ── the bootstrap's edges (REPAIR-ESTIMAND): separated resamples and too few units ────────────
+
+
+def test_2_a_separated_resample_is_kept_at_the_likelihoods_limit_numpy_by_hand():
+    """A resample whose outcome happens to be separated (here: the reference level drawn with no
+    event) has no finite logistic estimate, but its fitted risks have a limit, the one R's ``glm``
+    approaches as its coefficients run away: 0 for the separated rows. Leaving such resamples out
+    would cut the interval's most extreme draws. Reference, written out: with the exposure alone
+    (a saturated model) the fitted risks are each level's own event share, so on the same resamples
+    (``default_rng(seed)``, n rows with replacement) the risk difference is ``ȳ_b − ȳ_a``, ``ȳ_a =
+    0`` where `a` drew no event; the risk ratio is infinite there, and its upper limit with it."""
+    import math
+
+    from turbotab.core.models import effects
+
+    rng = np.random.default_rng(41)
+    diet = np.array(["a"] * 20 + ["b"] * 40 + ["c"] * 40)
+    y = np.r_[np.zeros(20), rng.random(80) < 0.4].astype(float)
+    y[0] = 1.0  # one event at `a`: the full data are not separated
+    X = pd.DataFrame({"diet": diet})
+
+    def fit(X_b, y_b):
+        return lambda Z: np.column_stack([np.ones(len(Z)), (Z["diet"] == "b").to_numpy(float),
+                                          (Z["diet"] == "c").to_numpy(float)])
+
+    setting = effects.Setting("`b` against `a`", "a", "b")
+    found = effects.g_computation(fit, X, y, "diet", setting, n_boot=BOOT, seed=5)
+    assert found.risk_low == pytest.approx(y[diet == "a"].mean(), rel=1e-10)
+    assert found.risk_high == pytest.approx(y[diet == "b"].mean(), rel=1e-10)
+    draws = np.random.default_rng(5)
+    rds, rrs, zero = [], [], 0
+    for _ in range(BOOT):
+        idx = draws.integers(0, len(y), len(y))
+        ya, yb = y[idx][diet[idx] == "a"], y[idx][diet[idx] == "b"]
+        ra, rb = ya.mean(), yb.mean()
+        zero += int(ra == 0)
+        rds.append(rb - ra)
+        rrs.append(math.inf if ra == 0 else rb / ra)
+    assert found.n_limit == zero and zero > 0.025 * BOOT and found.n_failed == 0
+    lo, hi = np.percentile(rds, [2.5, 97.5])
+    assert (found.rd_low, found.rd_high) == pytest.approx((lo, hi), rel=1e-10)
+    assert found.rr_low == pytest.approx(np.percentile(rrs, 2.5), rel=1e-10)
+    assert math.isinf(found.rr_high) and found.n_rr_infinite == zero
+
+
+SEPARATED_R = """
+d <- read.csv(rows_csv)
+d$diet <- factor(d$diet, levels = c("a", "b", "c"))
+d$sex <- factor(d$sex, levels = c("female", "male"))
+d$y <- as.numeric(d$dm == "yes")
+idx <- as.matrix(read.csv(idx_csv)) + 1
+ctl <- glm.control(epsilon = 1e-14, maxit = 300)
+f <- y ~ diet + age + sex + smoking + activity
+risk <- function(m, s, v) {
+  z <- s; z$diet <- factor(rep(v, nrow(z)), levels = c("a", "b", "c"))
+  mean(predict(m, newdata = z, type = "response"))
+}
+m <- glm(f, data = d, family = binomial, control = ctl)
+point <- c(risk(m, d, "a"), risk(m, d, "b"), risk(m, d, "c"))
+rd_b <- rd_c <- numeric(nrow(idx))
+for (b in seq_len(nrow(idx))) {
+  s <- d[idx[b, ], ]
+  m <- suppressWarnings(glm(f, data = s, family = binomial, control = ctl))
+  ra <- risk(m, s, "a")
+  rd_b[b] <- risk(m, s, "b") - ra
+  rd_c[b] <- risk(m, s, "c") - ra
+}
+out(list(point = point, b = unname(quantile(rd_b, c(0.025, 0.975), type = 7)),
+         c = unname(quantile(rd_c, c(0.025, 0.975), type = 7))))
+"""
+
+
+def _separating_cohort() -> pd.DataFrame:
+    """A three-level text exposure whose reference level `a` holds 45 rows and 2 events: about one
+    resample in eight draws neither event, and its outcome is separated there."""
+    frame = ef.cohort(650, seed=7, prevalence=0.3)
+    level = np.where(np.arange(650) < 45, "a", np.where(np.arange(650) % 2, "b", "c"))
+    dm = frame["dm"].to_numpy().copy()
+    at_a = np.flatnonzero(level == "a")
+    dm[at_a] = "no"
+    dm[at_a[:2]] = "yes"
+    return frame.assign(diet=level, dm=dm)
+
+
+@needs_r
+def test_2_separated_resamples_agree_with_r_glm_on_the_same_resamples(tmp_path):
+    """Through the stage: each level against `a`, the interval from all 1,000 resamples, those whose
+    outcome is separated kept at their limit and counted; the percentile limits agree with R's
+    ``glm`` (``epsilon = 1e-14``, run to its limit) refit on the same resamples and standardized by
+    ``predict``, to 1e-8. The count is the resamples that drew no event at `a`, counted here; the
+    concern and the methods sentence say it."""
+    frame = _separating_cohort()
+    roles = {**ef.ROLES, "diet": "exposure"}
+    roles.pop("fiber")
+    st = ef.state(target="dm", task="binary", event="yes", exposure="diet",
+                  measure="risk_difference", roles=roles)
+    run = ef.run(frame, tmp_path / "stage", st, fit=False)
+    marginal = run["effects"]["families"][0]["marginal"]
+    b, c = marginal["contrasts"]
+    assert (b["setting"], c["setting"]) == ("`b` against `a`", "`c` against `a`")
+    rng = np.random.default_rng(st.split.seed)
+    idx = np.stack([rng.integers(0, len(frame), len(frame)) for _ in range(BOOT)])
+    y = (frame["dm"] == "yes").to_numpy()
+    at_a = (frame["diet"] == "a").to_numpy()
+    separated = int(sum(not y[i][at_a[i]].any() for i in idx))
+    assert 0.05 * BOOT < separated < 0.25 * BOOT
+    r = run_r(SEPARATED_R, {"rows": frame, "idx": pd.DataFrame(idx)}, tmp_path / "r")
+    assert b["risk_low"] == pytest.approx(r["point"][0], rel=1e-8)
+    assert b["risk_high"] == pytest.approx(r["point"][1], rel=1e-8)
+    assert c["risk_high"] == pytest.approx(r["point"][2], rel=1e-8)
+    for mine, key in ((b, "b"), (c, "c")):
+        assert mine["n_boot"] == BOOT and mine["n_failed"] == 0 and mine["n_limit"] == separated
+        assert (mine["rd_low"], mine["rd_high"]) == pytest.approx(tuple(r[key]), abs=1e-8)
+        # at `a`'s limit risk of 0 the ratio is infinite in more than 2.5% of resamples
+        assert mine["rr_unbounded"] is True and mine["rr_high"] is None
+        assert mine["n_rr_infinite"] == separated
+    assert marginal["concerns"][0] == (
+        f"`b` against `a`: In {separated:,} of the 1,000 bootstrap resamples the covariates "
+        f"separated the outcome (a level or a combination with no event, or only events, in that "
+        f"resample). Each is kept at the likelihood's limit, where the separated rows' risks are 0 "
+        f"or 1, the fit R's glm approaches as its coefficients run away; leaving them out would "
+        f"cut the interval's most extreme resamples.")
+    assert (f"with 95% percentile intervals from 1,000 bootstrap resamples refitting the whole "
+            f"chain; in {separated:,} of them the covariates separated the outcome, and the model "
+            f"was taken at the likelihood's limit (the separated rows' risks 0 or 1). "
+            in run["effects"]["methods"])
+
+
+def test_2_below_the_unit_floor_the_marginal_risks_carry_no_interval(tmp_path):
+    """Rows that repeat within 4 sites, fewer than the unit floor (``inference.min_clusters``): the
+    fit's tables refuse every interval (§2: a refusal below a floor), and so does the marginal
+    standardization, a bootstrap of four units being no better than the sandwich it would replace.
+    The risks themselves are reported (agreeing with the logistic model written out here, to 1e-8),
+    with the same reason and exits as the tables; the E-value has no limit, and says why."""
+    from turbotab.core.models.inference import min_clusters
+
+    frame = ef.cohort(600, seed=9, prevalence=0.3).assign(site=lambda f: np.arange(len(f)) % 4)
+    roles = {**ef.ROLES, "site": "cluster"}
+    st = ef.state(target="dm", task="binary", event="yes", measure="risk_difference",
+                  roles=roles, amounts={**ef.AMOUNTS, "code_or_count:site": "code"})
+    run = ef.run(frame, tmp_path, st, fit=False)
+    family = run["effects"]["families"][0]
+    marginal = family["marginal"]
+    [c] = marginal["contrasts"]
+    assert min_clusters() > 4
+    y = (frame["dm"] == "yes").astype(float).to_numpy()
+    X = ef.design_matrix(frame, ["fiber", *COVARIATES])
+    beta = _newton(X.to_numpy(), y)
+    X1 = X.copy()
+    X1["fiber"] += 1
+    r0, r1 = _risks(X.to_numpy(), X1.to_numpy(), beta)
+    assert (c["risk_low"], c["risk_high"]) == pytest.approx((r0, r1), rel=1e-8)
+    assert c["rd_low"] is None and c["rd_high"] is None and c["rr_low"] is None
+    assert c["n_boot"] == 0 and c["by_unit"] is None
+    primary = ef.sequence(run["effects"])["model_2"]
+    assert primary["inference"]["refused"] == marginal["interval_refused"]
+    assert marginal["interval_refused"].startswith(f"`site` has 4 units, fewer than the "
+                                                   f"{min_clusters()} TurboTab requires")
+    assert [e["label"] for e in marginal["exits"]] == [e["label"] for e in
+                                                       primary["inference"]["exits"]]
+    [sens] = family["sensitivity"]
+    inverse = 1 / c["rr"]  # a protective ratio's E-value is that of its inverse (VanderWeele & Ding)
+    assert sens["e_value"]["limit"] is None
+    assert sens["e_value"]["point"] == pytest.approx(inverse + np.sqrt(inverse * (inverse - 1)),
+                                                     rel=1e-10)
+    assert "for the confidence limit nearer the null none, as no interval is reported" in sens["reading"]
+    assert ("from the logistic model; no interval is reported (`site` has 4 units, fewer than the "
+            f"{min_clusters()} TurboTab requires for cluster-robust intervals: "
+            in run["effects"]["methods"])

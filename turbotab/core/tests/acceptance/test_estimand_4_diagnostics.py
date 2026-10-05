@@ -271,3 +271,145 @@ def test_4_an_influential_row_fails_the_check_and_its_response_refits_without_it
     assert row["se"] == pytest.approx(reference.bse["fiber"], rel=1e-8)
     assert check["change_label"] == ("The primary model refit without the 1 influential row, on "
                                      "299 rows.")
+
+
+# ── leverage 1 and aliased columns, as R has them (REPAIR-ESTIMAND) ──────────
+
+EDGES_R = """
+d <- read.csv(rows_csv)
+d$g <- factor(d$g, levels = c("a", "b", "solo"))
+m1 <- lm(y ~ x + g, data = d)
+m2 <- lm(y ~ x + kg + lb + z, data = d)
+g0 <- glm(b ~ x + lb + kg + z, family = binomial, data = d,
+          control = glm.control(epsilon = 1e-10, maxit = 100))
+s <- coef(g0); s[is.na(s)] <- 0
+g2 <- glm(b ~ x + lb + kg + z, family = binomial, data = d, start = s,
+          control = glm.control(epsilon = 1e-10, maxit = 100))
+out(list(h1 = unname(hatvalues(m1)), D1 = unname(cooks.distance(m1)), p1 = m1$rank,
+         h2 = unname(hatvalues(m2)), D2 = unname(cooks.distance(m2)), p2 = m2$rank,
+         gh = unname(hatvalues(g2)), gD = unname(cooks.distance(g2)), gp = g2$rank))
+"""
+
+
+def _nan(values) -> np.ndarray:
+    return np.array([np.nan if v is None else v for v in values], dtype=float)
+
+
+@needs_r
+def test_4_leverage_one_and_aliased_columns_agree_with_r(tmp_path):
+    """Two edges of the influence check, held to R's ``hatvalues`` and ``cooks.distance``:
+
+    * a categorical level held by one row: its leverage is 1 (the fit passes through it), and R
+      reports its Cook's distance as NaN (``res[is.infinite(res)] <- NaN``); every other row agrees
+      to 1e-8;
+    * a column aliased with others (weight in kilograms and in pounds), wherever it sits: ``lm``
+      and ``glm`` leave it out (its coefficient NA), so the leverage, the distances and the rank p
+      are the reduced model's, to 1e-8. R's ``glm`` is refit from its own estimate so its weights
+      are the maximum likelihood's (its last IRLS step uses the previous iteration's)."""
+    from turbotab.core.models import effects
+
+    rng = np.random.default_rng(12)
+    n = 160
+    g = np.array(["solo"] + list(rng.choice(["a", "b"], n - 1)))
+    x, z = rng.normal(size=n), rng.normal(size=n)
+    kg = rng.normal(70, 10, n)
+    y = 1 + 0.5 * x + (g == "b") + rng.normal(size=n)
+    b = (rng.random(n) < 1 / (1 + np.exp(-(0.4 * x - 0.3 * z)))).astype(float)
+    frame = pd.DataFrame({"y": y, "b": b, "x": x, "z": z, "g": g, "kg": kg, "lb": kg * 2.20462})
+    one = np.column_stack([np.ones(n), x, g == "b", g == "solo"]).astype(float)
+    aliased = np.column_stack([np.ones(n), x, kg, kg * 2.20462, z])  # the alias in the middle
+    logit = np.column_stack([np.ones(n), x, kg * 2.20462, kg, z])
+    r = run_r(EDGES_R, {"rows": frame}, tmp_path)
+    found = effects.ols_influence(one, y)
+    assert found["p"] == r["p1"] and found["leverage_one"] == 1
+    np.testing.assert_allclose(found["leverage"], r["h1"], rtol=1e-8, atol=1e-14)
+    ref = _nan(r["D1"])
+    assert np.isnan(found["cooks"][0]) and np.isnan(ref[0])
+    np.testing.assert_allclose(found["cooks"][1:], ref[1:], rtol=1e-8, atol=1e-14)
+    found = effects.ols_influence(aliased, y)
+    assert found["p"] == r["p2"] == 4 and found["aliased"] == 1
+    np.testing.assert_allclose(found["leverage"], r["h2"], rtol=1e-8, atol=1e-14)
+    np.testing.assert_allclose(found["cooks"], r["D2"], rtol=1e-8, atol=1e-14)
+    found = effects.logistic_influence(logit, b)
+    assert found["p"] == r["gp"] == 4
+    np.testing.assert_allclose(found["leverage"], r["gh"], rtol=1e-8, atol=1e-14)
+    np.testing.assert_allclose(found["cooks"], r["gD"], rtol=1e-8, atol=1e-14)
+
+
+STAGE_EDGES_R = """
+d <- read.csv(rows_csv)
+d$sex <- factor(d$sex, levels = c("female", "male"))
+d$site <- factor(d$site, levels = c("a", "b", "solo"))
+f <- if (ALIAS) glucose ~ fiber + age + sex + smoking + activity + weight_kg + weight_lb else
+     glucose ~ fiber + age + sex + smoking + activity + site
+m <- lm(f, data = d)
+D <- cooks.distance(m); p <- m$rank; n <- nrow(d); ref <- qf(0.5, p, n - p)
+out(list(p = p, threshold = ref, flagged = I(which(D > ref) - 1), largest = max(D, na.rm = TRUE),
+         undefined = I(which(is.na(D)) - 1)))
+"""
+
+
+@needs_r
+def test_4_the_stage_reads_leverage_one_and_aliased_columns_as_r_does(tmp_path):
+    """Through the stage. A level held by one row and a row far out on the exposure: the check
+    flags exactly the rows R's ``cooks.distance`` puts above the median of F(p, n − p) (the NaN row
+    is above nothing), its largest distance is R's ``max(D, na.rm = TRUE)`` to 1e-8, the row with
+    leverage 1 is counted and said, and the recorded response refits without the flagged rows only
+    (statsmodels on those rows, to 1e-8). Weight in kilograms and in pounds, both adjusted for: the
+    rank, the reference and the largest distance are R's, to 1e-8, and the method says one aliased
+    column was left out."""
+    frame = ef.cohort(520, seed=3)
+    frame["site"] = np.where(np.arange(len(frame)) == 0, "solo",
+                             np.where(np.arange(len(frame)) % 2, "a", "b"))
+    frame.loc[1, ["fiber", "glucose"]] = [70.0, 260.0]
+    roles = {**{c: r for c, r in ef.ROLES.items() if c != "bmi"}, "site": "covariate"}
+    answers = {**{c: a for c, a in ef.ANSWERS.items() if c != "bmi"}, "site": ef.CONFOUNDER}
+    base = dict(target="glucose", task="regression", measure="mean_difference", roles=roles,
+                answers=answers)
+    r = run_r(STAGE_EDGES_R.replace("ALIAS", "FALSE"), {"rows": frame}, tmp_path / "r1")
+    flagged = [int(i) for i in r["flagged"]]
+    assert flagged == [1] and [int(i) for i in r["undefined"]] == [0]
+    run = ef.run(frame, tmp_path / "solo", ef.state(**base), fit=False)
+    [check] = run["effects"]["families"][0]["diagnostics"]
+    assert check["status"] == "failed" and check["flagged"] == 1 and check["leverage_one"] == 1
+    assert check["threshold"] == pytest.approx(r["threshold"], rel=1e-10)
+    assert check["largest"] == pytest.approx(r["largest"], rel=1e-8)
+    assert check["reading"] == (
+        f"1 row moves the estimates past Cook's reference (largest distance {r['largest']:.3g}, "
+        f"against {r['threshold']:.3g}). 1 row with leverage 1 (the fit passes through it, as "
+        f"through the one row of a level held by one row) has no Cook's distance, as R reports it: "
+        f"removing it moves only the coefficient that fits it.")
+    assert (f"Cook's distance against the median of F({r['p']}, {len(frame) - r['p']:,}) (Cook "
+            f"1977, Technometrics 19:15): 1 row above it, and 1 row with leverage 1, which has no "
+            f"distance; the check failed" in run["effects"]["methods"])
+    after = ef.run(frame, tmp_path / "after",
+                   ef.state(**base, responses={"influence": "without_influential"}), fit=False)
+    [check] = after["effects"]["families"][0]["diagnostics"]
+    kept = frame.drop(index=flagged)
+    X = ef.design_matrix(kept, ["fiber", "age", "sex", "smoking", "activity"]).assign(
+        site_b=(kept["site"] == "b").astype(float), site_solo=(kept["site"] == "solo").astype(float))
+    reference = sm.OLS(kept["glucose"].to_numpy(float), X).fit()
+    [row] = check["change"]
+    assert row["estimate"] == pytest.approx(reference.params["fiber"], rel=1e-8)
+    assert check["change_label"] == (f"The primary model refit without the 1 influential row, on "
+                                     f"{len(kept):,} rows.")
+
+    heavy = ef.cohort(500, seed=6)
+    heavy["weight_kg"] = np.random.default_rng(606).normal(75, 12, len(heavy))
+    heavy["weight_lb"] = heavy["weight_kg"] * 2.20462
+    heavy["site"] = "a"
+    heavy.loc[0, ["fiber", "glucose"]] = [70.0, 260.0]
+    roles = {**{c: r for c, r in ef.ROLES.items() if c != "bmi"}, "weight_kg": "covariate",
+             "weight_lb": "covariate"}
+    answers = {**{c: a for c, a in ef.ANSWERS.items() if c != "bmi"},
+               "weight_kg": ef.CONFOUNDER, "weight_lb": ef.CONFOUNDER}
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", roles=roles,
+                  answers=answers)
+    run = ef.run(heavy.drop(columns=["site"]), tmp_path / "alias", st, fit=False)
+    r = run_r(STAGE_EDGES_R.replace("ALIAS", "TRUE"), {"rows": heavy}, tmp_path / "r2")
+    [check] = run["effects"]["families"][0]["diagnostics"]
+    assert check["reference"] == f"the median of F({r['p']}, {len(heavy) - r['p']:,})"
+    assert check["threshold"] == pytest.approx(r["threshold"], rel=1e-10)
+    assert check["largest"] == pytest.approx(r["largest"], rel=1e-8)
+    assert check["flagged"] == len(r["flagged"])
+    assert "p is the model's rank, 1 aliased column left out as R's lm leaves it" in check["method"]

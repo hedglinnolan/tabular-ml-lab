@@ -30,6 +30,7 @@ from scipy import stats
 
 from turbotab.core.models.effects import APPENDIX_TITLE, split_rows
 from turbotab.core.tests.acceptance import estimand_fixtures as ef
+from turbotab.core.tests.acceptance.r_reference import needs_r, run_r
 
 MODELS = {"crude": [], "model_1": ["age", "sex"], "model_2": ["age", "sex", "smoking", "activity"],
           "model_3": ["age", "sex", "smoking", "activity", "bmi"]}
@@ -252,3 +253,295 @@ def test_3_under_multiple_imputation_each_model_is_pooled_by_rubins_rules(tmp_pa
         assert row["se"] == pytest.approx(se, rel=1e-8), key
         assert (row["ci_low"], row["ci_high"]) == pytest.approx((low, high), rel=1e-6), key
         assert seq[key]["inference"]["caption"].startswith("Multiple imputation, m = 20")
+
+
+# ── one primary, every family, every display (REPAIR-ESTIMAND) ───────────────
+
+
+def test_3_model_2_is_the_fits_primary_and_model_3_alone_takes_fewer_rows(tmp_path):
+    """BLUEPRINT §12 ruling 3: inference estimates from every analyzed row. Under complete cases,
+    with `bmi` (Model 3's possible mediator) missing on some rows, the unadjusted model, Model 1 and
+    Model 2 are fit on every analyzed row, so Model 2 is the fit's own primary estimate; Model 3
+    alone is fit on the rows with `bmi` recorded, and the primary's adjustment is refit on those
+    same rows beside it, so the two differ by `bmi` alone. Reference: statsmodels' least squares
+    with HC3 standard errors on each design written out, on each model's own rows."""
+    frame = ef.cohort(650, seed=24, prevalence=0.3)
+    gaps = np.random.default_rng(1).random(len(frame)) < 0.07
+    frame.loc[gaps, "bmi"] = np.nan
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  model_1=["age", "sex"])
+    run = ef.run(frame, tmp_path / "linear", st)
+    seq = ef.sequence(run["effects"])
+    kept = frame.loc[~gaps]
+    for key in ("crude", "model_1", "model_2"):
+        reference = _ols(frame, MODELS[key])
+        row = seq[key]["effects"][0]
+        assert seq[key]["n_rows"] == len(frame), key
+        assert row["estimate"] == pytest.approx(reference.params["fiber"], rel=1e-8), key
+        assert row["se"] == pytest.approx(reference.bse["fiber"], rel=1e-8), key
+    primary = next(r for r in run["fit_raw"]["models"][0]["coefficients"] if r["feature"] == "fiber")
+    assert seq["model_2"]["effects"][0]["estimate"] == pytest.approx(primary["estimate"], rel=1e-12)
+    assert seq["model_2"]["effects"][0]["se"] == pytest.approx(primary["se"], rel=1e-12)
+    three = seq["model_3"]
+    assert three["n_rows"] == len(kept) < len(frame)
+    reference = _ols(kept, MODELS["model_3"])
+    assert three["effects"][0]["estimate"] == pytest.approx(reference.params["fiber"], rel=1e-8)
+    assert three["effects"][0]["se"] == pytest.approx(reference.bse["fiber"], rel=1e-8)
+    [same_rows] = three["comparison"]
+    reference = _ols(kept, MODELS["model_2"])
+    assert same_rows["feature"] == "fiber"
+    assert same_rows["estimate"] == pytest.approx(reference.params["fiber"], rel=1e-8)
+    assert same_rows["se"] == pytest.approx(reference.bse["fiber"], rel=1e-8)
+    n, m = len(frame), len(kept)
+    assert three["note"] == (f"further adjusted for `bmi`, a possible mediator: not a total effect. "
+                             f"Fit on the {m:,} of the {n:,} analyzed rows with `bmi` recorded; the "
+                             f"primary's adjustment refit on those rows is shown beside it.")
+    assert three["comparison_label"] == (f"The primary's adjustment refit on Model 3's {m:,} rows, "
+                                         f"so Model 3 differs from it by `bmi` alone.")
+    assert run["effects"]["rows"] == f"all {n:,} analyzed rows"
+    assert run["effects"]["methods"].startswith(
+        f"The estimate of `fiber` is reported across a declared sequence of models fit on all "
+        f"{n:,} analyzed rows: unadjusted; Model 1, adjusted for `age` and `sex`; Model 2, the "
+        f"primary, adjusted for `age`, `sex`, `smoking` and `activity`; Model 3, further adjusted "
+        f"for `bmi`, a possible mediator, so not a total effect, on the {m:,} rows with `bmi` "
+        f"recorded, beside the primary's adjustment refit on those rows. ")
+    # The marginal estimand is the analyzed rows', all of them: with an intercept the logistic
+    # model's maximum likelihood reproduces the event's share, so the standardized risk at the
+    # observed exposure is the share over every analyzed row, not over Model 3's.
+    binary = ef.state(target="dm", task="binary", event="yes", measure="risk_difference")
+    found = ef.run(frame, tmp_path / "binary", binary, fit=False)
+    [c] = found["effects"]["families"][0]["marginal"]["contrasts"]
+    everyone, fewer = (frame["dm"] == "yes").mean(), (kept["dm"] == "yes").mean()
+    assert c["risk_low"] == pytest.approx(everyone, rel=1e-10) and everyone != fewer
+
+
+def test_3_under_multiple_imputation_model_2_is_pooled_over_the_fits_own_copies(tmp_path):
+    """With a possible mediator beside the primary, the crude model, Model 1 and Model 2 are pooled
+    over the completed copies the fit itself analyzes (imputed from the primary's columns and the
+    outcome, the same seed), so Model 2 is the fit's primary estimate; Model 3 is pooled over
+    copies imputed with `bmi` too. Reference: statsmodels in each of the primary's copies
+    (``impute_for_inference`` on the primary design, as the fit calls it), pooled by Rubin's rules
+    written out (:func:`_rubin`)."""
+    from turbotab.core.datastore import DataStore
+    from turbotab.core.methods.missing import impute_for_inference
+    from turbotab.core.models.pipeline import DesignSpec, modeling_frame
+    from turbotab.core.stages.modeling import read_assignment
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    frame = ef.cohort(400, seed=31)
+    rng = np.random.default_rng(8)
+    frame.loc[rng.random(len(frame)) < 0.12, "age"] = np.nan
+    frame.loc[rng.random(len(frame)) < 0.10, "bmi"] = np.nan
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  missing={"strategy": "multiple_imputation", "m": 20})
+    run = ef.run(frame, tmp_path / "mi", st)
+    seq = ef.sequence(run["effects"])
+    assert list(seq) == ["crude", "model_2", "model_3"]
+    spec = DesignSpec.from_dict(run["design"].objects["spec"])
+    assert "bmi" not in spec.inputs
+    split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, seed=st.split.seed)
+    with DataStore(tmp_path / "mi" / "data" / "raw.parquet", 1 << 30) as store:
+        rows = modeling_frame(store, [*spec.inputs, "glucose"],
+                              read_assignment(split).index.to_numpy(), outcome="glucose")
+    y = rows["glucose"].to_numpy(dtype=float)
+    copies = impute_for_inference(spec, rows[list(spec.inputs)], y, "regression",
+                                  seed=st.split.seed)
+    fits = [_ols(X_k.assign(glucose=y), MODELS["model_2"]) for X_k in copies.frames]
+    q, se, _, _ = _rubin([f.params["fiber"] for f in fits], [f.bse["fiber"] for f in fits],
+                         float(fits[0].df_resid))
+    row = seq["model_2"]["effects"][0]
+    assert row["estimate"] == pytest.approx(q, rel=1e-8)
+    assert row["se"] == pytest.approx(se, rel=1e-8)
+    primary = next(r for r in run["fit_raw"]["models"][0]["coefficients"] if r["feature"] == "fiber")
+    assert row["estimate"] == pytest.approx(primary["estimate"], rel=1e-12)
+    assert seq["model_3"]["inference"]["caption"].startswith("Multiple imputation, m = 20")
+    assert seq["model_3"]["n_rows"] == len(frame) and seq["model_3"]["comparison"] is None
+
+
+def _repeated(seed: int = 10) -> pd.DataFrame:
+    """Two rows per person: the second a noisy repeat of the first's fiber and glucose, and a yes/no
+    outcome that agrees with the first's three times in four."""
+    one = ef.cohort(200, seed=seed)
+    rng = np.random.default_rng(seed + 1)
+    flip = rng.random(200) < 0.25
+    again = np.where(flip, np.where(one["dm"] == "yes", "no", "yes"), one["dm"])
+    return pd.concat([one, one.assign(glucose=one["glucose"] + rng.normal(0, 5, 200),
+                                      fiber=one["fiber"] + rng.normal(0, 2, 200), dm=again)],
+                     ignore_index=True)
+
+
+LMER_R = """
+suppressPackageStartupMessages(library(lme4))
+d <- read.csv(rows_csv); d$sex <- factor(d$sex, levels = c("female", "male"))
+fs <- list(crude = glucose ~ fiber, model_1 = glucose ~ fiber + age + sex,
+           model_2 = glucose ~ fiber + age + sex + smoking + activity)
+ctl <- lmerControl(optimizer = "bobyqa", optCtrl = list(rhobeg = 0.01, rhoend = 1e-12, maxfun = 1e5))
+res <- lapply(fs, function(f) {
+  m <- lmer(update(f, . ~ . + (1 | pid)), data = d, REML = TRUE, control = ctl)
+  list(estimate = unname(fixef(m)["fiber"]), se = unname(sqrt(vcov(m)["fiber", "fiber"])))
+})
+out(res)
+"""
+
+
+@needs_r
+def test_3_the_unadjusted_estimate_is_shown_for_every_family(tmp_path):
+    """STROBE 16a, and the contract's ``crude-always`` relation ("always"): the families that model
+    the unit (the random-intercept mixed model, GEE) show the unadjusted model and Model 1 as
+    every other family does, each refit on the primary's model matrix restricted to its columns,
+    and the methods sentence names exactly the models shown. References: R ``lme4::lmer`` (REML;
+    to 1e-5, the optimizer's tolerance, measured 5e-7) for the mixed model, and statsmodels'
+    ``GEE`` (exchangeable), the GEE family's own documented estimator, on each design written out,
+    to 1e-8."""
+    import statsmodels.api as sm
+
+    from turbotab.core import decisions as d
+
+    frame = _repeated()
+    st = ef.state(target="glucose", task="regression", measure="mean_difference",
+                  models=["mixed", "gee"], model_1=["age", "sex"],
+                  grain=d.GrainSpec(grain="repeated", id_column="pid"))
+    run = ef.run(frame, tmp_path / "stage", st)
+    r = run_r(LMER_R, {"rows": frame}, tmp_path / "r")
+    fit = {m["family"]: m for m in run["fit_raw"]["models"]}
+    for i, name in enumerate(("mixed", "gee")):
+        seq = ef.sequence(run["effects"], i)
+        assert run["effects"]["families"][i]["family"] == name
+        assert list(seq) == ["crude", "model_1", "model_2", "model_3"], name
+        for key in ("crude", "model_1", "model_2"):
+            row = seq[key]["effects"][0]
+            assert row["feature"] == "fiber" and seq[key]["n_rows"] == len(frame)
+            if name == "mixed":
+                assert row["estimate"] == pytest.approx(r[key]["estimate"], rel=1e-5), key
+                assert row["se"] == pytest.approx(r[key]["se"], rel=1e-5), key
+            else:
+                X = ef.design_matrix(frame, ["fiber", *MODELS[key]])
+                ref = sm.GEE(frame["glucose"].to_numpy(float), X, groups=frame["pid"],
+                             cov_struct=sm.cov_struct.Exchangeable()).fit(maxiter=200, ctol=1e-10)
+                assert row["estimate"] == pytest.approx(ref.params["fiber"], rel=1e-8), key
+        primary = next(c for c in fit[name]["coefficients"] if c["feature"] == "fiber")
+        assert seq["model_2"]["effects"][0]["estimate"] == pytest.approx(primary["estimate"],
+                                                                         rel=1e-12)
+    assert run["effects"]["methods"].startswith(
+        f"The estimate of `fiber` is reported across a declared sequence of models fit on all "
+        f"{len(frame):,} analyzed rows: unadjusted; Model 1, adjusted for `age` and `sex`; Model 2, "
+        f"the primary, adjusted for `age`, `sex`, `smoking` and `activity`; Model 3, ")
+
+
+def _surveyed(n: int = 900, seed: int = 11) -> pd.DataFrame:
+    """A cohort drawn with unequal weights that track the exposure, ten strata of three PSUs, a
+    time to event and an ordered outcome."""
+    rng = np.random.default_rng(seed)
+    x1 = rng.normal(size=n)
+    x2 = rng.binomial(1, 0.4, n).astype(float)
+    stratum = rng.integers(1, 11, n)
+    psu = stratum * 10 + rng.integers(1, 4, n)
+    w = np.exp(0.7 * x1 + rng.normal(0, 0.3, n)) * 1000
+    hazard = np.exp(0.5 * x1 + 0.3 * x2 + 0.4 * x1 ** 2)
+    T = rng.exponential(1 / hazard)
+    C = rng.exponential(1.5, n)
+    latent = 0.6 * x1 + 0.3 * x2 + 0.3 * x1 ** 2 + rng.logistic(size=n)
+    health = np.where(latent < -0.5, "poor", np.where(latent < 1.0, "fair", "good"))
+    return pd.DataFrame({"pid": np.arange(n), "x1": x1, "x2": x2, "time": np.minimum(T, C),
+                         "event": (T <= C).astype(int), "health": health, "w": w,
+                         "stratum": stratum, "psu": psu})
+
+
+SURVEY_R = """
+suppressPackageStartupMessages({library(survey); library(EValue)})
+d <- read.csv(rows_csv)
+d$health <- factor(d$health, levels = c("poor", "fair", "good"), ordered = TRUE)
+s <- svydesign(ids = ~psu, strata = ~stratum, weights = ~w, nest = TRUE, data = d)
+ctl <- coxph.control(eps = 1e-14, iter.max = 200, toler.chol = 1e-15)
+c0 <- svycoxph(Surv(time, event) ~ x1, design = s, control = ctl)
+c2 <- svycoxph(Surv(time, event) ~ x1 + x2, design = s, control = ctl)
+o0 <- svyolr(health ~ x1, design = s, control = list(reltol = 1e-15, maxit = 10000, ndeps = rep(1e-6, 3)))
+o2 <- svyolr(health ~ x1 + x2, design = s, control = list(reltol = 1e-15, maxit = 10000, ndeps = rep(1e-6, 4)))
+share <- unname(coef(svymean(~event, s)))
+out(list(cox = list(crude = unname(coef(c0)["x1"]), crude_se = unname(sqrt(vcov(c0)["x1", "x1"])),
+                    model_2 = unname(coef(c2)["x1"]), model_2_se = unname(sqrt(vcov(c2)["x1", "x1"]))),
+         olr = list(crude = unname(coef(o0)["x1"]), crude_se = unname(sqrt(vcov(o0)["x1", "x1"])),
+                    model_2 = unname(coef(o2)["x1"]), model_2_se = unname(sqrt(vcov(o2)["x1", "x1"]))),
+         share = share, unweighted = mean(d$event)))
+"""
+
+EVALUE_HR_R = """
+library(EValue)
+v <- read.csv(values_csv)
+e <- suppressMessages(evalues.HR(v$hr, v$lo, v$hi, rare = as.logical(v$rare)))
+out(list(point = e[2, 1], limit = if (is.na(e[2, 2])) e[2, 3] else e[2, 2]))
+"""
+
+
+@needs_r
+def test_3_under_the_surveyed_population_every_model_is_design_based(tmp_path):
+    """MODELING_SEQUENCE §0 ruling 6: the population estimand "binds every family and every
+    display". Under the surveyed-population answer the Cox model's and the proportional-odds
+    model's declared models are all design-based (Binder's pseudo-likelihood; the weighted
+    cumulative logit), so Model 2 is the fit's design-based primary, never an unweighted refit;
+    the E-value is the design-based hazard ratio's, read as rare or common by the population's
+    event share; a family with no design-based estimator (feature-wise regression) is blocked and
+    recorded with the fit's exits. References: R ``survey::svycoxph`` (coefficients 1e-6, standard
+    errors 1e-4, as MS4 holds them), ``svyolr`` (1e-5, 1e-4), ``svymean`` for the share, and
+    ``EValue::evalues.HR`` on the stage's own interval (1e-8)."""
+    from turbotab.core import decisions as d
+
+    frame = _surveyed()
+    roles = {"pid": "identifier", "x1": "exposure", "x2": "covariate", "time": "time",
+             "w": "design", "stratum": "design", "psu": "design"}
+    amounts = {"code_or_count:x2": "amount", "code_or_count:stratum": "code",
+               "code_or_count:psu": "code"}
+    survey = d.SurveySpec(estimand="population", weight="w", strata="stratum", psu="psu")
+    cox = ef.state(target="event", task="time_to_event", exposure="x1", measure="hazard_ratio",
+                   roles=roles, answers={"x2": ef.CONFOUNDER}, event="1", models=["cox"],
+                   amounts=amounts, follow_up=d.FollowUpSpec(time_column="time"), survey=survey)
+    run = ef.run(frame.drop(columns=["health"]), tmp_path / "cox", cox)
+    r = run_r(SURVEY_R, {"rows": frame}, tmp_path / "r")
+    seq = ef.sequence(run["effects"])
+    for key in ("crude", "model_2"):
+        row = seq[key]["effects"][0]
+        assert seq[key]["inference"]["covariance"] == "design", key
+        assert row["estimate"] == pytest.approx(r["cox"][key], rel=1e-6), key
+        assert row["se"] == pytest.approx(r["cox"][f"{key}_se"], rel=1e-4), key
+    primary = run["fit_raw"]["models"][0]["coefficients"][0]
+    shown = seq["model_2"]["effects"][0]
+    assert (shown["estimate"], shown["se"]) == pytest.approx((primary["estimate"], primary["se"]),
+                                                             rel=1e-12)
+    [sens] = run["effects"]["families"][0]["sensitivity"]
+    rare = r["share"] < 0.15  # the population's event share decides it (``svymean``)
+    assert sens["e_value"]["measure"] == "HR" and sens["e_value"]["rare"] is rare
+    values =pd.DataFrame([{"hr": shown["ratio"], "lo": shown["ratio_low"], "hi": shown["ratio_high"],
+                            "rare": str(rare).upper()}])
+    e = run_r(EVALUE_HR_R, {"values": values}, tmp_path / "e")
+    assert sens["e_value"]["point"] == pytest.approx(e["point"], rel=1e-8)
+    assert sens["e_value"]["limit"] == pytest.approx(e["limit"], rel=1e-8)
+    assert ("Each model is design-based: weighted by `w`, with Taylor-linearized intervals over "
+            "the survey's strata and PSUs, so the estimates describe the surveyed population."
+            in run["effects"]["methods"])
+
+    ordinal = ef.state(target="health", task="ordinal", exposure="x1",
+                       measure="cumulative_odds_ratio", roles={k: v for k, v in roles.items()
+                                                               if k != "time"},
+                       answers={"x2": ef.CONFOUNDER}, models=["proportional_odds"],
+                       amounts=amounts, outcome_order=["poor", "fair", "good"], survey=survey)
+    found = ef.run(frame.drop(columns=["time", "event"]), tmp_path / "olr", ordinal, fit=False)
+    seq = ef.sequence(found["effects"])
+    for key in ("crude", "model_2"):
+        row = seq[key]["effects"][0]
+        assert seq[key]["inference"]["covariance"] == "design", key
+        assert row["estimate"] == pytest.approx(r["olr"][key], rel=1e-5), key
+        assert row["se"] == pytest.approx(r["olr"][f"{key}_se"], rel=1e-4), key
+
+    linear = ef.state(target="x2", task="regression", exposure="x1", measure="mean_difference",
+                      roles={"pid": "identifier", "x1": "exposure", "w": "design",
+                             "stratum": "design", "psu": "design"},
+                      answers={}, models=["featurewise"], amounts=amounts, survey=survey)
+    blocked = ef.run(frame[["pid", "x1", "x2", "w", "stratum", "psu"]], tmp_path / "fw", linear,
+                     fit=False)
+    [only] = blocked["effects"]["families"][0]["sequence"]
+    assert only["effects"] is None and "has no design-based estimator" in only["inference"]["refused"]
+    exits = [e["decision"] for e in only["inference"]["exits"]]
+    assert exits == [{"kind": "select_models", "models": ["linear"]},
+                     {"kind": "set_survey", "estimand": "sample"}]
+    assert blocked["effects"]["methods"].startswith("No estimate of `x1` is reported: Feature-wise "
+                                                    "regression has no design-based estimator")

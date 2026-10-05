@@ -5930,12 +5930,21 @@ export interface components {
             r2yz: number;
             /** Estimate */
             estimate: number;
-            /** Se */
-            se: number;
-            /** Ci Low */
-            ci_low: number;
-            /** Ci High */
-            ci_high: number;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
             /** Kd */
             kd: number;
         };
@@ -6999,6 +7008,11 @@ export interface components {
              * @default null
              */
             n: number | null;
+            /**
+             * Leverage One
+             * @default null
+             */
+            leverage_one: number | null;
             /**
              * Exits
              * @default []
@@ -8837,10 +8851,20 @@ export interface components {
              */
             refused: string | null;
             /**
+             * Interval Refused
+             * @default null
+             */
+            interval_refused: string | null;
+            /**
              * Exits
              * @default []
              */
             exits: components["schemas"]["InferenceExit"][];
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
         };
         /** MarginalContrast */
         MarginalContrast: {
@@ -8875,15 +8899,40 @@ export interface components {
              */
             rr_high: number | null;
             /**
+             * Rr Unbounded
+             * @default false
+             */
+            rr_unbounded: boolean;
+            /**
              * N Boot
              * @default 0
              */
             n_boot: number;
             /**
+             * N Limit
+             * @default 0
+             */
+            n_limit: number;
+            /**
              * N Failed
              * @default 0
              */
             n_failed: number;
+            /**
+             * Failed Reason
+             * @default null
+             */
+            failed_reason: string | null;
+            /**
+             * N Rr Infinite
+             * @default 0
+             */
+            n_rr_infinite: number;
+            /**
+             * N Rr Undefined
+             * @default 0
+             */
+            n_rr_undefined: number;
             /**
              * By Unit
              * @default null
@@ -9985,10 +10034,23 @@ export interface components {
             partial_r2: number;
             /** Rv */
             rv: number;
-            /** Rv Alpha */
-            rv_alpha: number;
+            /**
+             * Rv Alpha
+             * @default null
+             */
+            rv_alpha: number | null;
             /** Alpha */
             alpha: number;
+            /**
+             * Covariance
+             * @default classical
+             */
+            covariance: string;
+            /**
+             * Interval Note
+             * @default null
+             */
+            interval_note: string | null;
             /**
              * Benchmarks
              * @default []
@@ -10344,6 +10406,13 @@ export interface components {
              * @default null
              */
             not_computed: string | null;
+            /**
+             * Of
+             * @default null
+             */
+            of: string | null;
+            /** @default null */
+            companion: components["schemas"]["Coefficient"] | null;
         };
         /**
          * SensitivityAnalysis
@@ -10473,6 +10542,16 @@ export interface components {
              * @default []
              */
             concerns: string[];
+            /**
+             * Comparison
+             * @default null
+             */
+            comparison: components["schemas"]["Coefficient"][] | null;
+            /**
+             * Comparison Label
+             * @default null
+             */
+            comparison_label: string | null;
         };
         /**
          * SetAdjustment

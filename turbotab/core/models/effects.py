@@ -13,9 +13,14 @@ exposure: ``r1 = mean_i expit(x_i(1)ᵀβ)`` and ``r0 = mean_i expit(x_i(0)ᵀβ
 ``RR = r1 / r0`` (standardization over the analyzed rows' own covariates). A two-valued exposure is
 set to each of its values; a continuous one is the observed value against the observed value plus
 one unit (every person's exposure one unit higher). The model is the maximum-likelihood logistic
-regression on the pipeline's model matrix (:func:`logistic_mle`); the intervals are percentiles
-of a nonparametric bootstrap that refits the whole pipeline (energy model, forms, fill) and the
-model on each resample, resampling whole units when rows repeat (:func:`g_computation`).
+regression on the pipeline's model matrix, an aliased column left out as R's ``glm`` leaves it
+(:func:`logistic_fit`); the intervals are percentiles of a nonparametric bootstrap that refits the
+whole pipeline (energy model, forms, fill) and the model on each resample, resampling whole units
+when rows repeat (:func:`g_computation`). A resample whose outcome happens to be separated has no
+finite estimate, but its fitted risks have a limit (0 or 1 for the separated rows, the rest the
+maximum-likelihood fit of the others; :func:`separated_rows`), the fit R's ``glm`` approaches as
+its coefficients run away: it is kept at that limit and counted, since leaving it out would cut
+the interval's most extreme resamples.
 
 **The Table 2 display.** Westreich & Greenland (2013, *Am J Epidemiol* 177:292): "Presentation of
 exposure and confounder effect estimates from a single model may lead to several interpretative
@@ -34,7 +39,9 @@ modifier's main effect is never one.
 * influence: each row's leverage and Cook's distance, as R's ``hatvalues`` and
   ``cooks.distance`` give them for a least-squares or a logistic model (:func:`ols_influence`,
   :func:`logistic_influence`), against the median of F(p, n − p) (Cook 1977, *Technometrics*
-  19:15), the reference R's ``plot.lm`` draws its contours from.
+  19:15), the reference R's ``plot.lm`` draws its contours from. As in R, an aliased column is
+  left out and p is the rank (:func:`column_basis`), and a row with leverage 1 (the fit passes
+  through it, as through a level held by one row) has no distance (NaN).
 
 **Sensitivity to unmeasured confounding** (MODELING_SEQUENCE §0 ruling 10), offered for every
 inference result and required in the causal lane (:func:`unmeasured_confounding`, the function
@@ -49,7 +56,9 @@ the causal package calls):
 * for a linear outcome, the Cinelli–Hazlett robustness value and partial R² (Cinelli & Hazlett
   2020, *J R Stat Soc B* 82:39), benchmarked against each named measured covariate ("an unmeasured
   confounder as strong as `smoking`"), as R's ``sensemakr`` computes them; ranked first, because it
-  is anchored to the study's own covariates.
+  is anchored to the study's own covariates. What rests on the point estimate alone (RV_q, the
+  bounds, the adjusted estimates) is algebraic; the interval forms rest on the classical standard
+  error, so they are reported only when the interval shown is the classical one.
 """
 from __future__ import annotations
 
@@ -81,6 +90,43 @@ PH_ALPHA = 0.05  # the proportional-hazards check of the exposure's own term, at
 
 class Unestimable(ValueError):
     """The quantity cannot be estimated on these rows (separation, no events, a singular matrix)."""
+
+
+class Separated(Unestimable):
+    """The logistic likelihood has no finite maximum: the covariates separate an outcome level."""
+
+
+# R's ``qr(x, tol = 1e-07)``, the rank rule of ``lm`` (LINPACK ``dqrdc2``): a column whose part
+# outside the span of the columns before it is below this share of its own length is aliased.
+ALIAS_TOL = 1e-7
+# R's ``lm.influence`` sets a leverage above ``1 − 10ε`` to exactly 1, and ``cooks.distance`` then
+# reports NaN for that row (the fit passes through it). The engine's QR is not R's bit for bit, so
+# a leverage within 1e-10 of 1 is read as 1: a row the fit passes through, such as the one row of
+# a categorical level held by one row, has a structural leverage of exactly 1.
+LEVERAGE_ONE = 1e-10
+
+
+def column_basis(X: np.ndarray, tol: float = ALIAS_TOL) -> list[int]:
+    """The columns ``lm`` keeps, in order: each column is kept unless its part outside the span of
+    the kept columns before it is below ``tol`` of its own length (R's limited pivoting, which
+    moves an aliased column to the end and reports its coefficient as NA). Two passes of
+    Gram–Schmidt against the kept columns make the residual exact to rounding."""
+    X = np.asarray(X, dtype=float)
+    kept: list[int] = []
+    Q = np.zeros((X.shape[0], 0))
+    for j in range(X.shape[1]):
+        x = X[:, j]
+        length = float(np.linalg.norm(x))
+        if length == 0.0:
+            continue
+        r = x - Q @ (Q.T @ x)
+        r = r - Q @ (Q.T @ r)
+        rest = float(np.linalg.norm(r))
+        if rest <= tol * length:
+            continue
+        kept.append(j)
+        Q = np.column_stack([Q, r / rest])
+    return kept
 
 
 # ── marginal standardization (g-computation) ─────────────────────────────────
@@ -132,15 +178,165 @@ def logistic_mle(X: np.ndarray, y: np.ndarray, *, tol: float = 1e-12, max_iter: 
             step = step / 2.0
         beta, ll = trial, new
         if not np.all(np.isfinite(beta)) or np.max(np.abs(beta) * sd) > 30:
-            raise Unestimable("the logistic likelihood has no maximum (an outcome level is "
-                              "separated by the covariates)")
+            raise Separated("the logistic likelihood has no maximum (an outcome level is "
+                            "separated by the covariates)")
         if np.max(np.abs(step)) < tol * max(1.0, float(np.max(np.abs(beta)))):
             return beta
     raise Unestimable("the logistic model did not converge")
 
 
-def standardized_risks(beta: np.ndarray, X0: np.ndarray, X1: np.ndarray) -> tuple[float, float]:
+def _null_relations(X: np.ndarray, kept: Sequence[int]) -> np.ndarray:
+    """For each column left out of ``kept``, its coefficients on the kept columns (rows of the
+    result, one per left-out column, ``len(kept)`` wide): the linear relation that aliases it."""
+    out = [j for j in range(X.shape[1]) if j not in set(kept)]
+    if not out:
+        return np.zeros((0, len(kept)))
+    A, *_ = np.linalg.lstsq(X[:, list(kept)], X[:, out], rcond=None)
+    return A.T
+
+
+def separated_rows(X: np.ndarray, y: np.ndarray, tol: float = 1e-7) -> tuple[np.ndarray, np.ndarray] | None:
+    """The rows whose fitted probability is 0 or 1 at the logistic likelihood's supremum, and a
+    direction that separates them; None when nothing is separated.
+
+    Konis (2007): the data are separated when some ``d`` has ``s_i x_iᵀd ≥ 0`` for every row
+    (``s_i = ±1`` for an event or not) and ``> 0`` for some. The set of rows any such direction
+    separates is found by linear programs, each maximizing the margins of the rows not yet found
+    (with the columns scaled to at most one and ``d`` boxed in [−1, 1]); the sum of the directions
+    found separates them all at once, and the rows it leaves at a zero margin are separated by
+    none (every other direction would separate one more)."""
+    from scipy.optimize import linprog
+
+    X = np.asarray(X, dtype=float)
+    s = np.where(np.asarray(y, dtype=float) > 0.5, 1.0, -1.0)
+    n, P = X.shape
+    scale = np.abs(X).max(axis=0)
+    scale[scale == 0] = 1.0
+    Xs = X / scale
+    A = -(s[:, None] * Xs)
+    found = np.zeros(n, dtype=bool)
+    total = np.zeros(P)
+    for _ in range(n):
+        c = -(s[~found] @ Xs[~found])
+        result = linprog(c, A_ub=A, b_ub=np.zeros(n), bounds=[(-1.0, 1.0)] * P, method="highs")
+        if result.status != 0 or result.x is None:
+            break
+        d = np.where(np.abs(result.x) < 1e-12, 0.0, result.x)
+        margins = s * (Xs @ d)
+        if margins.min() < -tol:
+            break
+        new = (margins > tol) & ~found
+        if not new.any():
+            break
+        found |= new
+        total += d
+    if not found.any():
+        return None
+    margins = s * (Xs @ total)
+    if margins[found].min() <= tol or margins.min() < -tol:
+        return None
+    return found, total / scale
+
+
+@dataclass
+class LogisticFit:
+    """A logistic model's fitted probabilities, for any rows (:meth:`predict`).
+
+    ``kept`` are the columns R's ``glm`` keeps (an aliased column's coefficient is NA there), and a
+    row is predicted from them when it obeys the relations that alias the others, as every row of
+    the data does; otherwise its prediction is not identified. At the likelihood's supremum
+    (``limit``: separation), the separated direction ``direction`` sends a row's probability to 1
+    or 0 by the sign of its ``xᵀd``, and the rest of the model is the maximum-likelihood fit on the
+    rows it does not separate (on ``basis``, an orthonormal basis of their span). A row outside
+    that span is decided by ``d`` only when the span leaves one direction free; otherwise its limit
+    depends on the path, and it is refused as not identified."""
+
+    kept: list[int]
+    relations: np.ndarray
+    beta: np.ndarray  # on the kept columns (the finite fit); on ``basis`` coordinates at the limit
+    limit: bool = False
+    basis: np.ndarray | None = None  # kept-columns × r: the span of the unseparated rows
+    direction: np.ndarray | None = None  # on the kept columns
+    n_separated: int = 0
+
+    def _check(self, X: np.ndarray, Z: np.ndarray) -> None:
+        if not len(self.relations):
+            return
+        out = [j for j in range(X.shape[1]) if j not in set(self.kept)]
+        gap = X[:, out] - Z @ self.relations.T
+        size = np.maximum(np.abs(X[:, out]), np.abs(Z).max(axis=1, initial=0.0)[:, None])
+        if np.any(np.abs(gap) > 1e-8 * np.maximum(size, 1.0)):
+            raise Unestimable("a row is outside the span of the rows the model was fit on, so its "
+                              "prediction is not identified")
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        X = np.asarray(X, dtype=float)
+        Z = X[:, self.kept]
+        self._check(X, Z)
+        if not self.limit:
+            return _expit(Z @ self.beta)
+        assert self.basis is not None and self.direction is not None
+        inside = Z @ self.basis
+        # The part of each row the unseparated rows do not span decides it, if anything does.
+        outside = Z - inside @ self.basis.T
+        lean = Z @ self.direction
+        size = np.maximum(np.abs(Z).max(axis=1, initial=0.0), 1.0)
+        spanned = np.abs(outside).max(axis=1, initial=0.0) <= 1e-8 * size
+        p = np.empty(len(Z))
+        p[spanned] = _expit(inside[spanned] @ self.beta)
+        rest = ~spanned
+        if rest.any():
+            if self.basis.shape[1] + 1 != self.basis.shape[0]:
+                raise Unestimable("the separated likelihood's limit is not identified for the "
+                                  "rows set here")
+            tilt = lean[rest]
+            if np.any(np.abs(tilt) <= 1e-8 * size[rest] * np.abs(self.direction).max()):
+                raise Unestimable("the separated likelihood's limit is not identified for the "
+                                  "rows set here")
+            p[rest] = (tilt > 0).astype(float)
+        return p
+
+
+def logistic_fit(X: np.ndarray, y: np.ndarray, *, limit: bool = False) -> LogisticFit:
+    """The logistic model's maximum-likelihood fit on the columns ``lm``'s rule keeps
+    (:func:`column_basis`), as R's ``glm`` fits an aliased design. Under separation it raises
+    :class:`Separated`, unless ``limit``: then the fit is the likelihood's supremum (the separated
+    rows' probabilities 0 or 1, :func:`separated_rows`), the fit R's ``glm`` approaches as its
+    coefficients run away, for a bootstrap resample whose outcome happens to be separated."""
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=float)
+    kept = column_basis(X)
+    relations = _null_relations(X, kept)
+    Z = X[:, kept]
+    try:
+        return LogisticFit(kept=kept, relations=relations, beta=logistic_mle(Z, y))
+    except Unestimable as exc:
+        # A runaway coefficient, or an information made singular by one, is separation only if a
+        # separating direction exists; anything else is not.
+        if not limit:
+            raise
+        found = separated_rows(Z, y)
+        if found is None:
+            raise exc
+    separated, direction = found
+    rest = ~separated
+    if rest.any():
+        Zr = Z[rest]
+        _, sv, vt = np.linalg.svd(Zr, full_matrices=False)
+        rank = int(np.sum(sv > 1e-10 * sv[0])) if len(sv) else 0
+        basis = vt[:rank].T
+        gamma = logistic_mle(Zr @ basis, y[rest]) if rank else np.zeros(0)
+    else:
+        basis, gamma = np.zeros((Z.shape[1], 0)), np.zeros(0)
+    return LogisticFit(kept=kept, relations=relations, beta=gamma, limit=True, basis=basis,
+                       direction=direction, n_separated=int(separated.sum()))
+
+
+def standardized_risks(beta: np.ndarray | LogisticFit, X0: np.ndarray,
+                       X1: np.ndarray) -> tuple[float, float]:
     """The mean predicted risk with every row set to the first setting and to the second."""
+    if isinstance(beta, LogisticFit):
+        return float(np.mean(beta.predict(X0))), float(np.mean(beta.predict(X1)))
     return (float(np.mean(_expit(np.asarray(X0, float) @ beta))),
             float(np.mean(_expit(np.asarray(X1, float) @ beta))))
 
@@ -214,9 +410,16 @@ class Standardized:
     rd_low: float | None = None
     rd_high: float | None = None
     rr_low: float | None = None
-    rr_high: float | None = None
+    rr_high: float | None = None  # +inf when the low risk was 0 in more than 2.5% of resamples
     n_boot: int = 0
-    n_failed: int = 0  # resamples whose model could not be fit (separation), left out
+    # Resamples whose outcome the covariates separated: kept, at the likelihood's limit (the
+    # separated rows' risks 0 or 1), the fit R's ``glm`` approaches; leaving them out would cut
+    # the extreme resamples from the interval.
+    n_limit: int = 0
+    n_failed: int = 0  # resamples whose model could not be fit at all, left out (and said so)
+    failed_reason: str | None = None  # the first such resample's reason
+    n_rr_infinite: int = 0  # resamples whose low risk was 0 (the separated limit): an infinite ratio
+    n_rr_undefined: int = 0  # resamples with both risks 0: no risk ratio, left out of its interval
     by_unit: str | None = None  # the column whose units the bootstrap resampled whole
 
     def as_dict(self) -> dict[str, Any]:
@@ -240,12 +443,28 @@ def resample_indices(n: int, n_boot: int, seed: int, units: np.ndarray | None = 
 
 
 def percentile(values: Sequence[float], level: float = LEVEL) -> tuple[float | None, float | None]:
-    """The percentile interval (R's ``quantile`` type 7, numpy's default)."""
-    v = np.asarray([x for x in values if x is not None and math.isfinite(x)], dtype=float)
+    """The percentile interval (R's ``quantile`` type 7, numpy's default). An infinite value (a
+    risk ratio over a zero risk) is an order statistic like any other: a limit that falls on or
+    interpolates toward it is infinite. Undefined values (NaN) are left out."""
+    v = np.sort(np.asarray([x for x in values if x is not None and not math.isnan(x)], dtype=float))
     if len(v) < 2:
         return None, None
     a = (1.0 - level) / 2.0
-    return float(np.quantile(v, a)), float(np.quantile(v, 1.0 - a))
+    if np.all(np.isfinite(v)):
+        return float(np.quantile(v, a)), float(np.quantile(v, 1.0 - a))
+
+    def type7(p: float) -> float:
+        h = (len(v) - 1) * p
+        lo = int(math.floor(h))
+        hi = min(lo + 1, len(v) - 1)
+        frac = h - lo
+        if frac == 0 or v[lo] == v[hi]:
+            return float(v[lo])
+        if not (math.isfinite(v[lo]) and math.isfinite(v[hi])):
+            return float(v[hi]) if math.isinf(v[hi]) else float(v[lo])
+        return float(v[lo] + frac * (v[hi] - v[lo]))
+
+    return type7(a), type7(1.0 - a)
 
 
 def g_computation(fit: Fitter, X: pd.DataFrame, y: np.ndarray, exposure: str, setting: Setting, *,
@@ -257,40 +476,53 @@ def g_computation(fit: Fitter, X: pd.DataFrame, y: np.ndarray, exposure: str, se
 
     ``fit(X, y)`` fits the whole pipeline on the rows given and returns ``matrix_of``: the model
     matrix (with its intercept column) of any rows set as they like, through the steps fitted on
-    those rows. The point estimate standardizes over ``X``; each bootstrap resample refits the
-    whole chain on the resample and standardizes over it."""
-    def estimate(rows_X: pd.DataFrame, rows_y: np.ndarray) -> tuple[float, float]:
+    those rows. The point estimate standardizes over ``X`` (separated rows are refused: the
+    logistic model has no estimate). Each bootstrap resample refits the whole chain on the
+    resample and standardizes over it; a resample whose outcome happens to be separated is kept
+    at the likelihood's limit (:func:`logistic_fit`), and one that cannot be fit at all is left
+    out and counted. ``n_boot = 0``: the point estimate alone."""
+    def estimate(rows_X: pd.DataFrame, rows_y: np.ndarray, limit: bool) -> tuple[float, float, bool]:
         matrix_of = fit(rows_X, rows_y)
-        beta = logistic_mle(matrix_of(rows_X), rows_y)
+        model = logistic_fit(matrix_of(rows_X), rows_y, limit=limit)
         low = matrix_of(counterfactual(rows_X, exposure, setting, side="low", energy=energy))
         high = matrix_of(counterfactual(rows_X, exposure, setting, side="high", energy=energy))
-        return standardized_risks(beta, low, high)
+        return (*standardized_risks(model, low, high), model.limit)
 
     y = np.asarray(y, dtype=float)
-    r0, r1 = estimate(X, y)
+    r0, r1, _ = estimate(X, y, False)
     out = Standardized(setting=setting.label, risk_low=r0, risk_high=r1, rd=r1 - r0,
                        rr=r1 / r0 if r0 > 0 else float("nan"), by_unit=unit_column)
     if n_boot <= 0:
         return out
     rds: list[float] = []
     rrs: list[float] = []
-    failed = 0
+    failed = at_limit = undefined = infinite = 0
+    reason = None
     draws = resample_indices(len(X), n_boot, seed, units)
     for b, idx in enumerate(draws):
         if cancelled is not None and cancelled():
             raise InterruptedError("cancelled")
         try:
-            b0, b1 = estimate(X.iloc[idx].reset_index(drop=True), y[idx])
-        except (Unestimable, ValueError, np.linalg.LinAlgError):
+            b0, b1, limit = estimate(X.iloc[idx].reset_index(drop=True), y[idx], True)
+        except (Unestimable, ValueError, np.linalg.LinAlgError) as exc:
             failed += 1
+            reason = reason or str(exc)
             continue
+        at_limit += int(limit)
         rds.append(b1 - b0)
-        rrs.append(b1 / b0 if b0 > 0 else float("nan"))
+        if b0 > 0:
+            rrs.append(b1 / b0)
+        elif b1 > 0:
+            rrs.append(math.inf)
+            infinite += 1
+        else:
+            undefined += 1
         if progress is not None:
             progress(b + 1, n_boot)
     out.rd_low, out.rd_high = percentile(rds)
     out.rr_low, out.rr_high = percentile(rrs)
-    out.n_boot, out.n_failed = n_boot, failed
+    out.n_boot, out.n_failed, out.n_limit = n_boot, failed, at_limit
+    out.failed_reason, out.n_rr_undefined, out.n_rr_infinite = reason, undefined, infinite
     return out
 
 
@@ -461,44 +693,64 @@ def period_hazard_ratios(X: np.ndarray, y: np.ndarray, exposure: int, cut: float
 # ── diagnostics: influence ───────────────────────────────────────────────────
 
 
-def _hat(Xw: np.ndarray) -> np.ndarray:
-    Q, R = np.linalg.qr(Xw)
-    keep = np.abs(np.diag(R)) > 1e-10 * max(1.0, float(np.max(np.abs(np.diag(R)))))
-    Q = Q[:, keep]
-    return np.einsum("ij,ij->i", Q, Q)
+def _hat(Xw: np.ndarray, kept: Sequence[int] | None = None) -> np.ndarray:
+    """The hat matrix's diagonal: each row's squared length in an orthonormal basis of the span of
+    the columns ``lm`` keeps (:func:`column_basis`), so an aliased column, wherever it sits, leaves
+    the span (and the leverage) as R's ``hatvalues`` has it; a leverage within
+    :data:`LEVERAGE_ONE` of 1 is 1, as R's ``lm.influence`` rounds it."""
+    Xw = np.asarray(Xw, dtype=float)
+    kept = column_basis(Xw) if kept is None else list(kept)
+    Q, _ = np.linalg.qr(Xw[:, kept])
+    h = np.einsum("ij,ij->i", Q, Q)
+    h[h > 1.0 - LEVERAGE_ONE] = 1.0
+    return h
+
+
+def _cooks(scaled: np.ndarray, h: np.ndarray, p: int) -> np.ndarray:
+    """``(r_i / (1 − h_i))² h_i / p`` for the scaled residuals ``r_i``; NaN where the leverage is
+    1, as R's ``cooks.distance`` reports it (``res[is.infinite(res)] <- NaN``)."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        D = (scaled / (1.0 - h)) ** 2 * h / p
+    D[h >= 1.0] = np.nan
+    return D
 
 
 def ols_influence(X: np.ndarray, y: np.ndarray) -> dict[str, np.ndarray | float]:
     """Each row's leverage ``h_i`` and Cook's distance ``D_i = e_i² h_i / (p s² (1 − h_i)²)``,
-    ``s²`` the residual variance on n − p, as R's ``hatvalues`` and ``cooks.distance`` give them
-    for ``lm``; ``X`` carries its intercept column."""
+    ``s²`` the residual variance on n − p and p the rank, as R's ``hatvalues`` and
+    ``cooks.distance`` give them for ``lm``; ``X`` carries its intercept column. A row with
+    leverage 1 has no distance (NaN), as in R."""
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
-    h = _hat(X)
-    p = int(round(h.sum()))
-    beta = np.linalg.lstsq(X, y, rcond=None)[0]
-    e = y - X @ beta
+    kept = column_basis(X)
+    h = _hat(X, kept)
+    p = len(kept)
+    beta = np.linalg.lstsq(X[:, kept], y, rcond=None)[0]
+    e = y - X[:, kept] @ beta
     s2 = float(e @ e) / (len(y) - p)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        D = e ** 2 * h / (p * s2 * (1.0 - h) ** 2)
-    return {"leverage": h, "cooks": D, "p": p, "n": len(y)}
+    D = _cooks(e / np.sqrt(s2), h, p)
+    return {"leverage": h, "cooks": D, "p": p, "n": len(y),
+            "leverage_one": int(np.sum(h >= 1.0)), "aliased": X.shape[1] - p}
 
 
 def logistic_influence(X: np.ndarray, y: np.ndarray, beta: np.ndarray | None = None) -> dict[str, Any]:
     """A logistic model's leverage (the diagonal of ``W½ X (XᵀWX)⁻¹ Xᵀ W½``) and Cook's distance
     ``D_i = (r_i / (1 − h_i))² h_i / p`` from the Pearson residuals ``r_i`` (dispersion 1), as R's
-    ``hatvalues`` and ``cooks.distance`` give them for a binomial ``glm``."""
+    ``hatvalues`` and ``cooks.distance`` give them for a binomial ``glm``: an aliased column is
+    left out of the fit (its coefficient NA in R), p is the rank, and a row with leverage 1 has no
+    distance (NaN)."""
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
-    beta = logistic_mle(X, y) if beta is None else np.asarray(beta, dtype=float)
-    mu = _expit(X @ beta)
+    kept = column_basis(X)
+    Z = X[:, kept]
+    mu = _expit(Z @ logistic_mle(Z, y)) if beta is None else _expit(X @ np.asarray(beta, float))
     w = mu * (1.0 - mu)
-    h = _hat(X * np.sqrt(w)[:, None])
-    p = int(round(h.sum()))
+    h = _hat(Z * np.sqrt(w)[:, None], list(range(Z.shape[1])))
+    p = len(kept)
     pearson = (y - mu) / np.sqrt(w)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        D = (pearson / (1.0 - h)) ** 2 * h / p
-    return {"leverage": h, "cooks": D, "p": p, "n": len(y)}
+    D = _cooks(pearson, h, p)
+    return {"leverage": h, "cooks": D, "p": p, "n": len(y),
+            "leverage_one": int(np.sum(h >= 1.0)), "aliased": X.shape[1] - p}
 
 
 def cook_threshold(p: int, n: int) -> float:
@@ -660,27 +912,44 @@ class Benchmark:
     r2yxj: float  # … with the outcome, given the exposure and the other covariates
     r2dz: float  # the bound on a confounder k times as strong: with the exposure
     r2yz: float  # … and with the outcome
-    estimate: float  # the estimate once such a confounder is adjusted for
-    se: float
-    ci_low: float
-    ci_high: float
+    estimate: float  # the estimate once such a confounder is adjusted for (algebraic: no se)
+    # The adjusted standard error and interval rest on the classical standard error; None when the
+    # interval reported is not the classical one (:data:`CLASSICAL`).
+    se: float | None
+    ci_low: float | None
+    ci_high: float | None
     kd: float = 1.0
+
+
+# The covariances under which the reported interval is the classical least-squares one that
+# sensemakr's interval algebra assumes: ``lm``'s own (``model`` is the inference tables' name for
+# it, as the feature-wise family reports it).
+CLASSICAL = ("classical", "model")
 
 
 @dataclass
 class LinearSensitivity:
-    """The Cinelli–Hazlett analysis of one least-squares coefficient."""
+    """The Cinelli–Hazlett analysis of one least-squares coefficient.
+
+    What rests on the point estimate alone is algebraic, whatever standard error the reported
+    interval uses: the partial R², RV_q, and each benchmark's bounds and adjusted estimate (the
+    omitted-variable bias of the least-squares coefficient; Cinelli & Hazlett 2020, §4). RV_{q,α}
+    and the benchmarks' adjusted intervals rest on the classical standard error; when the reported
+    interval is not classical (HC3, cluster-robust), they would describe an interval nobody was
+    shown, so they are not reported and ``interval_note`` says why."""
 
     exposure: str
     estimate: float
-    se: float  # classical, as ``lm`` reports it
+    se: float  # classical, as ``lm`` reports it: the algebra's, not necessarily the one shown
     t: float
     dof: float
     partial_r2: float  # the exposure's partial R² with the outcome
     rv: float  # RV_q (q = 1): enough to bring the estimate to zero
-    rv_alpha: float  # RV_{q,α} (α = 0.05): enough to bring the interval to include zero
+    rv_alpha: float | None  # RV_{q,α} (α = 0.05): enough to bring the interval to include zero
     benchmarks: list[Benchmark] = field(default_factory=list)
     alpha: float = 0.05
+    covariance: str = "classical"  # the reported interval's covariance
+    interval_note: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -697,25 +966,46 @@ def _ols(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
 
 def linear_sensitivity(matrix: pd.DataFrame, y: np.ndarray, exposure: str,
                        benchmarks: Mapping[str, Sequence[str]] | None = None, *,
-                       kd: float = 1.0, alpha: float = 0.05) -> LinearSensitivity:
+                       kd: float = 1.0, alpha: float = 0.05, covariance: str = "classical",
+                       shown_se: float | None = None) -> LinearSensitivity:
     """The robustness value and partial R² of the coefficient of ``exposure`` (one column of the
     model matrix, which carries no intercept: one is added) in the least-squares model of ``y``,
     and for each benchmark (a name and the matrix columns it is made of: one, or a categorical
     covariate's indicators) the bounds and adjusted estimate for a confounder ``kd`` times as
-    strong, as R's ``sensemakr(model, treatment, benchmark_covariates, kd)`` reports them."""
+    strong, as R's ``sensemakr(model, treatment, benchmark_covariates, kd)`` reports them.
+
+    ``covariance`` is the reported interval's (``shown_se`` its standard error): unless it is the
+    classical one (:data:`CLASSICAL`), RV_{q,α} and the benchmarks' adjusted intervals are not
+    reported (:class:`LinearSensitivity`)."""
     cols = [str(c) for c in matrix.columns]
     if exposure not in cols:
         raise ValueError(f"`{exposure}` is not a column of the model matrix")
     X = np.column_stack([np.ones(len(matrix)), matrix.to_numpy(dtype=float)])
     names = ["(intercept)", *cols]
+    # An aliased column is left out, as ``lm`` reports its coefficient NA; a benchmark made only
+    # of aliased columns has no coefficient to benchmark against, and the exposure must have one.
+    kept = column_basis(X)
+    if names.index(exposure) not in kept:
+        raise Unestimable(f"`{exposure}` is aliased with the covariates, so it has no coefficient")
+    X, names = X[:, kept], [names[k] for k in kept]
     y = np.asarray(y, dtype=float)
     beta, cov, dof = _ols(X, y)
     j = names.index(exposure)
     est, se = float(beta[j]), float(math.sqrt(cov[j, j]))
     t = est / se
+    classical = covariance in CLASSICAL
+    note = None
+    if not classical:
+        shown = f", {shown_se:.3g}" if shown_se is not None else ""
+        note = (f"The robustness value for the 95% interval and the benchmarks' adjusted intervals "
+                f"rest on the classical least-squares standard error ({se:.3g}), as sensemakr "
+                f"computes them; the interval reported uses {covariance} standard errors{shown}, so "
+                f"they are not reported: they would describe an interval that is not the one "
+                f"shown.")
     out = LinearSensitivity(exposure=exposure, estimate=est, se=se, t=t, dof=dof,
                             partial_r2=partial_r2(t, dof), rv=robustness_value(t, dof, alpha=1.0),
-                            rv_alpha=robustness_value(t, dof, alpha=alpha), alpha=alpha)
+                            rv_alpha=robustness_value(t, dof, alpha=alpha) if classical else None,
+                            alpha=alpha, covariance=covariance, interval_note=note)
     if not benchmarks:
         return out
     others = [k for k in range(X.shape[1]) if k != j]
@@ -736,9 +1026,11 @@ def linear_sensitivity(matrix: pd.DataFrame, y: np.ndarray, exposure: str,
         except Unestimable:
             continue
         adj = adjusted_for_confounder(est, se, dof, r2dz, r2yz, alpha=alpha)
-        out.benchmarks.append(Benchmark(covariate=str(label), r2dxj=r2d, r2yxj=r2y, r2dz=r2dz,
-                                        r2yz=r2yz, estimate=adj["estimate"], se=adj["se"],
-                                        ci_low=adj["ci_low"], ci_high=adj["ci_high"], kd=kd))
+        out.benchmarks.append(Benchmark(
+            covariate=str(label), r2dxj=r2d, r2yxj=r2y, r2dz=r2dz, r2yz=r2yz,
+            estimate=adj["estimate"], se=adj["se"] if classical else None,
+            ci_low=adj["ci_low"] if classical else None,
+            ci_high=adj["ci_high"] if classical else None, kd=kd))
     return out
 
 
@@ -756,7 +1048,8 @@ def unmeasured_confounding(*, measure: str, estimate: float, ci_low: float | Non
                            outcome_share: float | None = None, outcome_sd: float | None = None,
                            matrix: pd.DataFrame | None = None, y: np.ndarray | None = None,
                            exposure_column: str | None = None,
-                           benchmarks: Mapping[str, Sequence[str]] | None = None) -> dict[str, Any]:
+                           benchmarks: Mapping[str, Sequence[str]] | None = None,
+                           covariance: str = "classical") -> dict[str, Any]:
     """Sensitivity to unmeasured confounding for one inference estimate (MODELING_SEQUENCE §0
     ruling 10): the function every inference result calls, and the one the causal lane must.
 
@@ -766,6 +1059,7 @@ def unmeasured_confounding(*, measure: str, estimate: float, ci_low: float | Non
     share) decides whether an odds or hazard ratio is read as a risk ratio (rare: below
     :data:`RARE_OUTCOME`) or converted. For a linear outcome, ``matrix``/``y``/``exposure_column``
     give the robustness value and ``benchmarks`` its named comparisons; it ranks first.
+    ``covariance`` is the reported interval's (:func:`linear_sensitivity`).
 
     Returns ``{"methods": [...], "e_value": {...} | None, "robustness": {...} | None}``, the
     analyses in rank order, never a pass/fail verdict."""
@@ -773,7 +1067,8 @@ def unmeasured_confounding(*, measure: str, estimate: float, ci_low: float | Non
     out: dict[str, Any] = {"methods": [], "e_value": None, "robustness": None, "rare": rare}
     if measure == "mean_difference":
         if matrix is not None and y is not None and exposure_column is not None:
-            out["robustness"] = linear_sensitivity(matrix, y, exposure_column, benchmarks).as_dict()
+            out["robustness"] = linear_sensitivity(matrix, y, exposure_column, benchmarks,
+                                                   covariance=covariance, shown_se=se).as_dict()
             out["methods"].append("robustness_value")
         if outcome_sd is not None and outcome_sd > 0:
             out["e_value"] = e_values(estimate, measure="OLS", sd=outcome_sd, se=se)
@@ -790,11 +1085,13 @@ def unmeasured_confounding(*, measure: str, estimate: float, ci_low: float | Non
 
 
 __all__ = [
-    "APPENDIX_TITLE", "BOOT", "Benchmark", "COMMON_OUTCOME", "LinearSensitivity", "PH_ALPHA",
-    "RARE_OUTCOME", "Setting", "Standardized", "Unestimable", "adjusted_for_confounder",
-    "benchmark_bounds", "cook_threshold", "counterfactual", "cox_zph", "e_value_rr", "e_values",
-    "g_computation", "group_partial_r2", "linear_sensitivity", "logistic_influence",
-    "logistic_mle", "ols_influence", "partial_r2", "percentile", "period_hazard_ratios",
-    "resample_indices", "robustness_value", "settings_of", "split_follow_up", "split_rows",
-    "standardized_risks", "time_scale", "to_risk_ratio", "unmeasured_confounding",
+    "ALIAS_TOL", "APPENDIX_TITLE", "BOOT", "Benchmark", "CLASSICAL", "COMMON_OUTCOME",
+    "LEVERAGE_ONE", "LinearSensitivity", "LogisticFit", "PH_ALPHA", "RARE_OUTCOME", "Separated",
+    "Setting", "Standardized", "Unestimable", "adjusted_for_confounder", "benchmark_bounds",
+    "column_basis", "cook_threshold", "counterfactual", "cox_zph", "e_value_rr", "e_values",
+    "g_computation", "group_partial_r2", "linear_sensitivity", "logistic_fit",
+    "logistic_influence", "logistic_mle", "ols_influence", "partial_r2", "percentile",
+    "period_hazard_ratios", "resample_indices", "robustness_value", "separated_rows",
+    "settings_of", "split_follow_up", "split_rows", "standardized_risks", "time_scale",
+    "to_risk_ratio", "unmeasured_confounding",
 ]
