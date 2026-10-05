@@ -343,7 +343,9 @@ def test_6_the_server_calibrates_the_residual_protein_as_an_independent_refit_do
     frame, _ = recalls
     cal, fit = runs["residual"], runs["fit"]
     assert cal["applies"] and cal["purpose"] == "inference" and cal["rows"] == "all eligible rows"
-    features = {c["feature"] for c in fit["models"][0]["coefficients"]}
+    from turbotab.core.tests.acceptance.server_drive import every_row
+
+    features = {c["feature"] for c in every_row(fit["models"][0])}  # energy: an adjustment term
     ref = reference(frame, energy_in_model="energy_kcal" in features)
     assert cal["n_persons"] == ref["n"] and cal["recalls"] == {"2": ref["n"]}
     (exposure,) = cal["exposures"]

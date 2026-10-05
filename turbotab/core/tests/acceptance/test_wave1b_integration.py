@@ -9,6 +9,9 @@ places where they meet wave 1a, each a rule one package wrote that the other's m
   scope the lockbox test (constitution §06) observes by perturbation. MODELING_SEQUENCE §1.1's
   inference order holds in it: the copies are drawn first, then each copy's scale scores, then
   each copy's design-based fit.
+* **The declared models impute as the fit does** (MS2 and wave 2a's ESTIMAND). Table 2's model
+  sequence is pooled over its own imputations; under the population answer their imputation
+  model holds the survey design and Rubin's rules its df, as the coefficient table's does.
 * **Two times on the follow-up's scale** (the routing gate and MS6). The routing gate's repair
   (landed beside wave 1b) made ``horizon`` the end of follow-up: events after it are censored
   there, so the outcome changes. MS6 had named the time predicted risks are scored and calibrated
@@ -62,6 +65,9 @@ def test_every_wave1b_method_enters_through_the_one_registry():
     copy's design-based fit, then the evaluation."""
     registry = C.contracts()
     assert set(WAVE1B) <= set(registry)
+    for package, keys in (("MI", MI_CONTRACTS), ("VALID", VALIDATION_CONTRACTS),
+                          ("SURVEY", SURVEY_CONTRACTS)):
+        assert {k for k, c in registry.items() if c.package == package} == set(keys), package
     assert set(DECLARING) <= set(C.DECLARING_MODULES)
     for name in DECLARING:
         module = importlib.import_module(name)
@@ -435,3 +441,43 @@ def test_follow_up_ends_at_its_horizon_and_risks_are_judged_at_the_prediction_ho
 
     assert ended_by(2.5) == (2.5, 2.0)
     assert ended_by(1.5) == (1.5, None)
+
+
+# ── the declared models impute as the fit does ───────────────────────────────
+
+
+def test_the_declared_models_imputation_holds_the_survey_design_under_the_population_answer(
+        tmp_path):
+    """MODELING_SEQUENCE §2: a survey design with a population estimand implies the design's
+    variables in the imputation model and ν_com = the design df. Wave 2a's effects stage (Table 2's
+    crude model, Model 1 and the primary) imputes on its own; under the population answer with
+    multiple imputation its record names the strata, the PSU and the weight in the imputation
+    model, its complete-data df is the design's (PSUs minus strata, counted by pandas over the
+    analyzed rows), and every pooled row's Barnard–Rubin df is at most that."""
+    from turbotab.core import decisions as d
+    from turbotab.core.tests.acceptance import estimand_fixtures as ef
+
+    frame = ef.cohort(400, seed=17, prevalence=0.3)
+    rng = np.random.default_rng(5)
+    frame["sampling_weight"] = rng.uniform(0.5, 3.0, len(frame))
+    frame["stratum"] = rng.integers(1, 5, len(frame))
+    frame["psu"] = frame["stratum"] * 10 + rng.integers(1, 3, len(frame))
+    frame.loc[rng.random(len(frame)) < 0.12, "age"] = np.nan
+    roles = {**ef.ROLES, "sampling_weight": "design", "stratum": "design", "psu": "design"}
+    survey = d.SurveySpec(estimand="population", weight="sampling_weight", strata="stratum",
+                          psu="psu")
+    st = ef.state(target="glucose", task="regression", measure="mean_difference", roles=roles,
+                  survey=survey, missing={"strategy": "multiple_imputation"},
+                  amounts={**ef.AMOUNTS, "code_or_count:stratum": "code",
+                           "code_or_count:psu": "code"})
+    run = ef.run(frame, tmp_path, st, fit=False)
+    design_df = frame.groupby(["stratum", "psu"]).ngroups - frame["stratum"].nunique()
+    for key, model in ef.sequence(run["effects"]).items():
+        info = model["inference"]
+        record = info["missing"]
+        assert info["covariance"] == "design", key
+        assert (record["design_strata"], record["design_psu"], record["design_weight"]) == \
+            ("stratum", "psu", "sampling_weight"), key
+        assert record["df_com"] == design_df, key
+        rows = [r for r in model["effects"] if r.get("df") is not None]
+        assert rows and all(0 < r["df"] <= design_df + 1e-9 for r in rows), key

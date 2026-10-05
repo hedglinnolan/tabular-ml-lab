@@ -836,7 +836,8 @@ def _register_contracts() -> None:
     def contract(key: str, label: str, **fields: Any) -> None:
         register_contract(MethodContract(key=key, label=label, slot="evaluation",
                                          scope="training_fold", scope_note=_SCOPE, decision="set_split",
-                                         stage="fit", place="11 · Tuning and comparison", **fields))
+                                         stage="fit", place="11 · Tuning and comparison",
+                                         package="VALID", **fields))
 
     contract(
         "proper_primary", "A strictly proper primary score", run_order=1.0,

@@ -348,6 +348,41 @@ def representative_decisions():
         # The NCI usual-intake method: one component's distribution, with the EAR's share
         d.SetUsualIntake(nutrient="protein_g", model="amount_only", order_column="recall",
                          weekend=["weekend"], cutoff=46, cutoff_kind="EAR"),
+        # ESTIMAND (MODELING_SEQUENCE §1 rows 2 and 11): a marginal measure, a family's
+        # multiplicity, the declared model sequence and a failed diagnostic's response
+        d.SetEstimand(exposure="fiber_g", measure="risk_difference"),
+        d.SetEstimand(family=True, measure="mean_difference", multiplicity="count_stated"),
+        d.SetModelSequence(exposure="protein_g", model_1=["age", "sex", "energy_kcal"]),
+        d.SetModelSequence(exposure="protein_g", model_1=[]),
+        d.RespondDiagnostic(exposure="protein_g", check="proportional_hazards",
+                            action="period_hazard_ratios"),
+        d.RespondDiagnostic(exposure="protein_g", check="influence", action="keep_labeled"),
+        # The causal lane (turbotab/core/causal.py): none beside the primary, DML with its
+        # assumptions declared, TMLE trimmed to the overlap population, post-double selection
+        d.SetCausal(exposure="protein_g", method="none"),
+        d.SetCausal(exposure="protein_g", method="dml_plr", learner="random_forest",
+                    assumptions=["no_unmeasured_confounding", "positivity", "consistency",
+                                 "time_ordering"]),
+        d.SetCausal(exposure="smoker", method="tmle", learner="linear", trim=0.1,
+                    assumptions=["no_unmeasured_confounding", "positivity", "consistency",
+                                 "time_ordering"]),
+        d.SetCausal(exposure="protein_g", method="pds_lasso", sample_only=True,
+                    assumptions=["no_unmeasured_confounding", "positivity", "consistency",
+                                 "time_ordering"]),
+        # V2 causal row: a time-varying exposure's lane, each method
+        d.SetTimeVarying(exposure="supplement", method="msm_iptw",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"],
+                         baseline=["age", "sex"], censoring="lost", truncation="p1_p99"),
+        d.SetTimeVarying(exposure="supplement", method="msm_iptw", pattern="initiation",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"]),
+        d.SetTimeVarying(exposure="supplement", method="gformula",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"],
+                         baseline=["age"]),
+        d.SetTimeVarying(exposure="supplement", method="standard",
+                         ordering="exposure_precedes_outcome", acknowledged=True),
+        # Wave 2, EXPLAIN: the fitted models described (models/explain.py)
+        d.SetExplain(),
+        d.SetExplain(curves="partial_dependence", exposures=["protein_g", "fiber_g"], reseeds=0),
     ]
 
 

@@ -811,7 +811,10 @@ class ProjectService:
         # What the Router reads, when fresh (WP17: the roles stage's proposals name the groupings
         # the cluster question asks about; WP18: the proposals for the ask card, whose "read from
         # your data" reads the roles, the outcome and the proposals as GET /readings does).
-        for stage in ("target_info", "oriented", "structure", "roles", "proposals"):
+        # The causal lane: its card says whether the causal question is asked or stated; the
+        # time-varying lane (V2 causal row) reads whether the exposure changes within units.
+        for stage in ("target_info", "oriented", "structure", "roles", "proposals", "causal_design",
+                      "time_varying"):
             status = stages.get(stage)
             if status is not None and status.status == "fresh" and status.key:
                 artifacts[stage] = self._artifact(pid, stage, status.key, public=True)
@@ -1207,6 +1210,14 @@ class ProjectService:
                                   "seen_at": shown.get("seq")}, system=True)
             except Refusal:
                 log.exception("the analysis plan of %s could not be locked", pid)
+
+    def plan(self, pid: str) -> bytes:
+        """The analysis-plan export (ESTIMAND; MODELING_SEQUENCE §1 row 12): canonical JSON of the
+        plan as the decision log holds it, with its timestamp and SHA-256 (``plan_lock.plan_export``)."""
+        from turbotab.core.plan_lock import plan_export
+
+        self.workspace.get(pid)
+        return plan_export(self.log(pid).records())
 
     def methods(self, pid: str) -> Any:
         """The methods text built from the decision log (``turbotab.core.provenance``)."""

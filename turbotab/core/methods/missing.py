@@ -1411,7 +1411,7 @@ def _register_contracts() -> None:
         ),
         sources=_MI_SOURCES, decision="set_missing", stage="fit", place="6 · Missing data",
         sentence=_MI_SENTENCE,
-        leash={"inference": "recommended", "prediction": "refused"}))
+        leash={"inference": "recommended", "prediction": "refused"}, package="MI"))
 
     register_contract(MethodContract(
         key="multiple_imputation_passive",
@@ -1438,7 +1438,7 @@ def _register_contracts() -> None:
         ),
         sources=_MI_SOURCES, decision="set_missing", stage="fit", place="6 · Missing data",
         sentence=_MI_SENTENCE,
-        leash={"inference": "block_and_record", "prediction": "refused"}))
+        leash={"inference": "block_and_record", "prediction": "refused"}, package="MI"))
 
     register_contract(MethodContract(
         key="multiple_imputation_single_level",
@@ -1463,7 +1463,7 @@ def _register_contracts() -> None:
         ),
         sources=_MI_SOURCES, decision="set_missing", stage="fit", place="6 · Missing data",
         sentence=_MI_SENTENCE,
-        leash={"inference": "block_and_record", "prediction": "refused"}))
+        leash={"inference": "block_and_record", "prediction": "refused"}, package="MI"))
 
     register_contract(MethodContract(
         key="imputed_copies_pooled",
@@ -1499,7 +1499,7 @@ def _register_contracts() -> None:
         ),
         sources=("NCHS, NHANES DXA multiple imputation data files (2008)", "Rubin 1987"),
         decision="set_repeat_kind", stage="fit", place="6 · Missing data", sentence=_MI_SENTENCE,
-        leash={"inference": "recommended", "prediction": "available"}))
+        leash={"inference": "recommended", "prediction": "available"}, package="MI"))
 
 
 _register_contracts()

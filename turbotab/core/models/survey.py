@@ -1010,7 +1010,8 @@ def _register_contracts() -> None:
         register_contract(MethodContract(
             key=key, label=label, decision="set_survey", stage="fit",
             place="9 · The shelf, under the population answer", leash={
-                "inference": "recommended", "prediction": "not_offered"}, **fields))
+                "inference": "recommended", "prediction": "not_offered"}, package="SURVEY",
+            **fields))
 
     contract(
         "survey_linear", "survey-weighted linear, logistic and multinomial models",

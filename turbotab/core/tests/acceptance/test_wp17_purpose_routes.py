@@ -546,18 +546,23 @@ def test_3_the_criterion_derives_each_role_from_the_answers():
 
 def test_3_the_effect_measure_offers_only_what_the_engine_fits():
     """Ruling 9 (MODELING_SEQUENCE §0): the measure is part of the estimand, and only the
-    engine's own measures are offered; the marginal ones are named and refused with the reason."""
+    engine's own measures are offered. Since the package ESTIMAND a yes/no outcome's marginal risk
+    difference and ratio are fitted (g-computation, ``test_estimand_2_g_computation.py``); another
+    task's request for them is named and refused with the reason."""
     assert [m["measure"] for m in estimand.measures_offered("binary")] == [
         "odds_ratio", "risk_difference", "risk_ratio"]
-    assert [m["fitted"] for m in estimand.measures_offered("binary")] == [True, False, False]
+    assert [m["fitted"] for m in estimand.measures_offered("binary")] == [True, True, True]
     state = ProjectState(target="dm", task="binary", purpose="inference",
                          roles={"fiber_g": "exposure", "age": "covariate"},
                          role_confirmations={"fiber_g": "exposure", "age": "covariate"})
+    d.validate({"kind": "set_estimand", "exposure": "fiber_g", "measure": "risk_ratio"},
+               {"state": state, "task": "binary"})
     with pytest.raises(Refusal) as refused:
         d.validate({"kind": "set_estimand", "exposure": "fiber_g", "measure": "risk_ratio"},
-                   {"state": state, "task": "binary"})
+                   {"state": state.model_copy(update={"task": "time_to_event"}),
+                    "task": "time_to_event"})
     assert refused.value.code == "measure_not_fitted"
-    assert refused.value.exits[0]["decision"]["measure"] == "odds_ratio"
+    assert refused.value.exits[0]["decision"]["measure"] == "hazard_ratio"
     with pytest.raises(Refusal) as refused:
         d.validate({"kind": "set_estimand", "exposure": "fiber_g", "measure": "odds_ratio"},
                    {"state": state.model_copy(update={"purpose": "prediction"}), "task": "binary"})

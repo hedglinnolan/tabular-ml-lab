@@ -1412,8 +1412,19 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
         found = task_reading(target, task, detection.get("confidence"), values=values)
         if found.settled:
             task = str(found.value)
-    out["estimand"] = estimand_card(state, task)
+    # ESTIMAND (ruling 9): a yes/no outcome's event share ranks the marginal measures.
+    from turbotab.core.estimand import event_share
+
+    share = (event_share(frame[target], state.event)
+             if task == "binary" and target and target in frame.columns else None)
+    out["estimand"] = estimand_card(state, task, prevalence=share)
     out["adjustment"] = adjustment_card(state)
+    # ESTIMAND (MODELING_SEQUENCE §1 row 11): Model 1 is declared beside the adjustment answers,
+    # before any estimate is displayed (the effects stage reports the sequence).
+    from turbotab.core.estimand import adjustment_answer, model_sequence_card
+
+    out["model_sequence"] = (model_sequence_card(state)
+                             if adjustment_answer(state) is not None else None)
     return out
 
 

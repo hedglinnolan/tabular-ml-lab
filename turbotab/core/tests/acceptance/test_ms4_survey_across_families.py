@@ -874,9 +874,12 @@ def test_4_the_nhanes_mortality_chain_runs_through_the_server(tmp_path):
     (tmp_path / "r").mkdir()
     np.savetxt(tmp_path / "r" / "knots.txt", tests["overall"]["knots"])
     r = run_r(CHAIN_R, {"f": f}, tmp_path / "r")
-    assert [row["feature"] for row in model["coefficients"]][:3] == ["fiber", "fiber'", "fiber''"]
-    assert rel([row["estimate"] for row in model["coefficients"]], r["est"]) < 1e-6
-    assert rel([row["se"] for row in model["coefficients"]], r["se"]) < 1e-4
+    # ESTIMAND's Table 2 display: the exposure's spline terms are the effect rows; age, sex and
+    # energy are served apart as adjustment terms, in the model's order after them.
+    assert [row["feature"] for row in model["coefficients"]] == ["fiber", "fiber'", "fiber''"]
+    terms = [*model["coefficients"], *model["adjustment_terms"]]
+    assert rel([row["estimate"] for row in terms], r["est"]) < 1e-6
+    assert rel([row["se"] for row in terms], r["se"]) < 1e-4
     df = r["degf"]
     assert model["inference"]["survey"]["df"] == df == 16
     for name, q in (("overall", 3), ("nonlinear", 2)):
