@@ -202,8 +202,10 @@ class EffectsArtifact(_Model):
     methods: str
 
 
-EFFECTS_READS = ("adjustment", "estimand", "model_sequence", "diagnostic_responses", "clusters",
-                 "purpose", "models", "task", "event", "target", "roles", "roles_unconfirmed",
+# ``multiplicity``: a family's one method (MS7's ``set_multiplicity`` or the estimand card's), which
+# the feature-wise table carries in every declared model.
+EFFECTS_READS = ("adjustment", "estimand", "multiplicity", "model_sequence", "diagnostic_responses",
+                 "clusters", "purpose", "models", "task", "event", "target", "roles", "roles_unconfirmed",
                  "role_confirmations", "reading_confirmations", "shape_confirmations", "missing",
                  "survey", "outcome_order", "follow_up", "categorical", "energy_adjustment",
                  "grain", "exposure_forms", "lens", "findings", "column_units", "split")

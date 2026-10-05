@@ -102,6 +102,7 @@ ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11 and 12; turbotab/core/stages/effects.
     primary, Model 3), its adjustment terms apart, the marginal risk difference and ratio when the
     estimand declares one, the primary's diagnostics and their recorded responses, and its
     sensitivity to unmeasured confounding.
+
 The causal lane (V2 definition of done §2; ``turbotab/core/causal.py``):
 
     causal_design heavy  deps: working, split, target_info   reads the plan …; requires estimand

@@ -207,6 +207,12 @@ def test_a_recorded_method_reaches_the_fit_and_the_effects_stage_alike(tmp_path)
         assert all(r["q"] is None for r in model["effects"]), model["key"]
     assert run["effects"]["multiplicity"].startswith(
         "6 exposures were tested, each in turn; p-values are not adjusted for multiplicity")
+    # A later set_multiplicity recomputes both: each stage reads the one slot.
+    from turbotab.core.graph import load_graph
+    from turbotab.core.stages import GRAPH_FACTORY
+
+    graph = load_graph(GRAPH_FACTORY)
+    assert "multiplicity" in graph["fit"].reads and "multiplicity" in graph["effects"].reads
 
 
 # ── the causal lane's sensitivity is ESTIMAND's ──────────────────────────────
