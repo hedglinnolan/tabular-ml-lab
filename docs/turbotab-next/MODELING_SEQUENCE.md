@@ -108,6 +108,18 @@ touched.
     Full two-level FCS goes to INBOX. Single-level imputation on clustered rows is block-and-record
     under inference.
 
+13. **Cross-validated scores under the surveyed population (2026-10-05, from REPAIR-SURVEY's open
+    question).** Prediction then estimates performance *in the population*. Folds keep whole PSUs
+    together within strata, and every loss, calibration and comparison is survey-weighted (Wieczorek,
+    Guerin & McMahon 2022, *Stat* 11:e454, design-based K-fold CV). The record labels these
+    "design-based cross-validation". Under the sample answer, scores stay unweighted, labeled as the
+    procedure's performance on these rows. Under inference no cross-validated score is shown (§1 row
+    11).
+14. **The E-value of a difference is standardized by the SD the estimand speaks of.** Under the
+    surveyed-population answer that is the design-weighted SD of the outcome; under the sample answer
+    it is the sample SD (VanderWeele & Ding 2017's approximation RR ≈ exp(0.91·d)). The effects
+    stage and the causal lane use the same SD.
+
 Everything else in the review is accepted as written in §1–§4.
 
 ## 1 · The sequence (question order)
