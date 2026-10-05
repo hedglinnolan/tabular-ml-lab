@@ -61,7 +61,7 @@ from turbotab.core.models.base import ModelFamily
 from turbotab.core.models.steps import energy_step
 
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
-ADJUST_STEPS = ("detect", "normalize", "impute", "energy")  # the steps whose outputs form the lineage's "adjusted" lane
+ADJUST_STEPS = ("detect", "normalize", "impute", "score", "energy")  # the steps whose outputs form the lineage's "adjusted" lane
 MANY_LEVELS = 20
 MISSING_LEVEL = "Missing"
 LEVEL_DTYPES = ("boolean", "categorical", "text")
@@ -287,6 +287,9 @@ class DesignSpec:
     censored: dict[str, Any] | None = None
     # numbers with exactly two values: one indicator either way, filled by their most frequent value
     two_valued: list[str] = field(default_factory=list)
+    # MS8: the declared scales scored after the fill, each ``{name, items, reverse, low, high,
+    # scoring, role}`` (``turbotab.core.methods.scales.ScaleScorer``)
+    scales: list[dict[str, Any]] = field(default_factory=list)
 
     def multiple_imputation(self) -> bool:
         return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
@@ -341,7 +344,14 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     left, amounts = energy_plan(state, inputs)
     declared = {c for c in inputs if confirmation(state, "code_or_count", c) == "code"} \
         - left - amounts
-    categorical = [c for c in inputs if is_categorical(frame[c]) or c in declared]
+    # MS8: a declared scale's items are answers on its response scale by that answer, summed into
+    # its score (``turbotab.core.scales``): never one-hot codes.
+    scales = [{"name": sc.name, "items": list(sc.items), "reverse": list(sc.reverse),
+               "low": sc.low, "high": sc.high, "scoring": sc.scoring, "role": sc.role}
+              for sc in (getattr(state, "scales", None) or [])]
+    scored = {c for sc in scales for c in sc["items"]}
+    categorical = [c for c in inputs if (is_categorical(frame[c]) or c in declared)
+                   and c not in scored]
     numeric = [c for c in inputs if c not in categorical]
     # A number with exactly two values is one indicator either way (``readings.code_question``);
     # its single fill is its most frequent value, as a code's is, never a median between the two.
@@ -361,6 +371,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     from turbotab.core.readings import settled_roles
 
     roles = {str(k): str(v) for k, v in settled_roles(state).items()}
+    roles.update({sc["name"]: sc["role"] for sc in scales})  # a score's role is its scale's
     spec_missing = state.missing.model_dump(mode="json") if getattr(state, "missing", None) else None
     censored = None
     if spec_missing and spec_missing.get("below_detection") in ("half_minimum", "censoring_aware"):
@@ -385,6 +396,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
                                  [c for c in numeric if c not in levels]) if impute else None),
         censored=censored,
         two_valued=two_valued,
+        scales=scales,
     )
 
 
@@ -444,6 +456,11 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
         if parts:
             steps.append(("impute", ColumnTransformer(parts, remainder="passthrough",
                                                       verbose_feature_names_out=False)))
+    scales = getattr(spec, "scales", None) or []
+    if scales:  # MS8: after the fill, so a blank item is filled before its score is formed
+        from turbotab.core.methods.scales import ScaleScorer
+
+        steps.append(("score", ScaleScorer([dict(sc) for sc in scales])))
     step = energy_step(spec.energy_adjustment(), spec.predictors, spec.roles)
     if step is not None:
         steps.append(("energy", step))
@@ -562,6 +579,11 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
 
             out.append({"key": "form", "label": "Exposure form",
                         "detail": describe_forms(step.forms)})
+        elif name == "score":
+            from turbotab.core.methods.scales import describe as describe_scales
+
+            out.append({"key": "score", "label": "Score the scales",
+                        "detail": describe_scales(spec.scales)})
         elif name == "levels":
             cols = [c for c in spec.levels if c in spec.predictors]
             verb = "becomes" if len(cols) == 1 else "become"

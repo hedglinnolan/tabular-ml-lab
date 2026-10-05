@@ -48,6 +48,15 @@ WP12 (AUDIT_REPORT §5, methods a reviewer expects):
     calibration  heavy   deps: oriented, findings, structure, working,      reads measurement_error, energy_adjustment,
                                cohort, design, target_info                   aggregation, purpose …; requires measurement_error, models
 
+MS8 (MODELING_SEQUENCE §0 ruling 8):
+
+    scales       heavy   deps: working, design, split,              reads scales, purpose, models, missing,
+                               target_info, cohort                   roles …; requires scales, models
+
+    ``design`` reads ``scales`` too: each declared scale's items are scored into one column after the
+    fill (``methods.scales.ScaleScorer``). ``scales`` estimates each scale's reliability and, under
+    inference, its corrected coefficient (``stages.scales``).
+
     ``sensitivity`` refits each chosen family on the rows each analysis's exclusion rules keep (the
     primary beside every-row and any other screen; Banna et al. 2017). ``calibration`` corrects
     energy-adjusted exposures for day-to-day error in the recalls each person's row averages
@@ -83,6 +92,7 @@ from turbotab.core.stages.seal import SEAL_READS, seal_plan_stage
 ROLE_READS: tuple[str, ...] = ("roles", "roles_unconfirmed", "role_confirmations",
                                "reading_confirmations", "shape_confirmations")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
+from turbotab.core.stages.scales import SCALES_READS, scales_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
@@ -311,9 +321,10 @@ def build_graph() -> Graph:
             # design 17 (ledger repair 2): a column the energy answer removes or computes with never
             # reaches the one-hot step as codes; a number with two values is filled by its most
             # frequent value.
-            Stage("design", 17, ("working", "split", "target_info"),
+            # design 18 (MS8): a declared scale's items are scored into one column after the fill.
+            Stage("design", 18, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event", "lens", "findings", "exposure_forms", "follow_up"),
+                   "event", "lens", "findings", "exposure_forms", "follow_up", "scales"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -388,6 +399,12 @@ def build_graph() -> Graph:
                   CALIBRATION_READS, calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
                   label="Correcting energy-adjusted intakes for day-to-day error"),
+            # scales 1 (MS8): each declared scale's reliability (ω; α labeled customary) and, under
+            # inference, its coefficient corrected by regression calibration given the covariates,
+            # beside the uncorrected one; items imputed before scoring under multiple imputation.
+            Stage("scales", 1, ("working", "design", "split", "target_info", "cohort"),
+                  SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
+                  label="Estimating each scale's reliability"),
         ]
     )
 

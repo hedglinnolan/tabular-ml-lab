@@ -654,6 +654,8 @@ function slotOf(d: Decision): Slot | null {
       return "sensitivity";
     case "set_measurement_error":
       return "measurement_error";
+    case "set_scales":
+      return "scales";
     case "revert":
       return null;
   }
@@ -764,6 +766,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
       const { kind: _k, ...value } = d;
       return value as ProjectState[Slot];
     }
+    case "set_scales":
+      return d.scales as ProjectState[Slot];
     case "set_follow_up":
       return { time_column: d.time_column, entry_column: d.entry_column ?? null };
     case "set_survey": {
@@ -847,6 +851,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     follow_up: null,
     sensitivity: null,
     measurement_error: null,
+    scales: null,
     outcome_unit: null,
     column_units: null,
     roles_unconfirmed: null,

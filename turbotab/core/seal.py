@@ -614,7 +614,9 @@ PRECISION_NOTE = ("Widths are approximate 95% intervals of a score on that many 
 class SealFloor(_Model):
     """Below this many held-out rows (or events), cross-validation alone is offered first."""
 
-    unit: Literal["rows", "events", "rows in the rarest class"]
+    # "rows in the rarest level": an ordinal outcome's (floor_for wrote it, the type refused it,
+    # and the seal plan failed for every ordinal outcome)
+    unit: Literal["rows", "events", "rows in the rarest class", "rows in the rarest level"]
     n: int
     text: str
     source: str | None  # where the floor comes from, when the literature gives it
