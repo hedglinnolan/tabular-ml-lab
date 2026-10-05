@@ -46,6 +46,13 @@ const LAB_SCREENS: Partial<Record<LabRoute, LazyExoticComponent<ComponentType>>>
             default: m.MethodsMapScreen,
           })),
         ),
+        // The calm structures (static build: calm.html); here the chooser links stay in /lab/calm.
+        calm: lazy(() => import("./explore/calm-kit/LabCalm").then((m) => ({ default: m.LabCalmChooser }))),
+        "calm-qa": lazy(() => import("./explore/calm-qa/Screen").then((m) => ({ default: m.Screen }))),
+        "calm-paper": lazy(() => import("./explore/calm-paper/Screen").then((m) => ({ default: m.Screen }))),
+        "calm-quest": lazy(() => import("./explore/calm-quest/Screen").then((m) => ({ default: m.Screen }))),
+        "calm-map": lazy(() => import("./explore/calm-map/Screen").then((m) => ({ default: m.Screen }))),
+        "calm-kit": lazy(() => import("./explore/calm-kit/KitDemo").then((m) => ({ default: m.KitDemo }))),
       }
     : {};
 

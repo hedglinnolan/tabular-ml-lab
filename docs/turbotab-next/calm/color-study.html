@@ -1,0 +1,491 @@
+<title>TurboTab color system</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: a thin study bar (tabs, light/dark) above the app. The app is one question, its options, and beside them the canvas.
+   Color concept: warm paper is where the app speaks; the cool canvas is where your data speaks. One indigo family means
+   "the choice you are making": hover, selected, the button, and on the canvas exactly what that choice touches.
+   Gray data is your data as it is now. Status colors are reserved; comparison charts use their own five hues. */
+:root {
+  --ground: #F9F5F0; --surface: #FEFCFA; --line: #DCD9D3; --line-strong: #BEBAB3; --ink: #1B1E27; --muted: #575A64; --faint: #71747D; --action: #3B4AB9; --action-hover: #2E39A0; --action-ink: #FBFCFE; --focus: #4E61DE; --hover: #F4F7FF; --selected: #DDE7FF; --selected-line: #6B7FD4; --canvas: #ECF1F6; --canvas-line: #D4DAE1; --canvas-ink: #272E38; --canvas-muted: #5C646E; --data-context: #A3ACB6; --data-affected: #4954C2; --data-fit: #272E38; --ok: #21763C; --ok-soft: #E3F6E6; --warn: #D79700; --warn-soft: #FFF2D6; --warn-ink: #784900; --stop: #BA2B28; --raised: #1E212A; --raised-ink: #F7F5F1;
+  --cat-1: #4E9A52; --cat-2: #9B3876; --cat-3: #B97500; --cat-4: #0070A6; --cat-5: #BE512D;
+  --font: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #14110E; --surface: #1C1916; --line: #322E2B; --line-strong: #4B4742; --ink: #EFECE8; --muted: #A9ACB4; --faint: #898C94; --action: #96A4FE; --action-hover: #AFBCFF; --action-ink: #0A0D23; --focus: #A1AFFF; --hover: #1B1D28; --selected: #222849; --selected-line: #737FCE; --canvas: #080B11; --canvas-line: #1D2229; --canvas-ink: #E1E5EA; --canvas-muted: #989FA8; --data-context: #49505B; --data-affected: #909AFE; --data-fit: #D3D8DE; --ok: #69C27E; --ok-soft: #15291A; --warn: #E9B452; --warn-soft: #31240E; --warn-ink: #EFCC83; --stop: #F27166; --raised: #EBE7E2; --raised-ink: #101116;
+  --cat-1: #54A058; --cat-2: #B95A93; --cat-3: #C38323; --cat-4: #338FC7; --cat-5: #CB6443; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --ground: #14110E; --surface: #1C1916; --line: #322E2B; --line-strong: #4B4742; --ink: #EFECE8; --muted: #A9ACB4; --faint: #898C94; --action: #96A4FE; --action-hover: #AFBCFF; --action-ink: #0A0D23; --focus: #A1AFFF; --hover: #1B1D28; --selected: #222849; --selected-line: #737FCE; --canvas: #080B11; --canvas-line: #1D2229; --canvas-ink: #E1E5EA; --canvas-muted: #989FA8; --data-context: #49505B; --data-affected: #909AFE; --data-fit: #D3D8DE; --ok: #69C27E; --ok-soft: #15291A; --warn: #E9B452; --warn-soft: #31240E; --warn-ink: #EFCC83; --stop: #F27166; --raised: #EBE7E2; --raised-ink: #101116;
+  --cat-1: #54A058; --cat-2: #B95A93; --cat-3: #C38323; --cat-4: #338FC7; --cat-5: #CB6443; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font); font-size: 17px; line-height: 1.5;
+  font-variant-numeric: tabular-nums; padding-inline: 16px; padding-block: 0 104px; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
+
+/* study bar: not part of the app */
+.study { max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between;
+  padding-block: 12px; border-bottom: 1px solid var(--line); font-size: 15px; }
+.study .label { color: var(--muted); }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }
+.seg button { border: 0; background: none; color: var(--muted); padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"], .seg button[aria-selected="true"] { background: var(--ink); color: var(--surface); }
+
+/* app chrome */
+.top { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px 6px; }
+.brand { font-weight: 700; letter-spacing: -0.01em; }
+.linkish { background: none; border: 0; padding: 6px 0; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong); }
+.linkish:hover { color: var(--ink); }
+.progress { max-width: 1120px; margin: 0 auto; color: var(--muted); font-size: 15px; }
+.bar { height: 3px; max-width: 520px; background: var(--line); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--ink); }
+
+main { max-width: 1120px; margin: 0 auto; padding-top: 32px; display: grid; gap: 24px 48px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: start; }
+.q, .opts { grid-column: 1; }
+.canvas { grid-column: 2; grid-row: 1 / span 2; position: sticky; top: 20px; }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } .canvas { grid-column: 1; grid-row: auto; position: static; } }
+h1 { font-size: clamp(26px, 4.2vw, 31px); line-height: 1.2; margin: 0; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 10px 0 0; color: var(--muted); max-width: 60ch; }
+details { margin-top: 10px; color: var(--muted); }
+summary { cursor: pointer; width: fit-content; }
+details p { margin: 8px 0 0; max-width: 62ch; }
+
+/* options: the choice family */
+.opts { display: grid; gap: 8px; border: 0; margin: 0; padding: 0; }
+.opts legend { position: absolute; left: -9999px; }
+.opt { display: grid; grid-template-columns: 22px 1fr auto; gap: 3px 14px; align-items: start; padding: 14px 16px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 10px; cursor: pointer; transition: background-color .15s, border-color .15s; }
+.opt:hover, .opt.pointed { background: var(--hover); border-color: var(--selected-line); }
+.opt input { appearance: none; width: 20px; height: 20px; margin: 2px 0 0; border: 2px solid var(--line-strong); border-radius: 50%; display: grid; place-content: center; cursor: pointer; background: var(--surface); }
+.opt input::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--action); transform: scale(0); transition: transform .12s; }
+.opt input:checked { border-color: var(--action); }
+.opt input:checked::after { transform: scale(1); }
+.opt:has(input:checked) { background: var(--selected); border-color: var(--selected-line); box-shadow: inset 0 0 0 1px var(--selected-line); }
+.opt .name { font-weight: 600; }
+.opt .what { grid-column: 2 / 4; color: var(--muted); font-size: 15.5px; }
+.opt .tag { color: var(--muted); font-size: 14px; white-space: nowrap; }
+.opt.off { cursor: default; background: transparent; }
+.opt.off .name, .opt.off .what { color: var(--faint); }
+.opt.off input { opacity: .45; cursor: default; }
+
+/* the canvas: where the data speaks */
+.canvas { background: var(--canvas); border-radius: 14px; padding: 18px 20px 20px; display: grid; gap: 12px; color: var(--canvas-ink); }
+.chead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.chead h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--canvas-muted); }
+.flip { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface); border: 1px solid var(--canvas-line); font-size: 14px; }
+.flip button { border: 0; background: none; padding: 4px 12px; border-radius: 999px; cursor: pointer; color: var(--canvas-muted); }
+.flip button[aria-pressed="true"][data-s="now"] { background: var(--data-context); color: var(--canvas-ink); }
+.flip button[aria-pressed="true"][data-s="after"] { background: var(--data-affected); color: var(--action-ink); }
+.flip button:disabled { cursor: default; opacity: .5; }
+.steps { display: flex; align-items: center; gap: 8px; min-height: 22px; color: var(--canvas-muted); font-size: 14px; }
+.steps button { width: 12px; height: 12px; padding: 0; border-radius: 50%; border: 2px solid var(--data-affected); background: transparent; cursor: pointer; }
+.steps button[aria-current="step"] { background: var(--data-affected); }
+.caption { margin: 0; font-size: 18px; min-height: 3em; }
+.caption b { font-weight: 600; }
+.readout { display: flex; gap: 18px; flex-wrap: wrap; font-size: 15px; color: var(--canvas-muted); }
+.readout b { color: var(--canvas-ink); font-weight: 600; }
+.coach { background: var(--warn-soft); color: var(--warn-ink); border-radius: 8px; padding: 8px 12px; font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
+.coach::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; transform: translateY(-1px); }
+.panels { display: grid; gap: 14px; }
+.panel { min-width: 0; }
+.panel h3 { margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+.axis { fill: var(--canvas-muted); font-size: 11px; font-family: var(--font); }
+.cutlabel { fill: var(--canvas-ink); font-size: 11px; font-family: var(--font); font-weight: 600; }
+.bars rect { transition: fill .35s ease; }
+.key { display: flex; gap: 16px; flex-wrap: wrap; color: var(--canvas-muted); font-size: 14px; }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.tip { position: fixed; z-index: 9; pointer-events: none; background: var(--raised); color: var(--raised-ink); font-size: 13px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -125%); }
+
+/* footer: the one place to act */
+.actions { position: fixed; left: 0; right: 0; bottom: 0; background: var(--ground); border-top: 1px solid var(--line); padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 4; }
+.actions .row { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.hint { color: var(--muted); font-size: 15px; min-width: 0; }
+.hint b { color: var(--ink); font-weight: 600; }
+.primary { font-weight: 600; border: 0; border-radius: 10px; padding: 12px 26px; background: var(--action); color: var(--action-ink); cursor: pointer; transition: background-color .15s; }
+.primary:hover { background: var(--action-hover); }
+.primary:disabled { background: var(--line); color: var(--faint); cursor: default; }
+
+/* the record: recorded is the one green */
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--surface); border-left: 1px solid var(--line); z-index: 6;
+  padding: calc(20px + env(safe-area-inset-top, 0px)) 24px 24px; overflow-y: auto; transform: translateX(100%); transition: transform .2s ease; }
+.drawer.open { transform: none; }
+.drawer h2 { margin: 0; font-size: 20px; }
+.drawer .close { float: right; }
+.drawer ol { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 16px; }
+.drawer li { padding-left: 14px; border-left: 3px solid var(--ok); }
+.drawer li small { display: block; color: var(--muted); font-size: 14px; }
+.drawer li.new { animation: arrive .6s ease; }
+@keyframes arrive { from { background: var(--ok-soft); } to { background: transparent; } }
+
+/* the system page */
+.sys { max-width: 1120px; margin: 0 auto; padding-top: 28px; display: grid; gap: 28px; }
+.sys h1 { font-size: 28px; }
+.rules { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 70ch; }
+.group h2 { margin: 0; font-size: 19px; }
+.group p { margin: 2px 0 10px; color: var(--muted); }
+.swrow { display: grid; grid-template-columns: 76px 76px minmax(0, 1fr); gap: 4px 14px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.chip { height: 34px; border-radius: 6px; border: 1px solid var(--line); display: grid; place-items: end start; padding: 2px 6px; font-size: 11px; }
+.swrow .lbl { font-weight: 600; }
+.swrow .hex { color: var(--muted); font-size: 13px; }
+.colhead { display: grid; grid-template-columns: 76px 76px 1fr; gap: 14px; color: var(--muted); font-size: 13px; }
+.cats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.cats div { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.cats i { height: 30px; border-radius: 6px; display: block; }
+@media (max-width: 560px) { .cats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="study">
+  <div class="seg" role="tablist" aria-label="Study screens">
+    <button role="tab" aria-selected="true" data-view="excl" type="button">Who is in</button>
+    <button role="tab" aria-selected="false" data-view="energy" type="button">Energy adjustment</button>
+    <button role="tab" aria-selected="false" data-view="sys" type="button">The color system</button>
+  </div>
+  <div class="seg" aria-label="Theme">
+    <button type="button" data-theme-set="light" aria-pressed="false">Light</button>
+    <button type="button" data-theme-set="dark" aria-pressed="false">Dark</button>
+    <button type="button" data-theme-set="auto" aria-pressed="true">Auto</button>
+  </div>
+</div>
+
+<div id="app">
+  <div class="top"><span class="brand">TurboTab</span><button class="linkish" id="openRecord" type="button">Your analysis so far</button></div>
+  <div class="progress"><span id="stepText"></span><div class="bar"><i id="stepBar"></i></div></div>
+  <main>
+    <section class="q">
+      <h1 id="qTitle"></h1>
+      <p class="lede" id="qLede"></p>
+      <details><summary>Why does this matter?</summary><p id="qWhy"></p></details>
+    </section>
+    <fieldset class="opts" id="opts"><legend id="optsLegend"></legend></fieldset>
+    <section class="canvas" aria-live="polite">
+      <div class="chead">
+        <h2>Your data</h2>
+        <div class="flip" role="group" aria-label="Show your data now or with this choice">
+          <button type="button" data-s="now" aria-pressed="true">Your data now</button>
+          <button type="button" data-s="after" aria-pressed="false" disabled>With this choice</button>
+        </div>
+      </div>
+      <div class="steps" id="steps"></div>
+      <p class="caption" id="caption"></p>
+      <div class="readout" id="readout"></div>
+      <div class="coach" id="coach" hidden></div>
+      <div class="panels" id="panels"></div>
+      <div class="key" id="key"></div>
+    </section>
+  </main>
+  <div class="actions"><div class="row"><span class="hint" id="hint"></span><button class="primary" id="next" type="button" disabled>Continue</button></div></div>
+</div>
+
+<section class="sys" id="sys" hidden>
+  <div>
+    <h1>How color works in TurboTab</h1>
+    <ol class="rules">
+      <li><b>Warm paper is the app; the cool canvas is your data.</b> The temperature tells you which side is talking.</li>
+      <li><b>Indigo is the choice you are making.</b> Pointing at an option tints it, picking it fills it, the button records it, and on the canvas indigo marks exactly what the choice touches.</li>
+      <li><b>Gray data is your data as it is now.</b> A transformation plays from gray to indigo, step by step, so you watch the choice act.</li>
+      <li><b>Status colors are reserved.</b> Green only for recorded, amber only for the coach, red only for a blocker, and each comes with words.</li>
+      <li><b>Comparisons use their own five hues,</b> never indigo, ordered so neighbors stay distinct for color-blind readers.</li>
+    </ol>
+  </div>
+  <div class="colhead"><span>Light</span><span>Dark</span><span>Role</span></div>
+  <div id="groups" style="display:grid;gap:22px"></div>
+  <div class="group">
+    <h2>Comparisons</h2>
+    <p>Model families, groups, lanes: five hues in a fixed order. Top row light, bottom row dark.</p>
+    <div class="cats" id="catsL"></div>
+    <div class="cats" id="catsD" style="margin-top:8px"></div>
+  </div>
+</section>
+
+<aside class="drawer" id="drawer" aria-label="Your analysis so far" aria-hidden="true">
+  <button class="linkish close" id="closeRecord" type="button">Close</button>
+  <h2>Your analysis so far</h2>
+  <ol id="record">
+    <li><small>Data</small>NHANES dietary export: 21,849 people, one row each.</li>
+    <li><small>Purpose</small>Inference: estimate how intake relates to an outcome, with honest intervals.</li>
+    <li><small>Outcome</small>Fasting glucose, in mg/dL.</li>
+  </ol>
+</aside>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(() => {
+const HIST = {"women":[5,8,29,36,68,84,140,225,325,413,481,491,618,667,665,639,637,644,571,563,520,457,399,393,291,286,227,215,166,134,119,108,91,69,61,56,50,40,37,34,20,16,14,12,11,7,5,8,4,7,3,2,2,1,0,2,2,1,0,1,0,2,2,1,2,2,0,0,0,6],"men":[4,4,7,13,20,39,62,95,120,137,186,237,248,322,379,454,402,452,459,476,445,445,461,440,403,410,346,343,314,284,273,239,200,210,173,172,158,118,117,111,107,89,74,66,61,42,55,36,47,21,29,30,22,13,17,16,19,17,7,11,11,6,7,12,6,5,3,2,4,41]};
+const EN = {"stats":{"n":21849,"r_raw":0.6663399704901748,"r_resid":-5.2003857832684e-17,"r_dens":-0.035638810789434816,"mean_sugar":115.8202041283354,"slope":0.05362384129632781,"intercept":2.133269850472434,"mean_dens":55.09220251108019,"drawn":679},"pts":[[2521,144.8,123.4,57.5],[3585,203.8,125.2,56.8],[1502,88.0,121.1,58.6],[1600,92.2,120.1,57.6],[2808,106.7,69.8,38.0],[2193,116.6,112.7,53.2],[804,44.9,115.4,55.8],[3038,228.1,178.9,75.1],[2152,24.0,22.3,11.1],[1673,47.0,71.0,28.1],[1201,29.2,78.5,24.3],[2205,43.3,38.8,19.6],[1963,134.3,142.7,68.4],[1740,97.3,117.7,55.9],[1300,29.9,73.8,23.0],[1798,130.4,147.7,72.5],[260,11.4,111.2,44.0],[1720,24.4,45.9,14.2],[1831,168.9,184.5,92.3],[1714,152.0,173.8,88.7],[2407,54.9,39.5,22.8],[2168,90.4,87.9,41.7],[1870,145.0,158.4,77.5],[2223,98.2,92.7,44.2],[4187,194.2,83.4,46.4],[3350,130.2,64.2,38.9],[1290,52.1,96.6,40.4],[810,63.2,133.5,78.1],[1820,119.5,135.6,65.7],[3972,377.3,278.0,95.0],[1743,12.6,32.9,7.3],[2721,255.3,223.1,93.8],[2340,69.4,57.6,29.6],[845,50.6,118.9,59.8],[2134,184.5,183.8,86.5],[653,13.2,91.9,20.3],[1738,59.1,79.5,34.0],[3177,153.7,97.0,48.4],[1188,64.9,114.8,54.6],[1453,51.5,87.2,35.4],[4068,300.0,195.6,73.8],[1377,56.0,95.8,40.7],[2557,108.9,85.5,42.6],[2355,72.7,60.1,30.9],[1344,79.7,121.3,59.3],[1800,68.5,85.7,38.1],[1101,78.2,132.9,71.0],[1780,129.2,147.4,72.6],[2001,69.5,75.9,34.7],[1185,62.7,112.8,52.9],[723,53.6,128.6,74.2],[1975,102.4,110.2,51.8],[1341,68.4,110.1,51.0],[1633,52.8,78.9,32.3],[2067,168.5,171.4,81.5],[2787,175.7,139.9,63.0],[3516,268.1,193.2,76.2],[1684,154.6,178.0,91.8],[1011,27.3,86.8,27.0],[2079,91.2,93.4,43.9],[3223,119.1,60.0,37.0],[522,54.1,139.8,103.6],[845,19.2,87.6,22.7],[775,36.9,109.0,47.6],[732,32.5,107.0,44.4],[746,28.3,102.0,37.9],[2589,51.5,26.4,19.9],[2489,125.2,105.5,50.3],[1522,114.9,147.0,75.5],[2410,173.4,157.8,71.9],[2217,104.3,99.1,47.0],[2084,96.4,98.3,46.2],[2109,174.6,175.2,82.8],[1980,146.9,154.4,74.2],[1539,54.1,85.2,35.1],[3831,250.1,158.3,65.3],[2162,118.1,115.9,54.6],[3904,238.1,142.5,61.0],[1849,144.3,158.9,78.1],[1202,52.3,101.6,43.5],[1021,50.3,109.2,49.2],[2211,153.1,148.2,69.2],[1691,84.3,107.3,49.8],[2385,131.3,117.1,55.1],[2411,153.3,137.6,63.6],[3242,98.6,38.4,30.4],[2014,105.8,111.5,52.6],[2862,189.2,149.4,66.1],[4564,254.3,123.2,55.7],[2695,303.1,272.3,112.5],[4332,138.9,20.3,32.1],[1752,117.0,136.8,66.8],[2893,168.0,126.6,58.1],[2499,80.7,60.4,32.3],[658,11.8,90.3,18.0],[2223,92.0,86.5,41.4],[1822,83.1,99.1,45.6],[2501,95.5,75.0,38.2],[2692,189.5,158.9,70.4],[2191,165.4,161.6,75.5],[2478,145.4,126.2,58.7],[2405,62.9,47.7,26.2],[823,85.5,155.0,103.9],[971,63.5,125.1,65.3],[1729,54.8,75.7,31.7],[3022,157.4,109.0,52.1],[1971,56.1,64.1,28.4],[2590,117.2,92.0,45.2],[391,14.2,106.9,36.3],[3312,108.0,44.1,32.6],[3150,182.3,127.1,57.9],[2017,77.8,83.3,38.6],[1849,210.9,225.4,114.1],[2465,105.7,87.2,42.9],[783,40.7,112.4,52.0],[1493,76.0,109.7,50.9],[3055,113.6,63.5,37.2],[2689,127.5,97.0,47.4],[821,9.6,79.3,11.7],[1775,35.4,53.9,19.9],[2926,78.0,34.8,26.7],[1797,75.8,93.2,42.2],[1804,73.8,90.8,40.9],[1647,54.0,79.3,32.8],[2121,40.8,40.7,19.2],[1802,81.9,98.9,45.4],[604,71.8,153.1,118.9],[1696,153.2,176.0,90.3],[2718,157.4,125.3,57.9],[1197,85.9,135.4,71.7],[3061,184.2,133.7,60.2],[1870,87.4,100.8,46.8],[4322,185.9,67.8,43.0],[2470,135.7,117.0,55.0],[1547,126.6,157.3,81.8],[1942,124.0,133.5,63.8],[2139,85.8,84.8,40.1],[3064,151.0,100.4,49.3],[1540,144.7,175.8,94.0],[3058,58.9,8.6,19.3],[3864,267.3,173.8,69.2],[1903,105.0,116.7,55.2],[1950,143.1,152.2,73.4],[1035,64.5,122.7,62.3],[2140,85.3,84.2,39.9],[1652,160.0,185.1,96.8],[2032,73.4,78.2,36.1],[2784,108.5,72.9,39.0],[1603,91.6,119.3,57.1],[2860,254.3,214.7,88.9],[3150,90.7,35.5,28.8],[2327,130.9,119.8,56.3],[2797,181.2,145.0,64.8],[2641,143.7,115.7,54.4],[1095,12.2,67.1,11.1],[2059,99.5,102.7,48.3],[2080,85.2,87.4,41.0],[2657,130.1,101.3,49.0],[2350,66.3,54.0,28.2],[2955,115.3,70.5,39.0],[2080,124.2,126.3,59.7],[908,43.0,108.0,47.3],[1001,52.6,112.6,52.6],[2715,254.0,222.1,93.5],[852,110.8,178.8,130.0],[1971,103.7,111.7,52.6],[3269,144.0,82.4,44.0],[1286,51.9,96.6,40.4],[2528,75.4,53.5,29.8],[1350,143.9,185.2,106.6],[2162,161.6,159.4,74.8],[2596,73.7,48.2,28.4],[1530,123.9,155.6,81.0],[1080,20.7,76.5,19.2],[1172,50.8,101.6,43.3],[1554,31.6,61.9,20.3],[1495,69.1,102.6,46.2],[2664,152.4,123.2,57.2],[2588,233.8,208.7,90.4],[988,62.4,123.1,63.2],[2980,181.3,135.1,60.8],[2824,178.7,141.0,63.3],[2577,167.3,142.8,64.9],[1469,22.9,57.8,15.6],[2033,127.5,132.2,62.7],[3105,89.0,36.2,28.7],[2005,133.8,140.0,66.7],[2055,124.8,128.3,60.8],[2836,235.1,196.7,82.9],[2336,90.7,79.2,38.8],[1532,61.0,92.6,39.8],[1711,219.9,241.8,128.5],[2736,117.8,84.7,43.0],[1842,124.2,139.1,67.4],[1405,38.9,77.2,27.7],[2073,101.3,103.9,48.9],[1426,123.8,161.0,86.8],[1456,142.6,178.2,98.0],[2087,134.7,136.5,64.6],[1345,85.5,127.0,63.5],[1146,96.1,148.3,83.9],[1773,107.3,125.9,60.5],[3151,225.2,169.9,71.5],[2625,3.1,-24.0,1.2],[2693,173.4,142.6,64.4],[1836,106.0,121.3,57.8],[1586,66.1,94.7,41.7],[464,25.7,114.5,55.3],[2521,202.3,180.8,80.3],[1761,127.2,146.4,72.2],[1884,56.4,69.0,29.9],[1739,152.8,173.2,87.9],[3092,59.8,7.7,19.3],[4221,138.7,26.1,32.9],[113,1.5,109.2,13.5],[2230,245.3,239.4,110.0],[941,47.7,111.0,50.7],[2614,158.7,132.2,60.7],[2240,125.3,118.9,55.9],[2518,123.8,102.4,49.2],[2708,110.3,78.8,40.7],[2825,169.5,131.7,60.0],[2686,74.5,44.2,27.7],[2112,59.4,59.8,28.1],[1201,41.5,90.7,34.5],[1309,55.5,99.0,42.4],[2301,129.2,119.5,56.2],[1696,133.9,156.7,79.0],[3080,266.4,214.9,86.5],[1817,89.2,105.5,49.1],[1743,102.4,122.6,58.7],[1446,120.5,156.6,83.3],[2376,101.5,87.7,42.7],[1238,98.2,145.5,79.3],[902,49.3,114.6,54.7],[2715,170.3,138.4,62.7],[2102,143.7,144.6,68.3],[1549,171.8,202.4,110.9],[2169,48.5,45.9,22.4],[3208,232.4,174.0,72.4],[2156,74.7,72.7,34.6],[1283,104.7,149.6,81.6],[2523,153.9,132.3,61.0],[1554,61.4,91.8,39.5],[2217,102.6,97.4,46.3],[1106,89.5,143.9,80.9],[2042,52.5,56.7,25.7],[4990,257.7,103.8,51.6],[1069,55.1,111.4,51.5],[1741,93.4,113.7,53.7],[2471,195.8,177.0,79.3],[2724,250.9,218.5,92.1],[629,25.7,105.6,40.8],[3074,261.0,209.8,84.9],[2716,150.8,118.8,55.5],[942,77.0,140.2,81.7],[2221,151.8,146.4,68.4],[1825,99.2,115.0,54.4],[1130,98.0,151.0,86.7],[2476,132.7,113.6,53.6],[2355,139.2,126.6,59.1],[251,28.4,128.6,113.0],[1179,59.3,109.8,50.3],[1773,128.9,147.6,72.7],[2719,213.2,181.1,78.4],[3890,130.4,35.5,33.5],[2207,97.3,92.6,44.1],[1453,87.0,122.8,59.9],[4277,187.3,71.6,43.8],[3229,147.6,88.1,45.7],[755,24.6,97.8,32.6],[2161,107.9,105.7,49.9],[1333,52.9,95.1,39.7],[3232,197.7,138.0,61.2],[4418,219.9,96.7,49.8],[3077,129.9,78.6,42.2],[2533,101.7,79.5,40.1],[3554,317.0,240.1,89.2],[836,34.8,103.7,41.7],[1633,72.0,98.1,44.1],[2702,95.2,64.0,35.2],[1520,97.4,129.5,64.1],[1663,80.0,104.5,48.1],[2566,50.4,26.5,19.7],[3469,132.3,59.9,38.1],[4251,374.7,260.4,88.1],[1023,43.5,102.3,42.5],[3497,101.4,27.5,29.0],[4242,338.9,225.1,79.9],[1855,163.4,177.6,88.1],[1549,68.8,99.5,44.4],[1852,130.5,144.9,70.5],[1829,97.0,112.6,53.0],[2343,168.2,156.2,71.8],[1216,13.5,62.0,11.1],[2530,130.1,108.1,51.4],[2444,98.2,80.8,40.2],[1400,53.1,91.7,37.9],[3972,332.6,233.3,83.7],[1844,76.4,91.2,41.4],[970,162.0,223.7,167.0],[1772,155.8,174.4,87.9],[2681,94.9,64.8,35.4],[2669,22.3,-7.1,8.4],[2243,100.0,93.4,44.6],[3540,317.2,241.1,89.6],[1874,143.7,156.9,76.7],[3231,166.7,107.2,51.6],[2749,164.3,130.6,59.8],[3587,357.0,278.3,99.5],[1068,32.3,88.7,30.3],[2475,100.9,81.9,40.8],[1429,35.6,72.7,24.9],[3002,225.3,178.0,75.0],[1227,98.0,145.9,79.9],[2275,41.9,33.6,18.4],[1918,72.7,83.5,37.9],[2274,24.4,16.1,10.7],[1748,91.5,111.5,52.4],[2367,159.2,146.0,67.3],[3240,166.9,106.9,51.5],[1610,128.9,156.2,80.0],[947,77.9,140.8,82.3],[1459,62.9,98.3,43.1],[1915,99.7,110.7,52.1],[2710,140.0,108.4,51.7],[744,73.4,147.2,98.7],[659,38.6,117.0,58.6],[1659,97.1,121.8,58.5],[1994,64.4,71.1,32.3],[2196,31.7,27.6,14.4],[2022,111.8,117.1,55.3],[1486,51.8,85.8,34.9],[2159,166.9,164.8,77.3],[2303,131.7,121.9,57.2],[1598,26.4,54.4,16.5],[675,54.3,131.8,80.5],[1611,49.3,76.6,30.6],[1764,172.8,191.9,98.0],[1737,39.4,60.0,22.7],[1231,79.8,127.5,64.8],[1052,99.4,156.7,94.5],[1544,132.4,163.3,85.8],[2385,203.1,188.9,85.1],[1739,96.1,116.6,55.3],[1379,71.3,111.0,51.7],[1114,118.3,172.3,106.2],[2386,141.8,127.5,59.4],[2572,83.5,59.2,32.5],[2197,83.6,79.4,38.0],[3029,161.0,112.2,53.1],[3839,155.7,63.5,40.6],[2333,59.9,48.5,25.7],[3237,207.4,147.5,64.1],[1216,78.7,127.2,64.7],[1849,68.4,83.0,37.0],[3369,312.4,245.4,92.7],[1230,71.7,119.5,58.3],[1894,65.0,77.1,34.3],[1965,44.2,52.5,22.5],[1798,90.3,107.6,50.2],[2973,98.3,52.5,33.1],[2368,146.6,133.3,61.9],[1875,136.9,150.0,73.0],[836,20.6,89.5,24.7],[2500,52.3,31.9,20.9],[2291,47.0,37.9,20.5],[2108,155.8,156.5,73.9],[1648,179.1,204.4,108.7],[983,43.8,104.7,44.5],[3087,88.8,37.0,28.8],[4321,319.9,201.9,74.0],[2483,193.8,174.3,78.0],[1023,50.7,109.5,49.5],[1820,121.1,137.2,66.5],[1275,46.6,91.9,36.5],[3272,119.4,57.6,36.5],[1418,108.3,145.9,76.4],[1188,34.5,84.5,29.0],[2305,67.1,57.2,29.1],[1708,78.1,100.2,45.8],[2998,75.1,28.0,25.0],[2200,125.2,120.9,56.9],[1307,34.7,78.3,26.6],[1475,102.0,136.5,69.1],[2838,173.3,134.8,61.1],[1792,63.5,81.1,35.4],[1269,33.0,78.7,26.0],[3432,170.1,99.8,49.6],[1569,109.4,138.9,69.7],[1586,76.0,104.6,47.9],[1597,91.0,119.1,57.0],[2536,212.3,190.0,83.7],[1459,107.9,143.3,73.9],[3403,212.3,143.5,62.4],[1765,123.1,142.2,69.8],[2303,175.5,165.7,76.2],[1735,66.6,87.2,38.4],[2038,156.4,160.8,76.7],[1547,38.7,69.4,25.0],[2484,148.1,128.6,59.6],[2717,89.5,57.5,32.9],[1493,69.5,103.2,46.6],[1175,209.5,260.2,178.3],[2141,66.2,65.1,30.9],[957,56.0,118.4,58.6],[2454,114.5,96.6,46.7],[303,1.6,99.1,5.4],[2328,88.2,77.1,37.9],[2155,35.1,33.2,16.3],[2187,97.3,93.8,44.5],[1478,38.2,72.6,25.9],[2962,230.9,185.7,77.9],[1546,31.9,62.6,20.6],[1763,87.9,107.0,49.8],[1566,81.5,111.2,52.0],[2824,120.6,82.9,42.7],[1873,53.9,67.1,28.8],[3138,69.5,14.9,22.2],[1912,137.0,148.2,71.7],[2332,63.3,51.9,27.1],[3341,39.0,-26.5,11.7],[1442,115.4,151.8,80.0],[1808,61.5,78.2,34.0],[2617,139.4,112.8,53.3],[1514,60.1,92.6,39.7],[2310,85.0,74.8,36.8],[2064,28.0,31.0,13.6],[1817,96.5,112.8,53.1],[1834,128.4,143.8,70.0],[1473,94.4,129.1,64.1],[2014,139.1,144.8,69.1],[2723,142.5,110.2,52.3],[1484,135.1,169.2,91.0],[2648,91.4,63.1,34.5],[3202,142.6,84.6,44.5],[2978,210.8,164.8,70.8],[2788,138.1,102.3,49.6],[3906,311.0,215.3,79.6],[446,12.4,102.2,27.8],[2437,145.8,128.8,59.8],[1379,35.1,74.8,25.4],[2252,85.8,78.8,38.1],[1253,50.7,97.2,40.4],[2201,55.1,50.8,25.1],[1214,71.0,119.6,58.5],[2599,52.9,27.2,20.4],[480,2.5,90.4,5.2],[3154,140.1,84.7,44.4],[2085,66.0,67.9,31.7],[1021,84.6,143.6,82.9],[1961,81.9,90.4,41.8],[1370,52.4,92.6,38.2],[2154,108.1,106.3,50.2],[3222,173.7,114.6,53.9],[3403,242.1,173.3,71.1],[1984,77.4,84.7,39.0],[2303,66.7,56.9,29.0],[3464,144.9,72.8,41.8],[1032,43.7,102.1,42.4],[1675,191.0,214.9,114.0],[1392,45.3,84.4,32.6],[3527,264.7,189.3,75.1],[2120,78.4,78.4,37.0],[676,67.4,144.9,99.8],[3162,196.7,140.8,62.2],[2040,129.9,134.2,63.7],[2534,107.2,85.0,42.3],[999,34.7,94.8,34.8],[1572,80.6,110.0,51.2],[2294,109.8,100.5,47.9],[962,16.1,78.2,16.7],[2237,136.6,130.3,61.1],[1379,33.2,72.9,24.1],[2165,141.5,139.1,65.4],[3216,104.5,45.7,32.5],[2189,104.1,100.4,47.5],[1787,112.9,130.7,63.2],[1307,25.0,68.6,19.1],[2936,291.1,247.3,99.1],[953,19.2,81.8,20.2],[2840,138.9,100.3,48.9],[806,61.9,132.3,76.7],[1576,101.3,130.5,64.3],[1583,75.0,103.8,47.4],[1206,130.2,179.2,108.0],[1344,41.4,83.1,30.8],[3444,278.9,207.9,81.0],[2728,252.9,220.3,92.7],[1556,120.2,150.4,77.2],[2687,118.0,87.5,43.9],[816,37.0,107.0,45.4],[2082,113.4,115.4,54.5],[2309,166.1,156.0,71.9],[3520,284.0,209.0,80.7],[3927,155.2,58.3,39.5],[2241,166.4,159.9,74.2],[1991,214.3,221.2,107.6],[2330,105.5,94.3,45.3],[2970,222.4,176.8,74.9],[3372,301.5,234.4,89.4],[1978,107.9,115.5,54.6],[1954,143.9,152.8,73.6],[2562,107.3,83.6,41.9],[2326,121.0,110.0,52.0],[1651,56.4,81.6,34.2],[1690,97.7,120.7,57.8],[1654,115.1,140.1,69.6],[950,36.7,99.4,38.6],[2927,368.5,325.3,125.9],[1158,81.9,133.5,70.7],[1830,94.7,110.3,51.8],[1875,28.7,41.8,15.3],[1970,185.0,193.1,93.9],[3711,127.7,42.4,34.4],[2462,144.2,125.8,58.6],[2178,137.8,134.6,63.2],[2227,141.3,135.6,63.5],[3151,239.8,184.5,76.1],[3555,229.1,152.2,64.5],[1026,54.5,113.2,53.1],[1586,118.8,147.5,74.9],[3852,195.3,102.4,50.7],[1673,85.8,109.7,51.3],[1298,49.4,93.5,38.1],[1043,87.4,145.2,83.8],[1192,138.3,188.1,116.1],[3823,189.8,98.5,49.6],[2574,85.4,61.1,33.2],[4186,290.0,179.2,69.3],[2978,129.9,83.9,43.6],[1197,65.6,115.1,54.8],[2603,78.3,52.4,30.1],[2413,214.8,199.1,89.0],[2297,82.5,73.0,35.9],[1708,126.4,148.5,74.0],[2109,123.1,123.7,58.4],[2564,294.9,271.1,115.0],[1551,107.5,138.0,69.3],[1705,133.0,155.3,78.0],[2543,100.2,77.6,39.4],[3215,210.1,151.4,65.3],[1121,124.0,177.6,110.6],[2103,91.4,92.3,43.5],[1367,119.3,159.7,87.3],[88,12.9,121.9,147.0],[1357,91.2,132.1,67.2],[1405,92.5,130.8,65.8],[2105,49.8,50.6,23.7],[716,35.2,110.5,49.1],[1027,76.4,135.0,74.4],[4267,307.9,192.8,72.2],[1706,120.0,142.2,70.3],[3972,315.4,216.1,79.4],[1487,78.7,112.7,52.9],[1966,133.7,141.9,68.0],[2882,144.6,103.7,50.2],[1048,106.3,163.7,101.4],[3099,150.3,97.8,48.5],[2701,242.7,211.6,89.9],[1648,142.2,167.5,86.3],[3381,272.3,204.6,80.5],[3084,91.7,40.0,29.7],[2564,96.8,73.0,37.7],[1730,159.4,180.3,92.1],[3116,145.5,92.1,46.7],[2310,177.9,167.7,77.0],[942,49.8,113.0,52.9],[1590,101.9,130.3,64.1],[2263,42.8,35.1,18.9],[3062,58.8,8.3,19.2],[2168,60.9,58.4,28.1],[1248,62.3,109.1,49.9],[636,30.1,109.7,47.3],[1564,66.8,96.6,42.7],[2296,56.4,47.0,24.6],[1687,129.5,152.8,76.8],[2141,117.7,116.6,55.0],[3279,147.7,85.5,45.0],[4052,202.9,99.3,50.1],[3783,140.0,50.8,37.0],[4146,61.9,-46.7,14.9],[3981,124.5,24.7,31.3],[1055,34.6,91.7,32.8],[2179,161.5,158.4,74.1],[1765,100.1,119.1,56.7],[666,32.3,110.3,48.5],[3581,239.4,161.1,66.9],[1166,75.0,126.2,64.4],[791,26.4,97.6,33.3],[1829,64.7,80.3,35.4],[3544,195.2,118.8,55.1],[1744,85.8,106.0,49.2],[1880,103.6,116.5,55.1],[1210,102.4,151.2,84.6],[939,19.9,83.3,21.2],[4136,100.5,-7.7,24.3],[4264,160.2,45.2,37.6],[2002,82.3,88.7,41.1],[2667,200.2,170.8,75.1],[2166,33.0,30.6,15.2],[841,20.2,88.7,24.0],[1610,56.1,83.4,34.8],[1053,64.6,121.8,61.3],[2512,79.3,58.3,31.6],[3216,175.6,116.8,54.6],[3706,56.5,-28.5,15.3],[1628,165.2,191.6,101.5],[928,66.2,130.1,71.4],[2734,181.3,148.3,66.3],[2083,49.0,51.0,23.5],[2506,100.6,79.9,40.1],[1409,34.4,72.5,24.4],[4028,141.6,39.3,35.2],[692,62.2,138.8,89.9],[2450,149.2,131.5,60.9],[1212,43.7,92.4,36.1],[1440,60.0,96.5,41.7],[1007,39.3,99.0,39.0],[2160,171.5,169.4,79.4],[2846,186.5,147.6,65.5],[2656,215.7,186.9,81.2],[1308,44.4,88.0,34.0],[1511,149.8,182.5,99.2],[1959,59.4,68.0,30.3],[1956,71.5,80.3,36.6],[1389,110.3,149.5,79.4],[2150,229.5,227.9,106.8],[2481,154.1,134.7,62.1],[1596,55.8,83.9,35.0],[2992,294.2,247.4,98.3],[1211,85.3,134.0,70.4],[1728,92.4,113.4,53.5],[1932,77.2,87.3,39.9],[2984,258.7,212.4,86.7],[2045,172.7,176.7,84.4],[1841,31.7,46.7,17.2],[1531,135.3,166.8,88.3],[3338,99.9,34.6,29.9],[3191,187.0,129.6,58.6],[1344,56.7,98.3,42.2],[1728,62.1,83.1,35.9],[2475,339.1,320.0,137.0],[1546,47.1,77.9,30.5],[2632,140.9,113.4,53.5],[817,23.6,93.5,28.9],[1421,82.9,120.3,58.3],[1739,126.1,146.5,72.5],[2286,133.7,124.8,58.5],[2733,292.5,259.6,107.0],[3153,338.8,283.4,107.4],[1992,124.6,131.5,62.6],[1903,124.2,135.8,65.3],[1786,52.1,70.0,29.2],[1500,25.4,58.6,16.9],[2150,190.8,189.2,88.8],[1720,92.3,113.7,53.6],[1532,106.0,137.6,69.2],[2217,197.3,192.1,89.0],[1471,119.9,154.7,81.5],[2724,38.2,5.9,14.0],[2520,69.2,47.8,27.5],[277,1.1,100.0,4.0],[1053,0.7,57.9,0.6],[1779,59.3,77.6,33.3],[3321,249.1,184.7,75.0],[1385,60.5,99.9,43.7],[2138,173.0,172.1,80.9],[1969,57.1,65.3,29.0],[983,19.9,80.9,20.3],[1924,143.2,153.7,74.4],[1077,90.3,146.3,83.9],[1795,45.8,63.2,25.5],[918,34.5,99.0,37.6],[1375,104.7,144.7,76.2],[1353,86.1,127.3,63.7],[1226,93.5,141.4,76.2],[1161,50.3,101.7,43.3],[2376,65.9,52.1,27.7]]};
+const SW = {"roles":[{"title":"Interface","note":"Warm paper. The app speaks here.","items":[{"name":"Page background","light":"#F9F5F0","dark":"#14110E"},{"name":"Cards and options","light":"#FEFCFA","dark":"#1C1916"},{"name":"Hairlines","light":"#DCD9D3","dark":"#322E2B"},{"name":"Text","light":"#1B1E27","dark":"#EFECE8"},{"name":"Secondary text","light":"#575A64","dark":"#A9ACB4"}]},{"title":"Your choice","note":"One hue for the choice you are making, from pointing to recording.","items":[{"name":"Pointing at an option","light":"#F4F7FF","dark":"#1B1D28"},{"name":"The option you picked","light":"#DDE7FF","dark":"#222849"},{"name":"Its outline","light":"#6B7FD4","dark":"#737FCE"},{"name":"The button that records it","light":"#3B4AB9","dark":"#96A4FE"},{"name":"Keyboard focus","light":"#4E61DE","dark":"#A1AFFF"}]},{"title":"Canvas","note":"A cool lightbox. Your data speaks here.","items":[{"name":"Canvas background","light":"#ECF1F6","dark":"#080B11"},{"name":"Gridlines and axes","light":"#D4DAE1","dark":"#1D2229"},{"name":"Canvas text and the fitted line","light":"#272E38","dark":"#E1E5EA"}]},{"title":"Data","note":"Gray is how your data is now; indigo is what your choice touches.","items":[{"name":"Your data now (context)","light":"#A3ACB6","dark":"#49505B"},{"name":"What this choice touches","light":"#4954C2","dark":"#909AFE"}]},{"title":"Status","note":"Reserved. Each means one thing and comes with words.","items":[{"name":"Recorded","light":"#21763C","dark":"#69C27E"},{"name":"The coach noticing something","light":"#D79700","dark":"#E9B452"},{"name":"A blocker: numbers below it cannot be trusted","light":"#BA2B28","dark":"#F27166"}]}],"cats":[{"name":"Sage","light":"#4E9A52","dark":"#54A058"},{"name":"Plum","light":"#9B3876","dark":"#B95A93"},{"name":"Ochre","light":"#B97500","dark":"#C38323"},{"name":"Steel","light":"#0070A6","dark":"#338FC7"},{"name":"Clay","light":"#BE512D","dark":"#CB6443"}]};
+const fmt = n => n.toLocaleString("en-US");
+const $ = id => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ── theme (study bar) ─────────────────────────────────────────
+function setTheme(t) {
+  if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+  document.querySelectorAll("[data-theme-set]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.themeSet === t)));
+}
+document.querySelectorAll("[data-theme-set]").forEach(b => b.onclick = () => setTheme(b.dataset.themeSet));
+if (document.documentElement.getAttribute("data-theme")) setTheme(document.documentElement.getAttribute("data-theme"));
+
+// ── screens ───────────────────────────────────────────────────
+const EXCL = {
+  step: [4, "Who is in the analysis"],
+  title: "Should people with implausible energy intakes be removed?",
+  lede: "A recall far outside a normal day's intake is usually a reporting error. Removing those people changes who your results describe.",
+  why: "Fixed cut-offs are the field's habit (Willett, Nutritional Epidemiology, 2013). They are not individualized, so they also remove some real people with very low or high intakes. For an association like this one, the sounder default is to keep everyone and report the screened result beside it as a check (Banna et al. 2017, Front Nutr 4:45).",
+  legend: "Choose who stays in the analysis",
+  opts: [
+    { id: "keep", name: "Keep everyone", tag: "Recommended", what: "All 21,849 people stay. You can add the screens below as checks before seeing results." },
+    { id: "willett", name: "Willett's cut-offs, by sex", tag: "Common practice", cut: { women: [500, 3500], men: [800, 4000] }, n: [390, 1224],
+      what: "Women outside 500–3,500 kcal and men outside 800–4,000 kcal are removed: 1,614 people." },
+    { id: "nhs", name: "NHS/HPFS cut-offs, by sex", cut: { women: [500, 3500], men: [800, 4200] }, n: [390, 1029], what: "Like Willett's, but men up to 4,200 kcal stay: 1,419 people." },
+    { id: "broad", name: "500 to 5,000 kcal for everyone", cut: { women: [500, 5000], men: [500, 5000] }, n: [194, 307], what: "One range for both sexes; removes only the most extreme reports: 501 people." },
+    { id: "narrow", name: "500 to 3,500 kcal for everyone", cut: { women: [500, 3500], men: [500, 3500] }, n: [194, 1900], what: "One range for both sexes; removes many men with high but plausible intakes: 2,094 people." },
+    { id: "goldberg", name: "Goldberg screen", tag: "Not available yet", off: true, what: "Compares intake with each person's energy needs. Needs the units of age and weight confirmed first." },
+  ],
+  record: o => !o.cut ? `Everyone was kept (21,849 people); fixed energy cut-offs can be added as checks before the results.`
+    : `${fmt(o.n[0] + o.n[1])} people with implausible energy intakes were removed (${o.name.replace(", by sex", ", sex-specific")}), leaving ${fmt(21849 - o.n[0] - o.n[1])}.`,
+  section: "Participants",
+};
+const r2 = v => (Math.abs(v) < 0.005 ? 0 : v).toFixed(2);
+const ENERGY = {
+  step: [7, "How sugar is measured"],
+  title: "How should sugar be adjusted for total energy?",
+  lede: `People who eat more eat more of everything, so sugar rises with total energy (r = ${r2(EN.stats.r_raw)}). Adjusting separates sugar from how much people eat.`,
+  why: "The residual method keeps total energy in the outcome model, so sugar's estimate means more sugar at the same total energy (McCullough & Byrd 2023). Density is customary and easy to read, but a one-unit change then means a different diet composition, and its estimate can carry energy's own effect.",
+  legend: "Choose how sugar is adjusted for energy",
+  opts: [
+    { id: "resid", name: "Residual method", tag: "Recommended", what: "Sugar not explained by energy, plus the average. Total energy stays in the model.",
+      steps: ["Fit sugar on energy", "Keep what energy does not explain", "Add back the average"], r: EN.stats.r_resid },
+    { id: "density", name: "Nutrient density", tag: "Common practice", what: "Grams of sugar per 1,000 kcal.", steps: ["Divide by energy"], r: EN.stats.r_dens },
+    { id: "covar", name: "Energy as a covariate only", what: "Sugar stays as recorded; total energy enters the model beside it.", steps: [], r: EN.stats.r_raw },
+    { id: "none", name: "No adjustment", what: "Sugar as recorded, and energy left out of the model.", steps: [], r: EN.stats.r_raw,
+      coach: `Sugar and total energy move together (r = ${r2(EN.stats.r_raw)}), so this estimate would mix sugar's effect with how much people eat.` },
+  ],
+  record: o => ({ resid: "Sugar was adjusted for total energy by the residual method, with total energy kept in the outcome model.",
+    density: "Sugar was expressed as a density, in grams per 1,000 kcal.", covar: "Total energy was included as a covariate; sugar was analyzed as recorded.",
+    none: "Sugar was not adjusted for total energy." })[o.id],
+  section: "Exposure",
+};
+
+let S = EXCL, chosen = null, pointed = null, flip = "now", stepAt = 0, playing = null;
+function view(name) {
+  document.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === name)));
+  $("app").hidden = name === "sys"; $("sys").hidden = name !== "sys";
+  if (name !== "sys") load(name === "excl" ? EXCL : ENERGY);
+}
+document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => view(b.dataset.view));
+
+function load(screen) {
+  S = screen; chosen = null; pointed = null; flip = "now"; stepAt = 0; shownFor = null;
+  $("stepText").textContent = `Step ${S.step[0]} of 10 · ${S.step[1]}`; $("stepBar").style.width = `${S.step[0] * 10}%`;
+  $("qTitle").textContent = S.title; $("qLede").textContent = S.lede; $("qWhy").textContent = S.why; $("optsLegend").textContent = S.legend;
+  const fs = $("opts"); fs.querySelectorAll(".opt").forEach(n => n.remove());
+  for (const o of S.opts) {
+    const lab = document.createElement("label"); lab.className = "opt" + (o.off ? " off" : "");
+    lab.innerHTML = `<input type="radio" name="opt" value="${o.id}" ${o.off ? "disabled" : ""}><span class="name">${o.name}</span><span class="tag">${o.tag || ""}</span><span class="what">${o.what}</span>`;
+    const input = lab.querySelector("input");
+    if (!o.off) {
+      lab.addEventListener("mouseenter", () => point(o.id));
+      lab.addEventListener("mouseleave", () => point(null));
+      input.addEventListener("focus", () => point(o.id));
+      input.addEventListener("blur", () => point(null));
+      input.addEventListener("change", () => { chosen = o.id; $("next").disabled = false; render(true); });
+    }
+    fs.appendChild(lab);
+  }
+  $("next").disabled = true; delete $("next").dataset.done;
+  buildCanvas(); render(false);
+}
+const active = () => S.opts.find(o => o.id === (pointed || chosen));
+function point(id) { pointed = id; document.querySelectorAll(".opt").forEach(l => l.classList.toggle("pointed", l.querySelector("input").value === id)); render(true); }
+
+// ── the canvas ────────────────────────────────────────────────
+let draw = null;
+function buildCanvas() {
+  const panels = $("panels"); panels.innerHTML = ""; $("key").innerHTML = "";
+  if (S === EXCL) {
+    for (const [sex, label, total] of [["women", "Women", 11195], ["men", "Men", 10654]]) {
+      const d = document.createElement("div"); d.className = "panel";
+      d.innerHTML = `<h3>${label} · ${fmt(total)}</h3><svg viewBox="0 0 340 140" role="img" data-sex="${sex}"><g class="grid"></g><g class="bars"></g><g class="cuts"></g><g class="ax"></g></svg>`;
+      panels.appendChild(d);
+    }
+    $("key").innerHTML = `<span><i style="background:var(--data-context)"></i>Stays</span><span><i style="background:var(--data-affected)"></i>Removed by this choice</span><span>Daily energy intake, kcal</span>`;
+    draw = drawHist;
+  } else {
+    const d = document.createElement("div"); d.className = "panel";
+    d.innerHTML = `<svg viewBox="0 0 360 256" role="img" id="scatter"><g class="grid"></g><g class="ax"></g><line class="fit"></line><g class="pts"></g><text class="axis ytitle" x="0" y="8"></text></svg>`;
+    panels.appendChild(d);
+    $("key").innerHTML = `<span><i style="background:var(--data-context)"></i>Your data now</span><span><i style="background:var(--data-affected)"></i>With this choice</span><span>${fmt(EN.stats.drawn)} of ${fmt(EN.stats.n)} people drawn</span>`;
+    initScatter(); draw = drawScatter;
+  }
+}
+
+// histogram: 100-kcal bins; the picture only. Exact counts come from the unbinned values.
+const HX = v => (v / 7000) * 340, HPH = 104, HT = 6, HMAX = Math.max(...HIST.women, ...HIST.men);
+function drawHist(o, after) {
+  document.querySelectorAll("#panels svg").forEach(svg => {
+    const sex = svg.dataset.sex, cut = after && o && o.cut ? o.cut[sex] : null;
+    const bars = svg.querySelector(".bars");
+    if (!bars.childNodes.length) {
+      HIST[sex].forEach((c, i) => { const r = document.createElementNS(SVGNS, "rect"); const h = Math.max(c ? 1 : 0, (c / HMAX) * HPH);
+        r.setAttribute("x", HX(i * 100) + 0.5); r.setAttribute("width", HX(100) - 1); r.setAttribute("y", HT + HPH - h); r.setAttribute("height", h); r.setAttribute("rx", 1);
+        r.dataset.tip = `${fmt(i * 100)}${i === 69 ? "+" : "–" + fmt(i * 100 + 100)} kcal · ${fmt(c)} ${sex}`; bars.appendChild(r); });
+      let ax = `<line x1="0" x2="340" y1="${HT + HPH}" y2="${HT + HPH}" style="stroke:var(--canvas-line)"/>`;
+      for (const t of [0, 2000, 4000, 6000]) ax += `<text class="axis" x="${HX(t)}" y="${HT + HPH + 15}" text-anchor="${t ? "middle" : "start"}">${fmt(t)}</text>`;
+      svg.querySelector(".ax").innerHTML = ax;
+    }
+    [...bars.childNodes].forEach((r, i) => { const lo = i * 100, out = cut && (lo < cut[0] || lo >= cut[1]);
+      r.style.fill = out ? "var(--data-affected)" : "var(--data-context)"; r.dataset.state = out ? "removed by this choice" : "stays"; });
+    svg.querySelector(".cuts").innerHTML = cut ? cut.map(v => `<line x1="${HX(v)}" x2="${HX(v)}" y1="${HT}" y2="${HT + HPH}" style="stroke:var(--canvas-ink)" stroke-width="1.25"/><text class="cutlabel" x="${HX(v) + 4}" y="${HT + 10}">${fmt(v)}</text>`).join("") : "";
+  });
+}
+
+// scatter: sugar against energy; positions per storyboard step
+const SW_ = 360, SH = 256, ML = 34, MB = 22, MT = 24;
+const sx = v => ML + (v / 5000) * (SW_ - ML - 6);
+let ydom = [-200, 400];
+const sy = v => MT + (1 - (v - ydom[0]) / (ydom[1] - ydom[0])) * (SH - MT - MB);
+let circles = [];
+function initScatter() {
+  const svg = $("scatter"), g = svg.querySelector(".pts"); circles = [];
+  for (const p of EN.pts) { const c = document.createElementNS(SVGNS, "circle"); c.setAttribute("r", 2.3); g.appendChild(c); circles.push(c); }
+  axes(); place(EN.pts.map(p => p[1]), "var(--data-context)"); fitLine(false);
+}
+function axes() {
+  const svg = $("scatter"); let s = "";
+  const ticks = ydom[1] > 300 ? [-200, 0, 200, 400] : [0, 50, 100, 150, 200];
+  for (const t of ticks) s += `<line x1="${ML}" x2="${SW_}" y1="${sy(t)}" y2="${sy(t)}" style="stroke:var(--canvas-line)"/><text class="axis" x="${ML - 6}" y="${sy(t) + 4}" text-anchor="end">${t}</text>`;
+  for (const t of [0, 1000, 2000, 3000, 4000, 5000]) s += `<text class="axis" x="${sx(t)}" y="${SH - 4}" text-anchor="middle">${t ? fmt(t) : "0 kcal"}</text>`;
+  svg.querySelector(".grid").innerHTML = s;
+  svg.querySelector(".ytitle").textContent = ydom[1] > 300 ? "Sugar, g/day" : "Sugar, g per 1,000 kcal";
+}
+let curY = null;
+function place(ys, fill) { curY = ys; circles.forEach((c, i) => { c.setAttribute("cx", sx(EN.pts[i][0])); c.setAttribute("cy", sy(ys[i])); c.style.fill = fill; }); }
+function fitLine(show) {
+  const l = $("scatter").querySelector(".fit"), b0 = EN.stats.intercept, b1 = EN.stats.slope;
+  l.setAttribute("x1", sx(0)); l.setAttribute("x2", sx(5000)); l.setAttribute("y1", sy(b0)); l.setAttribute("y2", sy(b0 + b1 * 5000));
+  l.style.stroke = "var(--data-fit)"; l.setAttribute("stroke-width", 1.75); l.style.opacity = show ? 1 : 0; l.style.transition = "opacity .25s";
+}
+// each storyboard state: [y values, fill, y-domain, fit line shown]
+function states(o) {
+  const raw = EN.pts.map(p => p[1]), m = EN.stats.mean_sugar;
+  const now = [raw, "var(--data-context)", [-200, 400], false];
+  if (!o) return [now];
+  if (o.id === "resid") return [now, [raw, "var(--data-context)", [-200, 400], true], [EN.pts.map(p => p[2] - m), "var(--data-affected)", [-200, 400], true], [EN.pts.map(p => p[2]), "var(--data-affected)", [-200, 400], false]];
+  if (o.id === "density") return [now, [EN.pts.map(p => p[3]), "var(--data-affected)", [0, 200], false]];
+  return [now];
+}
+function tween(fromY, toY, fill, dom, ms) {
+  return new Promise(res => {
+    const d0 = ydom.slice(), t0 = performance.now(); const myId = Symbol(); playing = myId;
+    circles.forEach(c => { c.style.fill = fill; c.style.transition = "fill .3s"; });
+    const stepf = now => {
+      if (playing !== myId) return res(false);
+      const k = reduce ? 1 : Math.min(1, (now - t0) / ms), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      ydom = [d0[0] + (dom[0] - d0[0]) * e, d0[1] + (dom[1] - d0[1]) * e];
+      circles.forEach((c, i) => c.setAttribute("cy", sy(fromY[i] + (toY[i] - fromY[i]) * e)));
+      if (k < 1) requestAnimationFrame(stepf); else { curY = toY; axes(); fitLine(false); res(true); }
+      if (Math.abs(dom[1] - d0[1]) > 1) axes();
+    };
+    requestAnimationFrame(stepf);
+  });
+}
+async function goTo(o, target) {
+  const st = states(o); target = Math.max(0, Math.min(target, st.length - 1));
+  const dir = target >= stepAt ? 1 : -1;
+  if (stepAt >= st.length) stepAt = st.length - 1;
+  while (stepAt !== target) {
+    const next = stepAt + dir, [ys, fill, dom, line] = st[next];
+    const ok = await tween(curY, ys, fill, dom, 380);
+    if (!ok) return;
+    stepAt = next; fitLine(line); stepsUI(o);
+  }
+  fitLine(st[stepAt][3]); stepsUI(o);
+}
+function stepsUI(o) {
+  const el = $("steps"); el.innerHTML = "";
+  if (S !== ENERGY || !o || !o.steps.length || flip !== "after") return;
+  o.steps.forEach((label, i) => { const b = document.createElement("button"); b.type = "button"; b.title = label; b.setAttribute("aria-label", `Step ${i + 1}: ${label}`);
+    if (stepAt === i + 1) b.setAttribute("aria-current", "step"); b.onclick = () => goTo(o, i + 1); el.appendChild(b); });
+  const t = document.createElement("span"); t.textContent = stepAt ? `Step ${stepAt} of ${o.steps.length}: ${o.steps[stepAt - 1]}` : ""; el.appendChild(t);
+}
+// Flipping to "with this choice" plays the option's storyboard; flipping back plays it in reverse.
+// Switching between options morphs straight to the new result without replaying (BLUEPRINT §11.1).
+let shownFor = null;
+function drawScatter(o, after) {
+  const st = states(o);
+  if (!after) {
+    if (o && shownFor === o.id) goTo(o, 0);
+    else { const [ys, fill, dom] = states(null)[0]; stepAt = 0; fitLine(false); tween(curY, ys, fill, dom, 380); }
+    shownFor = null; stepsUI(o); return;
+  }
+  if (shownFor && shownFor !== o.id) {
+    stepAt = st.length - 1; const [ys, fill, dom, line] = st[stepAt];
+    fitLine(line); tween(curY, ys, fill, dom, 380); shownFor = o.id; stepsUI(o); return;
+  }
+  shownFor = o.id; goTo(o, st.length - 1);
+}
+
+// ── render: caption, readout, flip, canvas ────────────────────
+function render(auto) {
+  const o = active();
+  const fb = document.querySelectorAll(".flip button");
+  if (auto) flip = o ? "after" : "now";
+  fb[1].disabled = !o; fb.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.s === flip)));
+  const after = flip === "after" && !!o;
+  $("coach").hidden = true;
+  if (S === EXCL) {
+    const n = after && o.n ? o.n : [0, 0], removed = n[0] + n[1];
+    $("caption").innerHTML = !o ? "Point at an option to see who it would remove." : !after ? `Your data now: <b>21,849</b> people.`
+      : !o.cut ? `Everyone stays: <b>21,849</b> people.` : `Removes <b>${fmt(removed)}</b> people: ${fmt(n[0])} who reported too little and ${fmt(n[1])} who reported too much. <b>${fmt(21849 - removed)}</b> stay.`;
+    $("readout").innerHTML = "";
+  } else {
+    const r = after ? o.r : EN.stats.r_raw;
+    $("caption").innerHTML = !o ? "Point at an option to watch it act on your data." : !after ? "Your data now: sugar as recorded."
+      : o.id === "resid" ? "Each person's sugar becomes what their energy does not explain, plus the average." : o.id === "density" ? "Each person's sugar is divided by their energy."
+      : "Sugar's values do not change. " + (o.id === "covar" ? "Energy enters the model beside it." : "Energy is left out.");
+    $("readout").innerHTML = `<span>Correlation with energy <b>${r2(EN.stats.r_raw)}${after && o.r !== EN.stats.r_raw ? " → " + r2(r) : ""}</b></span><span>Average sugar <b>${after && o.id === "density" ? EN.stats.mean_dens.toFixed(1) + " g per 1,000 kcal" : EN.stats.mean_sugar.toFixed(1) + " g"}</b></span>`;
+    if (after && o.coach) { $("coach").hidden = false; $("coach").textContent = o.coach; }
+  }
+  draw(o, after);
+  const hint = $("hint");
+  if (!$("next").dataset.done) hint.innerHTML = !chosen ? "Choose an option to continue." : `You picked <b>${S.opts.find(x => x.id === chosen).name}</b>. Nothing is recorded until you continue.`;
+}
+document.querySelectorAll(".flip button").forEach(b => b.onclick = () => { if (b.disabled) return; flip = b.dataset.s; render(false); });
+
+// tooltips on bars
+const tip = $("tip");
+$("panels").addEventListener("pointermove", e => { const t = e.target.dataset && e.target.dataset.tip; if (!t) { tip.hidden = true; return; }
+  tip.textContent = t + (e.target.dataset.state ? " · " + e.target.dataset.state : ""); tip.style.left = e.clientX + "px"; tip.style.top = e.clientY + "px"; tip.hidden = false; });
+$("panels").addEventListener("pointerleave", () => tip.hidden = true);
+
+// record drawer
+const drawer = $("drawer");
+const openD = () => { drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false"); $("closeRecord").focus(); };
+const closeD = () => { drawer.classList.remove("open"); drawer.setAttribute("aria-hidden", "true"); $("openRecord").focus(); };
+$("openRecord").onclick = openD; $("closeRecord").onclick = closeD;
+document.addEventListener("keydown", e => { if (e.key === "Escape" && drawer.classList.contains("open")) closeD(); });
+$("next").onclick = () => {
+  const o = S.opts.find(x => x.id === chosen); if (!o) return;
+  const rec = $("record"); rec.querySelectorAll(`li[data-sec="${S.section}"]`).forEach(n => n.remove());
+  const li = document.createElement("li"); li.className = "new"; li.dataset.sec = S.section; li.innerHTML = `<small>${S.section}</small>${S.record(o)}`; rec.appendChild(li);
+  $("next").dataset.done = "1"; $("hint").textContent = "Recorded. In the app, the next question would open here."; openD();
+};
+
+// system page
+$("groups").innerHTML = SW.roles.map(g => `<div class="group"><h2>${g.title}</h2><p>${g.note}</p>${g.items.map(it =>
+  `<div class="swrow"><span class="chip" style="background:${it.light}"></span><span class="chip" style="background:${it.dark}"></span><span><span class="lbl">${it.name}</span><br><span class="hex">${it.light} · ${it.dark}</span></span></div>`).join("")}</div>`).join("");
+$("catsL").innerHTML = SW.cats.map(c => `<div><i style="background:${c.light}"></i>${c.name}</div>`).join("");
+$("catsD").innerHTML = SW.cats.map(c => `<div><i style="background:${c.dark}"></i>${c.light === c.dark ? "" : ""}</div>`).join("");
+
+view("excl");
+})();
+</script>

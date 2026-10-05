@@ -1,0 +1,270 @@
+<title>TurboTab calm screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: one question, its options, and beside them one picture of what each option does; one button in a fixed footer.
+   Color: three palettes to compare, each light and dark. Data color is separate from interface color:
+   the people who stay are gray (context), the people removed carry the only warm hue (emphasis). */
+:root { --ground: #FCFAF5; --surface: #FFFEFC; --ink: #1D212B; --muted: #595D69; --line: #E0DED8; --accent: #364AB5; --accent-ink: #FCFCFC; --accent-soft: #E9F0FF; --stays: #8F929A; --removed: #B9572B;
+  --font: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ground: #0D0F15; --surface: #15181F; --ink: #EEEBE5; --muted: #A0A4AE; --line: #2D3038; --accent: #90A6F7; --accent-ink: #0C111F; --accent-soft: #1F2742; --stays: #696C73; --removed: #C9764F; color-scheme: dark; } }
+:root[data-theme="dark"] { --ground: #0D0F15; --surface: #15181F; --ink: #EEEBE5; --muted: #A0A4AE; --line: #2D3038; --accent: #90A6F7; --accent-ink: #0C111F; --accent-soft: #1F2742; --stays: #696C73; --removed: #C9764F; color-scheme: dark; }
+:root[data-palette="forest"] { --ground: #FBF9F3; --surface: #FFFEFB; --ink: #28231C; --muted: #656057; --line: #E0DED7; --accent: #2C6B27; --accent-ink: #FCFCFC; --accent-soft: #E7F5E2; --stays: #96918A; --removed: #B9572B; }
+@media (prefers-color-scheme: dark) { :root[data-palette="forest"]:not([data-theme="light"]) { --ground: #13110E; --surface: #1D1A16; --ink: #EEEBE4; --muted: #A8A49C; --line: #36322D; --accent: #83C575; --accent-ink: #0A1508; --accent-soft: #1D3119; --stays: #6F6B64; --removed: #C9764F; color-scheme: dark; } }
+:root[data-theme="dark"][data-palette="forest"] { --ground: #13110E; --surface: #1D1A16; --ink: #EEEBE4; --muted: #A8A49C; --line: #36322D; --accent: #83C575; --accent-ink: #0A1508; --accent-soft: #1D3119; --stays: #6F6B64; --removed: #C9764F; color-scheme: dark; }
+:root[data-palette="ink"] { --ground: #FBFAF9; --surface: #FFFFFF; --ink: #1C1A19; --muted: #62605E; --line: #DFDEDC; --accent: #1C1A19; --accent-ink: #FCFCFC; --accent-soft: #F0EEEC; --stays: #94928F; --removed: #B9572B; }
+@media (prefers-color-scheme: dark) { :root[data-palette="ink"]:not([data-theme="light"]) { --ground: #0F0E0D; --surface: #181716; --ink: #F0EEEC; --muted: #A6A4A2; --line: #343331; --accent: #F0EEEC; --accent-ink: #121110; --accent-soft: #282624; --stays: #6D6B69; --removed: #C9764F; color-scheme: dark; } }
+:root[data-theme="dark"][data-palette="ink"] { --ground: #0F0E0D; --surface: #181716; --ink: #F0EEEC; --muted: #A6A4A2; --line: #343331; --accent: #F0EEEC; --accent-ink: #121110; --accent-soft: #282624; --stays: #6D6B69; --removed: #C9764F; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font); font-size: 17px; line-height: 1.5;
+  margin: 0; padding-inline: 16px; padding-block: 0 96px; font-variant-numeric: tabular-nums; }
+.top { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding-block: 20px 8px; }
+.brand { font-weight: 700; letter-spacing: -0.01em; }
+.topright { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: flex-end; }
+.palette { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; }
+.palette span { color: var(--muted); padding: 0 8px 0 10px; }
+.palette button { font: inherit; border: 0; background: none; color: var(--muted); padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.palette button[aria-checked="true"] { background: var(--ink); color: var(--surface); }
+.palette button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 520px) { .top { align-items: flex-start; } .palette span { display: none; } }
+.linkish { background: none; border: 0; padding: 6px 0; font: inherit; color: var(--muted); cursor: pointer; text-decoration: underline;
+  text-underline-offset: 3px; text-decoration-color: var(--line); }
+.linkish:hover { color: var(--ink); }
+.progress { max-width: 1120px; margin: 0 auto; color: var(--muted); font-size: 15px; }
+.bar { height: 3px; background: var(--line); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 30%; background: var(--muted); }
+.bar { max-width: 520px; }
+
+main { max-width: 1120px; margin: 0 auto; padding-top: 36px; display: grid; gap: 24px 48px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+main > section:first-child, fieldset { grid-column: 1; }
+.picture { grid-column: 2; grid-row: 1 / span 2; position: sticky; top: calc(24px + env(safe-area-inset-top, 0px)); }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } .picture { grid-column: 1; grid-row: auto; position: static; } }
+h1 { font-size: clamp(26px, 4.4vw, 32px); line-height: 1.2; margin: 0; font-weight: 700; text-wrap: balance; letter-spacing: -0.01em; }
+.lede { margin: 10px 0 0; color: var(--muted); max-width: 60ch; }
+details { margin-top: 10px; color: var(--muted); }
+summary { cursor: pointer; width: fit-content; }
+details p { margin: 8px 0 0; max-width: 62ch; }
+
+fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; }
+legend { position: absolute; left: -9999px; }
+.opt { display: grid; grid-template-columns: 22px 1fr auto; gap: 4px 14px; align-items: start; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.opt:hover { border-color: var(--muted); }
+.opt input { appearance: none; width: 20px; height: 20px; margin: 2px 0 0; border: 2px solid var(--muted); border-radius: 50%;
+  display: grid; place-content: center; cursor: pointer; }
+.opt input::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform .12s; }
+.opt input:checked { border-color: var(--accent); }
+.opt input:checked::after { transform: scale(1); }
+.opt input:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.opt .name { font-weight: 600; }
+.opt .what { grid-column: 2 / 4; color: var(--muted); font-size: 15.5px; }
+.opt .tag { color: var(--muted); font-size: 14px; white-space: nowrap; }
+.opt.off { cursor: default; background: transparent; }
+.opt.off .name, .opt.off .what { color: var(--muted); }
+.opt.off input { opacity: .4; cursor: default; }
+
+.picture { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; }
+.picture h2 { font-size: 15px; font-weight: 600; color: var(--muted); margin: 0; }
+.caption { margin: 0; font-size: 18px; min-height: 3em; }
+.caption b { font-weight: 600; }
+.panels { display: grid; grid-template-columns: 1fr; gap: 18px; }
+.panel { min-width: 0; }
+.panel h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.panel svg { width: 100%; height: auto; display: block; overflow: visible; }
+.axis { fill: var(--muted); font-size: 11px; font-family: var(--font); }
+.cutlabel { fill: var(--ink); font-size: 11px; font-family: var(--font); }
+.key { display: flex; gap: 18px; color: var(--muted); font-size: 14px; flex-wrap: wrap; }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--ground); font-size: 13px; padding: 5px 8px;
+  border-radius: 6px; white-space: nowrap; transform: translate(-50%, -120%); }
+
+.actions { position: fixed; left: 0; right: 0; bottom: 0; background: var(--ground); border-top: 1px solid var(--line);
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
+.actions .row { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.hint { color: var(--muted); font-size: 15px; min-width: 0; }
+.hint b { color: var(--ink); font-weight: 600; }
+.primary { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 26px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+.primary:disabled { background: var(--line); color: var(--muted); cursor: default; }
+.primary:focus-visible, .linkish:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--surface); border-left: 1px solid var(--line);
+  padding: calc(20px + env(safe-area-inset-top, 0px)) 24px 24px; overflow-y: auto; transform: translateX(100%); transition: transform .2s ease; z-index: 5; }
+.drawer.open { transform: none; }
+.drawer h2 { margin: 0; font-size: 20px; }
+.drawer .close { float: right; }
+.drawer ol { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 18px; }
+.drawer li small { display: block; color: var(--muted); font-size: 14px; }
+.drawer li.new { animation: arrive .5s ease; }
+@keyframes arrive { from { background: var(--accent-soft); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="top">
+  <span class="brand">TurboTab</span>
+  <div class="topright">
+    <div class="palette" role="radiogroup" aria-label="Color palette to compare">
+      <span>Colors</span>
+      <button type="button" role="radio" data-p="indigo">Indigo</button>
+      <button type="button" role="radio" data-p="forest">Forest</button>
+      <button type="button" role="radio" data-p="ink">Ink</button>
+    </div>
+    <button class="linkish" id="openRecord" type="button">Your analysis so far</button>
+  </div>
+</div>
+<div class="progress">Step 4 of 10 · Who is in the analysis<div class="bar"><i></i></div></div>
+
+<main>
+  <section>
+    <h1>Should people with implausible energy intakes be removed?</h1>
+    <p class="lede">A recall far outside a normal day's intake is usually a reporting error. Removing those people changes who your results describe.</p>
+    <details>
+      <summary>Why does this matter?</summary>
+      <p>Fixed cut-offs are the field's habit (Willett, <i>Nutritional Epidemiology</i>, 2013). They are not individualized, so they also remove some real people with very low or high intakes. For an association like this one, the sounder default is to keep everyone and report the screened result beside it as a check (Banna et al. 2017, <i>Front Nutr</i> 4:45).</p>
+    </details>
+  </section>
+
+  <fieldset id="opts">
+    <legend>Choose who stays in the analysis</legend>
+  </fieldset>
+
+  <section class="picture" aria-live="polite">
+    <h2>What this does to your data</h2>
+    <p class="caption" id="caption"></p>
+    <div class="panels">
+      <div class="panel"><h3>Women · 11,195</h3><svg id="w" viewBox="0 0 340 145" role="img"></svg></div>
+      <div class="panel"><h3>Men · 10,654</h3><svg id="m" viewBox="0 0 340 145" role="img"></svg></div>
+    </div>
+    <div class="key"><span><i style="background:var(--stays)"></i>Stays</span><span><i style="background:var(--removed)"></i>Removed</span><span>Daily energy intake, kcal</span></div>
+  </section>
+</main>
+
+<div class="actions"><div class="row">
+  <span class="hint" id="hint">Choose an option to continue.</span>
+  <button class="primary" id="next" type="button" disabled>Continue</button>
+</div></div>
+
+<aside class="drawer" id="drawer" aria-label="Your analysis so far" aria-hidden="true">
+  <button class="linkish close" id="closeRecord" type="button">Close</button>
+  <h2>Your analysis so far</h2>
+  <ol id="record">
+    <li><small>Data</small>NHANES dietary export: 21,849 people, one row each.</li>
+    <li><small>Purpose</small>Inference: estimate how intake relates to an outcome, with honest intervals.</li>
+    <li><small>Outcome</small>Fasting glucose, in mg/dL.</li>
+  </ol>
+</aside>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+// Real NHANES export (_tt_tmp_nhanes.csv): daily kcal in 100-kcal bins from 0 to 7,000; the last bin holds 6,900 and above.
+const H = {"women":[5,8,29,36,68,84,140,225,325,413,481,491,618,667,665,639,637,644,571,563,520,457,399,393,291,286,227,215,166,134,119,108,91,69,61,56,50,40,37,34,20,16,14,12,11,7,5,8,4,7,3,2,2,1,0,2,2,1,0,1,0,2,2,1,2,2,0,0,0,6],
+           "men":[4,4,7,13,20,39,62,95,120,137,186,237,248,322,379,454,402,452,459,476,445,445,461,440,403,410,346,343,314,284,273,239,200,210,173,172,158,118,117,111,107,89,74,66,61,42,55,36,47,21,29,30,22,13,17,16,19,17,7,11,11,6,7,12,6,5,3,2,4,41]};
+const OPTS = [
+  { id: "keep", name: "Keep everyone", tag: "Recommended", cut: null,
+    what: "All 21,849 people stay. You can add the screens below as checks before seeing results." },
+  { id: "willett", name: "Willett's cut-offs, by sex", tag: "Common practice", cut: { women: [500, 3500], men: [800, 4000] },
+    what: "Women outside 500–3,500 kcal and men outside 800–4,000 kcal are removed." },
+  { id: "nhs", name: "NHS/HPFS cut-offs, by sex", tag: "", cut: { women: [500, 3500], men: [800, 4200] },
+    what: "Like Willett's, but men up to 4,200 kcal stay." },
+  { id: "broad", name: "500 to 5,000 kcal for everyone", tag: "", cut: { women: [500, 5000], men: [500, 5000] },
+    what: "One range for both sexes; removes only the most extreme reports." },
+  { id: "narrow", name: "500 to 3,500 kcal for everyone", tag: "", cut: { women: [500, 3500], men: [500, 3500] },
+    what: "One range for both sexes; removes many men with high but plausible intakes." },
+  { id: "goldberg", name: "Goldberg screen", tag: "Not available yet", cut: null, off: true,
+    what: "Compares intake with each person's energy needs. Needs the units of age and weight confirmed first." },
+];
+const fmt = n => n.toLocaleString("en-US");
+// Exact counts from the unbinned values (they match the engine's previews); the 100-kcal bins only draw the picture.
+const EXACT = { willett: [390, 1224], nhs: [390, 1029], broad: [194, 307], narrow: [194, 1900] };
+function counts(o) {
+  const [low, high] = (o && EXACT[o.id]) || [0, 0];
+  return { low, high, removed: low + high, stay: 21849 - low - high };
+}
+for (const o of OPTS) if (o.cut) { const c = counts(o); o.what = o.what.replace(/\.$/, "") + `: ${fmt(c.removed)} people.`; }
+
+const fs = document.getElementById("opts");
+for (const o of OPTS) {
+  const lab = document.createElement("label"); lab.className = "opt" + (o.off ? " off" : "");
+  lab.innerHTML = `<input type="radio" name="screen" value="${o.id}" ${o.off ? "disabled" : ""}>
+    <span class="name">${o.name}</span><span class="tag">${o.tag}</span><span class="what">${o.what}</span>`;
+  const input = lab.querySelector("input");
+  if (!o.off) {
+    lab.addEventListener("mouseenter", () => show(o.id));
+    lab.addEventListener("mouseleave", () => show(chosen));
+    input.addEventListener("focus", () => show(o.id));
+    input.addEventListener("change", () => { chosen = o.id; show(o.id); ready(); });
+  }
+  fs.appendChild(lab);
+}
+
+let chosen = null;
+const W = 340, PH = 112, T0 = 8, X = v => (v / 7000) * W, maxC = Math.max(...H.women, ...H.men);
+function draw(svgId, sex, cut) {
+  const svg = document.getElementById(svgId), Y = c => T0 + PH - (c / maxC) * PH;
+  let s = "";
+  H[sex].forEach((c, i) => {
+    const lo = i * 100, out = cut && (lo < cut[sex][0] || lo >= cut[sex][1]);
+    const h = Math.max(c ? 1 : 0, T0 + PH - Y(c));
+    s += `<rect x="${X(lo) + 0.5}" y="${T0 + PH - h}" width="${X(100) - 1}" height="${h}" rx="1" style="fill:var(${out ? "--removed" : "--stays"})"
+      data-tip="${fmt(lo)}${i === 69 ? "+" : "–" + fmt(lo + 100)} kcal · ${fmt(c)} ${sex} · ${out ? "removed" : "stays"}"></rect>`;
+  });
+  s += `<line x1="0" x2="${W}" y1="${T0 + PH}" y2="${T0 + PH}" style="stroke:var(--line)"/>`;
+  for (const t of [0, 2000, 4000, 6000]) s += `<text class="axis" x="${X(t)}" y="${T0 + PH + 16}" text-anchor="${t ? "middle" : "start"}">${fmt(t)}</text>`;
+  if (cut) for (const v of cut[sex]) s += `<line x1="${X(v)}" x2="${X(v)}" y1="${T0}" y2="${T0 + PH}" style="stroke:var(--ink)" stroke-width="1"/>
+      <text class="cutlabel" x="${X(v) + 4}" y="${T0 + 10}">${fmt(v)}</text>`;
+  svg.innerHTML = s;
+  svg.setAttribute("aria-label", `${sex}: daily energy intake histogram` + (cut ? `, kept between ${fmt(cut[sex][0])} and ${fmt(cut[sex][1])} kcal` : ", everyone kept"));
+}
+function show(id) {
+  const o = OPTS.find(x => x.id === id), cut = o ? o.cut : null, c = counts(o);
+  draw("w", "women", cut); draw("m", "men", cut);
+  const cap = document.getElementById("caption");
+  const hint = document.getElementById("hint");
+  if (!document.getElementById("next").dataset.done) hint.innerHTML = !o ? "Choose an option to continue."
+    : (!cut ? `${o.name}: <b>${fmt(21849)}</b> stay.` : `${o.name}: removes <b>${fmt(c.removed)}</b>, <b>${fmt(c.stay)}</b> stay.`) + (o.id === chosen ? "" : " (preview)");
+  if (!o) cap.innerHTML = "Point at an option to see who it would remove.";
+  else if (!cut) cap.innerHTML = `Everyone stays: <b>${fmt(21849)}</b> people.`;
+  else cap.innerHTML = `Removes <b>${fmt(c.removed)}</b> people: ${fmt(c.low)} who reported too little and ${fmt(c.high)} who reported too much. <b>${fmt(c.stay)}</b> stay.`;
+}
+function ready() { document.getElementById("next").disabled = false; }
+show(null);
+
+function setPalette(p) {
+  if (p === "indigo") document.documentElement.removeAttribute("data-palette"); else document.documentElement.setAttribute("data-palette", p);
+  document.querySelectorAll(".palette button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.p === p)));
+  try { localStorage.setItem("calm.palette", p); } catch (e) {}
+}
+document.querySelectorAll(".palette button").forEach(b => b.addEventListener("click", () => setPalette(b.dataset.p)));
+let saved = "indigo"; try { saved = localStorage.getItem("calm.palette") || "indigo"; } catch (e) {}
+setPalette(["indigo", "forest", "ink"].includes(saved) ? saved : "indigo");
+
+const tip = document.getElementById("tip");
+document.querySelectorAll(".panel svg").forEach(svg => {
+  svg.addEventListener("pointermove", e => { const t = e.target.getAttribute && e.target.getAttribute("data-tip");
+    if (!t) { tip.hidden = true; return; } tip.textContent = t; tip.style.left = e.clientX + "px"; tip.style.top = e.clientY + "px"; tip.hidden = false; });
+  svg.addEventListener("pointerleave", () => tip.hidden = true);
+});
+
+const drawer = document.getElementById("drawer");
+const openD = () => { drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false"); document.getElementById("closeRecord").focus(); };
+const closeD = () => { drawer.classList.remove("open"); drawer.setAttribute("aria-hidden", "true"); document.getElementById("openRecord").focus(); };
+document.getElementById("openRecord").onclick = openD;
+document.getElementById("closeRecord").onclick = closeD;
+document.addEventListener("keydown", e => { if (e.key === "Escape" && drawer.classList.contains("open")) closeD(); });
+
+document.getElementById("next").onclick = () => {
+  const o = OPTS.find(x => x.id === chosen), c = counts(o);
+  const sentence = !o.cut ? `Everyone was kept (${fmt(21849)} people); fixed energy cut-offs can be added as checks before the results.`
+    : `${fmt(c.removed)} people with implausible energy intakes were removed (${o.name.replace(", by sex", ", sex-specific")}), leaving ${fmt(c.stay)}.`;
+  const li = document.createElement("li"); li.className = "new"; li.innerHTML = `<small>Participants</small>${sentence}`;
+  const rec = document.getElementById("record"); const prev = rec.querySelector("li[data-step='4']"); if (prev) prev.remove();
+  li.dataset.step = "4"; rec.appendChild(li);
+  document.getElementById("next").dataset.done = "1";
+  document.getElementById("hint").textContent = "Recorded. In the app, the next question would open here.";
+  openD();
+};
+</script>

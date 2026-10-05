@@ -17,6 +17,12 @@ export type Route =
   | { name: "methods-document" }
   | { name: "methods-questlog" }
   | { name: "methods-map" }
+  | { name: "calm" }
+  | { name: "calm-qa" }
+  | { name: "calm-paper" }
+  | { name: "calm-quest" }
+  | { name: "calm-map" }
+  | { name: "calm-kit" }
   | { name: "missing"; path: string };
 
 /**
@@ -51,6 +57,9 @@ export function parseRoute(path: string, lab = LAB): Route {
     if (/^\/lab\/methods-document\/?$/.test(path)) return { name: "methods-document" };
     if (/^\/lab\/methods-questlog\/?$/.test(path)) return { name: "methods-questlog" };
     if (/^\/lab\/methods-map\/?$/.test(path)) return { name: "methods-map" };
+    if (/^\/lab\/calm\/?$/.test(path)) return { name: "calm" };
+    const calm = /^\/lab\/calm\/(qa|paper|quest|map|kit)\/?$/.exec(path);
+    if (calm) return { name: `calm-${calm[1]}` as "calm-qa" | "calm-paper" | "calm-quest" | "calm-map" | "calm-kit" };
   }
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };
