@@ -89,8 +89,9 @@ def test_every_wave1_method_enters_through_the_one_registry():
 
 def test_the_pooled_qc_finding_has_one_answer_family_and_qc_rlsc_makes_the_rows_leave():
     """WP18's reference-rows family answers both the pooled-QC finding and the naming census's
-    finding about the same rows. Where an injection order is read, QC-RLSC's four options lead and
-    the exclusion follows, offered once (OMICS's "set aside" is that exclusion). A QC-RLSC answer
+    finding about the same rows. Where an injection order is read, QC-RLSC's four options lead (and
+    the two for the whole run as one batch, the other batch reading), and the exclusion follows,
+    offered once (OMICS's "set aside" is that exclusion). A QC-RLSC answer
     is a reference-row rule just as the exclusion is (its ``qc_levels`` the levels that leave), and
     what it does covers the naming finding's exclusion, so that finding reads as answered by it."""
     from turbotab.core import repairs
@@ -109,7 +110,9 @@ def test_the_pooled_qc_finding_has_one_answer_family_and_qc_rlsc_makes_the_rows_
                             {"params": {"column": "sample_type", "qc_value": "QC"}},
                             repairs.OfferContext(frame=frame, target=None))
     keys = [o.key for o in options]
-    assert keys == [*Q.RLSC_OPTIONS, EXCLUDE]
+    # The batch is a reading (MS7 repair): the whole run as one batch is offered beside `batch`.
+    assert keys == [*Q.RLSC_OPTIONS, "qc_rlsc_lc", "qc_rlsc_gc", EXCLUDE]
+    assert [o.decision.params["batch_column"] for o in options[:-1]] == ["batch"] * 4 + [None] * 2
     exclusion = options[-1]
     assert exclusion.decision.params == {"column": "sample_type", "levels": ["QC"]}
     assert exclusion.sentence.startswith(f"`{n_qc}` rows where `sample_type` is `QC`")

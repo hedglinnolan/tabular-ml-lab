@@ -837,10 +837,12 @@ def test_5_chain_4_runs_end_to_end_with_its_relations_and_methods_sentences(chai
       refused afterwards;
     * the scores replace their items in the matrix (the design's step and lineage; the fit's
       table), the items read as answers without a code-or-amount ask;
-    * each reliability is R's (ω and α by psych::omega and psych::alpha, the ICC by psych::ICC),
-      each correction the proportional-odds refit of NumPy's calibration by hand with every other
-      column of the matrix as a covariate (statsmodels), labeled approximate; the uncorrected
-      estimate beside it is the fit's table row;
+    * each reliability is R's (ω and α by psych::omega and psych::alpha, the ICC by psych::ICC);
+      the two scores are corrected jointly (multivariate regression calibration, ruling 7): each
+      calibrated by NumPy by hand given every other column of the matrix (the other score's raw
+      value among them; the Rosner calibration's j-th row is exactly that), and the proportional-
+      odds model refit with both calibrated scores (statsmodels), labeled approximate and joint;
+      the uncorrected estimate beside each is the fit's table row;
     * the methods sentences, verbatim; the diet score's, with its numbers set aside, is the
       reviewers' required sentence;
     * changing the adjustment set (age leaves) recomputes the calibration without it.
@@ -879,36 +881,44 @@ def test_5_chain_4_runs_end_to_end_with_its_relations_and_methods_sentences(chai
     y = frame["wellbeing"].to_numpy() - 1
     male = (frame["sex"] == "M").to_numpy(dtype=float)
     age = frame["age"].to_numpy(dtype=float)
-    # the stress scale: ω, α, and the calibration given sex, age and the diet score
+    # the stress scale: ω and α; calibrated given sex, age and the diet score's raw value
     assert pss["reliability"]["value"] == pytest.approx(ref["score_omega_tot"], abs=1e-5)
     assert pss["reliability"]["alpha"] == pytest.approx(ref["alpha"], abs=1e-6)
-    Z = np.column_stack([male, age, ref["dq"]])
     s2u = (1 - ref["score_omega_tot"]) * np.var(ref["pss"], ddof=1)
-    X_hat, lam = calibrate_by_hand(ref["pss"], Z, s2u)
+    pss_hat, lam = calibrate_by_hand(ref["pss"], np.column_stack([male, age, ref["dq"]]), s2u)
     assert pss["correction"]["attenuation"] == pytest.approx(lam, rel=1e-5)
-    assert pss["correction"]["estimate"] == pytest.approx(_ordered(y, np.column_stack([X_hat, Z])),
-                                                          rel=1e-4)
-    assert pss["correction"]["naive"] == pytest.approx(table["pss_score"]["estimate"], rel=1e-9)
-    assert sorted(pss["correction"]["covariates"]) == ["age", "dq_score", "sex_M"]
-    # the diet score: the ICC, the error variance, and the calibration given sex, age and stress
+    # the diet score: the ICC and the error variance; calibrated given sex, age and stress
     assert dq["reliability"]["value"] == pytest.approx(ref["icc3"], abs=1e-9)
     assert dq["reliability"]["n"] == ref["n_both"]
     assert dq["correction"]["error_variance"] == pytest.approx(ref["dq_error"], rel=1e-10)
-    Z = np.column_stack([male, age, ref["pss"]])
-    X_hat, lam = calibrate_by_hand(ref["dq"], Z, ref["dq_error"])
-    assert dq["correction"]["estimate"] == pytest.approx(_ordered(y, np.column_stack([X_hat, Z])),
-                                                         rel=1e-4)
+    dq_hat, lam = calibrate_by_hand(ref["dq"], np.column_stack([male, age, ref["pss"]]),
+                                    ref["dq_error"])
+    assert dq["correction"]["attenuation"] == pytest.approx(lam, rel=1e-5)
+    # Multivariate regression calibration: the refit substitutes both calibrated scores.
+    assert pss["correction"]["estimate"] == pytest.approx(
+        _ordered(y, np.column_stack([pss_hat, male, age, dq_hat])), rel=1e-4)
+    assert dq["correction"]["estimate"] == pytest.approx(
+        _ordered(y, np.column_stack([dq_hat, male, age, pss_hat])), rel=1e-4)
+    assert pss["correction"]["naive"] == pytest.approx(table["pss_score"]["estimate"], rel=1e-9)
     assert dq["correction"]["naive"] == pytest.approx(table["dq_score"]["estimate"], rel=1e-9)
+    assert sorted(pss["correction"]["covariates"]) == ["age", "dq_score", "sex_M"]
+    assert pss["correction"]["jointly"] == ["dq_score"] and dq["correction"]["jointly"] == [
+        "pss_score"]
     for s in (pss, dq):
         corr = s["correction"]
         assert corr["scale"] == "odds_ratio" and corr["ratio"] == pytest.approx(
             math.exp(corr["estimate"]))
         assert corr["n_boot"] == corr["n_boot_ok"] == 50
         assert any("approximation" in l for l in corr["labels"])
-        assert any("each on its own" in c for c in s["concerns"])
+        assert any(l.startswith("Calibrated jointly with `") and "Rosner" in l
+                   for l in corr["labels"])
+        assert not any("each on its own" in c for c in s["concerns"])
+        assert corr["clustered_by"] is None
     assert dq["correction"]["estimate"] > dq["correction"]["naive"] > 0  # the ICC's attenuation
 
     approx = " In a proportional-odds model the calibrated score is an approximation (Carroll et al. 2006)."
+    joint = (" It was calibrated jointly with `{}` (multivariate regression calibration; Rosner, "
+             "Spiegelman & Willett 1990), their errors assumed independent.")
     assert pss["methods"] == (
         "`pss_score` was the sum of the PSS-10's 10 items, `pss_4`, `pss_5`, `pss_7` and `pss_8` "
         "reverse-coded on the 0–4 response scale. Its reliability was ω-total = "
@@ -916,15 +926,16 @@ def test_5_chain_4_runs_end_to_end_with_its_relations_and_methods_sentences(chai
         "analysis of the item correlations, one factor; Cronbach's α = "
         f"{ref['alpha']:.2f}, reported as customary). The corrected coefficient was obtained by "
         "regression calibration including all model covariates, with bootstrap CIs re-estimating "
-        "the reliability (50 replicates); uncorrected and corrected estimates are both reported. "
-        "A reliability from internal consistency omits transient error, so the correction "
-        "under-corrects." + approx)
+        "the reliability (50 replicates); uncorrected and corrected estimates are both reported."
+        + joint.format("dq_score") + " A reliability from internal consistency omits transient "
+        "error, so the correction under-corrects." + approx)
     assert dq["methods"] == (
         "`dq_score` was the sum of its 6 components. Reliability was estimated as the test–retest "
         f"ICC from a repeat administration (ICC(3,1) = {ref['icc3']:.2f}, {ref['n_both']:,} "
         "participants with both); the corrected coefficient was obtained by regression calibration "
         "including all model covariates, with bootstrap CIs re-estimating the reliability (50 "
-        "replicates); uncorrected and corrected estimates are both reported." + approx)
+        "replicates); uncorrected and corrected estimates are both reported."
+        + joint.format("pss_score") + approx)
     bare = (dq["methods"].replace(f" (ICC(3,1) = {ref['icc3']:.2f}, {ref['n_both']:,} participants "
                                   f"with both)", "").replace(" (50 replicates)", ""))
     assert REVIEWERS.replace(" (or a calibration substudy)", "") in bare
@@ -937,10 +948,10 @@ def test_5_chain_4_runs_end_to_end_with_its_relations_and_methods_sentences(chai
     assert all(s["correction"] is None for s in held["scales"])
     pss_b, dq_b = chain4["without_age"]["scales"]
     assert sorted(pss_b["correction"]["covariates"]) == ["dq_score", "sex_M"]
-    Z = np.column_stack([male, ref["dq"]])
-    X_hat, _ = calibrate_by_hand(ref["pss"], Z, s2u)
+    pss_hat, _ = calibrate_by_hand(ref["pss"], np.column_stack([male, ref["dq"]]), s2u)
+    dq_hat, _ = calibrate_by_hand(ref["dq"], np.column_stack([male, ref["pss"]]), ref["dq_error"])
     assert pss_b["correction"]["estimate"] == pytest.approx(
-        _ordered(y, np.column_stack([X_hat, Z])), rel=1e-4)
+        _ordered(y, np.column_stack([pss_hat, male, dq_hat])), rel=1e-4)
 
 
 def test_5_the_items_are_answers_by_the_scales_answer_and_a_codes_answer_is_refused():

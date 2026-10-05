@@ -362,6 +362,8 @@ class UsualIntakeSpec(_Value):
     cutoff: float | None = None
     cutoff_kind: CutoffKind | None = None
     n_boot: int = Field(default=200, ge=50, le=2000)
+    ear_for_all: bool = False  # SetUsualIntake: the EAR answered as every participant's group's
+    ear_symmetric: bool = False  # SetUsualIntake: the requirement answered as symmetric here
 
 
 class EnergyAdjustment(_Value):
@@ -1518,6 +1520,15 @@ class SetUsualIntake(_DecisionModel):
     cutoff: float | None = Field(default=None, gt=0)
     cutoff_kind: CutoffKind | None = None
     n_boot: int = Field(default=200, ge=50, le=2000)
+    # The EAR cut-point's conditions the recalls cannot show, answered by the user (Institute of
+    # Medicine 2000, ch. 4; turbotab/core/usual_intake.py). ``ear_for_all``: the cut-off is the EAR
+    # of every participant's DRI life-stage group (age band, sex, pregnancy and lactation status);
+    # unanswered, the share below it is reported as a plain share (block and record).
+    # ``ear_symmetric``: the requirement distribution is symmetric in these participants, asked of
+    # iron, whose requirement is skewed in menstruating women (refused until answered). Both are
+    # read only with an EAR cut-off.
+    ear_for_all: bool = False
+    ear_symmetric: bool = False
 
     @model_validator(mode="after")
     def _shape(self) -> "SetUsualIntake":
@@ -1601,12 +1612,15 @@ CodebookField = Literal["unit", "codes", "type", "range"]
 
 
 class CodebookConflict(_Value):
-    """A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3)."""
+    """A codebook field the values contradict, or one whose check cannot run here (``checked``
+    False: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT
+    §14.2–§14.3)."""
 
     column: str
     field: CodebookField
     says: str      # what the codebook documents
-    values: str    # what the values show instead
+    values: str    # what the values show instead, or why no check ran
+    checked: bool = True
 
 
 class CodebookSpec(_Value):
@@ -4313,6 +4327,20 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
            "multiple_imputation" else "the median fill places them in the middle of the distribution")
     aware = ("a censored-normal draw below the limit, given the outcome" if inference else
              "the expected value below the limit, fit in each training fold")
+    # Half the minimum is customary only at 10% below the limit or less (Lubin et al. 2004); the
+    # share is of the participants' values, zeros recoded as non-detections included (MS7 repair).
+    from turbotab.core.methods.omics import CENSORED_CUSTOMARY_MAX, censored_share_of
+
+    share = censored_share_of(ctx, censored)
+    high = share is not None and share > CENSORED_CUSTOMARY_MAX
+    half = (f"Half the smallest detected value (customary only to 10%; up to {share:.0%} here)"
+            if high else "Half the smallest detected value (customary)")
+    # Above 10% under prediction QRILC ranks beside the censored normal (Wei et al. 2018).
+    qrilc = ([{"label": "QRILC: each sample's values below detection drawn below its detection "
+                        "quantile",
+               "decision": _missing_base(decision, below_detection="qrilc",
+                                         censored_columns=censored)}]
+             if high and not inference else [])
     raise Refusal(
         "median_below_detection",
         f"{_and(censored[:6])}{' and others' if len(censored) > 6 else ''} hold values below a "
@@ -4322,7 +4350,8 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
         exits=[{"label": f"Censoring-aware: {aware}",
                 "decision": _missing_base(decision, below_detection="censoring_aware",
                                           censored_columns=censored)},
-               {"label": "Half the smallest detected value (customary)",
+               *qrilc,
+               {"label": half,
                 "decision": _missing_base(decision, below_detection="half_minimum",
                                           censored_columns=censored)},
                *([] if inference else [{"label": "Keep this fill: give your reason",

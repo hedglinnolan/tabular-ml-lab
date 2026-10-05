@@ -456,13 +456,15 @@ class ProjectService:
 
     def _project_ctx(self, pid: str) -> ProjectContext:
         meta = self.workspace.get(pid)
+        state = self.log(pid).state()
         return ProjectContext(
             project_id=pid,
-            state=self.log(pid).state(),
+            state=state,
             cache_root=self.workspace.cache_dir(pid),
             paths={
                 "source": meta.source_path,
-                "data": str(self.workspace.data_path(pid)),
+                # The table the ingest stage writes for these joins (each set its own file).
+                "data": str(self.workspace.table_path(pid, state)),
                 "project_dir": str(self.workspace.project_dir(pid)),
             },
             settings={"memory_budget_bytes": int(self.settings.memory_budget_bytes)},
@@ -590,9 +592,19 @@ class ProjectService:
 
     def _table_ready(self, pid: str) -> Path:
         ingest = self.engine.status(pid)["ingest"]
-        if ingest.status != "fresh":
+        if ingest.status != "fresh" or not ingest.key:
             raise ApiError(409, "not_yet", "The table is still being read; try again once it is ready.")
-        return self.workspace.data_path(pid)
+        return self._ingested_table(pid, ingest.key)
+
+    def _ingested_table(self, pid: str, key: str) -> Path:
+        """The file the ingest artifact at ``key`` describes: the source's own table, or the file
+        of the set of joins it was read with (it names it, ``data/<table>``). Read from the artifact,
+        never from the log: this is reached while a decision is being recorded."""
+        info = read_artifact(self.workspace.cache_dir(pid), "ingest", key, public=True)
+        name = info.get("table") if isinstance(info, dict) else None
+        if not name:
+            return self.workspace.data_path(pid)
+        return self.workspace.data_path(pid).with_name(Path(str(name)).name)
 
     def join_preview(self, pid: str, file: str, on: str, right_on: str | None, how: str) -> dict[str, Any]:
         """What joining ``file`` on ``on`` would do: the row counts on each side, the rows with no
@@ -1224,7 +1236,11 @@ class ProjectService:
         from turbotab.core.provenance import methods_text
 
         self.workspace.get(pid)
-        return methods_text(self.log(pid).records())
+        records = self.log(pid).records()
+        # A restated sentence reads what its record's sentence read besides the answers: the
+        # detected task, for the families' estimators under the survey answer (MS4).
+        facts = SentenceFacts(self.decision_context(pid), None, records)
+        return methods_text(records, {"detected_task": facts.detected_task})
 
     # ── stages and jobs ──
 
@@ -1299,9 +1315,10 @@ class ProjectService:
                 raise ApiError(409, "ingest_failed", f"The table could not be read. {ingest.error or ''}".strip())
             raise ApiError(409, "table_not_ready", "The table is still being read.")
         source = self.table_source(pid)
-        path = self.workspace.data_path(pid)
         if source is not None:
             path = (artifact_dir(self.workspace.cache_dir(pid), *source) / "files" / "table.parquet").resolve()
+        else:  # the table the fresh ingest describes (a joined table has a file of its own)
+            path = self._ingested_table(pid, ingest.key)
         tag = f"{ingest.key}:{path}"
         with self._lock:
             cached = self._stores.get(pid)

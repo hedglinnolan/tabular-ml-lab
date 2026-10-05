@@ -25,10 +25,20 @@ What a codebook may do follows BLUEPRINT §14.3 ("names never count as corrobora
 * **A codebook the values contradict is asked, never applied**: a unit the magnitudes reject (a
   height documented in m whose median is 166; a total energy documented in kcal whose ratio to its
   macronutrients' energy is 4.18), codes the data do not hold (values the code table does not list,
-  or none of its codes present), values outside a documented range, a categorical type whose values
-  fill a measurement's grid. A contradicted entry settles none of its fields.
+  counted exactly however many distinct values the column holds), values outside a documented
+  range (a value within four units in the last place of a bound, in the column's own
+  floating-point type, is the bound: an IBM float read as an IEEE double moves by one), a
+  categorical type whose values fill a measurement's grid. A contradicted entry settles none of
+  its fields.
+* **A check that cannot run confirms nothing**: a total energy's unit beside its macronutrients is
+  checked by the Atwater identity, the registry's test; where that test cannot run (it needs the
+  nutrition pack), the documented unit is asked, never applied.
+* **A code table of missing-value codes alone** (``77777=Refused; 99999=Don't know``) documents no
+  categories: it settles nothing, and the values it does not list are the measurement's own.
 * **A recorded answer stands**: a reading already answered otherwise (by the user, or by an
-  earlier codebook) keeps its answer, and the record says so.
+  earlier codebook) keeps its answer, and the record says so; its documented unit is then no unit
+  a sentence states (``readings.codebook_unit``), whether the user answered before the import or
+  after it.
 * NHANES's value tables cannot tell a measurement from a code number by their shape: masked
   variance strata (``SDMVSTRA``, "134 to 148") and ages ("0 to 79") are both "Range of Values", and
   household sizes are tables of their own numbers ("1", "2", …, "7 or more"). So a range, and a
@@ -55,9 +65,10 @@ def _contract() -> Any:
     both = ("prediction", "inference")
     return register_contract(MethodContract(
         key="import_codebook", label="Importing a codebook", slot="ingest", scope="descriptive",
-        scope_note=("Each documented column's values are read only to find a contradiction; what "
-                    "settles a reading is the user's documentation, never the values, and no "
-                    "outcome is read."),
+        scope_note=("Each documented column's values, the outcome's among them, are read only to "
+                    "find a contradiction; what settles a reading is the user's documentation, "
+                    "never the values, and the outcome's documented unit informs only how its "
+                    "sentences state it."),
         needs=("a codebook naming the table's columns: a variable table, an NHANES codebook page, "
                "or an XPT file's labels",),
         question="Do you have a data dictionary for this table?",
@@ -88,17 +99,27 @@ def _contract() -> Any:
                      "remaining guesses", condition="a free-text label", id="free-text label",
                      enforced_by="turbotab.core.readings:labeled"),
             Relation("conflicts", "contradicted_by_the_values", "asked, never applied",
-                     condition="a field the values contradict", id="contradicted by the values",
+                     condition="a field the values contradict (at any number of distinct values; a "
+                               "value within four units in the last place of a documented bound "
+                               "is the bound)", id="contradicted by the values",
                      rung="refused",
                      exits=("confirm what the codebook documents", "confirm what the values say"),
                      enforced_by="turbotab.core.codebook:assess"),
+            Relation("conflicts", "unchecked", "asked, never applied: a check that cannot run "
+                                               "confirms nothing",
+                     condition="a field whose check cannot run here (a total energy's unit beside "
+                               "its macronutrients, without the Atwater identity)",
+                     id="its check cannot run", rung="refused",
+                     exits=("confirm what the codebook documents", "confirm the other unit"),
+                     enforced_by="turbotab.core.codebook:assess"),
             Relation("conflicts", "answered_otherwise", "the user's answer stands",
-                     condition="a reading the user answered otherwise",
-                     id="answered otherwise by the user", rung="refused",
+                     condition="a reading the user answered otherwise, before the import or after "
+                               "it", id="answered otherwise by the user", rung="refused",
                      exits=("answer the reading again",),
                      enforced_by="turbotab.core.codebook:assess"),
             Relation("enables", "documented_outcome_unit",
-                     "An outcome's documented unit is stated in its sentences.",
+                     "An outcome's documented unit is stated in its sentences, unless the user "
+                     "answered its unit otherwise.",
                      enforced_by="turbotab.core.readings:codebook_unit"),
         ),
         sources=("BLUEPRINT §14.2 (let the codebook answer)", "V2 definition of done §1")))
@@ -110,7 +131,12 @@ TABLE_SUFFIXES = (".csv", ".tsv", ".txt", ".xlsx", ".xls")
 HTML_SUFFIXES = (".htm", ".html")
 XPT_SUFFIXES = (".xpt", ".xport")
 SUPPORTED = "a variable table (CSV, TSV or Excel), an NHANES codebook page (.htm), or an XPT file"
-MAX_DISTINCT = 5_000  # a code table is checked against at most this many distinct values
+# A value this many units in the last place from a documented bound, in the column's own
+# floating-point type, is the bound as its storage rounds it. Measured on NHANES 2015-2016's
+# DR1TOT_I (9,544 rows, 168 variables) against its codebook page: twelve maxima exceed their printed
+# bound by exactly one unit (223.75900000000001 against 223.759: the IBM float read as an IEEE
+# double), and DEMO_I's and BMX_I's pages hold every value exactly.
+BOUND_ULPS = 4
 
 # ── units ─────────────────────────────────────────────────────────────────────
 
@@ -581,38 +607,140 @@ class Assessment:
 
 @dataclass
 class _Facts:
+    """What the check reads of one documented column: its values, never the codebook's."""
+
     dtype: str
-    present: int
-    values: list[str] | None   # distinct values (code_key), None when more than MAX_DISTINCT
-    numbers: Any               # the finite numbers (numpy) of a numeric column, or None
+    physical: str
+    present: int   # rows holding a value
+    every: Any     # a numeric or yes/no column's values as numbers (numpy, inf kept), else None
+    numbers: Any   # a numeric column's finite numbers (numpy), else None
 
 
-def _column_facts(parquet: Path, columns: Sequence[str], dtypes: Mapping[str, str]
-                  ) -> dict[str, _Facts]:
-    import duckdb
+def _sql_text(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _sql_ident(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _sql_double(x: float) -> str:
+    return f"CAST({_sql_text(repr(float(x)))} AS DOUBLE)"
+
+
+def _code_number(code: str) -> float | None:
+    """A code's number (a code key as :func:`code_key` writes it), or None for a word."""
+    try:
+        return float(code)
+    except ValueError:
+        return None
+
+
+def _is_float32(physical: str) -> bool:
+    return physical.upper().split("(")[0].strip() in ("FLOAT", "FLOAT4", "REAL")
+
+
+def _slack(bound: float, physical: str) -> float:
+    """:data:`BOUND_ULPS` units in the last place of ``bound`` in the column's own floating-point
+    type: how far a value may sit past a documented bound and still be the bound."""
     import numpy as np
 
-    out: dict[str, _Facts] = {}
-    rel = "read_parquet('" + str(parquet).replace("'", "''") + "')"
-    con = duckdb.connect()
-    try:
-        for c in columns:
-            ident = '"' + c.replace('"', '""') + '"'
-            rows = con.execute(f"SELECT DISTINCT {ident} FROM {rel} WHERE {ident} IS NOT NULL "
-                               f"LIMIT {MAX_DISTINCT + 1}").fetchall()
-            values = [code_key(r[0]) for r in rows]
-            numbers = None
-            if dtypes.get(c) in ("numeric", "integer"):
-                arr = con.execute(f"SELECT CAST({ident} AS DOUBLE) FROM {rel} "
-                                  f"WHERE {ident} IS NOT NULL").fetchnumpy()
-                x = np.asarray(list(arr.values())[0], dtype=float)
-                numbers = x[np.isfinite(x)]
-            present = int(con.execute(f"SELECT count({ident}) FROM {rel}").fetchone()[0])
-            out[c] = _Facts(dtypes.get(c, "text"), present,
-                            values if len(values) <= MAX_DISTINCT else None, numbers)
-    finally:
-        con.close()
-    return out
+    b = abs(float(bound))
+    ulp = float(np.spacing(np.float32(b))) if _is_float32(physical) else float(np.spacing(b))
+    return BOUND_ULPS * ulp
+
+
+def _within(x: Any, rng: tuple[float, float], physical: str) -> Any:
+    lo, hi = rng
+    return (x >= lo - _slack(lo, physical)) & (x <= hi + _slack(hi, physical))
+
+
+# The whitespace ``str.strip`` removes from a code that ``trim`` would leave (tabs, line breaks).
+_WHITESPACE = "' ' || chr(9) || chr(10) || chr(11) || chr(12) || chr(13)"
+
+
+class _Values:
+    """The table's values, read for the check over its Parquet file (DuckDB): each column's facts
+    and, for a code table, the distinct values it does not list, counted exactly at any number of
+    distinct values (a column with 5,413 distinct step counts is checked as one with 30)."""
+
+    def __init__(self, parquet: Path, info: Mapping[str, Any]):
+        import duckdb
+
+        self.rel = f"read_parquet({_sql_text(str(parquet))})"
+        self.columns = {str(c["name"]): c for c in info.get("columns") or []}
+        self.con = duckdb.connect()
+
+    def close(self) -> None:
+        self.con.close()
+
+    def _numeric(self, column: str) -> bool:
+        return str(self.columns[column]["dtype"]) in ("numeric", "integer", "boolean")
+
+    def facts(self, column: str) -> _Facts:
+        import numpy as np
+
+        meta = self.columns[column]
+        ident = _sql_ident(column)
+        present = int(self.con.execute(f"SELECT count({ident}) FROM {self.rel}").fetchone()[0])
+        every = numbers = None
+        if self._numeric(column):
+            arr = self.con.execute(f"SELECT CAST({ident} AS DOUBLE) FROM {self.rel} "
+                                   f"WHERE {ident} IS NOT NULL").fetchnumpy()
+            every = np.asarray(list(arr.values())[0], dtype=float)
+            every = every[~np.isnan(every)]
+            if str(meta["dtype"]) in ("numeric", "integer"):
+                numbers = every[np.isfinite(every)]
+        return _Facts(str(meta["dtype"]), str(meta.get("physical_type") or ""), present, every,
+                      numbers)
+
+    def first(self, column: str) -> str:
+        """The column's smallest value as text (for words)."""
+        row = self.con.execute(f"SELECT min(CAST({_sql_ident(column)} AS VARCHAR)) "
+                               f"FROM {self.rel}").fetchone()
+        return code_key(row[0]) if row and row[0] is not None else ""
+
+    def outside(self, column: str, facts: _Facts, codes: Mapping[str, str],
+                rng: tuple[float, float] | None) -> tuple[int, list[str]]:
+        """``(how many, the first four)`` of the column's distinct values (as :func:`code_key`
+        reads them) that the code table does not list and its range, if any, does not hold."""
+        import numpy as np
+
+        if facts.every is not None:
+            distinct = np.unique(facts.every)
+            listed = np.array(sorted({x for x in map(_code_number, codes) if x is not None}),
+                              dtype=float)
+            mask = ~np.isin(distinct, listed)
+            if rng is not None:
+                mask &= ~_within(distinct, rng, facts.physical)
+            out = distinct[mask]
+            return int(len(out)), [code_key(float(v)) for v in out[:4]]
+        # Text: a value is listed when its number is a code's number, or its words a code's words
+        # (``code_key``: "1.0", " 1" and 1 are one code), or its number lies in the range.
+        text = f"trim(CAST({_sql_ident(column)} AS VARCHAR), {_WHITESPACE})"
+        number = f"TRY_CAST({text} AS DOUBLE)"
+        is_number = f"({number} IS NOT NULL AND isfinite({number}))"
+        numbers = sorted({x for x in map(_code_number, codes) if x is not None and math.isfinite(x)})
+        words = sorted(k for k in codes if k not in {code_key(x) for x in numbers})
+        listed = []
+        if numbers:
+            listed.append(f"({is_number} AND {number} IN "
+                          f"({', '.join(_sql_double(x) for x in numbers)}))")
+        if words:
+            listed.append(f"(NOT {is_number} AND {text} IN "
+                          f"({', '.join(_sql_text(w) for w in words)}))")
+        if rng is not None:
+            lo, hi = rng
+            listed.append(f"({is_number} AND {number} BETWEEN "
+                          f"{_sql_double(lo - _slack(lo, 'DOUBLE'))} AND "
+                          f"{_sql_double(hi + _slack(hi, 'DOUBLE'))})")
+        where = (f"{_sql_ident(column)} IS NOT NULL AND NOT ({' OR '.join(listed) or 'FALSE'})")
+        key = f"CASE WHEN {is_number} THEN 'n' || CAST({number} AS VARCHAR) ELSE 't' || {text} END"
+        n = int(self.con.execute(f"SELECT count(DISTINCT {key}) FROM {self.rel} "
+                                 f"WHERE {where}").fetchone()[0])
+        rows = self.con.execute(f"SELECT DISTINCT {text} FROM {self.rel} WHERE {where} "
+                                f"ORDER BY 1 LIMIT 64").fetchall()
+        return n, sorted(dict.fromkeys(code_key(r[0]) for r in rows))[:4]
 
 
 def _restates_numbers(codes: Mapping[str, str]) -> bool:
@@ -645,10 +773,25 @@ def _fmt(x: float) -> str:
     return f"{x:,.4g}" if abs(x) < 1e5 else f"{x:,.0f}"
 
 
+def _exact(x: float) -> str:
+    """A bound or a value as written, every digit kept (the shortest form that reads back as the
+    same number): a range quoted to four digits would misquote the codebook (223.759 is no
+    223.8) and hide how far a value lies past it."""
+    x = float(x)
+    return f"{int(x):,}" if x.is_integer() and abs(x) < 1e15 else format(x, ",")
+
+
 def _listed(values: Sequence[str], limit: int = 4) -> str:
     shown = ", ".join(f"`{v}`" for v in values[:limit])
     more = len(values) - limit
     return shown + (f" and {more:,} more" if more > 0 else "")
+
+
+def _counted(shown: Sequence[str], n: int) -> str:
+    """The first values of ``n`` (``shown``), then how many more there are."""
+    listed = ", ".join(f"`{v}`" for v in shown)
+    more = n - len(shown)
+    return listed + (f" and {more:,} more" if more > 0 else "")
 
 
 # Human ranges a body measure's median falls in, per unit (a contradiction needs the magnitudes to
@@ -657,16 +800,46 @@ _MEDIAN_BOUNDS = {"kg": (0.5, 400.0), "lb": (1.0, 900.0), "years": (0.0, 120.0),
                   "pct_energy": (0.0, 100.0)}
 
 
+def _atwater_runs() -> bool:
+    """Whether the registry's test of total energy's unit (the Atwater identity, ``readings.
+    KIND_RULES["unit:energy"]``) runs in this installation: it settles kcal on a table built to
+    satisfy ``E = 4P + 4C + 9F`` exactly. It reads the nutrition pack, which an installation
+    without Classic's ``ml`` package lacks (``methods.energy``); there it settles nothing, and its
+    silence must not pass for agreement."""
+    import numpy as np
+    import pandas as pd
+
+    from turbotab.core import readings
+
+    p, c, f = np.arange(20.0, 44.0, 2.0), np.arange(150.0, 270.0, 10.0), np.arange(40.0, 64.0, 2.0)
+    probe = pd.DataFrame({"protein_g": p, "carbohydrate_g": c, "fat_g": f,
+                          "energy_kcal": 4 * p + 4 * c + 9 * f})
+    try:
+        verdict = readings.by_values("unit:energy", probe, "energy_kcal")
+    except Exception:  # noqa: BLE001 - a test that raises does not run
+        return False
+    return bool(verdict.settles and verdict.value == "kcal")
+
+
+UNCHECKED_ENERGY = ("the Atwater identity, which tests a total energy's unit against its "
+                    "macronutrients, cannot run in this installation")
+
+
 def _unit_contradiction(column: str, unit: str, facts: _Facts, label: str, store: Any
-                        ) -> tuple[str, list[str]] | None:
-    """What the values say against a documented unit, and the units they leave, or None."""
+                        ) -> dict[str, Any] | None:
+    """What the values say against a documented unit (``values``), the units they leave
+    (``units``), and whether a check ran at all (``checked``: False when the one that applies
+    cannot run here, which confirms nothing); None when nothing contradicts it."""
     import numpy as np
 
     from turbotab.core import readings
     from turbotab.core.recognizers import tokens
 
+    def against(values: str, units: Sequence[str] = (), checked: bool = True) -> dict[str, Any]:
+        return {"values": values, "units": list(units), "checked": checked}
+
     if facts.dtype not in ("numeric", "integer"):
-        return f"text values, which have no unit", []
+        return against("text values, which have no unit")
     x = facts.numbers
     if x is None or not len(x):
         return None
@@ -676,27 +849,35 @@ def _unit_contradiction(column: str, unit: str, facts: _Facts, label: str, store
     if unit in ("cm", "m", "in") and words & {"height", "stature", "bmxht", "length"}:
         verdict = readings.by_values("unit:height", positive)
         if verdict.settles and verdict.value != unit:
-            return (f"a median of {_fmt(median or 0)}, a human height only in {verdict.value}",
-                    [str(verdict.value)])
+            return against(f"a median of {_fmt(median or 0)}, a human height only in "
+                           f"{verdict.value}", [str(verdict.value)])
         if unit == "in" and verdict.settles:
-            return f"a median of {_fmt(median or 0)}, which no one is in inches", [str(verdict.value)]
+            return against(f"a median of {_fmt(median or 0)}, which no one is in inches",
+                           [str(verdict.value)])
     if unit in ("kcal", "kj") and store is not None:
+        other = sorted({"kcal", "kj"} - {unit})
+        verdict = None
         try:
             from turbotab.core.decisions import _names_a_macro_total
 
             macros = [c for c in store.columns if c != column and _names_a_macro_total(c)]
             if macros:
-                frame = store.materialize([column, *macros])
-                verdict = readings.by_values("unit:energy", frame, column)
-                fits = {u for u, _d in verdict.candidates}
-                if verdict.settles and verdict.value != unit:
-                    return (f"values that match the energy their macronutrients carry in "
-                            f"{verdict.value}", [str(verdict.value)])
-                if fits and unit not in fits:
-                    return (f"values {verdict.evidence.removeprefix('is ')}",
-                            sorted(fits))
-        except Exception:  # noqa: BLE001 - a check that cannot run contradicts nothing
-            pass
+                verdict = readings.by_values("unit:energy", store.materialize([column, *macros]),
+                                             column)
+                ran = verdict.detail is not None or _atwater_runs()
+            else:
+                ran = True  # no macronutrient beside it: nothing to check, as for mg/dL
+        except Exception:  # noqa: BLE001 - a check that raises did not run
+            ran = False
+        if not ran:  # both units offered, in the order a contradicted unit offers them
+            return against(UNCHECKED_ENERGY, other, checked=False)
+        if verdict is not None:
+            fits = {u for u, _d in verdict.candidates}
+            if verdict.settles and verdict.value != unit:
+                return against(f"values that match the energy their macronutrients carry in "
+                               f"{verdict.value}", [str(verdict.value)])
+            if fits and unit not in fits:
+                return against(f"values {verdict.evidence.removeprefix('is ')}", sorted(fits))
     bounds = _MEDIAN_BOUNDS.get(unit)
     if bounds is not None:
         lo, hi = bounds
@@ -704,10 +885,10 @@ def _unit_contradiction(column: str, unit: str, facts: _Facts, label: str, store
         if len(values):
             if unit == "pct_energy":
                 if float(values.min()) < lo or float(values.max()) > hi:
-                    return f"values from {_fmt(float(values.min()))} to {_fmt(float(values.max()))}, " \
-                           f"outside 0–100", []
+                    return against(f"values from {_fmt(float(values.min()))} to "
+                                   f"{_fmt(float(values.max()))}, outside 0–100")
             elif median is not None and not lo <= median <= hi:
-                return f"a median of {_fmt(median)}, outside any human value in {unit}", []
+                return against(f"a median of {_fmt(median)}, outside any human value in {unit}")
     return None
 
 
@@ -715,8 +896,6 @@ def assess(codebook: Codebook, parquet: Path, info: Mapping[str, Any], state: An
            store: Any = None) -> Assessment:
     """Check ``codebook`` against the table at ``parquet`` (``info``: its DatasetInfo dict) and the
     answers in ``state``: what it settles, what it asks, what it leaves to the user's answers."""
-    from turbotab.core import readings
-
     dtypes = {str(c["name"]): str(c["dtype"]) for c in info.get("columns") or []}
     by_lower: dict[str, list[str]] = {}
     for c in dtypes:
@@ -729,119 +908,124 @@ def assess(codebook: Codebook, parquet: Path, info: Mapping[str, Any], state: An
             matched[e.variable] = by_lower[e.variable.lower()][0]
     a = Assessment(codebook=codebook, matched=matched)
     target = getattr(state, "target", None) if state is not None else None
-    check = [matched[e.variable] for e in codebook.entries
-             if e.variable in matched and (e.codes or e.unit or e.type or e.range)]
-    facts = _column_facts(parquet, list(dict.fromkeys(check)), dtypes)
-    for e in codebook.entries:
-        column = matched.get(e.variable)
-        if column is None:
-            continue
-        if e.label:
-            a.labels[column] = e.label
-        f = facts.get(column)
-        if f is None or codebook.form == "xpt":
-            if e.unit.strip() and f is None:
-                a.units[column] = e.unit.strip()
-            continue
-        proposed: list[tuple[str, str, str]] = []   # (reading, value, field)
-        conflicts: list[dict[str, Any]] = []
-        numeric = f.dtype in ("numeric", "integer")
-        values = f.values
-        # value-code tables
-        codes = {code_key(c): d for c, d in e.codes.items() if code_key(c)}
-        if codes and values is not None and f.present:
-            # Codes the data do not hold: a value the code table does not list (nor its range).
-            # A listed code no row holds is no contradiction (a subset; NHANES lists codes whose
-            # count is 0).
-            outside = [v for v in values if v not in codes]
-            if e.range is not None and outside:
-                lo, hi = e.range
-                outside = [v for v in outside
-                           if _number(v) is None or not lo <= float(v) <= hi]
-            if outside:
-                conflicts.append({"field": "codes", "says": f"the codes {_listed(list(codes))}",
-                                  "values": f"values it does not list: {_listed(sorted(outside))}"})
-        elif e.range is not None and numeric and f.numbers is not None and len(f.numbers):
-            lo, hi = e.range
-            listed = {_number(c) for c in codes} - {None}
-            out = [v for v in f.numbers if not lo <= v <= hi and v not in listed]
-            if out:
-                conflicts.append({"field": "range", "says": f"values from {_fmt(lo)} to {_fmt(hi)}",
-                                  "values": f"{len(out):,} values outside it, from "
-                                            f"{_fmt(min(out))} to {_fmt(max(out))}"})
-        if codes and e.range is not None and values is not None and not conflicts:
-            lo, hi = e.range
-            out = [v for v in values if v not in codes and _number(v) is not None
-                   and not lo <= float(v) <= hi]
-            if out:
-                conflicts.append({"field": "range", "says": f"values from {_fmt(lo)} to {_fmt(hi)}",
-                                  "values": f"values outside it: {_listed(sorted(out))}"})
-        kind_of_type = type_reading(e.type)
-        if codes and e.range is None and not _restates_numbers(codes):
-            if kind_of_type == "amount":
-                conflicts.append({"field": "type", "says": f"the type {e.type!r} beside a code "
-                                                           "table", "values": "a code table"})
-            elif numeric:
-                proposed.append(("code_or_count", "code", "codes"))
-            coding = _sex_coding(codes)
-            if coding is not None:
-                proposed.append(("sex_coding", coding, "codes"))
-        elif kind_of_type is not None and not codes:
-            if not numeric and kind_of_type == "amount" and f.present:
-                sample = next(iter(values or []), "")
-                conflicts.append({"field": "type", "says": f"the type {e.type!r}",
-                                  "values": f"text, such as `{sample}`"})
-            elif numeric and kind_of_type == "code" and f.numbers is not None and \
-                    readings.by_values("code_or_count", f.numbers).settles:
-                conflicts.append({"field": "type", "says": f"the type {e.type!r}",
-                                  "values": "values with decimals filling a measurement's grid"})
-            elif numeric:
-                proposed.append(("code_or_count", kind_of_type, "type"))
-        # units
-        documented = e.unit.strip()
-        unit = unit_value(documented) if documented else None
-        if documented:
-            # A unit no reading kind takes (mg/dL) has no magnitude test here: it is the user's.
-            against = (_unit_contradiction(column, unit or documented, f, e.label, store)
-                       if unit is not None or not numeric else None)
-            if against is not None:
-                conflicts.append({"field": "unit", "says": documented, "values": against[0],
-                                  "units": against[1]})
-            elif unit is not None and numeric:
-                proposed.append(("unit", unit, "unit"))
-        if conflicts:
-            for c in conflicts:
-                units_left = c.pop("units", [])
-                a.asked.append({"column": column, **c,
-                                "exits": _conflict_exits(column, c["field"], e, units_left,
-                                                         values)})
-            continue
-        if documented:
-            a.units[column] = documented  # not contradicted: a sentence may state it
-        for reading_kind, value, source in proposed:
-            if column == target:
-                continue  # the outcome's kind and unit have their own questions
-            recorded = readings.confirmation(state, reading_kind, column) if state is not None \
-                else None
-            k = readings.key(reading_kind, column)
-            if recorded is not None and str(recorded) == str(value):
-                if readings.codebook_source(state, reading_kind, column) is None:
-                    a.already.append(k)   # the user's own answer, the same: nothing to write
-                    continue
-                # Recorded by a codebook (this one, imported again after a join): written again,
-                # so the latest import still names it as its evidence.
-            elif recorded is not None:
-                a.kept.append(k)
+    reader = _Values(parquet, info)
+    try:
+        for e in codebook.entries:
+            column = matched.get(e.variable)
+            if column is None:
                 continue
-            a.items.append({"reading": reading_kind, "column": column, "value": value,
-                            "field": source})
+            if e.label:
+                a.labels[column] = e.label
+            if codebook.form == "xpt" or not (e.codes or e.unit or e.type or e.range):
+                continue  # labels only
+            _check_entry(a, e, column, reader.facts(column), reader, state, target, store)
+    finally:
+        reader.close()
     return a
 
 
-def _conflict_exits(column: str, field_name: str, e: Entry, units_left: Sequence[str],
-                    values: Sequence[str] | None) -> list[dict[str, Any]]:
-    """The answers a contradicted field offers: the values' reading and the codebook's, one
-    confirmation each (the user decides)."""
+def _check_entry(a: Assessment, e: Entry, column: str, f: _Facts, reader: _Values, state: Any,
+                 target: str | None, store: Any) -> None:
+    """One matched entry's structured fields against its column's values: each contradicted
+    field asked (and the entry then settles nothing), else each field's reading proposed, written
+    where no answer of the user's stands."""
+    from turbotab.core import readings
+
+    proposed: list[tuple[str, str, str]] = []   # (reading, value, field)
+    conflicts: list[dict[str, Any]] = []
+    numeric = f.dtype in ("numeric", "integer")
+    codes = {code_key(c): d for c, d in e.codes.items() if code_key(c)}
+    # The table's categories: its codes less those for a missing answer (Refused, Don't know).
+    # A table of missing-value codes alone documents no category, and the values it does not list
+    # are the measurement's own.
+    categories = {c: d for c, d in codes.items() if not SENTINEL.search(d)}
+    if categories and f.present:
+        # Codes the data do not hold: a value the code table does not list (nor its range),
+        # counted over every distinct value. A listed code no row holds is no contradiction (a
+        # subset; NHANES lists codes whose count is 0).
+        n, shown = reader.outside(column, f, codes, e.range)
+        if n:
+            conflicts.append({"field": "codes", "says": f"the codes {_listed(list(codes))}",
+                              "values": f"values it does not list: {_counted(shown, n)}"})
+    elif e.range is not None and f.every is not None and len(f.every):
+        import numpy as np
+
+        listed = np.array(sorted({x for x in map(_code_number, codes) if x is not None}),
+                          dtype=float)
+        x = f.every
+        out = x[~_within(x, e.range, f.physical) & ~np.isin(x, listed)]
+        if len(out):
+            lo, hi = e.range
+            low, high = float(out.min()), float(out.max())
+            conflicts.append({"field": "range", "says": f"values from {_exact(lo)} to {_exact(hi)}",
+                              "values": (f"`{len(out):,}` {'value' if len(out) == 1 else 'values'} "
+                                         f"outside it, " + (f"`{_exact(low)}`" if low == high else
+                                                            f"from `{_exact(low)}` to "
+                                                            f"`{_exact(high)}`"))})
+    kind_of_type = type_reading(e.type)
+    if categories and e.range is None and not _restates_numbers(codes):
+        if kind_of_type == "amount":
+            conflicts.append({"field": "type", "says": f"the type {e.type!r} beside a code "
+                                                       "table", "values": "a code table"})
+        elif numeric:
+            proposed.append(("code_or_count", "code", "codes"))
+        coding = _sex_coding(codes)
+        if coding is not None:
+            proposed.append(("sex_coding", coding, "codes"))
+    elif kind_of_type is not None and not categories:
+        if not numeric and kind_of_type == "amount" and f.present:
+            conflicts.append({"field": "type", "says": f"the type {e.type!r}",
+                              "values": f"text, such as `{reader.first(column)}`"})
+        elif numeric and kind_of_type == "code" and f.numbers is not None and \
+                readings.by_values("code_or_count", f.numbers).settles:
+            conflicts.append({"field": "type", "says": f"the type {e.type!r}",
+                              "values": "values with decimals filling a measurement's grid"})
+        elif numeric:
+            proposed.append(("code_or_count", kind_of_type, "type"))
+    # units
+    documented = e.unit.strip()
+    unit = unit_value(documented) if documented else None
+    if documented:
+        # A unit no reading kind takes (mg/dL) has no magnitude test here: it is the user's.
+        against = (_unit_contradiction(column, unit or documented, f, e.label, store)
+                   if unit is not None or not numeric else None)
+        if against is not None:
+            conflicts.append({"field": "unit", "says": documented, **against})
+        elif unit is not None and numeric:
+            proposed.append(("unit", unit, "unit"))
+    if conflicts:
+        for c in conflicts:
+            units_left, checked = c.pop("units", []), c.pop("checked", True)
+            a.asked.append({"column": column, **c, "checked": checked,
+                            "exits": _conflict_exits(column, c["field"], e, units_left)})
+        return
+    unit_kept = False
+    for reading_kind, value, source in proposed:
+        recorded = readings.confirmation(state, reading_kind, column) if state is not None \
+            else None
+        k = readings.key(reading_kind, column)
+        if recorded is not None and str(recorded) != str(value):
+            a.kept.append(k)   # the recorded answer stands, the outcome's as any other's
+            unit_kept = unit_kept or reading_kind == "unit"
+            continue
+        if column == target:
+            continue  # the outcome's kind and unit have their own questions
+        if recorded is not None and readings.codebook_source(state, reading_kind, column) is None:
+            a.already.append(k)   # the user's own answer, the same: nothing to write
+            continue
+        # Unrecorded, or recorded by a codebook (this one, imported again after a join): written,
+        # so the latest import names it as its evidence.
+        a.items.append({"reading": reading_kind, "column": column, "value": value,
+                        "field": source})
+    if documented and not unit_kept:
+        # Not contradicted, and no answer of the user's says otherwise: a sentence may state it.
+        a.units[column] = documented
+
+
+def _conflict_exits(column: str, field_name: str, e: Entry, units_left: Sequence[str]
+                    ) -> list[dict[str, Any]]:
+    """The answers a contradicted (or unchecked) field offers: the values' reading and the
+    codebook's, one confirmation each (the user decides)."""
     from turbotab.core import readings
 
     if field_name == "unit":
@@ -895,11 +1079,20 @@ def _project_dir(ctx: Any) -> Path | None:
     return Path(raw) if raw else None
 
 
+def project_table(project_dir: Path, state: Any) -> Path:
+    """The project's table as it was read with the files ``state`` joins to it
+    (``datastore.table_file``)."""
+    from turbotab.core.datastore import table_file
+
+    return table_file(Path(project_dir) / "data", getattr(state, "joins", None))
+
+
 def assessment_for(codebook: Codebook, project_dir: Path, state: Any) -> Assessment:
-    """:func:`assess` against the project's table as it was read (``data/raw.parquet``)."""
+    """:func:`assess` against the project's table as it was read, with the files ``state`` joins
+    to it (:func:`project_table`)."""
     from turbotab.core.datastore import DataStore, _sidecar_path
 
-    table = Path(project_dir) / "data" / "raw.parquet"
+    table = project_table(project_dir, state)
     with open(_sidecar_path(table), encoding="utf-8") as fh:
         info = json.load(fh)["info"]
     store = DataStore(table, 1 << 30)
@@ -918,7 +1111,7 @@ def _assessed(decision: Any, ctx: Any) -> Assessment:
         raise Refusal("unknown_codebook", f"This project has no codebook `{decision.codebook}`.",
                       exits=[{"label": "Add the codebook to the project first", "decision": None}])
     status = _ctx(ctx, "ingest_status")
-    if status not in (None, "fresh") or not (pdir / "data" / "raw.parquet").is_file():
+    if status not in (None, "fresh") or not project_table(pdir, _ctx(ctx, "state")).is_file():
         raise Refusal("not_yet", "The table is still being read; import the codebook once it is "
                                  "ready.", exits=[])
     a = assessment_for(book, pdir, _ctx(ctx, "state"))
@@ -950,7 +1143,7 @@ def _codebook_records_what_it_settles(decision: Any, ctx: Any) -> Any:
                   for i in a.items],
         "units": dict(a.units), "labels": dict(a.labels),
         "asked": [CodebookConflict(column=x["column"], field=x["field"], says=x["says"],
-                                   values=x["values"]) for x in a.asked],
+                                   values=x["values"], checked=x["checked"]) for x in a.asked],
         "kept": list(a.kept), "n_entries": len(a.codebook.entries), "n_matched": len(a.matched)})
 
 
@@ -1032,13 +1225,22 @@ def codebook_sentence(name: str, form: str, n_matched: int, items: Sequence[Mapp
                          f"documentation")
     else:
         sentences.append("Its structured fields settled no reading")
-    if asked:
+    contradicted = [x for x in asked if x.get("checked", True)]
+    unchecked = [x for x in asked if not x.get("checked", True)]
+    if contradicted:
         shown = "; ".join(f"`{x['column']}`'s {_FIELD_WORDS.get(str(x['field']), x['field'])} (it "
                           f"says {x['says']}; the values show {x['values']})"
-                          for x in list(asked)[:3])
-        more = len(asked) - 3
-        sentences.append(f"{_plural(len(asked), 'of its fields contradicts', 'of its fields contradict')} "
-                         f"the values and {'was' if len(asked) == 1 else 'were'} asked instead of "
+                          for x in contradicted[:3])
+        more = len(contradicted) - 3
+        sentences.append(f"{_plural(len(contradicted), 'of its fields contradicts', 'of its fields contradict')} "
+                         f"the values and {'was' if len(contradicted) == 1 else 'were'} asked "
+                         f"instead of applied: {shown}" + (f"; and `{more:,}` more" if more > 0 else ""))
+    if unchecked:
+        shown = "; ".join(f"`{x['column']}`'s {_FIELD_WORDS.get(str(x['field']), x['field'])} (it "
+                          f"says {x['says']}; {x['values']})" for x in unchecked[:3])
+        more = len(unchecked) - 3
+        sentences.append(f"`{len(unchecked):,}` of its fields could not be checked against the "
+                         f"values and {'was' if len(unchecked) == 1 else 'were'} asked instead of "
                          f"applied: {shown}" + (f"; and `{more:,}` more" if more > 0 else ""))
     if kept:
         words = [k.split(":", 1) for k in kept]

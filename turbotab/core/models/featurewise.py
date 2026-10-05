@@ -325,6 +325,9 @@ class FeatureWise(FamilyBase):
     )
     needs_scaling = False
     handles_missing = False
+    # Its tests run over more columns than an imputation model holds, so it pools no multiple
+    # imputations: under that answer the fit holds its table with the ways forward (MS7 repair).
+    pools_imputations = False
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         return FeatureWiseTests(task=task, features=None)

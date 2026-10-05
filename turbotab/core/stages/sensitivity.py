@@ -164,6 +164,9 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
         fitted[-1].level_names_ = list(levels)
     concerns: list[str] = []
     info = None
+    # MS4: a family blocked under the population answer offers the family that has a design-based
+    # estimator in its place, with every other chosen family kept (its exit changes only itself).
+    chosen = getattr(state, "models", None)
     if state.purpose == "inference" and hasattr(family, "inference"):
         from turbotab.core.models.survey import blocked
 
@@ -182,10 +185,10 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
                     outcome=outcome, survey=design, design=None, spec=spec, rows="all",
                     fit=lambda model, X_k: _with_levels(
                         fit_pipeline(with_units(model, units), X_k, y), levels),
-                    energy_rows=False)
+                    energy_rows=False, models=chosen)
             else:
                 table = _inference_table(family, fitted, X, y, task=task, clusters=clusters,
-                                         outcome=outcome, rows="all", survey=design)
+                                         outcome=outcome, rows="all", survey=design, models=chosen)
             if missing is not None:
                 missing.record(table)
             if survey is not None and survey.concern():
@@ -199,7 +202,7 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
             # MS4: no design-based estimator under the population answer: blocked and recorded.
             from turbotab.core.models.survey import no_design_estimator
 
-            table = no_design_estimator(family, task, getattr(state, "models", None))
+            table = no_design_estimator(family, task, chosen)
             rows, info = table.rows, table.info
             concerns.extend(table.concerns)
     return fitted, (rows, info), concerns

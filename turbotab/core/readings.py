@@ -72,6 +72,8 @@ KINDS: dict[str, str] = {
     "orientation": "whether the table holds one row per sample",
     "sex_coding": "which level of a sex column is female",
     "detection_limit": "the value a result below a detection limit is read at",
+    "injection_order": "the column that orders an assay run's injections",
+    "batch": "the column naming each injection's analytical batch",
 }
 # The kinds ``confirm_reading`` records (the others are answered by their own decisions).
 CONFIRMABLE = ("role", "cluster", "unit", "day_count", "code_or_count", "time_column",
@@ -274,15 +276,30 @@ def recorded_evidence(state: Any, kind: str, column: str | None) -> str:
 def codebook_unit(state: Any, column: str | None) -> str | None:
     """The unit the latest imported codebook documents for ``column`` (any unit: ``mg/dL`` as
     well as the reading kinds' ``kg``), or None. A documented unit is the user's own; an outcome
-    whose unit it documents is stated in it (:func:`confirmation`, kind ``outcome_unit``)."""
+    whose unit it documents is stated in it (:func:`confirmation`, kind ``outcome_unit``).
+
+    A recorded answer stands (BLUEPRINT §14.2): when the user's own answer to the column's unit
+    reading says otherwise, given before the import or after it, the codebook documents no unit a
+    sentence states (None), never its own in place of the user's."""
     if column is None:
         return None
     for spec in reversed(_codebooks(state)):
         unit = (_get(spec, "units") or {}).get(column) or \
             (_get(spec, "settled") or {}).get(key("unit", column))
         if unit:
-            return str(unit)
+            return None if _unit_answered_otherwise(state, column, str(unit)) else str(unit)
     return None
+
+
+def _unit_answered_otherwise(state: Any, column: str, documented: str) -> bool:
+    """Whether the column's unit reading holds the user's own answer (not a codebook's), and it
+    differs from ``documented``."""
+    recorded = confirmation(state, "unit", column)
+    if recorded is None or codebook_source(state, "unit", column) is not None:
+        return False
+    from turbotab.core.codebook import unit_value
+
+    return str(recorded) != (unit_value(documented) or documented)
 
 
 def codebook_label(state: Any, column: str | None) -> str | None:
@@ -1280,6 +1297,23 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
               ("a count", "whole numbers settle nothing"),
               ("whole numbers written with a decimal point after a blank (0.0–27.0)",
                "regression needs values with decimals filling their grid, more than ten of them"))),
+    # MS7 repair: QC-RLSC fits each feature's drift along the injection order, one curve per
+    # analytical batch. Both are guesses from names (or a permutation of the rows), so the QC-RLSC
+    # options name them, offer the other readings beside them, and the user's choice settles them.
+    KindRule("injection_order", "the column that orders an assay run's injections, along which "
+                                "QC-RLSC fits each feature's drift",
+             ("a sample or participant number, which is also all-distinct",
+              "the order samples were prepared or stored in, not injected",
+              "a time that is not the acquisition time"),
+             settled_by="the user's choice of the QC-RLSC option, which names it"),
+    KindRule("batch", "the column naming each injection's analytical batch, within which QC-RLSC "
+                      "fits one curve",
+             ("a sample-preparation plate or box that does not split the analytical run",
+              "a study group run in blocks of injections",
+              "no batch: one run, one curve (a batch column named but not a batch)",
+              "a batch column the name does not say (`run`, `sequence`, a site code)"),
+             settled_by="the user's choice among the QC-RLSC options, each naming its batch column "
+                        "or none"),
 )}
 
 
@@ -2979,6 +3013,109 @@ def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, 
     return out
 
 
+# ── acquisition: the injection order and the batch QC-RLSC reads (MS7) ─────────────
+
+# Acquisition words a batch column goes by: an analytical batch, a run, a plate (a 96-well plate is
+# often the batch an untargeted run is injected in), in that order of trust.
+BATCH_KINDS = ("batch", "run", "plate")
+MAX_BATCH_CANDIDATES = 2  # columns offered besides "one curve": the QC-RLSC options stay few
+
+
+def _whole_permutation(values: Any) -> bool:
+    import numpy as np
+    import pandas as pd
+
+    x = pd.to_numeric(values, errors="coerce")
+    if x.isna().any() or not len(x):
+        return False
+    v = np.sort(x.to_numpy(dtype=float))
+    return bool(np.all(np.mod(v, 1) == 0) and (np.array_equal(v, np.arange(1, len(v) + 1))
+                                                 or np.array_equal(v, np.arange(len(v)))))
+
+
+def injection_order_reading(frame: Any, exclude: Sequence[str] = ()) -> Reading | None:
+    """The column that orders the injections, as a guess: a column named as a run order
+    (``injection_order``, ``run_order``; the recognizer's acquisition phrases) whose values are
+    numbers, complete and all distinct; else a whole-number column that is a permutation of the row
+    positions (the metabolomics pack's name-blind reading). Never settled by its values: a sample
+    number is all-distinct too. The QC-RLSC options name it, and the user's choice settles it."""
+    import pandas as pd
+
+    from turbotab.core.recognizers import acquisition_kind
+
+    gone = {str(c) for c in exclude}
+    for c in frame.columns:
+        name = str(c)
+        if name in gone or acquisition_kind(name) != "run_order":
+            continue
+        x = pd.to_numeric(frame[c], errors="coerce")
+        if x.notna().all() and x.nunique() == len(x):
+            return Reading((name,), "injection_order", name, "medium",
+                           f"`{name}` is named as a run order, and its {len(x):,} values are "
+                           f"distinct numbers")
+    for c in frame.columns:
+        name = str(c)
+        if name not in gone and _whole_permutation(frame[c]):
+            return Reading((name,), "injection_order", name, "low",
+                           f"`{name}` numbers the {len(frame):,} rows once each, as a run order "
+                           f"does; its name does not say so")
+    return None
+
+
+def _contiguous_in(order: Any, labels: Any) -> bool:
+    """Every level of ``labels`` occupies one unbroken stretch of the injection order."""
+    import numpy as np
+    import pandas as pd
+
+    s = pd.DataFrame({"o": pd.to_numeric(pd.Series(order).reset_index(drop=True), errors="coerce"),
+                      "b": pd.Series(labels).reset_index(drop=True).astype(str)})
+    s = s.dropna().sort_values("o", kind="stable")
+    changes = int(np.sum(s["b"].to_numpy()[1:] != s["b"].to_numpy()[:-1]))
+    return changes == s["b"].nunique() - 1
+
+
+def batch_readings(frame: Any, exclude: Sequence[str] = (), order: str | None = None) -> list[Reading]:
+    """The columns that may name each injection's analytical batch, best guess first, each a
+    guess (:data:`KIND_RULES` ``batch``): columns named as a batch, a run or a plate
+    (:data:`BATCH_KINDS`, the recognizer's acquisition phrases) with two or more levels, each level
+    on more than one row; then, name-blind, a column of two or more such levels each of which
+    occupies one unbroken stretch of the injection order (batches are injected in blocks). At most
+    :data:`MAX_BATCH_CANDIDATES`. "No batch: one curve over the whole run" is always the other
+    reading; the QC-RLSC options name each, and the user's choice settles it."""
+    import pandas as pd
+
+    from turbotab.core.recognizers import acquisition_kind
+
+    gone = {str(c) for c in exclude} | ({order} if order else set())
+    n = len(frame)
+    named: list[tuple[int, Reading]] = []
+    blocks: list[Reading] = []
+    for c in frame.columns:
+        name = str(c)
+        if name in gone:
+            continue
+        s = frame[c]
+        counts = s.value_counts(dropna=True)
+        if len(counts) < 2 or int(counts.min()) < 2 or len(counts) > max(2, n // 4):
+            continue
+        kind = acquisition_kind(name)
+        if kind in BATCH_KINDS:
+            together = order is not None and _contiguous_in(frame[order], s)
+            named.append((BATCH_KINDS.index(kind), Reading(
+                (name,), "batch", name, "medium",
+                f"`{name}` is named as a{'n' if kind == 'run' else ''} {kind} and holds "
+                f"{len(counts):,} levels" + (", each one unbroken stretch of the injection order"
+                                            if together else ""))))
+        elif (order is not None and not pd.api.types.is_float_dtype(s)
+              and _contiguous_in(frame[order], s)):
+            blocks.append(Reading(
+                (name,), "batch", name, "low",
+                f"`{name}`'s {len(counts):,} levels each occupy one unbroken stretch of the "
+                f"injection order, as batches do; its name does not say batch"))
+    ranked = [r for _, r in sorted(named, key=lambda t: t[0])] + blocks
+    return ranked[:MAX_BATCH_CANDIDATES]
+
+
 # ── the registry of consumers (BLUEPRINT §14.1: the gate checks the invariant structurally) ──
 
 
@@ -3201,6 +3338,12 @@ CONSUMERS: tuple[Consumer, ...] = (
     Consumer(_C + "repairs:column_expressions", ("repairs", "ingest_values"), True,
              USER_APPLIED),
     Consumer(_C + "stages.working:read_date_columns", ("date_format",), True, VALUES_SETTLE),
+    # ── acquisition: the injection order and batch QC-RLSC fits along (MS7 repair) ──
+    # The offer reads them as guesses (``injection_order_reading``, ``batch_readings``) and names
+    # each in its options, one option per batch reading; the working table runs only the option
+    # the user chose, with the columns it named.
+    Consumer(_C + "methods.qc_drift:rlsc_offer", ("acquisition",), False, WORDS_ONLY),
+    Consumer(_C + "methods.qc_drift:reference_plan", ("acquisition",), True, USER_APPLIED),
     # ── sentences, hints and findings only ──
     Consumer(_C + "methods.dietary_caveats:energy_related", ("energy_related_outcome",), False,
              WORDS_ONLY),
@@ -3249,5 +3392,6 @@ __all__ = [
     "detection_limit", "drink_units", "drinks_value", "factor_verdicts", "nested_exits", "nesting",
     "nesting_parents", "nutrients_by_values", "parse_drinks", "text_numbers", "unit_words",
     "unit_record", "CODEBOOK_EVIDENCE", "codebook_label", "codebook_source", "codebook_unit",
-    "label_guess", "labeled", "recorded_evidence",
+    "label_guess", "labeled", "recorded_evidence", "BATCH_KINDS", "batch_readings",
+    "injection_order_reading",
 ]

@@ -975,6 +975,13 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
         pools = [k for k in keys if hasattr(get_family(k), "inference")]
         if not pools:
             return TableMissing(info={**base, "note": "No chosen family has a table to pool."})
+        if not any(getattr(get_family(k), "pools_imputations", True) for k in pools):
+            # MS7 repair: a table that cannot pool the copies (feature-wise tests) draws none; it
+            # is held with its ways forward, the censoring-aware single fill among them.
+            from turbotab.core.methods.omics import unpooled_refusal
+
+            reason, exits = unpooled_refusal(get_family(pools[0]).label, state)
+            return TableMissing(refusal=reason, exits=exits)
         seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
         last = [0.0]
 
@@ -1109,7 +1116,8 @@ def _with_levels(fitted: Any, levels: Sequence[str] | None) -> Any:
 def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: str, clusters: Any,
                  outcome: Any, survey: Any, design: Any, spec: Any, rows: str,
                  fit: Any, cancelled: Any = None, energy_rows: bool = True,
-                 collect: dict[str, Any] | None = None
+                 collect: dict[str, Any] | None = None,
+                 models: Sequence[str] | None = None
                  ) -> tuple[Any, list[dict[str, Any]] | None, list[dict[str, Any]], list[str]]:
     """The family's inference table pooled over the completed copies (Rubin's rules), with its
     energy rows and exposure-form tests pooled beside it: (table, pooled rows, tests, concerns).
@@ -1121,7 +1129,8 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
     data carried with their own outcomes (``Imputations.outcomes``, NHANES DXA) are fit as
     ``fit(model, X_k, y_k)``. A table refused in one copy (too few clusters) is refused: the reason
     does not depend on the imputed values. ``rows`` = None in the result marks such a refusal.
-    ``collect``, when given, receives each copy's fit (``fits``) and table (``tables``)."""
+    ``collect``, when given, receives each copy's fit (``fits``) and table (``tables``).
+    ``models``: the chosen families, which a block's exit keeps (``_inference_table``)."""
     from turbotab.core.methods.exposure_form import exposure_tests
     from turbotab.core.methods.imputation import pool_rows, pooled_cov
     from turbotab.core.methods.missing import copy_template, mi_concerns, multiple_imputation_info
@@ -1139,7 +1148,8 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
         model = copy_template(template, plan)
         fitted = fit(model, X_k) if outcomes is None else fit(model, X_k, y_k)
         table = _inference_table(family, fitted, X_k, y_k, task=task, clusters=clusters,
-                                 outcome=outcome, rows=rows, survey=survey)
+                                 outcome=outcome, rows=rows, survey=survey,
+                                 models=models)
         if table.info.get("refused"):
             table.info["missing"] = multiple_imputation_info(imputations, spec, len(y_k))
             return table, None, [], []
@@ -1641,7 +1651,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                             clusters=copy_clusters if copy_clusters is not None else clusters,
                             outcome=outcome, survey=design_of, design=design,
                             spec=spec, rows="all", fit=fit_copy, cancelled=ctx.cancelled,
-                            collect=collected)
+                            collect=collected, models=state.models)
                         imputed_fits[key] = collected.get("fits") or []
                         imputed_tables[key] = [
                             {"names": [str(r["feature"]) for r in t.rows],
@@ -1657,7 +1667,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                         table = _inference_table(
                             family, table_fit, X_c, y_c, task=task, clusters=clusters,
                             outcome=outcome, rows="all" if on_all else "training",
-                            survey=design_of)
+                            survey=design_of, models=state.models)
                     if missing is not None:
                         missing.record(table)
                     coefficients, interval_info = table.rows, table.info
@@ -1843,6 +1853,23 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # training rows the models learn from under prediction.
     imbalance = (imbalance_sentence(task, y_tab, state.event, "analyzed rows") if inference
                  else imbalance_sentence(task, y, state.event))
+    # MS7: the figure ComBat with the outcome protected serves (inference, batch as a covariate,
+    # figures only; never a test), and each family's methods paragraph, written from what this run
+    # did: the design's steps and its detect step's columns, the working table's QC record, the
+    # table's missing-data and clustering records, and whether the figure exists.
+    from turbotab.core.methods.batch import figure_for
+    from turbotab.core.methods.omics import fit_methods
+
+    batch_figure = (figure_for(state, pipelines[keys[0]], X_tab, y_tab, task)
+                    if inference and keys else None)
+    design_steps = {str(m.get("family")): [str(s.get("key")) for s in m.get("steps") or []]
+                    for m in (getattr(design, "data", None) or {}).get("models") or []}
+    working_input = ctx.inputs.get("working")
+    working_data = getattr(working_input, "data", None) if working_input is not None else None
+    for entry in models:
+        entry["methods"] = fit_methods(state, entry["family"], design_steps.get(entry["family"], []),
+                                       split_data, working_data, entry, spec.censored,
+                                       figure=batch_figure is not None)
     predicting = [m["family"] for m in models if m.get("cv")]
     result_declared = None
     if not inference and predicting:
@@ -1892,7 +1919,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
                            tension=tension(task, primary), comparison=comparison,
                            comparisons_note=COMPARISONS_NOTE if comparisons else None,
                            result=result_declared, horizon=horizon, horizon_note=horizon_note,
-                           wide=narrow, nested_offer=offer, chain=chain)
+                           wide=narrow, nested_offer=offer, chain=chain,
+                           batch_figure=batch_figure)
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     if n_holdout and sealed_detail:
         frames[SEALED_DETAIL] = sealed_detail_frame(sealed_detail)
@@ -2002,13 +2030,10 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
         elif missing is not None and (missing.refusal or missing.imputations is not None):
             from turbotab.core.models.survey import blocked
 
-            reason = missing.refusal or (
-                f"{family.label} is not pooled over multiple imputations here: its tests run "
-                f"feature by feature over more columns than an imputation model holds. Choose "
-                f"complete cases, or a below-detection fill for values below a limit.")
-            exits = missing.exits if missing.refusal else [
-                {"label": "Complete cases", "decision": {"kind": "set_missing",
-                                                         "strategy": "complete_case"}}]
+            from turbotab.core.methods.omics import unpooled_refusal
+
+            reason, exits = ((missing.refusal, missing.exits) if missing.refusal
+                             else unpooled_refusal(family.label, state))
             table = blocked(reason, exits, estimator="not fitted: the missing-values answer decides it")
         else:
             table = family.inference(final, X, y, task=task,
@@ -2194,6 +2219,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     skipped = []
     pipelines = design.objects["pipelines"]
     keys = [m["family"] for m in fit.data["models"] if m["family"] in trained]
+    # Every chosen family, those with no curve too (feature-wise tests predict nothing): a blocked
+    # curve's exit swaps its own family and keeps every other one chosen (MS4).
+    chosen = [m["family"] for m in fit.data["models"]]
     undrawn = ("multiclass", "ordinal", "time_to_event")  # a curve per class or level; a hazard
     drawable = [k for k in keys if task not in undrawn]
     slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
@@ -2231,7 +2259,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                 kcal_per_unit=kcal_per_unit, nested=nested, total_energy=total_energy, scale=scale,
                 percent=percent, outcome_unit=outcome_unit, n_boot=n_boot, pipeline=pipelines[key],
                 y_fit=y_fit, group_of=group_of, interval_rows=BAND_ROWS, progress=copy_progress,
-                survey_design=survey_design, models=keys)
+                survey_design=survey_design, models=chosen)
             band_seconds += time.perf_counter() - started
             first_curve = info["curves"][0]
             note = note or first_curve["note"]
@@ -2253,7 +2281,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
 
             drawn = population_curve(
                 family, task, fitted.get(key), X, y_fit[curve_rows], survey_design, domain,
-                models=keys, donor=sub.donor, recipient=sub.recipient,
+                models=chosen, donor=sub.donor, recipient=sub.recipient,
                 kcal_per_unit=kcal_per_unit, ks=ks, total_kind="variable", nested=nested,
                 total=total_energy, scale=scale, shift=shift)
             curve = drawn.curve

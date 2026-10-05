@@ -898,14 +898,21 @@ export interface components {
             says: string;
             /** Values */
             values: string;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
             /** Exits */
             exits: components["schemas"]["Exit"][];
         };
         /**
          * CodebookConflict
-         * @description A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3).
+         * @description A codebook field the values contradict, or one whose check cannot run here (``checked``
+         *     False: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT
+         *     §14.2–§14.3).
          */
-        CodebookConflict: {
+        "CodebookConflict-Input": {
             /** Column */
             column: string;
             /**
@@ -917,6 +924,35 @@ export interface components {
             says: string;
             /** Values */
             values: string;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
+        };
+        /**
+         * CodebookConflict
+         * @description A codebook field the values contradict, or one whose check cannot run here (``checked``
+         *     False: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT
+         *     §14.2–§14.3).
+         */
+        "CodebookConflict-Output": {
+            /** Column */
+            column: string;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "unit" | "codes" | "type" | "range";
+            /** Says */
+            says: string;
+            /** Values */
+            values: string;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
         };
         /**
          * CodebookPreview
@@ -1013,7 +1049,7 @@ export interface components {
                 [key: string]: string;
             };
             /** Asked */
-            asked: components["schemas"]["CodebookConflict"][];
+            asked: components["schemas"]["CodebookConflict-Output"][];
             /** Kept */
             kept: string[];
             /**
@@ -1928,7 +1964,7 @@ export interface components {
                 [key: string]: string;
             };
             /** Asked */
-            asked?: components["schemas"]["CodebookConflict"][];
+            asked?: components["schemas"]["CodebookConflict-Input"][];
             /** Kept */
             kept?: string[];
             /**
@@ -1975,7 +2011,7 @@ export interface components {
                 [key: string]: string;
             };
             /** Asked */
-            asked: components["schemas"]["CodebookConflict"][];
+            asked: components["schemas"]["CodebookConflict-Output"][];
             /** Kept */
             kept: string[];
             /**
@@ -5066,6 +5102,16 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Ear For All
+             * @default false
+             */
+            ear_for_all: boolean;
+            /**
+             * Ear Symmetric
+             * @default false
+             */
+            ear_symmetric: boolean;
         };
         /**
          * SetUsualIntake
@@ -5115,6 +5161,16 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Ear For All
+             * @default false
+             */
+            ear_for_all: boolean;
+            /**
+             * Ear Symmetric
+             * @default false
+             */
+            ear_symmetric: boolean;
         };
         /** SplitSpec */
         SplitSpec: {
@@ -5467,6 +5523,16 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Ear For All
+             * @default false
+             */
+            ear_for_all: boolean;
+            /**
+             * Ear Symmetric
+             * @default false
+             */
+            ear_symmetric: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -5793,6 +5859,42 @@ export interface components {
             label: string;
         };
         /**
+         * BatchFigure
+         * @description The figure ComBat with the outcome protected serves under inference, never a test (the batch
+         *     answer's ``figures``; ``methods/batch.py``): principal components before and after it.
+         */
+        BatchFigure: {
+            /** Column */
+            column: string;
+            /** Outcome */
+            outcome: string;
+            /** N Features */
+            n_features: number;
+            /** Explained Before */
+            explained_before: number[];
+            /** Explained After */
+            explained_after: number[];
+            /** Points */
+            points: components["schemas"]["BatchFigurePoint"][];
+            /** Caption */
+            caption: string;
+        };
+        /**
+         * BatchFigurePoint
+         * @description One row of the batch figure: its batch, its outcome, and its first two principal-component
+         *     scores before and after ComBat with the outcome protected.
+         */
+        BatchFigurePoint: {
+            /** Batch */
+            batch: string;
+            /** Outcome */
+            outcome: string;
+            /** Before */
+            before: number[];
+            /** After */
+            after: number[];
+        };
+        /**
          * BeeswarmInput
          * @description One input's points: its SHAP value, its value (None for a category or a blank), and its
          *     value's percentile among the explained rows for the color (a category: its level's place).
@@ -6031,6 +6133,13 @@ export interface components {
              * @default null
              */
             reason: string | null;
+            /**
+             * Exits
+             * @default []
+             */
+            exits: {
+                [key: string]: unknown;
+            }[];
             /**
              * Family
              * @default null
@@ -6414,6 +6523,30 @@ export interface components {
              * @default null
              */
             note: string | null;
+        };
+        /**
+         * CodebookConflict
+         * @description A codebook field the values contradict, or one whose check cannot run here (``checked``
+         *     False: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT
+         *     §14.2–§14.3).
+         */
+        CodebookConflict: {
+            /** Column */
+            column: string;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "unit" | "codes" | "type" | "range";
+            /** Says */
+            says: string;
+            /** Values */
+            values: string;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
         };
         /** Coefficient */
         Coefficient: {
@@ -7824,6 +7957,8 @@ export interface components {
              * @default null
              */
             levels: string[] | null;
+            /** @default null */
+            batch_figure: components["schemas"]["BatchFigure"] | null;
             /**
              * Withheld
              * @default null
@@ -7952,6 +8087,11 @@ export interface components {
              * @default null
              */
             adjustment_terms: components["schemas"]["AdjustmentTerm"][] | null;
+            /**
+             * Methods
+             * @default null
+             */
+            methods: string | null;
         };
         /**
          * Floor
@@ -11277,6 +11417,16 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Ear For All
+             * @default false
+             */
+            ear_for_all: boolean;
+            /**
+             * Ear Symmetric
+             * @default false
+             */
+            ear_symmetric: boolean;
         };
         /** Setting */
         Setting: {
@@ -12244,6 +12394,13 @@ export interface components {
              * @default []
              */
             concerns: string[];
+            /**
+             * Exits
+             * @default []
+             */
+            exits: {
+                [key: string]: unknown;
+            }[];
             /** Methods */
             methods: string;
         };

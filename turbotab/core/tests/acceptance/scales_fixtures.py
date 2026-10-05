@@ -121,6 +121,65 @@ def linear_scale_table(seed: int = 11, n: int = 1200, missing: float = 0.0) -> p
     return frame
 
 
+SAT = [f"sat_{j}" for j in range(1, 9)]
+SAT_REVERSE = ["sat_3", "sat_6"]
+
+
+def household_scale_table(seed: int = 21, households: int = 80, size: int = 10) -> pd.DataFrame:
+    """The 8-item reflective scale of :func:`linear_scale_table` answered by ``size`` people in each
+    of ``households`` households (``hh``), whose members share part of the trait and part of the
+    outcome's error: rows within a household are not independent, so an interval that treats them
+    as independent is too narrow."""
+    rng = np.random.default_rng(seed)
+    n = households * size
+    hh = np.repeat(np.arange(households), size)
+    age = np.round(rng.uniform(20, 80, n), 1)
+    bmi = np.round(rng.normal(27, 4, n) + 0.03 * (age - 50), 1)
+    trait = (0.8 * rng.standard_normal(households)[hh] + 0.6 * rng.standard_normal(n)
+             + 0.02 * (age - 50))
+    trait = (trait - trait.mean()) / trait.std()
+    items = likert(rng, trait, [0.8, 0.7, 0.75, 0.6, 0.65, 0.7, 0.55, 0.75], 1, 5, spread=1.0)
+    frame = pd.DataFrame({"pid": np.arange(n), "hh": [f"H{h:03d}" for h in hh], "age": age,
+                          "bmi": bmi})
+    for j, c in enumerate(SAT):
+        frame[c] = (6 - items[:, j]) if c in SAT_REVERSE else items[:, j]
+    frame["sbp"] = np.round(120 + 4.0 * trait + 0.3 * (age - 50) + 0.4 * (bmi - 27)
+                            + rng.normal(0, 6, households)[hh] + rng.normal(0, 6, n), 1)
+    return frame
+
+
+HEI = [f"hei_{j}" for j in range(1, 14)]
+HEI_RETEST = [f"{c}_t2" for c in HEI]
+# The HEI-2015's thirteen components: six scored 0–5 and seven 0–10 (Reedy et al. 2018, Table 1).
+HEI_MAX = [5, 5, 5, 5, 5, 5, 10, 10, 10, 10, 10, 10, 10]
+
+
+def hei_table(seed: int = 8, n: int = 1000, repeat: float = 0.4) -> pd.DataFrame:
+    """A diet-quality index as the HEI-2015 scores it: thirteen continuous component scores, each
+    prorated on 0–5 or 0–10 (decimals, as the NCI's SAS macros write them), from a day's intake
+    that measures the usual one with day-to-day error, and a repeat recall's components for
+    ``repeat`` of the participants; a continuous outcome rising with usual diet quality."""
+    rng = np.random.default_rng(seed)
+    age = np.round(rng.uniform(20, 80, n), 1)
+    quality = rng.standard_normal(n) + 0.01 * (age - 50)
+    usual = np.column_stack([np.clip(0.55 * m + 0.18 * m * (0.6 * quality
+                                                              + 0.8 * rng.standard_normal(n)),
+                                     0, m) for m in HEI_MAX])
+    day = np.column_stack([np.clip(usual[:, j] + 0.2 * m * rng.standard_normal(n), 0, m)
+                           for j, m in enumerate(HEI_MAX)])
+    again = np.column_stack([np.clip(usual[:, j] + 0.2 * m * rng.standard_normal(n), 0, m)
+                             for j, m in enumerate(HEI_MAX)])
+    frame = pd.DataFrame({"pid": np.arange(n), "age": age})
+    for j, c in enumerate(HEI):
+        frame[c] = np.round(day[:, j], 2)
+    has = rng.random(n) < repeat
+    for j, c in enumerate(HEI_RETEST):
+        frame[c] = np.where(has, np.round(again[:, j], 2), np.nan)
+    frame["sbp"] = np.round(140 - 0.25 * usual.sum(axis=1) + 0.3 * (age - 50)
+                            + rng.normal(0, 6, n), 1)
+    return frame
+
+
 def calibrate_by_hand(W: np.ndarray, Z: np.ndarray, error_variance: float) -> tuple[np.ndarray, float]:
     """E[X | W, Z] under classical error of known variance, by the covariance matrix of (W, Z)
     (n − 1): λ = (s²_{W|Z} − σ²_U) / s²_{W|Z}, the Schur complement s²_{W|Z} = S_WW − S_WZ S_ZZ⁻¹ S_ZW."""

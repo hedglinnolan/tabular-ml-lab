@@ -69,9 +69,32 @@ included in the outcome model"):
   approximation (Carroll, Ruppert, Stefanski & Crainiceanu 2006, *Measurement Error in Nonlinear
   Models*, §4.2), and the result says so.
 
-Its interval comes from refitting on rows drawn with replacement, the reliability (ω and the whole
-factor analysis, the test–retest mean square, or the calibration regression) re-estimated in every
-replicate: the estimate ± 1.96 bootstrap standard errors. Under multiple imputation each completed
+**Several scores corrected in one model** are calibrated jointly (multivariate regression
+calibration; Rosner, Spiegelman & Willett 1990, *Am J Epidemiol* 132:734; MODELING_SEQUENCE §0
+ruling 7 and §2: "multivariate calibration when several intakes are error-prone"). Freedman et al.
+2011: with two or more error-prone exposures, estimates "may become attenuated, inflated, or can
+even change direction", which a correction of each score on its own, the others read as exact,
+does not undo. With W the k corrected scores and Z every other column of the model's matrix:
+
+* each score is regressed on Z by least squares; S = RᵀR/(n − 1) is the k × k covariance of the
+  residuals R (the Schur complement of the (n − 1) covariance matrix of (W, Z));
+* a score j whose error variance σ²_j is known (ω or a repeat administration) has
+  E[X_j | W, Z] = fitted_j + (S − D)_j S⁻¹ rᵢ, where D = diag(σ²) over those scores: with classical
+  errors independent of one another, of the true scores and of Z, cov(X_j, W_l | Z) = S_jl − δ_jl σ²_j;
+* a score with a calibration substudy has its reference measure regressed on every W and Z in the
+  substudy's rows, and that prediction for every row;
+* the outcome model is refit with every calibrated score in place of its W. Each score's λ reported
+  is its own slope in that calibration (the j-th diagonal of (S − D) S⁻¹), the univariate λ when
+  k = 1, where the method reduces to the one above.
+
+Its interval comes from refitting on bootstrap replicates, the reliability (ω and the whole factor
+analysis, the test–retest mean square, or the calibration regression) re-estimated in every
+replicate: the estimate ± 1.96 bootstrap standard errors. The replicates resample independent rows,
+or, when rows are grouped (a household, a site, a person's repeated rows: the clusters the
+coefficient table's intervals are robust to), whole clusters, so that the variance keeps each
+cluster's rows together (MODELING_SEQUENCE §0 ruling 7: "a bootstrap over the whole chain,
+resampling PSUs within strata, or clusters"; a population design, whose PSUs and strata it would
+resample, is blocked before any correction is computed). Under multiple imputation each completed
 copy is corrected and bootstrapped on its own, and the copies are combined by Rubin's rules with
 each copy's bootstrap variance (``turbotab.core.stages.scales``). The test of no association stays the
 uncorrected model's: for one error-prone exposure "the usual statistical test of the null hypothesis
@@ -114,12 +137,18 @@ EEKHOUT = "Eekhout et al. 2014"
 ZINBARG = "Zinbarg et al. 2005"
 FREEDMAN = "Freedman et al. 2011"
 CARROLL = "Carroll et al. 2006"
+ROSNER = "Rosner, Spiegelman & Willett 1990"
 
 Scoring = Literal["sum", "mean"]
 
 
 class ScaleRefused(ValueError):
-    """The data cannot support the computation; the message says why."""
+    """The data cannot support the computation; the message says why. ``which``: the position,
+    among the scores corrected together, of the one whose data refused (None: all of them)."""
+
+    def __init__(self, message: str, which: int | None = None):
+        super().__init__(message)
+        self.which = which
 
 
 # ── scoring ──────────────────────────────────────────────────────────────────
@@ -524,51 +553,107 @@ class Calibrated:
     error_variance: float | None  # σ²_U (None for a calibration substudy)
 
 
+@dataclass(frozen=True)
+class JointCalibrated:
+    """E[X | W, Z] for k scores calibrated together (multivariate regression calibration)."""
+
+    calibrated: np.ndarray  # n × k
+    attenuation: np.ndarray  # k: each score's own slope in its calibration
+    residual_covariance: np.ndarray  # k × k: S, the scores' covariance given Z
+    error_variances: tuple[float | None, ...]  # σ²_j (None for a calibration substudy)
+
+
 def _design(Z: np.ndarray | None, n: int) -> np.ndarray:
     Zm = np.empty((n, 0)) if Z is None else np.asarray(Z, dtype=float).reshape(n, -1)
     return np.column_stack([np.ones(n), Zm])
 
 
+def calibrate_jointly(W: np.ndarray, Z: np.ndarray | None, error_variances: Sequence[float | None],
+                      references: Sequence[np.ndarray | None]) -> JointCalibrated:
+    """E[X | W, Z] for the k columns of ``W`` (Rosner, Spiegelman & Willett 1990). Score j has a
+    known error variance ``error_variances[j]`` (its ``references[j]`` None) or a calibration
+    substudy's reference measure ``references[j]`` (blank outside the substudy). With classical
+    errors independent of one another, of the true scores and of Z: each W on Z by least squares,
+    S = RᵀR/(n − 1), D = diag(σ²_j) over the scores with a known error, and
+
+    * a known error: E[X_j | W, Z] = fitted_j + (S − D)_j S⁻¹ r, its λ the j-th entry of that row;
+    * a substudy: the reference regressed on (1, W, Z) in its rows, predicted for every row, its λ
+      the coefficient on W_j.
+
+    With k = 1 this is the univariate calibration: λ = (s²_{W|Z} − σ²_U)/s²_{W|Z}."""
+    W = np.asarray(W, dtype=float)
+    n = len(W)
+    W = W.reshape(n, -1)
+    k = W.shape[1]
+    D_z = _design(Z, n)
+    coef, *_ = np.linalg.lstsq(D_z, W, rcond=None)
+    fitted = D_z @ coef
+    resid = W - fitted
+    S = resid.T @ resid / (n - 1)
+    for j in range(k):
+        if not S[j, j] > 0:
+            raise ScaleRefused("The covariates predict the score exactly, so no part of it is left "
+                               "to calibrate.", which=j)
+    known = [j for j in range(k) if references[j] is None]
+    D = np.zeros((k, k))
+    for j in known:
+        D[j, j] = float(error_variances[j])  # type: ignore[arg-type]
+        if not S[j, j] - D[j, j] > 0:
+            raise ScaleRefused(
+                "The score's error variance is at least as large as its variance left after the "
+                "covariates, so the true score's variance given them is not positive and no "
+                "attenuation factor exists.", which=j)
+    if len(known) > 1 and np.linalg.eigvalsh((S - D)[np.ix_(known, known)]).min() <= 0:
+        raise ScaleRefused("Given the covariates, the scores' error variances leave their true "
+                           "scores no positive-definite covariance, so they cannot be calibrated "
+                           "together.")
+    try:
+        S_inv = np.linalg.inv(S)
+    except np.linalg.LinAlgError:
+        raise ScaleRefused("Given the covariates, one score is an exact combination of the others, "
+                           "so they cannot be calibrated together.") from None
+    out = np.empty_like(W)
+    lam = np.empty(k)
+    for j in known:
+        row = (S - D)[j] @ S_inv
+        out[:, j] = fitted[:, j] + resid @ row
+        lam[j] = row[j]
+    Zm = D_z[:, 1:]
+    for j in (j for j in range(k) if references[j] is not None):
+        x = np.asarray(references[j], dtype=float)
+        D_j = np.column_stack([np.ones(n), W, Zm])
+        have = np.isfinite(x)
+        if int(have.sum()) <= D_j.shape[1]:
+            raise ScaleRefused(
+                f"{int(have.sum()):,} rows have the reference measure, too few for a calibration "
+                f"regression on the score{'s' if k > 1 else ''} and {Zm.shape[1]} covariates.",
+                which=j)
+        c, *_ = np.linalg.lstsq(D_j[have], x[have], rcond=None)
+        if not c[1 + j] > 0:
+            raise ScaleRefused("In the calibration substudy the reference measure does not rise "
+                               "with the score once the covariates are allowed for, so there is no "
+                               "attenuation factor to correct by.", which=j)
+        out[:, j] = D_j @ c
+        lam[j] = c[1 + j]
+    return JointCalibrated(out, lam, S, tuple(None if references[j] is not None
+                                              else float(error_variances[j])  # type: ignore[arg-type]
+                                              for j in range(k)))
+
+
 def calibrate_known_error(W: np.ndarray, Z: np.ndarray | None, error_variance: float) -> Calibrated:
     """E[X | W, Z] when W = X + U with a known error variance σ²_U: W on Z by least squares,
     λ = (s²_{W|Z} − σ²_U) / s²_{W|Z} with s²_{W|Z} = RSS/(n − 1), and fitted + λ·residual."""
-    W = np.asarray(W, dtype=float)
-    n = len(W)
-    D = _design(Z, n)
-    coef, *_ = np.linalg.lstsq(D, W, rcond=None)
-    fitted = D @ coef
-    resid = W - fitted
-    s2 = float(resid @ resid) / (n - 1)
-    if not s2 > 0:
-        raise ScaleRefused("The covariates predict the score exactly, so no part of it is left to "
-                           "calibrate.")
-    lam = (s2 - float(error_variance)) / s2
-    if not lam > 0:
-        raise ScaleRefused(
-            "The score's error variance is at least as large as its variance left after the "
-            "covariates, so the true score's variance given them is not positive and no "
-            "attenuation factor exists.")
-    return Calibrated(fitted + lam * resid, float(lam), s2, float(error_variance))
+    cal = calibrate_jointly(np.asarray(W, dtype=float)[:, None], Z, [error_variance], [None])
+    return Calibrated(cal.calibrated[:, 0], float(cal.attenuation[0]),
+                      float(cal.residual_covariance[0, 0]), float(error_variance))
 
 
 def calibrate_reference(W: np.ndarray, Z: np.ndarray | None, reference: np.ndarray) -> Calibrated:
     """E[X | W, Z] from a calibration substudy: the reference measure X, observed on the substudy's
     rows, regressed on W and Z there; the prediction for every row."""
-    W = np.asarray(W, dtype=float)
-    x = np.asarray(reference, dtype=float)
-    n = len(W)
-    D = np.column_stack([_design(Z, n)[:, :1], W, _design(Z, n)[:, 1:]])
-    have = np.isfinite(x)
-    if int(have.sum()) <= D.shape[1]:
-        raise ScaleRefused(f"{int(have.sum()):,} rows have the reference measure, too few for a "
-                           f"calibration regression on the score and {D.shape[1] - 2} covariates.")
-    coef, *_ = np.linalg.lstsq(D[have], x[have], rcond=None)
-    if not coef[1] > 0:
-        raise ScaleRefused("In the calibration substudy the reference measure does not rise with the "
-                           "score once the covariates are allowed for, so there is no attenuation "
-                           "factor to correct by.")
-    resid = W - _design(Z, n) @ np.linalg.lstsq(_design(Z, n), W, rcond=None)[0]
-    return Calibrated(D @ coef, float(coef[1]), float(resid @ resid) / (n - 1), None)
+    cal = calibrate_jointly(np.asarray(W, dtype=float)[:, None], Z, [None], [reference])
+    return Calibrated(cal.calibrated[:, 0], float(cal.attenuation[0]),
+                      float(cal.residual_covariance[0, 0]), None)
 
 
 @dataclass(frozen=True)
@@ -590,63 +675,131 @@ class Correction:
     se: float | None
     ci_low: float | None
     ci_high: float | None
-    attenuation: float  # λ, conditional on the covariates
+    attenuation: float  # λ, conditional on the covariates (and on the other corrected scores)
     reliability: float  # the marginal reliability (ω, the ICC, or the calibration slope)
     error_variance: float | None
     n: int
     n_boot: int
     n_boot_ok: int
     boot: np.ndarray = field(repr=False, default_factory=lambda: np.empty(0))
+    n_clusters: int | None = None  # the clusters the replicates resampled (None: rows)
 
 
-def _one(W: np.ndarray, Z: np.ndarray, y: np.ndarray, j: int, fit: Fit, source: Source,
-         rows: np.ndarray) -> tuple[float, float, float, float, float | None]:
-    """(naive, corrected, λ, reliability, σ²_U) on ``rows`` (indices, with repeats)."""
+def bootstrap_draws(n: int, n_boot: int, seed: int,
+                    groups: np.ndarray | None = None) -> list[np.ndarray]:
+    """The replicates' row indices, ``rng = numpy.random.default_rng(seed)``:
+
+    * independent rows (``groups`` None): ``rng.integers(0, n, n)`` per replicate;
+    * clustered rows (``groups``: each row's cluster, coded 0 … G − 1): ``rng.integers(0, G, G)``
+      per replicate draws G clusters with replacement, and the replicate's rows are each drawn
+      cluster's rows (in table order), the clusters in the order drawn."""
+    rng = np.random.default_rng(seed)
+    if groups is None:
+        return [rng.integers(0, n, n) for _ in range(int(n_boot))]
+    codes = np.asarray(groups, dtype=np.int64)
+    if len(codes) != n:
+        raise ValueError(f"The clusters cover {len(codes):,} rows, not {n:,}.")
+    G = int(codes.max()) + 1 if n else 0
+    order = np.argsort(codes, kind="stable")
+    members = np.split(order, np.cumsum(np.bincount(codes, minlength=G))[:-1])
+    return [np.concatenate([members[g] for g in rng.integers(0, G, G)]) for _ in range(int(n_boot))]
+
+
+def _matrix(W: np.ndarray, Z: np.ndarray, js: Sequence[int]) -> np.ndarray:
+    """The model's matrix with the k score columns ``W`` back at their positions ``js``."""
+    n, k = W.shape
+    M = np.empty((n, Z.shape[1] + k))
+    placed = set(js)
+    M[:, [i for i in range(M.shape[1]) if i not in placed]] = Z
+    M[:, list(js)] = W
+    return M
+
+
+def _replicate(W: np.ndarray, Z: np.ndarray, y: np.ndarray, js: Sequence[int], fit: Fit,
+               sources: Sequence[Source], rows: np.ndarray
+               ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[float], list[float | None]]:
+    """(naive, corrected, λ, reliabilities, σ²) of every score on ``rows`` (indices, with repeats)."""
     Wr, Zr, yr = W[rows], Z[rows], y[rows]
-    if source.kind == "calibration_substudy":
-        cal = calibrate_reference(Wr, Zr, np.asarray(source.reference, dtype=float)[rows])
-        reliability = cal.attenuation
-    else:
-        reliability, error_variance = source.reliability(rows)
-        cal = calibrate_known_error(Wr, Zr, error_variance)
-    naive = float(fit(np.insert(Zr, j, Wr, axis=1), yr)[j])
-    corrected = float(fit(np.insert(Zr, j, cal.calibrated, axis=1), yr)[j])
-    return naive, corrected, cal.attenuation, float(reliability), cal.error_variance
+    errors: list[float | None] = []
+    references: list[np.ndarray | None] = []
+    found: list[float | None] = []
+    for j, source in enumerate(sources):
+        if source.kind == "calibration_substudy":
+            errors.append(None)
+            references.append(np.asarray(source.reference, dtype=float)[rows])
+            found.append(None)
+            continue
+        try:
+            value, error_variance = source.reliability(rows)  # type: ignore[misc]
+        except ScaleRefused as refused:
+            raise ScaleRefused(str(refused), which=j) from None
+        errors.append(error_variance)
+        references.append(None)
+        found.append(float(value))
+    cal = calibrate_jointly(Wr, Zr, errors, references)
+    # A calibration substudy's reliability is its calibration slope.
+    reliabilities = [float(cal.attenuation[j]) if r is None else r for j, r in enumerate(found)]
+    naive = np.asarray(fit(_matrix(Wr, Zr, js), yr), dtype=float)[list(js)]
+    corrected = np.asarray(fit(_matrix(cal.calibrated, Zr, js), yr), dtype=float)[list(js)]
+    return naive, corrected, cal.attenuation, reliabilities, list(cal.error_variances)
+
+
+def correct_jointly(W: np.ndarray, Z: np.ndarray, y: np.ndarray, js: Sequence[int],
+                    sources: Sequence[Source], *, fit: Fit = ols_fit, n_boot: int = 200,
+                    seed: int = 0, draws: Sequence[np.ndarray] | None = None,
+                    groups: np.ndarray | None = None) -> list[Correction]:
+    """The k scores ``W`` (columns ``js`` of the model's matrix, every other column in ``Z``)
+    corrected together by regression calibration, each score's reliability re-estimated in every
+    one of ``n_boot`` bootstrap replicates (:func:`bootstrap_draws`; ``groups``, each row's cluster,
+    resamples whole clusters). ``draws`` (a list of row-index arrays) fixes the replicates. A
+    score whose data refuse on every row raises :class:`ScaleRefused` naming it (``which``)."""
+    W = np.asarray(W, dtype=float)
+    n = len(W)
+    W = W.reshape(n, -1)
+    Z = np.asarray(Z, dtype=float).reshape(n, -1)
+    y = np.asarray(y)
+    k = W.shape[1]
+    if len(js) != k or len(sources) != k:
+        raise ValueError("Each corrected score needs its column and its source.")
+    naive, estimate, lam, reliability, error_variance = _replicate(W, Z, y, js, fit, sources,
+                                                                   np.arange(n))
+    if draws is None:
+        draws = bootstrap_draws(n, n_boot, seed, groups)
+    boots = []
+    for rows in draws:
+        try:
+            _, b, *_ = _replicate(W, Z, y, js, fit, sources, np.asarray(rows, dtype=np.int64))
+        except (ScaleRefused, np.linalg.LinAlgError, ValueError):
+            continue
+        if np.all(np.isfinite(b)):
+            boots.append(b)
+    boot = np.asarray(boots, dtype=float).reshape(len(boots), k)
+    n_clusters = None if groups is None else int(np.asarray(groups).max()) + 1
+    out = []
+    for j in range(k):
+        se = float(np.std(boot[:, j], ddof=1)) if len(boot) >= 2 else None
+        out.append(Correction(
+            naive=float(naive[j]), estimate=float(estimate[j]), se=se,
+            ci_low=None if se is None else float(estimate[j]) - Z_95 * se,
+            ci_high=None if se is None else float(estimate[j]) + Z_95 * se,
+            attenuation=float(lam[j]), reliability=float(reliability[j]),
+            error_variance=error_variance[j], n=n, n_boot=int(len(draws)),
+            n_boot_ok=int(len(boot)), boot=boot[:, j].copy(), n_clusters=n_clusters))
+    return out
 
 
 def correct(W: np.ndarray, Z: np.ndarray, y: np.ndarray, j: int, source: Source, *,
             fit: Fit = ols_fit, n_boot: int = 200, seed: int = 0,
-            draws: np.ndarray | None = None) -> Correction:
+            draws: Sequence[np.ndarray] | None = None,
+            groups: np.ndarray | None = None) -> Correction:
     """The score ``W`` (column ``j`` of the model's matrix, every other column in ``Z``) corrected
     by regression calibration, the reliability re-estimated in each of ``n_boot`` bootstrap
-    replicates. ``draws`` (``n_boot`` × n row indices) fixes the replicates; by default they are
-    ``numpy.random.default_rng(seed).integers(0, n, n)``, one row of indices per replicate."""
-    W = np.asarray(W, dtype=float)
-    Z = np.asarray(Z, dtype=float).reshape(len(W), -1)
-    y = np.asarray(y)
-    n = len(W)
-    everyone = np.arange(n)
-    naive, estimate, lam, reliability, error_variance = _one(W, Z, y, j, fit, source, everyone)
-    if draws is None:
-        rng = np.random.default_rng(seed)
-        draws = np.vstack([rng.integers(0, n, n) for _ in range(int(n_boot))]) if n_boot else \
-            np.empty((0, n), dtype=np.int64)
-    boots = []
-    for rows in draws:
-        try:
-            _, b, *_ = _one(W, Z, y, j, fit, source, np.asarray(rows, dtype=np.int64))
-        except (ScaleRefused, np.linalg.LinAlgError, ValueError):
-            continue
-        if np.isfinite(b):
-            boots.append(b)
-    boot = np.asarray(boots, dtype=float)
-    se = float(np.std(boot, ddof=1)) if len(boot) >= 2 else None
-    return Correction(
-        naive=naive, estimate=estimate, se=se,
-        ci_low=None if se is None else estimate - Z_95 * se,
-        ci_high=None if se is None else estimate + Z_95 * se,
-        attenuation=lam, reliability=reliability, error_variance=error_variance, n=n,
-        n_boot=int(len(draws)), n_boot_ok=int(len(boot)), boot=boot)
+    replicates. ``draws`` fixes the replicates; by default they are :func:`bootstrap_draws`'s
+    (rows ``numpy.random.default_rng(seed).integers(0, n, n)`` per replicate; whole clusters when
+    ``groups`` is given)."""
+    (out,) = correct_jointly(np.asarray(W, dtype=float)[:, None], Z, y, [j], [source], fit=fit,
+                             n_boot=n_boot, seed=seed, draws=draws, groups=groups)
+    return out
 
 
 def internal_consistency(keyed: np.ndarray, scoring: Scoring, structure: str,
@@ -679,8 +832,9 @@ def retest_source(first: np.ndarray, second: np.ndarray) -> Callable[[np.ndarray
 
 
 __all__ = [
-    "APPROXIMATE", "Calibrated", "Correction", "FITS", "Omega", "Retest", "ScaleRefused",
-    "ScaleScorer", "Source", "Z_95", "calibrate_known_error", "calibrate_reference", "correct",
+    "APPROXIMATE", "Calibrated", "Correction", "FITS", "JointCalibrated", "Omega", "Retest",
+    "ScaleRefused", "ScaleScorer", "Source", "Z_95", "bootstrap_draws", "calibrate_jointly",
+    "calibrate_known_error", "calibrate_reference", "correct", "correct_jointly",
     "cronbach_alpha", "describe",
     "internal_consistency", "keyed_items", "logistic_fit", "minres", "oblimin", "ols_fit", "omega",
     "ordinal_fit", "retest_reliability", "retest_source", "reverse_code", "score_items", "smc",

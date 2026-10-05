@@ -179,7 +179,10 @@ def build_graph() -> Graph:
             # ingest 2 (wave 1, DATAIN, V2 definition of done §1): SAS transport files are read as R
             # reads them, and the files joined to the table on a shared identifier, in answer order
             # (``join_files``), are joined here.
-            Stage("ingest", 2, (), ("joins",), ingest_stage, heavy=True, label="Reading the file"),
+            # ingest 3 (DATAIN repair): each set of joins is written to a file of its own
+            # (``datastore.table_file``), so a reverted join returns to a table it never wrote
+            # over; a table joined under version 2 is read again into its own file.
+            Stage("ingest", 3, (), ("joins",), ingest_stage, heavy=True, label="Reading the file"),
             # ── M2: what the table is (M2_CONTRACT §2) ──
             # oriented 3 (WP14): the names are read before the shape, and the shape is scale-aware.
             Stage("oriented", 3, ("ingest",), ("orientation", "feature_table"), oriented_stage,
@@ -246,9 +249,14 @@ def build_graph() -> Graph:
             # read-numbers repair applied) is checked as those numbers, so an impossible outcome
             # value is found before the seal; the lab pack's "numbers stored as text" leaves the
             # column the app's own finding reads, lever and all.
+            # findings 18 (MS7 repair): each QC-RLSC option names the injection-order and batch
+            # columns it reads, and every other batch reading (a `run`, a plate, one curve) is its
+            # own option; a run order is no intensity; no "no pooled QCs" beside the QC rows found.
+            # findings 19 (wave-1 repairs integrated): both findings 18s, the routing gate's and MS7
+            # repair's.
             Stage(
                 "findings",
-                18,
+                19,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings", "numbers_read"),
                 findings_stage,
@@ -292,7 +300,9 @@ def build_graph() -> Graph:
             # the outcome is read and the seal drawn (RO-13); a log-scale outcome is derived (RO-10).
             # working 8 (wave 1, MS7): QC-RLSC, the QC filters and PQN against the pooled QCs run on
             # every injection before the seal, and then the QC rows leave as reference rows.
-            Stage("working", 8, ("oriented", "findings", "structure"),
+            # working 9 (MS7 repair): a feature with a detected value outside its detected QCs'
+            # span is not corrected (its curve would be extrapolated) and leaves as uncorrectable.
+            Stage("working", 9, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical", "outcome_scale"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -471,7 +481,12 @@ def build_graph() -> Graph:
             # design 21 (the routing gate, the ledger's repair 3 residue): the partition methods
             # convert each energy source by its settled kcal per unit (its recorded unit, so the
             # design reads the units), never by its name.
-            Stage("design", 21, ("working", "split", "target_info"),
+            # design 21 (MS7 repair): QRILC fills a sample too sparse to read by half the column's
+            # minimum, never leaving a blank for the median; a constant feature within a batch is
+            # left as sva leaves it.
+            # design 22 (wave-1 repairs integrated): both design 21s, the routing gate's and MS7
+            # repair's.
+            Stage("design", 22, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS),
@@ -509,7 +524,13 @@ def build_graph() -> Graph:
             # comparisons, the baseline verdict and BBC-CV on repeated k-fold (≥ 10 × K) by unit;
             # the declared result; calibration by level and by a horizon; the nested-CV interval.
             # fit 20 (wave 1b's integration): the three above on one engine.
-            Stage("fit", 20, ("working", "design", "split", "target_info", "cohort"),
+            # fit 18 (MS7 repair): each family's methods paragraph from what the run did; the figure
+            # ComBat with the outcome protected serves; a feature-wise caption under a recorded
+            # multiplicity carries no discovery count; a feature-wise table under multiple
+            # imputation offers the censoring-aware single fill.
+            # fit 19 (wave-1 repairs integrated): the routing gate's fit 18 and MS7 repair's.
+            # fit 21 (wave-1 repairs on wave 1b): fit 19 and wave 1b's fit 20 on one engine.
+            Stage("fit", 21, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -536,7 +557,10 @@ def build_graph() -> Graph:
             # (an exact contrast of the pooled coefficients for a linear all-components model;
             # per-copy curves pooled at each k otherwise), never one fill; under the population
             # answer each copy's curve is the population's, its design-based variance pooled.
-            Stage("substitution", 15, ("working", "fit", "design"),
+            # substitution 15 (SURVEY repair): a blocked curve's exit keeps every other chosen family.
+            # substitution 16 (wave-1 repairs on wave 1b): both substitution 15s; a blocked pooled
+            # curve's exit keeps every other chosen family too.
+            Stage("substitution", 16, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -569,7 +593,11 @@ def build_graph() -> Graph:
             # the population answer.
             # sensitivity 11 (MS1–MS2): as fit 18; each analysis's imputation model holds the survey
             # design and the clustering.
-            Stage("sensitivity", 11, ("working", "design", "split", "target_info"),
+            # sensitivity 11, secondary 2 (SURVEY repair): a blocked family's exit keeps every other
+            # chosen family.
+            # sensitivity 12, secondary 3 (wave-1 repairs on wave 1b): both sensitivity 11s and both
+            # secondary 2s.
+            Stage("sensitivity", 12, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
@@ -579,14 +607,16 @@ def build_graph() -> Graph:
             # calibration 6 (ledger repair 2): as design 17.
             # calibration 7 (WP17): as fit 16.
             # calibration 8 (wave 1, MS4): blocked and recorded under the population answer.
-            Stage("calibration", 8,
+            # calibration 9 (SURVEY repair): the block's exits are decisions (the sample-only
+            # attestation; no correction).
+            Stage("calibration", 9,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
                   label="Correcting energy-adjusted intakes for day-to-day error"),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
-            Stage("secondary", 2, ("working", "design", "split", "target_info"),
+            Stage("secondary", 3, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),
@@ -595,13 +625,20 @@ def build_graph() -> Graph:
             # beside the uncorrected one; items imputed before scoring under multiple imputation.
             # scales 2 (wave 1, MS4): under the population answer the correction is blocked and
             # recorded, its exit the sample-only attestation.
-            Stage("scales", 2, ("working", "design", "split", "target_info", "cohort"),
+            # scales 3 (SCALES repair): grouped rows keep their clusters in both intervals (the
+            # table's CR2 beside a bootstrap of whole clusters); several corrected scores are
+            # calibrated jointly (Rosner); a code reaching a repeat administration or a reference
+            # blocks what it would move.
+            Stage("scales", 3, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
                   label="Estimating each scale's reliability"),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
             # dietary lens with repeated recalls the usual-intake distribution is offered as its own
             # estimand, and each recorded component's distribution is fit (amount-only or two-part).
-            Stage("usual_intake", 1, ("oriented", "findings", "structure", "working"),
+            # usual_intake 2 (repair): intervals on the log and logit scales; every refusal and
+            # blocked part carries exits; the prevalence below an EAR waits for the answer that it
+            # is every participant's group's EAR, and iron's waits for a symmetric requirement.
+            Stage("usual_intake", 2, ("oriented", "findings", "structure", "working"),
                   USUAL_INTAKE_READS, usual_intake_stage, heavy=True,
                   requires=("lens", "purpose"),
                   label="Estimating usual-intake distributions"),

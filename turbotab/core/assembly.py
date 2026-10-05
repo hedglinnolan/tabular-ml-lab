@@ -14,12 +14,18 @@ joins that keep every row's meaning:
 **Many-to-many is refused** (BLUEPRINT §11.3, the leash's refuse rung): when the identifier repeats
 on both sides, a join pairs every row of a value with every row of it in the other file, a product
 that answers no question a researcher asks of a shared identifier. The reason is stated with an
-example and the way forward (a column that names one row on one side; combining the file's rows to
-one per identifier first, which is deep assembly, planned for v2.x).
+example and the way forward v2 offers (a column that names one row on one side; combining the
+file's rows to one per identifier first is deep assembly, planned for v2.x, so it is no exit).
+
+**A join comes before the seal** (its slot, ``ingest``): it decides what a row is, so once the
+held-out rows or the folds are drawn, a join or the undoing of one waits for a re-seal, like every
+Decision A (``seal.DECISION_A``). Each set of joins is read into a file of its own
+(``datastore.table_file``), so undoing a join returns to a table no join wrote over.
 
 Rows the identifier does not match are counted on each side before anything is committed. A blank
 identifier never matches (a missing identifier is no shared one; pandas would pair blanks with
-blanks). ``left`` keeps every row of the table, the file's columns blank where it has no partner;
+blanks), nor does a NaN in a column of floating-point numbers. ``left`` keeps every row of the
+table, the file's columns blank where it has no partner;
 ``inner`` keeps only the rows with one. A file column whose name the table already has is renamed
 ``<name>_<file stem>``, and the preview says so.
 
@@ -81,9 +87,16 @@ def _contract() -> Any:
                      "Refused: an identifier that repeats in both files pairs every row of a value "
                      "with every row of it on the other side.",
                      condition="an identifier that repeats in both files", rung="refused",
-                     exits=("join on a column that names one row per unit in one of the files",
-                            "combine the file's rows to one per identifier first"),
+                     exits=("join on a column that names one row per unit in one of the files",),
                      enforced_by="turbotab.core.assembly:plan"),
+            # The slot (ingest) and the place (before the opening sequence), enforced: a join
+            # decides what a row is, so it is one of the seal's Decision A (seal.DECISION_A).
+            Relation("conflicts", "sealed",
+                     "Refused once the held-out rows or the folds are drawn: a join, or undoing "
+                     "one, changes what a row is, and the seal names rows as they were.",
+                     condition="a split drawn before the join", rung="refused",
+                     exits=("withdraw the seal, join, then draw it again",),
+                     enforced_by="turbotab.core.seal:_decision_a_waits_for_a_reseal"),
             Relation("conflicts", "no_matching_identifier",
                      "Refused: no value of the identifier is in both files, so the join would add "
                      "only blanks.", rung="refused",
@@ -186,6 +199,16 @@ def _family(physical: str) -> str:
     return "text"
 
 
+def _named(expr: str, physical: str) -> str:
+    """SQL true where an identifier value names a row: not blank and, in a column of floating-point
+    numbers, not NaN. A NaN identifier is no identifier: Arrow and Polars writers keep NaN where
+    pandas writes a blank, and DuckDB holds NaN equal to NaN, so unguarded, every NaN row would
+    pair with every NaN row of the other file (the ingest nulls NaN only after the joins)."""
+    if physical.upper().split("(")[0].strip() in ("FLOAT", "DOUBLE", "REAL", "FLOAT4", "FLOAT8"):
+        return f"({expr} IS NOT NULL AND NOT isnan({expr}))"
+    return f"{expr} IS NOT NULL"
+
+
 def _schema(con: Any, parquet: Path) -> list[tuple[str, str]]:
     rows = con.execute(f"DESCRIBE SELECT * FROM read_parquet({_lit(parquet)})").fetchall()
     return [(str(r[0]), str(r[1])) for r in rows if r[0] != ROW_ID]
@@ -226,31 +249,32 @@ def plan(con: Any, left: Path, right: Path, *, on: str, right_on: str | None = N
                        [{"label": "Join on a column both files write the same way",
                          "decision": None}])
     lk, rk = f"L.{_ident(on)}", f"R.{_ident(right_on)}"
+    l_named, r_named = _named(_ident(on), ltypes[on]), _named(_ident(right_on), rtypes[right_on])
     counts = con.execute(f"""
         WITH lc AS (SELECT {_ident(on)} AS k, count(*) AS n FROM {L}
-                    WHERE {_ident(on)} IS NOT NULL GROUP BY 1),
+                    WHERE {l_named} GROUP BY 1),
              rc AS (SELECT {_ident(right_on)} AS k, count(*) AS n FROM {R}
-                    WHERE {_ident(right_on)} IS NOT NULL GROUP BY 1),
+                    WHERE {r_named} GROUP BY 1),
              m AS (SELECT lc.n AS ln, rc.n AS rn FROM lc JOIN rc ON lc.k = rc.k)
         SELECT (SELECT count(*) FROM {L}), (SELECT count(*) FROM {R}),
                (SELECT count(*) FROM lc), (SELECT count(*) FROM rc),
                (SELECT coalesce(max(n), 0) FROM lc), (SELECT coalesce(max(n), 0) FROM rc),
                (SELECT count(*) FROM m), (SELECT coalesce(sum(ln * rn), 0) FROM m),
                (SELECT coalesce(sum(ln), 0) FROM m), (SELECT coalesce(sum(rn), 0) FROM m),
-               (SELECT count(*) FROM {L} WHERE {_ident(on)} IS NULL),
-               (SELECT count(*) FROM {R} WHERE {_ident(right_on)} IS NULL)
+               (SELECT count(*) FROM {L} WHERE NOT {l_named}),
+               (SELECT count(*) FROM {R} WHERE NOT {r_named})
     """).fetchone()
     (lrows, rrows, lkeys, rkeys, lmax, rmax, matched, inner_rows, lmatched, rmatched,
      lblank, rblank) = (int(x or 0) for x in counts)
 
-    def example(rel: str, key: str) -> tuple[Any, int]:
-        row = con.execute(f"SELECT {_ident(key)}, count(*) AS n FROM {rel} WHERE {_ident(key)} "
-                          f"IS NOT NULL GROUP BY 1 HAVING count(*) > 1 ORDER BY n DESC, 1 "
+    def example(rel: str, key: str, named: str) -> tuple[Any, int]:
+        row = con.execute(f"SELECT {_ident(key)}, count(*) AS n FROM {rel} WHERE {named} "
+                          f"GROUP BY 1 HAVING count(*) > 1 ORDER BY n DESC, 1 "
                           f"LIMIT 1").fetchone()
         return (row[0], int(row[1])) if row else (None, 0)
 
-    lex, lexn = example(L, on) if lmax > 1 else (None, 0)
-    rex, rexn = example(R, right_on) if rmax > 1 else (None, 0)
+    lex, lexn = example(L, on, l_named) if lmax > 1 else (None, 0)
+    rex, rexn = example(R, right_on, r_named) if rmax > 1 else (None, 0)
     lside = Side(left_name, lrows, lkeys, lblank, lmax, lex, lexn)
     rside = Side(right_name, rrows, rkeys, rblank, rmax, rex, rexn)
     if lside.repeats and rside.repeats:
@@ -261,10 +285,10 @@ def plan(con: Any, left: Path, right: Path, *, on: str, right_on: str | None = N
             f"value with every row of that value on the other side, so a row's partner would be "
             f"no single row, and every count after it would multiply. Join on a column that "
             f"names one row in one of the two files.",
+            # Combining a file's rows to one per identifier before joining it is deep assembly,
+            # planned for v2.x: no exit offers what v2 cannot do.
             [{"label": "Join on a column that names one row per unit in one of the files",
-              "decision": None},
-             {"label": "Combine the file's rows to one per identifier first (deep assembly, "
-                       "planned for v2.x)", "decision": None}],
+              "decision": None}],
             lside, rside)
     relation = ("one-to-one" if not lside.repeats and not rside.repeats else
                 "one-to-many" if rside.repeats else "many-to-one")
@@ -297,9 +321,10 @@ def plan(con: Any, left: Path, right: Path, *, on: str, right_on: str | None = N
         select.append(f"R.{_ident(n)} AS {_ident(out)}")
     join = "LEFT JOIN" if how == "left" else "JOIN"
     order = f"L.{ROW_ID}, R.{ROW_ID}"
+    match = f"{lk} = {rk} AND {_named(lk, ltypes[on])} AND {_named(rk, rtypes[right_on])}"
     sql = (f"SELECT {', '.join(select)}, "
            f"CAST(row_number() OVER (ORDER BY {order}) - 1 AS BIGINT) AS {ROW_ID} "
-           f"FROM {L} AS L {join} {R} AS R ON {lk} = {rk} ORDER BY {order}")
+           f"FROM {L} AS L {join} {R} AS R ON {match} ORDER BY {order}")
     return JoinPlan(on, right_on, how, lside, rside, relation, matched, left_unmatched,
                     right_unmatched, result_rows, added, renamed,
                     [*(n for n, _ in lschema), *added], sql)
@@ -432,8 +457,10 @@ def plan_for(decision: Any, ctx: Any) -> JoinPlan:
             pass
         raise Refusal("already_joined", f"`{meta.get('name')}` is already joined to the table.",
                       exits=exits)
+    from turbotab.core.datastore import table_file
+
     status = _ctx(ctx, "ingest_status")
-    table = pdir / "data" / "raw.parquet"
+    table = table_file(pdir / "data", joined)  # the table as the joins so far made it
     if status not in (None, "fresh") or not table.is_file():
         raise Refusal("not_yet", "The table is still being read; join the file once it is ready.",
                       exits=[])

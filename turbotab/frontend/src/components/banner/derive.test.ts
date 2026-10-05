@@ -125,7 +125,13 @@ const baseline = { metric: "r2", value: 0, label: "the outcome's average" };
 
 // The fields WP9 added (models/performance.py, validation.py): no SE, calibration or resampling.
 const noSe = { se: null, ci_low: null, ci_high: null, repeats: 1, repeat_sd: null };
-const wp9 = { calibration: null, holdout_detail: null, optimism: null, internal_external: null };
+const wp9 = {
+  calibration: null,
+  holdout_detail: null,
+  optimism: null,
+  internal_external: null,
+  methods: null,
+};
 // The fields MS6 added (models/validation.py, selection.py): calibration by level or horizon, the
 // comparison substrate's score, the performance sentence and the nested cross-validation interval.
 const ms6 = { calibration_levels: null, calibration_horizon: null, calibration_note: null,
@@ -134,6 +140,7 @@ const ms6 = { calibration_levels: null, calibration_horizon: null, calibration_n
 const fit: FitArtifact = {
   task: "regression",
   levels: null,
+  batch_figure: null,
   withheld: null,
   estimand: null,
   primary_metric: "r2",

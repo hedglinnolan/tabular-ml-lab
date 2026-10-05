@@ -6,7 +6,9 @@ that could not appear in a methods section is not a decision sentence. Backticks
 
 :func:`sentence_for` is called once, when a decision is recorded (M1_CONTRACT §2), and the sentence
 is stored on the record: the Record quotes it, it never recomposes it. One function per decision
-kind, registered — adding a kind adds a function, never a branch.
+kind, registered — adding a kind adds a function, never a branch. The methods text restates the few
+sentences that say what another answer does to them, on the answers as they stand
+(:func:`restate`; MS4).
 
 ``ctx`` is whatever the recorder knows about the project, as a mapping or an object. Every key is
 optional; a sentence says only what its context can support and never prints a placeholder:
@@ -262,6 +264,82 @@ def sentence_for(decision: Any, state_before: Any = None, ctx: Any = None) -> st
     except Exception:  # pragma: no cover - a sentence must never block a decision
         log.exception("sentence_for(%s) failed; recording the bare sentence", decision.kind)
         return finish(_SENTENCES[decision.kind](decision, state, None))
+
+
+# ── restating what another answer does to a sentence (MS4) ───────────────────
+#
+# A record's sentence is authored once, on the state before it, and the Record quotes it as said.
+# A few sentences also state what *another* answer does to this one. Under the surveyed population
+# they say each chosen family's design-based estimator or its block, the substitution band's
+# linearization, and the calibration's block (MODELING_SEQUENCE §4). When that other answer changes
+# later, the sentence as said contradicts the analysis. The sample-only exit is such a change, and
+# so is a population answer given after the models were chosen. The methods text states what the
+# analysis is now (``provenance``), so it restates these sentences on the current state; the Record
+# keeps them as said.
+#
+# There are two ways to restate:
+# * whole: a kind whose sentence reads only the decision and the state is re-authored on the
+#   current state, led by what had been seen when it was recorded (``decisions.disclose``);
+# * standing clause: a kind whose sentence also reads the recorder's context (``select_models``:
+#   its labels and the readings the values settled) ends with its standing clause. That clause is
+#   a sentence of its own, a function of the decision, the state and at most the context's
+#   ``detected_task`` (the task the target stage detected, where none was answered), and only it is
+#   restated.
+
+StandingFn = Callable[[Any, Any, Any], "str | None"]
+_RESTATED_WHOLE: set[str] = set()
+_STANDING: dict[str, StandingFn] = {}
+
+
+def restated_whole(kind: str) -> None:
+    """Declare that ``kind``'s sentence reads only the decision and the state, and is restated whole."""
+    _RESTATED_WHOLE.add(kind)
+
+
+def register_standing(kind: str) -> Callable[[StandingFn], StandingFn]:
+    """Register ``kind``'s standing clause: ``fn(decision, state, ctx)``, the last sentence of its
+    record's sentence (None: no such sentence under ``state``)."""
+    def wrap(fn: StandingFn) -> StandingFn:
+        _STANDING[kind] = fn
+        return fn
+    return wrap
+
+
+def restates(kind: str) -> bool:
+    return kind in _RESTATED_WHOLE or kind in _STANDING
+
+
+def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, *,
+            post_seal: bool = False, after_estimates: bool = False) -> str:
+    """``sentence``, a record's as authored on the state ``then``, as it reads on the state ``now``.
+
+    The result is unchanged unless ``now`` changes what the sentence says. ``ctx`` is what a
+    standing clause may read besides the state (``detected_task``). ``post_seal`` and
+    ``after_estimates`` are the record's own flags, so a restated sentence keeps its lead. A standing
+    clause that the sentence does not end with (one this version of the app did not write, or one
+    whose context is not known now) is left as said."""
+    from turbotab.core.decisions import disclose, parse_decision
+
+    decision = parse_decision(decision)
+    kind = decision.kind
+    if kind in _RESTATED_WHOLE:
+        before, after = sentence_for(decision, then), sentence_for(decision, now)
+        if before == after:
+            return sentence
+        return disclose(after, post_seal=post_seal, after_estimates=after_estimates) or sentence
+    fn = _STANDING.get(kind)
+    if fn is None:
+        return sentence
+    said, says = fn(decision, then, ctx), fn(decision, now, ctx)
+    said, says = (finish(said) if said else ""), (finish(says) if says else "")
+    if said == says:
+        return sentence
+    head = sentence
+    if said:
+        if not sentence.endswith(f" {said}"):
+            return sentence
+        head = sentence[: -len(said)].rstrip()
+    return f"{head} {says}" if says else head
 
 
 # M0 kinds — the same words the M0 Record used, now authored on the server.
@@ -1130,16 +1208,24 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
                    "bias-corrected cross-validation (Tsamardinos et al. 2018), and that "
                    "selection-corrected estimate is the reported result, not the best family's "
                    "own score")
-    # MS4: under the surveyed population, each family's design-based estimator, or its block.
-    from turbotab.core.models.survey import models_sentence
-
-    population = models_sentence(state, d.models, task)
-    if population:
-        chosen = f"{chosen}. {population}"
     # BLUEPRINT §14.3 (amendment): the readings the values settled, which the fit reads, are
     # stated in the record ("read from the values"), each with its evidence.
     read = _get(ctx, "read_from_values")
-    return f"{chosen}. {read}" if read else chosen
+    if read:
+        chosen = f"{chosen}. {read}"
+    # MS4: under the surveyed population, each family's design-based estimator, or its block. It
+    # is the sentence's standing clause, last, so the methods text restates it when the survey
+    # answer changes (:func:`restate`).
+    population = _models_standing(d, state, ctx)
+    return f"{chosen}. {population}" if population else chosen
+
+
+@register_standing("select_models")
+def _models_standing(d: Any, state: Any, ctx: Any) -> str | None:
+    from turbotab.core.models.survey import models_sentence
+
+    task = getattr(state, "task", None) or _get(ctx, "detected_task")  # answered, else detected
+    return models_sentence(state, d.models, task)
 
 
 # set_substitution
@@ -1159,7 +1245,9 @@ def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
     n_boot = int(getattr(d, "n_boot", 0) or 0)
     from turbotab.core.models.survey import substitution_clause
 
-    population = substitution_clause(state)  # MS4: the design's band replaces the refits
+    # MS4: the design's band replaces the refits. The sentence reads the decision and the state
+    # only, so the methods text restates it whole when the survey answer changes (:func:`restate`).
+    population = substitution_clause(state, n_boot)
     if population:
         text += f"; {population}"
     elif n_boot:
@@ -1173,6 +1261,9 @@ def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
         text += ("; it was kept although energy sources are missing from the model, so the curve "
                  "carries the confounding of the sources total energy holds as one composite")
     return text
+
+
+restated_whole("set_substitution")
 
 
 # ── M2: the opening sequence (OPENING_SEQUENCE.md §03) ───────────────────────
@@ -1353,9 +1444,22 @@ def _set_measurement_error(d: Any, state: Any, ctx: Any) -> str:
         return ("Energy-adjusted exposures were not corrected for day-to-day error in the "
                 "recalls")
     which = (f"{listing(d.exposures)}" if d.exposures else "every energy-adjusted exposure")
+    from turbotab.core.models.survey import population_answer
+
+    if population_answer(state):
+        # MS4 (MODELING_SEQUENCE §4): the calibration stage blocks it under the surveyed
+        # population, so the record says so. The methods text restates this sentence whole when
+        # the survey answer changes (:func:`restate`).
+        return (f"Univariate regression calibration of {which} was asked for, but under the "
+                f"surveyed population it has no design-based variance (a bootstrap by PSU within "
+                f"strata over the whole chain), so it was blocked and recorded, and the estimates "
+                f"are uncorrected")
     return (f"Univariate regression calibration was applied to {which}, with the day-to-day "
             f"variance estimated from repeated recalls and intervals from {count(d.n_boot)} "
             f"bootstrap refits over people")
+
+
+restated_whole("set_measurement_error")
 
 
 def _levels(ctx: Any, column: str) -> list[str]:

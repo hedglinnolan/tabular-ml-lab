@@ -16,6 +16,14 @@ package NCI).
     (5) The methods sentence names the model, the transform, the covariates and the variance method
         (asserted verbatim).
 
+The repair round (the independent verifier's three open findings) adds: (6) every interval stays
+within possible values, formed on the log scale (percentiles, mean) or the logit scale (share) and
+recomputed by hand from each reported value and SE, with coverage in the verifier's regime (§3c);
+(7) every analysis-level refusal, and the blocked prevalence label, carries exits that post (§4);
+(8) the EAR cut-point's exceptions NUTRITION_PACK §07 marks [SETTLED]: iron refused an EAR until its
+requirement is answered symmetric, and one EAR across DRI life-stage groups blocked and recorded as a
+plain share until answered as every participant's (§4).
+
 **No R package implements the NCI macros**, so for the distribution simulation truth is the
 reference: each truth below is computed in this file from the data-generating parameters by its own
 quadrature (``scipy.integrate.quad``, or NumPy's Gauss–Hermite nodes at a different order than the
@@ -330,8 +338,9 @@ def test_1d_the_simulation_recovers_the_known_usual_intake_distribution(amount_r
 
 
 def test_1d_the_bootstrap_intervals_cover(amount_runs):
-    """Coverage of the 95% intervals (estimate ± 1.96 bootstrap SE) over 200 datasets: at least 0.90
-    for each percentile and for the share (the binomial Monte Carlo error at 0.95 is 0.015)."""
+    """Coverage of the 95% intervals (the log-scale form for a percentile, the logit-scale form for
+    the share, from the bootstrap SE) over 200 datasets: at least 0.90 for each percentile and for
+    the share (the binomial Monte Carlo error at 0.95 is 0.015)."""
     out = amount_runs
     cover = {**{f"p{q}": out["cov"][q] / REPS for q in (10, 50, 90)}, "share": out["cov_below"] / REPS}
     print("\ncoverage", cover)
@@ -374,7 +383,8 @@ AWK, BWK, ASEQ, BSEQ = 0.3, 0.2, -0.2, -0.1
 CUT2 = 10.0
 
 
-def simulate_two_part(rng: np.random.Generator, n: int = 2000, p2: float = 0.85) -> nci.Recalls:
+def simulate_two_part(rng: np.random.Generator, n: int = 2000, p2: float = 0.85,
+                      a0: float = A0) -> nci.Recalls:
     """An episodically consumed food: on each recall day a person eats it with probability
     expit(−0.2 + 0.3·weekend − 0.2·repeat + u₁) and then eats g⁻¹(4 + 0.2·weekend − 0.1·repeat + u₂ + ε)
     (λ = 0.25, ε sd 0.9), with (u₁, u₂) normal, sd 1 and 0.6, correlation 0.5. About half the
@@ -385,7 +395,7 @@ def simulate_two_part(rng: np.random.Generator, n: int = 2000, p2: float = 0.85)
     weekend = (rng.random(len(person)) < 3 / 7).astype(float)
     z1, z2 = rng.normal(size=n), rng.normal(size=n)
     u1, u2 = S1 * z1, S2 * (RHO * z1 + math.sqrt(1 - RHO ** 2) * z2)
-    p = special.expit(A0 + AWK * weekend + ASEQ * later + u1[person])
+    p = special.expit(a0 + AWK * weekend + ASEQ * later + u1[person])
     eat = rng.random(len(person)) < p
     y = B0 + BWK * weekend + BSEQ * later + u2[person] + rng.normal(0, SE2, len(person))
     return nci.Recalls.of(np.where(eat, ginv(y, LAM2), 0.0), person, n, later=later, weekend=weekend)
@@ -725,6 +735,85 @@ def test_3b_fay_brr_intervals_cover_under_the_design(survey_runs):
     assert all(0.8 < v < 1.2 for v in ratio.values()), ratio
 
 
+# ── 3c · intervals stay within possible intakes (repair: the verifier's case) ─
+
+# The verifier's regime: a two-part analysis at n = 400 with two-thirds of the recalls at zero
+# reported p5 = 0.286 g with a normal interval from −0.161 to 0.734 g. An intake below zero is
+# impossible. The engine now forms each interval on the log scale (the percentiles, the mean) or the
+# logit scale (the share) by the delta method; these tests recompute that form by hand from each
+# reported value and standard error, and check coverage against simulation truth.
+SMALL_A0, SMALL_N, SMALL_REPS, SMALL_BOOT = -1.0, 400, 200, 20
+SMALL_KEYS = (5, 10, 50, 90, "mean", "share")
+
+
+@pytest.fixture(scope="module")
+def small_episodic():
+    """200 datasets of 400 people (85% with two recalls) eating an episodic food on about a third of
+    recall days (the probability part's intercept −1.0), each fitted with a 20-replicate person
+    bootstrap. The truth is the test's own Monte Carlo of four million people. (Before the repair,
+    a replicate refit of dataset 145 stepped log σ₂ past exp's range and the whole analysis
+    raised OverflowError; the refit now rejects steps outside the fit's bounds.)"""
+    T = two_part_monte_carlo([SMALL_A0, ASEQ, AWK], [B0, BSEQ, BWK], S1, S2, RHO, LAM2, SE2)
+    truth = {**{q: float(np.percentile(T, q)) for q in (5, 10, 50, 90)}, "mean": float(T.mean()),
+             "share": float(np.mean(T < CUT2))}
+    rng = np.random.default_rng(12)
+    runs = []
+    for r in range(SMALL_REPS):
+        rec = simulate_two_part(rng, n=SMALL_N, a0=SMALL_A0)
+        res = nci.usual_intake(rec, "two_part", cutoff=CUT2, percentiles=(5, 10, 50, 90),
+                               replication=nci.person_bootstrap(rec.n_persons, SMALL_BOOT, seed=r))
+        est = {**{q: res.percentiles[q] for q in (5, 10, 50, 90)}, "mean": res.mean,
+               "share": res.below}
+        runs.append({"zero": rec.zero_share(), "crit": res.replication.critical(),
+                     **{k: (e.value, e.se, e.ci_low, e.ci_high) for k, e in est.items()}})
+    return truth, runs
+
+
+def test_3c_every_interval_is_the_log_or_logit_form_and_none_leaves_the_possible_range(small_episodic):
+    """In each of the 200 analyses (two-thirds of recalls at zero, as the verifier's), every
+    percentile's and the mean's interval is θ̂·exp(∓1.96·SE/θ̂) and the share's is
+    expit(logit p̂ ∓ 1.96·SE/(p̂(1 − p̂))), recomputed here with NumPy from the reported value and
+    SE; every percentile's and the mean's lower bound is above zero and every share's interval
+    within [0, 1] (a share near one whose replicates spread widely reaches both, in floating point,
+    as its logit interval should). The normal interval from
+    the same SE (the shipped form) crosses zero for the 5th percentile in more than a tenth of them
+    (observed: 47.5%): the regime is the one the verifier found."""
+    _, runs = small_episodic
+    zero = np.mean([r["zero"] for r in runs])
+    assert 0.62 < zero < 0.75, zero
+    crossed = 0
+    for run in runs:
+        crit = run["crit"]
+        assert crit == pytest.approx(stats.norm.ppf(0.975), abs=1e-12)
+        for key in SMALL_KEYS:
+            value, se, low, high = run[key]
+            if key == "share":
+                logit = np.log(value / (1 - value))
+                half = crit * se / (value * (1 - value))
+                with np.errstate(over="ignore"):  # a share near one: exp(−logit) underflows
+                    expected = (1 / (1 + np.exp(-(logit - half))), 1 / (1 + np.exp(-(logit + half))))
+                assert 0 <= low <= value <= high <= 1, (key, run[key])
+            else:
+                expected = (value * np.exp(-crit * se / value), value * np.exp(crit * se / value))
+                assert 0 < low <= value <= high, (key, run[key])
+            assert (low, high) == pytest.approx(expected, rel=1e-12), key
+        crossed += run[5][0] - crit * run[5][1] < 0
+    print(f"\nzero recalls {zero:.3f}; normal p5 intervals crossing zero {crossed / len(runs):.3f}")
+    assert crossed / len(runs) > 0.10
+
+
+def test_3c_the_log_and_logit_intervals_cover_in_the_episodic_tail(small_episodic):
+    """Coverage of the 95% intervals over 200 datasets of 400 people, against the Monte Carlo truth:
+    at least 0.92 for the 5th, 10th, 50th and 90th percentiles, the mean and the share below 10
+    (the binomial Monte Carlo error at 0.95 is 0.015; observed 0.925 for the mean to 0.96 for the
+    share). A separate trial at 40 replicates per analysis found the shipped normal intervals at
+    0.925 for p5 and 0.935 for p10, the log intervals at 0.965 and 0.96."""
+    truth, runs = small_episodic
+    cover = {str(k): float(np.mean([r[k][2] <= truth[k] <= r[k][3] for r in runs])) for k in SMALL_KEYS}
+    print("\ncoverage", cover, "\ntruth", {str(k): round(v, 4) for k, v in truth.items()})
+    assert all(v >= 0.92 for v in cover.values()), cover
+
+
 # ── 4 · routing, through the real server ─────────────────────────────────────
 
 from turbotab.core.survey import ATTESTATION  # noqa: E402
@@ -735,7 +824,9 @@ def recall_table(seed: int = 61, n: int = 500) -> pd.DataFrame:
     """A long table of 24-hour recalls: 60% of people have two (``recall`` 1 and 2), the rest one;
     ``weekend`` marks a Friday–Sunday recall. Protein is eaten every day (lognormal around each
     person's level); fish is episodic, and a fifth of people never eat it (``fish_ever`` = 0). LDL is
-    a person's outcome."""
+    a person's outcome. Men and women of 25 to 74 years: several DRI life-stage groups. Iron
+    (``iron_mg``) is drawn from its own stream after the rest, so the other columns do not depend on
+    it, and ``vitamin_d_ug`` was never recorded (every value blank)."""
     rng = np.random.default_rng(seed)
     age = rng.integers(25, 75, n).astype(float)
     sex = rng.choice(["F", "M"], n)
@@ -756,7 +847,13 @@ def recall_table(seed: int = 61, n: int = 500) -> pd.DataFrame:
                          "energy_kcal": round(2000 + 300 * u[i] + rng.normal(0, 400), 1),
                          "protein_g": round(protein, 2), "fish_g": round(fish, 1),
                          "fish_ever": int(ever[i]), "ldl": round(ldl[i], 1)})
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    extra = np.random.default_rng(seed + 1)
+    level = extra.normal(0, 0.35, n)
+    person = frame["participant_id"].str[1:].astype(int).to_numpy()
+    frame["iron_mg"] = np.round(np.exp(2.6 + level[person] + extra.normal(0, 0.4, len(frame))), 2)
+    frame["vitamin_d_ug"] = np.nan
+    return frame
 
 
 def recall_truth() -> Truth:
@@ -788,17 +885,28 @@ def opening(d, purpose: str = "inference", lenses=("dietary",)) -> None:
     d.decide_roles(RECALL_ROLES)
 
 
+# 46 g is protein's EAR for men of 19 and older (and the RDA for women, whose EAR is 38 g;
+# Institute of Medicine 2005): the recall table's men and women are several groups, so the share
+# below it is not their prevalence of inadequacy until answered otherwise.
 PROTEIN = {"kind": "set_usual_intake", "nutrient": "protein_g", "model": "amount_only",
            "order_column": "recall", "weekend": ["weekend"], "cutoff": 46, "cutoff_kind": "EAR",
            "n_boot": 100}
 FISH = {"kind": "set_usual_intake", "nutrient": "fish_g", "model": "two_part",
         "order_column": "recall", "weekend": ["weekend"], "n_boot": 100}
+IRON = {**PROTEIN, "nutrient": "iron_mg", "cutoff": 6}  # iron's EAR for men 19 and older (6 mg)
+ENERGY_TWO_PART = {"kind": "set_usual_intake", "nutrient": "energy_kcal", "model": "two_part",
+                   "order_column": "recall", "weekend": ["weekend"], "n_boot": 50}
+VITAMIN_D = {"kind": "set_usual_intake", "nutrient": "vitamin_d_ug", "model": "amount_only",
+             "order_column": "recall", "n_boot": 50}
 
 
-def nhanes_table(seed: int = 21, n: int = 900) -> pd.DataFrame:
+def nhanes_table(seed: int = 21, n: int = 900, lonely: bool = False) -> pd.DataFrame:
     """An NHANES-shaped wide table: one row per ``SEQN``, day-1 and day-2 total protein (``DR1TPROT``,
     ``DR2TPROT``; day 2 missing for a fifth), NHANES's days of the week (``DR1DAY``: 1 Sunday … 7
-    Saturday), 15 strata of two PSUs (``SDMVSTRA``, ``SDMVPSU``) and the day-one dietary weight."""
+    Saturday), 15 strata of two PSUs (``SDMVSTRA``, ``SDMVPSU``) and the day-one dietary weight.
+    Every participant is a man of 20 to 79 years (``RIAGENDR`` 1; the draw that once set it is kept,
+    so the other columns are unchanged), so 46 g, protein's EAR for men of 19 and older, is every
+    participant's group's EAR. ``lonely``: stratum 133's rows all in PSU 1 (a stratum of one PSU)."""
     rng = np.random.default_rng(seed)
     strata = np.repeat(np.arange(1, 16), n // 15)
     psu = np.tile([1, 2], n // 2)[: len(strata)]
@@ -807,9 +915,11 @@ def nhanes_table(seed: int = 21, n: int = 900) -> pd.DataFrame:
     rows = []
     for i in range(n):
         has2 = rng.random() < 0.8
-        rows.append({"SEQN": 83732 + i, "RIAGENDR": int(rng.integers(1, 3)),
+        rng.integers(1, 3)  # the sex draw, kept so that the columns below are unchanged
+        rows.append({"SEQN": 83732 + i, "RIAGENDR": 1,
                      "RIDAGEYR": int(rng.integers(20, 80)), "SDMVSTRA": int(strata[i]) + 118,
-                     "SDMVPSU": int(psu[i]), "WTDRD1": round(float(rng.uniform(5000, 90000)), 2),
+                     "SDMVPSU": 1 if lonely and strata[i] == 15 else int(psu[i]),
+                     "WTDRD1": round(float(rng.uniform(5000, 90000)), 2),
                      "DR1TPROT": round(math.exp(4.2 + u[i] + rng.normal(0, 0.5)), 2),
                      "DR2TPROT": round(math.exp(4.1 + u[i] + rng.normal(0, 0.5)), 2) if has2 else None,
                      "DR1DAY": int(rng.integers(1, 8)), "DR2DAY": int(rng.integers(1, 8)) if has2 else None,
@@ -819,18 +929,45 @@ def nhanes_table(seed: int = 21, n: int = 900) -> pd.DataFrame:
 
 NHANES_PROTEIN = {"kind": "set_usual_intake", "nutrient": "DRxTPROT", "model": "amount_only",
                   "days": ["DR1TPROT", "DR2TPROT"], "weekend": ["DR1DAY", "DR2DAY"],
-                  "weekend_coding": "nhanes_day", "cutoff": 46, "cutoff_kind": "EAR"}
+                  "weekend_coding": "nhanes_day", "cutoff": 46, "cutoff_kind": "EAR",
+                  "ear_for_all": True}
+NHANES_TRUTH = {"code_or_count:RIDAGEYR": "amount", "code_or_count:RIAGENDR": "code",
+                "code_or_count:DR1DAY": "code", "code_or_count:DR2DAY": "code"}
+NHANES_ROLES = {"SEQN": "identifier", "RIAGENDR": "covariate", "RIDAGEYR": "covariate",
+                "SDMVSTRA": "design", "SDMVPSU": "design", "WTDRD1": "design",
+                "DR1TPROT": "exposure"}
+POPULATION = {"kind": "set_survey", "estimand": "population", "weight": "WTDRD1",
+              "strata": "SDMVSTRA", "psu": "SDMVPSU"}
+
+
+def nhanes_opening(d) -> None:
+    d.decide({"kind": "set_lens", "lenses": ["dietary"]})
+    d.reach("target")
+    d.decide({"kind": "set_target", "column": "LBXTC"})
+    d.answer("task", {"kind": "set_task", "column": "LBXTC", "task": "regression"})
+    d.reach("purpose")
+    d.decide({"kind": "set_purpose", "purpose": "inference"})
+    d.reach("roles")
+    d.decide_roles(NHANES_ROLES)
+
+
+def by_name(artifact: dict, nutrient: str) -> dict:
+    """The analysis of ``nutrient`` in a ``usual_intake`` artifact."""
+    return next(a for a in artifact["analyses"] if a["nutrient"] == nutrient)
 
 
 @pytest.fixture(scope="module")
 def journeys(tmp_path_factory):
     """Four projects through one local server. A: the long recall table under inference, every answer
-    and refusal the routing has. B: the same table under prediction, and under the clinical lens.
-    C: the NHANES-shaped wide table under its survey design, then as these participants."""
+    and refusal the routing has, and each refusal's exit posted. B: the same table under prediction,
+    and under the clinical lens. C: the NHANES-shaped wide table under its survey design, then as
+    these participants. D: the wide table with a stratum of one PSU under the surveyed population,
+    then its exit."""
     root = tmp_path_factory.mktemp("nci_routing")
-    long_path, wide_path = root / "recalls.csv", root / "nhanes.csv"
+    long_path, wide_path, lonely_path = root / "recalls.csv", root / "nhanes.csv", root / "lonely.csv"
     recall_table().to_csv(long_path, index=False)
     nhanes_table().to_csv(wide_path, index=False)
+    nhanes_table(lonely=True).to_csv(lonely_path, index=False)
     out: dict = {}
     with local_server(root / "home") as client:
         d = open_project(client, long_path, recall_truth())
@@ -840,25 +977,41 @@ def journeys(tmp_path_factory):
                 ("consumers", {**FISH, "population": "consumers"}),
                 ("ai", {**PROTEIN, "cutoff_kind": "AI"}),
                 ("energy", {**PROTEIN, "nutrient": "energy_kcal"}),
-                ("columns", {**PROTEIN, "nutrient": "protein_mg"})):
+                ("columns", {**PROTEIN, "nutrient": "protein_mg"}),
+                ("iron", IRON)):
             r = d.post(body)
             a["refused"][name] = (r.status_code, r.json().get("error"))
         d.decide(PROTEIN)
         d.decide(FISH)
         art = d.artifact("usual_intake")
-        a["protein"], a["fish_whole"] = art["analyses"]
+        a["protein"], a["fish_whole"] = by_name(art, "protein_g"), by_name(art, "fish_g")
         a["sentences"] = [r["sentence"] for r in d.view()["decisions"][-2:]]
         d.decide({**FISH, "model": "amount_only"})
-        a["fish_amount"] = d.artifact("usual_intake")["analyses"][1]
+        a["fish_amount"] = by_name(d.artifact("usual_intake"), "fish_g")
         d.decide({**FISH, "population": "consumers", "consumer_column": "fish_ever"})
-        a["fish_consumers"] = d.artifact("usual_intake")["analyses"][1]
+        a["fish_consumers"] = by_name(d.artifact("usual_intake"), "fish_g")
         d.decide({"kind": "set_measurement_error", "method": "none"})
-        a["calibration_kept_apart"] = d.artifact("usual_intake")["analyses"][0]["methods"]
+        a["calibration_kept_apart"] = by_name(d.artifact("usual_intake"), "protein_g")["methods"]
+        # Each refusal and blocked part carries its exits, and each exit posts.
+        d.decide(ENERGY_TWO_PART)
+        a["energy_two_part"] = by_name(d.artifact("usual_intake"), "energy_kcal")
+        d.decide(a["energy_two_part"]["exits"][0]["decision"])
+        a["energy_amount"] = by_name(d.artifact("usual_intake"), "energy_kcal")
+        d.decide(VITAMIN_D)
+        a["vitamin_d"] = by_name(d.artifact("usual_intake"), "vitamin_d_ug")
+        d.decide(a["vitamin_d"]["exits"][-1]["decision"])
+        a["vitamin_d_left_out"] = by_name(d.artifact("usual_intake"), "vitamin_d_ug")
+        d.decide(a["refused"]["iron"][1]["exits"][1]["decision"])
+        a["iron_plain"] = by_name(d.artifact("usual_intake"), "iron_mg")
+        d.decide(a["protein"]["exits"][2]["decision"])
+        a["protein_plain"] = by_name(d.artifact("usual_intake"), "protein_g")
         r = d.post({"kind": "set_repeat_kind", "repeat_kind": "time_points"})
         a["time_points_status"] = r.status_code
         if r.status_code == 200:
             after = d.artifact("usual_intake")
             a["after_time_points"] = after
+            d.decide(by_name(after, "protein_g")["exits"][0]["decision"])
+            a["back_to_repeats"] = d.artifact("usual_intake")
         out["A"] = a
 
         b = {}
@@ -880,30 +1033,27 @@ def journeys(tmp_path_factory):
         out["B"] = b
 
         c = {}
-        d = open_project(client, wide_path, Truth({"code_or_count:RIDAGEYR": "amount",
-                                                   "code_or_count:RIAGENDR": "code",
-                                                   "code_or_count:DR1DAY": "code",
-                                                   "code_or_count:DR2DAY": "code"},
-                                                  fixture="nhanes_table"))
-        d.decide({"kind": "set_lens", "lenses": ["dietary"]})
-        d.reach("target")
-        d.decide({"kind": "set_target", "column": "LBXTC"})
-        d.answer("task", {"kind": "set_task", "column": "LBXTC", "task": "regression"})
-        d.reach("purpose")
-        d.decide({"kind": "set_purpose", "purpose": "inference"})
-        d.reach("roles")
-        d.decide_roles({"SEQN": "identifier", "RIAGENDR": "covariate", "RIDAGEYR": "covariate",
-                        "SDMVSTRA": "design", "SDMVPSU": "design", "WTDRD1": "design",
-                        "DR1TPROT": "exposure"})
+        d = open_project(client, wide_path, Truth(NHANES_TRUTH, fixture="nhanes_table"))
+        nhanes_opening(d)
         d.decide(NHANES_PROTEIN)
+        c["sentence"] = d.view()["decisions"][-1]["sentence"]
         c["unanswered"] = d.artifact("usual_intake")["analyses"][0]
-        d.answer("survey", {"kind": "set_survey", "estimand": "population", "weight": "WTDRD1",
-                            "strata": "SDMVSTRA", "psu": "SDMVPSU"})
+        d.answer("survey", POPULATION)
         art = d.artifact("usual_intake")
         c["offer"], c["population"] = art["offer"], art["analyses"][0]
         d.decide({"kind": "set_survey", "estimand": "sample"})
         c["sample"] = d.artifact("usual_intake")["analyses"][0]
         out["C"] = c
+
+        e = {}
+        d = open_project(client, lonely_path, Truth(NHANES_TRUTH, fixture="nhanes_table(lonely)"))
+        nhanes_opening(d)
+        d.decide(NHANES_PROTEIN)
+        d.answer("survey", POPULATION)
+        e["population"] = d.artifact("usual_intake")["analyses"][0]
+        d.decide(e["population"]["exits"][0]["decision"])
+        e["sample"] = d.artifact("usual_intake")["analyses"][0]
+        out["D"] = e
     out["long"], out["wide"] = pd.read_csv(long_path), pd.read_csv(wide_path)
     return out
 
@@ -914,6 +1064,26 @@ def _long_recalls(frame: pd.DataFrame, column: str) -> nci.Recalls:
     codes, _ = pd.factorize(f["participant_id"], sort=True)
     return nci.Recalls.of(f[column].to_numpy(float), codes, int(codes.max()) + 1,
                           later=(f["recall"] > 1).to_numpy(float), weekend=f["weekend"].to_numpy(float))
+
+
+def _log_form(e: dict, crit: float) -> tuple[float, float]:
+    """A positive estimate's interval on the log scale, by hand: θ̂·exp(∓c·SE/θ̂)."""
+    half = crit * e["se"] / e["value"]
+    return e["value"] * math.exp(-half), e["value"] * math.exp(half)
+
+
+def _logit_form(e: dict, crit: float) -> tuple[float, float]:
+    """A share's interval on the logit scale, by hand: expit(logit p̂ ∓ c·SE/(p̂(1 − p̂)))."""
+    p = e["value"]
+    half = crit * e["se"] / (p * (1 - p))
+    return float(special.expit(special.logit(p) - half)), float(special.expit(special.logit(p) + half))
+
+
+INTERVALS_WITH_SHARE = (" The 95% intervals were formed on the log scale for the percentiles and the "
+                        "mean and on the logit scale for the share (the delta method), so none "
+                        "extends below zero or above one.")
+INTERVALS = (" The 95% intervals were formed on the log scale (the delta method), so none extends "
+             "below zero.")
 
 
 def test_4_the_recalls_are_ordered_only_by_a_settled_or_named_column():
@@ -980,7 +1150,8 @@ def test_4_the_amount_only_analysis_is_an_independent_mixed_model_of_the_csv(jou
     """Protein through the server, against the CSV read by pandas: at the engine's λ, statsmodels'
     ML mixed model of the Box-Cox recalls (repeat-recall and weekend indicators) gives the same
     coefficients and variances; from them the test's own quadrature gives the same percentiles and
-    share below the EAR (46); the recall counts are pandas'."""
+    share below 46; the recall counts are pandas'. Each interval is the log-scale form (the share's
+    the logit-scale form) recomputed by hand from the reported value and SE."""
     a, frame = journeys["A"]["protein"], journeys["long"]
     rec = _long_recalls(frame, "protein_g")
     p = a["parameters"]
@@ -996,20 +1167,27 @@ def test_4_the_amount_only_analysis_is_an_independent_mixed_model_of_the_csv(jou
         return (4 / 7 * amount_given(p["beta_intercept"] + u, lam, se)
                 + 3 / 7 * amount_given(p["beta_intercept"] + p["beta_weekend"] + u, lam, se))
 
+    z = stats.norm.ppf(0.975)
     for q, e in a["percentiles"].items():
         assert e["value"] == pytest.approx(T(su * stats.norm.ppf(int(q) / 100)), rel=1e-6), q
+        assert (e["ci_low"], e["ci_high"]) == pytest.approx(_log_form(e, z), rel=1e-12), q
+    assert (a["mean"]["ci_low"], a["mean"]["ci_high"]) == pytest.approx(_log_form(a["mean"], z),
+                                                                        rel=1e-12)
     uc = optimize.brentq(lambda u: T(u) - 46, -10 * su, 10 * su, xtol=1e-12)
     assert a["share"]["value"] == pytest.approx(stats.norm.cdf(uc / su), abs=1e-6)
+    assert (a["share"]["ci_low"], a["share"]["ci_high"]) == pytest.approx(_logit_form(a["share"], z),
+                                                                          rel=1e-12)
     per = frame.groupby("participant_id").size()
     assert a["recalls"] == {str(k): int(v) for k, v in per.value_counts().sort_index().items()}
     assert a["variance"] == {"method": "bootstrap", "replicates": 100, "ok": 100, "df": None,
                              "fay": None, "n_strata": None, "n_psu": None}
-    assert a["share"]["ci_low"] < a["share"]["value"] < a["share"]["ci_high"]
+    assert 0 < a["share"]["ci_low"] < a["share"]["value"] < a["share"]["ci_high"] < 1
 
 
 def test_4_the_amount_only_methods_sentence_is_verbatim(journeys):
-    """(5) The sentence names the model, the transform (with λ), the nuisance covariates and the
-    variance method, word for word."""
+    """(5) The sentence names the model, the transform (with λ), the nuisance covariates, the
+    variance method and the intervals' scales, word for word; below an EAR not answered as every
+    participant's group's, the share is stated as a plain share and says why."""
     a = journeys["A"]["protein"]
     n, n2 = a["n_persons"], a["n_repeat"]
     assert a["methods"] == (
@@ -1022,23 +1200,33 @@ def test_4_the_amount_only_methods_sentence_is_verbatim(journeys):
         f"distribution was predicted for a first recall, weighted 4/7 weekday and 3/7 weekend, "
         f"back-transformed by numerical integration over the within-person error, and describes "
         f"the whole population. Standard errors came from 100 bootstrap resamples of participants, "
-        f"each refitting the whole model. The share below the EAR (46) is the EAR cut-point "
-        f"estimate of the prevalence of inadequacy (Institute of Medicine 2000).")
+        f"each refitting the whole model.{INTERVALS_WITH_SHARE} The share below the EAR (46) is "
+        f"reported as a share of the distribution, not a prevalence of inadequacy: an EAR is the "
+        f"median requirement of one DRI life-stage group (age band, sex, pregnancy and lactation "
+        f"status), and that it is the EAR of every participant's group was not answered (Institute "
+        f"of Medicine 2000).")
     assert a["population_statement"] == ("Results describe the whole population (STROBE-nut nut-14: "
                                          "total population, not consumers only).")
-    assert a["share_label"].startswith("share below the EAR (46)")
+    assert a["share_label"] == ("share below the EAR (46), not a prevalence of inadequacy: whether it "
+                                "is the EAR of every participant's DRI life-stage group is not "
+                                "answered")
 
 
 def test_4_the_two_part_analysis_and_its_sentence(journeys):
     """Fish through the server: the two-part model, its fit the engine's own on the CSV's recalls
     (pandas extraction; the model's arithmetic is sections 2's), its sentence verbatim with ρ and λ,
-    its population the whole one with Kipnis et al.'s assumption stated."""
+    its population the whole one with Kipnis et al.'s assumption stated. Its low percentiles'
+    intervals are the log-scale form and stay above zero."""
     a, frame = journeys["A"]["fish_whole"], journeys["long"]
     rec = _long_recalls(frame, "fish_g")
     fit = nci.fit_two_part(rec)
     assert a["parameters"]["rho"] == pytest.approx(fit.rho, abs=1e-4)
     assert a["parameters"]["lambda"] == pytest.approx(fit.lam, abs=1e-4)
     assert a["zero_share"] == pytest.approx(float((frame["fish_g"] == 0).mean()))
+    z = stats.norm.ppf(0.975)
+    for q, e in a["percentiles"].items():
+        assert 0 < e["ci_low"] < e["value"] < e["ci_high"], q
+        assert (e["ci_low"], e["ci_high"]) == pytest.approx(_log_form(e, z), rel=1e-12), q
     n, n2 = a["n_persons"], a["n_repeat"]
     assert a["methods"] == (
         f"Usual intake of `fish_g` was estimated by the NCI method (Tooze et al. 2006; Tooze et al. "
@@ -1054,19 +1242,25 @@ def test_4_the_two_part_analysis_and_its_sentence(journeys):
         f"and the person effects, usual intake being the probability times the consumption-day "
         f"amount, and describes the whole population, everyone taken to consume it on some days "
         f"(Kipnis et al. 2009). Standard errors came from {a['variance']['ok']:,} bootstrap resamples "
-        f"of participants, each refitting the whole model.")
+        f"of participants, each refitting the whole model.{INTERVALS}")
     assert any("ultimately consumed by all" in s for s in a["assumptions"])
     assert a["variance"]["ok"] >= 95
 
 
 def test_4_the_decisions_record_their_own_sentences(journeys):
     """Each answer's sentence in the record (its replication follows the survey answer, so the
-    analysis' methods sentence states that)."""
+    analysis' methods sentence states that); an EAR answered as every participant's group's says
+    so."""
     assert journeys["A"]["sentences"] == [
         "The usual-intake distribution of `protein_g` was estimated by the NCI method with an "
         "amount-only model, for the whole population, with the share below the EAR (46).",
         "The usual-intake distribution of `fish_g` was estimated by the NCI method with a two-part "
         "model for an episodically consumed food, for the whole population."]
+    assert journeys["C"]["sentence"] == (
+        "The usual-intake distribution of `DRxTPROT` from the recall days `DR1TPROT` and `DR2TPROT` "
+        "was estimated by the NCI method with an amount-only model, for the whole population, with "
+        "the share below the EAR (46), answered as the EAR of every participant's DRI life-stage "
+        "group.")
 
 
 def test_4_an_episodic_food_under_the_amount_only_model_is_recorded_with_its_concern(journeys):
@@ -1107,6 +1301,115 @@ def test_4_a_prevalence_needs_an_ear_and_energy_has_none(journeys):
     assert status == 409 and error["code"] == "unknown_column" and "`protein_mg`" in error["message"]
 
 
+def test_4_an_ear_is_a_prevalence_only_when_answered_as_every_participants_groups(journeys):
+    """Institute of Medicine 2000: an EAR is one life-stage and gender group's median requirement.
+    The recall table's men and women answered nothing about it, so protein's share below 46 is
+    computed and reported as a plain share with the concern, the cut-point's conditions as an
+    assumption, and three exits: the answer that it is every participant's group's EAR, no cut-off,
+    or a plain share. Posting the plain share keeps the number (the label changes, nothing else).
+    The NHANES table's participants are all men of 20 to 79, whose protein EAR is 46 g: answered so,
+    its share is the prevalence of inadequacy, and a share outside 10–90% carries the concern."""
+    from turbotab.core import usual_intake as ui
+
+    a = journeys["A"]["protein"]
+    assert ui.EAR_UNANSWERED in a["concerns"] and ui.EAR_CONDITIONS in a["assumptions"]
+    labels = [e["label"] for e in a["exits"]]
+    assert labels == ["It is the EAR of every participant's DRI life-stage group (age band, sex, "
+                      "pregnancy and lactation status)", "Show the distribution without a cut-off",
+                      "Report the share below it as a plain share"]
+    attest, none_, plain = (e["decision"] for e in a["exits"])
+    assert attest == {**PROTEIN, "ear_for_all": True, "ear_symmetric": False, "days": [],
+                      "weekend_coding": "indicator", "population": "whole",
+                      "consumer_column": None, "cutoff": 46.0}
+    assert (none_["cutoff"], none_["cutoff_kind"], plain["cutoff_kind"]) == (None, None, "other")
+    after = journeys["A"]["protein_plain"]
+    assert after["share"] == a["share"] and after["percentiles"] == a["percentiles"]
+    assert after["share_label"] == "share below 46" and after["exits"] == []
+    assert ui.EAR_UNANSWERED not in after["concerns"] and ui.EAR_CONDITIONS not in after["assumptions"]
+    assert after["methods"].endswith(" The share below 46 is reported as a share of the "
+                                     "distribution, not a prevalence of inadequacy.")
+    c = journeys["C"]["population"]
+    assert c["share_label"] == ("share below the EAR (46): the prevalence of inadequacy by the EAR "
+                                "cut-point method")
+    assert c["exits"] == [] and ui.EAR_UNANSWERED not in c["concerns"]
+    assert ui.EAR_CONDITIONS in c["assumptions"]
+    tails = any("least accurate in the tails" in x for x in c["concerns"])
+    assert tails == (not 0.10 <= c["share"]["value"] <= 0.90)
+
+
+def test_4_iron_is_refused_an_ear_until_its_requirement_is_answered_symmetric(journeys):
+    """NUTRITION_PACK §07's hard-coded exception: iron's requirement is skewed in menstruating
+    women, where the probability approach applies (Institute of Medicine 2000). An EAR for
+    ``iron_mg`` (its name reads as iron) is refused, saying so, with exits: no cut-off, a plain
+    share, or the answer that no participant is a menstruating woman. The plain share posts and runs.
+    The name reading is the recognizer's (whole names, never a part: ``environment`` is no iron)."""
+    from turbotab.core import usual_intake as ui
+
+    status, error = journeys["A"]["refused"]["iron"]
+    assert status == 409 and error["code"] == "iron_skewed_requirement"
+    assert error["message"] == f"`iron_mg` reads as iron by its name. {ui.IRON_SKEWED}"
+    assert "as for iron in menstruating women, the probability approach" in error["message"]
+    decisions = [e["decision"] for e in error["exits"]]
+    assert [(x["cutoff_kind"], x["ear_symmetric"]) for x in decisions] == [
+        (None, False), ("other", False), ("EAR", True)]
+    iron = journeys["A"]["iron_plain"]
+    assert iron["applies"] and iron["share_label"] == "share below 6" and iron["exits"] == []
+    for name, reads in (("iron_mg", True), ("DR1TIRON", True), ("NUT_IRON", True),
+                        ("environment", False), ("serum_iron", False), ("protein_g", False)):
+        assert ui.reads_as_iron(name) is reads, name
+    assert ui.reads_as_iron("DRxTIRON_label", ["DR1TIRON", "DR2TIRON"])
+
+
+def test_4_every_refusal_carries_exits_that_post(journeys):
+    """Every analysis-level refusal carries its ways forward, the last always "Leave usual intake
+    out", and the exits taken here post and run: the two-part model on a component with no zero
+    day (energy) exits to the amount-only model; a column with no recorded value (vitamin D) to
+    naming another, or leaving it out; rows answered as time points to repeats again, which re-runs
+    every analysis to the same numbers."""
+    A = journeys["A"]
+    e = A["energy_two_part"]
+    assert not e["applies"] and "the amount-only model is the one" in e["refused"]
+    assert e["exits"][0]["label"] == "Use the amount-only model, for a component reported every day"
+    assert e["exits"][0]["decision"] == {**ENERGY_TWO_PART, "model": "amount_only", "days": [],
+                                         "weekend_coding": "indicator", "population": "whole",
+                                         "consumer_column": None, "cutoff": None,
+                                         "cutoff_kind": None, "ear_for_all": False,
+                                         "ear_symmetric": False}
+    assert A["energy_amount"]["applies"] and A["energy_amount"]["model"] == "amount_only"
+    v = A["vitamin_d"]
+    assert not v["applies"] and v["refused"] == ("Every recall of `vitamin_d_ug` is blank, so there "
+                                                 "is no intake to model.")
+    assert journeys["long"]["vitamin_d_ug"].isna().all()
+    assert [x["label"] for x in v["exits"]] == [
+        "Name the column (or recall days) that hold the component's amounts", "Leave usual intake out"]
+    assert v["exits"][0]["decision"] is None
+    assert A["vitamin_d_left_out"]["model"] == "none" and not A["vitamin_d_left_out"]["applies"]
+    after = A["after_time_points"]
+    for x in after["analyses"]:
+        if x["model"] != "none":
+            assert x["exits"][0]["decision"] == {"kind": "set_repeat_kind", "repeat_kind": "repeats"}
+    back = A["back_to_repeats"]
+    assert all(x["applies"] for x in back["analyses"] if x["model"] != "none")
+    assert by_name(back, "protein_g")["percentiles"] == A["protein_plain"]["percentiles"]
+    refused = [x for j in ("A", "C", "D") for x in _analyses(journeys[j]) if x.get("refused")]
+    assert len(refused) >= 6
+    for x in refused:
+        assert x["exits"][-1] == {"label": "Leave usual intake out",
+                                  "decision": {"kind": "set_usual_intake", "nutrient": x["nutrient"],
+                                               "model": "none"}}, x["refused"]
+
+
+def _analyses(journey: dict) -> list[dict]:
+    """Every analysis a journey recorded, wherever it sits."""
+    out = []
+    for value in journey.values():
+        if isinstance(value, dict) and "analyses" in value:
+            out += value["analyses"]
+        elif isinstance(value, dict) and "nutrient" in value and "applies" in value:
+            out.append(value)
+    return out
+
+
 def test_4_a_changed_repeats_answer_is_not_silently_kept(journeys):
     """Recorded after the analyses, "the rows are time points" makes the recalls visits: each
     recorded usual-intake answer is no longer applied, and says why."""
@@ -1116,26 +1419,39 @@ def test_4_a_changed_repeats_answer_is_not_silently_kept(journeys):
     assert a["time_points_status"] == 200
     after = a["after_time_points"]
     assert not after["offer"]["offered"] and after["offer"]["reason"] == ui.TIME_POINTS
-    assert [x["refused"] for x in after["analyses"]] == [ui.TIME_POINTS, ui.TIME_POINTS]
+    recorded = [x for x in after["analyses"] if x["model"] != "none"]
+    assert len(recorded) == 4 and all(x["refused"] == ui.TIME_POINTS for x in recorded)
     assert all(not x["applies"] for x in after["analyses"])
 
 
 def test_4_under_the_survey_design_the_estimate_is_weighted_and_fay_brr_gives_its_errors(journeys):
     """NHANES-shaped: the day columns proposed from their names; until the survey question is
-    answered nothing is estimated; answered "the surveyed population", the fit is weighted by
-    ``WTDRD1`` and the standard errors are Fay's BRR (16 replicates over 15 strata, t on 15 df),
-    the weekend read from NHANES's day codes (1, 6, 7). The point estimates are the engine's own on
-    the CSV read by pandas with those weights (sections 1 and 3 verify the arithmetic)."""
-    from turbotab.core.methods.survey import UNANSWERED
+    answered nothing is estimated, and the refusal says so of a distribution, with its exits;
+    answered "the surveyed population", the fit is weighted by ``WTDRD1`` and the standard errors
+    are Fay's BRR (16 replicates over 15 strata, t on 15 df, each interval the log-scale form with
+    t's critical value), the weekend read from NHANES's day codes (1, 6, 7). The point estimates are
+    the engine's own on the CSV read by pandas with those weights (sections 1 and 3 verify the
+    arithmetic)."""
+    from turbotab.core import usual_intake as ui
+    from turbotab.core.models.survey import SAMPLE_EXIT
 
     c, wide = journeys["C"], journeys["wide"]
     assert c["offer"]["format"] == "wide"
     assert c["offer"]["candidates"][0]["days"] == ["DR1TPROT", "DR2TPROT"]
-    assert c["unanswered"]["refused"] == UNANSWERED
+    u = c["unanswered"]
+    assert u["refused"] == ui.SURVEY_UNANSWERED and "coefficient" not in u["refused"]
+    assert [(x["label"], x["decision"]) for x in u["exits"][:2]] == [
+        ("Answer the survey question: the surveyed population, or these participants", None),
+        (SAMPLE_EXIT, {"kind": "set_survey", "estimand": "sample"})]
     a = c["population"]
     assert a["variance"] == {"method": "brr", "replicates": 16, "ok": 16, "df": 15, "fay": 0.3,
                              "n_strata": 15, "n_psu": 30}
     assert a["weight"] == "WTDRD1"
+    t15 = stats.t.ppf(0.975, 15)
+    for q, e in a["percentiles"].items():
+        assert (e["ci_low"], e["ci_high"]) == pytest.approx(_log_form(e, t15), rel=1e-12), q
+    assert (a["share"]["ci_low"], a["share"]["ci_high"]) == pytest.approx(
+        _logit_form(a["share"], t15), rel=1e-12)
     amount = np.concatenate([wide["DR1TPROT"].to_numpy(float), wide["DR2TPROT"].to_numpy(float)])
     person = np.tile(np.arange(len(wide)), 2)
     later = np.repeat([0.0, 1.0], len(wide))
@@ -1160,8 +1476,10 @@ def test_4_under_the_survey_design_the_estimate_is_weighted_and_fay_brr_gives_it
         f"within-person error, and describes the whole population. Standard errors came from Fay's "
         f"balanced repeated replication (16 of 16 replicates over 15 strata of two PSUs, Fay "
         f"coefficient 0.3), each refitting the whole model, with t intervals on 15 degrees of "
-        f"freedom. The share below the EAR (46) is the EAR cut-point estimate of the prevalence of "
-        f"inadequacy (Institute of Medicine 2000).")
+        f"freedom.{INTERVALS_WITH_SHARE} The share below the EAR (46) is the EAR cut-point estimate "
+        f"of the prevalence of inadequacy (Institute of Medicine 2000), the cut-off answered as the "
+        f"EAR of every participant's DRI life-stage group (age band, sex, pregnancy and lactation "
+        f"status).")
 
 
 def test_4_these_participants_are_unweighted_with_the_attestation(journeys):
@@ -1175,13 +1493,37 @@ def test_4_these_participants_are_unweighted_with_the_attestation(journeys):
            "whole model." in s["methods"]
 
 
+def test_4_a_stratum_of_one_psu_blocks_the_population_estimate_with_the_sample_only_exit(journeys):
+    """MODELING_SEQUENCE §4, "Population estimand without a design-based estimator: block and
+    record; exit: the sample-only attestation". Under the surveyed population with stratum 133 in
+    one PSU (as pandas counts it), nothing is estimated, the record says why, and its first exit is
+    the sample-only attestation; posted, the analysis runs unweighted and states the attestation."""
+    from turbotab.core import usual_intake as ui
+    from turbotab.core.models.survey import SAMPLE_EXIT
+
+    lonely = nhanes_table(lonely=True)
+    per = lonely.groupby("SDMVSTRA")["SDMVPSU"].nunique()
+    assert per[per == 1].index.tolist() == [133]
+    D = journeys["D"]
+    p = D["population"]
+    assert not p["applies"]
+    assert p["refused"] == (f"Stratum `133` has one PSU, so its sampling variance cannot be "
+                            f"estimated. {ui.LONELY_PSU}")
+    assert p["exits"][0] == {"label": SAMPLE_EXIT,
+                             "decision": {"kind": "set_survey", "estimand": "sample"}}
+    assert p["methods"] == f"No usual-intake distribution was estimated for `DRxTPROT`: {p['refused']}"
+    s = D["sample"]
+    assert s["applies"] and s["weight"] is None
+    assert s["methods"].endswith(f" Survey design: {ATTESTATION}.")
+
+
 # ── 5 · the method contract and its chain ────────────────────────────────────
 
 
 def test_5_the_contract_declares_every_part():
     """BLUEPRINT §13: slot, data scope, needs, routing (question, place in the sequence, options with
     both labels per purpose, the leash per purpose), storyboard, sentence, relations, each conflict
-    with its exit."""
+    with its exit and its rung (refused, or blocked and recorded)."""
     from turbotab.core.contracts import contract
 
     c = contract("nci_usual_intake")
@@ -1191,7 +1533,8 @@ def test_5_the_contract_declares_every_part():
     assert [o.key for o in c.options] == ["amount_only", "two_part", "mean_of_days"]
     assert all(o.customary and set(o.sound) == {"inference", "prediction"} for o in c.options)
     assert len(c.storyboard) == 5 and "step 2" in c.place
-    assert all(r.exits and r.rung == "refused" for r in c.relations if r.kind == "conflicts")
+    assert all(r.exits and r.rung in ("refused", "block_and_record")
+               for r in c.relations if r.kind == "conflicts")
     assert {r.kind for r in c.relations} >= {"implies", "enables", "conflicts", "invalidates"}
 
 
@@ -1200,8 +1543,9 @@ def test_5_every_relation_the_contract_declares_fires_in_the_chain(journeys):
     journeys above. A relation added to the contract without a check here fails."""
     from turbotab.core import usual_intake as ui
     from turbotab.core.contracts import contract
+    from turbotab.core.models.survey import SAMPLE_EXIT
 
-    A, B, C = journeys["A"], journeys["B"], journeys["C"]
+    A, B, C, D = journeys["A"], journeys["B"], journeys["C"], journeys["D"]
     checks = {
         "repeats_offer": lambda: A["offer"]["offered"] and C["offer"]["offered"],
         "association_is_calibration": lambda: (
@@ -1211,7 +1555,9 @@ def test_5_every_relation_the_contract_declares_fires_in_the_chain(journeys):
         "zeros_two_part": lambda: (
             {c["column"]: c["suggested"] for c in A["offer"]["candidates"]}["fish_g"] == "two_part"
             and any("two-part model ranks first" in c for c in A["fish_amount"]["concerns"])),
-        "no_zero_no_two_part": lambda: _two_part_refused_without_zeros(),
+        "no_zero_no_two_part": lambda: (_two_part_refused_without_zeros()
+                                        and A["energy_two_part"]["exits"][0]["decision"]["model"]
+                                        == "amount_only"),
         "population_design": lambda: (C["population"]["variance"]["method"] == "brr"
                                       and "Fay's balanced repeated replication" in C["population"]["methods"]
                                       and "weighted by `WTDRD1`" in C["population"]["methods"]),
@@ -1223,8 +1569,20 @@ def test_5_every_relation_the_contract_declares_fires_in_the_chain(journeys):
         "time_points_not_recalls": lambda: A["after_time_points"]["offer"]["reason"] == ui.TIME_POINTS,
         "ai_no_prevalence": lambda: A["refused"]["ai"][1]["code"] == "ai_no_prevalence",
         "energy_no_ear": lambda: A["refused"]["energy"][1]["code"] == "energy_no_ear",
+        "ear_for_every_group": lambda: (
+            ui.EAR_UNANSWERED in A["protein"]["concerns"]
+            and A["protein"]["exits"][0]["decision"]["ear_for_all"]
+            and "prevalence of inadequacy by" in C["population"]["share_label"]),
+        "iron_skewed_requirement": lambda: (A["refused"]["iron"][1]["code"] == "iron_skewed_requirement"
+                                            and A["iron_plain"]["applies"]),
+        "survey_unanswered": lambda: (C["unanswered"]["refused"] == ui.SURVEY_UNANSWERED
+                                      and C["unanswered"]["exits"][1]["label"] == SAMPLE_EXIT),
+        "lonely_psu": lambda: (ui.LONELY_PSU in D["population"]["refused"]
+                               and D["population"]["exits"][0]["label"] == SAMPLE_EXIT
+                               and D["sample"]["applies"]),
         "structure_invalidates": lambda: all(x["refused"] == ui.TIME_POINTS
-                                             for x in A["after_time_points"]["analyses"]),
+                                             for x in A["after_time_points"]["analyses"]
+                                             if x["model"] != "none"),
     }
     declared = {r.id for r in contract("nci_usual_intake").relations}
     assert set(checks) == declared, set(checks) ^ declared
@@ -1237,5 +1595,5 @@ def _two_part_refused_without_zeros() -> bool:
     try:
         nci.usual_intake(rec, "two_part")
     except nci.UsualIntakeRefused as refused:
-        return "amount-only model" in str(refused)
+        return "amount-only model" in str(refused) and refused.code == "no_zero_day"
     return False

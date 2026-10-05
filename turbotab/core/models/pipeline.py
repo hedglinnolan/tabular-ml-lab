@@ -810,7 +810,9 @@ def detect_detail(spec: DesignSpec) -> str:
     if censored.get("method") == "qrilc":
         return (f"Blanks in {named} are values below detection: each is drawn below its sample's "
                 f"detection quantile from the normal the sample's detected log values imply "
-                f"(QRILC), reading only that sample.")
+                f"(QRILC), reading only that sample; a sample with fewer than five detected values "
+                f"gets half the column's smallest detected value, learned within each training "
+                f"fold.")
     return (f"Blanks in {named} are values below detection: each becomes its expected value below "
             f"the smallest detected one under a censored-normal fit, learned within each training "
             f"fold without the outcome.")

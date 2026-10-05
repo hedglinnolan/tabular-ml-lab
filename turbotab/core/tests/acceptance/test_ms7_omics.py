@@ -257,7 +257,9 @@ def test_1e_qc_rlsc_is_refused_where_its_curve_would_be_guessed():
     options = offer(finding, {"params": {"column": "sample_type", "qc_value": "QC"}},
                     OfferContext(frame=few, target=None))
     keys = [o.key for o in options]
-    assert keys == [*Q.RLSC_OPTIONS, Q.ASIDE]
+    # The batch column is a reading (MS7 repair): the whole run as one batch is offered beside it.
+    assert keys == [*Q.RLSC_OPTIONS, "qc_rlsc_lc", "qc_rlsc_gc", Q.ASIDE]
+    assert [o.decision.params.get("batch_column") for o in options[:6]] == ["batch"] * 4 + [None] * 2
     finding["repairs"] = [o.model_dump(mode="json") for o in options]
     state = ProjectState(target="y", purpose="prediction")
     ctx = {"state": state, "columns": list(few.columns),
@@ -265,7 +267,8 @@ def test_1e_qc_rlsc_is_refused_where_its_curve_would_be_guessed():
     from turbotab.core.decisions import ApplyRepair
 
     with pytest.raises(Refusal) as refused:
-        validate(ApplyRepair(finding_id=Q.FINDING, option="qc_rlsc_lc"), ctx)
+        validate(ApplyRepair(finding_id=Q.FINDING, option="qc_rlsc_lc",
+                             params=options[0].decision.params), ctx)
     assert refused.value.code == "qc_too_sparse"
     exit_decision = refused.value.exits[0]["decision"]
     assert exit_decision["option"] == Q.ASIDE
@@ -640,7 +643,10 @@ def test_4d_qrilc_recovers_each_samples_left_censored_normal():
     reference = np.zeros(n, dtype=bool)
     scope = observed_scope(lambda f, r, yy: omics.QRILCFill(feats, feats).fit(f).transform(f),
                            frame, reference, rng.normal(size=n), 3)
-    assert scope == "row_local" == CONTRACTS["detection_limit"].scope_of("qrilc")
+    # A sample QRILC can read is filled from itself alone; one too sparse to read takes half the
+    # training fold's minimum (``test_ms7_omics_repair``), so the contract declares the wider scope.
+    assert scope == "row_local"
+    assert CONTRACTS["detection_limit"].scope_of("qrilc") == "training_fold"
 
 
 SURVREG_R = r"""
@@ -1203,13 +1209,25 @@ def test_8_each_answer_writes_its_methods_sentence_verbatim():
     assert voice.sentence_for(ApplyRepair(finding_id=Q.FINDING, option="qc_rlsc_gc_dratio",
                                           params=params), None, None) == (
         "Drift was corrected per batch by QC-RLSC (Dunn et al. 2011) fitted to the 27 pooled QC "
-        "injections only, which were then removed: for each feature and each of the 3 batches, a "
-        "LOESS of degree 2 over injection order, its span chosen by leave-one-out cross-validation, "
-        "divided each injection's value, rescaled to the feature's median QC value. Features "
-        "detected in fewer than 70% of QC injections (2), that could not be corrected (0), or with a "
-        "QC RSD of 30% or more after correction (the GC-MS criterion; 2) were removed (Broadhurst et "
-        "al. 2018); 36 of 40 remain. Within each training fold, features whose D-ratio (QC over "
-        "study-sample standard deviation) was 50% or more were removed.")
+        "injections only, which were then removed: for each feature and each of the 3 batches of "
+        "`batch`, a LOESS of degree 2 over the injection order (`injection_order`), its span chosen "
+        "by leave-one-out cross-validation, divided each injection's value, rescaled to the "
+        "feature's median QC value. Features detected in fewer than 70% of QC injections (2), that "
+        "could not be corrected (0), or with a QC RSD of 30% or more after correction (the GC-MS "
+        "criterion; 2) were removed (Broadhurst et al. 2018); 36 of 40 remain. Within each training "
+        "fold, features whose D-ratio (QC over study-sample standard deviation) was 50% or more were "
+        "removed.")
+    one = {**params, "batch_column": None, "batches": 1, "d_ratio_max": None, "platform": "lc_ms"}
+    assert voice.sentence_for(ApplyRepair(finding_id=Q.FINDING, option="qc_rlsc_lc", params=one),
+                              None, None) == (
+        "Drift was corrected over the whole run by QC-RLSC (Dunn et al. 2011) fitted to the 27 "
+        "pooled QC injections only, which were then removed: for each feature and the whole run as "
+        "one batch (no batch column), a LOESS of degree 2 over the injection order "
+        "(`injection_order`), its span chosen by leave-one-out cross-validation, divided each "
+        "injection's value, rescaled to the feature's median QC value. Features detected in fewer "
+        "than 70% of QC injections (2), that could not be corrected (0), or with a QC RSD of 20% or "
+        "more after correction (the LC-MS criterion; 2) were removed (Broadhurst et al. 2018); 36 of "
+        "40 remain.")
     aside = {"column": "sample_type", "levels": ["QC"]}  # WP18's exclusion, offered beside QC-RLSC
     assert voice.sentence_for(ApplyRepair(finding_id=Q.FINDING, option=Q.ASIDE, params=aside),
                               None, None) == (

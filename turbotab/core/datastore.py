@@ -1072,6 +1072,33 @@ class JoinInput:
     how: str = "left"
 
 
+TABLE_FILE = "raw.parquet"
+
+
+def _spec_field(spec: Any, name: str) -> Any:
+    return spec.get(name) if isinstance(spec, dict) else getattr(spec, name, None)
+
+
+def table_file(data_dir: str | Path, joins: Any = None) -> Path:
+    """The file the ingest stage writes the table to: ``raw.parquet`` for the source alone, and
+    for each set of joined files a file of its own, ``joined-<digest>.parquet``, named by the
+    files, their identifiers and the kind of each join, in answer order (``joins``: the state's
+    ``joins`` slot, or its specs).
+
+    A join never writes over the table without it. The stage cache keeps one ingest artifact per
+    set of joins, so undoing a join returns to an artifact whose file still holds the rows it
+    describes (DATAIN repair: with one fixed file, a reverted join left the joined rows in place
+    under the unjoined table's artifact, and every stage after it read them)."""
+    specs = list(joins.values()) if isinstance(joins, dict) else list(joins or [])
+    if not specs:
+        return Path(data_dir) / TABLE_FILE
+    blob = json.dumps([[_spec_field(s, "file"), _spec_field(s, "on"), _spec_field(s, "right_on"),
+                        _spec_field(s, "how") or "left"] for s in specs],
+                      separators=(",", ":"), ensure_ascii=False)
+    digest = hashlib.blake2b(blob.encode("utf-8"), digest_size=8).hexdigest()
+    return Path(data_dir) / f"joined-{digest}.parquet"
+
+
 def _apply_join(con: duckdb.DuckDBPyConnection, left: Path, join: JoinInput, dest: Path,
                 warnings: list[str]) -> dict[str, str]:
     """``dest`` = ``left`` joined with ``join``'s file; fresh row ids in the left table's order,

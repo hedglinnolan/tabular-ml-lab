@@ -38,6 +38,29 @@ days" is refused.
 (Institute of Medicine 2000), valid only for usual intake, which is why it lives here. An AI cannot
 yield a prevalence of inadequacy (NUTRITION_PACK §07: "the app must refuse to compute one and say
 why"); total energy has no EAR. The UL's share is the share above it.
+
+The EAR cut-point's own conditions (Institute of Medicine 2000, *DRI: Applications in Dietary
+Assessment*, ch. 4, read 2026-10-05: it "works best ... when: 1. intakes and requirements are
+independent 2. the requirement distribution is symmetrical around the EAR 3. the variance in intakes
+is larger than the variance of requirements 4. true prevalence of inadequacy in the population is no
+smaller than 8 to 10 percent or no larger than 90 to 92 percent") are enforced where the app can
+and asked where it cannot:
+
+* *One EAR for everyone analyzed.* An EAR is "the median requirement of a nutrient for a given life
+  stage and gender group" (ch. 3), and NUTRITION_PACK §07 [SETTLED]: "Reference intakes join on age
+  band, sex, pregnancy and lactation status." The recalls cannot say which group each participant
+  belongs to, so the answer says it (``ear_for_all``). Unanswered, the share is computed and reported
+  as a plain share, and the prevalence label is blocked and recorded with its exits (MODELING_SEQUENCE
+  §4's rung). Each group's own distribution is the INBOX's subgroup item.
+* *A symmetric requirement.* "when the distribution of requirements is known to be asymmetrical, as
+  for iron in menstruating women, the probability approach, not the EAR cut-point method, is
+  recommended" (ch. 4); NUTRITION_PACK §07 lists it among the "Exceptions that must be hard-coded".
+  A component whose name reads as iron (:func:`turbotab.core.recognizers.read_nutrient`; a name is a
+  proposal, so the refusal names the reading and its exits keep every number) is refused an EAR until
+  the answer says its requirement is symmetric in these participants (``ear_symmetric``: no
+  menstruating women among them). The probability approach is not implemented here.
+* *Energy*: refused (no EAR). *The prevalence's range*: an estimate below 10% or above 90% carries
+  the concern that the cut-point is least accurate there.
 """
 from __future__ import annotations
 
@@ -78,6 +101,31 @@ ENERGY_NO_EAR = ("Total energy has no EAR: its reference is the estimated energy
 TOO_FEW_REPEATS = ("Fewer than two people have two or more recalls, so day-to-day variation cannot "
                    "be told apart from differences between people (MIXTRAN v2.1: \"there must be at "
                    "least two subjects with at least two positive recalls\").")
+SURVEY_UNANSWERED = ("Survey design columns are in this table, and whether the usual-intake "
+                     "distribution describes the surveyed population or these participants is not "
+                     "answered, so no distribution is estimated.")
+LONELY_PSU = ("The standard errors for the surveyed population replicate the design, which needs "
+              "two or more PSUs in every stratum, so no distribution is estimated for it "
+              "(MODELING_SEQUENCE §4: block and record).")
+IRON_SKEWED = ("Iron's requirement distribution is skewed in menstruating women, so the share below "
+               "its EAR is no prevalence of inadequacy for them: Institute of Medicine 2000, \"when "
+               "the distribution of requirements is known to be asymmetrical, as for iron in "
+               "menstruating women, the probability approach, not the EAR cut-point method, is "
+               "recommended\" (NUTRITION_PACK §07: an exception that \"must be hard-coded\"). The "
+               "probability approach is not implemented here.")
+EAR_UNANSWERED = ("The share is reported as a plain share, not a prevalence of inadequacy: an EAR is "
+                  "\"the median requirement of a nutrient for a given life stage and gender group\" "
+                  "(Institute of Medicine 2000), and whether this cut-off is the EAR of every "
+                  "participant's DRI life-stage group (age band, sex, pregnancy and lactation "
+                  "status) is not answered. Across groups with different EARs one cut-off misplaces "
+                  "the requirement of every group but one.")
+EAR_CONDITIONS = ("The EAR cut-point estimate assumes what the recalls cannot show (Institute of "
+                  "Medicine 2000): \"intakes and requirements are independent\", \"the requirement "
+                  "distribution is symmetrical around the EAR\", and \"the variance in intakes is "
+                  "larger than the variance of requirements\".")
+# Institute of Medicine 2000: the cut-point "works best" when the "true prevalence of inadequacy in
+# the population is no smaller than 8 to 10 percent or no larger than 90 to 92 percent".
+EAR_RANGE = (0.10, 0.90)
 
 ASSUMPTIONS = (
     "Each recall measures usual intake without bias on the transformed scale: the model removes "
@@ -153,6 +201,57 @@ def _none(decision: Any) -> dict[str, Any]:
     return {"kind": "set_usual_intake", "nutrient": decision.nutrient, "model": "none"}
 
 
+# ── exits: each a decision the client can post (or None: a question to answer) ──
+
+
+def leave_out(nutrient: str) -> dict[str, Any]:
+    return {"label": "Leave usual intake out",
+            "decision": {"kind": "set_usual_intake", "nutrient": nutrient, "model": "none"}}
+
+
+def answer(nutrient: str, spec: Any, **update: Any) -> dict[str, Any]:
+    """The recorded answer for ``nutrient`` with ``update`` applied, as a postable decision."""
+    body = spec.model_dump(mode="json", exclude={"kind", "nutrient"})
+    return {"kind": "set_usual_intake", "nutrient": nutrient, **body, **update}
+
+
+def cutoff_exits(nutrient: str, spec: Any) -> list[dict[str, Any]]:
+    """No cut-off, or the share below it as a plain share (no prevalence of inadequacy)."""
+    clear = {"ear_for_all": False, "ear_symmetric": False}
+    return [{"label": "Show the distribution without a cut-off",
+             "decision": answer(nutrient, spec, cutoff=None, cutoff_kind=None, **clear)},
+            {"label": "Report the share below it as a plain share",
+             "decision": answer(nutrient, spec, cutoff_kind="other", **clear)}]
+
+
+def reads_as_iron(nutrient: str, days: Sequence[str] = ()) -> bool:
+    """Whether the component's name (or a recall day's) reads as iron: a proposal from the name
+    (BLUEPRINT §14.3), used only to ask before a prevalence is labeled, never to change a number."""
+    from turbotab.core.recognizers import AmbiguousNutrient, read_nutrient
+
+    for name in [nutrient, *days]:
+        try:
+            reading = read_nutrient(name)
+        except AmbiguousNutrient:
+            continue
+        if reading is not None and reading.nutrient == "iron":
+            return True
+    return False
+
+
+def iron_exits(nutrient: str, spec: Any) -> list[dict[str, Any]]:
+    return [*cutoff_exits(nutrient, spec),
+            {"label": "No participant is a menstruating woman: keep the EAR cut-point",
+             "decision": answer(nutrient, spec, ear_symmetric=True)}]
+
+
+def ear_exits(nutrient: str, spec: Any) -> list[dict[str, Any]]:
+    return [{"label": "It is the EAR of every participant's DRI life-stage group (age band, sex, "
+                      "pregnancy and lactation status)",
+             "decision": answer(nutrient, spec, ear_for_all=True)},
+            *cutoff_exits(nutrient, spec)]
+
+
 def _columns_exist(decision: Any, ctx: Any) -> None:
     from turbotab.core.decisions import ROW_ID, Refusal, _and, _columns_of
 
@@ -207,8 +306,9 @@ def _cutoff_fits_the_reference(decision: Any, ctx: Any) -> None:
 
     if decision.model == "none" or decision.cutoff is None:
         return
-    plain = decision.model_copy(update={"cutoff_kind": "other"})
-    dropped = decision.model_copy(update={"cutoff": None, "cutoff_kind": None})
+    clear = {"ear_for_all": False, "ear_symmetric": False}
+    plain = decision.model_copy(update={"cutoff_kind": "other", **clear})
+    dropped = decision.model_copy(update={"cutoff": None, "cutoff_kind": None, **clear})
     if decision.cutoff_kind == "AI":
         raise Refusal(
             "ai_no_prevalence",
@@ -227,6 +327,13 @@ def _cutoff_fits_the_reference(decision: Any, ctx: Any) -> None:
                 "energy_no_ear", ENERGY_NO_EAR,
                 exits=[{"label": "Show the distribution without a cut-off", "decision": dropped},
                        {"label": "Report the share below it as a plain share", "decision": plain}])
+    if (decision.cutoff_kind == "EAR" and not decision.ear_symmetric
+            and reads_as_iron(decision.nutrient, decision.days)):
+        named = decision.days[0] if decision.days else decision.nutrient
+        raise Refusal(
+            "iron_skewed_requirement",
+            f"`{named}` reads as iron by its name. {IRON_SKEWED}",
+            exits=iron_exits(decision.nutrient, decision))
 
 
 def _register() -> None:
@@ -258,6 +365,11 @@ def _sentence(d: Any, state: Any, ctx: Any) -> str:
     if d.cutoff is not None:
         kind = {"EAR": "the EAR", "UL": "the UL", "AI": "the AI"}.get(d.cutoff_kind or "", "a cut-off")
         cut = f", with the share {'above' if d.cutoff_kind == 'UL' else 'below'} {kind} ({d.cutoff:g})"
+        if d.cutoff_kind == "EAR" and d.ear_for_all:
+            cut += ", answered as the EAR of every participant's DRI life-stage group"
+        if d.cutoff_kind == "EAR" and d.ear_symmetric:
+            cut += (" and" if d.ear_for_all else ",") + (" with a requirement answered as symmetric "
+                                                        "in them (no menstruating women)")
     # The replication (and so the number of replicates) follows the survey answer; the analysis'
     # own methods sentence states it.
     return (f"The usual-intake distribution of {tick(d.nutrient)}{source} was estimated by the NCI "
@@ -296,7 +408,10 @@ def _contract() -> Any:
         needs=("the dietary lens", "two or more recalls for at least two people",
                "a dietary component's recalls (a long table's repeated rows or a wide table's day "
                "columns)", "optional: an order column, a weekend indicator, a column marking "
-               "consumers, the survey design"),
+               "consumers, the survey design",
+               "for a prevalence of inadequacy below an EAR: the answer that it is every "
+               "participant's DRI life-stage group's EAR (and, for iron, that no participant is a "
+               "menstruating woman)"),
         question=("Estimate the usual-intake distribution of a dietary component (percentiles, "
                   "and the share below a cut-off)?"),
         place=("MODELING_SEQUENCE §1 step 2, exposure and estimand: its own estimand, beside any "
@@ -401,6 +516,37 @@ def _contract() -> Any:
                      id="energy_no_ear",
                      rung="refused",
                      exits=("no cut-off, or a plain share below it",)),
+            Relation("conflicts", "ear_for_every_group",
+                     "the share below it is reported as a plain share and the prevalence of "
+                     "inadequacy is blocked and recorded until the cut-off is answered as the EAR "
+                     "of every participant's DRI life-stage group",
+                     condition="an EAR cut-off not answered as every participant's group's EAR",
+                     id="ear_for_every_group",
+                     rung="block_and_record",
+                     exits=("answer that it is every participant's group's EAR, a plain share, or "
+                            "no cut-off",)),
+            Relation("conflicts", "iron_skewed_requirement",
+                     "refused: iron's requirement is skewed in menstruating women, where the "
+                     "probability approach applies, not the cut-point",
+                     condition="an EAR for a component whose name reads as iron, its requirement "
+                               "not answered as symmetric in these participants",
+                     id="iron_skewed_requirement",
+                     rung="refused",
+                     exits=("no cut-off, a plain share, or the answer that no participant is a "
+                            "menstruating woman",)),
+            Relation("conflicts", "survey_unanswered",
+                     "nothing is estimated until the survey question is answered",
+                     condition="survey design columns in the table and the survey question "
+                               "unanswered",
+                     id="survey_unanswered",
+                     rung="block_and_record",
+                     exits=("answer the survey question, or the sample-only attestation",)),
+            Relation("conflicts", "lonely_psu",
+                     "no design-based variance: the distribution is blocked and recorded",
+                     condition="the surveyed population with a stratum of one PSU",
+                     id="lonely_psu",
+                     rung="block_and_record",
+                     exits=("the sample-only attestation",)),
             Relation("invalidates", "structure_invalidates",
                      "the recorded answer is re-read against the new structure and not applied "
                      "where the rows are no longer recalls; never silently kept",
@@ -419,7 +565,9 @@ def _contract() -> Any:
 
 CONTRACT = _contract()
 
-__all__ = ["ASSOCIATION", "ASSUMPTIONS", "CONTRACT", "ENERGY_NO_EAR", "EPISODIC_SHARE", "ESTIMAND",
-           "MIN_REPEATERS",
-           "NOT_DIETARY", "NO_RECALL_DAYS", "POPULATION_QUESTION", "PREDICTION", "REPEATS_UNSETTLED",
-           "TIME_POINTS", "TOO_FEW_REPEATS", "TWO_PART_ASSUMPTION", "day_columns", "suggested_model"]
+__all__ = ["ASSOCIATION", "ASSUMPTIONS", "CONTRACT", "EAR_CONDITIONS", "EAR_RANGE", "EAR_UNANSWERED",
+           "ENERGY_NO_EAR", "EPISODIC_SHARE", "ESTIMAND", "IRON_SKEWED", "LONELY_PSU",
+           "MIN_REPEATERS", "NOT_DIETARY", "NO_RECALL_DAYS", "POPULATION_QUESTION", "PREDICTION",
+           "REPEATS_UNSETTLED", "SURVEY_UNANSWERED", "TIME_POINTS", "TOO_FEW_REPEATS",
+           "TWO_PART_ASSUMPTION", "answer", "cutoff_exits", "day_columns", "ear_exits",
+           "iron_exits", "leave_out", "reads_as_iron", "suggested_model"]

@@ -3057,6 +3057,11 @@
             "type": "string",
             "title": "Values"
           },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": true
+          },
           "exits": {
             "items": {
               "$ref": "#/components/schemas/Exit"
@@ -3071,11 +3076,12 @@
           "field",
           "says",
           "values",
+          "checked",
           "exits"
         ],
         "title": "CodebookAsk"
       },
-      "CodebookConflict": {
+      "CodebookConflict-Input": {
         "properties": {
           "column": {
             "type": "string",
@@ -3098,6 +3104,11 @@
           "values": {
             "type": "string",
             "title": "Values"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -3109,7 +3120,49 @@
           "values"
         ],
         "title": "CodebookConflict",
-        "description": "A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3)."
+        "description": "A codebook field the values contradict, or one whose check cannot run here (``checked``\nFalse: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT\n§14.2–§14.3)."
+      },
+      "CodebookConflict-Output": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "codes",
+              "type",
+              "range"
+            ],
+            "title": "Field"
+          },
+          "says": {
+            "type": "string",
+            "title": "Says"
+          },
+          "values": {
+            "type": "string",
+            "title": "Values"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "field",
+          "says",
+          "values",
+          "checked"
+        ],
+        "title": "CodebookConflict",
+        "description": "A codebook field the values contradict, or one whose check cannot run here (``checked``\nFalse: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT\n§14.2–§14.3)."
       },
       "CodebookPreview": {
         "properties": {
@@ -3295,7 +3348,7 @@
           },
           "asked": {
             "items": {
-              "$ref": "#/components/schemas/CodebookConflict"
+              "$ref": "#/components/schemas/CodebookConflict-Output"
             },
             "type": "array",
             "title": "Asked"
@@ -6071,7 +6124,7 @@
           },
           "asked": {
             "items": {
-              "$ref": "#/components/schemas/CodebookConflict"
+              "$ref": "#/components/schemas/CodebookConflict-Input"
             },
             "type": "array",
             "title": "Asked"
@@ -6166,7 +6219,7 @@
           },
           "asked": {
             "items": {
-              "$ref": "#/components/schemas/CodebookConflict"
+              "$ref": "#/components/schemas/CodebookConflict-Output"
             },
             "type": "array",
             "title": "Asked"
@@ -13874,6 +13927,16 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "ear_for_all": {
+            "type": "boolean",
+            "title": "Ear For All",
+            "default": false
+          },
+          "ear_symmetric": {
+            "type": "boolean",
+            "title": "Ear Symmetric",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -13997,6 +14060,16 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "ear_for_all": {
+            "type": "boolean",
+            "title": "Ear For All",
+            "default": false
+          },
+          "ear_symmetric": {
+            "type": "boolean",
+            "title": "Ear Symmetric",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -14013,7 +14086,9 @@
           "consumer_column",
           "cutoff",
           "cutoff_kind",
-          "n_boot"
+          "n_boot",
+          "ear_for_all",
+          "ear_symmetric"
         ],
         "title": "SetUsualIntake",
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
@@ -14990,6 +15065,16 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "ear_for_all": {
+            "type": "boolean",
+            "title": "Ear For All",
+            "default": false
+          },
+          "ear_symmetric": {
+            "type": "boolean",
+            "title": "Ear Symmetric",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -15004,7 +15089,9 @@
           "consumer_column",
           "cutoff",
           "cutoff_kind",
-          "n_boot"
+          "n_boot",
+          "ear_for_all",
+          "ear_symmetric"
         ],
         "title": "UsualIntakeSpec"
       },
@@ -15928,6 +16015,96 @@
         "title": "Baseline",
         "type": "object"
       },
+      "BatchFigure": {
+        "additionalProperties": false,
+        "description": "The figure ComBat with the outcome protected serves under inference, never a test (the batch\nanswer's ``figures``; ``methods/batch.py``): principal components before and after it.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "n_features": {
+            "title": "N Features",
+            "type": "integer"
+          },
+          "explained_before": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Explained Before",
+            "type": "array"
+          },
+          "explained_after": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Explained After",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/BatchFigurePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "outcome",
+          "n_features",
+          "explained_before",
+          "explained_after",
+          "points",
+          "caption"
+        ],
+        "title": "BatchFigure",
+        "type": "object"
+      },
+      "BatchFigurePoint": {
+        "additionalProperties": false,
+        "description": "One row of the batch figure: its batch, its outcome, and its first two principal-component\nscores before and after ComBat with the outcome protected.",
+        "properties": {
+          "batch": {
+            "title": "Batch",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "before": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Before",
+            "type": "array"
+          },
+          "after": {
+            "items": {
+              "type": "number"
+            },
+            "title": "After",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "outcome",
+          "before",
+          "after"
+        ],
+        "title": "BatchFigurePoint",
+        "type": "object"
+      },
       "BeeswarmInput": {
         "additionalProperties": false,
         "description": "One input's points: its SHAP value, its value (None for a category or a blank), and its\nvalue's percentile among the explained rows for the color (a category: its level's place).",
@@ -16492,6 +16669,15 @@
             "default": null,
             "title": "Reason"
           },
+          "exits": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
           "family": {
             "anyOf": [
               {
@@ -16557,6 +16743,7 @@
           "purpose",
           "applies",
           "reason",
+          "exits",
           "family",
           "rows",
           "n_persons",
@@ -17388,6 +17575,48 @@
           "note"
         ],
         "title": "ClusterScore",
+        "type": "object"
+      },
+      "CodebookConflict": {
+        "additionalProperties": false,
+        "description": "A codebook field the values contradict, or one whose check cannot run here (``checked``\nFalse: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT\n§14.2–§14.3).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "unit",
+              "codes",
+              "type",
+              "range"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "says": {
+            "title": "Says",
+            "type": "string"
+          },
+          "values": {
+            "title": "Values",
+            "type": "string"
+          },
+          "checked": {
+            "default": true,
+            "title": "Checked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "field",
+          "says",
+          "values",
+          "checked"
+        ],
+        "title": "CodebookConflict",
         "type": "object"
       },
       "Coefficient": {
@@ -21147,6 +21376,17 @@
             "default": null,
             "title": "Levels"
           },
+          "batch_figure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchFigure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "withheld": {
             "anyOf": [
               {
@@ -21320,6 +21560,7 @@
           "precision",
           "imbalance",
           "levels",
+          "batch_figure",
           "withheld",
           "estimand",
           "headline_metric",
@@ -21592,6 +21833,18 @@
             ],
             "default": null,
             "title": "Adjustment Terms"
+          },
+          "methods": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Methods"
           }
         },
         "required": [
@@ -21618,7 +21871,8 @@
           "compared_on",
           "performance",
           "nested_cv",
-          "adjustment_terms"
+          "adjustment_terms",
+          "methods"
         ],
         "title": "FittedModel",
         "type": "object"
@@ -29519,6 +29773,16 @@
             "minimum": 50,
             "title": "N Boot",
             "type": "integer"
+          },
+          "ear_for_all": {
+            "default": false,
+            "title": "Ear For All",
+            "type": "boolean"
+          },
+          "ear_symmetric": {
+            "default": false,
+            "title": "Ear Symmetric",
+            "type": "boolean"
           }
         },
         "required": [
@@ -29533,7 +29797,9 @@
           "consumer_column",
           "cutoff",
           "cutoff_kind",
-          "n_boot"
+          "n_boot",
+          "ear_for_all",
+          "ear_symmetric"
         ],
         "title": "SetUsualIntake",
         "type": "object"
@@ -32239,6 +32505,15 @@
             "title": "Concerns",
             "type": "array"
           },
+          "exits": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
           "methods": {
             "title": "Methods",
             "type": "string"
@@ -32273,6 +32548,7 @@
           "weight",
           "assumptions",
           "concerns",
+          "exits",
           "methods"
         ],
         "title": "UsualIntakeAnalysis",
