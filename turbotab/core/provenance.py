@@ -19,6 +19,11 @@ decisions out, but only those superseded before anything was seen:
   been seen ("After the estimates were seen, …"; ``decisions.disclose``). A change tried after the
   estimates were seen and then withdrawn is a fork in Gelman & Loken's (2013) sense, so it is
   stated, not folded away.
+* **Restated.** An in-force sentence that says what another answer does to it (under the surveyed
+  population, each chosen family's estimator or block, the substitution band, the calibration;
+  MS4) is restated on the answers as they stand (:func:`restated`; ``voice.restate``), so the
+  sample-only exit, or a population answer given after the models were chosen, never leaves a
+  sentence that contradicts the analysis. The Record keeps each sentence as said.
 """
 from __future__ import annotations
 
@@ -119,8 +124,42 @@ def seen_from(records: Sequence[Any]) -> int | None:
                  and r.decision.kind in ("open_seal", "lock_plan")), None)
 
 
-def methods_text(records: Sequence[Any]) -> MethodsText:
-    """The methods text of a decision log (see the module)."""
+def restated(records: Sequence[Any], now: set[str], ctx: Any = None) -> dict[str, str]:
+    """The in-force sentences that read differently on the answers as they stand: record id → the
+    sentence restated (``voice.restate``; MS4). Such a sentence says what another answer does to its
+    own; for example, the families' estimators under the survey answer. It was authored on the
+    state just before its record (``DecisionLog.append``) and is restated on the state of the
+    whole log. ``ctx``: what a restated clause may read besides the state (the detected task). A
+    record kept only because it was seen is left as said."""
+    from turbotab.core import voice
+
+    ordered = sorted(records, key=lambda r: r.seq)
+    todo = [i for i, r in enumerate(ordered)
+            if r.id in now and r.sentence and voice.restates(r.decision.kind)]
+    if not todo:
+        return {}
+    try:
+        state = decisions.fold(ordered)
+    except Refusal:
+        return {}
+    out: dict[str, str] = {}
+    for i in todo:
+        r = ordered[i]
+        try:
+            then = decisions.fold(ordered[:i])
+        except Refusal:
+            continue
+        said = voice.restate(r.decision, r.sentence, then, state, ctx,
+                             post_seal=bool(r.post_seal),
+                             after_estimates=bool(getattr(r, "after_estimates", False)))
+        if said != r.sentence:
+            out[r.id] = said
+    return out
+
+
+def methods_text(records: Sequence[Any], ctx: Any = None) -> MethodsText:
+    """The methods text of a decision log (see the module). ``ctx``: what a restated sentence may
+    read besides the answers (``detected_task``, the task the target stage detected)."""
     ordered = sorted(records, key=lambda r: r.seq)
     now = in_force(ordered)
     seen = seen_from(ordered)
@@ -128,11 +167,13 @@ def methods_text(records: Sequence[Any]) -> MethodsText:
     if seen is not None:
         kept |= in_force([r for r in ordered if r.seq <= seen])
         kept |= {r.id for r in ordered if r.seq > seen}
-    lines = [MethodsLine(record_id=r.id, seq=r.seq, kind=r.decision.kind, sentence=r.sentence,
+    again = restated(ordered, now, ctx)
+    lines = [MethodsLine(record_id=r.id, seq=r.seq, kind=r.decision.kind,
+                         sentence=again.get(r.id, r.sentence),
                          in_force=r.id in now, post_seal=bool(r.post_seal),
                          after_estimates=bool(getattr(r, "after_estimates", False)))
              for r in ordered if r.id in kept and r.sentence]
     return MethodsText(lines=lines, seen_from=seen, text=" ".join(line.sentence for line in lines))
 
 
-__all__ = ["APPLIES", "MethodsLine", "MethodsText", "in_force", "methods_text", "seen_from"]
+__all__ = ["APPLIES", "MethodsLine", "MethodsText", "in_force", "methods_text", "restated", "seen_from"]

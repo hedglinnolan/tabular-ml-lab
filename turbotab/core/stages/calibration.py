@@ -62,6 +62,19 @@ POPULATION = ("Under the surveyed population a calibrated coefficient needs desi
               "which this correction does not have, so it is blocked and recorded. To calibrate "
               "for these participants instead, answer the survey question \"these participants\" "
               "(the sample-only attestation).")
+UNCORRECTED_EXIT = "Keep the population's estimates uncorrected: record no calibration"
+
+
+def population_exits() -> list[dict[str, Any]]:
+    """The population block's exits, each a decision: the sample-only attestation (MODELING_SEQUENCE
+    §4's exit), or no correction, which keeps the design-based estimates as they are."""
+    from turbotab.core.models.survey import SAMPLE_EXIT
+
+    return [{"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}},
+            {"label": UNCORRECTED_EXIT,
+             "decision": {"kind": "set_measurement_error", "method": "none"}}]
+
+
 NOT_COMBINED = ("Each analysis row is one record, not the mean of a person's repeated recalls, so the "
                 "day-to-day variance cannot be estimated. Record the rows as repeats of one person "
                 "and combine them by the mean.")
@@ -121,6 +134,10 @@ class CalibrationArtifact(_Model):
     purpose: Literal["inference", "prediction"]
     applies: bool
     reason: str | None = None  # why nothing was calibrated
+    # The ways past a block, each a decision the client can post (BLUEPRINT §11.3: block and
+    # record names its exits); the population answer's: the sample-only attestation, or no
+    # correction (MS4).
+    exits: list[dict[str, Any]] = []
     family: str | None = None
     rows: Literal["all eligible rows"] = "all eligible rows"
     n_persons: int = 0
@@ -287,9 +304,11 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     if not inference:
         return done(applies=False, reason=PREDICTION)
     survey = getattr(state, "survey", None)
-    if survey is not None and survey.estimand == "population":
-        # MS4 (MODELING_SEQUENCE §4): no design-based estimator here, so blocked and recorded.
-        return done(applies=False, reason=POPULATION)
+    if survey is not None and survey.estimand == "population" and method != "none":
+        # MS4 (MODELING_SEQUENCE §4): no design-based estimator here, so blocked and recorded, with
+        # its exits as decisions: the sample-only attestation, or the uncorrected estimates. "No
+        # correction" asks for nothing to block, and reads its recalls as under any answer.
+        return done(applies=False, reason=POPULATION, exits=population_exits())
     if working.get("aggregation") is None:
         return done(applies=False, reason=NOT_COMBINED)
     if effective_repeat_kind(state, structure) == "time_points":
@@ -420,7 +439,7 @@ CALIBRATION_READS = ("measurement_error", "purpose", "models", "task", "event", 
                      "energy_adjustment", "aggregation", "repeat_kind", "grain", "split", "findings")
 
 __all__ = [
-    "ASSUMPTIONS", "CALIBRATION_READS", "CalibratedExposure", "CalibrationArtifact",
-    "adjusted_exposures", "calibration_stage", "combine_rule", "day_rows", "methods_sentence",
-    "replicate_values",
+    "ASSUMPTIONS", "CALIBRATION_READS", "CalibratedExposure", "CalibrationArtifact", "POPULATION",
+    "UNCORRECTED_EXIT", "adjusted_exposures", "calibration_stage", "combine_rule", "day_rows",
+    "methods_sentence", "population_exits", "replicate_values",
 ]

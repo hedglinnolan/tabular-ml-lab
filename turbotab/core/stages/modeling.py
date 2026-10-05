@@ -968,7 +968,8 @@ def _with_levels(fitted: Any, levels: Sequence[str] | None) -> Any:
 
 def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: str, clusters: Any,
                  outcome: Any, survey: Any, design: Any, spec: Any, rows: str,
-                 fit: Any, cancelled: Any = None, energy_rows: bool = True
+                 fit: Any, cancelled: Any = None, energy_rows: bool = True,
+                 models: Sequence[str] | None = None
                  ) -> tuple[Any, list[dict[str, Any]] | None, list[dict[str, Any]], list[str]]:
     """The family's inference table pooled over the completed copies (Rubin's rules), with its
     energy rows and exposure-form tests pooled beside it: (table, pooled rows, tests, concerns).
@@ -976,7 +977,8 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
     Each copy is analyzed exactly as an unimputed table is (``fit(model, X_k)`` refits the whole
     pipeline on it; the table, the all-components relative effects and the form tests follow). A
     table refused in one copy (too few clusters) is refused: the reason does not depend on the
-    imputed values. ``rows`` = None in the result marks such a refusal."""
+    imputed values. ``rows`` = None in the result marks such a refusal. ``models``: the chosen
+    families, which a block's exit keeps (``_inference_table``)."""
     from sklearn.base import clone
 
     from turbotab.core.methods.exposure_form import exposure_tests
@@ -992,7 +994,7 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
             raise Cancelled()
         fitted = fit(clone(template), X_k)
         table = _inference_table(family, fitted, X_k, y, task=task, clusters=clusters,
-                                 outcome=outcome, rows=rows, survey=survey)
+                                 outcome=outcome, rows=rows, survey=survey, models=models)
         if table.info.get("refused"):
             table.info["missing"] = multiple_imputation_info(imputations, spec, len(y))
             return table, None, [], []
@@ -1366,7 +1368,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                             spec=spec, rows="all",
                             fit=lambda model, X_k: _with_levels(
                                 fit_table(with_units(model, unit_of), X_k), levels),
-                            cancelled=ctx.cancelled)
+                            cancelled=ctx.cancelled, models=state.models)
                         concerns.extend(form_concerns)
                     else:
                         # Under the population answer the table is design-based, its domain every
@@ -1375,7 +1377,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                         table = _inference_table(
                             family, table_fit, X_c, y_c, task=task, clusters=clusters,
                             outcome=outcome, rows="all" if on_all else "training",
-                            survey=design_of)
+                            survey=design_of, models=state.models)
                     if missing is not None:
                         missing.record(table)
                     coefficients, interval_info = table.rows, table.info
@@ -1796,6 +1798,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     skipped = []
     pipelines = design.objects["pipelines"]
     keys = [m["family"] for m in fit.data["models"] if m["family"] in trained]
+    # Every chosen family, those with no curve too (feature-wise tests predict nothing): a blocked
+    # curve's exit swaps its own family and keeps every other one chosen (MS4).
+    chosen = [m["family"] for m in fit.data["models"]]
     undrawn = ("multiclass", "ordinal", "time_to_event")  # a curve per class or level; a hazard
     drawable = [k for k in keys if task not in undrawn]
     slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
@@ -1826,7 +1831,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
 
             drawn = population_curve(
                 family, task, fitted.get(key), X, y_fit[curve_rows], survey_design, domain,
-                models=keys, donor=sub.donor, recipient=sub.recipient,
+                models=chosen, donor=sub.donor, recipient=sub.recipient,
                 kcal_per_unit=kcal_per_unit, ks=ks, total_kind="variable", nested=nested,
                 total=total_energy, scale=scale, shift=shift)
             curve = drawn.curve
