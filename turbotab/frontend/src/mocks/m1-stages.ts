@@ -564,7 +564,8 @@ function missingReading(
   }
   columns.sort((a, b) => b.share - a.share);
   const notAsked = columns.filter((c) => c.likely_not_asked).map((c) => c.column);
-  if (!notAsked.length) return { columns, leave_out: null, methods: [], below_detection: [] };
+  if (!notAsked.length)
+    return { columns, leave_out: null, methods: [], below_detection: [], imputation_models: [] };
   const cols = notAsked.map((c) => findColumn(ds, c)).filter((c): c is MockColumn => !!c);
   let n = 0;
   for (let i = 0; i < ds.nRows; i++) if (cols.some((c) => missing(c.values[i]))) n += 1;
@@ -573,6 +574,7 @@ function missingReading(
     leave_out: { columns: notAsked, n_rows: n, share: n / ds.nRows },
     methods: [],
     below_detection: [],
+    imputation_models: [],
   };
 }
 
@@ -1246,6 +1248,7 @@ export function fit(
                 ratio_high: null,
                 q: null,
                 fmi: null,
+                mc_se: null,
               };
             });
     return {
@@ -1365,6 +1368,8 @@ export function substitution(
         fixed_ci_low: null,
         fixed_ci_high: null,
         band_ok: banded ? spec.n_boot : null,
+        pooled: null,
+        df: null,
       };
     }),
   };

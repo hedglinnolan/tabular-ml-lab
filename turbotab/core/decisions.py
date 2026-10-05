@@ -338,6 +338,11 @@ class SubstitutionSpec(_Value):
     step_percent: float = Field(default=5.0, gt=0, le=50)  # percentage points of energy per step
 
 
+# MS1–MS2: how multiple imputation relates to the analysis model and to clustered rows.
+ImputationModel = Literal["compatible", "passive"]
+ImputationLevels = Literal["clustered", "single_level"]
+
+
 class MissingSpec(_Value):
     """The missing-values answer: columns left out of the predictors, then a strategy for the rest.
 
@@ -356,6 +361,11 @@ class MissingSpec(_Value):
     censored_columns: list[str] = Field(default_factory=list)
     acknowledged: bool = False
     reason: str | None = None
+    # MS1–MS2 (MODELING_SEQUENCE §4): multiple imputation compatible with the analysis model, or
+    # the customary passive chained equations (block and record with a declared nonlinear term);
+    # clustered rows imputed by unit (ruling 12), or single-level (block and record).
+    imputation_model: ImputationModel = "compatible"
+    imputation_levels: ImputationLevels = "clustered"
 
 
 class SetRoles(_DecisionModel):
@@ -508,6 +518,11 @@ class SetMissing(_DecisionModel):
     censored_columns: list[str] = Field(default_factory=list)
     acknowledged: bool = False
     reason: str | None = None
+    # MS1–MS2: compatible with the analysis model (SMC-FCS where the model needs it) or passive;
+    # clustered rows by unit or single-level. The passive and single-level answers are blocked and
+    # recorded under inference (MODELING_SEQUENCE §4).
+    imputation_model: ImputationModel = "compatible"
+    imputation_levels: ImputationLevels = "clustered"
 
     @field_validator("drop_columns", "censored_columns")
     @classmethod
@@ -3343,6 +3358,53 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
         exits=exits)
 
 
+def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
+    """MODELING_SEQUENCE §4 (MS1, MS2): under inference, passive multiple imputation with a declared
+    nonlinear term, and single-level multiple imputation on rows a recorded unit repeats, are
+    blocked and recorded: refused with their exits (the compatible or clustered imputation first),
+    kept only with the attestation the methods sentence carries. The fit holds the table the same
+    way when the term or the clustering is declared after this answer
+    (``methods.missing.missing_block``)."""
+    from turbotab.core.methods.missing import PASSIVE_CAUTION, SINGLE_LEVEL_CAUTION
+
+    state = _state(ctx)
+    if (decision.strategy != "multiple_imputation" or decision.acknowledged
+            or getattr(state, "purpose", None) != "inference"):
+        return
+    keep = {"label": "Keep it, recorded as a limitation",
+            "decision": _missing_base(decision, acknowledged=True)}
+    cc = {"label": "Complete cases, with their assumption stated",
+          "decision": _missing_base(decision, strategy="complete_case", acknowledged=False)}
+    if decision.imputation_model == "passive":
+        forms = {c: f for c, f in (getattr(state, "exposure_forms", None) or {}).items()
+                 if getattr(f, "form", None) in ("spline", "quintiles")}
+        adj = getattr(state, "energy_adjustment", None)
+        logged = adj is not None and ((adj.method in ("residual", "residual_energy_dropped")
+                                       and adj.log_transform)
+                                      or adj.method in ("density", "density_multivariate"))
+        if forms or logged:
+            named = [f"a {'restricted cubic spline' if f.form == 'spline' else 'quintile form'} of "
+                     f"`{c}`" for c, f in forms.items()]
+            if logged:
+                named.append("the energy model's log or ratio")
+            raise Refusal(
+                "passive_imputation_with_nonlinear_terms",
+                f"The analysis model holds {_and(named)}. Under inference {PASSIVE_CAUTION}.",
+                exits=[{"label": "Multiple imputation compatible with the analysis model (SMC-FCS)",
+                        "decision": _missing_base(decision, imputation_model="compatible")},
+                       cc, keep])
+    if decision.imputation_levels == "single_level":
+        grain = getattr(state, "grain", None)
+        if getattr(grain, "grain", None) == "repeated" and getattr(state, "unit", None) != "unit":
+            raise Refusal(
+                "single_level_imputation_on_clustered_rows",
+                f"The rows repeat by `{getattr(grain, 'id_column', None) or 'unit'}`. Under "
+                f"inference {SINGLE_LEVEL_CAUTION}.",
+                exits=[{"label": "Clustered multiple imputation (time-invariant values once per unit)",
+                        "decision": _missing_base(decision, imputation_levels="clustered")},
+                       cc, keep])
+
+
 def _censored_named(ctx: Any) -> list[str]:
     """Left-censored columns the findings (and the zeros-as-non-detections repair) name."""
     from turbotab.core.methods.missing import censored_columns
@@ -3682,6 +3744,7 @@ register_validator("set_categorical", _categorical_names_predictors)
 register_validator("set_missing", _left_out_columns_are_predictors)
 register_validator("set_missing", _missing_fits_the_purpose)
 register_validator("set_missing", _non_detections_are_not_filled_by_the_median)
+register_validator("set_missing", _imputation_fits_the_analysis)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
 register_validator("set_exclusions", _screens_wait_for_the_unit)

@@ -1180,10 +1180,13 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     missing = missing_reading(frame, columns, roles, target)
     # WP7: the missing-data methods, soundest first for the declared purpose, each with its
     # "customary" and "sound" labels and its rung (turbotab.core.methods.missing).
-    from turbotab.core.methods.missing import below_detection_options, methods_for
+    from turbotab.core.methods.missing import (below_detection_options,
+                                               imputation_model_options, methods_for)
 
     missing["methods"] = methods_for(purpose)
     missing["below_detection"] = below_detection_options(purpose)
+    # MS1–MS2: multiple imputation's sub-answers, each labeled (compatible; passive; single-level).
+    missing["imputation_models"] = imputation_model_options(purpose)
     n_base = int(frame[target].notna().sum()) if target and target in frame.columns else len(frame)
     if "dietary" not in (lens or []):
         from turbotab.core import custom_sound

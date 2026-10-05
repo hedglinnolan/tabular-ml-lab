@@ -9,6 +9,13 @@ for imputing predictors". Under prediction nothing here runs: the pipeline imput
 the outcome, so the fitted pipeline can be deployed (Sisk et al. 2023, *Stat Methods Med Res*
 32:1461).
 
+**Where the copies are drawn** (MS1–MS2, MODELING_SEQUENCE §1.1): ``turbotab.core.methods.smcfcs``
+runs the chained equations below and, where the analysis model is not linear in the imputed values
+(a spline, a log, a ratio, a logistic or Cox outcome), substantive-model-compatible FCS; it adds the
+log scale, the energy identity, the survey design and clustered rows. This module holds each
+variable's model and draw, and the pooling: Rubin's rules with their Monte Carlo error, m by
+:func:`m_rule`, and D1 (with Reiter's df on a finite complete-data df, :func:`reiter_df`).
+
 **The chained equations** (van Buuren & Groothuis-Oudshoorn 2011, *J Stat Softw* 45(3), the
 ``mice`` algorithm). Each incomplete variable gets its own model given all the others; the
 variables are visited in turn, from the least to the most incomplete, for :data:`ITERATIONS`
@@ -99,6 +106,15 @@ class Imputations:
     kinds: dict[str, str]
     censored: dict[str, Censoring] = field(default_factory=dict)
     seed: int = 0
+    # MS1–MS2 (``turbotab.core.methods.smcfcs``): how the copies were drawn, and what the
+    # imputation model held beyond the columns (``plan``: the record ``missing.imputation_record``
+    # writes from)
+    method: str = "chained_equations"  # or "smcfcs", or "supplied" (copies the data carried)
+    rejection_failures: int = 0  # SMC-FCS draws no candidate was kept for (smcfcs's rjFailCount)
+    identity_infeasible: int = 0  # rows whose recorded sources already reach their recorded total
+    plan: dict[str, Any] = field(default_factory=dict)
+    # Imputed-outcome copies (NHANES DXA): each copy's own outcome, aligned with its frame
+    outcomes: list[Any] | None = None
 
 
 class ImputationRefused(ValueError):
@@ -407,89 +423,29 @@ def chained_equations(data: pd.DataFrame, *, impute: Sequence[str] | None = None
                       m: int = M_DEFAULT, iterations: int = ITERATIONS, seed: int = 0,
                       progress: Callable[[int, int], None] | None = None,
                       cancelled: Callable[[], bool] | None = None) -> Imputations:
-    """``m`` completed copies of ``data`` (every column of the imputation model).
+    """``m`` completed copies of ``data`` (every column of the imputation model) by chained
+    equations, ``mice``'s algorithm: :func:`turbotab.core.methods.smcfcs.impute` in its ``"fcs"``
+    mode, the one implementation (the module that also draws SMC-FCS, the log scale, the energy
+    identity and clustered rows).
 
     ``impute``: the columns whose blanks are filled (default: every column with a blank); the
     others are only predictors (the outcome's terms, which are never missing in the analysis rows).
     ``kinds``: each column's kind (default :func:`column_kind`). ``censored``: the left-censored
     columns and their limits. Deterministic for a given ``seed``.
     """
+    from turbotab.core.methods.smcfcs import Variable
+    from turbotab.core.methods.smcfcs import impute as draw
+
     censored = dict(censored or {})
     kinds = {c: (kinds or {}).get(c) or ("censored" if c in censored else column_kind(data[c]))
              for c in data.columns}
     for c in censored:
         kinds[c] = "censored"
-    targets = [c for c in (impute if impute is not None else data.columns)
-               if c in data.columns and data[c].isna().any()]
-    width = sum(max(1, data[c].nunique(dropna=True) - 1) if kinds[c] == "categorical" else 1
-                for c in data.columns)
-    if width > MAX_MODEL_COLUMNS:
-        raise ImputationRefused(
-            f"The imputation model would hold {width:,} columns (categories as indicators), more "
-            f"than the {MAX_MODEL_COLUMNS} chained equations are run with here.")
-    for c in targets:
-        if data[c].notna().sum() < 2 and kinds[c] != "categorical":
-            raise ImputationRefused(f"`{c}` has fewer than two observed values, so it cannot be "
-                                    f"imputed.")
-    miss = {c: data[c].isna().to_numpy() for c in targets}
-    n_incomplete = int(np.any(np.column_stack([miss[c] for c in targets]), axis=1).sum()) if targets else 0
-    order = sorted(targets, key=lambda c: (int(miss[c].sum()), list(data.columns).index(c)))
-    sweeps = iterations if len(order) > 1 else 1  # one incomplete column: the chain is monotone
-    rng = np.random.default_rng(seed)
-    frames: list[pd.DataFrame] = []
-    total = m * sweeps * max(1, len(order))
-    done = 0
-    for _k in range(m):
-        design = _Design(data, kinds, censored)
-        for c in order:  # start each chain from random draws of the observed values
-            observed = design.values[c][~miss[c]]
-            fill = observed[rng.integers(0, len(observed), int(miss[c].sum()))]
-            if c in censored:  # a non-detect starts below its limit
-                spread = float(np.nanstd(observed.astype(float))) or 1.0
-                fill = np.full(int(miss[c].sum()), censored[c].limit / 2 if censored[c].log
-                               else censored[c].limit - spread)
-            design.values[c] = design.values[c].copy()
-            design.values[c][miss[c]] = fill
-        for c in data.columns:
-            design.refresh(c)
-        for _ in range(sweeps):
-            for c in order:
-                if cancelled is not None and cancelled():
-                    from turbotab.core.jobs import Cancelled
-
-                    raise Cancelled()
-                X = design.matrix(c)
-                kind = kinds[c]
-                if kind == "numeric":
-                    new = _norm(X, design.values[c].astype(float), miss[c], rng)
-                elif kind == "binary":
-                    new = _binary(X, _as01(design.values[c], data[c]), miss[c], rng)
-                    new = _from01(new, data[c])
-                elif kind == "categorical":
-                    new = _categorical(X, design.values[c], design.levels[c], miss[c], rng)
-                else:
-                    new = _censored(X, design.values[c].astype(float), miss[c], censored[c], rng)
-                design.values[c] = design.values[c].copy()
-                design.values[c][miss[c]] = new
-                design.refresh(c)
-                done += 1
-                if progress is not None:
-                    progress(done, total)
-        completed = data.copy()
-        for c in order:
-            col = design.values[c]
-            if kinds[c] == "categorical" or not pd.api.types.is_numeric_dtype(data[c]):
-                filled = pd.Series(col, index=data.index, dtype=object)
-                if pd.api.types.is_numeric_dtype(data[c]):  # a declared category of number codes
-                    filled = filled.astype(float)
-            else:
-                filled = pd.Series(col.astype(float), index=data.index)
-            completed[c] = filled
-        frames.append(completed)
-    return Imputations(frames=frames, m=m, iterations=sweeps,
-                       imputed={c: int(miss[c].sum()) for c in order},
-                       n_incomplete_rows=n_incomplete, variables=list(data.columns), kinds=kinds,
-                       censored=censored, seed=seed)
+    names = [c for c in (impute if impute is not None else data.columns)
+             if c in data.columns and data[c].isna().any()]
+    variables = [Variable(c, kinds[c], censoring=censored.get(c)) for c in names]
+    return draw(data, variables, mode="fcs", m=m, iterations=iterations, seed=seed,
+                kinds=kinds, progress=progress, cancelled=cancelled)
 
 
 def _two_levels(original: pd.Series | None) -> tuple[float, float] | None:
@@ -542,6 +498,18 @@ class Pooled:
     ci_low: float | None
     ci_high: float | None
     p: float | None
+    # Monte Carlo error of the pooled estimate, √(B/m): how much it would move with another set of
+    # m imputations (White, Royston & Wood 2011, Stat Med 30:377, §7).
+    mc_se: float | None = None
+
+
+def m_rule(n_incomplete: int, n_rows: int, asked: int = M_DEFAULT) -> int:
+    """The number of imputations: at least ``asked`` (20 by default, the WP7 floor) and at least the
+    percentage of rows with any imputed value (MODELING_SEQUENCE §1 step 6; White, Royston & Wood
+    2011, as White, Pandis & Pham put it: "the number of imputations should be at least equal to the
+    percentage of incomplete cases"), at most :data:`M_MAX`."""
+    share = 100.0 * n_incomplete / n_rows if n_rows else 0.0
+    return int(min(M_MAX, max(int(asked), M_DEFAULT, math.ceil(share - 1e-9))))
 
 
 def barnard_rubin(m: int, within: float, between: float, df_com: float | None
@@ -583,19 +551,40 @@ def pool_scalar(estimates: Sequence[float], variances: Sequence[float], df_com: 
     within = float(u.mean())
     between = float(q.var(ddof=1)) if m > 1 else 0.0
     total, nu, gamma = barnard_rubin(m, within, between, df_com)
+    mc = math.sqrt(between / m) if m > 1 else None
     if not (total > 0 and math.isfinite(total)):
-        return Pooled(est, within, between, total, None, None, None, None, None)
+        return Pooled(est, within, between, total, None, None, None, None, None, mc)
     se = math.sqrt(total)
     ref = stats.norm if math.isinf(nu) else stats.t(nu)
     half = float(ref.ppf(0.5 + level / 2)) * se
     p = float(2 * ref.sf(abs(est) / se))
     return Pooled(est, within, between, total, None if math.isinf(nu) else nu, gamma,
-                  est - half, est + half, p)
+                  est - half, est + half, p, mc)
 
 
-def pooled_wald(estimates: np.ndarray, covariances: np.ndarray) -> dict[str, float] | None:
+def reiter_df(r: float, k: int, m: int, df_com: float) -> float:
+    """The denominator degrees of freedom of D1 with a finite complete-data df: Reiter's (2007,
+    *Biometrika* 94:502) small-sample ν, exactly as R's ``mitml`` (0.4.5, ``mitml:::.D1``) computes
+    it from r1, t = k(m − 1) and ν* = (ν_com + 1)/(ν_com + 3) ν_com."""
+    t = k * (m - 1)
+    a = r * t / (t - 2)
+    vstar = (df_com + 1) / (df_com + 3) * df_com
+    c0 = 1 / (t - 4)
+    c1 = vstar - 2 * (1 + a)
+    c2 = vstar - 4 * (1 + a)
+    z = (1 / c2 + c0 * (a ** 2 * c1 / ((1 + a) ** 2 * c2))
+         + c0 * (8 * a ** 2 * c1 / ((1 + a) * c2 ** 2) + 4 * a ** 2 / ((1 + a) * c2))
+         + c0 * (4 * a ** 2 / (c2 * c1) + 16 * a ** 2 * c1 / c2 ** 3) + c0 * (8 * a ** 2 / c2 ** 2))
+    return 4 + 1 / z
+
+
+def pooled_wald(estimates: np.ndarray, covariances: np.ndarray,
+                df_com: float | None = None) -> dict[str, float] | None:
     """Li, Raghunathan & Rubin's D1 that every coefficient is zero: ``estimates`` (m × k),
-    ``covariances`` (m × k × k). None when the within-imputation covariance is singular."""
+    ``covariances`` (m × k × k). With ``df_com`` (each copy's complete-data df: the design df under a
+    survey) the denominator df is Reiter's (:func:`reiter_df`), as ``mitml::testModels`` and
+    ``testConstraints`` take ``df.com``; without it, Li et al.'s. None when the within-imputation
+    covariance is singular."""
     from scipy import stats
 
     Q = np.asarray(estimates, dtype=float)
@@ -610,7 +599,9 @@ def pooled_wald(estimates: np.ndarray, covariances: np.ndarray) -> dict[str, flo
     r1 = (1 + 1 / m) * float(np.trace(B @ inv)) / k
     D1 = float(qbar @ inv @ qbar) / (k * (1 + r1))
     t = k * (m - 1)
-    if r1 <= 1e-12:
+    if df_com is not None and math.isfinite(df_com) and t > 4 and r1 > 1e-12:
+        nu1 = reiter_df(r1, k, m, float(df_com))
+    elif r1 <= 1e-12:
         nu1 = float("inf")
     elif t > 4:
         nu1 = 4 + (t - 4) * (1 + (1 - 2 / t) / r1) ** 2
@@ -645,14 +636,15 @@ def pool_rows(tables: Sequence[Sequence[Mapping[str, Any]]], level: float = 0.95
         new = dict(row)
         if any(s is None for s in se):
             new.update(estimate=float(np.mean(est)), ci_low=None, ci_high=None, p=None, se=None,
-                       df=None, fmi=None)
+                       df=None, fmi=None,
+                       mc_se=float(np.std(est, ddof=1) / math.sqrt(m)) if m > 1 else None)
         else:
             dfs = [r.get("df") for r in rows]
             df_com = None if any(d is None for d in dfs) else float(np.mean(dfs))
             pooled = pool_scalar(est, [float(s) ** 2 for s in se], df_com, level)
             new.update(estimate=pooled.estimate, ci_low=pooled.ci_low, ci_high=pooled.ci_high,
                        p=pooled.p, se=math.sqrt(pooled.total) if pooled.total > 0 else None,
-                       df=pooled.df, fmi=pooled.fmi)
+                       df=pooled.df, fmi=pooled.fmi, mc_se=pooled.mc_se)
         if "ratio" in row:
             ratio = row.get("ratio") is not None or any(r.get("ratio") is not None for r in rows)
             new.update(ratio=_exp(new["estimate"]) if ratio else None,
@@ -705,6 +697,6 @@ __all__ = [
     "Censoring", "ITERATIONS", "ImputationRefused", "Imputations", "M_DEFAULT", "M_MAX",
     "censored_loglik", "log_scale_fits_better",
     "MAX_MODEL_COLUMNS", "OUTCOME_PREFIX", "Pooled", "barnard_rubin", "censoring_of",
-    "chained_equations", "column_kind", "nelson_aalen", "outcome_terms", "pool_rows", "pool_scalar",
-    "pooled_cov", "pooled_wald", "tobit_expectation", "tobit_fit",
+    "chained_equations", "column_kind", "m_rule", "nelson_aalen", "outcome_terms", "pool_rows",
+    "pool_scalar", "pooled_cov", "pooled_wald", "reiter_df", "tobit_expectation", "tobit_fit",
 ]

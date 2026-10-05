@@ -2916,6 +2916,9 @@ CONSUMERS: tuple[Consumer, ...] = (
              ASK, kinds=("unit:factor", "nested_in")),
     Consumer(_C + "stages.modeling:substitution_stage", ("energy_factor",), True, ASK,
              kinds=("unit:factor",)),
+    # MS1: the imputation's energy identity computes with each source's kcal per unit, settled only.
+    Consumer(_C + "stages.modeling:_settled_factors", ("energy_factor",), True, SETTLED_ONLY,
+             kinds=("unit:factor",)),
     # The sixth gate: the curve's Shift and the design read the nesting the user confirmed,
     # whichever column it names (``readings.nesting``).
     Consumer(_C + "stages.modeling:shift_for", ("nesting",), True, SETTLED_ONLY,

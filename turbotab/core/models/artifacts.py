@@ -137,6 +137,8 @@ class Coefficient(_Model):
     q: float | None = None
     # Under multiple imputation (WP7): the fraction of missing information, Rubin's γ.
     fmi: float | None = None
+    # Under multiple imputation (MS2): the Monte Carlo error of the pooled estimate, √(B/m).
+    mc_se: float | None = None
 
 
 class InferenceExit(_Model):
@@ -187,6 +189,33 @@ class MissingData(_Model):
     n_dropped: int | None = None  # complete cases: rows dropped for a missing predictor
     recorded: bool = False  # a blocked answer kept with its attestation
     note: str | None = None
+    # MS1–MS3 (methods/smcfcs.py, methods/missing.py): how the copies were drawn and what the
+    # imputation model held, the m rule, the Monte Carlo error, and the methods sentence.
+    model: Literal["chained_equations", "smcfcs", "supplied"] | None = None
+    compatible: bool | None = None  # compatible with the analysis model (False: passive, recorded)
+    substantive: Literal["linear", "logistic", "cox"] | None = None  # SMC-FCS's analysis model
+    terms: list[str] = []  # the declared nonlinear or derived terms the imputation respects
+    logged: list[str] = []  # imputed on the log scale, as the analysis logs them
+    identity_energy: str | None = None  # total energy, derived as its sources plus the rest
+    identity_sources: list[str] = []
+    identity_infeasible: int = 0  # rows whose recorded sources already reach their recorded total
+    design_strata: str | None = None  # the survey design's columns in the imputation model
+    design_psu: str | None = None
+    design_weight: str | None = None
+    df_com: float | None = None  # the complete-data df Rubin's rules used (the design's)
+    unit: str | None = None  # clustered imputation: the unit column
+    unit_level: list[str] = []  # imputed once per unit
+    knots: dict[str, list[float]] = {}  # placed once on the observed values, held in every copy
+    cuts: dict[str, list[float]] = {}
+    m_asked: int | None = None
+    percent_incomplete: float | None = None  # rows with any imputed value, as a percentage
+    rejection_failures: int = 0
+    mc_max_ratio: float | None = None  # the largest Monte Carlo error, as a share of its SE
+    mc_feature: str | None = None
+    copies: list[str] | None = None  # imputed copies the data carried, by their numbers
+    implicate: str | None = None
+    tests_d1: int = 0  # multi-parameter tests pooled by D1
+    sentence: str | None = None  # the methods sentence
 
 
 class BrantColumn(_Model):
@@ -248,7 +277,8 @@ class ExposureTest(_Model):
 
     column: str
     form: Literal["spline", "quintiles"]
-    test: Literal["overall", "nonlinear", "trend"]
+    # global: every quintile indicator at once (a multi-df Wald test, D1 under multiple imputation)
+    test: Literal["overall", "nonlinear", "trend", "global"]
     statistic: float | None
     df_num: int | None
     df_den: float | None  # the F or t reference's degrees of freedom; null for χ² and z
@@ -429,6 +459,12 @@ class SubstitutionModel(_Model):
     fixed_ci_low: list[float | None] | None = None
     fixed_ci_high: list[float | None] | None = None
     band_ok: int | None = None  # refits of this family's band that succeeded
+    # Under multiple imputation (MS3): how the curve was pooled over the copies — "contrast" (a
+    # linear all-components model: the exact contrast of the pooled coefficients with their pooled
+    # covariance) or "per_k" (each copy's curve, pooled at each k by Rubin's rules) — and the
+    # Barnard–Rubin degrees of freedom of each k's interval.
+    pooled: Literal["contrast", "per_k"] | None = None
+    df: list[float | None] | None = None
 
 
 class SubstitutionSupport(_Model):

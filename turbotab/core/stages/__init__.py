@@ -390,7 +390,11 @@ def build_graph() -> Graph:
             # user confirmed, never by a reader's identifier over the grain answer.
             # fit 15 (ledger repair 2): multiple imputation fills a number with two values as a yes/no.
             # fit 16 (WP17): the intervals cluster by the grouping the cluster question named.
-            Stage("fit", 16, ("working", "design", "split", "target_info", "cohort"),
+            # fit 17 (MS1–MS3): multiple imputation compatible with the analysis model (SMC-FCS,
+            # the log scale, the energy identity, fixed knots, the design and the clusters in the
+            # imputation model, m by the rule); the data's own imputed copies pooled by Rubin's
+            # rules; the copies and each family's fit on each kept for the substitution curve.
+            Stage("fit", 17, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -411,7 +415,10 @@ def build_graph() -> Graph:
             # only where it excludes every other unit (never alcohol or a minor source); the parts of
             # totals as the user confirmed them.
             # substitution 13 (WP17): as fit 16.
-            Stage("substitution", 13, ("working", "fit", "design"),
+            # substitution 14 (MS3): under multiple imputation the curve is pooled over the copies
+            # (an exact contrast of the pooled coefficients for a linear all-components model;
+            # per-copy curves pooled at each k otherwise), never one fill.
+            Stage("substitution", 14, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -440,7 +447,9 @@ def build_graph() -> Graph:
             # sensitivity 6 (recognition's leash): its clusters read settled roles only.
             # sensitivity 8 (ledger repair 2): as fit 15.
             # sensitivity 9 (WP17): as fit 16.
-            Stage("sensitivity", 9, ("working", "design", "split", "target_info"),
+            # sensitivity 10 (MS1–MS2): as fit 17; each analysis's imputation model holds the survey
+            # design and the clustering.
+            Stage("sensitivity", 10, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
@@ -455,7 +464,8 @@ def build_graph() -> Graph:
                   requires=("measurement_error", "models"),
                   label="Correcting energy-adjusted intakes for day-to-day error"),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
-            Stage("secondary", 1, ("working", "design", "split", "target_info"),
+            # secondary 2 (MS1–MS2): as fit 17; the design and the clustering in its imputation model.
+            Stage("secondary", 2, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),

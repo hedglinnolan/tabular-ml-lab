@@ -730,6 +730,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
         censored_columns: d.censored_columns ?? [],
         acknowledged: d.acknowledged ?? false,
         reason: d.reason ?? null,
+        imputation_model: d.imputation_model ?? "compatible",
+        imputation_levels: d.imputation_levels ?? "clustered",
       };
     case "set_split":
       return {

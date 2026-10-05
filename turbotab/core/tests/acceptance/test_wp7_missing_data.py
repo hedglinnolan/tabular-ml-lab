@@ -201,7 +201,9 @@ def test_1_rubins_rules_and_d1_match_the_formulas():
     imputations = impute_for_inference(spec, frame[["x", "z"]], y, "regression", seed=3)
     row = app_row(frame, MissingSpec(strategy="multiple_imputation"), seed=3)
     m = imputations.m
-    assert m == 20 and imputations.imputed == {"z": int(frame["z"].isna().sum())}
+    # MS2 (MODELING_SEQUENCE §1 step 6): m ≥ max(20, the percentage of rows with an imputed value).
+    assert m == max(20, int(np.ceil(100 * frame["z"].isna().mean())))
+    assert imputations.imputed == {"z": int(frame["z"].isna().sum())}
     Q, U, V = [], [], []
     for f in imputations.frames:
         fit = sm.OLS(y, sm.add_constant(f[["x", "z"]])).fit(cov_type="HC3")
@@ -390,7 +392,10 @@ def test_1_the_fit_stage_pools_multiple_imputations_with_the_outcome_and_energy(
     the fiber coefficient's interval covers its true −0.5."""
     table, mi = inference_runs["table"], inference_runs["mi"]
     info = mi["inference"]["missing"]
-    assert info["method"] == "multiple_imputation" and info["m"] == 20
+    # MS2: m ≥ max(20, the percentage of rows with an imputed value), pandas' count of them.
+    incomplete = table[["age", "protein_g"]].isna().any(axis=1).mean()
+    assert info["method"] == "multiple_imputation"
+    assert info["m"] == max(20, int(np.ceil(100 * incomplete)))
     assert info["outcome_in_model"] and "the outcome" in info["variables"]
     assert info["energy"] == "kcal" and "kcal" in info["variables"]
     assert info["imputed"] == {"age": int(table["age"].isna().sum()),

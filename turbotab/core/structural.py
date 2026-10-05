@@ -22,8 +22,10 @@ rules that ask instead, and the refusals that keep each answer honest:
   outcome may take, for the detection's skip and the explicit answer alike.
 * **Imputed copies** (I18). NHANES ships its 1999–2006 DXA data as five imputed copies of every
   participant; analyzing them as records, or averaging them, treats imputed values as measured.
-  Rubin's rules over copies whose outcome may itself be imputed are not built here, so under
-  inference the answer is blocked and recorded (:func:`_imputed_copies_are_recorded`).
+  Under inference, copies kept as records are each analyzed as a completed dataset with its own
+  outcome and pooled by Rubin's rules (MS3; ``stages.modeling._copies_for_table``), so the answer
+  is accepted; combining them per unit instead is blocked and recorded
+  (:func:`_imputed_copies_are_not_combined_unrecorded`).
 
 "Markedly skewed" is West et al.'s reference value, as Kim (2013, *Restor Dent Endod* 38:52–54)
 reports it: "West et al. (1996) proposed a reference of substantial departure from normality as an
@@ -478,9 +480,9 @@ COPIES_CONCERN = ("analyzing imputed copies as records, or by their mean, treats
 
 
 def _imputed_copies_are_recorded(decision: SetRepeatKind, ctx: Any) -> None:
-    """Audit I18: imputed copies have no route through Rubin's rules here (their outcome may be
-    imputed too, so each copy is its own analysis), so under inference the answer is blocked and
-    recorded: kept only with the attestation the methods sentence carries."""
+    """Audit I18: imputed copies name the column that numbers them, one of the dataset's. Under
+    inference the copies kept as records are pooled by Rubin's rules in the fit (MS3), so the answer
+    itself is not held; combining them per unit is (:func:`_imputed_copies_are_not_combined_unrecorded`)."""
     if decision.repeat_kind != "imputed_copies":
         return
     columns = _columns_of(ctx)
@@ -489,17 +491,30 @@ def _imputed_copies_are_recorded(decision: SetRepeatKind, ctx: Any) -> None:
         raise Refusal("unknown_column",
                       f"This dataset has no column named `{decision.implicate_column}`.",
                       exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
+
+
+def _imputed_copies_are_not_combined_unrecorded(decision: SetUnit, ctx: Any) -> None:
+    """Audit I18 (MS3): under inference, combining a unit's imputed copies into one row treats imputed
+    values as measured (CDC: "The extra variability due to imputation CANNOT be incorporated by
+    simply analyzing a SINGLE dataset as if the imputed values were true values"), so it is blocked
+    and recorded; keeping each copy as a record lets the fit analyze each and pool them by Rubin's
+    rules, as NCHS directs."""
     state = _state(ctx)
-    if getattr(state, "purpose", None) != "inference" or decision.acknowledged:
+    spec = getattr(state, "repeat_kind", None)
+    if (decision.unit != "unit" or getattr(state, "purpose", None) != "inference" or spec is None
+            or getattr(spec, "repeat_kind", None) != "imputed_copies"
+            or getattr(spec, "acknowledged", False)):
         return
     raise Refusal(
-        "imputed_copies_unpooled",
-        f"Each unit's rows are imputed copies. Combining the estimates of each copy by Rubin's "
-        f"rules, as NHANES directs for its DXA files, is not built here, and {COPIES_CONCERN}. "
-        f"Under inference this is kept only as a recorded limitation.",
-        exits=[{"label": "Keep the copies, recorded: intervals too narrow",
-                "decision": decision.model_copy(update={"acknowledged": True})},
-               {"label": "Analyze each copy elsewhere and pool by Rubin's rules", "decision": None}])
+        "imputed_copies_combined",
+        f"Each unit's rows are imputed copies, and combining them into one row per unit means "
+        f"{COPIES_CONCERN}. Kept as records, each copy is analyzed as a completed dataset with its "
+        f"own outcome and the estimates are pooled by Rubin's rules, as NHANES directs for its DXA "
+        f"files.",
+        exits=[{"label": "Keep each copy as a record, pooled by Rubin's rules",
+                "decision": SetUnit(unit="row")},
+               {"label": "Combine them, recorded: intervals too narrow",
+                "decision": SetRepeatKind(**{**spec.model_dump(), "acknowledged": True})}])
 
 
 register_validator("set_lens", _other_lens_stands_alone)
@@ -508,6 +523,7 @@ register_validator("set_outcome_scale", _outcome_scale_fits)
 register_validator("set_roles", _log_outcome_source_is_no_predictor)
 register_validator("set_exclusions", _no_rule_on_the_outcome_source)
 register_validator("set_repeat_kind", _imputed_copies_are_recorded)
+register_validator("set_unit", _imputed_copies_are_not_combined_unrecorded)
 
 __all__ = [
     "COPIES_CONCERN", "LATER_RULES", "ORDERED_SCALES", "OTHER_LABEL", "OTHER_LENS", "SKEW_MARKED",

@@ -486,8 +486,10 @@ def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any]
     concerns = _concerns(design, var, n_domain, len(fit.estimate), left)
     if not fit.converged:
         concerns.append("The weighted fit stopped before converging; treat these numbers with care.")
+    # MS2: the covariance rides with the table, so multi-df tests (and D1 under multiple
+    # imputation, on the design's df) can read it.
     table = InferenceTable(rows, _info(estimator, _caption(design, var), design, var, n_domain),
-                           concerns)
+                           concerns, cov=(V + V.T) / 2)
     return table
 
 

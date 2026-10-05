@@ -1727,6 +1727,18 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
+            /**
+             * Imputation Model
+             * @default compatible
+             * @enum {string}
+             */
+            imputation_model: "compatible" | "passive";
+            /**
+             * Imputation Levels
+             * @default clustered
+             * @enum {string}
+             */
+            imputation_levels: "clustered" | "single_level";
         };
         /**
          * OpenSeal
@@ -2900,6 +2912,18 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason?: string | null;
+            /**
+             * Imputation Model
+             * @default compatible
+             * @enum {string}
+             */
+            imputation_model: "compatible" | "passive";
+            /**
+             * Imputation Levels
+             * @default clustered
+             * @enum {string}
+             */
+            imputation_levels: "clustered" | "single_level";
         };
         /**
          * SetMissing
@@ -2948,6 +2972,18 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
+            /**
+             * Imputation Model
+             * @default compatible
+             * @enum {string}
+             */
+            imputation_model: "compatible" | "passive";
+            /**
+             * Imputation Levels
+             * @default clustered
+             * @enum {string}
+             */
+            imputation_levels: "clustered" | "single_level";
         };
         /**
          * SetOrientation
@@ -4280,6 +4316,11 @@ export interface components {
              * @default null
              */
             fmi: number | null;
+            /**
+             * Mc Se
+             * @default null
+             */
+            mc_se: number | null;
         };
         /**
          * CohortArtifact
@@ -4808,7 +4849,7 @@ export interface components {
              * Test
              * @enum {string}
              */
-            test: "overall" | "nonlinear" | "trend";
+            test: "overall" | "nonlinear" | "trend" | "global";
             /** Statistic */
             statistic: number | null;
             /** Df Num */
@@ -5652,6 +5693,135 @@ export interface components {
              * @default null
              */
             note: string | null;
+            /**
+             * Model
+             * @default null
+             */
+            model: ("chained_equations" | "smcfcs" | "supplied") | null;
+            /**
+             * Compatible
+             * @default null
+             */
+            compatible: boolean | null;
+            /**
+             * Substantive
+             * @default null
+             */
+            substantive: ("linear" | "logistic" | "cox") | null;
+            /**
+             * Terms
+             * @default []
+             */
+            terms: string[];
+            /**
+             * Logged
+             * @default []
+             */
+            logged: string[];
+            /**
+             * Identity Energy
+             * @default null
+             */
+            identity_energy: string | null;
+            /**
+             * Identity Sources
+             * @default []
+             */
+            identity_sources: string[];
+            /**
+             * Identity Infeasible
+             * @default 0
+             */
+            identity_infeasible: number;
+            /**
+             * Design Strata
+             * @default null
+             */
+            design_strata: string | null;
+            /**
+             * Design Psu
+             * @default null
+             */
+            design_psu: string | null;
+            /**
+             * Design Weight
+             * @default null
+             */
+            design_weight: string | null;
+            /**
+             * Df Com
+             * @default null
+             */
+            df_com: number | null;
+            /**
+             * Unit
+             * @default null
+             */
+            unit: string | null;
+            /**
+             * Unit Level
+             * @default []
+             */
+            unit_level: string[];
+            /**
+             * Knots
+             * @default {}
+             */
+            knots: {
+                [key: string]: number[];
+            };
+            /**
+             * Cuts
+             * @default {}
+             */
+            cuts: {
+                [key: string]: number[];
+            };
+            /**
+             * M Asked
+             * @default null
+             */
+            m_asked: number | null;
+            /**
+             * Percent Incomplete
+             * @default null
+             */
+            percent_incomplete: number | null;
+            /**
+             * Rejection Failures
+             * @default 0
+             */
+            rejection_failures: number;
+            /**
+             * Mc Max Ratio
+             * @default null
+             */
+            mc_max_ratio: number | null;
+            /**
+             * Mc Feature
+             * @default null
+             */
+            mc_feature: string | null;
+            /**
+             * Copies
+             * @default null
+             */
+            copies: string[] | null;
+            /**
+             * Implicate
+             * @default null
+             */
+            implicate: string | null;
+            /**
+             * Tests D1
+             * @default 0
+             */
+            tests_d1: number;
+            /**
+             * Sentence
+             * @default null
+             */
+            sentence: string | null;
         };
         /**
          * MissingMethodOption
@@ -5698,6 +5868,11 @@ export interface components {
              * @default []
              */
             below_detection: components["schemas"]["MissingMethodOption"][];
+            /**
+             * Imputation Models
+             * @default []
+             */
+            imputation_models: components["schemas"]["MissingMethodOption"][];
         };
         /**
          * NestedColumn
@@ -6890,6 +7065,18 @@ export interface components {
              * @default null
              */
             reason: string | null;
+            /**
+             * Imputation Model
+             * @default compatible
+             * @enum {string}
+             */
+            imputation_model: "compatible" | "passive";
+            /**
+             * Imputation Levels
+             * @default clustered
+             * @enum {string}
+             */
+            imputation_levels: "clustered" | "single_level";
         };
         /** SetRepeatKind */
         SetRepeatKind: {
@@ -7402,6 +7589,16 @@ export interface components {
              * @default null
              */
             band_ok: number | null;
+            /**
+             * Pooled
+             * @default null
+             */
+            pooled: ("contrast" | "per_k") | null;
+            /**
+             * Df
+             * @default null
+             */
+            df: (number | null)[] | null;
         };
         /** SubstitutionPair */
         SubstitutionPair: {

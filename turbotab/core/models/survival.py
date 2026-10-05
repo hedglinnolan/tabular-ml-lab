@@ -454,10 +454,12 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
                             f"unit-level sums, and t({G - 1}) is the least allowance Cameron & "
                             f"Miller (2015) ask for.")
         covariance = "CR0"
+        cov = V
     else:
         rows = _z_rows(names, fit.beta, np.sqrt(np.clip(np.diag(fit.cov), 0, None)))
         caption = "95% Wald intervals from the Cox partial likelihood's information (Efron ties)."
         covariance = "model"
+        cov = fit.cov
     p = ph_test(X, y, fit)
     threshold = PH_ALPHA / max(1, len(names))
     flagged = [(pj, n) for pj, n in zip(p, names) if np.isfinite(pj) and pj < threshold]
@@ -467,7 +469,9 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
                         f"p = {format_p(float(pj))}, against {PH_ALPHA:g} shared over "
                         f"{len(names)} column{'s' if len(names) != 1 else ''}): it is then an "
                         f"average over follow-up, not one constant ratio.")
-    return InferenceTable(rows, _info(estimator, covariance, caption, clusters), concerns)
+    # MS3: the covariance rides with the table, so a spline's Wald tests (and D1 over imputations)
+    # can read it.
+    return InferenceTable(rows, _info(estimator, covariance, caption, clusters), concerns, cov=cov)
 
 
 # ── the family ───────────────────────────────────────────────────────────────
