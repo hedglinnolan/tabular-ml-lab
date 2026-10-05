@@ -673,6 +673,10 @@ function slotOf(d: Decision): Slot | null {
       return "joins";
     case "import_codebook":
       return "codebooks";
+    case "set_batch":
+      return "batch";
+    case "set_multiplicity":
+      return "multiplicity";
     case "revert":
       return null;
   }
@@ -788,6 +792,11 @@ function valueOf(d: Decision): ProjectState[Slot] {
     }
     case "set_outcome_scale":
       return d.scale === "log" ? `ln_${d.column}` : d.column;
+    case "set_batch":
+    case "set_multiplicity": {
+      const { kind: _k, ...value } = d;
+      return value as ProjectState[Slot];
+    }
     case "set_follow_up":
       return { time_column: d.time_column, entry_column: d.entry_column ?? null };
     case "set_censoring":
@@ -898,6 +907,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
     outcome_scale: null,
     joins: null,
     codebooks: null,
+    batch: null,
+    multiplicity: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

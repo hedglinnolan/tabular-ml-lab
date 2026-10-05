@@ -133,6 +133,10 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "joins";
     case "import_codebook":
       return "codebooks";
+    case "set_batch":
+      return "batch";
+    case "set_multiplicity":
+      return "multiplicity";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

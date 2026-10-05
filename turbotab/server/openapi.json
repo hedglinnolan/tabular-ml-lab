@@ -457,6 +457,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ImportCodebook-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetBatch-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMultiplicity-Input"
                   }
                 ],
                 "discriminator": {
@@ -506,7 +512,9 @@
                     "set_estimand": "#/components/schemas/SetEstimand-Input",
                     "set_adjustment": "#/components/schemas/SetAdjustment-Input",
                     "join_files": "#/components/schemas/JoinFiles-Input",
-                    "import_codebook": "#/components/schemas/ImportCodebook-Input"
+                    "import_codebook": "#/components/schemas/ImportCodebook-Input",
+                    "set_batch": "#/components/schemas/SetBatch-Input",
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Input"
                   }
                 },
                 "title": "Decision"
@@ -947,6 +955,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ImportCodebook-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetBatch-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMultiplicity-Input"
                   }
                 ],
                 "discriminator": {
@@ -996,7 +1010,9 @@
                     "set_estimand": "#/components/schemas/SetEstimand-Input",
                     "set_adjustment": "#/components/schemas/SetAdjustment-Input",
                     "join_files": "#/components/schemas/JoinFiles-Input",
-                    "import_codebook": "#/components/schemas/ImportCodebook-Input"
+                    "import_codebook": "#/components/schemas/ImportCodebook-Input",
+                    "set_batch": "#/components/schemas/SetBatch-Input",
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Input"
                   }
                 },
                 "title": "Decision"
@@ -2568,6 +2584,39 @@
         "title": "AskSettled",
         "description": "One reading the values settled for this consumer, no question asked\n(``readings.read_from_data``, the readings endpoint's own item)."
       },
+      "BatchSpec": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "covariate",
+              "reference_combat",
+              "outcome_combat",
+              "none",
+              "not_a_batch"
+            ],
+            "title": "Method"
+          },
+          "figures": {
+            "type": "boolean",
+            "title": "Figures",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "method",
+          "figures"
+        ],
+        "title": "BatchSpec"
+      },
       "Caution": {
         "properties": {
           "text": {
@@ -3658,6 +3707,12 @@
               },
               {
                 "$ref": "#/components/schemas/ImportCodebook-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetBatch-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetMultiplicity-Output"
               }
             ],
             "title": "Decision",
@@ -3679,6 +3734,7 @@
                 "select_models": "#/components/schemas/SelectModels",
                 "set_adjustment": "#/components/schemas/SetAdjustment-Output",
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
+                "set_batch": "#/components/schemas/SetBatch-Output",
                 "set_categorical": "#/components/schemas/SetCategorical",
                 "set_censoring": "#/components/schemas/SetCensoring-Output",
                 "set_clusters": "#/components/schemas/SetClusters-Output",
@@ -3694,6 +3750,7 @@
                 "set_lens": "#/components/schemas/SetLens",
                 "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                 "set_missing": "#/components/schemas/SetMissing-Output",
+                "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
                 "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                 "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
@@ -4423,6 +4480,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ImportCodebook-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetBatch-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMultiplicity-Output"
                   }
                 ],
                 "discriminator": {
@@ -4443,6 +4506,7 @@
                     "select_models": "#/components/schemas/SelectModels",
                     "set_adjustment": "#/components/schemas/SetAdjustment-Output",
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
+                    "set_batch": "#/components/schemas/SetBatch-Output",
                     "set_categorical": "#/components/schemas/SetCategorical",
                     "set_censoring": "#/components/schemas/SetCensoring-Output",
                     "set_clusters": "#/components/schemas/SetClusters-Output",
@@ -4458,6 +4522,7 @@
                     "set_lens": "#/components/schemas/SetLens",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                     "set_missing": "#/components/schemas/SetMissing-Output",
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                     "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
@@ -6888,7 +6953,8 @@
                 "enum": [
                   "half_minimum",
                   "censoring_aware",
-                  "as_missing"
+                  "as_missing",
+                  "qrilc"
                 ]
               },
               {
@@ -6936,6 +7002,31 @@
         ],
         "title": "MissingSpec",
         "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest.\n\n``m``: the imputations under multiple imputation. ``below_detection`` and ``censored_columns``:\nhow the blanks of columns whose values lie below a detection limit are filled. ``acknowledged``\nand ``reason``: the recorded attestation that keeps a blocked answer (a single fill or the\nmissing-indicator method under inference; a median fill of non-detections, with its reason)."
+      },
+      "MultiplicitySpec": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "bh",
+              "stated_count",
+              "none"
+            ],
+            "title": "Method"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method",
+          "acknowledged"
+        ],
+        "title": "MultiplicitySpec"
       },
       "OpenSeal-Input": {
         "properties": {
@@ -7784,6 +7875,26 @@
               }
             ],
             "title": "Codebooks"
+          },
+          "batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MultiplicitySpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -7830,7 +7941,9 @@
           "adjustment",
           "outcome_scale",
           "joins",
-          "codebooks"
+          "codebooks",
+          "batch",
+          "multiplicity"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -9121,6 +9234,87 @@
         ],
         "title": "SetAggregation"
       },
+      "SetBatch-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_batch",
+            "title": "Kind",
+            "default": "set_batch"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "covariate",
+              "reference_combat",
+              "outcome_combat",
+              "none",
+              "not_a_batch"
+            ],
+            "title": "Method"
+          },
+          "figures": {
+            "type": "boolean",
+            "title": "Figures",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "method"
+        ],
+        "title": "SetBatch",
+        "description": "How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``\nadds ComBat with the outcome protected for figures only: never the matrix the tests read."
+      },
+      "SetBatch-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_batch",
+            "title": "Kind",
+            "default": "set_batch"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "covariate",
+              "reference_combat",
+              "outcome_combat",
+              "none",
+              "not_a_batch"
+            ],
+            "title": "Method"
+          },
+          "figures": {
+            "type": "boolean",
+            "title": "Figures",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "method",
+          "figures"
+        ],
+        "title": "SetBatch",
+        "description": "How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``\nadds ComBat with the outcome protected for figures only: never the matrix the tests read."
+      },
       "SetCategorical": {
         "properties": {
           "kind": {
@@ -10259,7 +10453,8 @@
                 "enum": [
                   "half_minimum",
                   "censoring_aware",
-                  "as_missing"
+                  "as_missing",
+                  "qrilc"
                 ]
               },
               {
@@ -10353,7 +10548,8 @@
                 "enum": [
                   "half_minimum",
                   "censoring_aware",
-                  "as_missing"
+                  "as_missing",
+                  "qrilc"
                 ]
               },
               {
@@ -10402,6 +10598,71 @@
         ],
         "title": "SetMissing",
         "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both."
+      },
+      "SetMultiplicity-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_multiplicity",
+            "title": "Kind",
+            "default": "set_multiplicity"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "bh",
+              "stated_count",
+              "none"
+            ],
+            "title": "Method"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetMultiplicity",
+        "description": "How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):\nBenjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests\nstated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the\nrecorded attestation (``acknowledged``)."
+      },
+      "SetMultiplicity-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_multiplicity",
+            "title": "Kind",
+            "default": "set_multiplicity"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "bh",
+              "stated_count",
+              "none"
+            ],
+            "title": "Method"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method",
+          "acknowledged"
+        ],
+        "title": "SetMultiplicity",
+        "description": "How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):\nBenjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests\nstated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the\nrecorded attestation (``acknowledged``)."
       },
       "SetOrientation": {
         "properties": {
@@ -19806,6 +20067,47 @@
         "title": "SetAggregation",
         "type": "object"
       },
+      "SetBatch": {
+        "additionalProperties": false,
+        "description": "How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``\nadds ComBat with the outcome protected for figures only: never the matrix the tests read.",
+        "properties": {
+          "kind": {
+            "const": "set_batch",
+            "default": "set_batch",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "covariate",
+              "reference_combat",
+              "outcome_combat",
+              "none",
+              "not_a_batch"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "figures": {
+            "default": false,
+            "title": "Figures",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "method",
+          "figures"
+        ],
+        "title": "SetBatch",
+        "type": "object"
+      },
       "SetCensoring": {
         "additionalProperties": false,
         "description": "The follow-up question's \"no\" (audit RO-03): nobody's follow-up ended before the event could\nbe seen, so the yes/no outcome counts events over one period for everyone. Stands only while\n``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then\n``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that\nvaries (block and record).",
@@ -20379,7 +20681,8 @@
                 "enum": [
                   "half_minimum",
                   "censoring_aware",
-                  "as_missing"
+                  "as_missing",
+                  "qrilc"
                 ],
                 "type": "string"
               },
@@ -20428,6 +20731,39 @@
           "reason"
         ],
         "title": "SetMissing",
+        "type": "object"
+      },
+      "SetMultiplicity": {
+        "additionalProperties": false,
+        "description": "How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):\nBenjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests\nstated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the\nrecorded attestation (``acknowledged``).",
+        "properties": {
+          "kind": {
+            "const": "set_multiplicity",
+            "default": "set_multiplicity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "bh",
+              "stated_count",
+              "none"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "method",
+          "acknowledged"
+        ],
+        "title": "SetMultiplicity",
         "type": "object"
       },
       "SetRepeatKind": {

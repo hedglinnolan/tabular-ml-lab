@@ -7,7 +7,8 @@ def test_models_lists_every_family_with_what_it_assumes(client):
     assert response.status_code == 200
     body = response.json()
     assert [f["key"] for f in body] == ["linear", "elastic_net", "boosted_trees", "featurewise",
-                                        "proportional_odds", "mixed", "gee", "cox"]
+                                        "proportional_odds", "mixed", "gee", "cox",
+                                        "screened_elastic_net"]
     tasks = {
         # an ordered outcome stays on their shelf, as unordered classes, ranked lower (WP12a)
         "linear": {"regression", "binary", "multiclass", "ordinal"},
@@ -19,6 +20,7 @@ def test_models_lists_every_family_with_what_it_assumes(client):
         "mixed": {"regression"},
         "gee": {"regression", "binary"},
         "cox": {"time_to_event"},
+        "screened_elastic_net": {"regression", "binary"},  # MS7: in-fold screening at p ≫ n
     }
     for family in body:
         assert set(family) == {"key", "label", "tasks", "inductive_bias", "strengths", "cautions",
@@ -28,9 +30,12 @@ def test_models_lists_every_family_with_what_it_assumes(client):
         assert family["strengths"] and family["cautions"]
     predicting = [f for f in body if f["predicts"]]
     assert [f["key"] for f in predicting] == ["linear", "elastic_net", "boosted_trees",
-                                              "proportional_odds", "mixed", "gee", "cox"]
+                                              "proportional_odds", "mixed", "gee", "cox",
+                                              "screened_elastic_net"]
     for family in predicting:
-        assert set(family["purposes"]) == {"prediction", "inference"}
+        # MS7: screening chooses features from the outcome, so it serves prediction only.
+        expected = {"prediction"} if family["key"] == "screened_elastic_net" else {"prediction", "inference"}
+        assert set(family["purposes"]) == expected
     trees = body[2]
     assert trees["handles_missing"] and not trees["needs_scaling"]
     # WP11: the feature-wise tests serve inference only, and make no predictions.

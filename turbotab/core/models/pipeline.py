@@ -36,6 +36,12 @@ missing-values answer:
 Step order: detect → normalize → impute → energy adjustment → exposure form → levels → one-hot →
 scale → model.
 
+The omics order (MODELING_SEQUENCE §1.1, MS7): when a logged normalization covers a column whose
+values lie below a detection limit, its log waits for their fill — d_ratio (the in-fold D-ratio
+filter, when the pooled-QC answer asks for it) → normalize (PQN alone) → detect → log → impute →
+batch (ComBat with a reference batch, fitted on the training fold without the outcome) → … — so no
+zero or blank reaches the log, and batch correction precedes any screen a family adds.
+
 Omics values (AUDIT_REPORT §5 WP11): when the ``omics_scale`` finding's normalization is recorded,
 the exposures among its columns are normalized first — log-CPM with TMM factors, or quotient
 normalization and log2 (``turbotab.core.methods.omics``) — fit on each training fold like every
@@ -61,7 +67,7 @@ from turbotab.core.models.base import ModelFamily
 from turbotab.core.models.steps import energy_step
 
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
-ADJUST_STEPS = ("detect", "normalize", "impute", "energy")  # the steps whose outputs form the lineage's "adjusted" lane
+ADJUST_STEPS = ("d_ratio", "detect", "normalize", "log", "impute", "batch", "energy")  # the lineage's "adjusted" lane
 MANY_LEVELS = 20
 MISSING_LEVEL = "Missing"
 LEVEL_DTYPES = ("boolean", "categorical", "text")
@@ -294,6 +300,10 @@ class DesignSpec:
     censored: dict[str, Any] | None = None
     # numbers with exactly two values: one indicator either way, filled by their most frequent value
     two_valued: list[str] = field(default_factory=list)
+    # MS7: the batch step ``{column, method, columns, drop}`` (ComBat with a reference batch, in-fold
+    # and outcome-free), and the in-fold D-ratio filter ``{columns, qc_sd, threshold}``
+    batch: dict[str, Any] | None = None
+    d_ratio: dict[str, Any] | None = None
 
     def multiple_imputation(self) -> bool:
         return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
@@ -322,15 +332,20 @@ def input_columns(predictors: Sequence[str], adjustment: EnergyAdjustment | None
 
 
 def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[str],
-                energy: Any = STATE, column_info: Mapping[str, Any] | None = None) -> DesignSpec:
+                energy: Any = STATE, column_info: Mapping[str, Any] | None = None,
+                qc: Mapping[str, Any] | None = None) -> DesignSpec:
     """The spec for ``frame`` (raw inputs) under ``state``; ``energy`` overrides the state's slot.
 
     ``column_info`` (the table's column summaries) decides which predictors keep their blanks as
     a level (:func:`level_columns`); without it, ``frame`` does (:func:`frame_level_columns`).
+    ``qc`` holds the pooled QCs' standard deviations the working table recorded (MS7), which the
+    in-fold D-ratio filter divides by each training fold's own.
     """
     adj = state.energy_adjustment if isinstance(energy, str) and energy == STATE else energy
     predictors = [c for c in predictors]
-    wanted = set(input_columns(predictors, adj))
+    from turbotab.core.methods.batch import batch_inputs
+
+    wanted = set(input_columns(predictors, adj)) | set(batch_inputs(state))
     inputs = [c for c in frame.columns if c in wanted]
     # Text is a category; so is a numeric column the user said holds codes, wherever the answer
     # is kept (BLUEPRINT §14.3, every confirmation is honored): ``set_categorical`` (audit MA-15:
@@ -386,10 +401,15 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     roles = {str(k): str(v) for k, v in settled_roles(state).items()}
     spec_missing = state.missing.model_dump(mode="json") if getattr(state, "missing", None) else None
     censored = None
-    if spec_missing and spec_missing.get("below_detection") in ("half_minimum", "censoring_aware"):
+    if spec_missing and spec_missing.get("below_detection") in ("half_minimum", "censoring_aware",
+                                                                  "qrilc"):
         cols = [c for c in spec_missing.get("censored_columns") or [] if c in numeric]
         if cols:
             censored = {"method": spec_missing["below_detection"], "columns": cols}
+    from turbotab.core.methods.batch import design_batch
+    from turbotab.core.methods.qc_drift import design_d_ratio
+
+    normalization = design_normalization(state, inputs)
     return DesignSpec(
         predictors=predictors,
         inputs=inputs,
@@ -400,7 +420,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         roles=roles,
         levels=levels,
         indicators=bool(impute and state.missing is not None and state.missing.indicators),
-        normalization=design_normalization(state, inputs),
+        normalization=normalization,
         lenses=[str(k) for k in (getattr(state, "lens", None) or [])],
         exposure_forms=forms,
         missing=spec_missing,
@@ -408,6 +428,8 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
                                  [c for c in numeric if c not in levels]) if impute else None),
         censored=censored,
         two_valued=two_valued,
+        batch=design_batch(state, inputs, predictors, normalization),
+        d_ratio=design_d_ratio(state, inputs, qc),
     )
 
 
@@ -428,16 +450,31 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
     levels = [c for c in spec.levels if c in spec.predictors and c in spec.inputs]
     steps: list[tuple[str, Any]] = []
     censored = getattr(spec, "censored", None)
-    if censored and censored.get("columns"):
-        from turbotab.core.methods.missing import BelowDetectionFill
+    d_ratio = getattr(spec, "d_ratio", None)
+    if d_ratio and d_ratio.get("columns"):
+        from turbotab.core.methods.qc_drift import DRatioFilter
 
-        steps.append(("detect", BelowDetectionFill(list(censored["columns"]), str(censored["method"]))))
+        steps.append(("d_ratio", DRatioFilter(list(d_ratio["columns"]), dict(d_ratio["qc_sd"]),
+                                              float(d_ratio["threshold"]))))
+    from turbotab.core.methods.omics import splits_for_detection
+
+    split = splits_for_detection(spec.normalization, censored)
+    if censored and censored.get("columns") and not split:
+        steps.append(("detect", detect_step(spec)))
     if spec.normalization:
-        from turbotab.core.methods.omics import normalizer
+        from turbotab.core.methods.omics import logger, normalizer
 
-        step = normalizer(spec.normalization)
-        if step is not None:
-            steps.append(("normalize", step))
+        if split:
+            # MS7: normalization, then values below detection, then the log.
+            step = normalizer(spec.normalization, log=False)
+            if step is not None:
+                steps.append(("normalize", step))
+            steps.append(("detect", detect_step(spec)))
+            steps.append(("log", logger(spec.normalization)))
+        else:
+            step = normalizer(spec.normalization)
+            if step is not None:
+                steps.append(("normalize", step))
     if spec.impute:
         two = [c for c in getattr(spec, "two_valued", None) or [] if c not in levels]
         numeric = [c for c in spec.numeric if c not in levels]
@@ -464,9 +501,18 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
         if categorical:
             parts.append(("categorical", SimpleImputer(strategy="most_frequent",
                                                        keep_empty_features=True), categorical))
+        if d_ratio and d_ratio.get("columns"):
+            # The D-ratio filter drops columns in each fold, so the fill takes those still present.
+            parts = [(name, step, PresentColumns(cols)) for name, step, cols in parts]
         if parts:
             steps.append(("impute", ColumnTransformer(parts, remainder="passthrough",
                                                       verbose_feature_names_out=False)))
+    batch = getattr(spec, "batch", None)
+    if batch and batch.get("columns") and batch.get("column") in spec.inputs:
+        from turbotab.core.methods.batch import ReferenceComBat
+
+        steps.append(("batch", ReferenceComBat(list(batch["columns"]), str(batch["column"]),
+                                               drop=bool(batch.get("drop", True)))))
     step = energy_step(spec.energy_adjustment(), spec.predictors, spec.roles)
     if step is not None:
         steps.append(("energy", step))
@@ -484,6 +530,38 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
                                                   remainder="passthrough",
                                                   verbose_feature_names_out=False)))
     return steps
+
+
+class PresentColumns:
+    """A column selector for a ColumnTransformer part: the listed columns the frame still holds
+    (picklable, unlike a lambda)."""
+
+    def __init__(self, columns: Sequence[str]):
+        self.columns = list(columns)
+
+    def __call__(self, X: Any) -> list[str]:
+        return [c for c in self.columns if c in X.columns]
+
+
+def detect_step(spec: DesignSpec) -> Any:
+    """The fill of values below detection the spec records: half the minimum or censored-normal
+    (``methods.missing.BelowDetectionFill``), or QRILC (``methods.omics.QRILCFill``)."""
+    censored = spec.censored or {}
+    columns = list(censored.get("columns") or [])
+    method = str(censored.get("method"))
+    if method == "qrilc":
+        from turbotab.core.methods.omics import QRILCFill
+
+        block = list((spec.normalization or {}).get("columns") or []) or columns
+        return QRILCFill(list(dict.fromkeys([*block, *columns])), columns)
+    from turbotab.core.methods.omics import LogScaleCensoredFill, splits_for_detection
+
+    if method == "censoring_aware" and splits_for_detection(spec.normalization, censored):
+        # MS7: the columns are logged next, so the censored normal is fitted on the log scale.
+        return LogScaleCensoredFill(columns)
+    from turbotab.core.methods.missing import BelowDetectionFill
+
+    return BelowDetectionFill(columns, method)
 
 
 def family_steps(spec: DesignSpec, family: ModelFamily) -> list[tuple[str, Any]]:
@@ -568,8 +646,31 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
                    purpose: Purpose | None, n_matrix_columns: int | None = None) -> list[dict[str, str]]:
     """``[{key, label, detail}]`` for each step of this family's pipeline, in order."""
     out: list[dict[str, str]] = []
+    from turbotab.core.methods.omics import splits_for_detection
+
+    split = splits_for_detection(spec.normalization, getattr(spec, "censored", None))
     for name, step in family_steps(spec, family):
-        if name == "normalize":
+        if name == "normalize" and split:
+            from turbotab.core.methods.omics import describe_split
+
+            label, detail = describe_split(spec.normalization or {}, "normalize")
+            out.append({"key": "normalize", "label": label, "detail": detail})
+        elif name == "log":
+            from turbotab.core.methods.omics import describe_split
+
+            label, detail = describe_split(spec.normalization or {}, "log")
+            out.append({"key": "log", "label": label, "detail": detail})
+        elif name == "batch":
+            from turbotab.core.methods.batch import describe_step as describe_batch
+
+            label, detail = describe_batch(spec.batch or {})
+            out.append({"key": "batch", "label": label, "detail": detail})
+        elif name == "d_ratio":
+            from turbotab.core.methods.qc_drift import describe_d_ratio
+
+            label, detail = describe_d_ratio(spec.d_ratio or {})
+            out.append({"key": "d_ratio", "label": label, "detail": detail})
+        elif name == "normalize":
             from turbotab.core.methods.omics import describe as describe_normalization
 
             label, detail = describe_normalization(spec.normalization or {}) or ("Normalize", "")
@@ -653,6 +754,10 @@ def detect_detail(spec: DesignSpec) -> str:
     if censored.get("method") == "half_minimum":
         return (f"Blanks in {named} are values below detection: each becomes half the column's "
                 f"smallest detected value, learned within each training fold.")
+    if censored.get("method") == "qrilc":
+        return (f"Blanks in {named} are values below detection: each is drawn below its sample's "
+                f"detection quantile from the normal the sample's detected log values imply "
+                f"(QRILC), reading only that sample.")
     return (f"Blanks in {named} are values below detection: each becomes its expected value below "
             f"the smallest detected one under a censored-normal fit, learned within each training "
             f"fold without the outcome.")
@@ -738,7 +843,8 @@ def warnings_for(spec: DesignSpec, frame: pd.DataFrame, family_keys: Sequence[st
 
 __all__ = [
     "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "PREDICTOR_ROLES",
-    "build_pipeline", "describe_steps", "design_spec", "detect_detail", "energy_detail",
+    "PresentColumns", "build_pipeline", "describe_steps", "design_spec", "detect_detail",
+    "detect_step", "energy_detail",
     "family_steps", "impute_detail",
     "frame_level_columns", "input_columns", "is_categorical", "level_columns", "missing_as_level",
     "model_predictors", "modeling_frame", "normalize_frame", "predictors_from_roles",

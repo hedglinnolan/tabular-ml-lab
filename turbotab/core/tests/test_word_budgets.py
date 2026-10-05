@@ -331,6 +331,12 @@ def representative_decisions():
                                                    values="a median of 166, a human height only "
                                                           "in cm")],
                          n_entries=12, n_matched=10),
+        # MS7: how a batch column is handled, and an exposure family's multiplicity
+        d.SetBatch(column="batch", method="covariate", figures=True),
+        d.SetBatch(column="batch", method="reference_combat"),
+        d.SetBatch(column="batch", method="not_a_batch"),
+        d.SetMultiplicity(method="bh"),
+        d.SetMultiplicity(method="none", acknowledged=True),
     ]
 
 

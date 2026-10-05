@@ -722,6 +722,21 @@ export interface components {
             /** Change */
             change: components["schemas"]["AskExit"][];
         };
+        /** BatchSpec */
+        BatchSpec: {
+            /** Column */
+            column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "covariate" | "reference_combat" | "outcome_combat" | "none" | "not_a_batch";
+            /**
+             * Figures
+             * @default false
+             */
+            figures: boolean;
+        };
         /**
          * Caution
          * @description A concern the preview itself shows, inside the stage, with the control that acts on it
@@ -1159,7 +1174,7 @@ export interface components {
              */
             after_estimates: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"];
         };
         /**
          * DeferFinding
@@ -1362,7 +1377,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"]) | null;
         };
         /**
          * ExposureFormSpec
@@ -2324,7 +2339,7 @@ export interface components {
              */
             m: number;
             /** Below Detection */
-            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing" | "qrilc") | null;
             /** Censored Columns */
             censored_columns: string[];
             /**
@@ -2334,6 +2349,19 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
+        };
+        /** MultiplicitySpec */
+        MultiplicitySpec: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bh" | "stated_count" | "none";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * OpenSeal
@@ -2515,6 +2543,8 @@ export interface components {
             codebooks: {
                 [key: string]: components["schemas"]["CodebookSpec"];
             } | null;
+            batch: components["schemas"]["BatchSpec"] | null;
+            multiplicity: components["schemas"]["MultiplicitySpec"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -2972,6 +3002,54 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+        };
+        /**
+         * SetBatch
+         * @description How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``
+         *     adds ComBat with the outcome protected for figures only: never the matrix the tests read.
+         */
+        "SetBatch-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_batch";
+            /** Column */
+            column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "covariate" | "reference_combat" | "outcome_combat" | "none" | "not_a_batch";
+            /**
+             * Figures
+             * @default false
+             */
+            figures: boolean;
+        };
+        /**
+         * SetBatch
+         * @description How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``
+         *     adds ComBat with the outcome protected for figures only: never the matrix the tests read.
+         */
+        "SetBatch-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_batch";
+            /** Column */
+            column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "covariate" | "reference_combat" | "outcome_combat" | "none" | "not_a_batch";
+            /**
+             * Figures
+             * @default false
+             */
+            figures: boolean;
         };
         /**
          * SetCategorical
@@ -3505,7 +3583,7 @@ export interface components {
              */
             m: number;
             /** Below Detection */
-            below_detection?: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            below_detection?: ("half_minimum" | "censoring_aware" | "as_missing" | "qrilc") | null;
             /** Censored Columns */
             censored_columns?: string[];
             /**
@@ -3553,7 +3631,7 @@ export interface components {
              */
             m: number;
             /** Below Detection */
-            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing" | "qrilc") | null;
             /** Censored Columns */
             censored_columns: string[];
             /**
@@ -3563,6 +3641,54 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
+        };
+        /**
+         * SetMultiplicity
+         * @description How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):
+         *     Benjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests
+         *     stated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the
+         *     recorded attestation (``acknowledged``).
+         */
+        "SetMultiplicity-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_multiplicity";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bh" | "stated_count" | "none";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetMultiplicity
+         * @description How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):
+         *     Benjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests
+         *     stated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the
+         *     recorded attestation (``acknowledged``).
+         */
+        "SetMultiplicity-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_multiplicity";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bh" | "stated_count" | "none";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * SetOrientation
@@ -7307,6 +7433,31 @@ export interface components {
             acknowledged: boolean;
         };
         /**
+         * SetBatch
+         * @description How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``
+         *     adds ComBat with the outcome protected for figures only: never the matrix the tests read.
+         */
+        SetBatch: {
+            /**
+             * Kind
+             * @default set_batch
+             * @constant
+             */
+            kind: "set_batch";
+            /** Column */
+            column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "covariate" | "reference_combat" | "outcome_combat" | "none" | "not_a_batch";
+            /**
+             * Figures
+             * @default false
+             */
+            figures: boolean;
+        };
+        /**
          * SetCensoring
          * @description The follow-up question's "no" (audit RO-03): nobody's follow-up ended before the event could
          *     be seen, so the yes/no outcome counts events over one period for everyone. Stands only while
@@ -7616,7 +7767,7 @@ export interface components {
              * Below Detection
              * @default null
              */
-            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing" | "qrilc") | null;
             /** Censored Columns */
             censored_columns: string[];
             /**
@@ -7629,6 +7780,31 @@ export interface components {
              * @default null
              */
             reason: string | null;
+        };
+        /**
+         * SetMultiplicity
+         * @description How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):
+         *     Benjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests
+         *     stated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the
+         *     recorded attestation (``acknowledged``).
+         */
+        SetMultiplicity: {
+            /**
+             * Kind
+             * @default set_multiplicity
+             * @constant
+             */
+            kind: "set_multiplicity";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bh" | "stated_count" | "none";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** SetRepeatKind */
         SetRepeatKind: {
@@ -8811,7 +8987,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"];
             };
         };
         responses: {
@@ -9026,7 +9202,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"];
             };
         };
         responses: {

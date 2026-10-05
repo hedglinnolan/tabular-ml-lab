@@ -91,6 +91,8 @@ function view(): ProjectView {
       outcome_scale: null,
       joins: null,
       codebooks: null,
+      batch: null,
+      multiplicity: null,
     },
     decisions: [record(1)],
     stages: {

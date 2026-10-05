@@ -399,13 +399,25 @@ def design_stage(ctx: StageContext) -> Bundle:
     adj = state.energy_adjustment
     ctx.progress(0.05, f"Reading the {rows_word}")
     y_rows = None
+    from turbotab.core.methods.batch import batch_inputs
+    from turbotab.core.methods.batch import design_refusal as batch_refusal
+
     with open_store(ctx) as store:
-        X = modeling_frame(store, input_columns(predictors, adj), design_ids)
+        # MS7: the batch column a reference ComBat step reads, whether or not a model sees it.
+        X = modeling_frame(store, list(dict.fromkeys([*input_columns(predictors, adj),
+                                                      *batch_inputs(state)])), design_ids)
         info = {c.name: c for c in store.info().columns}  # every row's summary: as the cohort reads it
         if adj is not None and adj.method == "residual_energy_dropped" and state.target in store.columns:
             # The gap the energy-dropped residual opens on these rows (audit ME-03).
             y_rows = store.materialize([state.target], design_ids)[state.target]
-    spec = design_spec(state, X, predictors, column_info=info)
+        # MS7: a batch perfectly confounded with the outcome is refused under both purposes.
+        confounded = batch_refusal(state, store, design_ids, task)
+    if confounded:
+        raise ValueError(confounded)
+    from turbotab.core.methods.qc_drift import working_qc_sd
+
+    spec = design_spec(state, X, predictors, column_info=info,
+                       qc=working_qc_sd(ctx.inputs.get("working")))
     from turbotab.core.methods.omics import design_refusal
 
     refused = design_refusal(state, X, families)  # WP11: raw omics values into a linear family
@@ -1611,6 +1623,11 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
                                      event=state.event)
             if table.info.get("n_rows") is None:
                 table = _on_rows(table, len(X), rows)
+            if family.key == "featurewise" and not table.info.get("refused"):
+                # MS7: an exposure family's recorded multiplicity method (Benjamini–Hochberg implied).
+                from turbotab.core.methods.omics import apply_multiplicity, multiplicity_policy
+
+                table = apply_multiplicity(table, multiplicity_policy(state))
             if missing is not None:
                 missing.record(table)
             if survey is not None and survey.concern():

@@ -174,9 +174,11 @@ def build_graph() -> Graph:
             # findings 16 (audit WP18, RO-13): the pooled-QC level of a Case/Control/QC label is read by
             # variance, with a lever (exclude the reference rows) and text that is true; "something
             # else, or not sure" runs the generic checks alone (RO-11).
+            # findings 17 (wave 1, MS7): zeros a log cannot take, and a batch column's confounding with
+            # the outcome; the pooled-QC finding offers QC-RLSC and its filters beside the exclusion.
             Stage(
                 "findings",
-                16,
+                17,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
@@ -218,7 +220,9 @@ def build_graph() -> Graph:
             # is combined only as the user says.
             # working 7 (audit WP18): reference rows a recorded repair excludes leave here, before
             # the outcome is read and the seal drawn (RO-13); a log-scale outcome is derived (RO-10).
-            Stage("working", 7, ("oriented", "findings", "structure"),
+            # working 8 (wave 1, MS7): QC-RLSC, the QC filters and PQN against the pooled QCs run on
+            # every injection before the seal, and then the QC rows leave as reference rows.
+            Stage("working", 8, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical", "outcome_scale"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -314,7 +318,8 @@ def build_graph() -> Graph:
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
             # cohort 4 (WP17): complete cases read the predictors the adjustment answers keep.
             # cohort 5 (audit WP18, RO-13): reference rows the working table excluded are counted first.
-            Stage("cohort", 5, ("working", "target_info"),
+            # cohort 6 (wave 1, MS7): the pooled QCs a drift correction read leave as reference rows.
+            Stage("cohort", 6, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
                    *WP17_READS), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
@@ -331,7 +336,9 @@ def build_graph() -> Graph:
             # shelf 8 (the readings ledger): its predictors are the settled roles'.
             # shelf 9 (BLUEPRINT §14.3): a predictor's codes counted as the user answered, wherever kept.
             # shelf 10 (WP17): its predictors are the adjustment set's and the grouping's.
-            Stage("shelf", 10, ("working", "cohort", "target_info", "split"),
+            # shelf 11 (wave 1): the screened elastic net at p ≫ n under prediction (MS7); under the
+            # population answer the families with no design-based estimator rank last (MS4).
+            Stage("shelf", 11, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms",
@@ -371,9 +378,12 @@ def build_graph() -> Graph:
             # column they name; a text column recorded as amounts never one-hot encoded.
             # design 19 (WP17): the adjustment answers leave covariates out under inference; a
             # grouping answered "adjust for it" enters as fixed effects.
-            Stage("design", 19, ("working", "split", "target_info"),
+            # design 20 (wave 1, MS7): normalization, then values below detection, then the log; the
+            # in-fold D-ratio filter and reference ComBat; a batch confounded with the outcome refused.
+            Stage("design", 20, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event", "lens", "findings", "exposure_forms", "follow_up", *WP17_READS),
+                   "event", "lens", "findings", "exposure_forms", "follow_up", "batch",
+                   *WP17_READS),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -395,9 +405,11 @@ def build_graph() -> Graph:
             # user confirmed, never by a reader's identifier over the grain answer.
             # fit 15 (ledger repair 2): multiple imputation fills a number with two values as a yes/no.
             # fit 16 (WP17): the intervals cluster by the grouping the cluster question named.
-            Stage("fit", 16, ("working", "design", "split", "target_info", "cohort"),
+            # fit 17 (wave 1): an exposure family's recorded multiplicity method (MS7); under the
+            # population answer every family is design-based or blocked and recorded (MS4).
+            Stage("fit", 17, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
-                   *WP17_READS),
+                   "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
             # substitution 6: a swap can move a share of energy (WP12a); a random intercept's band
