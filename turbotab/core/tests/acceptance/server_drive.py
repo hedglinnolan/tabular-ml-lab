@@ -105,8 +105,38 @@ def answer_plan(drive: Any, exposure: str, *, effect: str = "total", contrast: s
             f"the adjustment card never named the exposure {exposure!r}: {card!r}; the state's "
             f"estimand {drive.view()['state'].get('estimand')!r}")
         time.sleep(0.05)
-    return answer_adjustment(
+    posted = answer_adjustment(
         lambda d: drive.c.post(f"/api/projects/{drive.pid}/decisions", json=d), card, drive.truth)
+    settle_forms(drive, timeout=timeout)
+    return posted
+
+
+def settle_forms(drive: Any, timeout: float = 240.0) -> None:
+    """FORM (MODELING_SEQUENCE §1 row 5): after the plan's questions, the form question, when the
+    Router holds it next (the domain transforms answered or not applicable), as a drive written
+    before it would answer it (:func:`answer_forms`); nothing when another question comes first."""
+    end = time.monotonic() + timeout
+    while True:
+        view = drive.c.get(f"/api/projects/{drive.pid}").json()
+        card = (view.get("stages") or {}).get("forms") or {}
+        if card.get("status") in ("idle", "queued", "running", "stale") and not card.get("cancelled"):
+            # The card is being read for these answers (a new covariate may need a form): the
+            # Router says what it asks once it is.
+            assert time.monotonic() < end, f"the form card never computed: {card}"
+            time.sleep(0.05)
+            continue
+        steps = view["interview"]
+        first = next((s for s in steps if s["status"] in ("open", "waiting")), None)
+        if first is None:
+            return
+        if first["key"] == "form":
+            if first["status"] == "open":
+                answer_forms(drive)
+                return
+        elif not (first["key"] in ("estimand", "adjustment") and first["status"] == "waiting"):
+            return  # another question first (the adjustment's card recomputing aside)
+        assert time.monotonic() < end, f"the form question never opened: {first}"
+        time.sleep(0.05)
 
 
 def answer_estimand(drive: Any, exposure: str, *, effect: str = "total",
@@ -135,7 +165,24 @@ def answer_estimand(drive: Any, exposure: str, *, effect: str = "total",
 
 
 # With the V2 causal row's time-varying exposure question (``turbotab/core/time_varying.py``).
-WP17_QUESTIONS = ("follow_up", "clusters", "estimand", "adjustment", "time_varying")
+WP17_QUESTIONS = ("follow_up", "clusters", "estimand", "adjustment", "time_varying", "form")
+
+
+def answer_forms(drive: Any) -> None:
+    """FORM (MODELING_SEQUENCE §1 row 5): the form question, as a drive written before it would
+    have to answer it: each column the card asks about takes the fixture's declared form
+    (``form:<column>``: a ``set_exposure_form`` body without its kind and column), else the form
+    the drive declared for it earlier (on the present scale), else a straight line, the form every
+    model had before the question was asked."""
+    from turbotab.core.tests.truths import forms_answer
+
+    card = drive.artifact("forms")
+    declared = drive.view()["state"].get("exposure_forms") or {}
+    body = forms_answer(card, declared, drive.truth)
+    if body is None:  # the card asks about nothing: the question does not apply
+        return
+    r = drive.c.post(f"/api/projects/{drive.pid}/decisions", json=body)
+    assert r.status_code == 200, r.text[:600]
 
 
 def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
@@ -197,6 +244,8 @@ def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
             r = post(next(e["decision"] for e in r.json()["error"]["exits"]
                           if (e["decision"] or {}).get("acknowledged")))
         assert r.status_code == 200, r.text[:600]
+    elif key == "form":
+        answer_forms(drive)
     else:
         from turbotab.core.decisions import EXPOSURE_FAMILY
 
@@ -235,10 +284,11 @@ class Drive:
     def answer_wp17_before(self, body: dict[str, Any]) -> bool:
         """WP17: answer, on the way (``answer_wp17``), the declared purpose's questions that hold the
         question ``body`` answers; nothing else is waited for here. True when one was answered."""
-        from turbotab.core.sequence import OUTCOME_QUESTIONS, question_of
+        from turbotab.core.sequence import ANSWERED_ANY_TIME, OUTCOME_QUESTIONS, question_of
 
         question = question_of(str(body.get("kind")))
-        if question is None or question in WP17_QUESTIONS:
+        # (FORM: one column's form is declared whenever the user sees it, holding nothing back)
+        if question is None or question in WP17_QUESTIONS or body.get("kind") in ANSWERED_ANY_TIME:
             return False
         answered = False
         for _ in range(len(WP17_QUESTIONS) + 1):

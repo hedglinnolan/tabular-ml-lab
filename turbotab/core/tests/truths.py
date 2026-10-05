@@ -246,3 +246,30 @@ def answer_adjustment(post: Callable[[dict[str, Any]], Any], card: dict[str, Any
             assert r.status_code == 200, (d, r.text[:600])
             posted.append(d)
     return posted
+
+
+# FORM (MODELING_SEQUENCE §1 row 5): the form question, as a drive written before it answers it.
+FORM_FIELDS = ("form", "knots", "cuts", "domain", "acknowledged")
+
+
+def forms_answer(card: dict[str, Any], declared: dict[str, Any] | None,
+                 truth: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """The ``set_forms`` answer for the form card: each column it asks about takes the fixture's
+    declared form (``form:<column>``: ``spline`` or ``spline:<k>``, ``linear``, ``quintiles``),
+    else the form the drive declared for it before (on its present scale now), else a straight
+    line, the form every model had before the question was asked. None when the card asks about
+    nothing (the question then does not apply)."""
+    if not card.get("needs"):
+        return None
+    forms: dict[str, Any] = {}
+    for need in card.get("needs") or []:
+        column = need["column"]
+        said = (truth or {}).get(f"form:{column}")
+        if said is not None:
+            form, _, k = str(said).partition(":")
+            forms[column] = {"form": form, **({"knots": int(k)} if k else {})}
+            continue
+        before = (declared or {}).get(column)
+        forms[column] = ({k: v for k, v in before.items() if k in FORM_FIELDS and v is not None}
+                         if before else {"form": "linear"})
+    return {"kind": "set_forms", "forms": forms}

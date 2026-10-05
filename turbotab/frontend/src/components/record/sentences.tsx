@@ -151,6 +151,11 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "usual_intake";
     case "set_explain":
       return "explain";
+    // FORM: the one-tap answer writes the forms; a declared modifier its own slot
+    case "set_forms":
+      return "exposure_forms";
+    case "set_modification":
+      return "modifications";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

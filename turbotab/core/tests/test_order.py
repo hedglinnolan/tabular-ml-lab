@@ -62,6 +62,9 @@ ANSWER = {
     "models": d.SelectModels(models=["linear"]),
     # The causal lane (turbotab/core/causal.py): stated under inference unless candidates are many
     "causal": d.SetCausal(exposure="protein_g", method="none"),
+    # FORM: the form question's one-tap answer, and a declared effect modifier
+    "form": d.SetForms(forms={"age": d.ExposureFormSpec(form="linear")}),
+    "modification": d.SetModification(modifier="age"),
     "substitution": d.SetSubstitution(donor="fat_g", recipient="protein_g"),
     "open_seal": d.OpenSeal(),
 }

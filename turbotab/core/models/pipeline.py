@@ -410,8 +410,12 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     from turbotab.core.methods.missing import energy_fill
     from turbotab.core.methods.omics import design_normalization
 
-    forms = {str(c): f.model_dump() for c, f in (getattr(state, "exposure_forms", None) or {}).items()
-             if c in present and c in numeric and f.form != "linear"}
+    # FORM (MODELING_SEQUENCE §2): only the forms declared on each column's present scale; a form a
+    # later transform left stale is asked again, never applied. A declared exposure's spline under
+    # inference carries the quintiles produced beside it.
+    from turbotab.core.methods.exposure_form import design_forms
+
+    forms = design_forms(state, present, numeric)
     # The roles the spec copies (the energy step, the energy-aware fill, the normalization) are the
     # settled ones only (BLUEPRINT §14.1, the readings ledger).
     from turbotab.core.readings import settled_roles

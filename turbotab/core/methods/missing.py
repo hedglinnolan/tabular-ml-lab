@@ -527,6 +527,12 @@ def nonlinear_terms(spec: Any, task: str | None = None) -> list[str]:
             out.append(f"a restricted cubic spline of {tick(column)}")
         elif kind == "quintiles":
             out.append(f"quintiles of {tick(column)}")
+        # FORM: the other nonlinear forms (MODELING_SEQUENCE §1 row 5) are nonlinear in the
+        # variable they are imputed from too.
+        elif kind == "zero_spline":
+            out.append(f"non-consumers of {tick(column)} apart and a spline among consumers")
+        elif kind in ("categories", "optimal"):
+            out.append(f"categories of {tick(column)}")
     adj = spec.energy_adjustment() if hasattr(spec, "energy_adjustment") else None
     if adj is not None and adj.method in ("residual", "residual_energy_dropped") and adj.log_transform:
         out.append(f"the log residual of {_named(adj.nutrients)} on {tick(adj.energy_column)}")
@@ -637,8 +643,7 @@ def fixed_forms(spec: Any, X: pd.DataFrame) -> dict[str, dict[str, Any]]:
     imputations"). The column the form receives (an energy-adjusted one, say) is computed from the
     raw inputs by the steps before the form, fit on every row with the values they need recorded;
     a row with a blank among them adds nothing."""
-    from turbotab.core.methods.exposure_form import (DEFAULT_KNOTS, _form_of, adjusted_forms,
-                                                     quantile_cuts, rcs_knots)
+    from turbotab.core.methods.exposure_form import _form_of, adjusted_forms, place
     from turbotab.core.models.pipeline import shared_steps, transformer
 
     forms = getattr(spec, "exposure_forms", None) or {}
@@ -652,18 +657,15 @@ def fixed_forms(spec: Any, X: pd.DataFrame) -> dict[str, dict[str, Any]]:
         frame = transformer(pre).fit(frame).transform(frame)
     out: dict[str, dict[str, Any]] = {}
     for column, form_spec in adjusted.items():
-        form, k = _form_of(form_spec)
-        if column not in frame.columns:
-            continue
+        form, _ = _form_of(form_spec)
+        if column not in frame.columns or form in ("linear", "optimal"):
+            continue  # FORM: a data-derived cut point is refused under imputation
         values = pd.to_numeric(frame[column], errors="coerce").to_numpy(dtype=float)
         values = values[np.isfinite(values)]
-        if form == "spline":
-            knots, notes = rcs_knots(values, k or DEFAULT_KNOTS)
-            out[column] = {"form": "spline", "knots": [float(v) for v in knots], "notes": list(notes),
-                           "n_observed": int(len(values))}
-        elif form == "quintiles":
-            out[column] = {"form": "quintiles", "cuts": [float(v) for v in quantile_cuts(values)],
-                           "n_observed": int(len(values))}
+        # FORM: what each form learns, placed once (``exposure_form.place``): a spline's knots and
+        # a declared exposure's companion quintile cut points, a mass at zero's knots among
+        # consumers, quintiles' or declared categories' cut points.
+        out[column] = place(form_spec, values)
     return out
 
 
@@ -678,14 +680,7 @@ class FixedForms(ExposureForms):
         self.fixed = fixed
 
     def fit(self, X: pd.DataFrame, y: Any = None) -> "FixedForms":
-        from turbotab.core.methods.exposure_form import QUINTILES, quantile_group
-
-        if not isinstance(X, pd.DataFrame):
-            raise TypeError("FixedForms needs a pandas DataFrame with named columns.")
-        self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
-        self.n_features_in_ = X.shape[1]
-        self.knots_, self.knot_notes_, self.cuts_ = {}, {}, {}
-        self.medians_, self.counts_ = {}, {}
+        self._start(X)
         fixed = dict(self.fixed or {})
         for column, (form, _) in self._plan().items():
             if column not in X.columns:
@@ -694,18 +689,9 @@ class FixedForms(ExposureForms):
             if column not in fixed:
                 raise ValueError(f"`{column}` has no knots or cut points placed on its observed values.")
             values = X[column].to_numpy(dtype=float, na_value=np.nan)
-            values = values[np.isfinite(values)]
-            if form == "spline":
-                self.knots_[column] = np.asarray(fixed[column]["knots"], dtype=float)
-                self.knot_notes_[column] = list(fixed[column].get("notes") or [])
-                continue
-            cuts = np.asarray(fixed[column]["cuts"], dtype=float)
-            group = quantile_group(values, cuts)
-            counts = np.bincount(group, minlength=QUINTILES)[:QUINTILES]
-            self.cuts_[column] = cuts
-            self.medians_[column] = np.array([float(np.median(values[group == g])) if counts[g]
-                                              else float("nan") for g in range(QUINTILES)])
-            self.counts_[column] = [int(c) for c in counts]
+            # FORM: every form adopts what was placed once (a quintile's median, its trend score,
+            # is still each copy's own).
+            self._adopt(column, {"form": form, **dict(fixed[column])}, values, strict=False)
         return self
 
 

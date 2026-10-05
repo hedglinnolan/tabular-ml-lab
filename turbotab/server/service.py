@@ -824,12 +824,20 @@ class ProjectService:
         # the cluster question asks about; WP18: the proposals for the ask card, whose "read from
         # your data" reads the roles, the outcome and the proposals as GET /readings does).
         # The causal lane: its card says whether the causal question is asked or stated; the
-        # time-varying lane (V2 causal row) reads whether the exposure changes within units.
+        # time-varying lane (V2 causal row) reads whether the exposure changes within units. FORM:
+        # the form question's card says which continuous terms it asks about.
         for stage in ("target_info", "oriented", "structure", "roles", "proposals", "causal_design",
-                      "time_varying"):
+                      "time_varying", "forms"):
             status = stages.get(stage)
             if status is not None and status.status == "fresh" and status.key:
                 artifacts[stage] = self._artifact(pid, stage, status.key, public=True)
+        if "forms" not in artifacts:
+            # FORM: while the card recomputes (a new exclusion, say), an answered form question
+            # stays answered on the card last computed; it is asked again once the fresh card
+            # lists a column with no form.
+            shown = self._shown(pid, "forms")
+            if isinstance(shown, dict):
+                artifacts["forms_shown"] = shown
 
         def column_info() -> Any:
             ingest = stages.get("ingest")

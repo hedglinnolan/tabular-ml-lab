@@ -433,7 +433,10 @@ MAX_BOOT = 2000
 # The scale a substitution moves energy on: kcal (the same amount on every row), or a share of each
 # row's own total energy, "5% of energy from X replaced by Y", the field's expected figure
 # (NUTRITION_PACK §05; audit B24, D19).
-SubstitutionScale = Literal["kcal", "percent_energy"]
+# "share_reallocation" (a compositional, isometric log-ratio reallocation of shares) is named so that
+# a request for it is refused with its reason, never silently read as a kcal swap: MODELING_SEQUENCE
+# §0 ruling 11 sends it to v2.x (``methods.exposure_form``'s refusal offers the kcal substitution).
+SubstitutionScale = Literal["kcal", "percent_energy", "share_reallocation"]
 
 
 class SubstitutionSpec(_Value):
@@ -970,25 +973,72 @@ class SetCategorical(_DecisionModel):
 
 
 # WP12a (audit ME-17, ME-19): the form an exposure takes, and the order of an ordinal outcome.
+# FORM (MODELING_SEQUENCE §1 row 5): declared cut points ("categories"), a data-derived "optimal"
+# cut point (blocked and recorded under inference), and a food with many non-consumers'
+# "zero_spline" (non-consumers their own category, a spline among consumers).
 
-ExposureFormKind = Literal["linear", "spline", "quintiles"]
+ExposureFormKind = Literal["linear", "spline", "quintiles", "categories", "optimal", "zero_spline"]
+FormDomain = Literal["all", "consumers"]
 
 
 class ExposureFormSpec(_Value):
     """How one numeric predictor enters the models: a straight line, a restricted cubic spline
-    (``knots`` 3–5, at Harrell's percentiles), or quintile indicators with a trend test."""
+    (``knots`` 3–5, at Harrell's percentiles; ``knots_rule`` "harrell" when k was set by the
+    declared rule on ``n_effective``), quintile indicators with a trend test, indicators at declared
+    cut points (``cuts``), one data-derived cut point, or, for an exposure with a mass at zero,
+    non-consumers as their own category beside a spline among consumers. ``domain`` "consumers"
+    restricts the analysis to consumers (an estimand change, STROBE-nut nut-14). ``acknowledged``
+    keeps a blocked-and-recorded form as a recorded limitation. ``scale`` is the exposure's
+    transform as it stood when the form was declared (``methods.exposure_form.transform_signature``):
+    a later transform makes the form stale, re-asked and never kept. ``unit`` is the unit the
+    estimate is per, on that scale (the estimand's unit)."""
 
     form: ExposureFormKind
     knots: int | None = Field(default=None, ge=3, le=5)
+    knots_rule: Literal["harrell"] | None = None
+    n_effective: float | None = None
+    cuts: list[float] | None = None
+    domain: FormDomain = "all"
+    acknowledged: bool = False
+    scale: str | None = None
+    unit: str | None = None
 
 
 class SetExposureForm(_DecisionModel):
-    """The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."""
+    """The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.
+    Left without ``knots``, a spline takes k by the declared rule on the analyzed rows (the
+    completion records it); ``scale`` and ``unit`` are the server's."""
 
     kind: Literal["set_exposure_form"] = "set_exposure_form"
     column: str = Field(min_length=1)
     form: ExposureFormKind
     knots: int | None = Field(default=None, ge=3, le=5)
+    knots_rule: Literal["harrell"] | None = None
+    n_effective: float | None = None
+    cuts: list[float] | None = None
+    domain: FormDomain = "all"
+    acknowledged: bool = False
+    scale: str | None = None
+    unit: str | None = None
+
+    @field_validator("cuts")
+    @classmethod
+    def _increasing(cls, value: list[float] | None) -> list[float] | None:
+        if value is not None and (not value or any(b <= a for a, b in zip(value, value[1:]))):
+            raise ValueError("cut points are one or more values, each above the one before")
+        return value
+
+    def spec(self) -> ExposureFormSpec:
+        return ExposureFormSpec(**self.model_dump(exclude={"kind", "column"}))
+
+
+class SetForms(_DecisionModel):
+    """The form question's one-tap answer (MODELING_SEQUENCE §1 row 5; BLUEPRINT §14.2): a form for
+    each listed column, the exposure's and its continuous confounders', each checked and completed
+    as its own ``set_exposure_form`` would be."""
+
+    kind: Literal["set_forms"] = "set_forms"
+    forms: dict[str, ExposureFormSpec] = Field(min_length=1)
 
 
 class SetOutcomeOrder(_DecisionModel):
@@ -1257,6 +1307,53 @@ class SetAdjustment(_DecisionModel):
     kind: Literal["set_adjustment"] = "set_adjustment"
     exposure: str = Field(min_length=1)
     answers: dict[str, CovariateAnswers] = Field(min_length=1)
+
+
+# FORM (MODELING_SEQUENCE §1 row 7, §2; Knol & VanderWeele 2012): effect modification (the
+# exposure's effect across strata of a modifier, on the exposure's own adjustment set) and
+# interaction (the joint effect of two exposures, the adjustment set asked again for the second).
+ModificationKind = Literal["effect_modification", "interaction"]
+
+
+class ModificationSpec(_Value):
+    """One declared modifier or second exposure (``turbotab.core.methods.interaction``).
+
+    ``exposure`` is the declared exposure the analysis is about (it holds while that is the
+    exposure); ``low`` and ``high`` its contrast on its final scale (None: the interquartile
+    contrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th
+    percentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure
+    of an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates
+    were seen, or so marked); it counts in the family either way."""
+
+    kind: ModificationKind
+    exposure: str | None = None
+    low: float | None = None
+    high: float | None = None
+    levels: list[float] | None = None
+    answers: dict[str, CovariateAnswers] = Field(default_factory=dict)
+    post_hoc: bool = False
+
+
+class SetModification(_DecisionModel):
+    """Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."""
+
+    kind: Literal["set_modification"] = "set_modification"
+    modifier: str = Field(min_length=1)
+    modification: ModificationKind = "effect_modification"
+    exposure: str | None = None
+    low: float | None = None
+    high: float | None = None
+    levels: list[float] | None = None
+    answers: dict[str, CovariateAnswers] = Field(default_factory=dict)
+    post_hoc: bool = False
+    withdraw: bool = False
+
+    def spec(self) -> ModificationSpec | None:
+        if self.withdraw:
+            return None
+        return ModificationSpec(kind=self.modification, exposure=self.exposure, low=self.low,
+                                high=self.high, levels=self.levels, answers=dict(self.answers),
+                                post_hoc=self.post_hoc)
 
 
 class ModelSequenceSpec(_Value):
@@ -1702,6 +1799,7 @@ Decision = Annotated[
         SetCausal,
         SetTimeVarying,
         SetExplain,
+        SetForms, SetModification,
     ],
     Field(discriminator="kind"),
 ]
@@ -1846,6 +1944,22 @@ class ProjectState(BaseModel):
     time_varying: TimeVaryingSpec | None = None
     # Wave 2, EXPLAIN: how the fitted models are described (``turbotab/core/models/explain.py``)
     explain: ExplainSpec | None = None
+    # FORM (MODELING_SEQUENCE §1 row 7): each declared effect modifier or second exposure, by its
+    # column (None once withdrawn; ``turbotab/core/methods/interaction.py``)
+    modifications: dict[str, ModificationSpec | None] | None = None
+    # FORM: the declared exposure's consumers-only domain (an estimand change, STROBE-nut nut-14),
+    # by column, kept apart from the forms so that a form answer never reshapes the participant
+    # flow; only "consumers" entries are kept
+    form_domains: dict[str, FormDomain] | None = None
+
+    @field_validator("form_domains", mode="after")
+    @classmethod
+    def _consumers_only(cls, value: Any) -> Any:
+        """FORM: "all" is the default domain, so only a consumers-only entry is held."""
+        if not value:
+            return None
+        kept = {c: v for c, v in value.items() if v == "consumers"}
+        return kept or None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -2240,8 +2354,16 @@ register_kind(SetFeatureTable, "feature_table",
               value=lambda d: FeatureTableSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetCategorical, "categorical")
 register_kind(SetSurvey, "survey", value=lambda d: SurveySpec(**d.model_dump(exclude={"kind"})))
-register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column,
-              value=lambda d: ExposureFormSpec(form=d.form, knots=d.knots))
+register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column, value=lambda d: d.spec(),
+              confirms=lambda d: [("form_domains", d.column, d.domain)])
+# FORM: the form question's one-tap answer writes each column's entry where ``set_exposure_form``
+# would, so a later answer for one column stands over it.
+register_kind(SetForms, "exposure_forms", value=lambda d: None,
+              entries=lambda d: [*(("exposure_forms", column, spec)
+                                   for column, spec in d.forms.items()),
+                                 *(("form_domains", column, spec.domain)
+                                   for column, spec in d.forms.items())])
+register_kind(SetModification, "modifications", key=lambda d: d.modifier, value=lambda d: d.spec())
 register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetFollowUp, "follow_up",
@@ -4273,15 +4395,18 @@ def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
     cc = {"label": "Complete cases, with their assumption stated",
           "decision": _missing_base(decision, strategy="complete_case", acknowledged=False)}
     if decision.imputation_model == "passive":
+        # FORM: every nonlinear form, the declared categories and a mass at zero's among them.
+        words = {"spline": "restricted cubic spline", "quintiles": "quintile form",
+                 "categories": "categorical form", "optimal": "categorical form",
+                 "zero_spline": "spline among consumers"}
         forms = {c: f for c, f in (getattr(state, "exposure_forms", None) or {}).items()
-                 if getattr(f, "form", None) in ("spline", "quintiles")}
+                 if getattr(f, "form", None) in words}
         adj = getattr(state, "energy_adjustment", None)
         logged = adj is not None and ((adj.method in ("residual", "residual_energy_dropped")
                                        and adj.log_transform)
                                       or adj.method in ("density", "density_multivariate"))
         if forms or logged:
-            named = [f"a {'restricted cubic spline' if f.form == 'spline' else 'quintile form'} of "
-                     f"`{c}`" for c, f in forms.items()]
+            named = [f"a {words[f.form]} of `{c}`" for c, f in forms.items()]
             if logged:
                 named.append("the energy model's log or ratio")
             # each phrase already ticks its column, so the phrases are joined as words (``_and``
@@ -4535,12 +4660,14 @@ def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
     to a spline only."""
     linear = {"label": f"Keep `{decision.column}` a straight line",
               "decision": SetExposureForm(column=decision.column, form="linear")}
-    if decision.knots is not None and decision.form != "spline":
+    # FORM: a mass at zero's spline among consumers has knots too (``methods.exposure_form``).
+    if decision.knots is not None and decision.form not in ("spline", "zero_spline"):
         raise Refusal(
             "knots_without_spline",
             f"Knots belong to a spline; the {decision.form} form has none.",
             exits=[{"label": f"{decision.form.capitalize()} without knots",
-                    "decision": SetExposureForm(column=decision.column, form=decision.form)}])
+                    "decision": SetExposureForm(column=decision.column, form=decision.form,
+                                                cuts=decision.cuts, domain=decision.domain)}])
     columns = _columns_of(ctx)
     if columns is not None and (decision.column not in columns or decision.column == ROW_ID):
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
@@ -4984,3 +5111,7 @@ from turbotab.core import usual_intake as _usual_intake  # noqa: E402,F401
 from turbotab.core import causal as _causal  # noqa: E402,F401
 # V2 causal row: a time-varying exposure by g-methods (its gate, refusals and §13 contract).
 from turbotab.core import time_varying as _time_varying  # noqa: E402,F401
+# FORM (MODELING_SEQUENCE §1 rows 5 and 7): the functional form's and the declared modifiers'
+# refusals, completions, sentences and contracts.
+from turbotab.core.methods import exposure_form as _exposure_form  # noqa: E402,F401
+from turbotab.core.methods import interaction as _interaction  # noqa: E402,F401

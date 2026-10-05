@@ -42,7 +42,7 @@ from turbotab.core import readings as R
 from turbotab.core.decisions import ProjectState
 from turbotab.core.tests.acceptance import gate6_fixtures as g6
 from turbotab.core.tests.acceptance.server_drive import (
-    Truth, _post_when_reached, local_server, open_project,
+    Truth, _post_when_reached, local_server, open_project, settle_forms,
 )
 from turbotab.core.tests.acceptance.test_discriminate import (
     answers, coefficients, drive_unsettled, fit_refused_without_a_number, ols, write,
@@ -231,8 +231,13 @@ def test_a1_a_text_bmi_confirmed_an_amount_first_is_one_slope(tmp_path):
         r = drive.post({"kind": "confirm_reading", "reading": "code_or_count", "column": "bmi",
                         "value": "amount"})
         assert r.status_code == 200, r.text[:400]
-        r = _post_when_reached(client, f"/api/projects/{drive.pid}/decisions", plan["models"])
+        # FORM: `bmi`, now a continuous confounder, is asked its form (a straight line, as before)
+        r = _post_when_reached(client, f"/api/projects/{drive.pid}/decisions", plan["models"],
+                               unblock=lambda: drive.answer_wp17_before(plan["models"]))
         assert r.status_code == 200, r.text[:600]
+        # The form card recomputes for `bmi` read as numbers; while it does the question waits and
+        # the models are recorded, so it is answered once it opens (the fit waits for it).
+        settle_forms(drive)
         coef = coefficients(drive.artifact("fit", timeout=600))
         working = drive.c.get(f"/api/projects/{drive.pid}/stages/working").json()["artifact"]
     assert set(coef) == {"(intercept)", "age", "bmi"}, set(coef)
