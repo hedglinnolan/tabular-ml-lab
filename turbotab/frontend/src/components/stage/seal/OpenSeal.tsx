@@ -17,7 +17,7 @@ import { motion } from "motion/react";
 import { isRefusalError } from "../../../api/client";
 import type { FitArtifact, SplitArtifact } from "../../../api/m1-stage-types";
 import { keys, useDecide } from "../../../api/queries";
-import type { Decision, ProjectView } from "../../../api/schema";
+import type { Decision, ProjectView, Refusal } from "../../../api/schema";
 import { useTransitions } from "../../../motion/prefs";
 import { fmtInt } from "../format";
 import { Rich } from "../text";
@@ -103,15 +103,20 @@ export function OpenSealCard({
 }) {
   const decide = useDecide(pid);
   const qc = useQueryClient();
-  const [refused, setRefused] = useState<string | null>(null);
+  const [refused, setRefused] = useState<Refusal | null>(null);
   const families = fit.models.length;
   const glyph = glyphOf(split?.basis?.state);
   const exploratory = isExploratory(split?.basis?.state, split?.exploratory);
-  const open = () => {
+  // With several families the opening names the final one, declared on cross-validation before
+  // any held-out score is seen (WP8): the server's refusal offers each, and pressing one opens.
+  const open = (decision: Decision = { kind: "open_seal" } as Decision) => {
     setRefused(null);
-    decide.mutate({ kind: "open_seal" } as Decision, {
+    decide.mutate(decision, {
       onSuccess: () => void qc.invalidateQueries({ queryKey: keys.stage(pid, "fit"), exact: true }),
-      onError: (e) => setRefused(isRefusalError(e) ? e.refusal.error.message : e.message),
+      onError: (e) =>
+        setRefused(
+          isRefusalError(e) ? e.refusal : { error: { code: "failed", message: e.message, exits: [] } },
+        ),
     });
   };
   return (
@@ -136,15 +141,35 @@ export function OpenSealCard({
         ) : null}
       </p>
       <div className={s.conExits}>
-        <button type="button" className={s.conAttest} onClick={open} disabled={decide.isPending} data-testid="open-seal">
+        <button type="button" className={s.conAttest} onClick={() => open()} disabled={decide.isPending} data-testid="open-seal">
           {decide.isPending ? "Opening…" : "I'm done choosing: open the seal"}
         </button>
         <span className={s.conOr}>or keep choosing; nothing is opened until you press it.</span>
       </div>
       {refused ? (
-        <p className={s.conRefused} role="alert" data-testid="open-seal-refused">
-          <Rich text={`Not opened: ${refused}`} />
-        </p>
+        <div role="alert" data-testid="open-seal-refused">
+          <p className={s.conRefused}>
+            <Rich text={`Not opened: ${refused.error.message}`} />
+          </p>
+          {refused.error.exits.some((x) => x.decision) ? (
+            <div className={s.conExits}>
+              {refused.error.exits.map((x) =>
+                x.decision ? (
+                  <button
+                    key={x.label}
+                    type="button"
+                    className={s.conAttest}
+                    disabled={decide.isPending}
+                    onClick={() => open(x.decision as Decision)}
+                    data-testid="open-seal-exit"
+                  >
+                    <Rich text={x.label} />
+                  </button>
+                ) : null,
+              )}
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

@@ -1,0 +1,395 @@
+/* The generic question and the ask card: the user acts in sans, data is mono, the app's
+   evidence serif (§03). Tokens only (§02): no hue is new, none is decoration. */
+
+.data {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--serif);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin: 2px 0 10px;
+}
+
+.inlineFields {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.segment {
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.segment:hover {
+  border-color: var(--accent);
+}
+
+.segment[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 62ch;
+}
+
+.check {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 5px 10px 6px 28px;
+  position: relative;
+  color: var(--ink);
+}
+
+.check::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+}
+
+.check[aria-checked="true"] {
+  border-color: var(--accent);
+}
+
+.check[aria-checked="true"]::before {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+/* An assumption the data contradict: the coach's color on its marker, the words say why. */
+.check[data-status="violated"]::after {
+  content: "violated";
+  position: absolute;
+  right: 9px;
+  top: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--warn);
+}
+
+.choiceLabel {
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.choiceLine {
+  font-family: var(--serif);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.labels {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.label {
+  line-height: 1.4;
+}
+
+.labelKey {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 5px;
+}
+
+.source {
+  color: var(--faint);
+}
+
+.reason {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: baseline;
+}
+
+.more {
+  border: 1px dashed var(--line);
+  background: none;
+  border-radius: 7px;
+  padding: 0 7px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.note {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ── the matrix: answers asked of each column ─────────────────────────────── */
+
+.matrix {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.matrixHead {
+  margin: 0 0 6px;
+  font-family: var(--serif);
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+
+.matrixScroll {
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th,
+.table td {
+  padding: 3px 8px 3px 0;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table thead th {
+  font-weight: 600;
+  color: var(--muted);
+  max-width: 180px;
+}
+
+/* ── the ask card (BLUEPRINT §14.2) ───────────────────────────────────────── */
+
+.ask {
+  margin: 10px 0 12px;
+  padding: 10px 12px 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.askHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+
+.askTitle {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15.5px;
+  font-weight: 700;
+}
+
+.askConsumer {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.askList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.askRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 5px 12px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.askRow:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* A guess below high confidence: the coach's dot, look at this one (§14 rule 2). */
+.attention {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  vertical-align: 1px;
+}
+
+.askWhat {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+}
+
+.askEvidence {
+  display: block;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The user's change of a guess: an action, so sans (§03), never wider than its words need. */
+.askSelect {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  max-width: 200px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 3px 6px;
+}
+
+.askControls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.askAll {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.exits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.read {
+  margin-top: 9px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.readToggle {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: var(--fs-kicker);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.readToggle:hover {
+  color: var(--ink);
+}
+
+.readList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+}
+
+.readItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 8px;
+}
+
+.readWords {
+  font-family: var(--serif);
+  color: var(--ink);
+}
+
+/* ── undo on a recorded sentence ──────────────────────────────────────────── */
+
+.undoAnswer {
+  margin-top: 6px;
+}

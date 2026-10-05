@@ -388,6 +388,52 @@ researcher knows best. It is **too loose** when it offers an unsound choice with
 stays silent where errors are likely. Audits grade every decision as too tight, right, or too loose.
 
 
+### 11.4 · The living methods section: progressive disclosure instead of modes (Nolan, 2026-10-05)
+
+**No Quick/Advanced mode.** A global mode mixes two different things: who the user is, and how much
+a decision matters. Users choose the wrong mode and rarely switch, and a mode doubles every flow and
+every test. The "Quick vs Advanced" item in MODELING_SEQUENCE §8 is withdrawn.
+
+**The Record is the living methods section.** The app drafts it and organizes it by the purpose's
+reporting guideline: STROBE-nut under inference, TRIPOD+AI under prediction. Every decision is a
+sentence in one of three tiers, each decided per decision by its consequence (§11.3, §14.2):
+- **Stated:** the decision is written in, with its changeable phrase marked ("Energy was adjusted by
+  the [residual method]"). Clicking the phrase plays the alternatives on the canvas.
+- **Asked:** the decision is a slot to fill, with the best guess and its evidence ("The exposure was
+  [choose: `fiber`, guessed from your roles]"). The analysis cannot run until the slots that matter
+  are filled.
+- **Silent:** the decision changes no number. It appears only in the export.
+
+Sections that are not ready yet say what they are waiting on. The Record, the methods export and
+the TRIPOD+AI / STROBE-nut checklists become one artifact. A checklist item with no answer is a
+slot, and the items only an author can supply (ethics, funding, dates) are marked as such.
+
+**Progressive disclosure, the video-game tutorial standard (Nolan).**
+1. **The level teaches.** The canvas shows each choice's consequence on the user's own data. Text is
+   the fallback, not the lesson (§11).
+2. **One mechanic at a time, just in time.** A concept is taught at the first decision that uses
+   it. Each concept's explanation then condenses to a phrase the user can expand. The fading is per
+   concept and automatic, with no setting.
+3. **Failing is cheap.** Every choice is previewed before it is recorded, every decision can be
+   undone, and the seal is guarded.
+4. **Shortcuts unlock with mastery, not with a setting.** Example: after confirming guesses one at a
+   time, the section offers a block confirm that lists each reading it settles. Keyboard movement
+   is offered once the user has moved by pointer.
+5. **A map and an objective list.** The banner shows the whole pipeline. The open slots are the
+   objectives, and "next slot" walks a newcomer through them one question at a time, with the rest
+   of the document dimmed as the map. An expert scans the same document and edits phrases directly.
+
+**The one place this departs from games: mastery changes what is explained and which shortcuts
+appear, never what is asked.** The slots that matter scientifically (the leash) are asked of
+everyone, every time.
+
+**Also in the results:** after the plan is locked, "Which of my decisions mattered?" shows a
+specification curve: the estimate across the declared alternatives (secondary analyses), as
+sensitivity and never as a way to choose.
+
+**For v2.x (INBOX):** portable plans, meaning one project's plan applied to new data, and a plan
+written from the codebook before the data arrive.
+
 ## 12 · Methodology rulings after the ground-up audit (Nolan, 2026-10-02)
 
 The audit (`audit/AUDIT_REPORT.md`) found the engine internally consistent but not yet

@@ -11719,6 +11719,125 @@ export interface components {
             /** N */
             n: number;
         };
+        /** ScaleCorrection */
+        ScaleCorrection: {
+            /** Family */
+            family: string;
+            /** Feature */
+            feature: string;
+            /** Naive */
+            naive: number;
+            /**
+             * Naive Ci Low
+             * @default null
+             */
+            naive_ci_low: number | null;
+            /**
+             * Naive Ci High
+             * @default null
+             */
+            naive_ci_high: number | null;
+            /**
+             * P
+             * @default null
+             */
+            p: number | null;
+            /** Estimate */
+            estimate: number;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+            /**
+             * Scale
+             * @default difference
+             * @enum {string}
+             */
+            scale: "difference" | "odds_ratio";
+            /**
+             * Ratio
+             * @default null
+             */
+            ratio: number | null;
+            /**
+             * Ratio Low
+             * @default null
+             */
+            ratio_low: number | null;
+            /**
+             * Ratio High
+             * @default null
+             */
+            ratio_high: number | null;
+            /**
+             * Naive Ratio
+             * @default null
+             */
+            naive_ratio: number | null;
+            /** Attenuation */
+            attenuation: number;
+            /**
+             * Error Variance
+             * @default null
+             */
+            error_variance: number | null;
+            /**
+             * Covariates
+             * @default []
+             */
+            covariates: string[];
+            /**
+             * Jointly
+             * @default []
+             */
+            jointly: string[];
+            /**
+             * Clustered By
+             * @default null
+             */
+            clustered_by: string | null;
+            /**
+             * N Clusters
+             * @default null
+             */
+            n_clusters: number | null;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /**
+             * N Boot
+             * @default 0
+             */
+            n_boot: number;
+            /**
+             * N Boot Ok
+             * @default 0
+             */
+            n_boot_ok: number;
+            /**
+             * Copies
+             * @default 1
+             */
+            copies: number;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
+        };
         /**
          * ScaleQuestion
          * @description The scale a positive, markedly skewed outcome is analyzed on
@@ -11745,6 +11864,127 @@ export interface components {
             log_column: string;
             /** Options */
             options: components["schemas"]["Exit"][];
+        };
+        /** ScaleReliability */
+        ScaleReliability: {
+            /**
+             * Source
+             * @default null
+             */
+            source: ("internal_consistency" | "test_retest" | "calibration_substudy") | null;
+            /**
+             * Coefficient
+             * @default null
+             */
+            coefficient: string | null;
+            /**
+             * Label
+             * @default null
+             */
+            label: string | null;
+            /**
+             * Value
+             * @default null
+             */
+            value: number | null;
+            /**
+             * Omega Total
+             * @default null
+             */
+            omega_total: number | null;
+            /**
+             * Omega Hierarchical
+             * @default null
+             */
+            omega_hierarchical: number | null;
+            /**
+             * Omega Total Standardized
+             * @default null
+             */
+            omega_total_standardized: number | null;
+            /**
+             * Omega Hierarchical Standardized
+             * @default null
+             */
+            omega_hierarchical_standardized: number | null;
+            /**
+             * Alpha
+             * @default null
+             */
+            alpha: number | null;
+            /**
+             * Alpha Label
+             * @default null
+             */
+            alpha_label: string | null;
+            /**
+             * Factors
+             * @default 1
+             */
+            factors: number;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /**
+             * Across Copies
+             * @default []
+             */
+            across_copies: number[];
+            /**
+             * Reason
+             * @default null
+             */
+            reason: string | null;
+        };
+        /** ScaleResult */
+        ScaleResult: {
+            /** Name */
+            name: string;
+            /** Items */
+            items: string[];
+            /** Reverse */
+            reverse: string[];
+            /** Scoring */
+            scoring: string;
+            /** Kind */
+            kind: string;
+            /** Structure */
+            structure: string;
+            /** Role */
+            role: string;
+            /** N Rows */
+            n_rows: number;
+            reliability: components["schemas"]["ScaleReliability"];
+            /** @default null */
+            correction: components["schemas"]["ScaleCorrection"] | null;
+            /**
+             * Not Corrected
+             * @default null
+             */
+            not_corrected: string | null;
+            /**
+             * Exits
+             * @default []
+             */
+            exits: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Imputation
+             * @default null
+             */
+            imputation: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
+            /** Methods */
+            methods: string;
         };
         /**
          * ScaleSpec
@@ -11822,6 +12062,26 @@ export interface components {
              * @default null
              */
             instrument: string | null;
+        };
+        /** ScalesArtifact */
+        ScalesArtifact: {
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "inference" | "prediction";
+            /**
+             * Rows
+             * @enum {string}
+             */
+            rows: "all analyzed rows" | "training rows";
+            /**
+             * Scales
+             * @default []
+             */
+            scales: components["schemas"]["ScaleResult"][];
+            /** Methods */
+            methods: string;
         };
         /**
          * SealBasis

@@ -1,25 +1,51 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { makeQueryClient } from "./api/queries";
 import { Header } from "./components/Header";
 import { MotionPrefsProvider } from "./motion/prefs";
-import { Link, useRoute } from "./router";
+import { Link, useRoute, type Route } from "./router";
 import { ProjectScreen } from "./screens/ProjectScreen";
 import { StartScreen } from "./screens/StartScreen";
 import { ThemeProvider } from "./theme";
 
-// The motion lab is a review surface, not part of the analysis: load it on demand.
-const LabScreen = lazy(() => import("./screens/LabScreen").then((m) => ({ default: m.LabScreen })));
-const StageScreen = lazy(() =>
-  import("./explore/stage/StageScreen").then((m) => ({ default: m.StageScreen })),
-);
-const StageLabScreen = lazy(() =>
-  import("./screens/StageLabScreen").then((m) => ({ default: m.StageLabScreen })),
-);
-const StageLabM2Screen = lazy(() =>
-  import("./screens/StageLabM2Screen").then((m) => ({ default: m.StageLabM2Screen })),
-);
-const M2Screen = lazy(() => import("./explore/m2/M2Screen").then((m) => ({ default: m.M2Screen })));
+type LabRoute = Exclude<Route["name"], "start" | "project" | "missing">;
+
+// The review surfaces under /lab load on demand, and exist only in npm run dev:mock: the
+// condition is the literal env flag, so a production build drops each import, its chunk and its
+// fixtures (INBOX 123, 162).
+const LAB_SCREENS: Partial<Record<LabRoute, LazyExoticComponent<ComponentType>>> =
+  import.meta.env.VITE_MOCK === "1"
+    ? {
+        lab: lazy(() => import("./screens/LabScreen").then((m) => ({ default: m.LabScreen }))),
+        "explore-stage": lazy(() =>
+          import("./explore/stage/StageScreen").then((m) => ({ default: m.StageScreen })),
+        ),
+        "stage-lab": lazy(() =>
+          import("./screens/StageLabScreen").then((m) => ({ default: m.StageLabScreen })),
+        ),
+        "stage-lab-m2": lazy(() =>
+          import("./screens/StageLabM2Screen").then((m) => ({ default: m.StageLabM2Screen })),
+        ),
+        "m2-lab": lazy(() => import("./explore/m2/M2Screen").then((m) => ({ default: m.M2Screen }))),
+        "m3-lab": lazy(() =>
+          import("./screens/M3LabScreen").then((m) => ({ default: m.M3LabScreen })),
+        ),
+      }
+    : {};
+
+function Missing({ path }: { path: string }) {
+  return (
+    <>
+      <Header />
+      <main style={{ maxWidth: 640, margin: "60px auto", padding: "0 16px" }}>
+        <p style={{ fontFamily: "var(--serif)", fontSize: 17 }}>
+          There is nothing at <code className="v">{path}</code>.
+        </p>
+        <Link href="/">Back to the start</Link>
+      </main>
+    </>
+  );
+}
 
 function Routes() {
   const route = useRoute();
@@ -28,48 +54,17 @@ function Routes() {
       return <StartScreen />;
     case "project":
       return <ProjectScreen key={route.pid} pid={route.pid} />;
-    case "lab":
-      return (
-        <Suspense fallback={<Header />}>
-          <LabScreen />
-        </Suspense>
-      );
-    case "explore-stage":
-      return (
-        <Suspense fallback={<Header />}>
-          <StageScreen />
-        </Suspense>
-      );
-    case "stage-lab":
-      return (
-        <Suspense fallback={<Header />}>
-          <StageLabScreen />
-        </Suspense>
-      );
-    case "stage-lab-m2":
-      return (
-        <Suspense fallback={<Header />}>
-          <StageLabM2Screen />
-        </Suspense>
-      );
-    case "m2-lab":
-      return (
-        <Suspense fallback={<Header />}>
-          <M2Screen />
-        </Suspense>
-      );
     case "missing":
+      return <Missing path={route.path} />;
+    default: {
+      const Screen = LAB_SCREENS[route.name];
+      if (!Screen) return <Missing path={window.location.pathname} />;
       return (
-        <>
-          <Header />
-          <main style={{ maxWidth: 640, margin: "60px auto", padding: "0 16px" }}>
-            <p style={{ fontFamily: "var(--serif)", fontSize: 17 }}>
-              There is nothing at <code className="v">{route.path}</code>.
-            </p>
-            <Link href="/">Back to the start</Link>
-          </main>
-        </>
+        <Suspense fallback={<Header />}>
+          <Screen />
+        </Suspense>
       );
+    }
   }
 }
 

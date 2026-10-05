@@ -14,7 +14,8 @@ import {
   type SubstitutionArtifact,
 } from "../../../api/m1-stage-types";
 import { useCancelJob, useDecide } from "../../../api/queries";
-import type { ProjectView } from "../../../api/schema";
+import type { ProjectView, Refusal } from "../../../api/schema";
+import { RefusalNote } from "../../record/Refusal";
 import { StaleVeil, type VeilState } from "../../../motion/StaleVeil";
 import { StageRetry } from "../../StageRetry";
 import { DesignWarnings, warningsAbout } from "../DesignWarnings";
@@ -80,6 +81,9 @@ export function Results({ pid, view, data }: Props) {
   const cancel = useCancelJob(pid);
   const [pending, setPending] = useState<{ donor: string; recipient: string } | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  // A refused pair answers with the server's ways forward (a nutrient's unit, a part of a total),
+  // never a message alone: pressing one records it, and the pair is chosen again.
+  const [refused, setRefused] = useState<Refusal | null>(null);
 
   const opened = !!view.state.seal_opened;
   useRefetchOnOpening(pid, opened, fit, view.stages.fit?.key ?? undefined);
@@ -109,12 +113,27 @@ export function Results({ pid, view, data }: Props) {
   const record = (donor: string, recipient: string, boot = 0) => {
     setPending({ donor, recipient });
     setSaid(null);
+    setRefused(null);
     decide.mutate(substitutionDecision(donor, recipient, step, boot), {
       onSuccess: () => setSaid(boot ? `Recorded: a band from ${boot} refits per family.` : `Recorded: ${donor} → ${recipient}.`),
-      onError: (e) => setSaid(isRefusalError(e) ? e.refusal.error.message : e.message),
+      onError: (e) => (isRefusalError(e) ? setRefused(e.refusal) : setSaid(e.message)),
       onSettled: () => setPending(null),
     });
   };
+  const refusal = refused ? (
+    <RefusalNote
+      refusal={refused}
+      onDismiss={() => setRefused(null)}
+      onExit={(exit) => {
+        setRefused(null);
+        if (!exit.decision) return;
+        decide.mutate(exit.decision, {
+          onSuccess: () => setSaid("Recorded. Choose the pair again to draw its curve."),
+          onError: (e) => (isRefusalError(e) ? setRefused(e.refusal) : setSaid(e.message)),
+        });
+      }}
+    />
+  ) : null;
 
   return (
     <div className={s.results} data-testid="results" data-seal-phase={phase}>
@@ -256,6 +275,7 @@ export function Results({ pid, view, data }: Props) {
                   {said}
                 </span>
               ) : null}
+              {refusal}
             </div>
             {data.design ? (
               <PairNavigator
@@ -285,6 +305,7 @@ export function Results({ pid, view, data }: Props) {
               {said}
             </span>
           ) : null}
+          {refusal}
         </section>
       ) : null}
 

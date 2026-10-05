@@ -1166,3 +1166,8 @@ from turbotab.core.stages.explore import ExploreArtifact  # noqa: E402
 from turbotab.core.stages.evaluation import EvaluationArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"explore": ExploreArtifact, "evaluation": EvaluationArtifact})
+# MS8: each declared scale's reliability and, under inference, its corrected coefficient
+# (turbotab/core/stages/scales.py), so the frontend can type the artifact by its stage name.
+from turbotab.core.stages.scales import ScalesArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"scales": ScalesArtifact})

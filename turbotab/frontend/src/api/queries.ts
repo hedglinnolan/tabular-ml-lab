@@ -13,6 +13,7 @@ import {
 import { api } from "./client";
 import type { Decision, JobView, ProjectView, StageResult, StageStatus } from "./schema";
 import type { AnyStageArtifacts, AnyStageName } from "./m1-types";
+import type { CodebookRequest, JoinPreviewRequest } from "./m3-types";
 
 export const keys = {
   health: () => ["health"] as const,
@@ -29,6 +30,12 @@ export const keys = {
   histogram: (pid: string, column: string, bins: number | undefined) =>
     [pid, "histogram", column, bins ?? null] as const,
   job: (pid: string, jid: string) => [pid, "job", jid] as const,
+  // M3: each is read from the decision log, so a decision event invalidates it (events.ts).
+  readings: (pid: string) => [pid, "readings"] as const,
+  methods: (pid: string) => [pid, "methods"] as const,
+  plan: (pid: string) => [pid, "plan"] as const,
+  files: (pid: string) => [pid, "files"] as const,
+  models: () => ["models"] as const,
 };
 
 export function makeQueryClient(): QueryClient {
@@ -218,5 +225,64 @@ export function useUpload() {
   return useMutation({
     mutationFn: (file: File) => api.upload(file),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.projects() }),
+  });
+}
+
+// ── M3: the readings ledger, the record's outputs, assembly ─────────────────
+
+/** "Read from your data": the readings the values settled, each with the answers that change it. */
+export function useReadings(pid: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.readings(pid),
+    queryFn: ({ signal }) => api.readings(pid, signal),
+    enabled,
+  });
+}
+
+/** The methods text the decision log builds. */
+export function useMethods(pid: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.methods(pid),
+    queryFn: ({ signal }) => api.methods(pid, signal),
+    enabled,
+  });
+}
+
+/** The analysis plan for registration, with its hash. */
+export function usePlan(pid: string, enabled = true) {
+  return useQuery({ queryKey: keys.plan(pid), queryFn: ({ signal }) => api.plan(pid, signal), enabled });
+}
+
+/** Every model family the engine can fit (static). */
+export function useModels() {
+  return useQuery({ queryKey: keys.models(), queryFn: ({ signal }) => api.models(signal) });
+}
+
+/** The files added to the project to join to its table. */
+export function useFiles(pid: string, enabled = true) {
+  return useQuery({ queryKey: keys.files(pid), queryFn: ({ signal }) => api.files(pid, signal), enabled });
+}
+
+/** Add a file to join: by its path on this machine, or uploaded. */
+export function useAddFile(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (source: { path: string } | { file: File }) =>
+      "path" in source ? api.addFile(pid, source.path) : api.uploadFile(pid, source.file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.files(pid), exact: true }),
+  });
+}
+
+/** The row counts a join would give; nothing is recorded (`join_files` records it). */
+export function useJoinPreview(pid: string) {
+  return useMutation({ mutationFn: (body: JoinPreviewRequest) => api.joinPreview(pid, body) });
+}
+
+/** Read a codebook (by path, the table's own XPT labels, or uploaded) and say what importing it
+ *  would settle; nothing is recorded (`import_codebook` records it). */
+export function useCodebook(pid: string) {
+  return useMutation({
+    mutationFn: (source: CodebookRequest | { file: File }) =>
+      "file" in source ? api.uploadCodebook(pid, source.file) : api.codebook(pid, source),
   });
 }

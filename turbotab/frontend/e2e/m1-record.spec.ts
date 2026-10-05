@@ -203,7 +203,7 @@ test("the record follows the Router from the lens to the substitution", async ({
   await expect(refusal).toContainText("cannot run on these columns");
   await park(page);
   await shoot(page, "refusal-light");
-  await refusal.getByRole("button", { name: /Willett residual model instead/ }).click();
+  await refusal.getByRole("button", { name: /Willett residual model(, total energy kept)? instead/ }).click();
   await expect(page.getByTestId("decision-energy_adjustment")).toContainText(
     "Energy was adjusted by the residual method",
   );

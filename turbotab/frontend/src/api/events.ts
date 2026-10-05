@@ -43,6 +43,10 @@ function applyDecision(qc: QueryClient, pid: string, record: DecisionRecord): vo
   // Each finding is served with what answered it (M2_CONTRACT §4), and a disposition never
   // changes the findings stage's key: any decision may settle one, so it is read again.
   void qc.invalidateQueries({ queryKey: keys.stage(pid, "findings"), exact: true });
+  // The readings card, the methods text, the plan and the joined files are read from the log.
+  for (const key of [keys.readings(pid), keys.methods(pid), keys.plan(pid), keys.files(pid)]) {
+    void qc.invalidateQueries({ queryKey: key, exact: true });
+  }
 }
 
 function applyStage(qc: QueryClient, pid: string, status: StageStatus): void {

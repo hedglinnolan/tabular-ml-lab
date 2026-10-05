@@ -200,7 +200,7 @@ test("the banner's segments, the band, and the Results re-flowing after a change
   await expect(band).toHaveText(/Add an uncertainty band \(about 40 s\)/);
   await band.click();
   await expect(page.getByText(/Refitting each family 40 times/)).toBeVisible();
-  await expect(page.getByText(/Bands: 95% intervals from 40 refits/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/bands: 95% intervals from 40 refits/i)).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("substitution-curves").scrollIntoViewIfNeeded();
   await shot(page, "stage-results-band-light");
 

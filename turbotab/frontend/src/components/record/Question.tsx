@@ -95,6 +95,8 @@ interface Props {
   coach?: ReactNode;
   /** Findings held for this question, resurfacing inside it, attributed (M2_CONTRACT §4). */
   resurfaced?: ReactNode;
+  /** The ledger's ask card (BLUEPRINT §14.2): one card per open step that asks, inside it. */
+  ask?: ReactNode;
   children: ReactNode;
 }
 
@@ -110,6 +112,7 @@ export function Question({
   reopened = false,
   coach,
   resurfaced,
+  ask,
   children,
 }: Props) {
   const t = useTransitions();
@@ -206,6 +209,7 @@ export function Question({
               {coach}
             </p>
           ) : null}
+          {ask}
           {resurfaced}
           <div className={s.body}>{children}</div>
         </motion.div>
