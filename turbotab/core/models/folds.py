@@ -35,7 +35,9 @@ clusters, so the substrate is drawn afresh beside them.
 resample (:func:`unit_rows`, :func:`draw_units`) and each nested cross-validation fold
 (:func:`nested_folds`) takes or leaves a unit's rows together, so no unit is on both sides of any
 split (MODELING_SEQUENCE §2: repeated units *imply* grouped folds, a grouped holdout and a bootstrap
-by unit).
+by unit). When the seal could not keep units whole (one unit, or too few to hold any out), the
+folds are drawn by row and every score is stated as within-unit performance, never silently
+(``validation.unit_spans``).
 """
 from __future__ import annotations
 
@@ -188,7 +190,9 @@ def kfold_assignment(n: int, *, strata: Any = None, groups: Any = None, folds: i
                      seed: int = 0) -> np.ndarray:
     """A fold number per row (``0 … K − 1``), drawn as the split draws its folds: whole units when
     ``groups`` are given, stratified by ``strata`` (classes, or the event) when given and possible,
-    shuffled by ``seed``."""
+    shuffled by ``seed``. With one unit no fold can leave a unit out, so the rows are folded by row;
+    the fit never asks for that silently: when the seal cannot keep units whole it passes no
+    groups, and every score says it is within-unit performance (``validation.unit_spans``)."""
     import warnings
 
     import pandas as pd

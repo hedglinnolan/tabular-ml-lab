@@ -10,6 +10,7 @@ R is a reference only: the tests that need it skip cleanly where ``Rscript`` is 
 """
 from __future__ import annotations
 
+import copy
 import math
 import warnings
 from datetime import datetime, timezone
@@ -33,12 +34,14 @@ from turbotab.core.models.inner_cv import fit_pipeline, inner_splits
 from turbotab.core.models.metrics import (HEADLINE, PRIMARY, cross_validate, fold_pairs,
                                           survival_baseline, tension)
 from turbotab.core.models.pipeline import DesignSpec, build_pipeline
-from turbotab.core.models.selection import OutOfFold, selection_optimism
+from turbotab.core.models.selection import (OutOfFold, note_seen, read_seen, selection_optimism,
+                                            vouch)
 from turbotab.core.models.validation import (PROCEDURE, TOO_NARROW, VALIDATION_CONTRACTS,
                                              corrected_t, nested_cv_fits, nested_cv_interval,
                                              optimism_bootstrap, relation_ids, validation_plan)
 from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage
 from turbotab.core.stages.rows import cohort_stage, draw_split, split_stage
+from turbotab.core.stages.seal import seal_plan_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.tests.acceptance import references_ms6 as ref
 from turbotab.core.tests.stage_harness import Ingested
@@ -127,7 +130,8 @@ def test_1_the_primary_is_strictly_proper_and_auc_or_c_is_reported_as_the_custom
     is scikit-learn's Newton–Cholesky, which stops at its default gradient tolerance of 10⁻⁴."""
     assert PRIMARY == {"regression": "mse", "binary": "log_loss", "multiclass": "log_loss",
                        "ordinal": "rps", "time_to_event": "brier_t"}
-    assert HEADLINE == {"binary": "auc", "ordinal": "c_index", "time_to_event": "c_index"}
+    assert HEADLINE == {"binary": "auc", "ordinal": "c_index", "time_to_event": "c_index",
+                        "multiclass": "accuracy"}
     assert tension("binary") == (
         "AUC is the customary headline: it ranks risks without asking whether they are right "
         "(semi-proper), so the models were compared, chosen and declared on log loss, a strictly "
@@ -140,7 +144,15 @@ def test_1_the_primary_is_strictly_proper_and_auc_or_c_is_reported_as_the_custom
         "C-index is the customary headline: it ranks risks without asking whether they are right "
         "(semi-proper), so the models were compared, chosen and declared on the Brier score at the "
         "horizon, a strictly proper score (Van Calster et al., STRATOS TG6).")
-    assert tension("regression") is None and tension("multiclass") is None
+    # North star 5: a multiclass outcome's accuracy and macro-F1 are customary and labeled so. Van
+    # Calster et al.: "All classification measures (such as classification accuracy and F1) are
+    # improper for clinically relevant decision thresholds other than 0.5 or the prevalence".
+    assert tension("multiclass") == (
+        "Accuracy and macro-F1 are the customary headline: they score only which class is most "
+        "probable, never the probabilities, so neither is strictly proper and macro-F1 is "
+        "improper; the models were compared, chosen and declared on log loss, a strictly proper "
+        "score (Van Calster et al., STRATOS TG6).")
+    assert tension("regression") is None
 
     frame = _binary(300, 1)
     st = _state(frame, task="binary", target="y", models=["linear", "elastic_net"], event="yes",
@@ -167,6 +179,40 @@ def test_1_the_primary_is_strictly_proper_and_auc_or_c_is_reported_as_the_custom
         beta = _logit_fit(X[folds != k], yy[folds != k])
         expected = ref.log_loss(yy[folds == k], _logit_proba(beta, X[folds == k]), [0, 1])
         assert linear["cv"]["log_loss"]["folds"][k] == pytest.approx(expected, abs=1e-4)
+
+
+def test_1_the_baseline_concern_names_a_proper_score_as_one(tmp_path):
+    """The verifier's wording: "CV Log loss" with a capital mid-sentence, and a time to event "Orders
+    the events worse …" said of the Brier score at the horizon, a proper score that measures the
+    probabilities rather than an ordering. A score is named mid-sentence as the record names it,
+    and only Harrell's C is said to order. Measured: the concern the fit stage writes (on a
+    no-signal table, where a family cannot beat the class prior) and the sentence function for
+    each task; reference: the sentences as written here."""
+    from turbotab.core.stages.modeling import baseline_concern
+
+    assert baseline_concern("binary", "log loss", 0.75, 0.69, lower=True, metric="log_loss") == (
+        "Predicts worse than the class prior: CV log loss 0.75, against 0.69 for the prior.")
+    assert baseline_concern("ordinal", "ranked probability score", 0.25, 0.2, lower=True,
+                            metric="rps") == (
+        "Predicts the levels worse than the level prior: CV ranked probability score 0.25, against "
+        "0.20 for the prior.")
+    assert baseline_concern("time_to_event", "Brier score at the horizon", 0.25, 0.2, lower=True,
+                            metric="brier_t") == (
+        "Predicts the risk by the horizon worse than one risk for everyone: CV Brier score at the "
+        "horizon 0.25, against 0.20.")
+    assert baseline_concern("time_to_event", "C-index", 0.45, 0.5, metric="c_index") == (
+        "Orders the events worse than one risk for everyone: CV C-index 0.45, against 0.50.")
+    rng = np.random.default_rng(8)
+    frame = pd.DataFrame(rng.normal(size=(60, 6)), columns=[f"x{i}" for i in range(1, 7)])
+    frame["pid"] = np.arange(60)
+    frame["y"] = np.where(rng.random(60) < 0.4, "yes", "no")
+    st = _state(frame, task="binary", target="y", models=["linear"], event="yes",
+                split=SplitSpec(holdout=0.0, seed=1, folds=5))
+    *_, fit = _stages(frame, st, tmp_path)
+    concerns = fit.data["models"][0]["concerns"]
+    said = [c for c in concerns if "class prior" in c]
+    assert said and all("CV log loss " in c for c in said), concerns
+    assert not any("CV Log loss" in c for c in concerns)
 
 
 def test_1_a_miscalibrated_family_with_the_same_ranking_is_never_chosen():
@@ -457,10 +503,14 @@ def test_3_bbc_cv_matches_an_independent_implementation_on_fixed_predictions(uni
 
 def test_3_with_no_holdout_the_declared_result_is_the_selection_corrected_estimate(tmp_path):
     """MODELING_SEQUENCE §1 row 12 (b): "No holdout: the selection-corrected estimate; only a family
-    declared before any score was seen may report its own corrected score." Measured: the fit
-    stage with three families and with one. Reference: the selection artifact's own BBC-CV numbers
-    (checked against an independent implementation above) and the one family's cross-validated
-    estimate; the sentences as written here."""
+    declared before any score was seen may report its own corrected score." The fit stage reads the
+    answers, not what was shown, so it cannot know whether the one family it fitted was declared
+    before any score was seen: the served fit checks it against the record of the scores shown for
+    the outcome (``selection.vouch``), and declares nothing, with the exit that fits them together,
+    when another family's score was shown. Measured: the fit stage with three families and with
+    one, and the served check. Reference: the selection artifact's own BBC-CV numbers (checked
+    against an independent implementation above) and the one family's cross-validated estimate;
+    each family named as the record names it; the sentences as written here."""
     frame = _binary(240, 12)
     st = _state(frame, task="binary", target="y", models=["linear", "elastic_net", "boosted_trees"],
                 event="yes", split=SplitSpec(holdout=0.0, seed=2, folds=5))
@@ -469,25 +519,72 @@ def test_3_with_no_holdout_the_declared_result_is_the_selection_corrected_estima
     sel, result = data["selection"], data["result"]
     assert result["basis"] == "selection_corrected" and result["family"] == sel["best"]
     assert result["estimate"] == sel["corrected"]
-    labels = {m["family"]: m["label"] for m in data["models"]}
+    # The record's names (``select_models``'s sentence): a binary outcome's linear family is
+    # logistic regression.
+    named = {"linear": "Logistic regression", "elastic_net": "Elastic net",
+             "boosted_trees": "Gradient-boosted trees"}
+    said = (f"selection-corrected log loss {_m(sel['corrected'])} (95% interval "
+            f"{_m(sel['corrected_low'])} to {_m(sel['corrected_high'])}) by bootstrap bias-corrected "
+            f"cross-validation over 3 families (Tsamardinos et al. 2018; {sel['replicates']:,} "
+            f"resamples): {PROCEDURE}.")
     assert result["sentence"] == (
-        f"{labels[sel['best']]} was chosen among 3 families on cross-validation with no rows held "
-        f"out, so the result is the selection-corrected estimate, not its own score: "
-        f"selection-corrected log loss {_m(sel['corrected'])} (95% interval "
-        f"{_m(sel['corrected_low'])} to {_m(sel['corrected_high'])}) by bootstrap bias-corrected "
-        f"cross-validation over 3 families (Tsamardinos et al. 2018; {sel['replicates']:,} "
-        f"resamples): {PROCEDURE}.")
+        f"{named[sel['best']]} was chosen among 3 families on cross-validation with no rows held "
+        f"out, so the result is the selection-corrected estimate, not its own score: {said}")
     assert {c["relation"] for c in data["chain"]} >= {"choice_among_families_bbc",
                                                       "no_holdout_declares_corrected"}
+    # Served with every family whose score was shown among those fitted, it stands as computed.
+    served = vouch(copy.deepcopy(data), ["linear", "elastic_net", "boosted_trees"], "y")
+    assert served["result"] == {**result}
+    # A fourth family's score shown for `y` and not fitted now: the choice would be under-corrected.
+    served = vouch(copy.deepcopy(data), ["linear", "elastic_net", "boosted_trees", "mixed"], "y")
+    assert served["result"]["basis"] == "not_declared" and served["result"]["estimate"] is None
+    assert served["result"]["sentence"] == (
+        "The cross-validated scores of `mixed` were also shown for `y` with no rows held out, but "
+        "they are not among the 3 families fitted now, so the selection-corrected estimate would "
+        "leave part of the choice out (Tsamardinos et al. 2018), and no result is declared. Fit "
+        "them together: the result is then corrected for every family compared.")
+    assert served["result"]["exit"] == {
+        "label": "Fit the compared families together",
+        "decision": {"kind": "select_models",
+                     "models": ["linear", "elastic_net", "boosted_trees", "mixed"]}}
+
     st1 = st.model_copy(update={"models": ["linear"]})
     *_, fit1 = _stages(frame, st1, tmp_path / "one")
     one = fit1.data
     entry = one["models"][0]["cv"]["log_loss"]
+    own = (f"cross-validated log loss {_m(entry['estimate'])} (95% interval {_m(entry['ci_low'])} "
+           f"to {_m(entry['ci_high'])}) by 5-fold cross-validation: {PROCEDURE}.")
     assert one["selection"] is None and one["result"]["basis"] == "own_score"
+    assert one["result"]["vouched"] is None  # the stage cannot know what was shown
     assert one["result"]["sentence"] == (
-        f"Linear model was the only family fitted, declared before any score was seen, so its own "
-        f"score is the result: cross-validated log loss {_m(entry['estimate'])} (95% interval "
-        f"{_m(entry['ci_low'])} to {_m(entry['ci_high'])}) by 5-fold cross-validation: {PROCEDURE}.")
+        f"Logistic regression is the only family fitted, so its own score is the result: {own}")
+    # The record shows no other family's score for `y`: declared before any score was seen.
+    served = vouch(copy.deepcopy(one), ["linear"], "y")
+    assert served["result"]["vouched"] is True and served["result"]["estimate"] == entry["estimate"]
+    assert served["result"]["sentence"] == (
+        f"Logistic regression was the only family fitted, declared before any score was seen, so "
+        f"its own score is the result: {own}")
+    # The verifier's sequence: gradient-boosted trees, then logistic regression, then elastic net,
+    # each fitted alone; the last one's own score is not declared, and the chain says why.
+    served = vouch(copy.deepcopy(one), ["boosted_trees", "elastic_net", "linear"], "y")
+    result = served["result"]
+    assert result["basis"] == "not_declared" and result["vouched"] is False
+    assert result["estimate"] is None and result["ci_low"] is None and result["ci_high"] is None
+    assert result["sentence"] == (
+        "Logistic regression was fitted alone after the cross-validated scores of `boosted_trees`, "
+        "`elastic_net` were shown for `y` with no rows held out, so it was not declared before any "
+        "score was seen: its own score would flatter the choice (Tsamardinos et al. 2018), and no "
+        "result is declared. Fit them together: the result is then the selection-corrected "
+        "estimate.")
+    assert result["exit"]["decision"] == {"kind": "select_models",
+                                          "models": ["linear", "boosted_trees", "elastic_net"]}
+    validate(result["exit"]["decision"], {"state": st1, "seen": {"y": ["boosted_trees",
+                                                                       "elastic_net", "linear"]}})
+    assert served["chain"][-1] == {
+        "relation": "no_holdout_declares_corrected",
+        "because": "the scores of `boosted_trees`, `elastic_net` were shown for `y` with no rows held out",
+        "then": ("no result is declared: the winner's own score is refused, and fitting the "
+                 "compared families together declares the selection-corrected estimate")}
 
 
 def _record(seq: int, decision) -> d.DecisionRecord:
@@ -495,26 +592,35 @@ def _record(seq: int, decision) -> d.DecisionRecord:
                             decision=decision)
 
 
-def test_3_the_winners_own_score_as_the_result_is_refused_with_its_exit():
+def test_3_the_winners_own_score_as_the_result_is_refused_with_its_exit(tmp_path):
     """MODELING_SEQUENCE §4: "Winner's own corrected score as 'the result' (no holdout) — refuse;
-    report the selection-corrected estimate". Dropping the compared families after their scores
-    were seen would leave the winner's own score as the result, so it is refused, with the exit
-    that keeps them; with held-out rows, under inference, or after a new seal it is not."""
+    report the selection-corrected estimate". A family whose score was shown for this outcome stays
+    among the families fitted while no rows are held out, by every route the verifier found:
+    dropping it directly; dropping it after a new seed, a new fold count or the nested
+    cross-validation offer (each a ``set_split`` that draws the same rows, so it starts nothing
+    afresh); undoing the selection that fitted it (a revert cannot unsee a score); fitting the
+    families one at a time; and holding no rows out after it was dropped under a holdout. Each is
+    refused with the exit that keeps it, and the exit is accepted. With rows held out, under
+    inference, or for another outcome nothing is refused. Measured: the validators, given the
+    scores shown as the server keeps them (``scores_seen.json`` beside the project); reference:
+    the sentences as written here."""
     families = ["linear", "elastic_net", "boosted_trees"]
-    records = [_record(1, d.SetTarget(column="y")), _record(2, d.SetSplit(holdout=0.0, seed=1)),
-               _record(3, d.SelectModels(models=families))]
-    shown = {"models": [{"family": k, "cv": {"log_loss": {}}} for k in families]}
+    seen = {"y": families}
+    records = [_record(1, d.SetTarget(column="y")), _record(2, d.SetPurpose(purpose="prediction")),
+               _record(3, d.SetSplit(holdout=0.0, seed=1)),
+               _record(4, d.SelectModels(models=["elastic_net"])),
+               _record(5, d.SelectModels(models=families))]
     state = ProjectState(target="y", task="binary", purpose="prediction", models=families,
                          split=SplitSpec(holdout=0.0, seed=1))
-    ctx = {"state": state, "records": records, "shown": lambda stage: shown, "task": "binary"}
+    ctx = {"state": state, "records": records, "seen": seen}
     with pytest.raises(Refusal) as refused:
         validate(d.SelectModels(models=["boosted_trees"]), ctx)
     assert refused.value.code == "compared_families_stay"
     assert str(refused.value.message) == (
-        "These families' scores were compared on these rows with none held out: `linear`, "
-        "`elastic_net`. Dropping them would make the remaining family's own score the result, "
-        "which flatters the choice (Tsamardinos et al. 2018). Keep them: the result is then the "
-        "selection-corrected estimate, and the best family is still the one deployed.")
+        "These families' cross-validated scores were shown for `y` with no rows held out: "
+        "`linear`, `elastic_net`. Dropping them would make the remaining family's own score the "
+        "result, which flatters the choice (Tsamardinos et al. 2018). Keep them: the result is "
+        "then the selection-corrected estimate, and the best family is still the one deployed.")
     exit_ = refused.value.exits[0]
     assert exit_["label"] == "Keep the compared families"
     assert exit_["decision"]["models"] == ["boosted_trees", "linear", "elastic_net"]
@@ -524,8 +630,61 @@ def test_3_the_winners_own_score_as_the_result_is_refused_with_its_exit():
     validate(d.SelectModels(models=["boosted_trees"]), {**ctx, "state": held})
     inference = state.model_copy(update={"purpose": "inference"})
     validate(d.SelectModels(models=["boosted_trees"]), {**ctx, "state": inference})
-    resealed = [*records, _record(4, d.SetSplit(holdout=0.0, seed=2))]
-    validate(d.SelectModels(models=["boosted_trees"]), {**ctx, "records": resealed})
+    other = state.model_copy(update={"target": "z"})  # a new outcome starts its own comparison
+    validate(d.SelectModels(models=["boosted_trees"]), {**ctx, "state": other})
+
+    # (1) and (4): a new seed, a new fold count, the nested cross-validation offer: the same rows.
+    for split in (SplitSpec(holdout=0.0, seed=2), SplitSpec(holdout=0.0, seed=1, folds=10),
+                  SplitSpec(holdout=0.0, seed=1, nested_cv=True)):
+        decision = d.SetSplit(**split.model_dump())
+        validate(decision, ctx)  # the families stay, so nothing is refused
+        resealed = state.model_copy(update={"split": split})
+        with pytest.raises(Refusal) as refused:
+            validate(d.SelectModels(models=["boosted_trees"]),
+                     {**ctx, "state": resealed, "records": [*records, _record(6, decision)]})
+        assert refused.value.code == "compared_families_stay"
+
+    # (2) Undoing the three-family selection would leave elastic net alone.
+    with pytest.raises(Refusal) as refused:
+        validate(d.Revert(decision_id=records[4].id), ctx)
+    assert refused.value.code == "compared_families_stay"
+    assert str(refused.value.message) == (
+        "These families' cross-validated scores were shown for `y` with no rows held out: "
+        "`linear`, `boosted_trees`. Undoing that answer would leave them out of the families "
+        "fitted, so the remaining family's own score would be the result, which flatters the "
+        "choice (Tsamardinos et al. 2018); a revert cannot unsee a score. Keep the compared "
+        "families: the result is then the selection-corrected estimate.")
+    assert refused.value.exits[0]["decision"]["models"] == ["elastic_net", "linear", "boosted_trees"]
+    validate(d.Revert(decision_id=records[2].id), ctx)  # an undo that keeps the families stands
+
+    # (3) One at a time: gradient-boosted trees' score was shown, then logistic regression alone.
+    alone = state.model_copy(update={"models": ["boosted_trees"]})
+    with pytest.raises(Refusal) as refused:
+        validate(d.SelectModels(models=["linear"]),
+                 {"state": alone, "records": records, "seen": {"y": ["boosted_trees"]}})
+    assert refused.value.exits[0]["decision"]["models"] == ["linear", "boosted_trees"]
+
+    # Dropped under a holdout, then no rows held out: refused, with the exit that keeps them.
+    dropped = held.model_copy(update={"models": ["boosted_trees"]})
+    with pytest.raises(Refusal) as refused:
+        validate(d.SetSplit(holdout=0.0, seed=1), {**ctx, "state": dropped})
+    assert str(refused.value.message) == (
+        "These families' cross-validated scores were shown for `y` with no rows held out: "
+        "`linear`, `elastic_net`. They are not among the families selected now, so with no rows "
+        "held out the remaining family's own score would be the result, which flatters the choice "
+        "(Tsamardinos et al. 2018). Keep the compared families first: the result is then the "
+        "selection-corrected estimate.")
+    assert refused.value.exits[0]["decision"]["models"] == ["boosted_trees", "linear", "elastic_net"]
+    validate(d.SetSplit(holdout=0.3, seed=1), {**ctx, "state": dropped})  # rows still held out
+
+    # The server's own record: append-only, beside the project, read when no ``seen`` is given.
+    note_seen(tmp_path, "y", ["boosted_trees"])
+    note_seen(tmp_path, "y", ["linear", "boosted_trees"])
+    note_seen(tmp_path, "z", ["linear"])
+    assert read_seen(tmp_path) == {"y": ["boosted_trees", "linear"], "z": ["linear"]}
+    with pytest.raises(Refusal):
+        validate(d.SelectModels(models=["linear"]),
+                 {"state": alone, "records": records, "project_dir": str(tmp_path)})
 
 
 # ── 4 · bootstrap optimism: B ≥ 500 with its compute shown first; rms::validate ─
@@ -725,9 +884,46 @@ def test_5_every_task_reports_calibration_or_says_it_was_not_assessed(tmp_path):
     frame["time"], frame["dead"] = np.minimum(t_event, t_cens), (t_event <= t_cens).astype(int)
     split = SplitSpec(holdout=0.0, seed=3, folds=5)
     st = _state(frame, task="multiclass", target="mc", models=["linear"], split=split)
-    *_, fit = _stages(frame[["pid", "x1", "x2", "mc"]], st, tmp_path / "mc")
+    *_, mc_split, _, fit = _stages(frame[["pid", "x1", "x2", "mc"]], st, tmp_path / "mc")
     m = fit.data["models"][0]
     assert m["calibration_note"] is None and len(m["calibration_levels"]) == 3
+    # North star 5: accuracy and macro-F1 are reported, labeled the customary headline, with the
+    # tension; the primary stays log loss. Each fold's accuracy and macro-F1, recomputed by hand
+    # (argmax; F1 per class, averaged) from statsmodels' multinomial logit (Newton, 10⁻¹²) refit on
+    # the split's own folds.
+    assert fit.data["primary_metric"] == "log_loss" and fit.data["headline_metric"] == "accuracy"
+    assert fit.data["headline_label"] == "customary headline"
+    assert fit.data["tension"] == tension("multiclass")
+    assert fit.data["chain"][0] == {
+        "relation": "proper_score_primary", "because": "the outcome is a multiclass outcome",
+        "then": ("the models were compared, chosen and declared on log loss, and accuracy and "
+                 "macro-F1 are reported as the customary headline")}
+    a = _assignment(mc_split)
+    rows = frame.iloc[a["row_id"].to_numpy()]
+    Xm, ym, folds = rows[["x1", "x2"]].to_numpy(), rows["mc"].to_numpy(), a["fold"].to_numpy()
+    levels = np.asarray(sorted(set(ym)), dtype=object)
+    codes = np.searchsorted(levels, ym)
+    for k in range(5):
+        model = sm.MNLogit(codes[folds != k], sm.add_constant(Xm[folds != k])).fit(
+            method="newton", tol=1e-12, maxiter=200, disp=0)
+        proba = np.asarray(model.predict(sm.add_constant(Xm[folds == k], has_constant="add")))
+        guess = levels[np.argmax(proba, axis=1)]
+        truth = ym[folds == k]
+        f1s = []
+        for c in sorted(set(ym)):
+            tp = np.sum((guess == c) & (truth == c))
+            prec = tp / max(np.sum(guess == c), 1)
+            rec = tp / max(np.sum(truth == c), 1)
+            f1s.append(0.0 if prec + rec == 0 else 2 * prec * rec / (prec + rec))
+        # The engine's Newton–Cholesky stops at scikit-learn's gradient tolerance of 10⁻⁴ (test 1),
+        # so a row whose two likeliest classes lie within 10⁻³ may take either; none other may.
+        top = np.sort(proba, axis=1)
+        near = int(np.sum(top[:, -1] - top[:, -2] < 1e-3))
+        assert abs(m["cv"]["accuracy"]["folds"][k] - np.mean(guess == truth)) <= near / len(truth) + 1e-12
+        if not near:
+            assert m["cv"]["macro_f1"]["folds"][k] == pytest.approx(np.mean(f1s), abs=1e-9)
+        assert m["cv"]["log_loss"]["folds"][k] == pytest.approx(
+            ref.log_loss(truth, proba, list(levels)), abs=1e-4)
     st = _state(frame, task="ordinal", target="ord", models=["proportional_odds"], split=split,
                 outcome_order=["low", "mid", "high"])
     *_, fit = _stages(frame[["pid", "x1", "x2", "ord"]], st, tmp_path / "ord")
@@ -890,6 +1086,63 @@ def test_6_repeated_units_reach_every_resample_through_the_fit_stage(tmp_path):
                  "BBC-CV resamples and the nested folds keep each unit's rows together")}
 
 
+WITHIN = ("every cross-validated score here is within-unit performance, new rows of units the models "
+          "were fit on, not performance on new units, which record-wise cross-validation "
+          "overestimates (Saeb et al. 2017)")
+
+
+@pytest.mark.parametrize("units", [1, 3])
+def test_6_when_no_fold_can_keep_a_unit_whole_every_score_says_it_is_within_unit(tmp_path, units):
+    """The verifier's edge: rows said to repeat within ``pid``, but one unit (or three, too few for
+    the seal to hold any out whole), so the seal abandons grouping and the folds, the comparison
+    substrate and BBC-CV are drawn by row. No fold can then score performance on new units; Saeb
+    et al. (GigaScience 2017): "record-wise CV often massively overestimates the prediction
+    accuracy of the algorithms". It is stated, never silent: in the split's note, in the sentence
+    the record writes (with the seal plan the server passes it), in the chain, in every performance
+    sentence and in the result. Reference: the folds read from the split's assignment, where every
+    unit has rows in at least two folds (so a unit sits on both sides of a fold); the sentences as
+    written here."""
+    frame = _binary(60, 41)
+    frame["pid"] = np.arange(60) % units
+    st = _state(frame, task="binary", target="y", models=["linear", "elastic_net"], event="yes",
+                repeated=True, split=SplitSpec(holdout=0.0, seed=4, folds=5))
+    table, info, cohort, split, _, fit = _stages(frame, st, tmp_path)
+    a = _assignment(split)
+    pid = frame["pid"].to_numpy()[a["row_id"].to_numpy()]
+    for u in range(units):  # the statement is true: each unit is on both sides of some fold
+        assert len(set(a["fold"].to_numpy()[pid == u])) >= 2
+    assert split.data["grouped_by"] is None and split.data["basis"]["state"] == "abandoned"
+    spans = ("every row belongs to the one `pid` unit, so no fold can leave a unit out" if units == 1
+             else "rows repeat within `pid` (`3` units), but the folds were drawn by row")
+    assert split.data["note"] == (
+        f"All `60` rows train, checked by cross-validation, with the outcome's classes in "
+        f"proportion; `5` folds. {spans[0].upper()}{spans[1:]}: {WITHIN}.")
+    plan = table.run(seal_plan_stage, st, {"cohort": cohort, "target_info": info})
+    assert voice.sentence_for(d.SetSplit(**st.split.model_dump()), st, {"seal_plan": plan}) == (
+        "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `4`, "
+        "stratified by `y`); models were compared with each other and with the no-predictor "
+        "baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated "
+        f"k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); {spans}: {WITHIN}.")
+    data = fit.data
+    links = {c["relation"]: c for c in data["chain"]}
+    assert "repeated_units_group_resampling" not in links
+    assert links["within_unit_performance"] == {"relation": "within_unit_performance",
+                                                "because": spans, "then": WITHIN}
+    assert data["selection"]["by_unit"] is False
+    by_row = "over rows, not units (within-unit performance)"
+    for m in data["models"]:
+        entry = m["cv"]["log_loss"]
+        assert m["performance"] == (
+            f"Cross-validated log loss {_m(entry['estimate'])} (95% interval {_m(entry['ci_low'])} "
+            f"to {_m(entry['ci_high'])}) by 5-fold cross-validation {by_row}: {PROCEDURE}.")
+    sel = data["selection"]
+    assert data["result"]["sentence"].endswith(
+        f"selection-corrected log loss {_m(sel['corrected'])} (95% interval "
+        f"{_m(sel['corrected_low'])} to {_m(sel['corrected_high'])}) by bootstrap bias-corrected "
+        f"cross-validation over 2 families (Tsamardinos et al. 2018; {sel['replicates']:,} "
+        f"resamples) {by_row}: {PROCEDURE}.")
+
+
 # ── 7 · the procedure's expected performance; p ≫ n and the nested-CV interval ─
 
 
@@ -947,6 +1200,73 @@ def test_7_performance_sentences_describe_the_procedure_and_flag_p_much_greater_
         f"its own score is the result: MSE {_m(nested['estimate'])} (95% interval "
         f"{_m(nested['ci_low'])} to {_m(nested['ci_high'])}) by nested cross-validation (50 "
         f"repetitions of 5 folds; Bates, Hastie & Tibshirani 2023): {PROCEDURE}.")
+
+
+def test_7_with_several_families_the_label_says_what_nested_cross_validation_widens(tmp_path):
+    """The verifier's two-family case at p ≫ n. Nested cross-validation (Bates et al. 2023) widens
+    each family's own interval; with no rows held out the result is the selection-corrected
+    estimate, whose BBC-CV percentile interval rests on the same out-of-fold predictions and has no
+    nested counterpart, so its label stays and says why, and the offer says so before it runs:
+    nothing promises to remove a label it cannot remove. The record's split sentence says the
+    nested interval is each family's own, never "each interval". Measured: the fit stage before and
+    after the offer's own decision; reference: the sentences as written here, and each family's
+    nested interval as the stage reports it (checked against the authors' R code below)."""
+    rng = np.random.default_rng(77)
+    n, p = 40, 60
+    X = rng.normal(size=(n, p))
+    wide = pd.DataFrame(X, columns=[f"x{i}" for i in range(1, p + 1)])
+    wide["pid"] = np.arange(n)
+    wide["y"] = X[:, 0] - 0.5 * X[:, 1] + rng.normal(size=n)
+    st = _state(wide, task="regression", target="y", models=["linear", "boosted_trees"],
+                split=SplitSpec(holdout=0.0, seed=2, folds=5))
+    *_, fit = _stages(wide, st, tmp_path / "plain")
+    data = fit.data
+    clause = "60 candidate predictors for 40 rows (p/n 1.5, above the 1 this app takes as p ≫ n)"
+    assert data["result"]["basis"] == "selection_corrected" and data["result"]["narrow"] == clause
+    offer = data["nested_offer"]
+    assert offer["label"] == (
+        "Run the nested cross-validation interval (Bates, Hastie & Tibshirani 2023) for each "
+        "family's own score: 800 refits of each family; the selection-corrected interval keeps "
+        "its label, since no nested interval exists for a choice among families")
+    links = {c["relation"]: c for c in data["chain"]}
+    assert links["p_much_greater_n"]["then"] == (
+        f"the intervals are labeled {TOO_NARROW}, and the nested cross-validation interval is "
+        f"offered for each family's own score")
+    ran = st.model_copy(update={"split": d.SplitSpec(**{k: v for k, v in offer["decision"].items()
+                                                        if k != "kind"})})
+    *_, fit2 = _stages(wide, ran, tmp_path / "nested")
+    data2 = fit2.data
+    assert data2["nested_offer"] is None
+    for m in data2["models"]:
+        nested = m["nested_cv"]
+        assert nested["refused"] is None and nested["fits"] == 800
+        assert m["performance"] == (
+            f"MSE {_m(nested['estimate'])} (95% interval {_m(nested['ci_low'])} to "
+            f"{_m(nested['ci_high'])}) by nested cross-validation (50 repetitions of 5 folds; "
+            f"Bates, Hastie & Tibshirani 2023): {PROCEDURE}.")
+    sel, result = data2["selection"], data2["result"]
+    named = {"linear": "Linear regression", "boosted_trees": "Gradient-boosted trees"}
+    assert result["sentence"] == (
+        f"{named[sel['best']]} was chosen among 2 families on cross-validation with no rows held "
+        f"out, so the result is the selection-corrected estimate, not its own score: "
+        f"selection-corrected MSE {_m(sel['corrected'])} (95% interval {_m(sel['corrected_low'])} "
+        f"to {_m(sel['corrected_high'])}, {TOO_NARROW}: {clause}; nested cross-validation widened "
+        f"each family's own interval, but none exists for a choice among families) by bootstrap "
+        f"bias-corrected cross-validation over 2 families (Tsamardinos et al. 2018; "
+        f"{sel['replicates']:,} resamples): {PROCEDURE}.")
+    links = {c["relation"]: c for c in data2["chain"]}
+    assert links["p_much_greater_n"]["then"] == (
+        f"the nested cross-validation interval ran for each family's own score; the "
+        f"selection-corrected interval stays labeled {TOO_NARROW}, since no nested interval "
+        f"exists for a choice among families")
+    assert voice.sentence_for(d.SetSplit(**ran.split.model_dump()), ran, {}) == (
+        "No rows were held out; performance was estimated by `5`-fold cross-validation (seed "
+        "`2`); models were compared with each other and with the no-predictor baseline on "
+        "`5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t "
+        "(Nadeau & Bengio 2003; Bouckaert & Frank 2004); each family's own performance interval "
+        "is the nested cross-validation interval (`50` repetitions of `5` folds; Bates, Hastie & "
+        "Tibshirani 2023); R² was measured against the training rows' mean and pooled over every "
+        "out-of-fold prediction.")
 
 
 @needs_r
@@ -1065,61 +1385,231 @@ def test_contracts_declare_every_part_and_their_relations():
     assert refusal.exits == ("Keep the compared families",)
     assert relation_ids() == [
         "proper_score_primary", "families_compared_on_substrate", "repeated_units_group_resampling",
-        "choice_among_families_bbc", "no_holdout_declares_corrected", "bootstrap_resamples",
-        "time_to_event_horizon", "calibration_not_assessed", "p_much_greater_n"]
+        "within_unit_performance", "clusters_site_heterogeneity", "choice_among_families_bbc",
+        "no_holdout_declares_corrected", "bootstrap_resamples", "time_to_event_horizon",
+        "calibration_not_assessed", "p_much_greater_n"]
+    # The refusal's validator stands on every route to the winner's own score (test 3).
+    from turbotab.core.decisions import _VALIDATORS
+
+    for kind in ("select_models", "set_split", "revert"):
+        assert any(getattr(f, "__name__", "") == "_compared_families_stay"
+                   for f in _VALIDATORS.get(kind, [])), kind
 
 
-def test_chain_6_a_multi_site_cohort_with_repeated_visits_under_prediction(tmp_path):
+# ── through the real server: the record, the served result, chain 6 ──────────
+
+
+@pytest.fixture(scope="module")
+def client(tmp_path_factory):
+    from turbotab.server.tests.conftest import make_client
+
+    with make_client(tmp_path_factory.mktemp("ms6_server"), "local", 2, "http://127.0.0.1") as c:
+        yield c
+
+
+def _post(client, pid: str, decision: dict) -> tuple[int, dict]:
+    response = client.post(f"/api/projects/{pid}/decisions", json=decision)
+    return response.status_code, response.json()
+
+
+def _accepted(client, pid: str, decision: dict) -> dict:
+    from turbotab.server.tests.conftest import answer_settled, prepare
+
+    prepare(client, pid, decision)
+    response = answer_settled(client, pid, None, decision)
+    assert response.status_code == 200, response.text[:900]
+    return response.json()
+
+
+def _refused(client, pid: str, decision: dict, code: str) -> dict:
+    status, body = _post(client, pid, decision)
+    assert status == 409, body
+    assert body["error"]["code"] == code, body
+    assert body["error"]["exits"], "a refusal always offers a way forward"
+    return body["error"]
+
+
+def _served_fit(client, pid: str) -> dict:
+    from turbotab.server.tests.conftest import wait_for
+
+    wait_for(client, pid, {"fit": "fresh"}, timeout=600)
+    return client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
+
+
+def _opened(client, folder, frame: pd.DataFrame, name: str) -> str:
+    from turbotab.server.tests.conftest import declare, wait_for
+
+    path = folder / name
+    frame.to_csv(path, index=False)
+    response = client.post("/api/projects", json={"path": str(path)})
+    assert response.status_code == 200, response.text
+    pid = response.json()["id"]
+    declare(pid, {}, fixture=name)
+    wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=120)
+    _accepted(client, pid, {"kind": "set_lens", "lenses": ["clinical"]})
+    _accepted(client, pid, {"kind": "set_target", "column": "y"})
+    _accepted(client, pid, {"kind": "set_purpose", "purpose": "prediction"})
+    return pid
+
+
+def test_3_every_back_door_to_the_winners_own_score_is_closed_through_the_server(client, tmp_path):
+    """The verifier's four routes, each driven through the real server (the FastAPI app over its
+    job runner): fit one family and see its score; then (3) another family alone, (1) a new seed
+    with no rows held out, (4) the nested cross-validation offer's own ``set_split``, (2) a revert
+    of the two-family selection; and a family dropped under a holdout, then no rows held out. Every
+    drop is refused with the exit that keeps the compared families, and the served result is the
+    selection-corrected estimate. The first fit's result says the family was declared before any
+    score was seen, because the record (``scores_seen.json``) shows none; a score shown before the
+    rule existed makes the served result decline to declare one, with its exit. Reference: the
+    record's own entries, the served selection's numbers, the sentences as written here."""
+    from turbotab.core.tests.acceptance.test_wp16_seal_guards import writer
+
+    rng = np.random.default_rng(303)
+    n = 160
+    X = rng.normal(size=(n, 3))
+    risk = 1 / (1 + np.exp(-(-0.2 + X @ np.array([0.9, -0.6, 0.0]))))
+    frame = pd.DataFrame(X.round(4), columns=["x1", "x2", "x3"]).assign(
+        pid=[f"P{i:04d}" for i in range(n)], y=np.where(rng.random(n) < risk, "yes", "no"))
+    pid = _opened(client, tmp_path, frame, "doors.csv")
+    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 1, "folds": 5})
+    _accepted(client, pid, {"kind": "select_models", "models": ["linear"]})
+    fit = _served_fit(client, pid)
+    entry = fit["models"][0]["cv"]["log_loss"]
+    assert fit["result"]["basis"] == "own_score" and fit["result"]["vouched"] is True
+    assert fit["result"]["sentence"] == (
+        f"Logistic regression was the only family fitted, declared before any score was seen, so "
+        f"its own score is the result: cross-validated log loss {_m(entry['estimate'])} (95% "
+        f"interval {_m(entry['ci_low'])} to {_m(entry['ci_high'])}) by 5-fold cross-validation: "
+        f"{PROCEDURE}.")
+    folder = client.app.state.service.workspace.project_dir(pid)
+    assert read_seen(folder) == {"y": ["linear"]}
+
+    # (3) one at a time: elastic net alone after logistic regression's score was shown.
+    error = _refused(client, pid, {"kind": "select_models", "models": ["elastic_net"]},
+                     "compared_families_stay")
+    assert error["message"] == (
+        "These families' cross-validated scores were shown for `y` with no rows held out: "
+        "`linear`. Dropping them would make the remaining family's own score the result, which "
+        "flatters the choice (Tsamardinos et al. 2018). Keep them: the result is then the "
+        "selection-corrected estimate, and the best family is still the one deployed.")
+    assert error["exits"][0]["decision"]["models"] == ["elastic_net", "linear"]
+    _accepted(client, pid, error["exits"][0]["decision"])
+    fit = _served_fit(client, pid)
+    sel = fit["selection"]
+    assert fit["result"]["basis"] == "selection_corrected" and fit["result"]["family"] == sel["best"]
+    assert fit["result"]["estimate"] == sel["corrected"]
+    assert read_seen(folder) == {"y": ["linear", "elastic_net"]}
+    two = writer(client, pid, "select_models")
+
+    # (1) a new seed and fold count, no rows held out: the same rows, so the comparison stands.
+    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4})
+    _refused(client, pid, {"kind": "select_models", "models": ["elastic_net"]}, "compared_families_stay")
+    # (4) the nested cross-validation offer's own decision is a set_split: the same.
+    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4,
+                            "nested_cv": True})
+    _refused(client, pid, {"kind": "select_models", "models": ["linear"]}, "compared_families_stay")
+    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4})
+    # (2) a revert of the two-family selection cannot unsee its scores.
+    error = _refused(client, pid, {"kind": "revert", "decision_id": two}, "compared_families_stay")
+    assert error["exits"][0]["decision"]["models"] == ["linear", "elastic_net"]
+    # Dropped under a holdout (the held-out rows then score the declared family), then no rows
+    # held out: refused, with the exit that keeps them.
+    _accepted(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 2, "folds": 4})
+    _accepted(client, pid, {"kind": "select_models", "models": ["linear"]})
+    error = _refused(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4},
+                     "compared_families_stay")
+    assert error["exits"][0]["decision"]["models"] == ["linear", "elastic_net"]
+    _accepted(client, pid, error["exits"][0]["decision"])
+    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4})
+    # A score shown before the rule existed (or by any route the record cannot see): the served
+    # result declines to declare one, with the exit that fits the compared families together.
+    note_seen(folder, "y", ["boosted_trees"])
+    fit = _served_fit(client, pid)
+    assert fit["result"]["basis"] == "not_declared" and fit["result"]["estimate"] is None
+    assert fit["result"]["exit"]["decision"] == {
+        "kind": "select_models", "models": ["linear", "elastic_net", "boosted_trees"]}
+    assert fit["chain"][-1]["relation"] == "no_holdout_declares_corrected"
+
+
+def test_chain_6_a_multi_site_cohort_with_repeated_visits_under_prediction(client, tmp_path):
     """MODELING_SEQUENCE §6 chain 6, its prediction half: "grouped folds and site heterogeneity
-    under prediction". Visits repeat within people, people within sites. Asserted: the order
-    (the holdout and every fold keep a person whole; the sites are scored by models fit on the
-    others); every relation MS6 touches fires and is named in the chain; the participant flow
-    says the rows are grouped; and the methods sentences, verbatim."""
+    under prediction". Visits repeat within people, people within sites; driven through the real
+    server, every question answered as the Router asks it, the split left at plain 5-fold
+    cross-validation (never internal–external by hand), so the site heterogeneity is what §2 says
+    the grouping implies. Asserted: the order (the holdout and every fold keep a person whole; each
+    site scored by models fit on the others); every relation MS6 touches fires and is named in the
+    chain; and the methods sentences the record writes, verbatim. Reference: the holdout and folds
+    read from the split's parquet; each site's held-out log loss of logistic regression refit by
+    statsmodels (Newton, 10⁻¹²) on the other sites' training rows, to 10⁻⁴."""
+    from turbotab.core.tests.acceptance.test_wp16_seal_guards import assignment
+
     rng = np.random.default_rng(606)
     people = 150
     site_of = rng.integers(0, 6, people)
     visits = rng.integers(2, 4, people)
-    pid = np.repeat(np.arange(people), visits)
-    site = np.array([f"site_{s}" for s in site_of])[pid]
-    n = len(pid)
+    who = np.repeat(np.arange(people), visits)
+    site = np.array([f"site_{s}" for s in site_of])[who]
+    n = len(who)
     X = rng.normal(size=(n, 3))
-    person = rng.normal(0, 0.7, people)[pid]
-    shift = rng.normal(0, 0.4, 6)[site_of[pid]]
+    person = rng.normal(0, 0.7, people)[who]
+    shift = rng.normal(0, 0.4, 6)[site_of[who]]
     risk = 1 / (1 + np.exp(-(-0.3 + X @ np.array([0.8, -0.5, 0.0]) + person + shift)))
-    frame = pd.DataFrame(X, columns=["x1", "x2", "x3"]).assign(
-        pid=pid, site=site, y=np.where(rng.random(n) < risk, "yes", "no"))
-    split = SplitSpec(holdout=0.2, seed=8, folds=5, validation="internal_external", cluster="site")
-    st = _state(frame, task="binary", target="y", models=["linear", "elastic_net"], event="yes",
-                repeated=True, roles={"site": "design"}, split=split)
-    *_, sp, _, fit = _stages(frame, st, tmp_path)
-    a = _assignment(sp)
-    who = pid[a["row_id"].to_numpy()]
-    held = a["partition"].to_numpy() == "holdout"
-    assert not set(who[held]) & set(who[~held])  # the grouped holdout
-    assert "grouped by `pid` so a unit's rows stay together" in sp.data["note"]
-    data = fit.data
-    for m in data["models"]:
+    frame = pd.DataFrame(X.round(4), columns=["x1", "x2", "x3"]).assign(
+        pid=[f"P{i:04d}" for i in who], site=site, y=np.where(rng.random(n) < risk, "yes", "no"))
+    pid = _opened(client, tmp_path, frame, "cohort.csv")
+    _accepted(client, pid, {"kind": "set_split", "holdout": 0.2, "seed": 8, "folds": 5})
+    _accepted(client, pid, {"kind": "select_models", "models": ["linear", "elastic_net"]})
+    fit = _served_fit(client, pid)
+    view = client.get(f"/api/projects/{pid}").json()
+    state = view["state"]
+    assert state["grain"]["id_column"] == "pid" and state["clusters"]["column"] == "site"
+    assert state["split"]["validation"] == "kfold"  # internal–external was never chosen by hand
+    a = assignment(client, pid).sort_values("row_id")
+    rows = a["row_id"].to_numpy()
+    held = (a["partition"] == "holdout").to_numpy()
+    person_of = frame["pid"].to_numpy()[rows]
+    assert not set(person_of[held]) & set(person_of[~held])  # the grouped holdout
+    folds = a["fold"].to_numpy()[~held]
+    for unit in set(person_of[~held]):  # grouped folds: each person's rows in one fold
+        assert len(set(folds[person_of[~held] == unit])) == 1
+    fired = [c["relation"] for c in fit["chain"]]
+    assert fired == ["proper_score_primary", "families_compared_on_substrate",
+                     "repeated_units_group_resampling", "clusters_site_heterogeneity",
+                     "choice_among_families_bbc"]
+    assert fit["chain"][3] == {
+        "relation": "clusters_site_heterogeneity",
+        "because": "the grouping question named `site`, with 6 levels",
+        "then": ("every family was also validated internal–externally by it: each level scored by "
+                 "models fit on the others, with the random-effects summary and the spread")}
+    assert fit["comparison"]["repeats"] == 10 and fit["comparison"]["shared"] == 1
+    assert fit["selection"]["by_unit"] is True and fit["result"]["basis"] == "holdout"
+    # Each site, scored by logistic regression fit on the other sites' training rows.
+    train = rows[~held]
+    Xt = frame[["x1", "x2", "x3"]].to_numpy()[train]
+    yt = (frame["y"].to_numpy()[train] == "yes").astype(int)
+    st = site[train]
+    linear = next(m for m in fit["models"] if m["family"] == "linear")
+    for m in fit["models"]:
         iecv = m["internal_external"]
         assert iecv["cluster"] == "site" and iecv["metric"] == "log_loss"
-        assert len(iecv["clusters"]) == len(set(site[a["row_id"].to_numpy()][~held]))
-    assert data["comparison"]["repeats"] == 10 and data["comparison"]["shared"] == 0
-    assert data["selection"]["by_unit"] is True
-    fired = [c["relation"] for c in data["chain"]]
-    assert fired == ["proper_score_primary", "families_compared_on_substrate",
-                     "repeated_units_group_resampling", "choice_among_families_bbc"]
-    assert data["result"]["basis"] == "holdout"
-    said = voice.sentence_for(d.SetSplit(**split.model_dump()), st, {})
-    assert said == (
-        "A random `20%` of the rows with `y` recorded (seed `8`, stratified by `y`) was held out "
-        "for one final score; performance was estimated on the rest by internal–external "
-        "validation, each level of `site` held out in turn and scored by models fit on the "
-        "others; models were compared with each other and with the no-predictor baseline on "
-        "`5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t "
-        "(Nadeau & Bengio 2003; Bouckaert & Frank 2004).")
-    no_holdout = st.model_copy(update={"split": SplitSpec(holdout=0.0, seed=8)})
-    assert voice.sentence_for(d.SelectModels(models=["linear", "elastic_net"]), no_holdout, {}) == (
-        "Two model families were chosen: logistic regression and elastic net; with no rows held "
-        "out, the "
-        "choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos "
-        "et al. 2018), and that selection-corrected estimate is the reported result, not the best "
-        "family's own score.")
+        assert [c["cluster"] for c in iecv["clusters"]] == sorted(set(st))
+        assert iecv["spread"].startswith("Across 6 levels of site, log loss ranged from ")
+    for c in linear["internal_external"]["clusters"]:
+        out = st == c["cluster"]
+        beta = _logit_fit(Xt[~out], yt[~out])
+        expected = ref.log_loss(yt[out], _logit_proba(beta, Xt[out]), [0, 1])
+        assert c["n"] == int(out.sum())
+        assert c["primary"]["estimate"] == pytest.approx(expected, abs=1e-4)
+    sentences = {r["decision"]["kind"]: r["sentence"] for r in view["decisions"]}
+    assert sentences["set_clusters"] == (
+        "Participants are grouped by `site`: under prediction every family is also validated "
+        "internal–externally by it, each `site` scored by models fit on the others, when it has 2 "
+        "to `30` levels, so performance across them is reported.")
+    assert sentences["set_split"] == (
+        "A random `20%` of the rows with `y` recorded (seed `8`, keeping each `pid`'s rows "
+        "together, stratified by `y`) was held out for one final score; performance was estimated "
+        "on the rest by `5`-fold cross-validation; models were compared with each other and with "
+        "the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the "
+        "corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004).")
+    assert sentences["select_models"].startswith(
+        "Two model families were chosen: logistic regression and elastic net. ")

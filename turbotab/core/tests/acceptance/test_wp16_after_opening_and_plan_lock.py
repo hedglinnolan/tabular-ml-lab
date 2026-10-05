@@ -105,16 +105,46 @@ def numbers_in(obj: Any) -> set[float]:
     return set()
 
 
+def untimed(obj: Any) -> Any:
+    """``obj`` without its wall-clock fields (``fit_seconds``, ``seconds``, ``estimate_seconds``,
+    a job's ``progress``): a fit's time is no score, and one that happens to equal a hidden score
+    to three places (0.476 s against a held-out log loss of 0.476, the verifier's run) proves
+    nothing about the seal."""
+    if isinstance(obj, dict):
+        return {k: untimed(v) for k, v in obj.items()
+                if not (isinstance(k, str) and (k.endswith("seconds") or k == "progress"))}
+    if isinstance(obj, list):
+        return [untimed(v) for v in obj]
+    return obj
+
+
 def assert_withheld(bodies: list[Any], hidden: dict[str, dict[str, float]]) -> None:
-    """None of ``hidden``'s scores, as a number or as printed to three or four places."""
+    """None of ``hidden``'s scores, as a number or as printed to three or four places, anywhere but
+    a wall-clock field (:func:`untimed`)."""
     values = [v for scores in hidden.values() for v in scores.values() if np.isfinite(v)]
     assert values
     for body in bodies:
+        body = untimed(body)
         seen, text = numbers_in(body), json.dumps(body, ensure_ascii=False)
         for v in values:
             assert v not in seen, (v, text[:300])
             for shown in (f"{v:.4f}", f"{v:.3f}"):
                 assert re.search(rf"(?<![\d.]){re.escape(shown)}(?!\d)", text) is None, (shown, text[:300])
+
+
+def test_the_withheld_check_reads_scores_not_wall_clock_times():
+    """The guard itself: a fit time that equals a hidden score to three places is not a leak (the
+    verifier's collision: ``fit_seconds`` 0.476 against a held-out log loss of 0.47618), while the
+    same score anywhere else still is."""
+    hidden = {"linear": {"log_loss": 0.47618}}
+    timed = {"models": [{"family": "linear", "fit_seconds": 0.47618,
+                         "nested_cv": {"seconds": 0.4762}, "estimate_seconds": 0.476}],
+             "stages": {"fit": {"progress": 0.476}}}
+    assert_withheld([timed], hidden)
+    for leak in ({"score": 0.47618}, {"sentence": "held-out log loss 0.476"},
+                 {"models": [{"fit_seconds": 1.0, "holdout": {"log_loss": 0.4762}}]}):
+        with pytest.raises(AssertionError):
+            assert_withheld([leak], hidden)
 
 
 def responses(client, pid: str) -> list[Any]:

@@ -1018,9 +1018,19 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
         if getattr(d, "nested_cv", False):
             from turbotab.core.models.validation import NESTED_REPS
 
-            boot += (f"; each interval is the nested cross-validation interval "
-                     f"({tick(NESTED_REPS)} repetitions of {tick(d.folds)} folds; Bates, Hastie & "
-                     f"Tibshirani 2023)")
+            # Each family's own interval: the selection-corrected one and the pairwise differences
+            # have no nested interval (models/validation.py).
+            boot += (f"; each family's own performance interval is the nested cross-validation "
+                     f"interval ({tick(NESTED_REPS)} repetitions of {tick(d.folds)} folds; Bates, "
+                     f"Hastie & Tibshirani 2023)")
+    # MS6 (MODELING_SEQUENCE §2): when the seal could not keep a unit's rows together, the folds
+    # are drawn by row and every score is within-unit performance; said, never silent.
+    if basis is not None and not group:
+        from turbotab.core.models.validation import WITHIN_UNIT, unit_spans
+
+        spans = unit_spans({k: _attr(basis, k) for k in ("state", "column", "n_units")})
+        if spans:
+            boot += f"; {spans}: {WITHIN_UNIT}"
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")
@@ -1557,8 +1567,15 @@ def _set_clusters(d: Any, state: Any, ctx: Any) -> str:
         return text
     column = tick(d.column)
     if getattr(state, "purpose", None) == "prediction" or d.adjust is None:
-        return (f"Participants are grouped by {column}: validation keeps each {column}'s rows "
-                f"together, and internal–external validation can hold out whole groups")
+        # MS6 (MODELING_SEQUENCE §2): under prediction the grouping implies performance across its
+        # levels, by internal–external validation beside the headline (models/validation.py). The
+        # folds group by the unit the seal groups by, never by this column.
+        from turbotab.core.models.validation import SITE_LIMIT
+
+        return (f"Participants are grouped by {column}: under prediction every family is also "
+                f"validated internal–externally by it, each {column} scored by models fit on the "
+                f"others, when it has 2 to {tick(SITE_LIMIT)} levels, so performance across them "
+                f"is reported")
     if d.adjust == "fixed_effects":
         return (f"Participants are grouped by {column}: each {column} has its own intercept "
                 f"(fixed effects), and the intervals are cluster-robust by {column}")

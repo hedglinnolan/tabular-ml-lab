@@ -18403,6 +18403,55 @@
           "sentence": {
             "title": "Sentence",
             "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "said": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Said"
+          },
+          "vouched": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Vouched"
+          },
+          "exit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exit"
           }
         },
         "required": [
@@ -18414,7 +18463,11 @@
           "ci_high",
           "how",
           "narrow",
-          "sentence"
+          "sentence",
+          "name",
+          "said",
+          "vouched",
+          "exit"
         ],
         "title": "DeclaredResult",
         "type": "object"

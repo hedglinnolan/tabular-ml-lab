@@ -6863,6 +6863,28 @@ export interface components {
             narrow: string | null;
             /** Sentence */
             sentence: string;
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+            /**
+             * Said
+             * @default null
+             */
+            said: string | null;
+            /**
+             * Vouched
+             * @default null
+             */
+            vouched: boolean | null;
+            /**
+             * Exit
+             * @default null
+             */
+            exit: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * DerivedColumn
