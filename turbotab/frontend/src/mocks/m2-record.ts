@@ -526,6 +526,7 @@ function sealPlan(
     refusal: null,
     time_ordered_folds: Boolean(state.temporal?.temporal && state.temporal.time_column),
     validation: null,
+    labels: null,
   };
 }
 

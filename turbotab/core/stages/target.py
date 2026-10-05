@@ -98,6 +98,15 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         confidence = found.confidence
         task = ctx.state.task or detected_task
 
+        # WP17 (audit RO-03): the columns that read as a follow-up time, and whether each varies,
+        # so a yes/no outcome beside one is asked whether everyone was followed for the same time.
+        from turbotab.core.estimand import follow_up_candidates, reads_as_follow_up
+
+        timed = [c for c, i in columns.items()
+                 if c != target and i.get("dtype") in NUMERIC and reads_as_follow_up(c)]
+        follow_up = follow_up_candidates(store.materialize(timed) if timed else None,
+                                         {c: columns[c] for c in timed}, target)
+
         histogram = None
         classes = None
         if task == "regression" and column["dtype"] in NUMERIC:
@@ -152,4 +161,5 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         # Proposed for the user's decision when nothing states it; never in a sentence.
         "proposed_unit": proposal["unit"] if proposal else None,
         "unit_candidates": list(proposal["candidates"]) if proposal else [],
+        "follow_up": follow_up,
     }

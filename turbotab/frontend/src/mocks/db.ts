@@ -650,6 +650,14 @@ function slotOf(d: Decision): Slot | null {
       return "reading_confirmations";
     case "set_follow_up":
       return "follow_up";
+    case "set_censoring":
+      return "censoring";
+    case "set_clusters":
+      return "clusters";
+    case "set_estimand":
+      return "estimand";
+    case "set_adjustment":
+      return "adjustment";
     case "set_sensitivity":
       return "sensitivity";
     case "set_measurement_error":
@@ -766,6 +774,16 @@ function valueOf(d: Decision): ProjectState[Slot] {
     }
     case "set_follow_up":
       return { time_column: d.time_column, entry_column: d.entry_column ?? null };
+    case "set_censoring":
+      return d.acknowledged ? "same_attested" : "same";
+    case "set_clusters":
+      return { column: d.column ?? null, adjust: d.adjust ?? null,
+               acknowledged: d.acknowledged ?? false };
+    case "set_estimand":
+      return { exposure: d.exposure, effect: d.effect ?? "total",
+               contrast: d.contrast ?? null, measure: d.measure };
+    case "set_adjustment":
+      return null;
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -854,6 +872,10 @@ export function fold(records: DecisionRecord[]): ProjectState {
     reading_confirmations: null,
     shape_confirmations: null,
     sex_codings: null,
+    censoring: null,
+    clusters: null,
+    estimand: null,
+    adjustment: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

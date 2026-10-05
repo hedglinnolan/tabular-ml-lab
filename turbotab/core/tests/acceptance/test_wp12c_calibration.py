@@ -265,8 +265,11 @@ def up_to_the_models(d, purpose: str) -> None:
 def recall_truth() -> "Truth":
     """The recall table's truth (BLUEPRINT §14.3): age in whole years, an amount; energy one
     day's recall in kcal."""
+    # WP17, the generator's causal truth: age sets protein and LDL; sex sets energy (and so
+    # protein) and LDL.
     return Truth({"code_or_count:age": "amount", "unit:energy_kcal": "kcal",
-                  "day_count:energy_kcal": "1"}, fixture="recall_table")
+                  "day_count:energy_kcal": "1", "adjust:age": "yes,yes,no",
+                  "adjust:sex": "yes,yes,no"}, fixture="recall_table")
 
 
 @pytest.fixture(scope="module")

@@ -226,7 +226,12 @@ def accepted(client, pid: str, decision: dict) -> dict:
 # The informative-weight tables' truth (their generator, ``informative_tables``): DR1TKCAL is one
 # day's simulated intake in kcal; the design codes are the design's.
 TABLE_TRUTH = {"unit:DR1TKCAL": "kcal", "day_count:DR1TKCAL": "1",
-               "code_or_count:SDMVSTRA": "code", "code_or_count:SDMVPSU": "code"}
+               "code_or_count:SDMVSTRA": "code", "code_or_count:SDMVPSU": "code",
+               # WP17: total energy shares the diet's common causes with fiber, so it is adjusted
+               # for (the generator draws them independently; the author adjusts as the field does)
+               "adjust:DR1TKCAL": "unknown,unknown,no",
+               # the subgroup table's age sets y only (``subgroup_table``)
+               "adjust:age": "no,yes,no"}
 
 
 def open_project(client, path: Path, target: str, purpose: str, roles: dict[str, str]) -> str:

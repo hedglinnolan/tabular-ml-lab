@@ -162,7 +162,9 @@ def _six_by_forty() -> pd.DataFrame:
 def _age_truth() -> Any:
     from turbotab.core.tests.truths import Truth
 
-    return Truth({"code_or_count:age": "amount"}, fixture="the audit's server scenario")
+    # WP17: age is drawn before the exposure and causes the outcome.
+    return Truth({"code_or_count:age": "amount", "adjust:age": "yes,yes,no"},
+                 fixture="the audit's server scenario")
 
 
 class _Drive:
@@ -254,6 +256,9 @@ def test_2_six_units_refuse_intervals_with_exits(tmp_path):
         d.reach("roles")
         d.decide({"kind": "set_roles", "roles": {"participant_id": "identifier",
                                                  "sodium_mg": "exposure", "age": "covariate"}})
+        from turbotab.core.tests.acceptance.server_drive import answer_plan
+
+        answer_plan(d, "sodium_mg")  # WP17: the exposure, its effect and the adjustment set
         d.reach("exclusions")
         d.decide({"kind": "set_exclusions", "rules": []})
         d.reach("missing")

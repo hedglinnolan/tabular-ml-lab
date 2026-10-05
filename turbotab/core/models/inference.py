@@ -108,8 +108,13 @@ def cluster_columns(state: Any, available: Sequence[str], also: Sequence[str | N
     roles = getattr(state, "roles", None) or {}
     identifiers = [c for c, r in roles.items() if r == "identifier"]
     clusters = [c for c, r in roles.items() if r == "cluster"]
+    # WP17 (audit RO-08): the grouping the cluster question named, whatever its role.
+    from turbotab.core.estimand import cluster_answer
+
+    answered = cluster_answer(state)
     have = set(available)
-    wanted = [*([named] if named else []), *identifiers, *clusters, *[c for c in also if c]]
+    wanted = [*([named] if named else []), *identifiers, *clusters,
+              *([answered] if answered else []), *[c for c in also if c]]
     return [c for c in dict.fromkeys(wanted) if c in have]
 
 
@@ -141,14 +146,22 @@ def resolve_clusters(state: Any, frame: pd.DataFrame, also: Sequence[str | None]
     # (the gate: a roster's ``person_no`` over the household the user confirmed).
     from turbotab.core.readings import cluster_exits, cluster_rank, cluster_reading
 
-    answered = {named, *[c for c in also if c]}
+    # WP17 (audit RO-08): a grouping the user named at the cluster question is the user's answer,
+    # as the grain's column and the split's grouping are.
+    from turbotab.core.estimand import cluster_answer
+
+    grouping = cluster_answer(state)
+    answered = {named, grouping, *[c for c in also if c]}
     for column in cluster_columns(state, list(frame.columns), also):
         values = frame[column]
         units = int(values.nunique(dropna=True))
         if not 0 < units < int(values.notna().sum()):
             continue
         if column in answered:
-            repeating.append((0 if column == named else cluster_rank(state, column), units, column))
+            # The grouping above the person nests the units, so it is the level the intervals
+            # cluster at (MODELING_SEQUENCE §2: "at the highest correlated level").
+            rank = -1 if column == grouping else 0 if column == named else cluster_rank(state, column)
+            repeating.append((rank, units, column))
             continue
         found = cluster_reading(state, column)
         if not found.settled:

@@ -425,8 +425,11 @@ def goldberg_truth() -> Any:
     intake in kcal; weight in kg, height in cm, age in whole years."""
     from turbotab.core.tests.truths import Truth
 
+    # WP17, the generator's causal truth: sex and age set body size, so expenditure and fiber, and
+    # each sets LDL.
     return Truth({"unit:kcal": "kcal", "day_count:kcal": "1", "unit:weight": "kg",
-                  "unit:height": "cm", "unit:age": "years", "code_or_count:age": "amount"},
+                  "unit:height": "cm", "unit:age": "years", "code_or_count:age": "amount",
+                  "adjust:sex": "yes,yes,no", "adjust:age": "yes,yes,no"},
                  fixture="misreporting_table")
 
 

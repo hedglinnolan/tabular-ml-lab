@@ -361,8 +361,12 @@ _SLOT_SUBJECT = {
     "outcome_order": "the order of the outcome's levels",
     "outcome_unit": "the outcome's unit",
     "column_units": "the columns' units",
+    "censoring": "the follow-up answer",
+    "clusters": "the grouping answer",
+    "estimand": "the exposure and effect",
+    "adjustment": "the adjustment answers",
 }
-_PLURAL_SUBJECTS = {"roles", "exclusions", "models"}
+_PLURAL_SUBJECTS = {"roles", "exclusions", "models", "adjustment"}
 
 
 def _slot_value(slot: str, value: Any) -> str | None:
@@ -421,6 +425,15 @@ def _slot_value(slot: str, value: Any) -> str | None:
         if _attr(value, "estimand") == "sample":
             return "these participants, unweighted"
         return f"the surveyed population, weighted by {tick(_attr(value, 'weight'))}"
+    if slot == "censoring":
+        return "the same follow-up for everyone"
+    if slot == "clusters":
+        column = _attr(value, "column")
+        return f"grouped by {tick(column)}" if column else "no grouping above the person"
+    if slot == "estimand":
+        return f"the {_attr(value, 'effect')} effect of {tick(_attr(value, 'exposure'))}"
+    if slot == "adjustment":
+        return f"answers for {count(len(value))} {plural(len(value), 'covariate')}"
     return None
 
 
@@ -1301,6 +1314,92 @@ def _set_follow_up(d: Any, state: Any, ctx: Any) -> str:
     return text
 
 
+@register_sentence("set_censoring")
+def _set_censoring(d: Any, state: Any, ctx: Any) -> str:
+    # WP17 (audit RO-03): the follow-up question's "the same for everyone".
+    text = (f"{tick(d.column)} was analyzed as a yes/no outcome: everyone was followed for the "
+            f"same time, as answered, so it counts events over one period")
+    if d.acknowledged:
+        text += (", although a column reads as a follow-up time that varies; the answer was kept "
+                 "over that reading and is a stated limitation")
+    return text
+
+
+@register_sentence("set_clusters")
+def _set_clusters(d: Any, state: Any, ctx: Any) -> str:
+    # WP17 (audit RO-08): the grouping above the person.
+    if d.column is None:
+        text = "Nothing groups the participants above the person; each is analyzed as independent"
+        if d.acknowledged:
+            text += (", although a column reads as a site, centre, household or batch; the answer "
+                     "was kept over that reading and is a stated limitation")
+        return text
+    column = tick(d.column)
+    if getattr(state, "purpose", None) == "prediction" or d.adjust is None:
+        return (f"Participants are grouped by {column}: validation keeps each {column}'s rows "
+                f"together, and internal–external validation can hold out whole groups")
+    if d.adjust == "fixed_effects":
+        return (f"Participants are grouped by {column}: each {column} has its own intercept "
+                f"(fixed effects), and the intervals are cluster-robust by {column}")
+    return (f"Participants are grouped by {column}: the intervals are cluster-robust by {column}, "
+            f"without an intercept for each, so differences between groups stay in the estimate")
+
+
+@register_sentence("set_estimand")
+def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
+    # WP17 (MODELING_SEQUENCE §1 step 2): the exposure and its effect.
+    from turbotab.core.estimand import MEASURE_WORDS, NON_COLLAPSIBLE
+
+    target = getattr(state, "target", None)
+    on = f" on {tick(target)}" if target else ""
+    contrast = {"substitution": " (a substitution: in place of other energy sources at fixed "
+                                "total energy)",
+                "addition": " (an addition: its calories added, every other energy source "
+                            "fixed)"}.get(d.contrast or "", "")
+    text = (f"The analysis estimates the {d.effect} effect of {tick(d.exposure)}{on}{contrast}, as "
+            f"a {MEASURE_WORDS.get(d.measure, d.measure)} per unit of {tick(d.exposure)}")
+    if d.measure in NON_COLLAPSIBLE:
+        text += ", given the adjustment set"
+    if d.effect == "direct":
+        text += "; a direct effect holds the mediators fixed and needs their confounders adjusted too"
+    return text
+
+
+@register_sentence("set_adjustment")
+def _set_adjustment(d: Any, state: Any, ctx: Any) -> str:
+    # WP17 (MODELING_SEQUENCE §1 step 3): roles derived from the disjunctive cause criterion.
+    from turbotab.core.estimand import ROLE_PLURAL, ROLE_SINGULAR, derive
+
+    spec = getattr(state, "estimand", None)
+    effect = getattr(spec, "effect", None) or "total"
+    by_role: dict[tuple[str, bool, bool], list[str]] = {}
+    derived = {}
+    for column, answers in d.answers.items():
+        found = derive(answers, effect)
+        derived[column] = found
+        by_role.setdefault((found.role, found.adjusted, found.secondary), []).append(column)
+    parts = []
+    for (role, adjusted, secondary), columns in by_role.items():
+        one = len(columns) == 1
+        if adjusted:
+            where = "adjusted for"
+        elif secondary:
+            where = "left out of the primary model and adjusted for in a declared secondary one"
+        else:
+            where = "left out"
+        noun = ROLE_SINGULAR[role] if one else ROLE_PLURAL[role]
+        parts.append(f"{listing(columns, limit=5)} {'is' if one else 'are'} {noun}, {where}")
+    kept = [c for c, a in d.answers.items() if a.keep and a.acknowledged and not
+            (derived[c].role == "mediator" and effect == "direct")
+            and derived[c].role in ("mediator", "collider", "timing_unknown")]
+    text = (f"For the effect of {tick(d.exposure)}, by the disjunctive cause criterion: "
+            + "; ".join(parts))
+    if kept:
+        text += (f". {listing(kept)} {plural(len(kept), 'was', 'were')} kept in the primary set "
+                 f"over that reading, as recorded, so the estimate is not a total effect")
+    return text
+
+
 def stated_grain_reason(column: str) -> str:
     """The grain question's stated skip (M2_CONTRACT §10), as the clause after "Not asked:"."""
     return f"every {tick(column)} appears once, so each person is one row."
@@ -1508,6 +1607,7 @@ _QUESTION_NAME = {
     "target": "the outcome question",
     "event": "the event question",
     "task": "the task question",
+    "follow_up": "the follow-up question",
     "purpose": "the purpose question",
     "grain": "the question of whether people repeat",
     "repeat_kind": "the question of what repeats",
@@ -1515,7 +1615,10 @@ _QUESTION_NAME = {
     "aggregation": "the question of how rows are combined",
     "temporal": "the temporal question",
     "roles": "the column roles",
+    "clusters": "the grouping question",
     "survey": "the survey question",
+    "estimand": "the exposure and effect question",
+    "adjustment": "the adjustment-set question",
     "exclusions": "the eligibility question",
     "missing": "the missing-values question",
     "split": "the held-out rows question",

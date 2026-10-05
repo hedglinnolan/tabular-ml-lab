@@ -346,6 +346,9 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
       survey: null,
       exposure_forms: [],
       energy_unit: null,
+      labels: null,
+      estimand: null,
+      adjustment: null,
     };
   }
   const energy =
@@ -502,6 +505,9 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
     survey: null,
     exposure_forms: [],
     energy_unit: null,
+    labels: null,
+    estimand: null,
+    adjustment: null,
   };
 }
 
@@ -1295,6 +1301,8 @@ export function fit(
     final_note: null,
 
     levels: null,
+    withheld: null,
+    estimand: null,
   };
 }
 

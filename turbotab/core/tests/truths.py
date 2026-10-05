@@ -150,6 +150,18 @@ FIXTURE_TRUTHS: dict[str, dict[str, str]] = {
         "code_or_count:hdl": "amount", "code_or_count:triglycerides": "amount",
         "code_or_count:kcal": "amount", "code_or_count:cycle_begin_year": "code", "unit:weight": "kg", "unit:height": "cm",
         "unit:age": "years",
+        # WP17: each covariate's causal place for sugar → fasting glucose, as the author reads it
+        # (causes sugar, causes glucose, changed by sugar or measured after it). Age, gender and
+        # the survey cycle come before the diet and cause both; the other nutrients share the
+        # diet's common causes; body size may itself follow the diet (a cross-sectional measure of
+        # unknown timing); blood pressure, HDL, triglycerides and the medications are downstream of
+        # the diet and cause glucose's level or its treatment: mediators.
+        **{f"adjust:{c}": "yes,yes,no" for c in ("age", "gender", "cycle_begin_year")},
+        **{f"adjust:{c}": "unknown,unknown,no" for c in (
+            "protein", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly")},
+        **{f"adjust:{c}": "unknown,yes,unknown" for c in ("weight", "height", "bmi", "waist")},
+        **{f"adjust:{c}": "no,yes,yes" for c in (
+            "bp_sys", "bp_di", "hdl", "triglycerides", "meds_hbp", "meds_chol")},
     },
     "binary_shapes.csv": {"code_or_count:age": "amount", "code_or_count:sbp": "amount"},
     "multiclass_stage.csv": {"code_or_count:age": "amount"},
@@ -164,3 +176,48 @@ FIXTURE_TRUTHS: dict[str, dict[str, str]] = {
 def fixture_truth(name: str) -> Truth:
     """The declared truth of a sample fixture, by file name (empty when none is declared)."""
     return Truth(FIXTURE_TRUTHS.get(name, {}), fixture=name)
+
+
+# ── WP17: the adjustment set, answered from the fixture's causal truth ───────
+
+ADJUSTMENT_FIELDS = ("causes_exposure", "causes_outcome", "after_exposure")
+
+
+def adjustment_truth(truth: Truth, column: str) -> dict[str, Any]:
+    """A covariate's answers to the disjunctive cause criterion, as the fixture's author knows its
+    causal place: ``adjust:<column>`` → ``"yes,yes,no"`` (causes the exposure, causes the outcome,
+    changed by the exposure), optionally followed by ``,instrument`` or ``,proxy``."""
+    parts = [p.strip() for p in truth.answer("adjust", column).split(",")]
+    out: dict[str, Any] = dict(zip(ADJUSTMENT_FIELDS, parts[:3]))
+    out["instrument"] = "instrument" in parts[3:]
+    out["proxy"] = "proxy" in parts[3:]
+    return out
+
+
+def answer_adjustment(post: Callable[[dict[str, Any]], Any], card: dict[str, Any],
+                      truth: Truth) -> list[dict[str, Any]]:
+    """Answer the adjustment card as the fixture's author would (BLUEPRINT §14.2): a group whose
+    every column's truth is the card's guess is confirmed with its one tap (the group's own
+    decision); every other column is answered from its truth, columns with the same answers in one
+    ``set_adjustment``. Returns the decisions posted, in order."""
+    posted: list[dict[str, Any]] = []
+    exposure = card["exposure"]
+    for group in card["groups"]:
+        guess = group.get("guess")
+        truths = {c: adjustment_truth(truth, c) for c in group["columns"]}
+        if guess is not None and all({k: t[k] for k in ADJUSTMENT_FIELDS} == {
+                k: guess[k] for k in ADJUSTMENT_FIELDS} and not t["instrument"] and not t["proxy"]
+                                     for t in truths.values()):
+            decisions = [group["decision"]]
+        else:
+            by: dict[tuple[Any, ...], list[str]] = {}
+            for c, t in truths.items():
+                by.setdefault(tuple(sorted(t.items())), []).append(c)
+            decisions = [{"kind": "set_adjustment", "exposure": exposure,
+                          "answers": {c: dict(key) for c in columns}}
+                         for key, columns in by.items()]
+        for d in decisions:
+            r = post(d)
+            assert r.status_code == 200, (d, r.text[:600])
+            posted.append(d)
+    return posted

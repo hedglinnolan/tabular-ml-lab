@@ -466,6 +466,9 @@ def _steps(ctx: Any) -> list[Any] | None:
         return None
 
 
+OUTCOME_QUESTIONS = ("event", "task", "follow_up")
+
+
 def _answers_in_order(decision: Any, ctx: Any) -> None:
     """Refuse an answer to a question still waiting behind an earlier unanswered one.
 
@@ -482,6 +485,12 @@ def _answers_in_order(decision: Any, ctx: Any) -> None:
     step = next((s for s in steps if s.key == question), None)
     if step is None or step.status not in ("open", "waiting"):
         return  # answered, stated, or not applicable: the Router is not holding it back
+    if question in OUTCOME_QUESTIONS:
+        # WP17 (audit RO-03): the event, the task and the follow-up describe one outcome and each
+        # decides whether the others apply, so none holds another back; only the questions before
+        # them do. While ``target_info`` computes, the event waits on the task, and the task
+        # answer (the time-to-event refusal's own exit) is accepted rather than refused "not yet".
+        steps = [s for s in steps if s.key not in OUTCOME_QUESTIONS or s.key == question]
     first = first_unanswered(steps)
     if first is None or first.key == question:
         return

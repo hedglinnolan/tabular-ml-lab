@@ -1249,6 +1249,153 @@ OPEN_SEAL = {
     "evidence": None,
 }
 
-ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, PURPOSE, GRAIN, REPEAT_KIND, UNIT,
-           AGGREGATION, TEMPORAL, ROLES, SURVEY, EXCLUSIONS, MISSING, SPLIT, ENERGY_ADJUSTMENT,
-           MODELS, SUBSTITUTION, OPEN_SEAL]
+# ── WP17 (AUDIT_REPORT §5): the questions the declared purpose routes ────────
+# turbotab/core/estimand.py holds their gates and refusals; the sources are quoted there.
+
+CLIN_A46 = f"{_CLIN}#A4.6 · Kaplan–Meier and time-to-event"
+
+FOLLOW_UP = {
+    "key": "follow_up",
+    "title": "How long people were followed",
+    "question": "Was everyone followed for the same time, or could some leave first?",
+    "one_liner": "If follow-up ends before the event for some people, a yes/no model counts them "
+                 "as having none.",
+    "why": "In a cohort people enter at different times, move away, or the study ends before their "
+           "event could happen. A yes/no model treats them as event-free and can manufacture an "
+           "association; a time-to-event model keeps each person for the time they were followed "
+           "(PROBAST, item 4.6).",
+    "consumer": "The task, the model shelf (Cox for a time to event) and the methods read it.",
+    "options": [
+        option("varies", "Follow-up varies",
+               "Analyzed as a time to event: a Cox model, each row followed until its time."),
+        option("same", "Same for everyone",
+               "The yes/no outcome stands; the methods state that everyone was followed equally."),
+    ],
+    "terms": [
+        term("censoring", "Follow-up that ends before the event could be seen: the person left, "
+                          "or the study ended."),
+    ],
+    "drawer": {"sections": [
+        section("Reporting follow-up",
+                "Report median follow-up using the reverse Kaplan–Meier method, not the median of "
+                "observed follow-up times, which is biased by early events.",
+                "SETTLED", CLIN_A46),
+    ]},
+    "evidence": None,
+}
+
+CLUSTERS = {
+    "key": "clusters",
+    "title": "Groups above the person",
+    "question": "Are participants grouped in sites, centres, households or batches?",
+    "one_liner": "People in one group are more alike than people across groups, so the model and "
+                 "its intervals must know the groups.",
+    "why": "Under inference a site that differs in both exposure and outcome confounds the "
+           "estimate, and intervals that treat its participants as independent are too narrow: "
+           "each site gets its own intercept and the intervals are clustered by it. Under "
+           "prediction, validation keeps a group together and can hold out whole groups.",
+    "consumer": "The model's intercepts, the intervals, the split's internal–external option and "
+                "the methods read it.",
+    "options": [
+        option("fixed_effects", "Adjust and cluster",
+               "Each group gets its own intercept; intervals are cluster-robust by the group."),
+        option("cluster_only", "Cluster only",
+               "Intervals cluster-robust by the group; differences between groups stay in the "
+               "estimate."),
+        option("none", "No grouping",
+               "Every participant is analyzed as independent; recorded with its reason."),
+    ],
+    "terms": [
+        term("fixed effects", "One intercept per group, so the exposure is compared within groups, "
+                              "never between them."),
+        term("cluster-robust", "Intervals that let rows in one group share more than chance; few "
+                               "groups need a small-sample correction."),
+    ],
+    "drawer": {"sections": [
+        section("Validation keeps a unit's rows together",
+                "Predictive-modeling hygiene for this data type: split by participant, not by row; "
+                "fit energy-adjustment residual models, PCA/RRR loadings, standardization, and "
+                "imputation inside the training fold only.",
+                "SETTLED", NUT08),
+    ]},
+    "evidence": None,
+}
+
+ESTIMAND_QUESTION = {
+    "key": "estimand",
+    "title": "The exposure and its effect",
+    "question": "Which exposure, and which of its effects, does this analysis estimate?",
+    "one_liner": "Inference reports one declared effect; no estimate is shown until it is named.",
+    "why": "A coefficient answers a question only once the question is fixed: which exposure, its "
+           "total or its direct effect, a substitution or an addition of calories, and on which "
+           "scale. Choosing these after seeing the estimates is a forking path. Only the measures "
+           "TurboTab fits are offered.",
+    "consumer": "The adjustment set, the energy model, the caption of every estimate and the "
+                "methods read it.",
+    "options": [
+        option("total", "Total effect",
+               "Everything the exposure changes downstream counts; mediators stay out of the "
+               "model."),
+        option("direct", "Direct effect",
+               "Mediators are held fixed; their confounders must be adjusted for too."),
+    ],
+    "terms": [
+        ESTIMAND,
+        term("non-collapsible", "An odds or hazard ratio changes when a covariate that predicts "
+                                "the outcome is added, even without confounding."),
+    ],
+    "drawer": {"sections": [
+        section("A substitution, not an addition",
+                "An energy-adjusted coefficient is a substitution estimate. It answers 'what if "
+                "this person got more of their calories from X and correspondingly fewer from "
+                "everything else, at the same total intake?' — not 'what if this person ate more "
+                "X?'",
+                "SETTLED", NUT04),
+    ]},
+    "evidence": None,
+}
+
+ADJUSTMENT = {
+    "key": "adjustment",
+    "title": "The adjustment set",
+    "question": "For each covariate: what causes what, and when was it measured?",
+    "one_liner": "Each covariate's role is derived from your answers; covariates sharing a guess "
+                 "are confirmed together.",
+    "why": "Statistics cannot tell a confounder from a mediator; only what causes what can "
+           "(VanderWeele 2019). So the disjunctive cause criterion is asked: adjust for causes of "
+           "the exposure or the outcome, leave out instruments and what the exposure changed, and "
+           "estimate a covariate of unknown timing with and without it.",
+    "consumer": "Which columns enter the model, the declared secondary model and the caption "
+                "read it.",
+    "options": [
+        option("confounder", "Confounder",
+               "A cause of the exposure and the outcome: adjusted for."),
+        option("mediator", "Mediator",
+               "Changed by the exposure and a cause of the outcome: left out of a total effect."),
+        option("timing_unknown", "Timing unknown",
+               "Estimated without it and, declared beside, with it."),
+    ],
+    "terms": [
+        term("mediator", "A variable on the path from the exposure to the outcome; adjusting for "
+                         "it removes part of the effect."),
+        term("collider", "A consequence of two variables; adjusting for it can create an "
+                         "association between them that is not causal."),
+        term("instrument", "A cause of the exposure that affects the outcome only through it; "
+                           "adjusting for it amplifies any confounding left."),
+    ],
+    "drawer": {"sections": [
+        section("When energy or body size may be a mediator",
+                "Your outcome is BMI/adiposity. Total energy is plausibly on the causal pathway "
+                "from diet composition to adiposity, and adiposity causes under-reporting of "
+                "energy. Conditioning on reported total energy here can be simultaneously "
+                "over-adjustment (mediator) and collider-stratification bias. Present both "
+                "adjusted and unadjusted models, and flag this in limitations.",
+                "DISPUTED", NUT04),
+    ]},
+    "evidence": None,
+}
+
+ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, PURPOSE, GRAIN,
+           REPEAT_KIND, UNIT, AGGREGATION, TEMPORAL, ROLES, CLUSTERS, SURVEY, ESTIMAND_QUESTION,
+           ADJUSTMENT, EXCLUSIONS, MISSING, SPLIT, ENERGY_ADJUSTMENT, MODELS, SUBSTITUTION,
+           OPEN_SEAL]

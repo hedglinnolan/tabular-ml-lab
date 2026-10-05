@@ -171,7 +171,8 @@ METHOD_TABLE: Dict[str, Dict[str, Any]] = {
         "caveats": [f"Biased even absent confounding: composite variable bias ({_TOMOVA}).",
                     _PARTIAL],
         "customary": f"Yes ({_MCCULLOUGH}).",
-        "sound": {"inference": "The sound form of the residual method.",
+        "sound": {"inference": ("The sound form of the residual method: the standard model's "
+                                "coefficient, with the nutrient in its own units."),
                   "prediction": "Fine: keeps total energy."},
     },
     "residual_energy_dropped": {
@@ -240,7 +241,8 @@ METHOD_TABLE: Dict[str, Dict[str, Any]] = {
             f"or all other nutrients have equal effects ({_TOMOVA}).",
             _PARTIAL],
         "customary": "Yes (NUTRITION_PACK §04).",
-        "sound": {"inference": "For total-effect questions.",
+        "sound": {"inference": ("For total-effect questions: unbiased only without confounding "
+                                "by the other sources, or when their effects are equal (Tomova 2022)."),
                   "prediction": "Fine: carries total energy in its parts."},
     },
     "all_components": {

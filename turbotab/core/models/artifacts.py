@@ -339,6 +339,21 @@ class Selection(_Model):
     text: str
 
 
+class EstimandAnnotation(_Model):
+    """WP17: the served fit under a declared estimand (``turbotab/core/estimand.py``): the caption
+    worded from it, and which table rows are the exposure's effect; the rest are adjustment terms."""
+
+    exposure: str
+    effect: Literal["total", "direct"]
+    measure: str
+    contrast: Literal["substitution", "addition"] | None = None
+    caption: str | None
+    adjusted: list[str]
+    left_out: dict[str, str]  # column -> its derived role
+    secondary: list[str]  # the declared "further adjusted for" model's added columns
+    features: list[str]  # the model-matrix columns carrying the exposure's effect
+
+
 class FitArtifact(_Model):
     """The ``fit`` artifact: cross-validated and held-out performance per model."""
 
@@ -378,6 +393,10 @@ class FitArtifact(_Model):
     imbalance: str | None = None
     # An ordinal outcome's levels in their order, lowest first: code k is levels[k] (WP12a).
     levels: list[str] | None = None
+    # Set by the server (WP17): why every estimate is withheld while a question it rests on is
+    # unanswered; else, under inference, the declared estimand the table is captioned from.
+    withheld: str | None = None
+    estimand: EstimandAnnotation | None = None
 
 
 class SubstitutionModel(_Model):

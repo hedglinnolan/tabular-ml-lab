@@ -293,6 +293,24 @@ def representative_decisions():
                 reason="implausible energy reports")]),
         ]),
         d.SetMeasurementError(method="regression_calibration", exposures=["protein_g"]),
+        # WP17 (audit §5): the follow-up, the grouping, the exposure and effect, the adjustment set
+        d.SetCensoring(column="hba1c"),
+        d.SetCensoring(column="hba1c", acknowledged=True),
+        d.SetClusters(column="site", adjust="fixed_effects"),
+        d.SetClusters(column="site", adjust="cluster_only"),
+        d.SetClusters(column=None, acknowledged=True),
+        d.SetEstimand(exposure="protein_g", effect="total", contrast="substitution",
+                      measure="mean_difference"),
+        d.SetEstimand(exposure="fiber_g", effect="direct", measure="odds_ratio"),
+        d.SetAdjustment(exposure="protein_g", answers={
+            "age": d.CovariateAnswers(causes_exposure="yes", causes_outcome="yes",
+                                      after_exposure="no"),
+            "sex": d.CovariateAnswers(causes_exposure="yes", causes_outcome="yes",
+                                      after_exposure="no"),
+            "bmi": d.CovariateAnswers(causes_exposure="unknown", causes_outcome="yes",
+                                      after_exposure="unknown"),
+            "ldl": d.CovariateAnswers(causes_exposure="no", causes_outcome="yes",
+                                      after_exposure="yes", keep=True, acknowledged=True)}),
     ]
 
 

@@ -1107,7 +1107,11 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
     missing["below_detection"] = below_detection_options(purpose)
     n_base = int(frame[target].notna().sum()) if target and target in frame.columns else len(frame)
     if "dietary" not in (lens or []):
+        from turbotab.core import custom_sound
+
         return {"exclusions": [], "energy": None, "missing": missing, "n_base": n_base,
+                "labels": {"missing": custom_sound.missing(purpose).model_dump(mode="json"),
+                           "exclusions": None, "energy_adjustment": None},
                 "coach": _card_lines(frame, target=target, energy=None, unit="kcal", missing=missing),
                 "basis": "Only the missing-values reading is proposed: the dietary lens is not chosen.",
                 "energy_unit": None}
@@ -1198,7 +1202,21 @@ def build_proposals(frame: pd.DataFrame, columns: Sequence[Mapping[str, Any]], *
         reading = energy_reading(frame, info, roles, energy=energy, nutrients=nutrients, sex=sex,
                                  target=target, purpose=purpose, settled=energy_settled,
                                  energy_unit=settled_unit, waiting=waiting)
+    # WP17 (north star 5; audit RO-06, RO-07): every option labeled customary and sound for the
+    # declared purpose, soundest first, with the tension in one line.
+    from turbotab.core import custom_sound
+
+    applicable = ([m for m, v in (reading or {}).get("applicability", {}).items() if v.get("ok")]
+                  if reading else None)
+    labels = {
+        "missing": custom_sound.missing(purpose).model_dump(mode="json"),
+        "exclusions": custom_sound.exclusions(purpose, [e["key"] for e in exclusions])
+        .model_dump(mode="json"),
+        "energy_adjustment": (custom_sound.energy(purpose, applicable).model_dump(mode="json")
+                              if reading else None),
+    }
     return {"exclusions": exclusions, "energy": reading, "missing": missing, "n_base": n_base,
+            "labels": labels,
             "coach": _card_lines(frame, target=target, energy=energy, unit=unit, missing=missing,
                                  unit_reading=unit_reading,
                                  settled=(energy is None or energy_settled is None
@@ -1295,6 +1313,23 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
     from turbotab.core.methods.exposure_form import options as form_options
 
     out["exposure_forms"] = form_options(state.purpose)
+    # WP17 (MODELING_SEQUENCE §1 steps 2–3): under inference, what the exposure and effect question
+    # offers (only the measures the engine fits), and the adjustment card: covariates grouped by the
+    # pack's guess, one tap per group.
+    from turbotab.core.estimand import adjustment_card, estimand_card
+
+    task = state.task
+    if task is None and target and target in frame.columns and state.purpose == "inference":
+        # The task as target_info detects it (``ml.triage``), for the measures the card offers.
+        from turbotab import engine
+
+        detection = engine.detect_task_type(frame[[target]].reset_index(drop=True), target)
+        if detection.get("detected") == "classification":
+            task = "binary" if int(frame[target].nunique(dropna=True)) <= 2 else "multiclass"
+        else:
+            task = "regression"
+    out["estimand"] = estimand_card(state, task)
+    out["adjustment"] = adjustment_card(state)
     return out
 
 
