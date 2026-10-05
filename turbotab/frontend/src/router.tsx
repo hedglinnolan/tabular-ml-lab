@@ -12,6 +12,7 @@ export type Route =
   | { name: "stage-lab" }
   | { name: "stage-lab-m2" }
   | { name: "m2-lab" }
+  | { name: "methods-map" }
   | { name: "missing"; path: string };
 
 const EVENT = "turbotab:navigate";
@@ -34,6 +35,8 @@ export function parseRoute(path: string): Route {
   if (/^\/lab\/stage\/?$/.test(path)) return { name: "stage-lab" };
   if (/^\/lab\/stage\/m2\/?$/.test(path)) return { name: "stage-lab-m2" };
   if (/^\/lab\/m2\/?$/.test(path)) return { name: "m2-lab" };
+  // Design prototype C (the methods map): a dev build only.
+  if (import.meta.env.DEV && /^\/lab\/methods-map\/?$/.test(path)) return { name: "methods-map" };
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };
   return { name: "missing", path };
