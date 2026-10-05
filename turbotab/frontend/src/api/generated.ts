@@ -625,7 +625,7 @@ export interface components {
              */
             post_seal: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetUsualIntake-Output"];
         };
         /**
          * DeferFinding
@@ -800,7 +800,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetUsualIntake-Output"]) | null;
         };
         /**
          * ExposureFormSpec
@@ -1468,6 +1468,10 @@ export interface components {
             /** Sensitivity */
             sensitivity: components["schemas"]["SensitivityAnalysis-Output"][] | null;
             measurement_error: components["schemas"]["MeasurementErrorSpec"] | null;
+            /** Usual Intake */
+            usual_intake: {
+                [key: string]: components["schemas"]["UsualIntakeSpec"];
+            } | null;
             /** Outcome Unit */
             outcome_unit: string | null;
             /** Column Units */
@@ -2770,6 +2774,104 @@ export interface components {
              */
             unit: "unit" | "row";
         };
+        /**
+         * SetUsualIntake
+         * @description One dietary component's usual-intake distribution by the NCI method, or ``model="none"``
+         *     (turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of
+         *     a wide table's ``days``.
+         */
+        "SetUsualIntake-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_usual_intake";
+            /** Nutrient */
+            nutrient: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Days */
+            days?: string[];
+            /** Order Column */
+            order_column?: string | null;
+            /** Weekend */
+            weekend?: string[];
+            /**
+             * Weekend Coding
+             * @default indicator
+             * @enum {string}
+             */
+            weekend_coding: "indicator" | "nhanes_day";
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /** Consumer Column */
+            consumer_column?: string | null;
+            /** Cutoff */
+            cutoff?: number | null;
+            /** Cutoff Kind */
+            cutoff_kind?: ("EAR" | "AI" | "UL" | "other") | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+        };
+        /**
+         * SetUsualIntake
+         * @description One dietary component's usual-intake distribution by the NCI method, or ``model="none"``
+         *     (turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of
+         *     a wide table's ``days``.
+         */
+        "SetUsualIntake-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_usual_intake";
+            /** Nutrient */
+            nutrient: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Days */
+            days: string[];
+            /** Order Column */
+            order_column: string | null;
+            /** Weekend */
+            weekend: string[];
+            /**
+             * Weekend Coding
+             * @default indicator
+             * @enum {string}
+             */
+            weekend_coding: "indicator" | "nhanes_day";
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /** Consumer Column */
+            consumer_column: string | null;
+            /** Cutoff */
+            cutoff: number | null;
+            /** Cutoff Kind */
+            cutoff_kind: ("EAR" | "AI" | "UL" | "other") | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+        };
         /** SplitSpec */
         SplitSpec: {
             /** Holdout */
@@ -3029,6 +3131,43 @@ export interface components {
             temporal: boolean;
             /** Time Column */
             time_column: string | null;
+        };
+        /** UsualIntakeSpec */
+        UsualIntakeSpec: {
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Days */
+            days: string[];
+            /** Order Column */
+            order_column: string | null;
+            /** Weekend */
+            weekend: string[];
+            /**
+             * Weekend Coding
+             * @default indicator
+             * @enum {string}
+             */
+            weekend_coding: "indicator" | "nhanes_day";
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /** Consumer Column */
+            consumer_column: string | null;
+            /** Cutoff */
+            cutoff: number | null;
+            /** Cutoff Kind */
+            cutoff_kind: ("EAR" | "AI" | "UL" | "other") | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -5792,6 +5931,292 @@ export interface components {
             /** N Missing */
             n_missing: number;
         };
+        /** UsualIntakeAnalysis */
+        UsualIntakeAnalysis: {
+            /** Nutrient */
+            nutrient: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Applies */
+            applies: boolean;
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+            /**
+             * Format
+             * @default null
+             */
+            format: ("long" | "wide") | null;
+            /**
+             * Days
+             * @default []
+             */
+            days: string[];
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /**
+             * Population Statement
+             * @default null
+             */
+            population_statement: string | null;
+            /**
+             * N Persons
+             * @default 0
+             */
+            n_persons: number;
+            /**
+             * N Recalls
+             * @default 0
+             */
+            n_recalls: number;
+            /**
+             * Recalls
+             * @default {}
+             */
+            recalls: {
+                [key: string]: number;
+            };
+            /**
+             * N Repeat
+             * @default 0
+             */
+            n_repeat: number;
+            /**
+             * Zero Share
+             * @default null
+             */
+            zero_share: number | null;
+            /**
+             * Zeros Replaced
+             * @default 0
+             */
+            zeros_replaced: number;
+            /**
+             * Covariates
+             * @default []
+             */
+            covariates: string[];
+            /**
+             * Parameters
+             * @default {}
+             */
+            parameters: {
+                [key: string]: number;
+            };
+            /**
+             * Percentiles
+             * @default {}
+             */
+            percentiles: {
+                [key: string]: components["schemas"]["UsualIntakeEstimate"];
+            };
+            /** @default null */
+            mean: components["schemas"]["UsualIntakeEstimate"] | null;
+            /**
+             * Cutoff
+             * @default null
+             */
+            cutoff: number | null;
+            /**
+             * Cutoff Kind
+             * @default null
+             */
+            cutoff_kind: ("EAR" | "AI" | "UL" | "other") | null;
+            /** @default null */
+            share: components["schemas"]["UsualIntakeEstimate"] | null;
+            /**
+             * Share Label
+             * @default null
+             */
+            share_label: string | null;
+            /**
+             * Day One
+             * @default {}
+             */
+            day_one: {
+                [key: string]: number;
+            };
+            /**
+             * Mean Of Days
+             * @default {}
+             */
+            mean_of_days: {
+                [key: string]: number;
+            };
+            /** @default null */
+            variance: components["schemas"]["UsualIntakeVariance"] | null;
+            /**
+             * Weight
+             * @default null
+             */
+            weight: string | null;
+            /**
+             * Assumptions
+             * @default []
+             */
+            assumptions: string[];
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
+            /** Methods */
+            methods: string;
+        };
+        /** UsualIntakeArtifact */
+        UsualIntakeArtifact: {
+            offer: components["schemas"]["UsualIntakeOffer"];
+            /**
+             * Analyses
+             * @default []
+             */
+            analyses: components["schemas"]["UsualIntakeAnalysis"][];
+        };
+        /** UsualIntakeCandidate */
+        UsualIntakeCandidate: {
+            /** Column */
+            column: string;
+            /**
+             * Days
+             * @default []
+             */
+            days: string[];
+            /**
+             * Zero Share
+             * @default null
+             */
+            zero_share: number | null;
+            /**
+             * N Persons
+             * @default 0
+             */
+            n_persons: number;
+            /**
+             * N Repeat
+             * @default 0
+             */
+            n_repeat: number;
+            /**
+             * Suggested
+             * @default null
+             */
+            suggested: ("amount_only" | "two_part") | null;
+            /**
+             * Why
+             * @default null
+             */
+            why: string | null;
+        };
+        /** UsualIntakeEstimate */
+        UsualIntakeEstimate: {
+            /** Value */
+            value: number;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+        };
+        /** UsualIntakeOffer */
+        UsualIntakeOffer: {
+            /** Offered */
+            offered: boolean;
+            /**
+             * Reason
+             * @default null
+             */
+            reason: string | null;
+            /** Estimand */
+            estimand: string;
+            /** Association */
+            association: string;
+            /** Population Question */
+            population_question: string;
+            /**
+             * Format
+             * @default null
+             */
+            format: ("long" | "wide") | null;
+            /**
+             * Recalls
+             * @default {}
+             */
+            recalls: {
+                [key: string]: number;
+            };
+            /**
+             * N Persons
+             * @default 0
+             */
+            n_persons: number;
+            /**
+             * N Repeat
+             * @default 0
+             */
+            n_repeat: number;
+            /**
+             * Candidates
+             * @default []
+             */
+            candidates: components["schemas"]["UsualIntakeCandidate"][];
+        };
+        /** UsualIntakeVariance */
+        UsualIntakeVariance: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bootstrap" | "brr" | "psu_bootstrap" | "none";
+            /**
+             * Replicates
+             * @default 0
+             */
+            replicates: number;
+            /**
+             * Ok
+             * @default 0
+             */
+            ok: number;
+            /**
+             * Df
+             * @default null
+             */
+            df: number | null;
+            /**
+             * Fay
+             * @default null
+             */
+            fay: number | null;
+            /**
+             * N Strata
+             * @default null
+             */
+            n_strata: number | null;
+            /**
+             * N Psu
+             * @default null
+             */
+            n_psu: number | null;
+        };
         /**
          * ValidationOption
          * @description One way the training rows can validate the models, as the split question offers it.
@@ -6169,7 +6594,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetUsualIntake-Input"];
             };
         };
         responses: {
@@ -6344,7 +6769,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetUsualIntake-Input"];
             };
         };
         responses: {

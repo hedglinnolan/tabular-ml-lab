@@ -172,3 +172,8 @@ Format: `- [M?] short description — where it was noticed`
 - [v2.x] Latent-variable (SEM) attenuation correction for reflective scales — MODELING_SEQUENCE §0 ruling 8
 - [v2.x] Full two-level FCS imputation; v2 imputes time-invariant variables per unit and includes cluster means — MODELING_SEQUENCE §0 ruling 12
 - [M3.5] Quick vs Advanced: Quick states steps 8–10 and the default rungs, and asks steps 2, 3 and 5 under inference — MODELING_SEQUENCE §8
+- [M3.5] The usual-intake estimand is offered in the `usual_intake` stage's artifact (`offer`); the Router does not ask it yet. Ask it at the exposure-and-estimand step once that step exists — wave 1 NCI, turbotab/core/usual_intake.py
+- [M3.5] The `usual_intake` slot holds one analysis per dietary component, so a whole-population and a consumers-only distribution of the same food cannot sit side by side; key it by (component, population) if both are wanted — wave 1 NCI
+- [v2.x] NCI usual intake with person-level covariates (age, sex) and subgroup distributions (DISTRIB's `subgroup`); v2 models the nuisance covariates only — wave 1 NCI, turbotab/core/methods/usual_intake.py
+- [v2.x] NCI never-consumers (Kipnis et al. 2009's third part) and the multivariate NCI method (ratios, several components jointly, INDIVINT-style predictions for calibrating a two-part exposure) — wave 1 NCI
+- [presentation] The usual-intake card: NUTRITION_PACK §03's shrinkage figure (single day, mean of days, usual intake); the artifact already carries `day_one` and `mean_of_days` percentiles beside the distribution — wave 1 NCI

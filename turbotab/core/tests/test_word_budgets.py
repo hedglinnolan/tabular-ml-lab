@@ -293,6 +293,9 @@ def representative_decisions():
                 reason="implausible energy reports")]),
         ]),
         d.SetMeasurementError(method="regression_calibration", exposures=["protein_g"]),
+        # The NCI usual-intake method: one component's distribution, with the EAR's share
+        d.SetUsualIntake(nutrient="protein_g", model="amount_only", order_column="recall",
+                         weekend=["weekend"], cutoff=46, cutoff_kind="EAR"),
     ]
 
 

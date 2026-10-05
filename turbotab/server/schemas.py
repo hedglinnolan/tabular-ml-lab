@@ -802,3 +802,8 @@ from turbotab.core.stages.calibration import CalibrationArtifact  # noqa: E402
 from turbotab.core.stages.sensitivity import SensitivityArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"sensitivity": SensitivityArtifact, "calibration": CalibrationArtifact})
+
+# The NCI usual-intake method: its offer and each component's distribution.
+from turbotab.core.stages.usual_intake import UsualIntakeArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"usual_intake": UsualIntakeArtifact})

@@ -266,6 +266,30 @@ class MeasurementErrorSpec(_Value):
     n_boot: int = Field(default=200, ge=50, le=2000)
 
 
+# The NCI usual-intake method (V2 definition of done, "Dietary, extended"; turbotab/core/usual_intake.py
+# routes it, turbotab/core/methods/usual_intake.py fits it): one dietary component's distribution of
+# usual intake, its own estimand beside any association analysis.
+UsualIntakeModel = Literal["none", "amount_only", "two_part"]
+UsualIntakePopulation = Literal["whole", "consumers"]  # STROBE-nut nut-14
+CutoffKind = Literal["EAR", "AI", "UL", "other"]
+# How a weekend column is coded: 1 on a Friday–Sunday recall (MIXTRAN's "weekend (Fri.-Sun.)
+# indicator"), or NHANES's day of the week (``DR1DAY``: 1 Sunday … 7 Saturday).
+WeekendCoding = Literal["indicator", "nhanes_day"]
+
+
+class UsualIntakeSpec(_Value):
+    model: UsualIntakeModel
+    days: list[str] = Field(default_factory=list)  # a wide table's recall-day columns, first first
+    order_column: str | None = None  # a long table's column ordering each person's recalls
+    weekend: list[str] = Field(default_factory=list)
+    weekend_coding: WeekendCoding = "indicator"
+    population: UsualIntakePopulation = "whole"
+    consumer_column: str | None = None
+    cutoff: float | None = None
+    cutoff_kind: CutoffKind | None = None
+    n_boot: int = Field(default=200, ge=50, le=2000)
+
+
 class EnergyAdjustment(_Value):
     method: EnergyMethod
     energy_column: str | None = None
@@ -869,6 +893,41 @@ class DeferFinding(_DecisionModel):
     to: str = Field(min_length=1)
 
 
+class SetUsualIntake(_DecisionModel):
+    """One dietary component's usual-intake distribution by the NCI method, or ``model="none"``
+    (turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of
+    a wide table's ``days``."""
+
+    kind: Literal["set_usual_intake"] = "set_usual_intake"
+    nutrient: str = Field(min_length=1)
+    model: UsualIntakeModel
+    days: list[str] = Field(default_factory=list)
+    order_column: str | None = None
+    weekend: list[str] = Field(default_factory=list)
+    weekend_coding: WeekendCoding = "indicator"
+    population: UsualIntakePopulation = "whole"
+    consumer_column: str | None = None
+    cutoff: float | None = Field(default=None, gt=0)
+    cutoff_kind: CutoffKind | None = None
+    n_boot: int = Field(default=200, ge=50, le=2000)
+
+    @model_validator(mode="after")
+    def _shape(self) -> "SetUsualIntake":
+        if len(set(self.days)) != len(self.days):
+            raise ValueError("each recall day's column may be named only once")
+        if len(self.days) == 1:
+            raise ValueError("a wide table names at least two recall-day columns")
+        if self.days and self.order_column:
+            raise ValueError("a wide table's recalls are ordered by its day columns")
+        if self.weekend and self.days and len(self.weekend) != len(self.days):
+            raise ValueError("a wide table names one weekend column per recall day")
+        if self.weekend and not self.days and len(self.weekend) != 1:
+            raise ValueError("a long table names one weekend column")
+        if self.cutoff_kind is not None and self.cutoff is None:
+            raise ValueError("a cut-off's kind needs the cut-off")
+        return self
+
+
 class DismissFinding(_DecisionModel):
     kind: Literal["dismiss_finding"] = "dismiss_finding"
     finding_id: str = Field(min_length=1)
@@ -885,7 +944,7 @@ Decision = Annotated[
         SetFeatureTable, SetCategorical, SetSurvey,
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
         SetSensitivity, SetMeasurementError, SetOutcomeUnit, SetColumnUnit, ConfirmRole,
-        ConfirmReading, ConfirmReadings,
+        ConfirmReading, ConfirmReadings, SetUsualIntake,
     ],
     Field(discriminator="kind"),
 ]
@@ -959,6 +1018,8 @@ class ProjectState(BaseModel):
     # WP12 (audit §5): methods a reviewer expects
     sensitivity: list[SensitivityAnalysis] | None = None  # analyses beside the primary's rows
     measurement_error: MeasurementErrorSpec | None = None  # regression calibration, or none
+    # The NCI usual-intake method: each dietary component's distribution, keyed by its name
+    usual_intake: dict[str, UsualIntakeSpec] | None = None
     # WP13 (audit IN-05): the outcome's unit as the user recorded it (holds while its column is
     # the target); a unit the name does not spell out is proposed, never stated, until then
     outcome_unit: str | None = None
@@ -1322,6 +1383,8 @@ register_kind(SetColumnUnit, "column_units", key=lambda d: d.column,
 register_kind(SetSensitivity, "sensitivity")
 register_kind(SetMeasurementError, "measurement_error",
               value=lambda d: MeasurementErrorSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetUsualIntake, "usual_intake", key=lambda d: d.nutrient,
+              value=lambda d: UsualIntakeSpec(**d.model_dump(exclude={"kind", "nutrient"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -3568,3 +3631,5 @@ class DecisionLog:
 from turbotab.core import sequence as _sequence  # noqa: E402,F401
 # The survey question's refusals (``set_survey``; audit §5 WP10) live with its name reading.
 from turbotab.core import survey as _survey  # noqa: E402,F401
+# The NCI usual-intake method's refusals, contract and sentence (``set_usual_intake``).
+from turbotab.core import usual_intake as _usual_intake  # noqa: E402,F401

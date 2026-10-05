@@ -48,6 +48,9 @@ WP12 (AUDIT_REPORT §5, methods a reviewer expects):
     calibration  heavy   deps: oriented, findings, structure, working,      reads measurement_error, energy_adjustment,
                                cohort, design, target_info                   aggregation, purpose …; requires measurement_error, models
 
+    usual_intake heavy   deps: oriented, findings, structure,       reads usual_intake, lens, purpose, grain,
+                               working                               repeat_kind, survey …; requires lens, purpose
+
     ``sensitivity`` refits each chosen family on the rows each analysis's exclusion rules keep (the
     primary beside every-row and any other screen; Banna et al. 2017). ``calibration`` corrects
     energy-adjusted exposures for day-to-day error in the recalls each person's row averages
@@ -85,6 +88,7 @@ ROLE_READS: tuple[str, ...] = ("roles", "roles_unconfirmed", "role_confirmations
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.target import target_info_stage
+from turbotab.core.stages.usual_intake import USUAL_INTAKE_READS, usual_intake_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
@@ -388,6 +392,13 @@ def build_graph() -> Graph:
                   CALIBRATION_READS, calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
                   label="Correcting energy-adjusted intakes for day-to-day error"),
+            # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
+            # dietary lens with repeated recalls the usual-intake distribution is offered as its own
+            # estimand, and each recorded component's distribution is fit (amount-only or two-part).
+            Stage("usual_intake", 1, ("oriented", "findings", "structure", "working"),
+                  USUAL_INTAKE_READS, usual_intake_stage, heavy=True,
+                  requires=("lens", "purpose"),
+                  label="Estimating usual-intake distributions"),
         ]
     )
 
