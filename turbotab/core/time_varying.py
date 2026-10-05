@@ -20,9 +20,12 @@ and the standard model estimates it. The question's answer (``set_time_varying``
 * repeated measures, one row per unit per time point;
 * a settled time column (``stages.working.time_column``: the user named it with the repeats or
   temporal answer, or confirmed it on its own; a proposed one is asked, BLUEPRINT §14.1);
-* a declared time ordering. The exposure at each time point must precede the outcome it is paired
-  with. "Same time" or "unknown" is refused, because an exposure measured with its outcome cannot
-  be told from a consequence of it.
+* a declared time ordering. For a g-method the exposure at each time point must precede the outcome
+  it is paired with: "same time" or "unknown" is refused, because an exposure measured with its
+  outcome cannot be told from a consequence of it. Standard regression can still describe how a
+  concurrently measured exposure and outcome go together, so there it is **block and record**: kept
+  only with its own attestation (``ordering_acknowledged``), and the fit's row is labeled as open to
+  reverse causation.
 
 **The leash** (BLUEPRINT §11.3; the shortest, the causal lane's). A covariate the adjustment
 answers call a cause of the exposure that the exposure could have changed (``causes_exposure`` not
@@ -40,10 +43,18 @@ it. Leaving it out leaves the later exposure confounded. So:
 
 **Diagnostics before estimates.** Cole & Hernán (2008, *Am J Epidemiol* 168:656–664): "Estimated
 weights with the mean far from one or very extreme values are indicative of nonpositivity or
-misspecification of the weight model". The weights read no outcome, so their distribution, each
-truncation option's effect on it, and positivity at each time point are shown first. The question
-stays open until the truncation is declared (:func:`lane_answer`), and no estimate is computed or
-served before then. The g-formula shows positivity at each time point before its risks.
+misspecification of the weight model". Each g-method is answered in two steps. The lane is declared
+first, and its diagnostics are shown: for the weights, their distribution, each truncation option's
+effect on it and positivity at each time point; for the g-formula, positivity at each time point and
+what the simulation will take. These describe the exposure (and loss to follow-up, whose rows at risk
+end with an event); no estimate's association with the outcome is in them. Then the truncation, or
+the simulation's size, is declared. That second declaration is refused until the fresh artifact
+holds this lane's diagnostics on the data as they are (:func:`_diagnostics_come_first`), and the
+server stamps it with those diagnostics' key (``diagnostics_seen``). The stage computes an estimate
+only when the key of the diagnostics it computes now is that one, so a change to the data or to an
+answer the weights read after the declaration withholds the estimate and re-asks the question
+(:func:`lane_answer`). "Read before any estimate" is true by construction, not by the order of
+requests.
 """
 from __future__ import annotations
 
@@ -58,16 +69,26 @@ ROBINS_1986 = "Robins 1986, Math Model 7:1393–1512"
 MCGRATH = "McGrath et al. 2020, Patterns 1:100008"
 WHAT_IF = "Hernán & Robins, Causal Inference: What If, ch. 17 and 19–21"
 VANDERWEELE_DING = "VanderWeele & Ding 2017, Ann Intern Med 167:268–274"
+BELL_MCCAFFREY = "Bell & McCaffrey 2002, Surv Methodol 28:169–181"
 # The same, as a methods sentence cites them.
 CITE = {"robins_2000": "Robins, Hernán & Brumback 2000",
         "hernan_2000": "Hernán, Brumback & Robins 2000", "cole_hernan": "Cole & Hernán 2008",
-        "robins_1986": "Robins 1986", "mcgrath": "McGrath et al. 2020"}
+        "robins_1986": "Robins 1986", "mcgrath": "McGrath et al. 2020",
+        "bell_mccaffrey": "Bell & McCaffrey 2002"}
 KEY = "time_varying"
 METHOD_WORDS = {"msm_iptw": "a marginal structural model with stabilized inverse-probability "
                             "weights",
                 "gformula": "the parametric g-formula", "standard": "standard regression"}
 TRUNCATION_WORDS = {"none": "not truncated", "p1_p99": "truncated at the 1st and 99th percentiles",
                     "p5_p95": "truncated at the 5th and 95th percentiles"}
+# The g-formula's simulation size when one count is declared without the other, and the size whose
+# time the diagnostics measure: ``gfoRmula``'s own default bootstrap count is 0, so these are the
+# app's convention (10,000 simulated units bound the Monte Carlo error near 0.005 for a risk of 0.3).
+SIMULATIONS = 10_000
+BOOTSTRAP = 500
+PRECEDES = "exposure_precedes_outcome"
+ORDERING_WORDS = {"same_time": "measured at the same time as",
+                  "unknown": "not known to come before"}
 
 Gate = tuple[str, str | None] | None
 
@@ -108,7 +129,8 @@ CONTRACT = register_contract(MethodContract(
     needs=("inference with one declared exposure that changes within units",
            "repeated measures kept as rows: one row per unit per time point",
            "a settled time column",
-           "a declared time ordering: the exposure precedes the outcome it is paired with",
+           "a declared time ordering: for a g-method, the exposure precedes the outcome it is "
+           "paired with",
            "an exposure of 0 or 1 at each time point"),
     question="How is an exposure that changes over time estimated?",
     options=(
@@ -152,8 +174,10 @@ CONTRACT = register_contract(MethodContract(
         "the same way",
         "Read the weights' distribution and positivity at each time point, then declare the "
         "truncation",
-        "Fit the outcome on the exposure history in the weighted pseudo-population, with a robust "
+        "Fit the outcome on the exposure history in the weighted pseudo-population, with a CR2 "
         "variance by unit",
+        "For the g-formula: read positivity and what the simulation will take, declare its size, "
+        "then simulate every unit always and never exposed",
     ),
     relations=(
         Relation("conflicts", "standard_adjustment_for_affected_confounders",
@@ -168,25 +192,47 @@ CONTRACT = register_contract(MethodContract(
                  enforced_by="turbotab.core.time_varying:_affected_confounders_need_g_methods",
                  condition="a covariate answered a cause of the exposure that earlier exposure "
                            "could have changed, and a cause of the outcome"),
+        Relation("conflicts", "concurrent_exposure_and_outcome",
+                 "An exposure measured with its outcome cannot be told from a consequence of it. "
+                 "Standard regression is recorded only with that attestation, and its row is "
+                 "labeled as open to reverse causation; a g-method is refused.",
+                 purposes=("inference",), rung="block_and_record", when=("standard",),
+                 exits=("The exposure precedes the outcome it is paired with",
+                        "Keep standard regression; record that the exposure is measured with its "
+                        "outcome"),
+                 enforced_by="turbotab.core.time_varying:_lane_declares_the_time_ordering",
+                 condition="the ordering answered same time, or unknown"),
         Relation("implies", "weight_diagnostics_before_estimates",
-                 "Because the weights read no outcome, their distribution and each truncation "
-                 "option's effect on it are shown first; no estimate is computed until the "
-                 "truncation is declared.",
+                 "The weights' distribution, each truncation option's effect on it and positivity "
+                 "are shown first; the truncation is declared after them, and no estimate is "
+                 "computed until it is.",
                  purposes=("inference",), when=("msm_iptw",),
-                 enforced_by="turbotab.core.time_varying:lane_answer"),
+                 enforced_by="turbotab.core.time_varying:_diagnostics_come_first"),
+        Relation("implies", "positivity_and_time_before_estimates",
+                 "Positivity at each time point and what the simulation will take are shown first; "
+                 "its size is declared after them, and no risk is simulated until it is.",
+                 purposes=("inference",), when=("gformula",),
+                 enforced_by="turbotab.core.time_varying:_diagnostics_come_first"),
         Relation("implies", "positivity_by_time_point",
                  "Positivity is read at each time point: how many rows were exposed and unexposed, "
                  "and the range of the fitted probability of exposure.",
                  purposes=("inference",), when=("msm_iptw", "gformula")),
         Relation("implies", "intervals_by_unit",
                  "A unit's rows are not independent: the weighted model's variance is clustered by "
-                 "unit, and the g-formula's interval resamples whole units.",
+                 "unit (CR2, with Bell–McCaffrey degrees of freedom), the g-formula's interval "
+                 "resamples whole units, and with fewer units than the floor no interval is "
+                 "reported.",
                  purposes=("inference",), when=("msm_iptw", "gformula")),
         Relation("implies", "censoring_weighted",
                  "A unit lost to follow-up contributes the time points it was seen, and the units "
                  "like it that stayed are weighted up by the inverse of their probability of having "
                  "stayed.",
                  purposes=("inference",), when=("msm_iptw",)),
+        Relation("implies", "loss_assumed_independent",
+                 "Units whose rows end before the last time point without the event were lost to "
+                 "follow-up; with no indicator declared, the estimate assumes their loss is "
+                 "unrelated to the outcome, and the sentence says so.",
+                 purposes=("inference",), when=("msm_iptw", "gformula")),
         Relation("implies", "unmeasured_confounding_sensitivity",
                  "The E-value states how strong an unmeasured confounder would have to be to "
                  "explain the estimate away (MODELING_SEQUENCE §0 ruling 10).",
@@ -206,7 +252,7 @@ CONTRACT = register_contract(MethodContract(
                  purposes=("inference",), when=("gformula",)),
     ),
     sources=(ROBINS_2000, HERNAN_2000, COLE_HERNAN, ROBINS_1986, MCGRATH, WHAT_IF,
-             VANDERWEELE_DING),
+             VANDERWEELE_DING, BELL_MCCAFFREY),
     clause=_clause,
     decision="set_time_varying",
     stage="time_varying",
@@ -214,8 +260,10 @@ CONTRACT = register_contract(MethodContract(
     place="MODELING_SEQUENCE §1, after step 3 (the adjustment set): the time-varying exposure "
           "question, asked under inference when a unit's time points are kept as rows",
     scope_note="The weights and the outcome model read every analyzed row, and the outcome model "
-               "reads the outcome, so the lane is the model itself. Its diagnostics (the weights, "
-               "positivity) read no outcome and are shown first.",
+               "reads the outcome, so the lane is the model itself. Its diagnostics are shown "
+               "first: they describe the exposure, and under an event outcome the rows still at "
+               "risk of loss to follow-up, which the event ends; none of them relates the exposure "
+               "to the outcome.",
     leash={"inference": "available", "prediction": "not_offered"},
     sentence="turbotab.core.stages.time_varying:methods_paragraph",
 ))
@@ -320,15 +368,40 @@ def exposure_varies(state: Any, artifact: Any) -> bool:
             and setting.get("exposure") == exposure and setting.get("exposure_varies") is True)
 
 
-def lane_answer(state: Any) -> Any:
+def declares_after_diagnostics(spec: Any) -> bool:
+    """Whether the lane declares what comes after its diagnostics: the weights' truncation, or
+    the g-formula's simulation size."""
+    method = _get(spec, "method")
+    if method == "msm_iptw":
+        return _get(spec, "truncation") is not None
+    if method == "gformula":
+        return _get(spec, "simulations") is not None or _get(spec, "bootstrap") is not None
+    return False
+
+
+def _diagnosed(artifact: Any) -> Mapping[str, Any] | None:
+    data = getattr(artifact, "data", artifact)
+    found = data.get("diagnosed") if isinstance(data, Mapping) else None
+    return found if isinstance(found, Mapping) else None
+
+
+def lane_answer(state: Any, artifact: Any = None) -> Any:
     """The lane, once it is complete for the current exposure: a lane declared for another
-    exposure is re-asked (MODELING_SEQUENCE §2, "invalidates"), and the weights' lane waits for
-    its truncation, declared after the diagnostics."""
-    spec = _get(state, "time_varying")
-    exposure = exposure_of(state)
-    if spec is None or exposure is None or _get(spec, "exposure") != exposure:
+    exposure is re-asked (MODELING_SEQUENCE §2, "invalidates"); a g-method waits for what is
+    declared after its diagnostics (the truncation, or the simulation's size); and when the stage's
+    fresh ``artifact`` shows diagnostics other than the ones that declaration came after (the data,
+    or an answer the weights read, changed since), the question is asked again."""
+    spec = current_lane(state)
+    if spec is None:
         return None
-    if _get(spec, "method") == "msm_iptw" and _get(spec, "truncation") is None:
+    method = _get(spec, "method")
+    if method == "msm_iptw" and _get(spec, "truncation") is None:
+        return None
+    if method == "gformula" and (_get(spec, "simulations") is None
+                                 or _get(spec, "bootstrap") is None):
+        return None
+    seen = _diagnosed(artifact)
+    if method != "standard" and seen is not None and seen.get("key") != _get(spec, "diagnostics_seen"):
         return None
     return spec
 
@@ -342,25 +415,51 @@ def current_lane(state: Any) -> Any:
     return spec
 
 
+def _concurrent(lane: Any) -> str | None:
+    """How the lane's standard regression was recorded with an exposure not declared to precede its
+    outcome, in words; None when the order is declared."""
+    ordering = _get(lane, "ordering")
+    return ORDERING_WORDS.get(ordering) if ordering != PRECEDES else None
+
+
 def fit_note(state: Any) -> str | None:
     """What the standard fit's row for the exposure is, served beside a time-varying lane
     (``estimand.annotate_fit``): not the effect, when a confounder affected by prior exposure is
-    adjusted for there or left out."""
+    adjusted for there or left out; open to reverse causation, when standard regression was
+    recorded with the exposure measured with its outcome."""
     lane = lane_answer(state)
-    affected = affected_confounders(state)
-    if lane is None or not affected:
+    if lane is None:
         return None
+    affected = affected_confounders(state)
     x = _tick(lane.exposure)
     one = len(affected) == 1
     what = f"{_listing(affected)}, {'a confounder' if one else 'confounders'} affected by prior {x}"
     if lane.method == "standard":
-        return (f"Recorded: standard regression over {what}; this row for {x} is biased by "
-                f"{'it' if one else 'them'}.")
+        notes = []
+        if affected:
+            notes.append(f"Recorded: standard regression over {what}; this row for {x} is biased "
+                         f"by {'it' if one else 'them'}.")
+        said = _concurrent(lane)
+        if said:
+            notes.append(f"Recorded: {x} is {said} the outcome it is paired with, so this row for "
+                         f"{x} cannot be told from a consequence of the outcome (reverse "
+                         f"causation).")
+        return " ".join(notes) or None
+    if not affected:
+        return None
     return (f"The estimate of {x} is the time-varying lane's ({METHOD_WORDS[lane.method]}). This "
             f"model cannot adjust for {what}, so its row for {x} is not the effect.")
 
 
 # ── the record's sentence ────────────────────────────────────────────────────
+
+
+def _order_clause(d: Any, exposure: str) -> str:
+    said = _concurrent(d)
+    if said is None:
+        return f"; {exposure} at each time point precedes the outcome it is paired with, as declared"
+    return (f"; {exposure} is {said} the outcome it is paired with, so its estimate cannot be told "
+            f"from a consequence of the outcome (reverse causation), as recorded")
 
 
 def record_sentence(d: Any, state: Any) -> str:
@@ -369,8 +468,7 @@ def record_sentence(d: Any, state: Any) -> str:
     target = _get(state, "target")
     on = f" on {_tick(target)}" if target else ""
     exposure = _tick(d.exposure)
-    order = (f"; {exposure} at each time point precedes the outcome it is paired with, as "
-             f"declared")
+    order = _order_clause(d, exposure)
     confounders = _listing(d.confounders) if d.confounders else None
     baseline = _listing(d.baseline) if d.baseline else None
     if d.method == "standard":
@@ -399,7 +497,8 @@ def record_sentence(d: Any, state: Any) -> str:
                 f"{reads} and its history")
         if d.censoring:
             text += f", loss to follow-up ({_tick(d.censoring)}) is weighted the same way"
-        text += (f", and the weights are {TRUNCATION_WORDS[d.truncation]}" if d.truncation else
+        text += (f", and the weights are {TRUNCATION_WORDS[d.truncation]}, as declared after "
+                 f"their diagnostics were read" if d.truncation else
                  ", and the truncation is declared after the weights' diagnostics are read")
         return text + order
     simulated = (f"{confounders} {'is' if len(d.confounders) == 1 else 'are'} simulated forward "
@@ -407,8 +506,13 @@ def record_sentence(d: Any, state: Any) -> str:
                  "no time-varying confounder is simulated")
     text = (f"{exposure} changes over time, so its effect{on} is estimated by "
             f"{METHOD_WORDS['gformula']}: {simulated}, and the risks had every unit always and never "
-            f"been exposed are compared, over {d.simulations:,} simulated units with "
-            f"{d.bootstrap:,} bootstrap resamples")
+            f"been exposed are compared")
+    if d.simulations is not None and d.bootstrap is not None:
+        text += (f", over {d.simulations:,} simulated units with {d.bootstrap:,} bootstrap "
+                 f"resamples, a size declared after positivity and the simulation's time were read")
+    else:
+        text += ("; the simulation's size is declared after positivity and the time the "
+                 "simulation will take are read")
     if d.censoring:
         text += f", had no unit been lost to follow-up ({_tick(d.censoring)})"
     return text + order
@@ -538,19 +642,39 @@ def _lane_follows_the_estimand(decision: Any, ctx: Any) -> None:
 
 def _lane_declares_the_time_ordering(decision: Any, ctx: Any) -> None:
     """The exposure at each time point precedes the outcome it is paired with (an assumption only
-    the user can declare; WHAT_IF ch. 19)."""
-    if decision.ordering == "exposure_precedes_outcome":
+    the user can declare; WHAT_IF ch. 19). A g-method needs it. Standard regression of a
+    concurrently measured exposure is block and record: its own attestation, and a label on the
+    fit's row (:func:`fit_note`)."""
+    if decision.ordering == PRECEDES:
         return
-    said = ("measured at the same time as" if decision.ordering == "same_time"
-            else "not known to come before")
+    x = _tick(decision.exposure)
+    said = ORDERING_WORDS[decision.ordering]
+    recorded = ("measured with its outcome" if decision.ordering == "same_time"
+                else "not known to precede its outcome")
+    precedes = {"label": "The exposure precedes the outcome it is paired with",
+                "decision": decision.model_copy(update={"ordering": PRECEDES,
+                                                        "ordering_acknowledged": False})}
+    if decision.method == "standard":
+        if decision.ordering_acknowledged:
+            return
+        raise _refusal(
+            "time_ordering",
+            f"{x} is {said} the outcome it is paired with, so its estimate cannot be told from a "
+            f"consequence of the outcome (reverse causation). Standard regression can describe how "
+            f"they go together; it is recorded as that, and its row for {x} is labeled so.",
+            [precedes,
+             {"label": f"Keep standard regression; record that the exposure is {recorded}",
+              "decision": decision.model_copy(update={"ordering_acknowledged": True})}])
     raise _refusal(
         "time_ordering",
-        f"{_tick(decision.exposure)} is {said} the outcome it is paired with, so its estimate cannot "
-        f"be told from a consequence of the outcome. g-methods need each time point's exposure to "
-        f"precede the outcome it is paired with, and its confounders to precede the exposure.",
-        [{"label": "The exposure precedes the outcome it is paired with",
-          "decision": decision.model_copy(update={"ordering": "exposure_precedes_outcome"})},
-         {"label": "Revisit the exposure (the exposure question)", "decision": None}])
+        f"{x} is {said} the outcome it is paired with, so its estimate cannot be told from a "
+        f"consequence of the outcome. g-methods need each time point's exposure to precede the "
+        f"outcome it is paired with, and its confounders to precede the exposure.",
+        [precedes,
+         {"label": f"Estimate by standard regression, recorded as {recorded}",
+          "decision": decision.model_copy(update={
+              "method": "standard", "ordering_acknowledged": True, "truncation": None,
+              "simulations": None, "bootstrap": None, "diagnostics_seen": None})}])
 
 
 def _lane_names_model_columns(decision: Any, ctx: Any) -> None:
@@ -603,7 +727,9 @@ def _lane_names_model_columns(decision: Any, ctx: Any) -> None:
 def _affected_confounders_need_g_methods(decision: Any, ctx: Any) -> None:
     """The leash (MODELING_SEQUENCE §4 row, V2 causal row): standard regression with a confounder
     affected by prior exposure is block and record, with the g-methods as exits; a g-method adjusts
-    for every such confounder."""
+    for every such confounder. The g-method exits carry the loss-to-follow-up indicator the decision
+    names, else the one the stage's proposal reads from the values, said in the exit's label; an
+    order not declared is declared only by an exit that says so."""
     state = _state(ctx)
     if state is None:
         return
@@ -613,16 +739,23 @@ def _affected_confounders_need_g_methods(decision: Any, ctx: Any) -> None:
     one = len(affected) == 1
     who = _listing(affected)
     named, base = list(decision.confounders), list(decision.baseline)
+    proposal = (_setting(ctx, decision.exposure) or {}).get("proposal") or {}
     if not named and not base:
         # The completion fills a lane that names no covariate with the stage's proposal.
-        proposal = (_setting(ctx, decision.exposure) or {}).get("proposal") or {}
         named = list(proposal.get("confounders") or [])
         base = list(proposal.get("baseline") or [])
     if decision.method == "standard":
         if decision.acknowledged:
             return
+        censoring = decision.censoring or proposal.get("censoring")
+        lost = (f", weighting loss to follow-up by {_tick(censoring)}"
+                if censoring and censoring != decision.censoring else "")
+        concurrent = decision.ordering != PRECEDES
         g = {"confounders": list(dict.fromkeys([*named, *affected])),
-             "baseline": [c for c in base if c not in affected], "acknowledged": False}
+             "baseline": [c for c in base if c not in affected], "acknowledged": False,
+             "censoring": censoring, "ordering": PRECEDES, "ordering_acknowledged": False,
+             "diagnostics_seen": None}
+        declare = "Declare that the exposure precedes its outcome; e" if concurrent else "E"
         setting = _setting(ctx, decision.exposure) or {}
         binary = setting.get("exposure_binary", True)
         message = (
@@ -645,11 +778,12 @@ def _affected_confounders_need_g_methods(decision: Any, ctx: Any) -> None:
                         "decision": None}])
         raise _refusal(
             "affected_confounder", message,
-            [{"label": "Estimate by a marginal structural model (weights)",
-              "decision": decision.model_copy(update={**g, "method": "msm_iptw"})},
-             {"label": "Estimate by the parametric g-formula",
-              "decision": decision.model_copy(update={**g, "method": "gformula",
-                                                      "truncation": None})},
+            [{"label": f"{declare}stimate by a marginal structural model (weights){lost}",
+              "decision": decision.model_copy(update={**g, "method": "msm_iptw", "truncation": None,
+                                                      "simulations": None, "bootstrap": None})},
+             {"label": f"{declare}stimate by the parametric g-formula{lost}",
+              "decision": decision.model_copy(update={**g, "method": "gformula", "truncation": None,
+                                                      "simulations": None, "bootstrap": None})},
              keep])
     missing = [c for c in affected if c not in named]
     if missing:
@@ -678,7 +812,8 @@ def _lane_fits_the_outcome(decision: Any, ctx: Any) -> None:
             f"from a yes/no outcome at each one; the outcome is read as "
             f"{str(task).replace('_', ' ')}.",
             [{"label": "Estimate by a marginal structural model (weights)",
-              "decision": decision.model_copy(update={"method": "msm_iptw"})}])
+              "decision": decision.model_copy(update={"method": "msm_iptw", "simulations": None,
+                                                      "bootstrap": None})}])
     if task not in ("binary", "regression"):
         raise _refusal(
             "msm_outcome",
@@ -688,7 +823,8 @@ def _lane_fits_the_outcome(decision: Any, ctx: Any) -> None:
             [{"label": "Change the outcome's task (the task question)", "decision": None}])
 
 
-def _truncation_is_for_the_weights(decision: Any, ctx: Any) -> None:
+def _each_declaration_is_its_method_s(decision: Any, ctx: Any) -> None:
+    """A truncation trims inverse-probability weights; a simulation's size is the g-formula's."""
     if decision.truncation is not None and decision.method != "msm_iptw":
         raise _refusal(
             "truncation_without_weights",
@@ -696,6 +832,14 @@ def _truncation_is_for_the_weights(decision: Any, ctx: Any) -> None:
             f"none.",
             [{"label": "Leave the truncation out",
               "decision": decision.model_copy(update={"truncation": None})}])
+    if (decision.simulations is not None or decision.bootstrap is not None) \
+            and decision.method != "gformula":
+        raise _refusal(
+            "simulation_without_g_formula",
+            f"The simulation's size is the parametric g-formula's; {METHOD_WORDS[decision.method]} "
+            f"simulates nothing.",
+            [{"label": "Leave the simulation's size out",
+              "decision": decision.model_copy(update={"simulations": None, "bootstrap": None})}])
 
 
 def _lane_reads_settled_readings(decision: Any, ctx: Any) -> None:
@@ -755,6 +899,46 @@ def _lane_fits_the_data(decision: Any, ctx: Any) -> None:
                   "confounders": [*decision.confounders, *moving]})}])
 
 
+def lane_parts(spec: Any) -> dict[str, Any]:
+    """What a lane's diagnostics depend on, beside the data: everything the weight (or the
+    g-formula's) models read. The outcome model's exposure summary and the truncation do not."""
+    return {"exposure": _get(spec, "exposure"), "method": _get(spec, "method"),
+            "confounders": list(_get(spec, "confounders") or []),
+            "baseline": list(_get(spec, "baseline") or []),
+            "censoring": _get(spec, "censoring"), "pattern": _get(spec, "pattern")}
+
+
+def _undeclared(decision: Any) -> Any:
+    return decision.model_copy(update={"truncation": None, "simulations": None, "bootstrap": None,
+                                       "diagnostics_seen": None})
+
+
+def _diagnostics_come_first(decision: Any, ctx: Any) -> None:
+    """The truncation, or the simulation's size, is declared after the lane's diagnostics were shown
+    (V2 causal row: "diagnostics … shown before any estimate"): the stage's fresh artifact must hold
+    the diagnostics of this very lane (its exposure, method, columns, censoring and pattern) on the
+    data as they are now. Else refused, the exit the lane without that declaration, which shows
+    them."""
+    if not declares_after_diagnostics(decision):
+        return
+    filled = _lane_fills_its_columns(decision, ctx)
+    seen = _diagnosed(_artifact(ctx, KEY))
+    if seen is not None and lane_parts(seen) == lane_parts(filled):
+        return
+    if decision.method == "msm_iptw":
+        message = (f"The truncation is declared after the weights' distribution and positivity at "
+                   f"each time point are read, and they have not been shown for this lane on the "
+                   f"data as they are now. No estimate is computed before them ({COLE_HERNAN}).")
+        label = "Show the weights and positivity first (the lane without its truncation)"
+    else:
+        message = ("The simulation's size is declared after positivity at each time point and what "
+                   "the simulation will take are read, and they have not been shown for this lane "
+                   "on the data as they are now. No risk is simulated before them.")
+        label = "Show positivity and the simulation's time first (the lane without its size)"
+    raise _refusal("diagnostics_first", message, [{"label": label,
+                                                   "decision": _undeclared(decision)}])
+
+
 def _lane_fills_its_columns(decision: Any, ctx: Any) -> Any:
     """A lane that names no covariate takes the stage's proposal (the adjustment set's covariates,
     split by whether they change within units, and every affected confounder), as shown on the card."""
@@ -768,6 +952,20 @@ def _lane_fills_its_columns(decision: Any, ctx: Any) -> Any:
                                        "baseline": list(proposed.get("baseline") or [])})
 
 
+def _lane_records_what_it_read(decision: Any, ctx: Any) -> Any:
+    """The server's, never the client's (as ``set_roles``'s ``unconfirmed``): a declaration made
+    after the diagnostics carries their key, read from the fresh artifact the validator checked;
+    any other carries none. A g-formula size declared in part takes the other count's default."""
+    if not declares_after_diagnostics(decision):
+        return decision.model_copy(update={"diagnostics_seen": None})
+    seen = _diagnosed(_artifact(ctx, KEY)) or {}
+    update: dict[str, Any] = {"diagnostics_seen": seen.get("key")}
+    if decision.method == "gformula":
+        update["simulations"] = decision.simulations or SIMULATIONS
+        update["bootstrap"] = decision.bootstrap or BOOTSTRAP
+    return decision.model_copy(update=update)
+
+
 def _register() -> None:
     from turbotab.core.decisions import register_completion, register_validator
 
@@ -775,16 +973,18 @@ def _register() -> None:
                   _lane_needs_a_settled_time_column, _lane_follows_the_estimand,
                   _lane_declares_the_time_ordering, _lane_names_model_columns,
                   _affected_confounders_need_g_methods, _lane_fits_the_outcome,
-                  _truncation_is_for_the_weights, _lane_reads_settled_readings,
-                  _lane_fits_the_data):
+                  _each_declaration_is_its_method_s, _lane_reads_settled_readings,
+                  _lane_fits_the_data, _diagnostics_come_first):
         register_validator("set_time_varying", check)
     register_completion("set_time_varying", _lane_fills_its_columns)
+    register_completion("set_time_varying", _lane_records_what_it_read)
 
 
 _register()
 
 __all__ = [
-    "CITE", "CONTRACT", "KEY", "METHOD_WORDS", "TRUNCATION_WORDS", "affected_confounders",
-    "current_lane", "exposure_of", "fit_note", "lane_answer", "lane_gate", "record_sentence",
+    "BOOTSTRAP", "CITE", "CONTRACT", "KEY", "METHOD_WORDS", "PRECEDES", "SIMULATIONS",
+    "TRUNCATION_WORDS", "affected_confounders", "current_lane", "declares_after_diagnostics",
+    "exposure_of", "fit_note", "lane_answer", "lane_gate", "lane_parts", "record_sentence",
     "records_gate",
 ]

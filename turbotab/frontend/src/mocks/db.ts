@@ -845,8 +845,10 @@ function valueOf(d: Decision): ProjectState[Slot] {
                confounders: d.confounders ?? [], baseline: d.baseline ?? [],
                censoring: d.censoring ?? null, pattern: d.pattern ?? "switches",
                summary: d.summary ?? "cumulative", truncation: d.truncation ?? null,
-               simulations: d.simulations ?? 10000, bootstrap: d.bootstrap ?? 500,
-               acknowledged: d.acknowledged ?? false };
+               simulations: d.simulations ?? null, bootstrap: d.bootstrap ?? null,
+               acknowledged: d.acknowledged ?? false,
+               ordering_acknowledged: d.ordering_acknowledged ?? false,
+               diagnostics_seen: d.diagnostics_seen ?? null };
     case "set_explain": {
       const { kind: _k, ...value } = d;
       return value as ProjectState[Slot];

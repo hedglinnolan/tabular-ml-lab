@@ -1253,7 +1253,9 @@ def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
             "adjustment": "each covariate's answers decide whether it is adjusted for, left out or "
                           "set beside the primary",
             "time_varying": "an exposure that changes over time needs its estimation lane, and "
-                            "inverse-probability weights their truncation, before any estimate",
+                            "inverse-probability weights their truncation (the g-formula its "
+                            "simulation's size), declared after the diagnostics are read, before "
+                            "any estimate",
         }[str(key)]
         return {"question": key,
                 "reason": f"No estimate is shown until {name} is answered: {why}.",
