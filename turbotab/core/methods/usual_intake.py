@@ -78,6 +78,15 @@ model (λ included) and re-integrates the distribution:
 * any other design: a bootstrap of PSUs within strata, rescaled (Rao & Wu 1988), intervals on
   #PSU − #strata degrees of freedom.
 
+**Intervals stay within possible values.** A percentile and the mean of usual intake are positive
+and the share is a proportion, so each 95% interval is formed where the estimate is unbounded and
+mapped back (the delta method, from the replicate standard error): θ̂·exp(∓c·SE/θ̂) for a
+percentile and the mean, expit(logit p̂ ∓ c·SE/(p̂(1 − p̂))) for the share, c the normal or t
+critical value. A normal interval on the original scale crosses zero for an episodic food's low
+percentiles (p5 = 0.286 g, interval −0.161 to 0.734 g, at n = 400 with two-thirds of the recalls
+at zero), and the log scale also follows the right skew of a low percentile's sampling distribution.
+The methods sentence states the scales.
+
 The fit under a survey design is a pseudo-likelihood weighted by the person's analysis weight, and
 the distribution is weighted by it (MIXTRAN passes the weight to NLMIXED's ``replicate`` statement;
 DISTRIB divides "the individual weight by the number of repetitions").
@@ -114,7 +123,12 @@ NINE_POINT_W = np.array([0.063345, 0.080255, 0.070458, 0.159698, 0.252489, 0.159
 
 
 class UsualIntakeRefused(ValueError):
-    """The recalls cannot support the model; the message says why."""
+    """The recalls cannot support the model; the message says why, and ``code`` which rule refused
+    (the stage maps it to the refusal's exits)."""
+
+    def __init__(self, message: str, code: str = "refused"):
+        super().__init__(message)
+        self.code = code
 
 
 def _hermite(n: int) -> tuple[np.ndarray, np.ndarray]:
@@ -269,7 +283,8 @@ def half_minimum(rec: Recalls) -> float:
     """Half the smallest reported positive amount (MIXTRAN's ``min_amt``·0.5)."""
     positive = rec.amount[rec.amount > 0]
     if not len(positive):
-        raise UsualIntakeRefused("No recall reports any amount, so there is no intake to model.")
+        raise UsualIntakeRefused("No recall reports any amount, so there is no intake to model.",
+                                 "no_amount")
     return 0.5 * float(positive.min())
 
 
@@ -615,6 +630,17 @@ def _two_part_start(rec: Recalls, w: np.ndarray) -> np.ndarray:
                             0.5 * math.log(float(fit.sigma2_e[0])) + shift, lam]])
 
 
+# The bounds on (log σ₁, log σ₂, atanh ρ, log σ_e, λ) every two-part fit keeps to.
+_TAIL_BOUNDS = ((-8.0, 4.0), (-8.0, 4.0), (-3.8, 3.8), (-8.0, 4.0), LAMBDA_RANGE)
+
+
+def _inside(theta: np.ndarray) -> bool:
+    """Whether the two-part parameters are finite and inside :data:`_TAIL_BOUNDS`."""
+    tail = theta[-len(_TAIL_BOUNDS):]
+    return bool(np.all(np.isfinite(theta))
+                and all(lo <= v <= hi for v, (lo, hi) in zip(tail, _TAIL_BOUNDS)))
+
+
 def fit_two_part(rec: Recalls, w: np.ndarray | None = None, *, start: np.ndarray | None = None,
                  lam: float | None = None) -> TwoPartFit:
     """Maximum likelihood of the two-part model, with person weights ``w`` (default 1)."""
@@ -623,8 +649,7 @@ def fit_two_part(rec: Recalls, w: np.ndarray | None = None, *, start: np.ndarray
     total = float(w.sum())
     theta0 = _two_part_start(rec, w) if start is None else np.asarray(start, dtype=float).copy()
     p = d.p
-    bounds = ([(None, None)] * (2 * p)
-              + [(-8.0, 4.0), (-8.0, 4.0), (-3.8, 3.8), (-8.0, 4.0), LAMBDA_RANGE])
+    bounds = [(None, None)] * (2 * p) + list(_TAIL_BOUNDS)
     if lam is not None:
         theta0[-1] = lam
         bounds[-1] = (lam, lam)
@@ -678,12 +703,14 @@ def refit_two_part(rec: Recalls, w: np.ndarray, start: TwoPartFit, information: 
                    max_iter: int = 40, tol: float = 1e-8) -> TwoPartFit:
     """The two-part fit under replicate weights ``w``, from the full fit: BFGS whose first inverse
     Hessian is the full sample's (each replicate's differs from it by O(n^-1/2)), so it starts as
-    Newton's method would. A fit that leaves λ's range is redone with L-BFGS-B's bounds."""
+    Newton's method would. A step outside the bounds :func:`fit_two_part` keeps to is rejected
+    (BFGS backtracks: a resample at n = 400 once stepped log σ₂ past exp's range), and a fit that
+    ends outside them is redone with L-BFGS-B's bounds."""
     d = _TwoPartData(rec)
     total = float(w.sum())
 
     def objective(theta: np.ndarray) -> tuple[float, np.ndarray]:
-        if not (LAMBDA_RANGE[0] <= theta[-1] <= LAMBDA_RANGE[1]):
+        if not _inside(theta):
             return 1e300, np.zeros_like(theta)
         value, grad = _two_part_loglik(theta, d, w)
         if not np.isfinite(value):
@@ -697,9 +724,9 @@ def refit_two_part(rec: Recalls, w: np.ndarray, start: TwoPartFit, information: 
                                          "maxiter": max_iter * 5})
         theta = res.x
         ok = bool(res.success) or np.max(np.abs(res.jac)) < 1e-5
-    except (np.linalg.LinAlgError, ValueError):
+    except (np.linalg.LinAlgError, ValueError, ArithmeticError):
         ok, theta = False, start.theta()
-    if ok and LAMBDA_RANGE[0] <= theta[-1] <= LAMBDA_RANGE[1] and np.all(np.isfinite(theta)):
+    if ok and _inside(theta):
         return _two_part_result(d, theta, -float(res.fun) * total, True, int(res.nit))
     return fit_two_part(rec, w, start=start.theta())
 
@@ -896,7 +923,7 @@ def brr(strata: Sequence[Any], psu: Sequence[Any], fay: float = FAY) -> Replicat
         if len(units) != 2:
             raise UsualIntakeRefused(
                 f"Stratum `{level}` has {len(units)} PSUs; balanced repeated replication needs "
-                f"exactly two in every stratum.")
+                f"exactly two in every stratum.", "stratum_psus")
         first = rows & (c == units[0])
         second = rows & (c == units[1])
         plus = H[:, h] > 0
@@ -924,7 +951,7 @@ def psu_bootstrap(strata: Sequence[Any], psu: Sequence[Any], n_boot: int = N_BOO
         n_psu += nh
         if nh < 2:
             raise UsualIntakeRefused(f"Stratum `{level}` has one PSU, so its sampling variance "
-                                     f"cannot be estimated.")
+                                     f"cannot be estimated.", "lonely_psu")
         index = {u: i for i, u in enumerate(units)}
         unit_of = np.array([index[v] for v in c[rows]])
         draws = rng.integers(0, nh, size=(n_boot, nh - 1))
@@ -984,34 +1011,62 @@ def _weighted_percentiles(values: np.ndarray, weights: np.ndarray, ps: Sequence[
     return {int(p): float(np.interp(p / 100.0, cum, v)) for p in ps}
 
 
+def log_interval(value: float, se: float, crit: float) -> tuple[float, float]:
+    """The interval for a positive quantity formed on the log scale by the delta method,
+    ``value · exp(∓crit · se / value)``: it never reaches zero, and it is wider above the estimate
+    than below, as a low percentile's sampling distribution is. (A value at zero, which no
+    percentile or mean here can be, keeps the normal interval cut at zero.)"""
+    if not value > 0:
+        return max(0.0, value - crit * se), value + crit * se
+    half = crit * se / value
+    return value * math.exp(-half), value * math.exp(half)
+
+
+def logit_interval(value: float, se: float, crit: float) -> tuple[float, float]:
+    """The interval for a share formed on the logit scale by the delta method, ``expit(logit p ∓
+    crit · se / (p(1 − p)))``: it stays inside (0, 1). (A share of exactly 0 or 1 keeps the normal
+    interval cut at the bounds.)"""
+    if not 0.0 < value < 1.0:
+        return max(0.0, value - crit * se), min(1.0, value + crit * se)
+    center = math.log(value / (1.0 - value))
+    half = crit * se / (value * (1.0 - value))
+    return float(special.expit(center - half)), float(special.expit(center + half))
+
+
 def _estimates(point: Distribution, reps: list[Distribution | None], replication: Replication | None,
                percentiles: Sequence[int]) -> tuple[dict[int, Estimate], Estimate, Estimate | None,
                                                     dict[str, np.ndarray]]:
+    """Each estimate with its replicate standard error and a 95% interval that stays within the
+    possible values: the log scale for the percentiles and the mean (intakes are positive), the
+    logit scale for the share. A normal interval on the original scale crosses zero for the low
+    percentiles of an episodic food (p5 = 0.286 g with a normal interval from −0.161 to 0.734 g,
+    n = 400 with two-thirds of the recalls at zero)."""
     ok = [r for r in reps if r is not None]
 
-    def one(value: float, rep_values: np.ndarray) -> Estimate:
+    def one(value: float, rep_values: np.ndarray, form: Callable[..., tuple[float, float]]
+            ) -> Estimate:
         if replication is None or len(rep_values) < 2:
             return Estimate(value, None, None, None)
         se = math.sqrt(replication.variance(value, rep_values))
-        crit = replication.critical()
-        return Estimate(value, se, value - crit * se, value + crit * se)
+        if not math.isfinite(se):
+            return Estimate(value, None, None, None)
+        low, high = form(value, se, replication.critical())
+        return Estimate(value, se, low, high)
 
     store: dict[str, np.ndarray] = {}
     pct = {}
     for p in percentiles:
         vals = np.array([r.percentiles[p] for r in ok])
         store[f"p{p}"] = vals
-        pct[p] = one(point.percentiles[p], vals)
+        pct[p] = one(point.percentiles[p], vals, log_interval)
     mvals = np.array([r.mean for r in ok])
     store["mean"] = mvals
-    mean = one(point.mean, mvals)
+    mean = one(point.mean, mvals, log_interval)
     below = None
     if point.below is not None:
         bvals = np.array([r.below for r in ok], dtype=float)
         store["below"] = bvals
-        below = one(point.below, bvals)
-        if below.ci_low is not None:
-            below = Estimate(below.value, below.se, max(0.0, below.ci_low), min(1.0, below.ci_high))
+        below = one(point.below, bvals, logit_interval)
     return pct, mean, below, store
 
 
@@ -1032,7 +1087,7 @@ def usual_intake(rec: Recalls, model: Model, *, weights: np.ndarray | None = Non
     base = np.where(np.isfinite(base) & (base > 0), base, 0.0)
     have = (rec.counts() > 0) & (base > 0)
     if not have.any():
-        raise UsualIntakeRefused("No one in the analysis has a recall with a value.")
+        raise UsualIntakeRefused("No one in the analysis has a recall with a value.", "no_recall")
     counts = rec.counts()[have]
     n_repeat = int(np.sum(counts >= 2))
     concerns: list[str] = []
@@ -1047,7 +1102,8 @@ def usual_intake(rec: Recalls, model: Model, *, weights: np.ndarray | None = Non
             raise UsualIntakeRefused(
                 "Fewer than two people have two or more recalls with an amount, so the day-to-day "
                 "variance cannot be separated from the differences between people (MIXTRAN: \"there "
-                "must be at least two subjects with at least two positive recalls\").")
+                "must be at least two subjects with at least two positive recalls\").",
+                "too_few_repeats")
         amount = np.where(rec.amount > 0, rec.amount, floor)
         zeros_replaced = int(np.sum((rec.amount <= 0) & in_analysis))
         X, names = rec.design()
@@ -1076,13 +1132,14 @@ def usual_intake(rec: Recalls, model: Model, *, weights: np.ndarray | None = Non
             raise UsualIntakeRefused(
                 "No recall reports a day without it, so the probability part of the two-part model "
                 "has nothing to estimate; the amount-only model is the one for an intake reported "
-                "every day.")
+                "every day.", "no_zero_day")
         pos_k = rec.positive_counts()[have]
         if int(np.sum(pos_k >= 2)) < 2:
             raise UsualIntakeRefused(
                 "Fewer than two people report it on two or more recalls, so the consumption-day "
                 "amount's day-to-day variance cannot be estimated (MIXTRAN: \"In the amount model, "
-                "there must be at least two subjects with at least two positive recalls\").")
+                "there must be at least two subjects with at least two positive recalls\").",
+                "too_few_repeats")
         sub = Recalls(rec.amount[in_analysis], rec.person[in_analysis], n, rec.later[in_analysis],
                       None if rec.weekend is None else rec.weekend[in_analysis])
         if progress:
@@ -1107,8 +1164,8 @@ def usual_intake(rec: Recalls, model: Model, *, weights: np.ndarray | None = Non
                           else fit_two_part(sub, wr, start=fit2.theta()))
                     reps.append(two_part_distribution(fr, floor, cutoff, percentiles)
                                 if np.isfinite(fr.loglik) else None)
-                except (np.linalg.LinAlgError, ValueError, FloatingPointError):
-                    reps.append(None)
+                except (np.linalg.LinAlgError, ValueError, ArithmeticError):
+                    reps.append(None)  # counted, and stated as a concern below
         lam = fit2.lam
         params = {"lambda": lam, "sigma_u1": fit2.sigma_u1, "sigma_u2": fit2.sigma_u2,
                   "rho": fit2.rho, "sigma2_e": fit2.sigma_e ** 2,
@@ -1185,30 +1242,61 @@ def reference_phrase(names: Sequence[str]) -> str:
     return ", ".join(parts) + ", " if parts else ""
 
 
-def variance_phrase(replication: Replication | None, n_ok: int, weight: str | None) -> str:
+def interval_phrase(share: bool) -> str:
+    """How the intervals were formed (:func:`log_interval`, :func:`logit_interval`)."""
+    if share:
+        return (" The 95% intervals were formed on the log scale for the percentiles and the mean "
+                "and on the logit scale for the share (the delta method), so none extends below "
+                "zero or above one.")
+    return (" The 95% intervals were formed on the log scale (the delta method), so none extends "
+            "below zero.")
+
+
+def variance_phrase(replication: Replication | None, n_ok: int, weight: str | None,
+                    share: bool = False) -> str:
     if replication is None:
         return "No standard errors were computed."
     every = "each refitting the whole model"
+    intervals = interval_phrase(share)
     if replication.method == "brr":
         return (f"Standard errors came from Fay's balanced repeated replication ({n_ok:,} of "
                 f"{len(replication.factors):,} replicates over {replication.n_strata:,} strata of two "
                 f"PSUs, Fay coefficient {replication.fay:g}), {every}, with t intervals on "
-                f"{replication.df:,} degrees of freedom.")
+                f"{replication.df:,} degrees of freedom.{intervals}")
     if replication.method == "psu_bootstrap":
         return (f"Standard errors came from {n_ok:,} bootstrap resamples of PSUs within strata "
                 f"(Rao and Wu's rescaling, {replication.n_psu:,} PSUs in {replication.n_strata:,} "
-                f"strata), {every}, with t intervals on {replication.df:,} degrees of freedom.")
+                f"strata), {every}, with t intervals on {replication.df:,} degrees of freedom."
+                f"{intervals}")
     whom = "participants" if weight is None else f"participants, carrying `{weight}`"
-    return f"Standard errors came from {n_ok:,} bootstrap resamples of {whom}, {every}."
+    return f"Standard errors came from {n_ok:,} bootstrap resamples of {whom}, {every}.{intervals}"
 
 
-def share_phrase(cutoff: float | None, kind: CutoffKind | None) -> str:
+# The EAR cut-point's conditions the recalls cannot show (Institute of Medicine 2000, ch. 4: the
+# EAR is "the median requirement of a nutrient for a given life stage and gender group"; "when the
+# distribution of requirements is known to be asymmetrical, as for iron in menstruating women, the
+# probability approach, not the EAR cut-point method, is recommended").
+DRI_GROUP = "DRI life-stage group (age band, sex, pregnancy and lactation status)"
+
+
+def share_phrase(cutoff: float | None, kind: CutoffKind | None, *, ear_for_all: bool = False,
+                 iron: bool = False) -> str:
+    """The share's sentence. Below an EAR it is the prevalence of inadequacy only when the cut-off
+    was answered as the EAR of every participant's DRI group (``ear_for_all``); for iron the answer
+    that its requirement is symmetric here (no menstruating women) is stated with it."""
     if cutoff is None:
         return ""
     value = _number(cutoff)
-    if kind == "EAR":
+    if kind == "EAR" and ear_for_all:
+        skew = (", and its requirement distribution as symmetric in them (no menstruating women, in "
+                "whom iron's is skewed)" if iron else "")
         return (f" The share below the EAR ({value}) is the EAR cut-point estimate of the prevalence "
-                f"of inadequacy ({IOM_2000}).")
+                f"of inadequacy ({IOM_2000}), the cut-off answered as the EAR of every participant's "
+                f"{DRI_GROUP}{skew}.")
+    if kind == "EAR":
+        return (f" The share below the EAR ({value}) is reported as a share of the distribution, not "
+                f"a prevalence of inadequacy: an EAR is the median requirement of one {DRI_GROUP}, "
+                f"and that it is the EAR of every participant's group was not answered ({IOM_2000}).")
     if kind == "UL":
         return (f" The share above the UL ({value}) is read as a share at risk of excess only if "
                 f"the recalls include supplements, since the UL applies to total intake.")
@@ -1220,7 +1308,8 @@ def methods_sentence(*, label: str, model: Model, names: Sequence[str], lam: flo
                      consumer_column: str | None, weight: str | None,
                      replication: Replication | None, n_ok: int, cutoff: float | None,
                      cutoff_kind: CutoffKind | None, rho: float | None = None,
-                     attestation: str | None = None) -> str:
+                     attestation: str | None = None, ear_for_all: bool = False,
+                     iron: bool = False) -> str:
     """The methods sentence: the model, the transform, the covariates, the variance method."""
     head = (f"Usual intake of `{label}` was estimated by the NCI method ({TOOZE_2006}; {TOOZE_2010}) "
             f"from 24-hour recalls of {n_persons:,} participants ({days_phrase(recalls)}; "
@@ -1253,15 +1342,16 @@ def methods_sentence(*, label: str, model: Model, names: Sequence[str], lam: flo
         if model == "two_part":
             whom += f", everyone taken to consume it on some days ({KIPNIS_2009})"
     sentence = (f"{head}{body}; the distribution was {reference_phrase(names)}{integrate}, and "
-                f"describes {whom}. {variance_phrase(replication, n_ok, weight)}"
-                f"{share_phrase(cutoff, cutoff_kind)}")
+                f"describes {whom}. {variance_phrase(replication, n_ok, weight, cutoff is not None)}"
+                f"{share_phrase(cutoff, cutoff_kind, ear_for_all=ear_for_all, iron=iron)}")
     if attestation:
         sentence += f" Survey design: {attestation}."
     return sentence
 
 
 __all__ = [
-    "AmountFit", "CutoffKind", "Distribution", "covariates_phrase", "days_phrase", "methods_sentence",
+    "AmountFit", "CutoffKind", "DRI_GROUP", "Distribution", "covariates_phrase", "days_phrase",
+    "interval_phrase", "log_interval", "logit_interval", "methods_sentence",
     "reference_phrase", "share_phrase", "variance_phrase", "Estimate", "FAY", "IOM_2000", "KIPNIS_2009", "LAMBDA_RANGE",
     "N_BOOT", "NINE_POINT_C", "NINE_POINT_W", "PERCENTILES", "Recalls", "Replication", "Result",
     "TOOZE_2006", "TOOZE_2010", "TwoPartFit", "UsualIntakeRefused", "WEEKEND_SHARE", "Z_95",

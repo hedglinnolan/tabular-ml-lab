@@ -4404,6 +4404,16 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Ear For All
+             * @default false
+             */
+            ear_for_all: boolean;
+            /**
+             * Ear Symmetric
+             * @default false
+             */
+            ear_symmetric: boolean;
         };
         /**
          * SetUsualIntake
@@ -4453,6 +4463,16 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Ear For All
+             * @default false
+             */
+            ear_for_all: boolean;
+            /**
+             * Ear Symmetric
+             * @default false
+             */
+            ear_symmetric: boolean;
         };
         /** SplitSpec */
         SplitSpec: {
@@ -4750,6 +4770,16 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Ear For All
+             * @default false
+             */
+            ear_for_all: boolean;
+            /**
+             * Ear Symmetric
+             * @default false
+             */
+            ear_symmetric: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -8485,6 +8515,16 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Ear For All
+             * @default false
+             */
+            ear_for_all: boolean;
+            /**
+             * Ear Symmetric
+             * @default false
+             */
+            ear_symmetric: boolean;
         };
         /**
          * ShelfArtifact
@@ -9192,6 +9232,13 @@ export interface components {
              * @default []
              */
             concerns: string[];
+            /**
+             * Exits
+             * @default []
+             */
+            exits: {
+                [key: string]: unknown;
+            }[];
             /** Methods */
             methods: string;
         };

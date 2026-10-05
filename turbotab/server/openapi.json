@@ -12226,6 +12226,16 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "ear_for_all": {
+            "type": "boolean",
+            "title": "Ear For All",
+            "default": false
+          },
+          "ear_symmetric": {
+            "type": "boolean",
+            "title": "Ear Symmetric",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -12349,6 +12359,16 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "ear_for_all": {
+            "type": "boolean",
+            "title": "Ear For All",
+            "default": false
+          },
+          "ear_symmetric": {
+            "type": "boolean",
+            "title": "Ear Symmetric",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -12365,7 +12385,9 @@
           "consumer_column",
           "cutoff",
           "cutoff_kind",
-          "n_boot"
+          "n_boot",
+          "ear_for_all",
+          "ear_symmetric"
         ],
         "title": "SetUsualIntake",
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
@@ -13213,6 +13235,16 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "ear_for_all": {
+            "type": "boolean",
+            "title": "Ear For All",
+            "default": false
+          },
+          "ear_symmetric": {
+            "type": "boolean",
+            "title": "Ear Symmetric",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -13227,7 +13259,9 @@
           "consumer_column",
           "cutoff",
           "cutoff_kind",
-          "n_boot"
+          "n_boot",
+          "ear_for_all",
+          "ear_symmetric"
         ],
         "title": "UsualIntakeSpec"
       },
@@ -22289,6 +22323,16 @@
             "minimum": 50,
             "title": "N Boot",
             "type": "integer"
+          },
+          "ear_for_all": {
+            "default": false,
+            "title": "Ear For All",
+            "type": "boolean"
+          },
+          "ear_symmetric": {
+            "default": false,
+            "title": "Ear Symmetric",
+            "type": "boolean"
           }
         },
         "required": [
@@ -22303,7 +22347,9 @@
           "consumer_column",
           "cutoff",
           "cutoff_kind",
-          "n_boot"
+          "n_boot",
+          "ear_for_all",
+          "ear_symmetric"
         ],
         "title": "SetUsualIntake",
         "type": "object"
@@ -24221,6 +24267,15 @@
             "title": "Concerns",
             "type": "array"
           },
+          "exits": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
           "methods": {
             "title": "Methods",
             "type": "string"
@@ -24255,6 +24310,7 @@
           "weight",
           "assumptions",
           "concerns",
+          "exits",
           "methods"
         ],
         "title": "UsualIntakeAnalysis",
