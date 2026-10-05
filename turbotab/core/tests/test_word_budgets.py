@@ -315,6 +315,39 @@ def representative_decisions():
                                       after_exposure="unknown"),
             "ldl": d.CovariateAnswers(causes_exposure="no", causes_outcome="yes",
                                       after_exposure="yes", keep=True, acknowledged=True)}),
+        # DATAIN (V2 definition of done §1): a join on a shared identifier, a codebook import
+        d.JoinFiles(file="f0123456789", on="participant_id", name="labs.csv",
+                    counts=d.JoinCounts(relation="one-to-one", table_rows=600, file_rows=580,
+                                        matched_keys=290, table_unmatched=20, file_unmatched=0,
+                                        rows=600, added_columns=3)),
+        d.ImportCodebook(codebook="c0123456789", name="dictionary.csv", form="table",
+                         items=[d.ReadingItem(reading="unit", column="weight", value="kg"),
+                                d.ReadingItem(reading="code_or_count", column="sex",
+                                              value="code"),
+                                d.ReadingItem(reading="sex_coding", column="sex",
+                                              value="female=2,male=1")],
+                         labels={"weight": "Weight (kg)"},
+                         asked=[d.CodebookConflict(column="height_cm", field="unit", says="m",
+                                                   values="a median of 166, a human height only "
+                                                          "in cm")],
+                         n_entries=12, n_matched=10),
+        # MS7: how a batch column is handled, and an exposure family's multiplicity
+        d.SetBatch(column="batch", method="covariate", figures=True),
+        d.SetBatch(column="batch", method="reference_combat"),
+        d.SetBatch(column="batch", method="not_a_batch"),
+        d.SetMultiplicity(method="bh"),
+        d.SetMultiplicity(method="none", acknowledged=True),
+        d.SetScales(scales=[
+            d.ScaleSpec(name="stress_score", items=["pss_1", "pss_2", "pss_3", "pss_4"],
+                        reverse=["pss_4"], low=0, high=4, kind="reflective",
+                        correction="regression_calibration", instrument="PSS-4"),
+            d.ScaleSpec(name="diet_score", items=["dq_1", "dq_2", "dq_3"], low=0, high=10,
+                        kind="formative", role="covariate", correction="regression_calibration",
+                        reliability="test_retest", retest=["dq_1_t2", "dq_2_t2", "dq_3_t2"]),
+        ]),
+        # The NCI usual-intake method: one component's distribution, with the EAR's share
+        d.SetUsualIntake(nutrient="protein_g", model="amount_only", order_column="recall",
+                         weekend=["weekend"], cutoff=46, cutoff_kind="EAR"),
     ]
 
 

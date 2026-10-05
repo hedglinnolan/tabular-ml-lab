@@ -408,10 +408,151 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Files
+         * @description The files added to the project to join to its table, and whether each is joined.
+         */
+        get: operations["list_files_api_projects__pid__files_get"];
+        put?: never;
+        /**
+         * Add File
+         * @description Add a file on this machine (local mode only); it is read once, as the table was.
+         */
+        post: operations["add_file_api_projects__pid__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/files/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload File
+         * @description Upload a file to join to the project's table (multipart field ``file``).
+         */
+        post: operations["upload_file_api_projects__pid__files_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/join-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join Preview
+         * @description The row counts a join would give, before it is committed (``join_files`` commits it).
+         */
+        post: operations["join_preview_api_projects__pid__join_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/codebooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Codebook
+         * @description Read a codebook on this machine (local mode only), or the table's own XPT labels, and say
+         *     what importing it would do (``import_codebook`` records it).
+         */
+        post: operations["add_codebook_api_projects__pid__codebooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/codebooks/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Codebook
+         * @description Upload a codebook (multipart field ``file``): a variable table, an NHANES codebook page or
+         *     an XPT file; the answer says what importing it would do.
+         */
+        post: operations["upload_codebook_api_projects__pid__codebooks_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AddFile
+         * @description Add a file on this machine to the project, to join to its table (local mode only).
+         */
+        AddFile: {
+            /** Path */
+            path: string;
+        };
+        /** AddedFile */
+        AddedFile: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "path" | "upload";
+            /** Fingerprint */
+            fingerprint: string;
+            /** N Rows */
+            n_rows: number;
+            /** N Cols */
+            n_cols: number;
+            /** Columns */
+            columns: string[];
+            /** Warnings */
+            warnings: string[];
+            /**
+             * Joined
+             * @default false
+             */
+            joined: boolean;
+        };
         /** AdjustmentAnswer */
         AdjustmentAnswer: {
             /**
@@ -581,6 +722,21 @@ export interface components {
             /** Change */
             change: components["schemas"]["AskExit"][];
         };
+        /** BatchSpec */
+        BatchSpec: {
+            /** Column */
+            column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "covariate" | "reference_combat" | "outcome_combat" | "none" | "not_a_batch";
+            /**
+             * Figures
+             * @default false
+             */
+            figures: boolean;
+        };
         /**
          * Caution
          * @description A concern the preview itself shows, inside the stage, with the control that acts on it
@@ -637,6 +793,145 @@ export interface components {
             /** Text */
             text: string;
             anchor: components["schemas"]["CoachAnchor"];
+        };
+        /** CodebookAsk */
+        CodebookAsk: {
+            /** Column */
+            column: string;
+            /** Field */
+            field: string;
+            /** Says */
+            says: string;
+            /** Values */
+            values: string;
+            /** Exits */
+            exits: components["schemas"]["Exit"][];
+        };
+        /**
+         * CodebookConflict
+         * @description A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3).
+         */
+        CodebookConflict: {
+            /** Column */
+            column: string;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "unit" | "codes" | "type" | "range";
+            /** Says */
+            says: string;
+            /** Values */
+            values: string;
+        };
+        /**
+         * CodebookPreview
+         * @description What importing a codebook would do (``import_codebook`` with this ``id`` records it): the
+         *     readings its structured fields settle, its documented units, how many labels it gives, the
+         *     fields the values contradict (asked, never applied), the readings the user answered
+         *     otherwise (kept), and the sentence it would record.
+         */
+        CodebookPreview: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Form
+             * @enum {string}
+             */
+            form: "table" | "nhanes" | "xpt";
+            /** N Entries */
+            n_entries: number;
+            /** N Matched */
+            n_matched: number;
+            /** Unmatched */
+            unmatched: string[];
+            /** N Unmatched */
+            n_unmatched: number;
+            /** Settles */
+            settles: components["schemas"]["CodebookSettlement"][];
+            /** Units */
+            units: {
+                [key: string]: string;
+            };
+            /** Labels */
+            labels: number;
+            /** Asked */
+            asked: components["schemas"]["CodebookAsk"][];
+            /** Kept */
+            kept: string[];
+            /** Sentence */
+            sentence: string;
+        };
+        /**
+         * CodebookRequest
+         * @description A codebook to read: a file on this machine (local mode only), or the variable labels the
+         *     table's own SAS transport files carry (``labels``).
+         */
+        CodebookRequest: {
+            /** Path */
+            path?: string | null;
+            /**
+             * Labels
+             * @default false
+             */
+            labels: boolean;
+        };
+        /** CodebookSettlement */
+        CodebookSettlement: {
+            /** Reading */
+            reading: string;
+            /** Column */
+            column: string;
+            /** Value */
+            value: string;
+            /** Field */
+            field: string;
+        };
+        /**
+         * CodebookSpec
+         * @description One imported codebook as the state keeps it (``codebooks`` slot, keyed by its id):
+         *     ``settled`` the readings its structured fields settled (``"<kind>:<column>"`` -> value),
+         *     ``units`` the documented units no reading kind takes (``mg/dL``; a sentence may state them),
+         *     ``labels`` its free-text labels of the table's columns (they only strengthen a guess),
+         *     ``asked`` its fields the values contradict, ``kept`` the readings the user had answered
+         *     otherwise before (the user's answer stands).
+         */
+        CodebookSpec: {
+            /** Name */
+            name: string;
+            /**
+             * Form
+             * @enum {string}
+             */
+            form: "table" | "nhanes" | "xpt";
+            /** Settled */
+            settled: {
+                [key: string]: string;
+            };
+            /** Units */
+            units: {
+                [key: string]: string;
+            };
+            /** Labels */
+            labels: {
+                [key: string]: string;
+            };
+            /** Asked */
+            asked: components["schemas"]["CodebookConflict"][];
+            /** Kept */
+            kept: string[];
+            /**
+             * N Entries
+             * @default 0
+             */
+            n_entries: number;
+            /**
+             * N Matched
+             * @default 0
+             */
+            n_matched: number;
         };
         /** ColumnSummary */
         ColumnSummary: {
@@ -879,7 +1174,7 @@ export interface components {
              */
             after_estimates: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"];
         };
         /**
          * DeferFinding
@@ -1082,7 +1377,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"] | components["schemas"]["JoinFiles-Output"] | components["schemas"]["ImportCodebook-Output"] | components["schemas"]["SetBatch-Output"] | components["schemas"]["SetMultiplicity-Output"] | components["schemas"]["SetScales-Output"] | components["schemas"]["SetUsualIntake-Output"]) | null;
         };
         /**
          * ExposureFormSpec
@@ -1444,6 +1739,100 @@ export interface components {
              */
             n_missing: number;
         };
+        /**
+         * ImportCodebook
+         * @description Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a
+         *     variable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.
+         *     Its structured fields (units, value-code tables, the variable type) settle readings as the
+         *     user's own documentation, through the confirmation path ``confirm_readings`` writes; its
+         *     free-text labels only strengthen the guesses the ask leads with; a field the values contradict
+         *     is asked, never applied. The client names the staged codebook; everything else is the
+         *     server's, read from the codebook and the values.
+         */
+        "ImportCodebook-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "import_codebook";
+            /** Codebook */
+            codebook: string;
+            /** Name */
+            name?: string | null;
+            /** Form */
+            form?: ("table" | "nhanes" | "xpt") | null;
+            /** Items */
+            items?: components["schemas"]["ReadingItem"][];
+            /** Units */
+            units?: {
+                [key: string]: string;
+            };
+            /** Labels */
+            labels?: {
+                [key: string]: string;
+            };
+            /** Asked */
+            asked?: components["schemas"]["CodebookConflict"][];
+            /** Kept */
+            kept?: string[];
+            /**
+             * N Entries
+             * @default 0
+             */
+            n_entries: number;
+            /**
+             * N Matched
+             * @default 0
+             */
+            n_matched: number;
+        };
+        /**
+         * ImportCodebook
+         * @description Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a
+         *     variable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.
+         *     Its structured fields (units, value-code tables, the variable type) settle readings as the
+         *     user's own documentation, through the confirmation path ``confirm_readings`` writes; its
+         *     free-text labels only strengthen the guesses the ask leads with; a field the values contradict
+         *     is asked, never applied. The client names the staged codebook; everything else is the
+         *     server's, read from the codebook and the values.
+         */
+        "ImportCodebook-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "import_codebook";
+            /** Codebook */
+            codebook: string;
+            /** Name */
+            name: string | null;
+            /** Form */
+            form: ("table" | "nhanes" | "xpt") | null;
+            /** Items */
+            items: components["schemas"]["ReadingItem"][];
+            /** Units */
+            units: {
+                [key: string]: string;
+            };
+            /** Labels */
+            labels: {
+                [key: string]: string;
+            };
+            /** Asked */
+            asked: components["schemas"]["CodebookConflict"][];
+            /** Kept */
+            kept: string[];
+            /**
+             * N Entries
+             * @default 0
+             */
+            n_entries: number;
+            /**
+             * N Matched
+             * @default 0
+             */
+            n_matched: number;
+        };
         /** InterviewStep */
         InterviewStep: {
             /**
@@ -1493,6 +1882,239 @@ export interface components {
             message: string | null;
             /** Error */
             error: string | null;
+        };
+        /**
+         * JoinCounts
+         * @description What the join's preview counted, recorded with the answer (the server's): the rows on each
+         *     side, the identifier values they share, the rows with no partner on each side, and the rows
+         *     the joined table holds.
+         */
+        "JoinCounts-Input": {
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "one-to-one" | "one-to-many" | "many-to-one";
+            /** Table Rows */
+            table_rows: number;
+            /** File Rows */
+            file_rows: number;
+            /** Matched Keys */
+            matched_keys: number;
+            /** Table Unmatched */
+            table_unmatched: number;
+            /** File Unmatched */
+            file_unmatched: number;
+            /** Rows */
+            rows: number;
+            /** Added Columns */
+            added_columns: number;
+            /** Renamed */
+            renamed?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * JoinCounts
+         * @description What the join's preview counted, recorded with the answer (the server's): the rows on each
+         *     side, the identifier values they share, the rows with no partner on each side, and the rows
+         *     the joined table holds.
+         */
+        "JoinCounts-Output": {
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "one-to-one" | "one-to-many" | "many-to-one";
+            /** Table Rows */
+            table_rows: number;
+            /** File Rows */
+            file_rows: number;
+            /** Matched Keys */
+            matched_keys: number;
+            /** Table Unmatched */
+            table_unmatched: number;
+            /** File Unmatched */
+            file_unmatched: number;
+            /** Rows */
+            rows: number;
+            /** Added Columns */
+            added_columns: number;
+            /** Renamed */
+            renamed: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * JoinFiles
+         * @description Join a file added to the project to the table on a shared identifier (NHANES ships each
+         *     component as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the
+         *     table (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with
+         *     one. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its
+         *     reason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,
+         *     recorded with the answer.
+         */
+        "JoinFiles-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "join_files";
+            /** File */
+            file: string;
+            /** On */
+            on: string;
+            /** Right On */
+            right_on?: string | null;
+            /**
+             * How
+             * @default left
+             * @enum {string}
+             */
+            how: "left" | "inner";
+            /** Name */
+            name?: string | null;
+            counts?: components["schemas"]["JoinCounts-Input"] | null;
+        };
+        /**
+         * JoinFiles
+         * @description Join a file added to the project to the table on a shared identifier (NHANES ships each
+         *     component as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the
+         *     table (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with
+         *     one. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its
+         *     reason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,
+         *     recorded with the answer.
+         */
+        "JoinFiles-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "join_files";
+            /** File */
+            file: string;
+            /** On */
+            on: string;
+            /** Right On */
+            right_on: string | null;
+            /**
+             * How
+             * @default left
+             * @enum {string}
+             */
+            how: "left" | "inner";
+            /** Name */
+            name: string | null;
+            counts: components["schemas"]["JoinCounts-Output"] | null;
+        };
+        /**
+         * JoinPreview
+         * @description What a join would do before it is committed: each side's rows and identifier values, the
+         *     relation (one-to-one, one-to-many, many-to-one; many-to-many is refused), the rows with no
+         *     partner on each side, the joined table's rows, its new and renamed columns, and the sentence
+         *     the join would record.
+         */
+        JoinPreview: {
+            /** File */
+            file: string;
+            /** On */
+            on: string;
+            /** Right On */
+            right_on: string;
+            /**
+             * How
+             * @enum {string}
+             */
+            how: "left" | "inner";
+            table: components["schemas"]["JoinSide"];
+            file_side: components["schemas"]["JoinSide"];
+            /** Relation */
+            relation: string;
+            /** Matched Keys */
+            matched_keys: number;
+            /** Table Unmatched */
+            table_unmatched: number;
+            /** File Unmatched */
+            file_unmatched: number;
+            /** Rows */
+            rows: number;
+            /** Added Columns */
+            added_columns: string[];
+            /** Renamed */
+            renamed: {
+                [key: string]: string;
+            };
+            refusal: components["schemas"]["JoinRefusal"] | null;
+            /** Sentence */
+            sentence: string;
+        };
+        /**
+         * JoinPreviewRequest
+         * @description The join to count: the added file, the identifier (``right_on`` when the file names it
+         *     otherwise), and which rows the joined table keeps.
+         */
+        JoinPreviewRequest: {
+            /** File */
+            file: string;
+            /** On */
+            on: string;
+            /** Right On */
+            right_on?: string | null;
+            /**
+             * How
+             * @default left
+             * @enum {string}
+             */
+            how: "left" | "inner";
+        };
+        /** JoinRefusal */
+        JoinRefusal: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Exits */
+            exits: components["schemas"]["Exit"][];
+        };
+        /** JoinSide */
+        JoinSide: {
+            /** Name */
+            name: string;
+            /** Rows */
+            rows: number;
+            /** Keys */
+            keys: number;
+            /** Blank Keys */
+            blank_keys: number;
+            /** Repeats */
+            repeats: boolean;
+            /** Max Repeat */
+            max_repeat: number;
+            /** Example */
+            example: unknown;
+            /** Example Count */
+            example_count: number;
+        };
+        /**
+         * JoinSpec
+         * @description One file joined to the table (``joins`` slot, keyed by the file's id, in answer order).
+         */
+        JoinSpec: {
+            /** File */
+            file: string;
+            /** Name */
+            name: string;
+            /** On */
+            on: string;
+            /** Right On */
+            right_on: string | null;
+            /**
+             * How
+             * @default left
+             * @enum {string}
+             */
+            how: "left" | "inner";
+            counts: components["schemas"]["JoinCounts-Output"] | null;
         };
         /**
          * LevelValues
@@ -1717,7 +2339,7 @@ export interface components {
              */
             m: number;
             /** Below Detection */
-            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing" | "qrilc") | null;
             /** Censored Columns */
             censored_columns: string[];
             /**
@@ -1727,6 +2349,19 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
+        };
+        /** MultiplicitySpec */
+        MultiplicitySpec: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bh" | "stated_count" | "none";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * OpenSeal
@@ -1867,6 +2502,12 @@ export interface components {
             /** Sensitivity */
             sensitivity: components["schemas"]["SensitivityAnalysis-Output"][] | null;
             measurement_error: components["schemas"]["MeasurementErrorSpec"] | null;
+            /** Scales */
+            scales: components["schemas"]["ScaleSpec-Output"][] | null;
+            /** Usual Intake */
+            usual_intake: {
+                [key: string]: components["schemas"]["UsualIntakeSpec"];
+            } | null;
             /** Outcome Unit */
             outcome_unit: string | null;
             /** Column Units */
@@ -1900,6 +2541,16 @@ export interface components {
                 [key: string]: components["schemas"]["AdjustmentAnswer"];
             } | null;
             outcome_scale: components["schemas"]["OutcomeScaleSpec"] | null;
+            /** Joins */
+            joins: {
+                [key: string]: components["schemas"]["JoinSpec"];
+            } | null;
+            /** Codebooks */
+            codebooks: {
+                [key: string]: components["schemas"]["CodebookSpec"];
+            } | null;
+            batch: components["schemas"]["BatchSpec"] | null;
+            multiplicity: components["schemas"]["MultiplicitySpec"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -2195,6 +2846,142 @@ export interface components {
             decision_id: string | null;
         };
         /**
+         * ScaleSpec
+         * @description One scale: its items, the instrument's key (the reverse-coded items and the response scale
+         *     ``low``–``high`` they are turned over on), how the score is formed, what kind of construct it
+         *     measures (``reflective``: the items are caused by it; ``formative``: an index defined by its
+         *     components, such as a diet-quality score), its structure, the role the score takes in the
+         *     models, and whether its coefficient is corrected for measurement error, from which reliability.
+         */
+        "ScaleSpec-Input": {
+            /** Name */
+            name: string;
+            /** Items */
+            items: string[];
+            /** Reverse */
+            reverse?: string[];
+            /** Low */
+            low: number;
+            /** High */
+            high: number;
+            /**
+             * Scoring
+             * @default sum
+             * @enum {string}
+             */
+            scoring: "sum" | "mean";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reflective" | "formative";
+            /**
+             * Structure
+             * @default unidimensional
+             * @enum {string}
+             */
+            structure: "unidimensional" | "multidimensional";
+            /** Factors */
+            factors?: number | null;
+            /**
+             * Role
+             * @default exposure
+             * @enum {string}
+             */
+            role: "exposure" | "covariate";
+            /**
+             * Correction
+             * @default none
+             * @enum {string}
+             */
+            correction: "none" | "regression_calibration";
+            /**
+             * Reliability
+             * @default internal_consistency
+             * @enum {string}
+             */
+            reliability: "internal_consistency" | "test_retest" | "calibration_substudy";
+            /** Retest */
+            retest?: string[];
+            /** Reference */
+            reference?: string | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+            /** Instrument */
+            instrument?: string | null;
+        };
+        /**
+         * ScaleSpec
+         * @description One scale: its items, the instrument's key (the reverse-coded items and the response scale
+         *     ``low``–``high`` they are turned over on), how the score is formed, what kind of construct it
+         *     measures (``reflective``: the items are caused by it; ``formative``: an index defined by its
+         *     components, such as a diet-quality score), its structure, the role the score takes in the
+         *     models, and whether its coefficient is corrected for measurement error, from which reliability.
+         */
+        "ScaleSpec-Output": {
+            /** Name */
+            name: string;
+            /** Items */
+            items: string[];
+            /** Reverse */
+            reverse: string[];
+            /** Low */
+            low: number;
+            /** High */
+            high: number;
+            /**
+             * Scoring
+             * @default sum
+             * @enum {string}
+             */
+            scoring: "sum" | "mean";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reflective" | "formative";
+            /**
+             * Structure
+             * @default unidimensional
+             * @enum {string}
+             */
+            structure: "unidimensional" | "multidimensional";
+            /** Factors */
+            factors: number | null;
+            /**
+             * Role
+             * @default exposure
+             * @enum {string}
+             */
+            role: "exposure" | "covariate";
+            /**
+             * Correction
+             * @default none
+             * @enum {string}
+             */
+            correction: "none" | "regression_calibration";
+            /**
+             * Reliability
+             * @default internal_consistency
+             * @enum {string}
+             */
+            reliability: "internal_consistency" | "test_retest" | "calibration_substudy";
+            /** Retest */
+            retest: string[];
+            /** Reference */
+            reference: string | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+            /** Instrument */
+            instrument: string | null;
+        };
+        /**
          * SealCells
          * @description The seal drawn one cell per row (M2_CONTRACT §3, §11): which side each row falls on and which
          *     unit it belongs to, so the basis is a picture. Whole units, in file order, up to
@@ -2357,6 +3144,54 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+        };
+        /**
+         * SetBatch
+         * @description How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``
+         *     adds ComBat with the outcome protected for figures only: never the matrix the tests read.
+         */
+        "SetBatch-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_batch";
+            /** Column */
+            column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "covariate" | "reference_combat" | "outcome_combat" | "none" | "not_a_batch";
+            /**
+             * Figures
+             * @default false
+             */
+            figures: boolean;
+        };
+        /**
+         * SetBatch
+         * @description How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``
+         *     adds ComBat with the outcome protected for figures only: never the matrix the tests read.
+         */
+        "SetBatch-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_batch";
+            /** Column */
+            column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "covariate" | "reference_combat" | "outcome_combat" | "none" | "not_a_batch";
+            /**
+             * Figures
+             * @default false
+             */
+            figures: boolean;
         };
         /**
          * SetCategorical
@@ -2890,7 +3725,7 @@ export interface components {
              */
             m: number;
             /** Below Detection */
-            below_detection?: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            below_detection?: ("half_minimum" | "censoring_aware" | "as_missing" | "qrilc") | null;
             /** Censored Columns */
             censored_columns?: string[];
             /**
@@ -2938,7 +3773,7 @@ export interface components {
              */
             m: number;
             /** Below Detection */
-            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing" | "qrilc") | null;
             /** Censored Columns */
             censored_columns: string[];
             /**
@@ -2948,6 +3783,54 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
+        };
+        /**
+         * SetMultiplicity
+         * @description How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):
+         *     Benjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests
+         *     stated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the
+         *     recorded attestation (``acknowledged``).
+         */
+        "SetMultiplicity-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_multiplicity";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bh" | "stated_count" | "none";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetMultiplicity
+         * @description How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):
+         *     Benjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests
+         *     stated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the
+         *     recorded attestation (``acknowledged``).
+         */
+        "SetMultiplicity-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_multiplicity";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bh" | "stated_count" | "none";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * SetOrientation
@@ -3122,6 +4005,34 @@ export interface components {
             };
             /** Unconfirmed */
             unconfirmed: string[];
+        };
+        /**
+         * SetScales
+         * @description The multi-item scales scored as predictors (MS8): each one's items become one score in the
+         *     models. An empty list is the answer "no scale is scored".
+         */
+        "SetScales-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_scales";
+            /** Scales */
+            scales: components["schemas"]["ScaleSpec-Input"][];
+        };
+        /**
+         * SetScales
+         * @description The multi-item scales scored as predictors (MS8): each one's items become one score in the
+         *     models. An empty list is the answer "no scale is scored".
+         */
+        "SetScales-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_scales";
+            /** Scales */
+            scales: components["schemas"]["ScaleSpec-Output"][];
         };
         /**
          * SetSensitivity
@@ -3445,6 +4356,104 @@ export interface components {
              */
             unit: "unit" | "row";
         };
+        /**
+         * SetUsualIntake
+         * @description One dietary component's usual-intake distribution by the NCI method, or ``model="none"``
+         *     (turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of
+         *     a wide table's ``days``.
+         */
+        "SetUsualIntake-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_usual_intake";
+            /** Nutrient */
+            nutrient: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Days */
+            days?: string[];
+            /** Order Column */
+            order_column?: string | null;
+            /** Weekend */
+            weekend?: string[];
+            /**
+             * Weekend Coding
+             * @default indicator
+             * @enum {string}
+             */
+            weekend_coding: "indicator" | "nhanes_day";
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /** Consumer Column */
+            consumer_column?: string | null;
+            /** Cutoff */
+            cutoff?: number | null;
+            /** Cutoff Kind */
+            cutoff_kind?: ("EAR" | "AI" | "UL" | "other") | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+        };
+        /**
+         * SetUsualIntake
+         * @description One dietary component's usual-intake distribution by the NCI method, or ``model="none"``
+         *     (turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of
+         *     a wide table's ``days``.
+         */
+        "SetUsualIntake-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_usual_intake";
+            /** Nutrient */
+            nutrient: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Days */
+            days: string[];
+            /** Order Column */
+            order_column: string | null;
+            /** Weekend */
+            weekend: string[];
+            /**
+             * Weekend Coding
+             * @default indicator
+             * @enum {string}
+             */
+            weekend_coding: "indicator" | "nhanes_day";
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /** Consumer Column */
+            consumer_column: string | null;
+            /** Cutoff */
+            cutoff: number | null;
+            /** Cutoff Kind */
+            cutoff_kind: ("EAR" | "AI" | "UL" | "other") | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+        };
         /** SplitSpec */
         SplitSpec: {
             /** Holdout */
@@ -3704,6 +4713,43 @@ export interface components {
             temporal: boolean;
             /** Time Column */
             time_column: string | null;
+        };
+        /** UsualIntakeSpec */
+        UsualIntakeSpec: {
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Days */
+            days: string[];
+            /** Order Column */
+            order_column: string | null;
+            /** Weekend */
+            weekend: string[];
+            /**
+             * Weekend Coding
+             * @default indicator
+             * @enum {string}
+             */
+            weekend_coding: "indicator" | "nhanes_day";
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /** Consumer Column */
+            consumer_column: string | null;
+            /** Cutoff */
+            cutoff: number | null;
+            /** Cutoff Kind */
+            cutoff_kind: ("EAR" | "AI" | "UL" | "other") | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -5253,6 +6299,60 @@ export interface components {
             below_floor: boolean;
         };
         /**
+         * ImportCodebook
+         * @description Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a
+         *     variable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.
+         *     Its structured fields (units, value-code tables, the variable type) settle readings as the
+         *     user's own documentation, through the confirmation path ``confirm_readings`` writes; its
+         *     free-text labels only strengthen the guesses the ask leads with; a field the values contradict
+         *     is asked, never applied. The client names the staged codebook; everything else is the
+         *     server's, read from the codebook and the values.
+         */
+        ImportCodebook: {
+            /**
+             * Kind
+             * @default import_codebook
+             * @constant
+             */
+            kind: "import_codebook";
+            /** Codebook */
+            codebook: string;
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+            /**
+             * Form
+             * @default null
+             */
+            form: ("table" | "nhanes" | "xpt") | null;
+            /** Items */
+            items: components["schemas"]["ReadingItem"][];
+            /** Units */
+            units: {
+                [key: string]: string;
+            };
+            /** Labels */
+            labels: {
+                [key: string]: string;
+            };
+            /** Asked */
+            asked: components["schemas"]["CodebookConflict"][];
+            /** Kept */
+            kept: string[];
+            /**
+             * N Entries
+             * @default 0
+             */
+            n_entries: number;
+            /**
+             * N Matched
+             * @default 0
+             */
+            n_matched: number;
+        };
+        /**
          * Inference
          * @description How the coefficient table's intervals were made (AUDIT_REPORT §5 WP2;
          *     ``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters.
@@ -5403,6 +6503,76 @@ export interface components {
              * @default
              */
             method: string;
+        };
+        /**
+         * JoinCounts
+         * @description What the join's preview counted, recorded with the answer (the server's): the rows on each
+         *     side, the identifier values they share, the rows with no partner on each side, and the rows
+         *     the joined table holds.
+         */
+        JoinCounts: {
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "one-to-one" | "one-to-many" | "many-to-one";
+            /** Table Rows */
+            table_rows: number;
+            /** File Rows */
+            file_rows: number;
+            /** Matched Keys */
+            matched_keys: number;
+            /** Table Unmatched */
+            table_unmatched: number;
+            /** File Unmatched */
+            file_unmatched: number;
+            /** Rows */
+            rows: number;
+            /** Added Columns */
+            added_columns: number;
+            /** Renamed */
+            renamed: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * JoinFiles
+         * @description Join a file added to the project to the table on a shared identifier (NHANES ships each
+         *     component as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the
+         *     table (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with
+         *     one. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its
+         *     reason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,
+         *     recorded with the answer.
+         */
+        JoinFiles: {
+            /**
+             * Kind
+             * @default join_files
+             * @constant
+             */
+            kind: "join_files";
+            /** File */
+            file: string;
+            /** On */
+            on: string;
+            /**
+             * Right On
+             * @default null
+             */
+            right_on: string | null;
+            /**
+             * How
+             * @default left
+             * @enum {string}
+             */
+            how: "left" | "inner";
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+            /** @default null */
+            counts: components["schemas"]["JoinCounts"] | null;
         };
         /** LabeledOption */
         LabeledOption: {
@@ -6262,6 +7432,83 @@ export interface components {
             options: components["schemas"]["Exit"][];
         };
         /**
+         * ScaleSpec
+         * @description One scale: its items, the instrument's key (the reverse-coded items and the response scale
+         *     ``low``–``high`` they are turned over on), how the score is formed, what kind of construct it
+         *     measures (``reflective``: the items are caused by it; ``formative``: an index defined by its
+         *     components, such as a diet-quality score), its structure, the role the score takes in the
+         *     models, and whether its coefficient is corrected for measurement error, from which reliability.
+         */
+        ScaleSpec: {
+            /** Name */
+            name: string;
+            /** Items */
+            items: string[];
+            /** Reverse */
+            reverse: string[];
+            /** Low */
+            low: number;
+            /** High */
+            high: number;
+            /**
+             * Scoring
+             * @default sum
+             * @enum {string}
+             */
+            scoring: "sum" | "mean";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reflective" | "formative";
+            /**
+             * Structure
+             * @default unidimensional
+             * @enum {string}
+             */
+            structure: "unidimensional" | "multidimensional";
+            /**
+             * Factors
+             * @default null
+             */
+            factors: number | null;
+            /**
+             * Role
+             * @default exposure
+             * @enum {string}
+             */
+            role: "exposure" | "covariate";
+            /**
+             * Correction
+             * @default none
+             * @enum {string}
+             */
+            correction: "none" | "regression_calibration";
+            /**
+             * Reliability
+             * @default internal_consistency
+             * @enum {string}
+             */
+            reliability: "internal_consistency" | "test_retest" | "calibration_substudy";
+            /** Retest */
+            retest: string[];
+            /**
+             * Reference
+             * @default null
+             */
+            reference: string | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+            /**
+             * Instrument
+             * @default null
+             */
+            instrument: string | null;
+        };
+        /**
          * SealBasis
          * @description How the held-out rows were drawn: one of four states, never inferred silently.
          */
@@ -6293,7 +7540,7 @@ export interface components {
              * Unit
              * @enum {string}
              */
-            unit: "rows" | "events" | "rows in the rarest class";
+            unit: "rows" | "events" | "rows in the rarest class" | "rows in the rarest level";
             /** N */
             n: number;
             /** Text */
@@ -6566,6 +7813,31 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+        };
+        /**
+         * SetBatch
+         * @description How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``
+         *     adds ComBat with the outcome protected for figures only: never the matrix the tests read.
+         */
+        SetBatch: {
+            /**
+             * Kind
+             * @default set_batch
+             * @constant
+             */
+            kind: "set_batch";
+            /** Column */
+            column: string;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "covariate" | "reference_combat" | "outcome_combat" | "none" | "not_a_batch";
+            /**
+             * Figures
+             * @default false
+             */
+            figures: boolean;
         };
         /**
          * SetCensoring
@@ -6877,7 +8149,7 @@ export interface components {
              * Below Detection
              * @default null
              */
-            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing" | "qrilc") | null;
             /** Censored Columns */
             censored_columns: string[];
             /**
@@ -6890,6 +8162,31 @@ export interface components {
              * @default null
              */
             reason: string | null;
+        };
+        /**
+         * SetMultiplicity
+         * @description How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):
+         *     Benjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests
+         *     stated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the
+         *     recorded attestation (``acknowledged``).
+         */
+        SetMultiplicity: {
+            /**
+             * Kind
+             * @default set_multiplicity
+             * @constant
+             */
+            kind: "set_multiplicity";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bh" | "stated_count" | "none";
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** SetRepeatKind */
         SetRepeatKind: {
@@ -6947,6 +8244,21 @@ export interface components {
             };
             /** Unconfirmed */
             unconfirmed: string[];
+        };
+        /**
+         * SetScales
+         * @description The multi-item scales scored as predictors (MS8): each one's items become one score in the
+         *     models. An empty list is the answer "no scale is scored".
+         */
+        SetScales: {
+            /**
+             * Kind
+             * @default set_scales
+             * @constant
+             */
+            kind: "set_scales";
+            /** Scales */
+            scales: components["schemas"]["ScaleSpec"][];
         };
         /**
          * SetSensitivity
@@ -7111,6 +8423,68 @@ export interface components {
              * @default null
              */
             time_column: string | null;
+        };
+        /**
+         * SetUsualIntake
+         * @description One dietary component's usual-intake distribution by the NCI method, or ``model="none"``
+         *     (turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of
+         *     a wide table's ``days``.
+         */
+        SetUsualIntake: {
+            /**
+             * Kind
+             * @default set_usual_intake
+             * @constant
+             */
+            kind: "set_usual_intake";
+            /** Nutrient */
+            nutrient: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Days */
+            days: string[];
+            /**
+             * Order Column
+             * @default null
+             */
+            order_column: string | null;
+            /** Weekend */
+            weekend: string[];
+            /**
+             * Weekend Coding
+             * @default indicator
+             * @enum {string}
+             */
+            weekend_coding: "indicator" | "nhanes_day";
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /**
+             * Consumer Column
+             * @default null
+             */
+            consumer_column: string | null;
+            /**
+             * Cutoff
+             * @default null
+             */
+            cutoff: number | null;
+            /**
+             * Cutoff Kind
+             * @default null
+             */
+            cutoff_kind: ("EAR" | "AI" | "UL" | "other") | null;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
         };
         /**
          * ShelfArtifact
@@ -7363,6 +8737,17 @@ export interface components {
              * @default null
              */
             caption: string | null;
+            /**
+             * Method
+             * @default bootstrap
+             * @enum {string}
+             */
+            method: "bootstrap" | "design";
+            /**
+             * Df
+             * @default null
+             */
+            df: number | null;
         };
         /** SubstitutionModel */
         SubstitutionModel: {
@@ -7402,6 +8787,16 @@ export interface components {
              * @default null
              */
             band_ok: number | null;
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+            /**
+             * Exits
+             * @default []
+             */
+            exits: components["schemas"]["InferenceExit"][];
         };
         /** SubstitutionPair */
         SubstitutionPair: {
@@ -7658,6 +9053,292 @@ export interface components {
             min_rows_per_unit: number;
             /** N Missing */
             n_missing: number;
+        };
+        /** UsualIntakeAnalysis */
+        UsualIntakeAnalysis: {
+            /** Nutrient */
+            nutrient: string;
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "none" | "amount_only" | "two_part";
+            /** Applies */
+            applies: boolean;
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+            /**
+             * Format
+             * @default null
+             */
+            format: ("long" | "wide") | null;
+            /**
+             * Days
+             * @default []
+             */
+            days: string[];
+            /**
+             * Population
+             * @default whole
+             * @enum {string}
+             */
+            population: "whole" | "consumers";
+            /**
+             * Population Statement
+             * @default null
+             */
+            population_statement: string | null;
+            /**
+             * N Persons
+             * @default 0
+             */
+            n_persons: number;
+            /**
+             * N Recalls
+             * @default 0
+             */
+            n_recalls: number;
+            /**
+             * Recalls
+             * @default {}
+             */
+            recalls: {
+                [key: string]: number;
+            };
+            /**
+             * N Repeat
+             * @default 0
+             */
+            n_repeat: number;
+            /**
+             * Zero Share
+             * @default null
+             */
+            zero_share: number | null;
+            /**
+             * Zeros Replaced
+             * @default 0
+             */
+            zeros_replaced: number;
+            /**
+             * Covariates
+             * @default []
+             */
+            covariates: string[];
+            /**
+             * Parameters
+             * @default {}
+             */
+            parameters: {
+                [key: string]: number;
+            };
+            /**
+             * Percentiles
+             * @default {}
+             */
+            percentiles: {
+                [key: string]: components["schemas"]["UsualIntakeEstimate"];
+            };
+            /** @default null */
+            mean: components["schemas"]["UsualIntakeEstimate"] | null;
+            /**
+             * Cutoff
+             * @default null
+             */
+            cutoff: number | null;
+            /**
+             * Cutoff Kind
+             * @default null
+             */
+            cutoff_kind: ("EAR" | "AI" | "UL" | "other") | null;
+            /** @default null */
+            share: components["schemas"]["UsualIntakeEstimate"] | null;
+            /**
+             * Share Label
+             * @default null
+             */
+            share_label: string | null;
+            /**
+             * Day One
+             * @default {}
+             */
+            day_one: {
+                [key: string]: number;
+            };
+            /**
+             * Mean Of Days
+             * @default {}
+             */
+            mean_of_days: {
+                [key: string]: number;
+            };
+            /** @default null */
+            variance: components["schemas"]["UsualIntakeVariance"] | null;
+            /**
+             * Weight
+             * @default null
+             */
+            weight: string | null;
+            /**
+             * Assumptions
+             * @default []
+             */
+            assumptions: string[];
+            /**
+             * Concerns
+             * @default []
+             */
+            concerns: string[];
+            /** Methods */
+            methods: string;
+        };
+        /** UsualIntakeArtifact */
+        UsualIntakeArtifact: {
+            offer: components["schemas"]["UsualIntakeOffer"];
+            /**
+             * Analyses
+             * @default []
+             */
+            analyses: components["schemas"]["UsualIntakeAnalysis"][];
+        };
+        /** UsualIntakeCandidate */
+        UsualIntakeCandidate: {
+            /** Column */
+            column: string;
+            /**
+             * Days
+             * @default []
+             */
+            days: string[];
+            /**
+             * Zero Share
+             * @default null
+             */
+            zero_share: number | null;
+            /**
+             * N Persons
+             * @default 0
+             */
+            n_persons: number;
+            /**
+             * N Repeat
+             * @default 0
+             */
+            n_repeat: number;
+            /**
+             * Suggested
+             * @default null
+             */
+            suggested: ("amount_only" | "two_part") | null;
+            /**
+             * Why
+             * @default null
+             */
+            why: string | null;
+        };
+        /** UsualIntakeEstimate */
+        UsualIntakeEstimate: {
+            /** Value */
+            value: number;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+        };
+        /** UsualIntakeOffer */
+        UsualIntakeOffer: {
+            /** Offered */
+            offered: boolean;
+            /**
+             * Reason
+             * @default null
+             */
+            reason: string | null;
+            /** Estimand */
+            estimand: string;
+            /** Association */
+            association: string;
+            /** Population Question */
+            population_question: string;
+            /**
+             * Format
+             * @default null
+             */
+            format: ("long" | "wide") | null;
+            /**
+             * Recalls
+             * @default {}
+             */
+            recalls: {
+                [key: string]: number;
+            };
+            /**
+             * N Persons
+             * @default 0
+             */
+            n_persons: number;
+            /**
+             * N Repeat
+             * @default 0
+             */
+            n_repeat: number;
+            /**
+             * Candidates
+             * @default []
+             */
+            candidates: components["schemas"]["UsualIntakeCandidate"][];
+        };
+        /** UsualIntakeVariance */
+        UsualIntakeVariance: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "bootstrap" | "brr" | "psu_bootstrap" | "none";
+            /**
+             * Replicates
+             * @default 0
+             */
+            replicates: number;
+            /**
+             * Ok
+             * @default 0
+             */
+            ok: number;
+            /**
+             * Df
+             * @default null
+             */
+            df: number | null;
+            /**
+             * Fay
+             * @default null
+             */
+            fay: number | null;
+            /**
+             * N Strata
+             * @default null
+             */
+            n_strata: number | null;
+            /**
+             * N Psu
+             * @default null
+             */
+            n_psu: number | null;
         };
         /**
          * ValidationOption
@@ -8051,7 +9732,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"];
             };
         };
         responses: {
@@ -8266,7 +9947,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"] | components["schemas"]["JoinFiles-Input"] | components["schemas"]["ImportCodebook-Input"] | components["schemas"]["SetBatch-Input"] | components["schemas"]["SetMultiplicity-Input"] | components["schemas"]["SetScales-Input"] | components["schemas"]["SetUsualIntake-Input"];
             };
         };
         responses: {
@@ -8688,6 +10369,326 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TeachingEntry"][];
+                };
+            };
+        };
+    };
+    list_files_api_projects__pid__files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddedFile"][];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_file_api_projects__pid__files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddFile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddedFile"];
+                };
+            };
+            /** @description Not a readable data file */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Server mode: add files by uploading them */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description No file at that path */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_file_api_projects__pid__files_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddedFile"];
+                };
+            };
+            /** @description No file, or not a readable data file */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    join_preview_api_projects__pid__join_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinPreview"];
+                };
+            };
+            /** @description No such project or file */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description The table is still being read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_codebook_api_projects__pid__codebooks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodebookRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodebookPreview"];
+                };
+            };
+            /** @description Not a codebook TurboTab reads */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Server mode: upload the codebook */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description The table is still being read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_codebook_api_projects__pid__codebooks_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodebookPreview"];
+                };
+            };
+            /** @description No file, or not a codebook TurboTab reads */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description The table is still being read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -71,17 +71,24 @@ PRIOR_COUNT = 2.0  # edgeR cpm(log = TRUE)'s default prior.count
 LOGRATIO_TRIM, SUM_TRIM, A_CUTOFF = 0.3, 0.05, -1e10  # edgeR calcNormFactors' TMM defaults
 
 COUNT_METHODS = ("log_cpm_tmm", "log_cpm", "declared_normalized")
-INTENSITY_METHODS = ("pqn_log2", "log2", "declared_normalized")
+# ``qc_pqn_log2``: PQN against the pooled-QC reference before the seal (reference rows,
+# ``methods.qc_drift``), then log2 in-fold (MODELING_SEQUENCE §1.1, MS7).
+INTENSITY_METHODS = ("pqn_log2", "qc_pqn_log2", "log2", "declared_normalized")
 DECLARED = "declared_normalized"
-TRANSFORMS = ("log_cpm_tmm", "log_cpm", "pqn_log2", "log2")
+TRANSFORMS = ("log_cpm_tmm", "log_cpm", "pqn_log2", "qc_pqn_log2", "log2")
 
 # What each normalization is called in a design step and on a lineage link.
 STEP_LABELS = {
     "log_cpm_tmm": ("Log-CPM with TMM factors", "log-CPM (TMM)"),
     "log_cpm": ("Log-CPM", "log-CPM"),
     "pqn_log2": ("Quotient normalization, then log2", "PQN, log2"),
+    "qc_pqn_log2": ("Log2, after PQN to the pooled QCs", "log2"),
     "log2": ("Log2", "log2"),
 }
+# When values below detection are filled between the normalization and the log (MS7), the two
+# halves are their own steps: the quotient normalization, then (after the fill) the log.
+PQN_LABELS = ("Quotient normalization", "PQN")
+LOG_LABELS = ("Log2", "log2")
 
 
 # ── the reading: label-free, from the values alone ──────────────────────────
@@ -451,14 +458,37 @@ class QuotientLog(_BlockStep):
         return self._out(X, cols, out)
 
 
-def normalizer(spec: Mapping[str, Any]) -> Any:
-    """The pipeline step for a normalization spec ``{method, columns}``; None when it changes nothing."""
+def normalizer(spec: Mapping[str, Any], *, log: bool = True) -> Any:
+    """The pipeline step for a normalization spec ``{method, columns}``; None when it changes nothing.
+
+    ``log=False`` gives the quotient normalization alone (None for a method with nothing to fit
+    before its log), for a design that fills values below detection between the two (MS7)."""
     method, columns = str(spec.get("method")), list(spec.get("columns") or [])
     if not columns or method not in TRANSFORMS:
         return None
     if method in ("log_cpm_tmm", "log_cpm"):
         return LogCPM(columns, tmm=method == "log_cpm_tmm")
+    if not log:
+        return QuotientLog(columns, quotient=True, log=False) if method == "pqn_log2" else None
+    # qc_pqn_log2: the quotient normalization ran before the seal, against the pooled QCs.
     return QuotientLog(columns, quotient=method == "pqn_log2", log=True)
+
+
+def logger(spec: Mapping[str, Any]) -> Any:
+    """The log2 step that follows the fill of values below detection (MS7), or None."""
+    method, columns = str(spec.get("method")), list(spec.get("columns") or [])
+    if not columns or method not in LOGGED:
+        return None
+    return QuotientLog(columns, quotient=False, log=True)
+
+
+def splits_for_detection(spec: Mapping[str, Any] | None, censored: Mapping[str, Any] | None) -> bool:
+    """Whether the normalization's log waits for the fill of values below detection: a logged
+    intensity normalization whose columns include a left-censored one (MODELING_SEQUENCE §1.1:
+    normalization, then detection-limit handling, then the log)."""
+    if not spec or str(spec.get("method")) not in LOGGED or not censored:
+        return False
+    return bool(set(spec.get("columns") or []) & set(censored.get("columns") or []))
 
 
 def describe(spec: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -476,10 +506,24 @@ def describe(spec: Mapping[str, Any]) -> tuple[str, str] | None:
                     f"from each training fold)."),
         "pqn_log2": (f"Divides each sample's {what} by its most probable dilution, the median "
                      f"quotient to a reference spectrum (the median of the training fold's "
-                     f"integral-normalized samples), then takes log2; a zero becomes missing."),
-        "log2": f"Takes log2 of {what}; a zero becomes missing.",
+                     f"integral-normalized samples), then takes log2."),
+        "qc_pqn_log2": (f"Takes log2 of {what}, each injection already divided by its dilution "
+                        f"against the pooled QCs' reference spectrum before the seal."),
+        "log2": f"Takes log2 of {what}.",
     }[method]
     return STEP_LABELS[method][0], detail
+
+
+def describe_split(spec: Mapping[str, Any], part: str) -> tuple[str, str]:
+    """(label, detail) of the quotient normalization or the log, when a fill sits between them."""
+    n = len(spec.get("columns") or [])
+    what = f"{n:,} assay column{'s' if n != 1 else ''}"
+    if part == "normalize":
+        return PQN_LABELS[0], (f"Divides each sample's {what} by its most probable dilution, the "
+                               f"median quotient to a reference spectrum (the median of the training "
+                               f"fold's integral-normalized samples).")
+    return LOG_LABELS[0], (f"Takes log2 of {what}, after values below detection are filled, so no "
+                           f"zero or blank reaches the log.")
 
 
 # ── the finding and its repair family ───────────────────────────────────────
@@ -546,6 +590,12 @@ def scale_finding(frame: pd.DataFrame, lenses: Sequence[str] | None,
     }
     params = {"kind": reading.kind, "columns": list(reading.columns), "n_zero": reading.n_zero,
               "spread": round(spread, 4) if math.isfinite(spread) else None}
+    if reading.kind == "intensities" and reading.n_zero:
+        # Which columns hold the zeros a log cannot take (MS7: each routes to the detection-limit
+        # question, never to a median fill).
+        block = _block(frame, reading.columns)
+        hits = np.sum(np.isfinite(block) & (block == 0), axis=0)
+        params["zero_columns"] = {c: int(k) for c, k in zip(reading.columns, hits) if k}
     return {"params": params, "confidence": "high"}, finding
 
 
@@ -588,23 +638,47 @@ def _offer(finding: dict[str, Any], p: dict[str, Any], oc: Any) -> list[Any]:
                    f"library size taken within each training fold.", in_fold=True),
             declared,
         ]
-    zero_words = f"; {zeros:,} zeros become missing" if zeros else ""
-    zero_sentence = (f" {zeros:,} zero values could not be logged and were set to missing."
-                     if zeros else "")
-    return [
+    zero_columns = dict(p.get("zero_columns") or {})
+    if zero_columns:
+        params["zero_columns"] = {c: int(k) for c, k in zero_columns.items() if oc.has(c)}
+    # A zero cannot be logged (MS7): it is answered on the finding about zeros first, as a value
+    # below detection, and then filled by the detection-limit answer before the log.
+    zero_words = (f"; first say what its {zeros:,} zeros are (below detection?)" if zeros else "")
+    options = [
         option("pqn_log2", "PQN, then log2",
                f"Each sample is divided by its dilution against a fold's median reference, then logged{zero_words}.",
                f"Of the {n:,} intensity columns, {exposures} were normalized by probabilistic "
                f"quotient normalization (Dieterle et al. 2006), the reference spectrum the median of "
-               f"the integral-normalized training rows within each fold, then log2-transformed."
-               f"{zero_sentence}",
+               f"the integral-normalized training rows within each fold, then log2-transformed.",
                in_fold=True),
+    ]
+    if _has_pooled_qcs(oc.frame):
+        options.append(option(
+            "qc_pqn_log2", "PQN to pooled QCs",
+            f"Each injection is divided by its dilution against the pooled QCs' reference, then "
+            f"logged{zero_words}.",
+            f"Of the {n:,} intensity columns, {exposures} were normalized by probabilistic quotient "
+            f"normalization against the pooled-QC reference spectrum (the median of the "
+            f"integral-normalized QC injections) before the seal, then log2-transformed.",
+            in_fold=False))
+    options += [
         option("log2", "Log2 only",
                f"Values become their log2; samples are not rescaled for dilution{zero_words}.",
                f"Of the {n:,} intensity columns, {exposures} were log2-transformed, with no "
-               f"normalization for dilution.{zero_sentence}", in_fold=True),
+               f"normalization for dilution.", in_fold=True),
         declared,
     ]
+    return options
+
+
+def _has_pooled_qcs(frame: pd.DataFrame) -> bool:
+    """Whether the table holds pooled-QC injections (the metabolomics pack's own reading)."""
+    try:
+        from turbotab import packs
+
+        return packs._pooled_qc(frame) is not None
+    except Exception:  # noqa: BLE001 - no pack, no pooled-QC option
+        return False
 
 
 def _marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
@@ -634,7 +708,9 @@ def normalization_of(state: Any) -> dict[str, Any] | None:
         if action == "applied" and option in (*COUNT_METHODS, *INTENSITY_METHODS):
             return {"method": str(option), "kind": params.get("kind"),
                     "columns": [str(c) for c in params.get("columns") or []], "finding_id": str(fid),
-                    "n_zero": int(params.get("n_zero") or 0)}
+                    "n_zero": int(params.get("n_zero") or 0),
+                    "zero_columns": {str(c): int(k) for c, k in
+                                     dict(params.get("zero_columns") or {}).items()}}
     return None
 
 
@@ -804,34 +880,77 @@ def refusal_for(models: Sequence[str], state: Any, finding: Mapping[str, Any]) -
         exits=exits)
 
 
-def zeros_refusal(models: Sequence[str], state: Any) -> Any:
-    """The Refusal a selection meets when the recorded normalization logs values that include
-    zeros, nothing fills missing values, and some of ``models`` cannot fit a missing value."""
-    from turbotab.core.decisions import Refusal, SelectModels
-    from turbotab.core.models import get_family
-
+def unanswered_zeros(state: Any, frame: pd.DataFrame | None = None) -> dict[str, int]:
+    """The logged normalization's columns whose zeros nobody has said the meaning of: ``{column:
+    zeros}``. A zero the user recoded as a non-detection (the ``zeros_nondetect`` repair) is a
+    blank below the detection limit by then, answered. ``frame`` (the design's rows) counts them
+    there; without it the recorded finding's counts are read."""
     found = normalization_of(state)
-    if found is None or found["method"] not in LOGGED or not found["n_zero"] or _fills_missing(state):
-        return None
-    known = []
-    for m in models:
-        try:
-            known.append(get_family(m))
-        except KeyError:
-            continue
-    unable = [f for f in known if not getattr(f, "handles_missing", False)]
-    if not unable:
-        return None
-    able = [f.key for f in known if getattr(f, "handles_missing", False)]
+    if found is None or found["method"] not in LOGGED:
+        return {}
+    from turbotab.core.repairs import nondetect_columns
+
+    answered = set(nondetect_columns(state))
+    if frame is not None:
+        cols = [c for c in found["columns"] if c in frame.columns and c not in answered]
+        if not cols:
+            return {}
+        hits = (frame[cols].to_numpy(dtype=float, na_value=np.nan) == 0).sum(axis=0)
+        return {c: int(k) for c, k in zip(cols, hits) if k}
+    per_column = dict(found.get("zero_columns") or {})
+    if not per_column and found["n_zero"]:
+        # A record from before the per-column counts: its zeros are unanswered unless every
+        # normalized column's zeros were recoded.
+        return {} if set(found["columns"]) <= answered else {"": int(found["n_zero"])}
+    return {c: int(k) for c, k in per_column.items() if c not in answered and k}
+
+
+def _nondetect_decision(findings: Any) -> Any:
+    """The "zeros mean not detected" repair a finding offers here, or None."""
+    data = getattr(findings, "data", findings)
+    items = (data or {}).get("findings") if isinstance(data, Mapping) else None
+    for f in items or []:
+        for o in f.get("repairs") or []:
+            if o.get("key") == "nondetect":
+                return o.get("decision")
+    return None
+
+
+def _declared_decision(found: Mapping[str, Any]) -> Any:
+    from turbotab.core.decisions import ApplyRepair
+
+    return ApplyRepair(finding_id=str(found["finding_id"]), option=DECLARED,
+                       params={"kind": found.get("kind"), "columns": list(found["columns"]),
+                               "n_zero": int(found.get("n_zero") or 0)})
+
+
+def zeros_exits(state: Any, findings: Any = None) -> list[dict[str, Any]]:
+    """Where a zero a log would turn missing goes: the detection-limit question (its repair, when
+    a finding offers it), or no log at all."""
+    found = normalization_of(state)
     exits: list[dict[str, Any]] = [
-        {"label": "Settle the zeros first, on the finding about values below detection",
-         "decision": None}]
-    if able:
-        exits.append({"label": "Keep only the families that handle missing values",
-                      "decision": SelectModels(models=able)})
-    exits.append({"label": "Choose from the shelf", "decision": None})
+        {"label": "Zeros mean not detected: fill them as values below detection",
+         "decision": _nondetect_decision(findings)}]
+    if found is not None:
+        exits.append({"label": "Keep the values unlogged: they were already normalized",
+                      "decision": _declared_decision(found)})
+    return exits
+
+
+def zeros_refusal(models: Sequence[str], state: Any, findings: Any = None) -> Any:
+    """The Refusal a selection meets while the recorded normalization would log zeros nobody has
+    answered (MS7). Whatever the families and whatever fills missing values: a zero turned missing
+    would otherwise be median-filled in the middle of the distribution, or read as missing at
+    random, when it is almost always a value below detection. The exit is the detection-limit
+    question; ``models`` do not change the answer."""
+    from turbotab.core.decisions import Refusal
+
+    zeros = unanswered_zeros(state)
+    if not zeros:
+        return None
     return Refusal("zeros_cannot_be_logged",
-                   zeros_message(found["n_zero"], [f.label for f in unable]), exits=exits)
+                   zeros_message(sum(zeros.values()), len([c for c in zeros if c])),
+                   exits=zeros_exits(state, findings))
 
 
 def _linear_families_need_a_scale(decision: Any, ctx: Any) -> None:
@@ -841,42 +960,76 @@ def _linear_families_need_a_scale(decision: Any, ctx: Any) -> None:
     finding = _scale_finding_of(ctx)
     if finding is None:
         return
-    refusal = refusal_for(decision.models, state, finding) or zeros_refusal(decision.models, state)
+    refusal = (refusal_for(decision.models, state, finding)
+               or zeros_refusal(decision.models, state, _findings_artifact(ctx)))
     if refusal is not None:
         raise refusal
 
 
-LOGGED = ("pqn_log2", "log2")  # the normalizations that take a plain log, so a zero cannot pass
+def _findings_artifact(ctx: Any) -> Any:
+    reader = _ctx(ctx, "artifact")
+    if not callable(reader):
+        return None
+    try:
+        return reader("findings")
+    except Exception:  # noqa: BLE001 - an unreadable artifact offers no repair
+        return None
 
 
-def _fills_missing(state: Any) -> bool:
-    from turbotab.core.decisions import missing_strategy
+def _logged_options_wait_for_the_zeros(decision: Any, ctx: Any) -> None:
+    """Applying a logged normalization while its columns hold zeros nobody has answered is
+    refused, with the detection-limit question as the way forward (MS7)."""
+    from turbotab.core.decisions import Refusal
+    from turbotab.core.stages.finding_words import family
 
-    return missing_strategy(state) in ("impute", "multiple_imputation")
+    if family(str(decision.finding_id)) != FINDING or decision.option not in LOGGED:
+        return
+    state = _ctx(ctx, "state")
+    params = dict(decision.params or {})
+    if not params:
+        found = _scale_finding_of(ctx) or {}
+        same = [o for o in found.get("repairs") or [] if o.get("key") == decision.option]
+        params = dict(same[0]["decision"]["params"]) if same else {}
+    from turbotab.core.repairs import nondetect_columns
+
+    answered = set(nondetect_columns(state)) if state is not None else set()
+    zeros = {c: k for c, k in dict(params.get("zero_columns") or {}).items() if c not in answered}
+    if not zeros:
+        return
+    findings = _findings_artifact(ctx)
+    exits = [{"label": "Zeros mean not detected: fill them as values below detection",
+              "decision": _nondetect_decision(findings)},
+             {"label": "Keep the values unlogged: they were already normalized",
+              "decision": {"kind": "apply_repair", "finding_id": decision.finding_id,
+                           "option": DECLARED,
+                           "params": {k: params[k] for k in ("kind", "columns", "n_zero") if k in params}}}]
+    raise Refusal("zeros_cannot_be_logged", zeros_message(sum(zeros.values()), len(zeros)),
+                  exits=exits)
 
 
-def zeros_message(n_zero: int, names: Sequence[str]) -> str:
-    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
-    return (f"{n_zero:,} zero values in the assay columns cannot be logged, so log2 makes them "
-            f"missing inside the pipeline, after complete cases were counted; {listed} cannot fit "
-            f"rows with a missing value. Settle the zeros first, as values below detection or as "
-            f"true zeros, or keep only families that handle missing values.")
+LOGGED = ("pqn_log2", "qc_pqn_log2", "log2")  # the normalizations that take a plain log
+
+
+def zeros_message(n_zero: int, n_columns: int = 0) -> str:
+    where = (f" in {n_columns:,} assay column{'s' if n_columns != 1 else ''}" if n_columns
+             else " in the assay columns")
+    return (f"{n_zero:,} zero values{where} cannot be logged: a log would make them missing, and a "
+            f"value below detection must never be filled as if it were missing at random (a median "
+            f"fill puts it in the middle of the distribution). Say what the zeros are first: values "
+            f"below detection, which the detection-limit answer then fills before the log, or keep "
+            f"the values unlogged.")
 
 
 def design_refusal(state: Any, frame: pd.DataFrame, families: Sequence[Any]) -> str | None:
     """The design stage's backstop: a message when a linear family would see raw assay values, or
-    when a log would turn zeros into missing values that nothing fills and a family cannot take.
-    ``frame`` holds the training rows."""
+    when a log would meet zeros nobody has answered (MS7: they route to the detection-limit
+    question, never to a fill for missing values). ``frame`` holds the training rows."""
     found = normalization_of(state)
     if found is not None:
-        if found["method"] not in LOGGED or _fills_missing(state):
+        if found["method"] not in LOGGED:
             return None
-        unable = [f for f in families if not getattr(f, "handles_missing", False)]
-        columns = [c for c in found["columns"] if c in frame.columns]
-        if not unable or not columns:
-            return None
-        n_zero = int((frame[columns].to_numpy(dtype=float, na_value=np.nan) == 0).sum())
-        return zeros_message(n_zero, [f.label for f in unable]) if n_zero else None
+        zeros = unanswered_zeros(state, frame)
+        return zeros_message(sum(zeros.values()), len(zeros)) if zeros else None
     linear = [f for f in families if getattr(f, "linear_in_values", False)]
     if not linear:
         return None
@@ -931,11 +1084,894 @@ def restate_raw_counts(finding: dict[str, Any]) -> dict[str, Any]:
     return finding
 
 
+# ── values below detection: after the normalization, before the log (MS7) ────
+#
+# MODELING_SEQUENCE §1.1: "PQN with a study-sample reference … detection-limit handling,
+# censoring-aware: half-minimum is customary at ≤ 10% censored; above 10%, QRILC or a
+# censored-normal draw … log or glog". Lubin et al. (2004, Environ Health Perspect 112:1691):
+# assigning one-half the detection limit "can be biased unless the percentage of measurements below
+# detection limits is small (5-10%)". Wei et al. (2018, Sci Rep 8:663): "QRILC was the favored one
+# for left-censored MNAR".
+
+CENSORED_CUSTOMARY_MAX = 0.10  # half-minimum's customary range (Lubin et al. 2004: 5–10%)
+QRILC_UPPER = 0.99  # imputeLCMD's ``upper.q``
+LUBIN = "Lubin et al. 2004"
+WEI = "Wei et al. 2018"
+LAZAR = "Lazar et al. 2016"
+
+
+def qrilc_parameters(observed_log: np.ndarray, p_missing: float) -> tuple[float, float]:
+    """(mean, sd) of the complete-data normal that imputeLCMD's ``impute.QRILC`` fits to one
+    sample's log values: the observed quantiles at ``seq(0.001, 0.991, 0.01)`` regressed by least
+    squares on the standard normal quantiles at ``seq(p + 0.001, 0.991, (0.99 − p) / 99)``, ``p``
+    the sample's share below detection. Only the upper ``1 − p`` of the normal is observed, which is
+    what shifting the normal quantiles by ``p`` says."""
+    from scipy import stats
+
+    k = np.arange(100)
+    probs_normal = p_missing + 0.001 + k * (QRILC_UPPER - p_missing) / (QRILC_UPPER * 100)
+    probs_sample = 0.001 + 0.01 * k
+    q_normal = stats.norm.ppf(probs_normal)
+    q_sample = np.quantile(observed_log, probs_sample)  # R's quantile type 7
+    slope, intercept = np.polyfit(q_normal, q_sample, 1)
+    return float(intercept), float(slope)
+
+
+class QRILCFill(TransformerMixin, BaseEstimator):
+    """Quantile regression imputation of left-censored data (QRILC; Lazar et al. 2016, the
+    ``imputeLCMD`` package), one sample at a time on the log scale.
+
+    For each row: its detected values among ``columns`` are logged; ``p`` is the share of its
+    ``censored`` columns' blanks among all of them; :func:`qrilc_parameters` gives the mean and
+    standard deviation of the complete-data normal; each blank is drawn from that normal truncated
+    above at its ``p + 0.001`` quantile, and returned on the original scale. A row's fill reads only
+    the row (it is row-local; nothing is fitted). imputeLCMD passes the standard deviation where
+    ``rtmvnorm`` takes a variance; this draws with the fitted standard deviation, as the method is
+    described. Draws are seeded by the row's id, so a row is filled the same way every time.
+    """
+
+    def __init__(self, columns: Sequence[str] = (), censored: Sequence[str] = (), seed: int = 0):
+        self.columns = columns
+        self.censored = censored
+        self.seed = seed
+
+    def fit(self, X: pd.DataFrame, y: Any = None) -> "QRILCFill":
+        self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
+        self.n_features_in_ = X.shape[1]
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        from scipy import stats
+
+        cols = [c for c in self.columns if c in X.columns]
+        censored = [c for c in self.censored if c in X.columns]
+        if not cols or not censored:
+            return X.copy()
+        out = X.copy()
+        values = X[cols].to_numpy(dtype=float, na_value=np.nan)
+        is_censored = np.array([c in set(censored) for c in cols])
+        for i, row_id in enumerate(X.index):
+            v = values[i]
+            blank = ~np.isfinite(v) & is_censored
+            observed = np.isfinite(v) & (v > 0)
+            n_used = int(blank.sum() + observed.sum())
+            if not blank.any() or observed.sum() < 5 or n_used == 0:
+                continue
+            p = blank.sum() / n_used
+            if p >= QRILC_UPPER:
+                continue
+            mu, sd = qrilc_parameters(np.log(v[observed]), p)
+            if not (math.isfinite(mu) and math.isfinite(sd) and sd > 0):
+                continue
+            upper = stats.norm.ppf(p + 0.001)  # the truncation point, in SDs from the mean
+            rng = np.random.default_rng([int(self.seed), _row_seed(row_id)])
+            draws = stats.truncnorm.rvs(-np.inf, upper, loc=mu, scale=sd, size=int(blank.sum()),
+                                        random_state=rng)
+            v = v.copy()
+            v[blank] = np.exp(draws)
+            values[i] = v
+        out[cols] = values
+        return out
+
+    def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
+        return np.asarray(self.feature_names_in_, dtype=object)
+
+    def lineage(self) -> list[dict[str, Any]]:
+        filled = set(self.censored)
+        return [{"output": c, "inputs": [c],
+                 "operation": "below detection: QRILC draw" if c in filled else "kept"}
+                for c in self.feature_names_in_]
+
+
+class LogScaleCensoredFill(TransformerMixin, BaseEstimator):
+    """The censoring-aware fill for columns the pipeline logs next (MS7): each blank becomes its
+    expected value below the limit (the smallest detected value on the fitting rows) under a
+    left-censored normal fitted to the column's logarithm, E[X | X < L] = exp(μ + σ²/2) Φ(a − σ) /
+    Φ(a). The log is the scale the column is analyzed on (MODELING_SEQUENCE §1.1: "logged
+    quantities are imputed on the log scale"), and a fit on the raw scale can put the expected
+    value below zero, which the log would turn back into a blank. Every fill is positive. Fitted on
+    the training fold, without the outcome; every other column passes through."""
+
+    def __init__(self, columns: Sequence[str] = ()):
+        self.columns = columns
+
+    def fit(self, X: pd.DataFrame, y: Any = None) -> "LogScaleCensoredFill":
+        from turbotab.core.methods.imputation import tobit_fit
+        from turbotab.core.methods.missing import below_limit_mean
+
+        self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
+        self.n_features_in_ = X.shape[1]
+        self.fill_: dict[str, float] = {}
+        self.limit_: dict[str, float] = {}
+        for c in self.columns:
+            if c not in X.columns:
+                continue
+            x = pd.to_numeric(X[c], errors="coerce").to_numpy(dtype=float)
+            detected = x[np.isfinite(x) & (x > 0)]
+            if not len(detected):
+                continue
+            limit = float(detected.min())
+            self.limit_[c] = limit
+            blank = ~(np.isfinite(x) & (x > 0))
+            if not blank.any() or len(detected) < 3 or np.ptp(detected) == 0:
+                self.fill_[c] = limit / 2  # nothing to fit: half the limit, as half-minimum would
+                continue
+            L = math.log(limit)
+            z = np.where(blank, L, np.log(np.where(blank, 1.0, x)))
+            theta, _ = tobit_fit(np.ones((len(x), 1)), z, blank, L)
+            self.fill_[c] = below_limit_mean(float(theta[0]), math.exp(float(theta[1])), L, True)
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        out = X.copy()
+        for c, v in getattr(self, "fill_", {}).items():
+            if c in out.columns:
+                col = pd.to_numeric(out[c], errors="coerce")
+                out[c] = col.where(col.notna(), v)
+        return out
+
+    def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
+        return np.asarray(self.feature_names_in_, dtype=object)
+
+    def lineage(self) -> list[dict[str, Any]]:
+        filled = set(getattr(self, "fill_", {}))
+        return [{"output": c, "inputs": [c],
+                 "operation": "below detection: expected value (log scale)" if c in filled else "kept"}
+                for c in self.feature_names_in_]
+
+
+def _row_seed(row_id: Any) -> int:
+    try:
+        return int(row_id) & 0x7FFFFFFF
+    except (TypeError, ValueError):
+        import zlib
+
+        return zlib.crc32(str(row_id).encode("utf-8"))
+
+
+def detection_limit_options(purpose: str | None, share: float | None) -> list[dict[str, Any]]:
+    """The answers to "how are values below detection filled?", soundest first for ``purpose``
+    at the censored ``share`` (the largest of the censored columns'), each with both labels and
+    its rung (North star 5; §11.3)."""
+    inference = purpose == "inference"
+    high = share is not None and share > CENSORED_CUSTOMARY_MAX
+    at = f"{share:.0%}" if share is not None else "an unknown share"
+    aware = ("a censored-normal (Tobit) draw below the limit within the multiple imputation, given "
+             "the outcome" if inference else
+             "the expected value below the limit under a censored-normal fit, in each training fold "
+             "without the outcome")
+    half_rung = ("block_and_record" if inference else "rank_lower") if high else "available"
+    half_sound = (f"Biased at {at} below the limit: {LUBIN} found half the limit biased unless 5–10% "
+                  f"are below it, and every non-detect becomes one value." if high else
+                  f"Sound enough at {at} below the limit ({LUBIN}: the bias is small at 5–10%).")
+    options = [
+        {"key": "censoring_aware", "label": "Censored-normal",
+         "customary": f"Recommended for exposures below detection ({LUBIN})",
+         "sound": f"Sound: {aware}.", "rung": "recommended"},
+        {"key": "qrilc", "label": "QRILC",
+         "customary": f"Customary in metabolomics for left-censored values ({WEI}; {LAZAR})",
+         "sound": ("Refused under inference: one draw per value, outside the multiple imputation, "
+                   "would drop its uncertainty from the intervals." if inference else
+                   "Sound for left-censored values: each sample's blanks are drawn below its "
+                   "detection quantile from the normal its detected values imply."),
+         "rung": "refused" if inference else ("recommended" if high else "available")},
+        {"key": "half_minimum", "label": "Half the smallest detected value",
+         "customary": "Customary: MetaboAnalyst's default", "sound": half_sound, "rung": half_rung},
+        {"key": "as_missing", "label": "As any other blank",
+         "customary": "Not customary for non-detects",
+         "sound": ("Refused under inference: values below a limit are not missing at random, and "
+                   "filling them as if they were biases every association with them." if inference
+                   else "Unsound: the median places non-detections in the middle of the "
+                        "distribution; kept only with your reason."),
+         "rung": "refused" if inference else "rank_lower"},
+    ]
+    order = {"censoring_aware": 0, "qrilc": 1 if high else 2, "half_minimum": 2 if high else 1,
+             "as_missing": 3}
+    return sorted(options, key=lambda o: order[o["key"]])
+
+
+def censored_shares(column_info: Mapping[str, Any] | None, columns: Sequence[str],
+                    n_rows: int | None) -> dict[str, float]:
+    """Each censored column's share of blanks over the table (its non-detects), from the ingest's
+    column summaries: a property of the measurement, read without the outcome."""
+    out: dict[str, float] = {}
+    if not column_info or not n_rows:
+        return out
+    for c in columns:
+        info = column_info.get(c)
+        if info is None:
+            continue
+        get = info.get if isinstance(info, Mapping) else (lambda k, i=info: getattr(i, k, None))
+        missing = get("n_missing")
+        if missing is not None:
+            out[c] = int(missing) / int(n_rows)
+    return out
+
+
+def _detection_limit_leash(decision: Any, ctx: Any) -> None:
+    """The leash rows of MODELING_SEQUENCE §4 for values below detection, under inference:
+
+    * MAR imputation of detection-limit blanks is **refused** (censoring-aware instead), whatever
+      reason the answer gives — under prediction a reason keeps it, ranked lower;
+    * QRILC is refused (one draw outside the multiple imputation);
+    * half the minimum above 10% censored is **blocked and recorded**: kept only with the
+      attestation (``acknowledged``) the methods sentence carries.
+    """
+    from turbotab.core.decisions import Refusal, _censored_named, _missing_base, _state
+
+    state = _state(ctx)
+    if state is None or getattr(state, "purpose", None) != "inference":
+        return
+    if decision.strategy == "complete_case" and not decision.below_detection:
+        return
+    roles = getattr(state, "roles", None) or {}
+    gone = set(decision.drop_columns)
+    from turbotab.core.models.pipeline import PREDICTOR_ROLES
+
+    censored = [c for c in dict.fromkeys([*decision.censored_columns, *_censored_named(ctx)])
+                if (not roles or roles.get(c) in PREDICTOR_ROLES) and c not in gone]
+    if not censored:
+        return
+    info = _ctx(ctx, "column_info")
+    n_rows = _n_rows_of(ctx)
+    shares = censored_shares(info, censored, n_rows)
+    share = max(shares.values()) if shares else None
+    named = ", ".join(f"`{c}`" for c in censored[:6]) + (" and others" if len(censored) > 6 else "")
+    aware = _missing_base(decision, below_detection="censoring_aware", censored_columns=censored)
+    if decision.below_detection in (None, "as_missing") and decision.strategy != "complete_case":
+        exits = [{"label": "Censored-normal: a draw below the limit within the multiple imputation",
+                  "decision": aware}]
+        if share is not None and share <= CENSORED_CUSTOMARY_MAX:
+            exits.append({"label": "Half the smallest detected value (customary at this share)",
+                          "decision": _missing_base(decision, below_detection="half_minimum",
+                                                    censored_columns=censored)})
+        raise Refusal(
+            "mar_below_detection_under_inference",
+            f"{named} hold values below a detection limit. Under inference they are refused as "
+            f"missing at random, whatever the reason: a value below a limit is known to be small, "
+            f"and imputing it from the observed values biases every association with it "
+            f"({LUBIN}). Fill them censoring-aware.", exits=exits)
+    if decision.below_detection == "qrilc":
+        raise Refusal(
+            "qrilc_under_inference",
+            "QRILC fills each value below detection once, outside the multiple imputation, so the "
+            "intervals would not carry that uncertainty. Under inference the censored-normal draw "
+            "within the multiple imputation is the sound answer.",
+            exits=[{"label": "Censored-normal: a draw below the limit within the multiple imputation",
+                    "decision": aware}])
+    if (decision.below_detection == "half_minimum" and share is not None
+            and share > CENSORED_CUSTOMARY_MAX and not decision.acknowledged):
+        raise Refusal(
+            "half_minimum_above_ten_percent",
+            f"Up to {share:.0%} of {named} lie below the detection limit. Half the smallest detected "
+            f"value is customary only at 10% or less: beyond it the coefficient is biased "
+            f"({LUBIN}). Blocked until it is recorded as a limitation, or filled censoring-aware.",
+            exits=[{"label": "Censored-normal: a draw below the limit within the multiple imputation",
+                    "decision": aware},
+                   {"label": "Keep half the minimum, recorded as a limitation",
+                    "decision": _missing_base(decision, acknowledged=True,
+                                              censored_columns=censored)}])
+
+
+def _n_rows_of(ctx: Any) -> int | None:
+    reader = _ctx(ctx, "artifact")
+    if callable(reader):
+        try:
+            ingest = reader("ingest")
+        except Exception:  # noqa: BLE001 - no ingest artifact, no share
+            ingest = None
+        data = getattr(ingest, "data", ingest)
+        if isinstance(data, Mapping) and data.get("n_rows") is not None:
+            return int(data["n_rows"])
+    n = _ctx(ctx, "n_rows")
+    return int(n) if n is not None else None
+
+
+# ── in-fold screening at p ≫ n ───────────────────────────────────────────────
+
+
+def sis_size(n_rows: int) -> int:
+    """Sure independence screening's ``d = [n / log n]`` (Fan & Lv 2008, J R Stat Soc B 70:849)."""
+    return max(1, int(math.floor(n_rows / math.log(n_rows)))) if n_rows > 2 else 1
+
+
+class UnivariateScreen(TransformerMixin, BaseEstimator):
+    """Keeps the ``columns`` with the largest absolute marginal correlation with the outcome on the
+    rows it is fit on — sure independence screening (Fan & Lv 2008), ``d = [n / log n]`` of them
+    unless ``keep`` says how many. Fit inside the pipeline, so cross-validation repeats it in every
+    training fold, as Ambroise & McLachlan (2002) require of any selection; every column outside
+    ``columns`` passes through."""
+
+    def __init__(self, columns: Sequence[str] = (), keep: int | None = None):
+        self.columns = columns
+        self.keep = keep
+
+    def fit(self, X: pd.DataFrame, y: Any = None) -> "UnivariateScreen":
+        if y is None:
+            raise ValueError("Screening reads the outcome of the rows it is fit on.")
+        self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
+        self.n_features_in_ = X.shape[1]
+        cols = [c for c in self.columns if c in X.columns]
+        target = pd.Series(np.asarray(y, dtype=object))
+        yv = pd.to_numeric(target, errors="coerce").to_numpy(dtype=float)
+        if np.isnan(yv).any():  # two labels as text: the last in sorted order is 1
+            levels = sorted(target.dropna().unique(), key=str)
+            yv = (target == levels[-1]).to_numpy(dtype=float)
+        V = X[cols].to_numpy(dtype=float, na_value=np.nan)
+        with np.errstate(all="ignore"):
+            Vc = V - np.nanmean(V, axis=0)
+            yc = yv - yv.mean()
+            r = (np.nansum(Vc * yc[:, None], axis=0)
+                 / np.sqrt(np.nansum(Vc ** 2, axis=0) * np.sum(yc ** 2)))
+        r = np.where(np.isfinite(r), np.abs(r), -1.0)
+        d = int(self.keep) if self.keep else sis_size(len(X))
+        order = np.argsort(-r, kind="stable")[:min(d, len(cols))]
+        self.kept_ = [cols[j] for j in sorted(order)]
+        self.dropped_ = [c for c in cols if c not in set(self.kept_)]
+        self.size_ = len(self.kept_)
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        if not hasattr(self, "dropped_"):
+            raise ValueError("UnivariateScreen is not fitted yet.")
+        return X.drop(columns=[c for c in self.dropped_ if c in X.columns])
+
+    def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
+        gone = set(self.dropped_)
+        return np.asarray([c for c in self.feature_names_in_ if c not in gone], dtype=object)
+
+    def lineage(self) -> list[dict[str, Any]]:
+        gone = set(self.dropped_)
+        screened = set(self.columns)
+        return [{"output": c, "inputs": [c], "operation": "kept by screening" if c in screened else "kept"}
+                for c in self.feature_names_in_ if c not in gone]
+
+
+def _register_screened_family() -> None:
+    from turbotab.core.models.base import Assessment, register_family
+    from turbotab.core.models.elastic_net import ElasticNet
+
+    class ScreenedElasticNet(ElasticNet):
+        """An elastic net after sure independence screening, both inside every training fold."""
+
+        key = "screened_elastic_net"
+        label = "Screened elastic net"
+        tasks = ("regression", "binary")  # the screen correlates with a number or a 0/1 event
+        purposes = ("prediction",)
+        inductive_bias = ("Only features with a strong marginal association survive; among them, "
+                          "straight-line effects shrunk toward zero.")
+        strengths = (
+            "Cuts tens of thousands of features to n / log n before the penalty, inside each fold.",
+            "Tunes its penalty by cross-validation on training rows.",
+        )
+        cautions = (
+            "A feature that matters only jointly with others can be screened out.",
+            "Which features survive changes from fold to fold.",
+        )
+
+        def preprocess(self, spec: Any) -> list[tuple[str, Any]]:
+            screened = [c for c in spec.predictors if spec.roles.get(c) == "exposure"]
+            return [("screen", UnivariateScreen(screened))]
+
+        def describe(self, task: Any, purpose: Any) -> tuple[str, str]:
+            label = ("Screened elastic net regression" if task == "regression"
+                     else "Screened penalized logistic regression")
+            return label, ("Keeps the n / log n exposures most correlated with the outcome on each "
+                           "training fold (sure independence screening, Fan & Lv 2008), then chooses "
+                           "the penalty by an inner cross-validation within those rows.")
+
+        def describe_step(self, name: str) -> tuple[str, str] | None:
+            if name == "screen":
+                return ("Screen the features", "Keeps the n / log n exposures with the largest "
+                        "absolute correlation with the outcome, recomputed on each training fold; "
+                        "every other column passes.")
+            return None
+
+        def assess(self, s: Any) -> Assessment:
+            if s.purpose == "inference":
+                return Assessment(0.0, "poor", ("Screening chooses the reported features from the "
+                                                "outcome: under inference that is selection, refused "
+                                                "for the reported model.",))
+            base = super().assess(s)
+            if s.n_features >= s.n_rows:
+                return Assessment(min(base.score, 3.8), base.fit, base.concerns)
+            return Assessment(1.5, "fair", ("With fewer features than rows the penalty alone can "
+                                            "select; screening adds instability.",))
+
+    try:
+        from turbotab.core.models import get_family
+
+        get_family("screened_elastic_net")
+    except KeyError:
+        register_family(ScreenedElasticNet())
+
+
+# ── an exposure family and its multiplicity control ───────────────────────────
+
+
+MULTIPLICITY_SMALL = 10  # tests a "few prespecified hypotheses" may number (the app's convention)
+ROTHMAN = "Rothman 1990"
+BH = "Benjamini & Hochberg 1995"
+
+
+def multiplicity_policy(state: Any) -> dict[str, Any]:
+    """The recorded multiplicity method, or the one an exposure family implies: Benjamini–Hochberg
+    (MODELING_SEQUENCE §2: "An exposure family implies multiplicity control: BH q-values for
+    feature-wise analyses")."""
+    spec = getattr(state, "multiplicity", None)
+    if spec is None:
+        return {"method": "bh", "acknowledged": False, "recorded": False}
+    get = spec.get if isinstance(spec, Mapping) else (lambda k, d=None: getattr(spec, k, d))
+    return {"method": str(get("method")), "acknowledged": bool(get("acknowledged", False)),
+            "recorded": True}
+
+
+def multiplicity_rung(method: str, n_tests: int | None) -> str:
+    """BH is recommended; the number of tests stated (no adjustment) is customary for a few
+    prespecified hypotheses (Rothman 1990) and blocked and recorded beyond them; no control at all
+    is blocked and recorded."""
+    if method == "bh":
+        return "recommended"
+    if method == "stated_count" and n_tests is not None and n_tests <= MULTIPLICITY_SMALL:
+        return "available"
+    return "block_and_record"
+
+
+def multiplicity_options(n_tests: int | None) -> list[dict[str, Any]]:
+    many = n_tests is None or n_tests > MULTIPLICITY_SMALL
+    return [
+        {"key": "bh", "label": "Benjamini–Hochberg q-values",
+         "customary": "Customary for metabolome- and genome-wide association studies",
+         "sound": ("Sound: holds the expected share of false discoveries among the reported ones "
+                   f"({BH})."), "rung": "recommended"},
+        {"key": "stated_count", "label": "Unadjusted, the number of tests stated",
+         "customary": f"Customary for a few prespecified nutrient hypotheses ({ROTHMAN})",
+         "sound": ("Not for a feature-wise family: among hundreds of tests many will pass p < 0.05 "
+                   "by chance." if many else "Sound for a few prespecified hypotheses, when every "
+                   "result is shown and the number of tests is stated."),
+         "rung": multiplicity_rung("stated_count", n_tests)},
+        {"key": "none", "label": "No multiplicity control",
+         "customary": "Not customary for an exposure family",
+         "sound": "Unsound: a table of unadjusted tests reads chance findings as discoveries.",
+         "rung": "block_and_record"},
+    ]
+
+
+def apply_multiplicity(table: Any, policy: Mapping[str, Any]) -> Any:
+    """The feature-wise table under the recorded multiplicity method: BH q-values (the family's
+    own), or, when the method is the number of tests stated or none (recorded with its
+    attestation), no q column and the caption saying so. Every member is still shown."""
+    method = str(policy.get("method") or "bh")
+    if method == "bh":
+        return table
+    m = sum(1 for r in table.rows if r.get("p") is not None)
+    for r in table.rows:
+        r["q"] = None
+    caption = str(table.info.get("caption") or "")
+    import re
+
+    caption = re.sub(r" Benjamini–Hochberg q < [0-9.]+: [0-9,]+ of [0-9,]+\.$", "", caption)
+    if method == "stated_count":
+        caption += (f" Unadjusted p-values for {m:,} tests, stated as such ({ROTHMAN}); no "
+                    f"multiplicity adjustment.")
+    else:
+        caption += (f" No multiplicity control, recorded as a limitation: {m:,} tests at p < 0.05 "
+                    f"would give about {0.05 * m:,.0f} false positives by chance alone.")
+    table.info["caption"] = caption
+    table.concerns[:] = [c for c in table.concerns if "false-discovery threshold" not in c]
+    return table
+
+
+def multiplicity_sentence(method: str, acknowledged: bool = False) -> str:
+    if method == "bh":
+        return (f"The exposures are tested as one family with Benjamini–Hochberg q-values ({BH}); "
+                f"every member is shown")
+    if method == "stated_count":
+        text = (f"The exposures' p-values are unadjusted, with the number of tests stated "
+                f"({ROTHMAN}); every member is shown")
+        return text + ("; recorded as a limitation" if acknowledged else "")
+    return ("The exposures' tests carry no multiplicity control, recorded as a limitation: chance "
+            "findings cannot be told from discoveries; every member is shown")
+
+
+def _multiplicity_leash(decision: Any, ctx: Any) -> None:
+    """An exposure family without multiplicity control is blocked and recorded (MODELING_SEQUENCE
+    §2, MS7): kept only with the attestation the methods sentence carries."""
+    from turbotab.core.decisions import Refusal, _state
+
+    state = _state(ctx)
+    roles = (getattr(state, "roles", None) or {}) if state is not None else {}
+    n_tests = sum(1 for r in roles.values() if r == "exposure") or None
+    if multiplicity_rung(decision.method, n_tests) != "block_and_record" or decision.acknowledged:
+        return
+    what = ("Unadjusted p-values for an exposure family of "
+            f"{n_tests:,} tests" if decision.method == "stated_count" and n_tests else
+            "An exposure family without multiplicity control")
+    raise Refusal(
+        "family_without_multiplicity",
+        f"{what} reads chance findings as discoveries: at p < 0.05 about one test in twenty passes "
+        f"with nothing there. Benjamini–Hochberg q-values hold the false-discovery rate; this is "
+        f"blocked until it is recorded as a limitation.",
+        exits=[{"label": "Benjamini–Hochberg q-values",
+                "decision": {"kind": "set_multiplicity", "method": "bh"}},
+               {"label": "Keep it, recorded as a limitation",
+                "decision": {"kind": "set_multiplicity", "method": decision.method,
+                             "acknowledged": True}}])
+
+
+# ── zeros a log cannot take, when the pack's own finding is silent ───────────
+
+
+ZEROS_FINDING = "omics_zeros"
+
+
+def zeros_finding(frame: pd.DataFrame, lenses: Sequence[str] | None, target: str | None,
+                  present: Sequence[str] = ()) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """The app's own finding for zeros among raw intensities when the pack's zeros finding does not
+    fire (fewer than 1% of cells): a log cannot take them, so they must be answered — as values
+    below detection, by the same repair the pack's finding offers — before any logged
+    normalization (MS7)."""
+    if any(str(i).split("#")[0] == "pack::metabolomics::zeros_or_missing" for i in present):
+        return None
+    reading = scale_reading(frame, lenses, target)
+    if reading is None or reading.kind != "intensities" or not reading.n_zero:
+        return None
+    block = _block(frame, reading.columns)
+    hits = np.sum(np.isfinite(block) & (block == 0), axis=0)
+    cols = [c for c, k in zip(reading.columns, hits) if k]
+    n = int(hits.sum())
+    finding = {
+        "id": ZEROS_FINDING, "severity": "warning",
+        "title": f"{_count(n)} zeros in {_count(len(cols))} intensity columns, which a log cannot take.",
+        "detail": (f"{_count(n)} cells across {_count(len(cols))} raw-intensity columns are exactly "
+                   f"zero. A log turns a zero into a missing value; a zero written by an export "
+                   f"usually means not detected."),
+        "why_it_matters": ("A value below detection filled as if it were missing at random lands in "
+                           "the middle of the distribution. Say whether these zeros are "
+                           "non-detections; the missing-values answer then fills them below the "
+                           "limit, before the log."),
+        "affected_columns": cols[:8], "source": "structural", "lens": "metabolomics",
+        "evidence": None, "summary": f"{_count(n)} zeros a log cannot take; are they non-detections?",
+        "routes_to": "missing", "lever_label": "Say what the zeros are", "group": None,
+    }
+    return {"params": {"columns": cols, "n_zero": n}, "confidence": "high"}, finding
+
+
+# ── the method contracts (BLUEPRINT §13) ─────────────────────────────────────
+
+
+def _register_contracts() -> None:
+    from turbotab.core.contracts import (CONTRACTS, ContractOption, MethodContract, Relation,
+                                        register_contract)
+
+    if "omics_normalization" in CONTRACTS:
+        return
+    both = ("prediction", "inference")
+
+    def opt(key: str, label: str, customary: str, sound: str | tuple[str, str], rung: str | tuple[str, str],
+            order: int | tuple[int, int]) -> ContractOption:
+        s = sound if isinstance(sound, tuple) else (sound, sound)
+        r = rung if isinstance(rung, tuple) else (rung, rung)
+        o = order if isinstance(order, tuple) else (order, order)
+        return ContractOption(key, label, customary, dict(zip(both, s)), dict(zip(both, r)),
+                              dict(zip(both, o)))
+
+    register_contract(MethodContract(
+        key="omics_normalization", label="Omics normalization", slot="in_fold", scope="training_fold",
+        run_order=2.0, needs=("an assay block read as raw counts or raw intensities",),
+        question="These columns are raw counts or intensities: how are they normalized?",
+        options=(
+            opt("pqn_log2", "PQN, then log2", "Customary in metabolomics (Dieterle et al. 2006)",
+                "Sound: dilution leaves the values; fit on the training fold.", "recommended", 0),
+            opt("qc_pqn_log2", "PQN to pooled QCs", "pmp's default reference (the QC samples)",
+                "Sound: the reference is learned from technical replicates only, before the seal.",
+                "available", 1),
+            opt("log2", "Log2 only", "Customary when dilution is controlled",
+                "Leaves dilution in the values.", "rank_lower", 2),
+            opt("log_cpm_tmm", "Log-CPM with TMM", "Customary for RNA-seq (edgeR)",
+                "Sound: depth and composition leave the values; fit on the training fold.",
+                "recommended", 0),
+            opt("log_cpm", "Log-CPM", "Customary for RNA-seq", "Removes depth, not composition.",
+                "available", 1),
+            opt("declared_normalized", "Already normalized", "The researcher's statement",
+                "Sound when true; the app cannot check it.", "available", 3),
+        ),
+        storyboard=("Read each sample's total signal", "Divide by its dilution or depth",
+                    "Take log2"),
+        relations=(
+            Relation("conflicts", "linear_families",
+                     "Raw counts or intensities conflict with linear families until a normalization "
+                     "is chosen or the values are declared normalized.", rung="refused"),
+            Relation("precedes", "detection_limit",
+                     "Normalization comes before values below detection are filled."),
+            Relation("invalidates", "screen",
+                     "A new normalization re-asks which features a screen keeps."),
+        ),
+        sources=("Dieterle et al. 2006", "Robinson & Oshlack 2010", "Hornung et al. 2015"),
+        short="PQN",
+        option_slots={"qc_pqn_log2": "in_fold"},
+        option_shorts={"log_cpm_tmm": "log-CPM with TMM factors", "log_cpm": "log-CPM",
+                       "qc_pqn_log2": "", "log2": "", "declared_normalized": ""},
+    ))
+    register_contract(MethodContract(
+        key="detection_limit", label="Values below detection", slot="in_fold", scope="training_fold",
+        run_order=3.0, needs=("columns whose blanks are non-detections",),
+        question="These blanks lie below a detection limit: how are they filled?",
+        options=(
+            opt("censoring_aware", "Censored-normal", f"Recommended for exposures ({LUBIN})",
+                ("Sound: the expected value below the limit, fit on the training fold.",
+                 "Sound: a draw below the limit within the multiple imputation."), "recommended", 0),
+            opt("qrilc", "QRILC", f"Customary for left-censored metabolomics data ({WEI})",
+                ("Sound: drawn below each sample's detection quantile.",
+                 "Refused: one draw outside the multiple imputation."), ("available", "refused"), (1, 3)),
+            opt("half_minimum", "Half the minimum", "Customary: MetaboAnalyst's default",
+                f"Customary at ≤ 10% censored; biased beyond ({LUBIN}).", ("available", "available"),
+                (2, 1)),
+            opt("as_missing", "As any other blank", "Not customary for non-detects",
+                ("Ranked lower: kept only with a reason.", "Refused: not missing at random."),
+                ("rank_lower", "refused"), (3, 2)),
+        ),
+        storyboard=("Find each column's detection limit", "Fill below it", "Hand the log only "
+                    "positive values"),
+        relations=(
+            Relation("implies", "censoring_aware",
+                     "A detection-limit reading implies censoring-aware handling."),
+            Relation("conflicts", "mar_imputation",
+                     "MAR imputation of detection-limit blanks is refused under inference.",
+                     purposes=("inference",), rung="refused"),
+            Relation("precedes", "log_transform",
+                     "Values below detection are filled before the log, so no zero or blank is "
+                     "logged."),
+        ),
+        sources=(LUBIN, WEI, LAZAR, "Di Guida et al. 2016"),
+        short="detection-limit-aware imputation",
+        option_scopes={"qrilc": "row_local"},
+    ))
+    register_contract(MethodContract(
+        key="log_transform", label="Log transformation", slot="in_fold", scope="row_local",
+        run_order=4.0, needs=("positive values",), question="(stated: part of the normalization)",
+        options=(opt("log2", "Log2", "Customary for intensities and counts",
+                     "Sound: makes multiplicative effects additive.", "recommended", 0),),
+        storyboard=("Take log2 of each value",),
+        relations=(
+            Relation("conflicts", "zeros",
+                     "A zero a log would turn missing routes to the detection-limit question, never "
+                     "to a median fill.", rung="refused"),
+        ),
+        sources=("Di Guida et al. 2016",),
+        short="log transformation",
+    ))
+    register_contract(MethodContract(
+        key="autoscaling", label="Autoscaling", slot="in_fold", scope="training_fold",
+        run_order=9.0, needs=("a family that standardizes its inputs",),
+        question="(stated: the family's scaling)",
+        options=(opt("autoscaling", "Autoscaling", "Pareto scaling is customary in metabolomics",
+                     "Sound: van den Berg et al. (2006) found autoscaling performed better in their "
+                     "explorative analysis.", "recommended", 0),),
+        storyboard=("Center each column on the training fold", "Divide by its SD"),
+        relations=(),
+        sources=("van den Berg et al. 2006",),
+        short="autoscaling",
+    ))
+    register_contract(MethodContract(
+        key="screen", label="In-fold screening", slot="in_fold", scope="model",
+        run_order=8.0, needs=("an outcome", "many more features than rows"),
+        question="Screen the features inside each training fold?",
+        options=(
+            opt("sis", "Sure independence screening", "Customary in genomic prediction",
+                ("Sound inside the resampling (Ambroise & McLachlan 2002).",
+                 "Refused for the reported model: selection under inference."),
+                ("available", "refused"), (0, 0)),
+        ),
+        storyboard=("Correlate each feature with the outcome on the training fold",
+                    "Keep the n / log n strongest"),
+        relations=(
+            Relation("conflicts", "selection_outside_resampling",
+                     "Selection outside the resampling is refused: a false performance number.",
+                     purposes=("prediction",), rung="refused"),
+        ),
+        sources=("Fan & Lv 2008", "Ambroise & McLachlan 2002", "Varma & Simon 2006"),
+        short="sure independence screening",
+    ))
+    register_contract(MethodContract(
+        key="multiplicity", label="Multiplicity control", slot="evaluation", scope="model",
+        run_order=1.0, needs=("an exposure family",),
+        question="The exposures are tested as a family: how is multiplicity controlled?",
+        options=(
+            opt("bh", "Benjamini–Hochberg q-values", "Customary for MWAS and EWAS",
+                f"Sound: holds the false-discovery rate ({BH}).", "recommended", 0),
+            opt("stated_count", "Number of tests stated", f"Customary for a few hypotheses ({ROTHMAN})",
+                "Sound for a few prespecified hypotheses only.", "block_and_record", 1),
+            opt("none", "No control", "Not customary", "Unsound for a family.", "block_and_record", 2),
+        ),
+        storyboard=("Test each exposure on its own", "Adjust the p-values across the family"),
+        relations=(
+            Relation("implies", "bh_q_values",
+                     "An exposure family implies multiplicity control: BH q-values for feature-wise "
+                     "analyses; every member is shown.", purposes=("inference",)),
+            Relation("conflicts", "unadjusted_family",
+                     "A feature-wise table without multiplicity control is blocked and recorded.",
+                     purposes=("inference",), rung="block_and_record"),
+        ),
+        sources=(BH, ROTHMAN, "Gelman & Loken 2013"),
+    ))
+
+
+# ── the methods paragraph a chain writes (BLUEPRINT §13's chain test) ─────────
+
+
+def chain_choices(state: Any, steps: Sequence[str], family: str | None = None) -> dict[str, str | None]:
+    """The method contracts a run used, each with the option it chose: the pre-seal answers in the
+    state, the in-fold steps the design built (``steps``: the family's step keys, in order), the
+    batch answer, and an exposure family's multiplicity."""
+    from turbotab.core.methods import qc_drift
+
+    choices: dict[str, str | None] = {}
+    qc = qc_drift._applied(state)
+    if qc is not None:
+        _, option, params = qc
+        if option in qc_drift.RLSC_OPTIONS and not params.get("problems"):
+            choices.update({"qc_detection_filter": None, "qc_rlsc": option, "qc_rsd_filter": None})
+        choices["qc_rows_leave"] = None
+    norm = normalization_of(state)
+    if norm is not None and norm["method"] == "qc_pqn_log2":
+        choices["qc_pqn"] = None
+    spec_missing = getattr(state, "missing", None)
+    for key in steps:
+        if key == "d_ratio":
+            choices["d_ratio_filter"] = None
+        elif key == "normalize" and norm is not None:
+            choices["omics_normalization"] = norm["method"]
+            if norm["method"] in LOGGED:
+                choices["log_transform"] = "log2"
+        elif key == "log":
+            choices["log_transform"] = "log2"
+        elif key == "detect" and spec_missing is not None:
+            choices["detection_limit"] = spec_missing.below_detection
+        elif key == "batch":
+            choices["batch"] = "reference_combat"
+        elif key == "screen":
+            choices["screen"] = "sis"
+        elif key == "scale" and set(getattr(state, "lens", None) or []) & set(OMICS_LENSES):
+            choices["autoscaling"] = "autoscaling"
+    if norm is not None and norm["method"] == "qc_pqn_log2":
+        choices["log_transform"] = "log2"
+    batch = getattr(state, "batch", None)
+    if batch is not None and batch.method == "covariate":
+        choices["batch"] = "covariate"
+    if family == "featurewise":
+        choices["multiplicity"] = multiplicity_policy(state)["method"]
+    return choices
+
+
+def model_clause(family: str, validation: str | None) -> str | None:
+    """The clause the fitted family writes for the methods paragraph: how its parameters were
+    tuned against how the rows were validated."""
+    if family in ("elastic_net", "screened_elastic_net") and validation in ("kfold", "repeated_kfold"):
+        return "elastic-net parameters were tuned in an inner CV nested in an outer CV"
+    if family in ("elastic_net", "screened_elastic_net"):
+        return "elastic-net parameters were tuned by an inner CV within the rows each fit was given"
+    return None
+
+
+def methods_paragraph(state: Any, steps: Sequence[str], family: str, split: Mapping[str, Any] | None,
+                      working: Mapping[str, Any] | None = None,
+                      table: Mapping[str, Any] | None = None) -> str:
+    """The methods paragraph a run writes: its first sentence from the chain's contracts (the
+    pre-seal clauses, the in-fold group, the model's clause), then the details: the QC answer's
+    counts, the fill of values below detection, how the folds kept units together, and an exposure
+    family's tests and multiplicity."""
+    from turbotab.core.methods import qc_drift
+    from turbotab.core.contracts import paragraph
+
+    purpose = str(getattr(state, "purpose", None) or "prediction")
+    choices = chain_choices(state, steps, family)
+    batch = getattr(state, "batch", None)
+    run = {"qc_rlsc": choices.get("qc_rlsc"),
+           "batch": {"method": batch.method, "figures": batch.figures} if batch is not None else {}}
+    details: list[str] = []
+    qc = qc_drift._applied(state)
+    if qc is not None and choices.get("qc_rlsc"):
+        details.append(qc_drift.rlsc_details(qc[2], (working or {}).get("qc_correction")))
+    norm = normalization_of(state)
+    if purpose == "inference" and norm is not None and norm["method"] in TRANSFORMS:
+        details.append(normalization_details(norm["method"]))
+    if "detection_limit" in choices:
+        details.append(detection_details(state, choices["detection_limit"]))
+    validation = (split or {}).get("validation")
+    if split and split.get("grouped_by"):
+        details.append(f"Folds kept each `{split['grouped_by']}`'s rows together.")
+    if family == "featurewise" and table is not None:
+        details.append(featurewise_details(table, choices.get("multiplicity") or "bh"))
+    clause = model_clause(family, validation) if purpose == "prediction" else None
+    return paragraph(choices, run, purpose, model_clause=clause, details=details)
+
+
+def normalization_details(method: str) -> str:
+    """The normalization's sentence where nothing is grouped by fold (inference: every row)."""
+    return {
+        "log_cpm_tmm": ("Counts were transformed to log2 counts per million on library sizes scaled "
+                        "by TMM factors (edgeR, prior count 2; Robinson and Oshlack 2010)."),
+        "log_cpm": "Counts were transformed to log2 counts per million (edgeR, prior count 2).",
+        "pqn_log2": ("Intensities were normalized by probabilistic quotient normalization "
+                     "(Dieterle et al. 2006) and log2-transformed."),
+        "qc_pqn_log2": ("Intensities were normalized by probabilistic quotient normalization against "
+                        "the pooled-QC reference spectrum and log2-transformed."),
+        "log2": "Intensities were log2-transformed.",
+    }[method]
+
+
+def detection_details(state: Any, method: str | None) -> str:
+    spec = getattr(state, "missing", None)
+    n = len(getattr(spec, "censored_columns", None) or [])
+    what = f"{n:,} feature{'s' if n != 1 else ''}"
+    if method == "half_minimum":
+        how = "half the feature's smallest detected value on the training fold"
+    elif method == "qrilc":
+        how = f"a draw below its sample's detection quantile (QRILC; {LAZAR})"
+    else:
+        how = (f"its expected value below the limit under a left-censored normal fitted to the "
+               f"feature's logarithm on the training fold ({LUBIN})")
+    return f"Values below detection in {what} were filled after normalization and before the log, each by {how}."
+
+
+def featurewise_details(table: Mapping[str, Any], method: str) -> str:
+    rows = [r for r in table.get("rows") or [] if r.get("p") is not None]
+    m = len(rows)
+    found = sum(1 for r in rows if r.get("q") is not None and r["q"] < 0.05)
+    if method == "bh":
+        return (f"Each of the {m:,} features was tested in its own linear model with the "
+                f"covariates; Benjamini–Hochberg q-values across the {m:,} tests ({found:,} below "
+                f"0.05), every feature shown.")
+    if method == "stated_count":
+        return (f"Each of the {m:,} features was tested in its own linear model with the "
+                f"covariates; unadjusted p-values, {m:,} tests ({ROTHMAN}).")
+    return (f"Each of the {m:,} features was tested in its own linear model with the covariates; no "
+            f"multiplicity control, recorded as a limitation.")
+
+
 def _register() -> None:
     from turbotab.core.decisions import register_validator
 
     _register_repairs()
     register_validator("select_models", _linear_families_need_a_scale)
+    register_validator("apply_repair", _logged_options_wait_for_the_zeros)
+    register_validator("set_missing", _detection_limit_leash)
+    _register_screened_family()
+    _register_contracts()
+    from turbotab.core.repairs import FAMILIES, register_family
+
+    # The app's own zeros finding offers the pack's "zeros mean not detected" repair.
+    register_family(FAMILIES["zeros_nondetect"], [ZEROS_FINDING])
+    register_validator("set_multiplicity", _multiplicity_leash)
+    from turbotab.core.voice import register_sentence
+
+    @register_sentence("set_multiplicity")
+    def _set_multiplicity(d: Any, state: Any, ctx: Any) -> str:
+        return multiplicity_sentence(d.method, d.acknowledged)
+
+    # QC drift and batch handling enter with the omics chain (MS7); importing registers them.
+    from turbotab.core.methods import batch, qc_drift  # noqa: F401
 
 
 _register()

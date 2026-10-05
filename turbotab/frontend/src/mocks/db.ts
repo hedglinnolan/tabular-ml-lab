@@ -668,6 +668,19 @@ function slotOf(d: Decision): Slot | null {
       return "measurement_error";
     case "set_outcome_scale":
       return "target";
+    // DATAIN: the mock serves no added files or codebooks, so neither is recorded here.
+    case "join_files":
+      return "joins";
+    case "import_codebook":
+      return "codebooks";
+    case "set_batch":
+      return "batch";
+    case "set_multiplicity":
+      return "multiplicity";
+    case "set_scales":
+      return "scales";
+    case "set_usual_intake":
+      return "usual_intake";
     case "revert":
       return null;
   }
@@ -783,6 +796,13 @@ function valueOf(d: Decision): ProjectState[Slot] {
     }
     case "set_outcome_scale":
       return d.scale === "log" ? `ln_${d.column}` : d.column;
+    case "set_batch":
+    case "set_multiplicity": {
+      const { kind: _k, ...value } = d;
+      return value as ProjectState[Slot];
+    }
+    case "set_scales":
+      return d.scales as ProjectState[Slot];
     case "set_follow_up":
       return { time_column: d.time_column, entry_column: d.entry_column ?? null };
     case "set_censoring":
@@ -804,10 +824,13 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_outcome_unit":
       return d.unit;
     case "set_exposure_form": // keyed by column; the fold merges it
+    case "set_usual_intake": // keyed by its dietary component; the fold merges it
     case "set_column_unit": // keyed by column; the fold merges it
     case "confirm_role": // keyed by column; the fold merges it
     case "confirm_reading": // keyed by kind and column; the fold merges it
     case "confirm_readings": // each listed reading where its own confirmation goes
+    case "join_files": // keyed by file; the mock serves no added files
+    case "import_codebook": // keyed by codebook; the mock serves no codebooks
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -877,6 +900,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
     follow_up: null,
     sensitivity: null,
     measurement_error: null,
+    scales: null,
+    usual_intake: null,
     outcome_unit: null,
     column_units: null,
     roles_unconfirmed: null,
@@ -889,6 +914,10 @@ export function fold(records: DecisionRecord[]): ProjectState {
     estimand: null,
     adjustment: null,
     outcome_scale: null,
+    joins: null,
+    codebooks: null,
+    batch: null,
+    multiplicity: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();
@@ -953,6 +982,15 @@ export function fold(records: DecisionRecord[]): ProjectState {
       // A keyed slot: one form per column (turbotab/core/decisions.py, exposure_forms).
       const form = { form: d.form, knots: d.knots ?? null };
       state.exposure_forms = { ...(state.exposure_forms ?? {}), [d.column]: form };
+      continue;
+    }
+    if (d.kind === "set_usual_intake") {
+      // A keyed slot: one analysis per dietary component (turbotab/core/decisions.py, usual_intake).
+      const { kind: _k, nutrient, ...spec } = d;
+      state.usual_intake = {
+        ...(state.usual_intake ?? {}),
+        [nutrient]: spec as NonNullable<ProjectState["usual_intake"]>[string],
+      };
       continue;
     }
     (state as Record<Slot, unknown>)[slot] =

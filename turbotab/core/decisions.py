@@ -132,8 +132,9 @@ EnergyMethod = Literal["none", "standard", "residual", "residual_energy_dropped"
 # "multiple_imputation" is inference's: chained equations with the outcome and total energy in the
 # imputation model, pooled by Rubin's rules (BLUEPRINT §12 ruling 4; turbotab/core/methods/missing.py).
 MissingStrategy = Literal["complete_case", "impute", "multiple_imputation"]
-# How a left-censored column's blanks (values below a detection limit) are filled (audit ME-08).
-BelowDetection = Literal["half_minimum", "censoring_aware", "as_missing"]
+# How a left-censored column's blanks (values below a detection limit) are filled (audit ME-08);
+# "qrilc" (MS7): quantile regression imputation of left-censored data, per sample.
+BelowDetection = Literal["half_minimum", "censoring_aware", "as_missing", "qrilc"]
 
 
 class _Value(BaseModel):
@@ -265,6 +266,101 @@ MeasurementErrorMethod = Literal["none", "regression_calibration"]
 class MeasurementErrorSpec(_Value):
     method: MeasurementErrorMethod
     exposures: list[str] = Field(default_factory=list)  # [] = every energy-adjusted exposure
+    n_boot: int = Field(default=200, ge=50, le=2000)
+
+
+# MS8 (MODELING_SEQUENCE §0 ruling 8): a multi-item scale scored as one predictor, its reliability
+# (ω; α labeled customary), and the correction of its coefficient for measurement error. The
+# arithmetic and its sources are in turbotab/core/methods/scales.py; the leash in turbotab/core/scales.py.
+ScaleKind = Literal["reflective", "formative"]
+ScaleStructure = Literal["unidimensional", "multidimensional"]
+ScaleCorrection = Literal["none", "regression_calibration"]
+ReliabilitySource = Literal["internal_consistency", "test_retest", "calibration_substudy"]
+DEFAULT_GROUP_FACTORS = 3  # psych::omega's default number of group factors
+
+
+class ScaleSpec(_Value):
+    """One scale: its items, the instrument's key (the reverse-coded items and the response scale
+    ``low``–``high`` they are turned over on), how the score is formed, what kind of construct it
+    measures (``reflective``: the items are caused by it; ``formative``: an index defined by its
+    components, such as a diet-quality score), its structure, the role the score takes in the
+    models, and whether its coefficient is corrected for measurement error, from which reliability."""
+
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z_][A-Za-z0-9_.]*$")
+    items: list[str] = Field(min_length=3)
+    reverse: list[str] = Field(default_factory=list)
+    low: int
+    high: int
+    scoring: Literal["sum", "mean"] = "sum"
+    kind: ScaleKind
+    structure: ScaleStructure = "unidimensional"
+    factors: int | None = Field(default=None, ge=2, le=10)  # group factors (multidimensional)
+    role: Literal["exposure", "covariate"] = "exposure"
+    correction: ScaleCorrection = "none"
+    reliability: ReliabilitySource = "internal_consistency"
+    # A repeat administration: its items in the order of ``items`` (scored with the same key), or
+    # one column holding its score as recorded.
+    retest: list[str] = Field(default_factory=list)
+    reference: str | None = None  # a calibration substudy's reference measure (blank outside it)
+    n_boot: int = Field(default=200, ge=50, le=2000)
+    instrument: str | None = Field(default=None, max_length=80, pattern=r"^[^`\n\r]+$")
+
+    @model_validator(mode="after")
+    def _keyed(self) -> "ScaleSpec":
+        if len(set(self.items)) != len(self.items):
+            raise ValueError("each item may be listed only once")
+        if not self.high > self.low:
+            raise ValueError("the response scale's highest answer must exceed its lowest")
+        stray = [c for c in self.reverse if c not in self.items]
+        if stray:
+            raise ValueError(f"reverse-coded items must be items of the scale: {', '.join(stray)}")
+        if len(set(self.reverse)) != len(self.reverse):
+            raise ValueError("each reverse-coded item may be listed only once")
+        if self.factors is not None and self.structure != "multidimensional":
+            raise ValueError("group factors belong to a multidimensional scale")
+        if self.reliability == "test_retest" and len(self.retest) not in (1, len(self.items)):
+            raise ValueError("a repeat administration is its items, one per item of the scale, or "
+                             "one column holding its score")
+        if self.reliability != "test_retest" and self.retest:
+            raise ValueError("a repeat administration is read only for a test–retest reliability")
+        if self.reliability == "calibration_substudy" and not self.reference:
+            raise ValueError("a calibration substudy needs its reference measure's column")
+        if self.reliability != "calibration_substudy" and self.reference:
+            raise ValueError("a reference measure is read only for a calibration substudy")
+        return self
+
+    def group_factors(self) -> int:
+        """The factors the reliability's factor analysis extracts: 1 for a unidimensional scale."""
+        if self.structure != "multidimensional":
+            return 1
+        return int(self.factors or DEFAULT_GROUP_FACTORS)
+
+    def columns(self) -> list[str]:
+        """Every column the scale reads: its items, a repeat administration, a reference."""
+        return [*self.items, *self.retest, *([self.reference] if self.reference else [])]
+
+
+# The NCI usual-intake method (V2 definition of done, "Dietary, extended"; turbotab/core/usual_intake.py
+# routes it, turbotab/core/methods/usual_intake.py fits it): one dietary component's distribution of
+# usual intake, its own estimand beside any association analysis.
+UsualIntakeModel = Literal["none", "amount_only", "two_part"]
+UsualIntakePopulation = Literal["whole", "consumers"]  # STROBE-nut nut-14
+CutoffKind = Literal["EAR", "AI", "UL", "other"]
+# How a weekend column is coded: 1 on a Friday–Sunday recall (MIXTRAN's "weekend (Fri.-Sun.)
+# indicator"), or NHANES's day of the week (``DR1DAY``: 1 Sunday … 7 Saturday).
+WeekendCoding = Literal["indicator", "nhanes_day"]
+
+
+class UsualIntakeSpec(_Value):
+    model: UsualIntakeModel
+    days: list[str] = Field(default_factory=list)  # a wide table's recall-day columns, first first
+    order_column: str | None = None  # a long table's column ordering each person's recalls
+    weekend: list[str] = Field(default_factory=list)
+    weekend_coding: WeekendCoding = "indicator"
+    population: UsualIntakePopulation = "whole"
+    consumer_column: str | None = None
+    cutoff: float | None = None
+    cutoff_kind: CutoffKind | None = None
     n_boot: int = Field(default=200, ge=50, le=2000)
 
 
@@ -482,6 +578,71 @@ class SetMeasurementError(_DecisionModel):
         if len(set(value)) != len(value):
             raise ValueError("each exposure may be named only once")
         return value
+
+
+# MS7 (MODELING_SEQUENCE §2, "Batch"; turbotab/core/methods/batch.py): how a batch column is
+# handled. "covariate": a term of the outcome model (inference's first); "reference_combat": ComBat
+# with a reference batch fitted in each training fold without the outcome (prediction's first);
+# "outcome_combat": ComBat with the outcome protected (refused for testing and under prediction);
+# "none": left alone; "not_a_batch": the column is not a batch at all (the reading was wrong).
+BatchMethod = Literal["covariate", "reference_combat", "outcome_combat", "none", "not_a_batch"]
+
+
+class BatchSpec(_Value):
+    column: str = Field(min_length=1)
+    method: BatchMethod
+    figures: bool = False  # ComBat with the outcome protected, for figures only (never the tests)
+
+
+class SetBatch(_DecisionModel):
+    """How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``
+    adds ComBat with the outcome protected for figures only: never the matrix the tests read."""
+
+    kind: Literal["set_batch"] = "set_batch"
+    column: str = Field(min_length=1)
+    method: BatchMethod
+    figures: bool = False
+
+
+# MS7 (MODELING_SEQUENCE §2, "An exposure family"): the multiplicity method of an exposure family.
+MultiplicityMethod = Literal["bh", "stated_count", "none"]
+
+
+class MultiplicitySpec(_Value):
+    method: MultiplicityMethod
+    acknowledged: bool = False  # the attestation that keeps a blocked answer
+
+
+class SetMultiplicity(_DecisionModel):
+    """How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):
+    Benjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests
+    stated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the
+    recorded attestation (``acknowledged``)."""
+
+    kind: Literal["set_multiplicity"] = "set_multiplicity"
+    method: MultiplicityMethod
+    acknowledged: bool = False
+
+
+class SetScales(_DecisionModel):
+    """The multi-item scales scored as predictors (MS8): each one's items become one score in the
+    models. An empty list is the answer "no scale is scored"."""
+
+    kind: Literal["set_scales"] = "set_scales"
+    scales: list[ScaleSpec]
+
+    @model_validator(mode="after")
+    def _apart(self) -> "SetScales":
+        names = [s.name for s in self.scales]
+        if len(set(names)) != len(names):
+            raise ValueError("each scale needs a name of its own")
+        seen: dict[str, str] = {}
+        for s in self.scales:
+            for c in s.items:
+                if c in seen:
+                    raise ValueError(f"{c} is an item of both {seen[c]} and {s.name}")
+                seen[c] = s.name
+        return self
 
 
 class SetMissing(_DecisionModel):
@@ -1071,10 +1232,153 @@ class DeferFinding(_DecisionModel):
     to: str = Field(min_length=1)
 
 
+class SetUsualIntake(_DecisionModel):
+    """One dietary component's usual-intake distribution by the NCI method, or ``model="none"``
+    (turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of
+    a wide table's ``days``."""
+
+    kind: Literal["set_usual_intake"] = "set_usual_intake"
+    nutrient: str = Field(min_length=1)
+    model: UsualIntakeModel
+    days: list[str] = Field(default_factory=list)
+    order_column: str | None = None
+    weekend: list[str] = Field(default_factory=list)
+    weekend_coding: WeekendCoding = "indicator"
+    population: UsualIntakePopulation = "whole"
+    consumer_column: str | None = None
+    cutoff: float | None = Field(default=None, gt=0)
+    cutoff_kind: CutoffKind | None = None
+    n_boot: int = Field(default=200, ge=50, le=2000)
+
+    @model_validator(mode="after")
+    def _shape(self) -> "SetUsualIntake":
+        if len(set(self.days)) != len(self.days):
+            raise ValueError("each recall day's column may be named only once")
+        if len(self.days) == 1:
+            raise ValueError("a wide table names at least two recall-day columns")
+        if self.days and self.order_column:
+            raise ValueError("a wide table's recalls are ordered by its day columns")
+        if self.weekend and self.days and len(self.weekend) != len(self.days):
+            raise ValueError("a wide table names one weekend column per recall day")
+        if self.weekend and not self.days and len(self.weekend) != 1:
+            raise ValueError("a long table names one weekend column")
+        if self.cutoff_kind is not None and self.cutoff is None:
+            raise ValueError("a cut-off's kind needs the cut-off")
+        return self
+
+
 class DismissFinding(_DecisionModel):
     kind: Literal["dismiss_finding"] = "dismiss_finding"
     finding_id: str = Field(min_length=1)
     reason: str | None = None
+
+
+# V2 definition of done §1 (package DATAIN): minimal multi-file assembly and codebook import.
+# Their logic lives in ``turbotab.core.assembly`` and ``turbotab.core.codebook``, which register
+# their validators, completions and sentences when this module imports them (at its end).
+
+FILE_ID = r"^f[0-9a-f]{10}$"
+CODEBOOK_ID = r"^c[0-9a-f]{10}$"
+JoinHow = Literal["left", "inner"]
+JoinRelation = Literal["one-to-one", "one-to-many", "many-to-one"]
+
+
+class JoinCounts(_Value):
+    """What the join's preview counted, recorded with the answer (the server's): the rows on each
+    side, the identifier values they share, the rows with no partner on each side, and the rows
+    the joined table holds."""
+
+    relation: JoinRelation
+    table_rows: int = Field(ge=0)
+    file_rows: int = Field(ge=0)
+    matched_keys: int = Field(ge=0)
+    table_unmatched: int = Field(ge=0)
+    file_unmatched: int = Field(ge=0)
+    rows: int = Field(ge=0)
+    added_columns: int = Field(ge=0)
+    renamed: dict[str, str] = Field(default_factory=dict)
+
+
+class JoinSpec(_Value):
+    """One file joined to the table (``joins`` slot, keyed by the file's id, in answer order)."""
+
+    file: str = Field(pattern=FILE_ID)
+    name: str
+    on: str
+    right_on: str | None = None
+    how: JoinHow = "left"
+    counts: JoinCounts | None = None
+
+
+class JoinFiles(_DecisionModel):
+    """Join a file added to the project to the table on a shared identifier (NHANES ships each
+    component as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the
+    table (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with
+    one. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its
+    reason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,
+    recorded with the answer."""
+
+    kind: Literal["join_files"] = "join_files"
+    file: str = Field(pattern=FILE_ID)
+    on: str = Field(min_length=1)
+    right_on: str | None = None
+    how: JoinHow = "left"
+    name: str | None = None
+    counts: JoinCounts | None = None
+
+
+CodebookForm = Literal["table", "nhanes", "xpt"]
+CodebookField = Literal["unit", "codes", "type", "range"]
+
+
+class CodebookConflict(_Value):
+    """A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3)."""
+
+    column: str
+    field: CodebookField
+    says: str      # what the codebook documents
+    values: str    # what the values show instead
+
+
+class CodebookSpec(_Value):
+    """One imported codebook as the state keeps it (``codebooks`` slot, keyed by its id):
+    ``settled`` the readings its structured fields settled (``"<kind>:<column>"`` -> value),
+    ``units`` the documented units no reading kind takes (``mg/dL``; a sentence may state them),
+    ``labels`` its free-text labels of the table's columns (they only strengthen a guess),
+    ``asked`` its fields the values contradict, ``kept`` the readings the user had answered
+    otherwise before (the user's answer stands)."""
+
+    name: str
+    form: CodebookForm
+    settled: dict[str, str] = Field(default_factory=dict)
+    units: dict[str, str] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+    asked: list[CodebookConflict] = Field(default_factory=list)
+    kept: list[str] = Field(default_factory=list)
+    n_entries: int = 0
+    n_matched: int = 0
+
+
+class ImportCodebook(_DecisionModel):
+    """Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a
+    variable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.
+    Its structured fields (units, value-code tables, the variable type) settle readings as the
+    user's own documentation, through the confirmation path ``confirm_readings`` writes; its
+    free-text labels only strengthen the guesses the ask leads with; a field the values contradict
+    is asked, never applied. The client names the staged codebook; everything else is the
+    server's, read from the codebook and the values."""
+
+    kind: Literal["import_codebook"] = "import_codebook"
+    codebook: str = Field(pattern=CODEBOOK_ID)
+    name: str | None = None
+    form: CodebookForm | None = None
+    items: list[ReadingItem] = Field(default_factory=list)
+    units: dict[str, str] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+    asked: list[CodebookConflict] = Field(default_factory=list)
+    kept: list[str] = Field(default_factory=list)
+    n_entries: int = 0
+    n_matched: int = 0
 
 
 Decision = Annotated[
@@ -1090,6 +1394,8 @@ Decision = Annotated[
         ConfirmReading, ConfirmReadings, SetOutcomeScale,
         Reseal, LockPlan,
         SetCensoring, SetClusters, SetEstimand, SetAdjustment,
+        JoinFiles, ImportCodebook, SetBatch, SetMultiplicity, SetScales,
+        SetUsualIntake,
     ],
     Field(discriminator="kind"),
 ]
@@ -1171,6 +1477,10 @@ class ProjectState(BaseModel):
     # WP12 (audit §5): methods a reviewer expects
     sensitivity: list[SensitivityAnalysis] | None = None  # analyses beside the primary's rows
     measurement_error: MeasurementErrorSpec | None = None  # regression calibration, or none
+    # MS8: the multi-item scales scored as predictors, their reliability and correction
+    scales: list[ScaleSpec] | None = None
+    # The NCI usual-intake method: each dietary component's distribution, keyed by its name
+    usual_intake: dict[str, UsualIntakeSpec] | None = None
     # WP13 (audit IN-05): the outcome's unit as the user recorded it (holds while its column is
     # the target); a unit the name does not spell out is proposed, never stated, until then
     outcome_unit: str | None = None
@@ -1204,6 +1514,16 @@ class ProjectState(BaseModel):
     # Audit RO-10 (WP18): the scale the user chose for a positive, markedly skewed outcome; under
     # "log" the target slot names the derived ``ln_<column>`` (``SetOutcomeScale``)
     outcome_scale: OutcomeScaleSpec | None = None
+    # V2 definition of done §1 (DATAIN): the files joined to the table, by file id in answer order
+    # (``join_files``; the ingest stage reads it), and each imported codebook by its id
+    # (``import_codebook``): what its structured fields settled, its units and labels, and what
+    # the values contradicted
+    joins: dict[str, JoinSpec] | None = None
+    codebooks: dict[str, CodebookSpec] | None = None
+    # MS7 (MODELING_SEQUENCE §2): how a batch column is handled, and an exposure family's
+    # multiplicity method (``set_batch``, ``set_multiplicity``)
+    batch: BatchSpec | None = None
+    multiplicity: MultiplicitySpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1487,6 +1807,13 @@ def reading_slot(reading: str, column: str) -> tuple[str, str]:
     return "reading_confirmations", f"{reading}:{column}"
 
 
+def _codebook_spec(d: "ImportCodebook") -> "CodebookSpec":
+    return CodebookSpec(name=d.name or d.codebook, form=d.form or "table",
+                        settled={f"{i.reading}:{i.column}": i.value for i in d.items},
+                        units=dict(d.units), labels=dict(d.labels), asked=list(d.asked),
+                        kept=list(d.kept), n_entries=d.n_entries, n_matched=d.n_matched)
+
+
 def reading_entry(reading: str, column: str, value: str) -> tuple[str, str, Any]:
     """One confirmation's write, ``(slot, key, value)``: a unit or a day count is merged into the
     column's recorded spec (a callable the fold applies to the entry before it), every other
@@ -1512,6 +1839,15 @@ register_kind(ConfirmReading, "reading_confirmations", value=lambda d: d.value,
 # nothing else (BLUEPRINT §14.2).
 register_kind(ConfirmReadings, "reading_confirmations", value=lambda d: None,
               entries=lambda d: [reading_entry(i.reading, i.column, i.value) for i in d.items])
+register_kind(JoinFiles, "joins", key=lambda d: d.file,
+              value=lambda d: JoinSpec(file=d.file, name=d.name or d.file, on=d.on,
+                                       right_on=d.right_on, how=d.how, counts=d.counts))
+# A codebook's structured fields write each reading exactly where its own confirmation would
+# (BLUEPRINT §14.2, "let the codebook answer"), and the codebook itself under its id: the
+# readings ledger names it as their evidence (``readings.codebook_source``).
+register_kind(ImportCodebook, "codebooks", value=lambda d: None,
+              entries=lambda d: [*(reading_entry(i.reading, i.column, i.value) for i in d.items),
+                                 ("codebooks", d.codebook, _codebook_spec(d))])
 register_kind(SetEnergyAdjustment, "energy_adjustment",
               value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
 register_kind(SetExclusions, "exclusions")
@@ -1581,6 +1917,12 @@ register_kind(SetAdjustment, "adjustment", value=lambda d: None,
               entries=lambda d: [("adjustment", column, AdjustmentAnswer(
                   exposure=d.exposure, **answers.model_dump()))
                   for column, answers in d.answers.items()])
+register_kind(SetBatch, "batch", value=lambda d: BatchSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetMultiplicity, "multiplicity",
+              value=lambda d: MultiplicitySpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetScales, "scales")
+register_kind(SetUsualIntake, "usual_intake", key=lambda d: d.nutrient,
+              value=lambda d: UsualIntakeSpec(**d.model_dump(exclude={"kind", "nutrient"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -3390,11 +3732,13 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
             f"Name the columns whose blanks are non-detections; the findings name "
             f"{_and(censored[:6])}{' and more' if len(censored) > 6 else ''}.",
             exits=[{"label": "Those columns", "decision": _missing_base(decision, censored_columns=censored)}])
-    if not censored or decision.strategy == "complete_case" or decision.reason:
-        return
-    if decision.below_detection in ("half_minimum", "censoring_aware"):
-        return
     inference = getattr(state, "purpose", None) == "inference"
+    # MS7 (MODELING_SEQUENCE §4): under inference a reason does not keep a fill that reads values
+    # below a limit as missing at random; under prediction it does, ranked lower.
+    if not censored or decision.strategy == "complete_case" or (decision.reason and not inference):
+        return
+    if decision.below_detection in ("half_minimum", "censoring_aware", "qrilc"):
+        return
     how = ("multiple imputation reads them as missing at random" if decision.strategy ==
            "multiple_imputation" else "the median fill places them in the middle of the distribution")
     aware = ("a censored-normal draw below the limit, given the outcome" if inference else
@@ -3403,14 +3747,16 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
         "median_below_detection",
         f"{_and(censored[:6])}{' and others' if len(censored) > 6 else ''} hold values below a "
         f"detection limit: each blank is known to be small, but {how}. Choose how non-detections "
-        f"are filled, or keep this fill with your reason.",
+        f"are filled" + ("; under inference they are never filled as missing at random." if inference
+                         else ", or keep this fill with your reason."),
         exits=[{"label": f"Censoring-aware: {aware}",
                 "decision": _missing_base(decision, below_detection="censoring_aware",
                                           censored_columns=censored)},
                {"label": "Half the smallest detected value (customary)",
                 "decision": _missing_base(decision, below_detection="half_minimum",
                                           censored_columns=censored)},
-               {"label": "Keep this fill: give your reason", "decision": None}])
+               *([] if inference else [{"label": "Keep this fill: give your reason",
+                                        "decision": None}])])
 
 
 def _raw_columns(ctx: Any) -> set[str] | None:
@@ -3953,3 +4299,10 @@ from turbotab.core import estimand as _estimand  # noqa: E402,F401
 # of the five, predictors summarized after the outcome, the outcome's order and scale, reference
 # rows, and imputed copies.
 from turbotab.core import structural as _structural  # noqa: E402,F401
+# Joins and codebook import (DATAIN): their validators, completions and sentences.
+from turbotab.core import assembly as _assembly  # noqa: E402,F401
+from turbotab.core import codebook as _codebook  # noqa: E402,F401
+# The scales question's refusals (``set_scales``; MS8) live with its routing and contract.
+from turbotab.core import scales as _scales  # noqa: E402,F401
+# The NCI usual-intake method's refusals, contract and sentence (``set_usual_intake``).
+from turbotab.core import usual_intake as _usual_intake  # noqa: E402,F401

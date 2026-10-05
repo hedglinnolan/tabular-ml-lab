@@ -1914,20 +1914,53 @@ def working_stage(ctx: StageContext) -> Bundle:
         finally:
             con.close()
             _cleanup(temp)
-    if not repairs and plan is None and not where and not derived:
+    # MS7 (MODELING_SEQUENCE §1.1): QC drift and inter-batch correction (QC-RLSC), the QC filters
+    # and PQN against the pooled QCs run here, before the seal, learning from the pooled-QC rows
+    # only (turbotab/core/methods/qc_drift.py); every injection is corrected first, and the QC rows
+    # then leave with the other reference rows (WP18), their corrected values kept beside the
+    # table for quality assessment.
+    from turbotab.core.methods.qc_drift import reference_plan
+
+    reference = reference_plan(ctx.state)
+    if not repairs and plan is None and not where and not derived and reference is None:
         data = {**_dataset_fields(info), **base, "pass_through": True, "aggregation": None,
                 "row_map": "identity"}
         return Bundle(data=data, files={TABLE: _reference(source, ctx, "working")})
 
     started = time.perf_counter()
-    src_sql = source_sql(source, names, repairs, where=where, derived=derived)
+    src_sql = source_sql(source, names, repairs, where=None if reference is not None else where,
+                         derived=derived)
     table_out = _scratch(ctx, "working", TABLE)
     sidecar = _scratch(ctx, "working", SIDECAR)
     map_out = _scratch(ctx, "working", ROW_MAP)
     con, temp = _connect(ctx, "working")
     files: dict[str, Path] = {TABLE: table_out, SIDECAR: sidecar}
+    corrected = qc_out = qc_rows_out = None
     try:
         aggregation = None
+        if reference is not None:
+            from turbotab.core.methods.qc_drift import QC_FILE, QC_ROWS_FILE, correct_table
+
+            corrected = _scratch(ctx, "working", "qc_corrected.parquet")
+            qc_out = _scratch(ctx, "working", QC_FILE)
+            _execute(con, ctx, f"COPY (SELECT * FROM {src_sql} ORDER BY {ROW_ID}) TO "
+                               f"{_lit(corrected)} (FORMAT parquet, COMPRESSION zstd)",
+                     0.05, 0.1, "Reading the pooled QCs")
+            ctx.progress(0.1, "Correcting drift from the pooled QCs")
+            base["qc_correction"] = correct_table(corrected, reference, qc_out)
+            files[QC_FILE] = qc_out
+            src_sql = f"(SELECT * FROM read_parquet({_lit(corrected)}))"
+            if where:
+                # The reference rows leave as WP18 has them leave, read on the source's own labels.
+                kept_ids = f"(SELECT {ROW_ID} FROM read_parquet({_lit(source)}) WHERE {where})"
+                qc_rows_out = _scratch(ctx, "working", QC_ROWS_FILE)
+                _execute(con, ctx, f"COPY (SELECT * FROM {src_sql} WHERE {ROW_ID} NOT IN "
+                                   f"{kept_ids} ORDER BY {ROW_ID}) TO {_lit(qc_rows_out)} "
+                                   f"(FORMAT parquet, COMPRESSION zstd)",
+                         0.1, 0.12, "Keeping the corrected pooled QCs for quality assessment")
+                files[QC_ROWS_FILE] = qc_rows_out
+                src_sql = (f"(SELECT * FROM read_parquet({_lit(corrected)}) WHERE {ROW_ID} IN "
+                           f"{kept_ids})")
         if plan is None and where:
             # Reference rows left (WP18, RO-13): the rows that stay are numbered 0…n − 1 again, as
             # every reader of the working table expects, and the row map says which source row
@@ -1952,11 +1985,13 @@ def working_stage(ctx: StageContext) -> Bundle:
         ctx.progress(0.85, "Describing the working table")
         described = _describe(table_out, sidecar, started)
     except BaseException:
-        _cleanup(table_out, sidecar, map_out)
+        _cleanup(table_out, sidecar, map_out, *(p for p in (qc_out, qc_rows_out) if p is not None))
         raise
     finally:
         con.close()
         _cleanup(temp)
+        if corrected is not None:
+            _cleanup(corrected)
     data = {**described, **base, "pass_through": False, "aggregation": aggregation,
             "row_map": ROW_MAP if ROW_MAP in files else "identity"}
     return Bundle(data=data, files=files)

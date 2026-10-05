@@ -14,8 +14,10 @@ So here:
   feature block than the rest), and its text says what is true: until they leave, they are rows
   like any other.
 * The ``reference_rows`` repair family answers it, and the naming census's ``sample_roles`` finding
-  where a run-type column (``class``, ``sample_type`` …) names the roles by level: one option,
-  "Exclude the QC rows", recorded as an ``apply_repair``.
+  where a run-type column (``class``, ``sample_type`` …) names the roles by level: "Exclude the QC
+  rows", recorded as an ``apply_repair``. Where an injection order is read, the pooled-QC finding
+  also offers QC-RLSC drift correction first (MS7, ``methods/qc_drift.py``): every injection is
+  corrected from the pooled QCs, and then the QC rows leave here just the same.
 * It executes in the **working table** (:func:`reference_filter`), before the outcome is read and
   before the seal, so the outcome's levels are the participants' (Case/Control: a binary task) and
   no QC row can be drawn into the held-out set. The participant flow counts them on a line of
@@ -147,6 +149,19 @@ def _role_levels(params: Mapping[str, Any], frame: pd.DataFrame) -> tuple[str, l
 
 
 def _offer(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
+    """QC-RLSC first where the pooled-QC finding has an injection order to correct over (MS7, the
+    soundest answer: drift corrected, then the rows leave), then the exclusion on its own."""
+    from turbotab.core.stages.finding_words import family
+
+    rlsc: list[RepairOption] = []
+    if family(str(finding.get("id"))) == "pack::metabolomics::pooled_qc":
+        from turbotab.core.methods.qc_drift import rlsc_offer
+
+        rlsc = rlsc_offer(finding, p, oc)
+    return [*rlsc, *_exclusion(finding, p, oc)]
+
+
+def _exclusion(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list[RepairOption]:
     if p.get("column") and p.get("qc_value") is not None:
         column, levels = str(p["column"]), [str(p["qc_value"])]
     else:
@@ -173,11 +188,45 @@ def _offer(finding: dict[str, Any], p: dict[str, Any], oc: OfferContext) -> list
 
 
 def _marks(option: str, params: Mapping[str, Any]) -> set[tuple[str, str]]:
+    if option != EXCLUDE:
+        from turbotab.core.methods.qc_drift import _marks as rlsc_marks
+
+        return rlsc_marks(option, params)
     return {(str(params.get("column")), f"reference:{level}") for level in params.get("levels") or []}
 
 
-register_family(Family(FAMILY, 9, _offer, {"exclude_rows": "rows"}, marks=_marks),
+def _columns(option: str, params: Mapping[str, Any]) -> list[str]:
+    """The columns an answer takes out of the predictors: none for the exclusion (the label may be
+    the outcome), the QC label, the injection order and the features the QC filters removed for
+    QC-RLSC (``qc_drift._columns_out``)."""
+    if option == EXCLUDE:
+        return []
+    from turbotab.core.methods.qc_drift import _columns_out
+
+    return _columns_out(option, params)
+
+
+EXCLUDE = "exclude_rows"
+RLSC_OPTIONS = ("qc_rlsc_lc", "qc_rlsc_lc_dratio", "qc_rlsc_gc", "qc_rlsc_gc_dratio")
+register_family(Family(FAMILY, 9, _offer,
+                       {EXCLUDE: "rows", **{k: "values" for k in RLSC_OPTIONS}},
+                       columns=_columns, marks=_marks),
                 ["pack::metabolomics::pooled_qc", "pack::metabolomics::sample_roles"])
+
+
+def exclusion_sentence(decision: Any, ctx: Any) -> str:
+    """The methods sentence of an exclusion: the one the finding offered with its count, else the
+    same words without it (a record read with no findings at hand)."""
+    from turbotab.core.voice import _get, _offered_sentence
+
+    said = _offered_sentence(decision, _get(ctx, "finding")) if ctx is not None else None
+    if said:
+        return said
+    params = dict(decision.params or {})
+    levels = params.get("levels") or params.get("qc_levels") or []
+    shown = " or ".join(f"`{v}`" for v in list(levels)[:3])
+    return (f"The rows where `{params.get('column')}` is {shown} (instrument runs, not "
+            f"participants) were excluded as reference rows before the held-out rows were drawn")
 
 
 def reference_rules(dispositions: Any, findings: Any = None) -> list[dict[str, Any]]:
@@ -185,11 +234,13 @@ def reference_rules(dispositions: Any, findings: Any = None) -> list[dict[str, A
     merged (the pooled-QC and naming findings may both name the QC level)."""
     out: dict[str, dict[str, Any]] = {}
     for fam, fid, option, params in _applied(dispositions, findings):
-        if fam.key != FAMILY or option != "exclude_rows" or not params.get("column"):
+        if fam.key != FAMILY or not params.get("column"):
             continue
+        # The exclusion, and QC-RLSC, after which the QC rows leave just the same (MS7).
+        levels = params.get("levels") if option == EXCLUDE else params.get("qc_levels")
         entry = out.setdefault(str(params["column"]),
                                {"column": str(params["column"]), "levels": [], "finding": fid})
-        entry["levels"] += [str(v) for v in params.get("levels") or [] if str(v) not in entry["levels"]]
+        entry["levels"] += [str(v) for v in levels or [] if str(v) not in entry["levels"]]
     return list(out.values())
 
 
@@ -225,4 +276,5 @@ def _before_the_seal(decision: ApplyRepair, ctx: Any) -> None:
 
 register_validator("apply_repair", _before_the_seal)
 
-__all__ = ["FAMILY", "pooled_qc_finding", "reference_filter", "reference_rules"]
+__all__ = ["EXCLUDE", "FAMILY", "exclusion_sentence", "pooled_qc_finding", "reference_filter",
+           "reference_rules"]

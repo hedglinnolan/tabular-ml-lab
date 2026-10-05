@@ -5,7 +5,11 @@
       projects/<pid>/
         project.json               ProjectMeta
         decisions.jsonl            append-only decision log
-        data/raw.parquet           the ingested table (+ raw.info.json sidecar)
+        data/raw.parquet           the ingested table (+ raw.info.json sidecar; raw.labels.json
+                                   when an XPT source carries variable labels)
+        files/<fid>/               a file added to join to the table: its source, its ingested
+                                   raw.parquet and file.json (DATAIN, minimal assembly)
+        codebooks/<cid>/           an imported codebook: codebook.json and its source file
         cache/<stage>/<key>/       disposable stage artifacts
 
 Project ids are ``"p"`` + 10 lowercase hex characters. Every accessor
@@ -187,6 +191,18 @@ class Workspace:
 
     def decisions_path(self, pid: str) -> Path:
         return self.project_dir(pid) / "decisions.jsonl"
+
+    def files_dir(self, pid: str) -> Path:
+        """``projects/<pid>/files/``: the files added to join to the table."""
+        path = self.project_dir(pid) / "files"
+        path.mkdir(exist_ok=True)
+        return path
+
+    def codebooks_dir(self, pid: str) -> Path:
+        """``projects/<pid>/codebooks/``: the codebooks staged for import."""
+        path = self.project_dir(pid) / "codebooks"
+        path.mkdir(exist_ok=True)
+        return path
 
     def uploads_dir(self) -> Path:
         path = self.home / "uploads"

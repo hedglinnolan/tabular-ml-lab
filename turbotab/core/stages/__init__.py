@@ -48,6 +48,20 @@ WP12 (AUDIT_REPORT §5, methods a reviewer expects):
     calibration  heavy   deps: oriented, findings, structure, working,      reads measurement_error, energy_adjustment,
                                cohort, design, target_info                   aggregation, purpose …; requires measurement_error, models
 
+MS8 (MODELING_SEQUENCE §0 ruling 8):
+
+    scales       heavy   deps: working, design, split,              reads scales, purpose, models, missing,
+                               target_info, cohort                   roles …; requires scales, models
+
+    ``design`` reads ``scales`` too: each declared scale's items are scored into one column after the
+    fill (``methods.scales.ScaleScorer``). ``scales`` estimates each scale's reliability and, under
+    inference, its corrected coefficient (``stages.scales``).
+
+The NCI usual-intake method (V2 definition of done, "Dietary, extended"):
+
+    usual_intake heavy   deps: oriented, findings, structure,       reads usual_intake, lens, purpose, grain,
+                               working                               repeat_kind, survey …; requires lens, purpose
+
     ``sensitivity`` refits each chosen family on the rows each analysis's exclusion rules keep (the
     primary beside every-row and any other screen; Banna et al. 2017). ``calibration`` corrects
     energy-adjusted exposures for day-to-day error in the recalls each person's row averages
@@ -100,9 +114,11 @@ ROLE_READS: tuple[str, ...] = ("roles", "roles_unconfirmed", "role_confirmations
 # leave covariates out of an inference model (``decisions.left_out``).
 WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
+from turbotab.core.stages.scales import SCALES_READS, scales_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
 from turbotab.core.stages.target import target_info_stage
+from turbotab.core.stages.usual_intake import USUAL_INTAKE_READS, usual_intake_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
@@ -111,7 +127,10 @@ GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 def build_graph() -> Graph:
     return Graph(
         [
-            Stage("ingest", 1, (), (), ingest_stage, heavy=True, label="Reading the file"),
+            # ingest 2 (wave 1, DATAIN, V2 definition of done §1): SAS transport files are read as R
+            # reads them, and the files joined to the table on a shared identifier, in answer order
+            # (``join_files``), are joined here.
+            Stage("ingest", 2, (), ("joins",), ingest_stage, heavy=True, label="Reading the file"),
             # ── M2: what the table is (M2_CONTRACT §2) ──
             # oriented 3 (WP14): the names are read before the shape, and the shape is scale-aware.
             Stage("oriented", 3, ("ingest",), ("orientation", "feature_table"), oriented_stage,
@@ -172,9 +191,11 @@ def build_graph() -> Graph:
             # findings 16 (audit WP18, RO-13): the pooled-QC level of a Case/Control/QC label is read by
             # variance, with a lever (exclude the reference rows) and text that is true; "something
             # else, or not sure" runs the generic checks alone (RO-11).
+            # findings 17 (wave 1, MS7): zeros a log cannot take, and a batch column's confounding with
+            # the outcome; the pooled-QC finding offers QC-RLSC and its filters beside the exclusion.
             Stage(
                 "findings",
-                16,
+                17,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
@@ -216,7 +237,9 @@ def build_graph() -> Graph:
             # is combined only as the user says.
             # working 7 (audit WP18): reference rows a recorded repair excludes leave here, before
             # the outcome is read and the seal drawn (RO-13); a log-scale outcome is derived (RO-10).
-            Stage("working", 7, ("oriented", "findings", "structure"),
+            # working 8 (wave 1, MS7): QC-RLSC, the QC filters and PQN against the pooled QCs run on
+            # every injection before the seal, and then the QC rows leave as reference rows.
+            Stage("working", 8, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical", "outcome_scale"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -312,7 +335,8 @@ def build_graph() -> Graph:
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
             # cohort 4 (WP17): complete cases read the predictors the adjustment answers keep.
             # cohort 5 (audit WP18, RO-13): reference rows the working table excluded are counted first.
-            Stage("cohort", 5, ("working", "target_info"),
+            # cohort 6 (wave 1, MS7): the pooled QCs a drift correction read leave as reference rows.
+            Stage("cohort", 6, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
                    *WP17_READS), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
@@ -329,10 +353,15 @@ def build_graph() -> Graph:
             # shelf 8 (the readings ledger): its predictors are the settled roles'.
             # shelf 9 (BLUEPRINT §14.3): a predictor's codes counted as the user answered, wherever kept.
             # shelf 10 (WP17): its predictors are the adjustment set's and the grouping's.
-            Stage("shelf", 10, ("working", "cohort", "target_info", "split"),
+            # shelf 11 (wave 1): the screened elastic net at p ≫ n under prediction (MS7); under the
+            # population answer the families with no design-based estimator rank last (MS4).
+            Stage("shelf", 11, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
-                   "outcome_order", "exposure_forms", *WP17_READS),
+                   "outcome_order", "exposure_forms",
+                   # MS4: under the population answer the families with no design-based
+                   # estimator rank last, their block said before they are chosen.
+                   "survey", *WP17_READS),
                   shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
             # design 6: the estimand and coefficient meanings are read off the matrix, and the
@@ -366,9 +395,13 @@ def build_graph() -> Graph:
             # column they name; a text column recorded as amounts never one-hot encoded.
             # design 19 (WP17): the adjustment answers leave covariates out under inference; a
             # grouping answered "adjust for it" enters as fixed effects.
-            Stage("design", 19, ("working", "split", "target_info"),
+            # design 20 (wave 1, MS7): normalization, then values below detection, then the log; the
+            # in-fold D-ratio filter and reference ComBat; a batch confounded with the outcome refused;
+            # a declared scale's items scored into one column after the fill (MS8).
+            Stage("design", 20, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event", "lens", "findings", "exposure_forms", "follow_up", *WP17_READS),
+                   "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
+                   *WP17_READS),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -390,9 +423,11 @@ def build_graph() -> Graph:
             # user confirmed, never by a reader's identifier over the grain answer.
             # fit 15 (ledger repair 2): multiple imputation fills a number with two values as a yes/no.
             # fit 16 (WP17): the intervals cluster by the grouping the cluster question named.
-            Stage("fit", 16, ("working", "design", "split", "target_info", "cohort"),
+            # fit 17 (wave 1): an exposure family's recorded multiplicity method (MS7); under the
+            # population answer every family is design-based or blocked and recorded (MS4).
+            Stage("fit", 17, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
-                   *WP17_READS),
+                   "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
             # substitution 6: a swap can move a share of energy (WP12a); a random intercept's band
@@ -411,7 +446,9 @@ def build_graph() -> Graph:
             # only where it excludes every other unit (never alcohol or a minor source); the parts of
             # totals as the user confirmed them.
             # substitution 13 (WP17): as fit 16.
-            Stage("substitution", 13, ("working", "fit", "design"),
+            # substitution 14 (wave 1, MS4): under the population answer the curve is the
+            # population's, weighted, with a linearized band.
+            Stage("substitution", 14, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -440,7 +477,9 @@ def build_graph() -> Graph:
             # sensitivity 6 (recognition's leash): its clusters read settled roles only.
             # sensitivity 8 (ledger repair 2): as fit 15.
             # sensitivity 9 (WP17): as fit 16.
-            Stage("sensitivity", 9, ("working", "design", "split", "target_info"),
+            # sensitivity 10 (wave 1, MS4): a family with no design-based estimator is blocked under
+            # the population answer.
+            Stage("sensitivity", 10, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
@@ -449,7 +488,8 @@ def build_graph() -> Graph:
             # confirmations; calibration applies only on an answered repeat kind.
             # calibration 6 (ledger repair 2): as design 17.
             # calibration 7 (WP17): as fit 16.
-            Stage("calibration", 7,
+            # calibration 8 (wave 1, MS4): blocked and recorded under the population answer.
+            Stage("calibration", 8,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
@@ -459,6 +499,21 @@ def build_graph() -> Graph:
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),
+            # scales 1 (MS8): each declared scale's reliability (ω; α labeled customary) and, under
+            # inference, its coefficient corrected by regression calibration given the covariates,
+            # beside the uncorrected one; items imputed before scoring under multiple imputation.
+            # scales 2 (wave 1, MS4): under the population answer the correction is blocked and
+            # recorded, its exit the sample-only attestation.
+            Stage("scales", 2, ("working", "design", "split", "target_info", "cohort"),
+                  SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
+                  label="Estimating each scale's reliability"),
+            # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
+            # dietary lens with repeated recalls the usual-intake distribution is offered as its own
+            # estimand, and each recorded component's distribution is fit (amount-only or two-part).
+            Stage("usual_intake", 1, ("oriented", "findings", "structure", "working"),
+                  USUAL_INTAKE_READS, usual_intake_stage, heavy=True,
+                  requires=("lens", "purpose"),
+                  label="Estimating usual-intake distributions"),
         ]
     )
 

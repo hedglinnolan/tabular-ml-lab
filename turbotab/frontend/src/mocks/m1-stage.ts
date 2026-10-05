@@ -441,6 +441,8 @@ class DemoProject {
           level: 0.95,
           min_ok_share: 0.9,
           caption: `Shaded bands: 95% intervals from ${band.n_boot} refits of each model on bootstrap resamples of ${band.rows.toLocaleString("en-US")} training rows (mock).`,
+          method: "bootstrap",
+          df: null,
         }
       : null;
     art.band_estimate = banded ? null : { n_boot: band.n_boot, seconds: band.seconds };

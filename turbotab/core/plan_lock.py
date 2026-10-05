@@ -98,6 +98,9 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "calibration":
         return any(e.get("estimate") is not None or e.get("naive") is not None
                    for e in artifact.get("exposures") or [] if isinstance(e, Mapping))
+    if stage == "scales":
+        return any(isinstance(sc, Mapping) and sc.get("correction") is not None
+                   for sc in artifact.get("scales") or [])
     return False
 
 

@@ -1,40 +1,59 @@
-"""Design-based estimation for complex surveys (AUDIT_REPORT §5 WP10: ME-06, and the minor D20/G20).
+"""Design-based estimation for complex surveys (AUDIT_REPORT §5 WP10: ME-06, and the minor D20/G20;
+MODELING_SEQUENCE §0 ruling 6 and §5 MS4).
 
 Under inference, when the user answers that the estimates describe the surveyed population
-(``set_survey``, ``estimand = "population"``), the linear family's coefficient table is made here
-rather than in :mod:`turbotab.core.models.inference`:
+(``set_survey``, ``estimand = "population"``), every family and every display is design-based, or
+it is blocked and recorded (MODELING_SEQUENCE §4, "population estimand without a design-based
+estimator"). What is design-based:
 
-* **The estimate** solves the survey-weighted estimating equations ``Σ_i w_i s_i(β) = 0`` over the
-  analysis rows (the *domain*), ``s_i`` each row's score: weighted least squares for a continuous
-  outcome, weighted (pseudo-)maximum likelihood for a logistic or multinomial one (Binder 1983,
-  *Int Stat Rev* 51:279).
-* **The variance** is Taylor linearization (the sandwich ``D V̂{Ĝ(β)} D′``): ``D`` the inverse of
-  the weighted information, and ``V̂{Ĝ}`` the design-based variance of a total, here the total of
-  the weighted scores ``u_i = w_i s_i``, from the spread of PSU totals within strata:
-  ``Σ_h n_h/(n_h − 1) Σ_j (z_hj − z̄_h)(z_hj − z̄_h)′``, ``z_hj`` the sum of ``u_i`` over PSU j of
-  stratum h. PSUs are taken as drawn with replacement at the first stage (no finite-population
-  correction), as NCHS's masked variance units are meant to be used. This is Stata's
-  ``vce(linearized)`` ([SVY] *Variance estimation*, equation (1) and "Linearized/robust variance
-  estimation"), R's ``survey::svyglm`` and SUDAAN's Taylor series option.
-* **Domains, not deletions.** Every row of the working table keeps its stratum and PSU in the
-  variance; rows outside the analysis (an eligibility rule, a missing value, a zero weight, a
-  held-out row) contribute a score of zero. NHANES Analytic Guidelines 2011–2016 §3.2.3.1: "the
-  entire set of data containing the appropriate weights for a particular survey cycle must be used
-  to obtain the correct variance estimates. The estimation procedure must indicate which records
-  are in the subgroup of interest."
-* **Degrees of freedom** are the number of PSUs minus the number of strata, counting only those
-  that hold analysis rows (§3.2.3.2: "If an analysis is performed on a subgroup of cases, the
-  degrees of freedom should be based on the number of strata and PSUs containing the observations
-  of interest"; Stata's ``d = n − L`` and its ``dofsubpop``). Intervals are ``β̂ ± t(d) SE``.
-* **A stratum with a single PSU** has no spread of its own. Its PSU total is centered at the mean
-  of all PSU totals, with ``n_h/(n_h − 1)`` taken as 1: R's ``options(survey.lonely.psu =
-  "adjust")`` ("center the stratum at the population mean rather than the stratum mean") and
-  Stata's ``singleunit(centered)``. It is conservative, and the table names every such stratum.
+* **The linear family** (least squares, logistic, multinomial logistic): :func:`survey_table`.
+* **The Cox model**: Binder's (1992, *Int Stat Rev* 60:249) pseudo-likelihood, the partial
+  likelihood with each row weighted, Efron's ties as R's ``coxph`` weights them
+  (:func:`turbotab.core.models.survival.survey_cox_table`); R's ``survey::svycoxph``.
+* **The proportional-odds model**: the weighted cumulative-logit likelihood
+  (:func:`turbotab.core.models.ordinal.survey_ordinal_table`); R's ``survey::svyolr``.
+* **The substitution curve** of the linear family: refit with the weights, averaged over the
+  population, its band by linearization (:func:`design_curve`; Graubard & Korn 1999).
+* **Joint tests** (a spline's overall and nonlinear tests) on a design-based covariance: the
+  adjusted Wald F (:func:`adjusted_wald`).
+
+**Every estimate** solves the survey-weighted estimating equations ``Σ_i w_i s_i(β) = 0`` over the
+analysis rows (the *domain*), ``s_i`` each row's score (Binder 1983, *Int Stat Rev* 51:279).
+
+**The variance** is Taylor linearization (the sandwich ``D V̂{Ĝ(β)} D′``): ``D`` the inverse of the
+weighted information, and ``V̂{Ĝ}`` the design-based variance of a total, here the total of the
+weighted scores ``u_i = w_i s_i``, from the spread of PSU totals within strata:
+``Σ_h n_h/(n_h − 1) Σ_j (z_hj − z̄_h)(z_hj − z̄_h)′``, ``z_hj`` the sum of ``u_i`` over PSU j of
+stratum h. PSUs are taken as drawn with replacement at the first stage (no finite-population
+correction), as NCHS's masked variance units are meant to be used. This is Stata's
+``vce(linearized)`` ([SVY] *Variance estimation*, equation (1) and "Linearized/robust variance
+estimation"), R's ``survey::svyrecvar`` and SUDAAN's Taylor series option.
+
+**Domains, not deletions.** Every row of the working table keeps its stratum and PSU in the
+variance; rows outside the analysis (an eligibility rule, a missing value, a zero weight, a
+held-out row) contribute a score of zero. NHANES Analytic Guidelines 2011–2016 §3.2.3.1: "the
+entire set of data containing the appropriate weights for a particular survey cycle must be used
+to obtain the correct variance estimates. The estimation procedure must indicate which records are
+in the subgroup of interest."
+
+**Degrees of freedom** are the number of PSUs minus the number of strata, counting only those that
+hold analysis rows (§3.2.3.2: "If an analysis is performed on a subgroup of cases, the degrees of
+freedom should be based on the number of strata and PSUs containing the observations of
+interest"; Stata's ``d = n − L`` and its ``dofsubpop``). Intervals are ``β̂ ± t(d) SE``.
+
+**A stratum with a single PSU** (a *lonely* PSU) has no spread of its own. The stated rule is R's
+``options(survey.lonely.psu = "adjust")`` ("the data for the single-PSU stratum are centered at the
+sample grand mean rather than the stratum mean"), as R's ``survey`` 4.5 computes it
+(``onestage``/``onestrat``): the grand mean is the total of the scores over the number of PSUs in
+the strata that hold analysis rows, ``n_h/(n_h − 1)`` is taken as 1, and a stratum that holds no
+analysis row adds nothing. A stratum whose other PSUs hold no analysis row is not lonely: its
+empty PSUs keep their zero totals (R's default ``survey.adjust.domain.lonely = FALSE``). The rule is
+conservative, and every table names the strata it applied to.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -52,8 +71,12 @@ from turbotab.core.models.inference import (
 # "fewer than 8 degrees of freedom be reviewed by a clearance official".
 FEW_DESIGN_DF = 8
 LONELY_METHOD = "centered"  # R survey.lonely.psu = "adjust"; Stata singleunit(centered)
+LONELY_PSU = "adjust"  # the R option the rule matches, named in captions and the record
+LONELY_RULE = ("centered at the mean PSU total of the strata that hold analysis rows, its "
+               "n_h/(n_h − 1) taken as 1 (R survey's lonely.psu \"adjust\")")
 _NEWTON_TOL = 1e-10
 _NEWTON_MAX = 100
+LEVEL = 0.95
 
 
 # ── the design ───────────────────────────────────────────────────────────────
@@ -177,14 +200,8 @@ class DesignVariance:
     lonely: list[Any] = field(default_factory=list)  # strata with one PSU, by their own values
 
 
-def total_variance(u: np.ndarray, design: SurveyDesign, domain: np.ndarray) -> DesignVariance:
-    """The design-based variance of ``Σ_i u_i`` (``u``: design rows × P, zero outside the domain).
-
-    ``Σ_h c_h Σ_j (z_hj − m_h)(z_hj − m_h)′`` over every PSU of the design: ``z_hj`` the PSU's
-    total, ``m_h`` the stratum's mean PSU total and ``c_h = n_h/(n_h − 1)``; for a stratum with one
-    PSU, ``m_h`` is the mean over every PSU of the design and ``c_h = 1`` (:data:`LONELY_METHOD`).
-    """
-    u = np.asarray(u, dtype=float)
+def _psu_totals(u: np.ndarray, design: SurveyDesign) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(PSU totals G × P, each PSU's stratum, each stratum's number of PSUs in the design)."""
     P = u.shape[1]
     G = int(design.psu.max()) + 1 if len(design.psu) else 0
     totals = np.zeros((G, P))
@@ -193,26 +210,52 @@ def total_variance(u: np.ndarray, design: SurveyDesign, domain: np.ndarray) -> D
     stratum_of = np.full(G, -1, dtype=np.int64)
     stratum_of[design.psu] = design.stratum
     H = int(stratum_of.max()) + 1 if G else 0
-    per_stratum = np.bincount(stratum_of, minlength=H)
+    return totals, stratum_of, np.bincount(stratum_of, minlength=H)
+
+
+def _deviations(totals: np.ndarray, stratum_of: np.ndarray, per_stratum: np.ndarray,
+                present: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Each PSU total less its center, the factor ``n_h/(n_h − 1)`` it is scaled by, and which
+    strata are lonely and present (the stated rule; module docstring)."""
+    H = len(per_stratum)
+    P = totals.shape[1]
     sums = np.zeros((H, P))
     for j in range(P):
         sums[:, j] = np.bincount(stratum_of, weights=totals[:, j], minlength=H)
     means = sums / np.maximum(per_stratum, 1)[:, None]
-    lonely = per_stratum == 1
+    lonely = (per_stratum == 1) & present
     center = means[stratum_of]
     if lonely.any():
-        grand = totals.mean(axis=0)
+        # R's recentering: the total over every PSU, divided by the number of PSUs of the strata
+        # that hold analysis rows (``onestage``: colSums(x) / sum of nPSU over its strata).
+        grand = totals.sum(axis=0) / float(per_stratum[present].sum())
         center[lonely[stratum_of]] = grand
     n_h = per_stratum[stratum_of].astype(float)
     scale = np.where(n_h > 1, n_h / np.maximum(n_h - 1, 1), 1.0)
-    deviations = totals - center
-    meat = (deviations * scale[:, None]).T @ deviations
+    deviations = (totals - center) * present[stratum_of][:, None]
+    return deviations, scale, lonely
+
+
+def total_variance(u: np.ndarray, design: SurveyDesign, domain: np.ndarray) -> DesignVariance:
+    """The design-based variance of ``Σ_i u_i`` (``u``: design rows × P, zero outside the domain).
+
+    ``Σ_h c_h Σ_j (z_hj − m_h)(z_hj − m_h)′`` over the PSUs of every stratum holding a domain row:
+    ``z_hj`` the PSU's total, ``m_h`` the stratum's mean PSU total (its PSUs with no domain row
+    count, at zero) and ``c_h = n_h/(n_h − 1)``; a lonely stratum is centered by the stated rule
+    (module docstring) with ``c_h = 1``.
+    """
+    u = np.asarray(u, dtype=float)
+    totals, stratum_of, per_stratum = _psu_totals(u, design)
     in_domain = np.asarray(domain, dtype=bool)
+    present = np.zeros(len(per_stratum), dtype=bool)
+    present[np.unique(design.stratum[in_domain])] = True
+    deviations, scale, lonely = _deviations(totals, stratum_of, per_stratum, present)
+    meat = (deviations * scale[:, None]).T @ deviations
     domain_psu = int(len(np.unique(design.psu[in_domain])))
     domain_strata = int(len(np.unique(design.stratum[in_domain])))
     labels = design.stratum_labels
     lonely_values = [labels[h] if h < len(labels) else h for h in np.flatnonzero(lonely)]
-    return DesignVariance(meat=(meat + meat.T) / 2, n_psu=G, n_strata=H,
+    return DesignVariance(meat=(meat + meat.T) / 2, n_psu=len(totals), n_strata=len(per_stratum),
                           df=domain_psu - domain_strata, domain_psu=domain_psu,
                           domain_strata=domain_strata, lonely=lonely_values)
 
@@ -321,7 +364,49 @@ def weighted_multinomial(X: np.ndarray, codes: np.ndarray, K: int, w: np.ndarray
     return WeightedFit(B.T.ravel(), rows * w[:, None], info, converged)
 
 
-# ── the table ────────────────────────────────────────────────────────────────
+# ── the domain and the design-based table ────────────────────────────────────
+
+
+@dataclass
+class Domain:
+    """Where the analysis rows (indexed by row id) sit in the design.
+
+    ``keep`` marks the analysis rows in the domain: placed in the design with a positive weight.
+    ``at`` is each kept row's position among the design's rows, ``weight`` its weight scaled to
+    average one over the domain (an estimate and its sandwich do not change with a common factor,
+    and the fits' tolerances stay on the scale of the rows), ``raw`` its weight as built.
+    """
+
+    keep: np.ndarray
+    at: np.ndarray
+    weight: np.ndarray
+    raw: np.ndarray
+    left: dict[str, int]
+
+    @property
+    def n(self) -> int:
+        return int(self.keep.sum())
+
+    def mask(self, design: SurveyDesign) -> np.ndarray:
+        """The domain over the design's rows."""
+        out = np.zeros(design.n_rows, dtype=bool)
+        out[self.at] = True
+        return out
+
+
+def domain_of(index: Any, design: SurveyDesign) -> Domain:
+    """The domain of the analysis rows ``index`` (row ids) in ``design``."""
+    ids = np.asarray(index, dtype=np.int64)
+    position = pd.Index(design.row_ids).get_indexer(ids)
+    placed = position >= 0
+    weight = np.full(len(ids), np.nan)
+    weight[placed] = design.weight[position[placed]]
+    keep = placed & np.isfinite(weight) & (weight > 0)
+    raw = weight[keep]
+    n = int(keep.sum())
+    scaled = raw * (n / float(raw.sum())) if n else raw
+    return Domain(keep=keep, at=position[keep], weight=scaled, raw=raw,
+                  left={"unplaced": int((~placed).sum()), "unweighted": int((placed & ~keep).sum())})
 
 
 def _caption(design: SurveyDesign, var: DesignVariance) -> str:
@@ -339,9 +424,9 @@ def _caption(design: SurveyDesign, var: DesignVariance) -> str:
             f"minus strata.")
 
 
-def _info(estimator: str, caption: str, design: SurveyDesign, var: DesignVariance | None,
-          n_domain: int, **extra: Any) -> dict[str, Any]:
-    survey = {
+def survey_info(design: SurveyDesign, var: DesignVariance | None, n_domain: int) -> dict[str, Any]:
+    """The ``survey`` field of a design-based table's ``inference`` (``SurveyInference``)."""
+    return {
         "weight": design.weight_column, "strata": design.strata_column, "psu": design.psu_column,
         "weight_note": design.weight_note, "psu_note": design.psu_note,
         "n_design": design.n_rows, "n_domain": int(n_domain),
@@ -351,9 +436,13 @@ def _info(estimator: str, caption: str, design: SurveyDesign, var: DesignVarianc
         "lonely_strata": [str(s) for s in (var.lonely if var else design.lonely_strata())],
         "lonely_method": LONELY_METHOD,
     }
+
+
+def _info(estimator: str, caption: str, design: SurveyDesign, var: DesignVariance | None,
+          n_domain: int, **extra: Any) -> dict[str, Any]:
     return {"estimator": estimator, "covariance": "design", "caption": caption,
             "grouped_by": None, "n_clusters": None, "n_missing_ids": 0, "separated": [],
-            "refused": None, "exits": [], "survey": survey, **extra}
+            "refused": None, "exits": [], "survey": survey_info(design, var, n_domain), **extra}
 
 
 def _refused(names: Sequence[str], est: np.ndarray | None, estimator: str, design: SurveyDesign,
@@ -396,9 +485,9 @@ def _concerns(design: SurveyDesign, var: DesignVariance, n_domain: int, n_coef: 
         listed = _and([str(s) for s in var.lonely[:6]]) + (" and more" if len(var.lonely) > 6 else "")
         k = len(var.lonely)
         out.append(f"{k} {'stratum has' if k == 1 else 'strata have'} a single PSU ({listed}): "
-                   f"{'its PSU total is' if k == 1 else 'each PSU total is'} centered at the mean "
-                   f"of all PSU totals (R survey's lonely.psu \"adjust\", Stata's "
-                   f"singleunit(centered)), which overstates rather than understates the variance.")
+                   f"{'its PSU total is' if k == 1 else 'each PSU total is'} {LONELY_RULE}, as "
+                   f"Stata's singleunit(centered) does, which overstates rather than understates "
+                   f"the variance.")
     if var.df < FEW_DESIGN_DF:
         out.append(f"Only {var.df} design degrees of freedom ({var.domain_psu} PSUs minus "
                    f"{var.domain_strata} strata): NCHS asks that estimates on fewer than "
@@ -407,6 +496,35 @@ def _concerns(design: SurveyDesign, var: DesignVariance, n_domain: int, n_coef: 
         out.append(f"{n_coef} coefficients rest on {var.df} design degrees of freedom: each "
                    f"interval holds, but no joint test of them all can be made.")
     return out
+
+
+def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray,
+                 information: np.ndarray, design: SurveyDesign, domain: Domain, estimator: str,
+                 *, converged: bool = True, bread: np.ndarray | None = None) -> InferenceTable:
+    """The design-based table of an M-estimator fit on the domain's rows.
+
+    ``scores`` are the kept rows' weighted scores ``w_i s_i(β̂)`` (domain rows × P), ``information``
+    the weighted information ``Σ w_i I_i(β̂)`` (or ``bread``, its inverse, when the fit has it). The
+    covariance is the sandwich over the design (module docstring); the intervals are on t(d)."""
+    u = np.zeros((design.n_rows, scores.shape[1]))
+    u[domain.at] = scores
+    var = total_variance(u, design, domain.mask(design))
+    B = np.linalg.pinv(information) if bread is None else bread
+    V = B @ var.meat @ B
+    V = (V + V.T) / 2
+    se = np.sqrt(np.clip(np.diag(V), 0, None))
+    if var.df < 1:
+        return _refused(labels, estimate, estimator, design, domain.n,
+                        f"The analysis rows lie in {var.domain_psu} PSU"
+                        f"{'s' if var.domain_psu != 1 else ''} of {var.domain_strata} "
+                        f"strat{'a' if var.domain_strata != 1 else 'um'}: no design degrees of "
+                        f"freedom are left for an interval.")
+    rows = _t_rows(labels, estimate, se, np.full(len(estimate), float(var.df)))
+    concerns = _concerns(design, var, domain.n, len(estimate), domain.left)
+    if not converged:
+        concerns.append("The weighted fit stopped before converging; treat these numbers with care.")
+    return InferenceTable(rows, _info(estimator, _caption(design, var), design, var, domain.n),
+                          concerns, cov=V)
 
 
 def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
@@ -421,26 +539,16 @@ def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any]
 
     exog = sm.add_constant(matrix.astype(float), has_constant="add")
     names = ["(intercept)" if c == "const" else str(c) for c in exog.columns]
-    ids = np.asarray(matrix.index, dtype=np.int64)
-    position = pd.Index(design.row_ids).get_indexer(ids)
-    placed = position >= 0
-    weight = np.full(len(ids), np.nan)
-    weight[placed] = design.weight[position[placed]]
-    weighted = placed & np.isfinite(weight) & (weight > 0)
-    left = {"unplaced": int((~placed).sum()), "unweighted": int((placed & ~weighted).sum())}
-    X = exog.to_numpy(dtype=float)[weighted]
-    yv = np.asarray(y)[weighted]
-    n_domain = int(weighted.sum())
-    # Weights scaled to average one over the domain: the estimate and the sandwich are unchanged by
-    # a common factor, and the fits' tolerances stay on the scale of the rows.
-    w = weight[weighted] * (n_domain / float(weight[weighted].sum())) if n_domain else weight[weighted]
-    rows_at = position[weighted]
+    domain = domain_of(matrix.index, design)
+    X = exog.to_numpy(dtype=float)[domain.keep]
+    yv = np.asarray(y)[domain.keep]
+    w = domain.weight
     estimator = {"regression": "survey-weighted least squares",
                  "binary": "survey-weighted logistic regression (pseudo-maximum likelihood)"}.get(
         task, "survey-weighted multinomial logistic regression (pseudo-maximum likelihood)")
-    if n_domain <= X.shape[1]:
-        return _refused(names, None, estimator, design, n_domain,
-                        f"Only {n_domain:,} analysis rows carry a positive weight and a place in "
+    if domain.n <= X.shape[1]:
+        return _refused(names, None, estimator, design, domain.n,
+                        f"Only {domain.n:,} analysis rows carry a positive weight and a place in "
                         f"the design, too few for {X.shape[1]} coefficients.")
     labels = names
     if task == "regression":
@@ -452,7 +560,7 @@ def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any]
         separated = _named(names, separated_columns(X, event))
         if separated:
             verb = "separates" if len(separated) == 1 else "separate"
-            return _refused(names, None, estimator, design, n_domain,
+            return _refused(names, None, estimator, design, domain.n,
                             f"{_and(separated)} {verb} the outcome among the weighted rows, so the "
                             f"weighted log-odds is infinite and no design-based interval exists.",
                             ({"label": f"Leave {_and(separated)} out, or merge its rare levels",
@@ -468,27 +576,8 @@ def survey_table(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any]
         q = K - 1
         labels = [f"{n} [{levels[k + 1]}]" for k in range(q) for n in names]
         fit = weighted_multinomial(X, codes, K, w)
-    u = np.zeros((design.n_rows, fit.scores.shape[1]))
-    u[rows_at] = fit.scores
-    domain = np.zeros(design.n_rows, dtype=bool)
-    domain[rows_at] = True
-    var = total_variance(u, design, domain)
-    bread = np.linalg.pinv(fit.information)
-    V = bread @ var.meat @ bread
-    se = np.sqrt(np.clip(np.diag((V + V.T) / 2), 0, None))
-    if var.df < 1:
-        return _refused(labels, fit.estimate, estimator, design, n_domain,
-                        f"The analysis rows lie in {var.domain_psu} PSU"
-                        f"{'s' if var.domain_psu != 1 else ''} of {var.domain_strata} "
-                        f"strat{'a' if var.domain_strata != 1 else 'um'}: no design degrees of "
-                        f"freedom are left for an interval.")
-    rows = _t_rows(labels, fit.estimate, se, np.full(len(fit.estimate), float(var.df)))
-    concerns = _concerns(design, var, n_domain, len(fit.estimate), left)
-    if not fit.converged:
-        concerns.append("The weighted fit stopped before converging; treat these numbers with care.")
-    table = InferenceTable(rows, _info(estimator, _caption(design, var), design, var, n_domain),
-                           concerns)
-    return table
+    return design_table(labels, fit.estimate, fit.scores, fit.information, design, domain,
+                        estimator, converged=fit.converged)
 
 
 def design_df(design: SurveyDesign, domain_ids: Sequence[int]) -> int:
@@ -498,8 +587,506 @@ def design_df(design: SurveyDesign, domain_ids: Sequence[int]) -> int:
     return int(len(np.unique(design.psu[at])) - len(np.unique(design.stratum[at])))
 
 
+# ── joint tests on a design-based covariance ─────────────────────────────────
+
+
+def adjusted_wald(W: float, q: int, d: int) -> tuple[float, float, float] | None:
+    """The adjusted Wald test of q coefficients on d design degrees of freedom: ``F = (d − q + 1)
+    W / (d q)`` on (q, d − q + 1) (Korn & Graubard 1990, *Am Stat* 44:270; Stata's ``test`` after
+    ``svy``, SUDAAN's default). (F, denominator df, p); None when d < q, where no joint test can be
+    made."""
+    from scipy import stats
+
+    den = d - q + 1
+    if q < 1 or den < 1:
+        return None
+    F = (den * W) / (d * q)
+    return F, float(den), float(stats.f.sf(F, q, den))
+
+
+# ── families with no design-based estimator: block and record ────────────────
+
+# What the population answer offers in their place, by task: a family that has one.
+_DESIGN_FAMILY = {"regression": "linear", "binary": "linear", "multiclass": "linear",
+                  "ordinal": "proportional_odds", "time_to_event": "cox"}
+_DESIGN_LABEL = {
+    ("linear", "regression"): "survey-weighted least squares",
+    ("linear", "binary"): "survey-weighted logistic regression",
+    ("linear", "multiclass"): "survey-weighted multinomial logistic regression",
+    ("linear", "ordinal"): "survey-weighted multinomial logistic regression",
+    ("proportional_odds", "ordinal"): "the survey-weighted proportional-odds model",
+    ("cox", "time_to_event"): "survey-weighted Cox regression",
+}
+SAMPLE_EXIT = "Estimate for these participants instead: record the sample-only attestation"
+
+
+def has_design_estimator(family: Any, task: str) -> bool:
+    """Whether ``family`` estimates ``task`` design-based (its ``inference`` takes the design)."""
+    import inspect
+
+    fn = getattr(family, "inference", None)
+    if fn is None or task not in getattr(family, "tasks", ()):
+        return False
+    return "survey" in inspect.signature(fn).parameters
+
+
+def design_family(task: str) -> str | None:
+    """The family that estimates ``task`` over the design, offered as the exit."""
+    return _DESIGN_FAMILY.get(task)
+
+
+def no_design_estimator(family: Any, task: str, models: Sequence[str] | None = None,
+                        what: str = "coefficients") -> InferenceTable:
+    """The table of a family with no design-based estimator under the population answer: blocked
+    and recorded (MODELING_SEQUENCE §4). Its exits: the family that has one for this task (the
+    chosen families with this one replaced), and the sample-only attestation."""
+    label = getattr(family, "label", str(family))
+    replacement = design_family(task)
+    reason = (f"{label} has no design-based estimator, so its {what} would describe these "
+              f"participants, not the surveyed population the survey answer names, and any "
+              f"interval would ignore the strata and PSUs.")
+    exits: list[dict[str, Any]] = []
+    if replacement is not None and replacement != getattr(family, "key", None):
+        chosen = list(models or [getattr(family, "key", "")])
+        swapped = list(dict.fromkeys(replacement if m == getattr(family, "key", None) else m
+                                     for m in chosen))
+        exits.append({"label": f"Use {_DESIGN_LABEL.get((replacement, task), replacement)}",
+                      "decision": {"kind": "select_models", "models": swapped}})
+    exits.append({"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}})
+    return blocked(reason, exits, estimator="not fitted: no design-based estimator for the "
+                                            "surveyed population")
+
+
+def population_shelf(ranked: Sequence[tuple[Any, Any]], task: str) -> list[tuple[Any, Any]]:
+    """The shelf under the population answer (MS4): every family with a design-based estimator for
+    ``task`` first, in its order, then the rest, each with the concern that says its estimates
+    will be blocked. The shelf is never shortened (BLUEPRINT §11.3: the menu stays whole)."""
+    from turbotab.core.models.base import Assessment
+
+    replacement = design_family(task)
+    named = _DESIGN_LABEL.get((replacement, task), replacement) if replacement else None
+    instead = f"; {named} has one" if named else ""
+    out = []
+    for family, judged in ranked:
+        if has_design_estimator(family, task):
+            out.append((family, judged))
+            continue
+        concern = (f"Under the surveyed population it has no design-based estimator, so its "
+                   f"estimates are blocked and recorded{instead}.")
+        out.append((family, Assessment(judged.score, judged.fit, (concern, *judged.concerns))))
+    return sorted(out, key=lambda fa: not has_design_estimator(fa[0], task))
+
+
+# ── the substitution curve over the design (Graubard & Korn 1999) ────────────
+
+
+@dataclass
+class DesignFit:
+    """The linear family's design-based fit on a pipeline's model matrix, for curves.
+
+    ``beta`` on the matrix with its intercept first; ``influence`` each kept row's influence on
+    β̂ (kept rows × P: the bread times the row's weighted score), so ``Σ_i influence_i`` is β̂'s
+    linearized error; ``link`` the inverse link, identity or logistic."""
+
+    beta: np.ndarray
+    influence: np.ndarray
+    domain: Domain
+    design: SurveyDesign
+    link: str
+
+    def mean(self, matrix: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """(prediction, its derivative with respect to η, the matrix with its intercept)."""
+        X = np.column_stack([np.ones(len(matrix)), matrix.to_numpy(dtype=float)])
+        eta = X @ self.beta
+        if self.link == "identity":
+            return eta, np.ones(len(eta)), X
+        mu = 0.5 * (1.0 + np.tanh(0.5 * eta))
+        return mu, mu * (1.0 - mu), X
+
+
+def design_fit(task: str, matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None,
+               design: SurveyDesign) -> DesignFit:
+    """The fit :func:`survey_table` makes, kept for a curve. Raises ValueError, saying why, where
+    the table would be refused."""
+    import statsmodels.api as sm
+
+    if task not in ("regression", "binary"):
+        raise ValueError("A design-based curve follows a numeric or a yes/no outcome.")
+    exog = sm.add_constant(matrix.astype(float), has_constant="add")
+    domain = domain_of(matrix.index, design)
+    X = exog.to_numpy(dtype=float)[domain.keep]
+    yv = np.asarray(y)[domain.keep]
+    if domain.n <= X.shape[1]:
+        raise ValueError(f"Only {domain.n:,} analysis rows carry a positive weight and a place in "
+                         f"the design, too few for {X.shape[1]} coefficients.")
+    if task == "regression":
+        fit = weighted_least_squares(X, yv.astype(float), domain.weight)
+        link = "identity"
+    else:
+        if classes is None or len(classes) != 2:
+            raise ValueError("A binary outcome needs exactly two classes.")
+        event = (yv == classes[1]).astype(float)
+        if separated_columns(X, event):
+            raise ValueError("A column separates the outcome among the weighted rows, so the "
+                             "weighted log-odds is infinite.")
+        fit = weighted_logistic(X, event, domain.weight)
+        link = "logit"
+    bread = np.linalg.pinv(fit.information)
+    return DesignFit(beta=fit.estimate, influence=fit.scores @ bread, domain=domain, design=design,
+                     link=link)
+
+
+def design_curve(fit: DesignFit, matrix_of: Callable[[pd.DataFrame], pd.DataFrame],
+                 X: pd.DataFrame, shift: Any, ks: Sequence[float], live: Sequence[bool],
+                 level: float = LEVEL) -> dict[str, Any]:
+    """The curve over the surveyed population and its band, at each k.
+
+    ``X`` holds the domain's rows (raw inputs, indexed by row id, in the order of ``fit.domain``'s
+    kept rows); ``matrix_of`` is the pipeline up to its model step; ``shift`` the curve's
+    :class:`~turbotab.core.methods.substitution.Shift`; ``live`` the point curve's own. The fixed
+    population is the rows on support at every live k, as the point curve's is.
+
+    At each k the estimate is the population mean of the change, ``θ_k = Σ w_i m_i Δ_i / Σ w_i
+    m_i`` over the rows on support (``m_i``), ``Δ_i`` the change in the design-based fit's
+    prediction. Its variance is the design variance of its linearization (Graubard & Korn 1999,
+    *Biometrics* 55:652, predictive margins): ``z_i = w_i m_i (Δ_i − θ_k)/Σ w m + ψ_iᵀ g_k``, with
+    ``ψ_i`` the row's influence on β̂ and ``g_k = Σ w m ∂Δ_i/∂β / Σ w m``, so it carries both the
+    error of fitting the model and which people were sampled. The band is ``θ_k ± t(d) SE_k`` on
+    the design degrees of freedom. Returns ``delta``, ``ci_low``, ``ci_high``, ``se``,
+    ``fixed_delta``, ``fixed_ci_low``, ``fixed_ci_high``, ``df`` and the ``variance``."""
+    from scipy import stats
+
+    if len(X) != fit.domain.n:
+        raise ValueError("The curve's rows are the domain's kept rows.")
+    k_values = np.asarray(list(ks), dtype=float)
+    live = np.asarray(list(live), dtype=bool)
+    weight = fit.domain.raw
+    valid = np.flatnonzero(shift.valid(X))
+    base_frame = X.iloc[valid]
+    base, base_d, base_X = fit.mean(matrix_of(base_frame))
+    w = weight[valid]
+    K = len(k_values)
+    P = len(fit.beta)
+    checked: dict[int, tuple[Any, np.ndarray]] = {}
+    for i, k in enumerate(k_values):
+        if live[i]:
+            shifted, amount, composition = shift.checks(base_frame, float(k))
+            checked[i] = (shifted, amount & composition)
+    fixed = (np.logical_and.reduce([on for _, on in checked.values()]) if checked
+             else np.zeros(len(valid), dtype=bool))
+    z = np.zeros((fit.domain.n, 2 * K))
+    theta = np.full(2 * K, np.nan)
+    for i, (shifted, on) in checked.items():
+        rows = np.flatnonzero(on)
+        if not len(rows):
+            continue
+        moved, moved_d, moved_X = fit.mean(matrix_of(shifted.iloc[rows]))
+        diff = moved - base[rows]
+        grad = moved_X * moved_d[:, None] - base_X[rows] * base_d[rows][:, None]
+        for slot, chosen in ((i, np.ones(len(rows), dtype=bool)), (K + i, fixed[rows])):
+            if not chosen.any():
+                continue
+            wk = w[rows] * chosen
+            total = float(wk.sum())
+            value = float(wk @ diff) / total
+            g = (wk @ grad) / total if P else np.zeros(0)
+            theta[slot] = value
+            z[valid[rows], slot] += wk * (diff - value) / total
+            z[:, slot] += fit.influence @ g
+    u = np.zeros((fit.design.n_rows, 2 * K))
+    u[fit.domain.at] = z
+    var = total_variance(u, fit.design, fit.domain.mask(fit.design))
+    se = np.sqrt(np.clip(np.diag(var.meat), 0, None))
+    df = var.df
+    q = float(stats.t.ppf(0.5 + level / 2, df)) if df >= 1 else float("nan")
+
+    def band(slots: slice) -> tuple[list[float | None], list[float | None], list[float | None]]:
+        mid, low, high = [], [], []
+        for t, s in zip(theta[slots], se[slots]):
+            if not np.isfinite(t) or not np.isfinite(q):
+                mid.append(None if not np.isfinite(t) else float(t))
+                low.append(None)
+                high.append(None)
+                continue
+            mid.append(float(t))
+            low.append(float(t - q * s))
+            high.append(float(t + q * s))
+        return mid, low, high
+
+    delta, ci_low, ci_high = band(slice(0, K))
+    fixed_delta, fixed_low, fixed_high = band(slice(K, 2 * K))
+    return {"delta": delta, "ci_low": ci_low, "ci_high": ci_high,
+            "se": [float(s) if np.isfinite(t) else None for t, s in zip(theta[:K], se[:K])],
+            "fixed_delta": fixed_delta, "fixed_ci_low": fixed_low, "fixed_ci_high": fixed_high,
+            "df": int(df), "variance": var}
+
+
+@dataclass
+class PopulationCurve:
+    """One family's substitution curve under the population answer: the point curve (the
+    ``substitution_curve`` dict, weighted), its design-based ``band`` (:func:`design_curve`), or,
+    for a family with no design-based estimator, why not (``refused``) and the ``exits``; then
+    ``curve`` holds the support's counts only (they are the data's, not a model's)."""
+
+    curve: dict[str, Any]
+    band: dict[str, Any] | None = None
+    refused: str | None = None
+    exits: list[dict[str, Any]] = field(default_factory=list)
+
+
+def population_curve(family: Any, task: str, pipeline: Any, X: pd.DataFrame, y: Any,
+                     design: SurveyDesign, domain: Domain, models: Sequence[str] | None = None,
+                     **curve_args: Any) -> PopulationCurve:
+    """The substitution curve of ``family`` over the surveyed population (MS4).
+
+    ``X`` and ``y`` are the domain's kept rows (every analyzed row placed in the design with a
+    positive weight) and ``pipeline`` the family's fit on every analyzed row; ``curve_args`` are
+    :func:`~turbotab.core.methods.substitution.substitution_curve`'s. A family with a design-based
+    estimator for the task (the linear family) is refit with the weights on its own model matrix
+    (:func:`design_fit`), the curve averages each row's change weighted by its survey weight, and
+    the band is the design's (:func:`design_curve`). Any other family is blocked and recorded: no
+    curve, its reason and exits (:func:`no_design_estimator`)."""
+    from turbotab.core.methods.substitution import substitution_curve
+    from turbotab.core.models.linear import model_matrix
+
+    weights = domain.raw
+    if not has_design_estimator(family, task) or task not in ("regression", "binary"):
+        table = no_design_estimator(family, task, models, what="substitution curve")
+        support = substitution_curve(lambda frame: np.zeros(len(frame)), X, weights=weights,
+                                     **curve_args)
+        return PopulationCurve(curve=support, refused=table.info["refused"],
+                               exits=list(table.info["exits"]))
+
+    def matrix_of(frame: pd.DataFrame) -> pd.DataFrame:
+        return model_matrix(pipeline, frame)
+
+    try:
+        fit = design_fit(task, matrix_of(X), y, [0, 1] if task == "binary" else None, design)
+    except ValueError as exc:
+        support = substitution_curve(lambda frame: np.zeros(len(frame)), X, weights=weights,
+                                     **curve_args)
+        return PopulationCurve(curve=support, refused=f"No design-based curve: {exc}",
+                               exits=[{"label": SAMPLE_EXIT,
+                                       "decision": {"kind": "set_survey", "estimand": "sample"}}])
+    curve = substitution_curve(lambda frame: fit.mean(matrix_of(frame))[0], X, weights=weights,
+                               **curve_args)
+    band = design_curve(fit, matrix_of, X, curve_args["shift"], curve["ks"], curve["live"])
+    return PopulationCurve(curve=curve, band=band)
+
+
+def curve_caption(design: SurveyDesign, var: DesignVariance, n_rows: int, level: float = LEVEL) -> str:
+    """The saved figure's caption for a design-based band."""
+    weight = f"`{design.weight_column}`" if design.weight_column else "equal weights"
+    return (f"Shaded bands: {level:.0%} intervals by Taylor linearization over the survey design "
+            f"(weights {weight}; {var.domain_psu:,} PSUs in {var.domain_strata:,} strata hold the "
+            f"{n_rows:,} analysis rows), on t({var.df:,}), each curve the population mean of the "
+            f"change in the survey-weighted fit's prediction; the band carries both the error of "
+            f"the fit and which people were sampled (Graubard & Korn 1999).")
+
+
+# ── the methods sentences (BLUEPRINT §13: each contract's sentence) ──────────
+
+# Each design-based estimator in the words the methods section writes it, by (family, task).
+_ESTIMATOR_WORDS = {
+    ("linear", "regression"): "least squares",
+    ("linear", "binary"): "logistic regression (pseudo-maximum likelihood)",
+    ("linear", "multiclass"): "multinomial logistic regression (pseudo-maximum likelihood)",
+    ("linear", "ordinal"): "multinomial logistic regression (pseudo-maximum likelihood)",
+    ("proportional_odds", "ordinal"): "the proportional-odds model (pseudo-maximum likelihood)",
+    ("cox", "time_to_event"): "Cox regression (Binder's pseudo-likelihood, Efron ties)",
+}
+
+
+# A family with no design-based estimator, as the sentence names it (each one model).
+_BLOCKED_WORDS = {
+    "mixed": "the random-intercept mixed model",
+    "gee": "the GEE model",
+    "featurewise": "feature-wise regression",
+    "elastic_net": "the elastic net",
+    "boosted_trees": "the gradient-boosted tree model",
+}
+
+
+def _listing(items: Sequence[str]) -> str:
+    items = list(items)
+    if len(items) <= 1:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def models_sentence(state: Any, models: Sequence[str], task: str | None) -> str | None:
+    """What the population answer does to the chosen families, for the ``select_models``
+    sentence: each design-based estimator named, weighted by the survey weight with Taylor-
+    linearized standard errors; each family with none named as blocked. None unless the answer is
+    the surveyed population under inference."""
+    from turbotab.core.models import get_family
+
+    survey = getattr(state, "survey", None)
+    if (getattr(state, "purpose", None) != "inference" or survey is None
+            or getattr(survey, "estimand", None) != "population" or task is None):
+        return None
+    based: list[str] = []
+    stopped: list[str] = []
+    for key in models:
+        try:
+            family = get_family(key)
+        except KeyError:
+            continue
+        words = _ESTIMATOR_WORDS.get((key, task))
+        if words is not None and has_design_estimator(family, task):
+            based.append(words)
+        else:
+            stopped.append(_BLOCKED_WORDS.get(key, f"`{key}`"))
+    parts: list[str] = []
+    weight = getattr(survey, "weight", None)
+    if based:
+        by = f" by `{weight}`" if weight else ""
+        verb = "was" if len(based) == 1 else "were"
+        parts.append(f"for the surveyed population, {_listing(based)} {verb} weighted{by}, with "
+                     f"standard errors by Taylor linearization over the survey design")
+    if stopped:
+        verb = "has" if len(stopped) == 1 else "have"
+        whose = "its" if len(stopped) == 1 else "their"
+        parts.append(f"{_listing(stopped)} {verb} no design-based estimator, so {whose} estimates "
+                     f"were blocked and not reported")
+    if not parts:
+        return None
+    text = "; ".join(parts)
+    return text[0].upper() + text[1:]
+
+
+def substitution_clause(state: Any) -> str | None:
+    """The ``set_substitution`` sentence's clause under the population answer (the curve's
+    contract sentence), or None."""
+    survey = getattr(state, "survey", None)
+    if (getattr(state, "purpose", None) != "inference" or survey is None
+            or getattr(survey, "estimand", None) != "population"):
+        return None
+    return ("over the surveyed population its curve is the weighted mean of each participant's "
+            "change in the survey-weighted fit, and its band comes from Taylor linearization over "
+            "the survey design")
+
+
+# ── the method contracts (BLUEPRINT §13) ─────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Relation:
+    """One relation a method declares (BLUEPRINT §13): ``kind`` is implies · enables · disables ·
+    invalidates · conflicts; ``target`` what it acts on; ``says`` the consequence in words, as the
+    record states it."""
+
+    kind: str
+    target: str
+    says: str
+
+
+@dataclass(frozen=True)
+class MethodContract:
+    """A domain method's contract (BLUEPRINT §13): where it runs, what it may learn from, what it
+    needs, how it is routed (its rung by purpose), its storyboard, its sentence and its relations.
+    ``reference`` names the independent implementation the acceptance suite checks it against."""
+
+    key: str
+    name: str
+    slot: str
+    scope: str
+    needs: tuple[str, ...]
+    routing: dict[str, str]
+    storyboard: tuple[str, ...]
+    sentence: str
+    relations: tuple[Relation, ...]
+    reference: str
+
+
+_POPULATION = "the survey answer \"the surveyed population\""
+CONTRACTS: dict[str, MethodContract] = {c.key: c for c in (
+    MethodContract(
+        key="survey_linear", name="survey-weighted linear, logistic and multinomial models",
+        slot="model", scope="training fold",
+        needs=("the survey answer: the surveyed population", "a weight", "strata and PSUs, or an "
+               "attestation that the table has none"),
+        routing={"inference": "the design-based table under the population answer",
+                 "prediction": "not asked: scores describe the rows they were computed on"},
+        storyboard=("weight each row by the people it stands for", "solve the weighted equations",
+                    "sum each PSU's weighted scores", "spread of PSU totals within strata",
+                    "t on PSUs minus strata"),
+        sentence="survey-weighted {model}, with Taylor-linearized standard errors",
+        relations=(Relation("implies", "intervals", "every interval is design-based, on t(d)"),),
+        reference="R survey::svyglm"),
+    MethodContract(
+        key="survey_cox", name="survey-weighted Cox regression (Binder's pseudo-likelihood)",
+        slot="model", scope="training fold",
+        needs=("the survey answer: the surveyed population", "a time-to-event outcome with its "
+               "follow-up"),
+        routing={"inference": "the Cox table under the population answer (no other rung)",
+                 "prediction": "not asked"},
+        storyboard=("weight each row in every risk set", "solve the weighted partial-likelihood "
+                    "score (Efron ties)", "each row's weighted score residual",
+                    "spread of PSU totals within strata"),
+        sentence=("hazard ratios from Cox regression weighted by {weight} (Binder's "
+                  "pseudo-likelihood, Efron ties), with Taylor-linearized standard errors"),
+        relations=(Relation("implies", "intervals", "every hazard-ratio interval is design-based"),
+                   Relation("implies", "proportional hazards", "the check is a diagnostic on "
+                            "these participants, not a design-based test")),
+        reference="R survey::svycoxph"),
+    MethodContract(
+        key="survey_ordinal", name="survey-weighted proportional-odds model",
+        slot="model", scope="training fold",
+        needs=("the survey answer: the surveyed population", "an ordered outcome with its order"),
+        routing={"inference": "the proportional-odds table under the population answer",
+                 "prediction": "not asked"},
+        storyboard=("weight each row's cumulative-logit likelihood", "solve the weighted score",
+                    "spread of PSU totals within strata"),
+        sentence=("cumulative odds ratios from a proportional-odds model weighted by {weight}, "
+                  "with Taylor-linearized standard errors"),
+        relations=(Relation("implies", "intervals", "every odds-ratio interval is design-based"),
+                   Relation("implies", "proportional odds", "the Brant check is a diagnostic on "
+                            "these participants, not a design-based test")),
+        reference="R survey::svyolr"),
+    MethodContract(
+        key="survey_substitution", name="substitution curve over the surveyed population",
+        slot="evaluation", scope="training fold",
+        needs=("the survey answer: the surveyed population", "a family with a design-based fit"),
+        routing={"inference": "the curve under the population answer; its band by linearization",
+                 "prediction": "not asked"},
+        storyboard=("refit with the weights", "move k kcal on every row", "average the change "
+                    "over the population", "linearize the average over the design"),
+        sentence=("its curve is the population mean of the change in the survey-weighted fit, its "
+                  "band by Taylor linearization over the survey design"),
+        relations=(Relation("invalidates", "the bootstrap band", "a row bootstrap ignores the "
+                            "strata and PSUs, so the band is the design's instead"),),
+        reference="R survey::svyglm + svycontrast"),
+    MethodContract(
+        key="survey_population", name="the population estimand under a survey design",
+        slot="model", scope="descriptive",
+        needs=("design columns", "purpose: inference"),
+        routing={"inference": "asked (the survey question); block and record a family or display "
+                              "with no design-based estimator, exit: the sample-only attestation",
+                 "prediction": "not asked"},
+        storyboard=("the survey question", "each family's design-based estimator, or its block"),
+        sentence=("the estimates describe the surveyed population"),
+        relations=(
+            Relation("implies", "every family and display", "a design-based estimator, or block "
+                     "and record with the sample-only attestation as its exit"),
+            Relation("conflicts", "mixed, GEE, feature-wise, elastic net and boosted-tree "
+                     "estimates", "no design-based estimator: blocked, exits the design-based "
+                     "family for the task or the sample-only attestation"),
+            Relation("invalidates", "the substitution band from row resampling",
+                     "replaced by the design's linearization"),
+            Relation("implies", "multiple imputation", "each completed copy is analyzed "
+                     "design-based, and its degrees of freedom are the design's")),
+        reference="R survey"),
+)}
+
+
 __all__ = [
-    "FEW_DESIGN_DF", "LONELY_METHOD", "DesignVariance", "SurveyDesign", "WeightedFit", "blocked",
-    "build_design", "design_df", "survey_table", "total_variance",
+    "CONTRACTS", "DesignFit", "DesignVariance", "Domain", "FEW_DESIGN_DF", "LONELY_METHOD",
+    "LONELY_PSU", "LONELY_RULE", "MethodContract", "Relation", "SAMPLE_EXIT", "SurveyDesign",
+    "WeightedFit", "adjusted_wald", "blocked", "build_design", "curve_caption", "design_curve",
+    "design_df", "design_family", "design_fit", "design_table", "domain_of", "has_design_estimator",
+    "no_design_estimator", "PopulationCurve", "population_curve", "population_shelf",
+    "survey_info", "survey_table",
+    "total_variance",
     "weighted_least_squares", "weighted_logistic", "weighted_multinomial",
 ]

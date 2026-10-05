@@ -774,7 +774,11 @@ def test_4_a_case_control_qc_export_excludes_its_qc_rows_before_the_seal(client,
     assert OLD_QC_TEXT not in (qc.get("why_it_matters") or "")
     assert "Until they are excluded they are analyzed as rows like any other" in qc["why_it_matters"]
     assert not any(OLD_QC_TEXT in (f.get("why_it_matters") or "") for f in findings.values())
-    option = qc["repairs"][0]
+    # MS7: with an injection order, QC-RLSC leads (drift corrected, then the rows leave); the
+    # exclusion on its own is offered beside it.
+    keys = [o["key"] for o in qc["repairs"]]
+    assert keys[-1] == "exclude_rows" and all(k.startswith("qc_rlsc_") for k in keys[:-1])
+    option = qc["repairs"][-1]
     assert option["decision"]["params"] == {"column": "Class", "levels": ["QC"]}
     assert option["effect"] == "rows"
     roles_finding = findings.get("pack::metabolomics::sample_roles")

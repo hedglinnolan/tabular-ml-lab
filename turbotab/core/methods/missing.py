@@ -159,11 +159,12 @@ def methods_for(purpose: str | None) -> list[dict[str, Any]]:
     return [m.for_purpose(p) for m in sorted(METHODS.values(), key=lambda m: m.order[p])]
 
 
-BelowDetection = Literal["half_minimum", "censoring_aware", "as_missing"]
+BelowDetection = Literal["half_minimum", "censoring_aware", "as_missing", "qrilc"]
 BELOW_DETECTION_LABELS = {
     "half_minimum": "Half the smallest detected value",
     "censoring_aware": "Censoring-aware",
     "as_missing": "As any other blank (the median fill)",
+    "qrilc": "QRILC (quantile regression imputation of left-censored data)",
 }
 
 

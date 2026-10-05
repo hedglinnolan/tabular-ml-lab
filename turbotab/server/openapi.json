@@ -451,6 +451,24 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetAdjustment-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JoinFiles-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImportCodebook-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetBatch-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMultiplicity-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetScales-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUsualIntake-Input"
                   }
                 ],
                 "discriminator": {
@@ -498,7 +516,13 @@
                     "set_censoring": "#/components/schemas/SetCensoring-Input",
                     "set_clusters": "#/components/schemas/SetClusters-Input",
                     "set_estimand": "#/components/schemas/SetEstimand-Input",
-                    "set_adjustment": "#/components/schemas/SetAdjustment-Input"
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Input",
+                    "join_files": "#/components/schemas/JoinFiles-Input",
+                    "import_codebook": "#/components/schemas/ImportCodebook-Input",
+                    "set_batch": "#/components/schemas/SetBatch-Input",
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Input",
+                    "set_scales": "#/components/schemas/SetScales-Input",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Input"
                   }
                 },
                 "title": "Decision"
@@ -933,6 +957,24 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetAdjustment-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JoinFiles-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImportCodebook-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetBatch-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMultiplicity-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetScales-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUsualIntake-Input"
                   }
                 ],
                 "discriminator": {
@@ -980,7 +1022,13 @@
                     "set_censoring": "#/components/schemas/SetCensoring-Input",
                     "set_clusters": "#/components/schemas/SetClusters-Input",
                     "set_estimand": "#/components/schemas/SetEstimand-Input",
-                    "set_adjustment": "#/components/schemas/SetAdjustment-Input"
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Input",
+                    "join_files": "#/components/schemas/JoinFiles-Input",
+                    "import_codebook": "#/components/schemas/ImportCodebook-Input",
+                    "set_batch": "#/components/schemas/SetBatch-Input",
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Input",
+                    "set_scales": "#/components/schemas/SetScales-Input",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Input"
                   }
                 },
                 "title": "Decision"
@@ -1660,10 +1708,537 @@
           }
         }
       }
+    },
+    "/api/projects/{pid}/files": {
+      "get": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "List Files",
+        "description": "The files added to the project to join to its table, and whether each is joined.",
+        "operationId": "list_files_api_projects__pid__files_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AddedFile"
+                  },
+                  "title": "Response List Files Api Projects  Pid  Files Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Add File",
+        "description": "Add a file on this machine (local mode only); it is read once, as the table was.",
+        "operationId": "add_file_api_projects__pid__files_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddFile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddedFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a readable data file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Server mode: add files by uploading them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No file at that path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/files/upload": {
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Upload File",
+        "description": "Upload a file to join to the project's table (multipart field ``file``).",
+        "operationId": "upload_file_api_projects__pid__files_upload_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddedFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No file, or not a readable data file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/join-preview": {
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Join Preview",
+        "description": "The row counts a join would give, before it is committed (``join_files`` commits it).",
+        "operationId": "join_preview_api_projects__pid__join_preview_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinPreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project or file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table is still being read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/codebooks": {
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Add Codebook",
+        "description": "Read a codebook on this machine (local mode only), or the table's own XPT labels, and say\nwhat importing it would do (``import_codebook`` records it).",
+        "operationId": "add_codebook_api_projects__pid__codebooks_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodebookRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodebookPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a codebook TurboTab reads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Server mode: upload the codebook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table is still being read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/codebooks/upload": {
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Upload Codebook",
+        "description": "Upload a codebook (multipart field ``file``): a variable table, an NHANES codebook page or\nan XPT file; the answer says what importing it would do.",
+        "operationId": "upload_codebook_api_projects__pid__codebooks_upload_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodebookPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No file, or not a codebook TurboTab reads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table is still being read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AddFile": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "AddFile",
+        "description": "Add a file on this machine to the project, to join to its table (local mode only)."
+      },
+      "AddedFile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "path",
+              "upload"
+            ],
+            "title": "Source Kind"
+          },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "n_rows": {
+            "type": "integer",
+            "title": "N Rows"
+          },
+          "n_cols": {
+            "type": "integer",
+            "title": "N Cols"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "joined": {
+            "type": "boolean",
+            "title": "Joined",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "source_kind",
+          "fingerprint",
+          "n_rows",
+          "n_cols",
+          "columns",
+          "warnings",
+          "joined"
+        ],
+        "title": "AddedFile"
+      },
       "AdjustmentAnswer": {
         "properties": {
           "causes_exposure": {
@@ -2025,6 +2600,39 @@
         "title": "AskSettled",
         "description": "One reading the values settled for this consumer, no question asked\n(``readings.read_from_data``, the readings endpoint's own item)."
       },
+      "BatchSpec": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "covariate",
+              "reference_combat",
+              "outcome_combat",
+              "none",
+              "not_a_batch"
+            ],
+            "title": "Method"
+          },
+          "figures": {
+            "type": "boolean",
+            "title": "Figures",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "method",
+          "figures"
+        ],
+        "title": "BatchSpec"
+      },
       "Caution": {
         "properties": {
           "text": {
@@ -2165,6 +2773,301 @@
           "anchor"
         ],
         "title": "CoachNote"
+      },
+      "CodebookAsk": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "says": {
+            "type": "string",
+            "title": "Says"
+          },
+          "values": {
+            "type": "string",
+            "title": "Values"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "type": "array",
+            "title": "Exits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column",
+          "field",
+          "says",
+          "values",
+          "exits"
+        ],
+        "title": "CodebookAsk"
+      },
+      "CodebookConflict": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "codes",
+              "type",
+              "range"
+            ],
+            "title": "Field"
+          },
+          "says": {
+            "type": "string",
+            "title": "Says"
+          },
+          "values": {
+            "type": "string",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "field",
+          "says",
+          "values"
+        ],
+        "title": "CodebookConflict",
+        "description": "A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3)."
+      },
+      "CodebookPreview": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "table",
+              "nhanes",
+              "xpt"
+            ],
+            "title": "Form"
+          },
+          "n_entries": {
+            "type": "integer",
+            "title": "N Entries"
+          },
+          "n_matched": {
+            "type": "integer",
+            "title": "N Matched"
+          },
+          "unmatched": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unmatched"
+          },
+          "n_unmatched": {
+            "type": "integer",
+            "title": "N Unmatched"
+          },
+          "settles": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookSettlement"
+            },
+            "type": "array",
+            "title": "Settles"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "labels": {
+            "type": "integer",
+            "title": "Labels"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookAsk"
+            },
+            "type": "array",
+            "title": "Asked"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "form",
+          "n_entries",
+          "n_matched",
+          "unmatched",
+          "n_unmatched",
+          "settles",
+          "units",
+          "labels",
+          "asked",
+          "kept",
+          "sentence"
+        ],
+        "title": "CodebookPreview",
+        "description": "What importing a codebook would do (``import_codebook`` with this ``id`` records it): the\nreadings its structured fields settle, its documented units, how many labels it gives, the\nfields the values contradict (asked, never applied), the readings the user answered\notherwise (kept), and the sentence it would record."
+      },
+      "CodebookRequest": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "labels": {
+            "type": "boolean",
+            "title": "Labels",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CodebookRequest",
+        "description": "A codebook to read: a file on this machine (local mode only), or the variable labels the\ntable's own SAS transport files carry (``labels``)."
+      },
+      "CodebookSettlement": {
+        "properties": {
+          "reading": {
+            "type": "string",
+            "title": "Reading"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reading",
+          "column",
+          "value",
+          "field"
+        ],
+        "title": "CodebookSettlement"
+      },
+      "CodebookSpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "table",
+              "nhanes",
+              "xpt"
+            ],
+            "title": "Form"
+          },
+          "settled": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Settled"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookConflict"
+            },
+            "type": "array",
+            "title": "Asked"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "n_entries": {
+            "type": "integer",
+            "title": "N Entries",
+            "default": 0
+          },
+          "n_matched": {
+            "type": "integer",
+            "title": "N Matched",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "form",
+          "settled",
+          "units",
+          "labels",
+          "asked",
+          "kept",
+          "n_entries",
+          "n_matched"
+        ],
+        "title": "CodebookSpec",
+        "description": "One imported codebook as the state keeps it (``codebooks`` slot, keyed by its id):\n``settled`` the readings its structured fields settled (``\"<kind>:<column>\"`` -> value),\n``units`` the documented units no reading kind takes (``mg/dL``; a sentence may state them),\n``labels`` its free-text labels of the table's columns (they only strengthen a guess),\n``asked`` its fields the values contradict, ``kept`` the readings the user had answered\notherwise before (the user's answer stands)."
       },
       "ColumnSummary": {
         "properties": {
@@ -2814,6 +3717,24 @@
               },
               {
                 "$ref": "#/components/schemas/SetAdjustment-Output"
+              },
+              {
+                "$ref": "#/components/schemas/JoinFiles-Output"
+              },
+              {
+                "$ref": "#/components/schemas/ImportCodebook-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetBatch-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetMultiplicity-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetScales-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetUsualIntake-Output"
               }
             ],
             "title": "Decision",
@@ -2826,6 +3747,8 @@
                 "confirm_role": "#/components/schemas/ConfirmRole",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                "import_codebook": "#/components/schemas/ImportCodebook-Output",
+                "join_files": "#/components/schemas/JoinFiles-Output",
                 "lock_plan": "#/components/schemas/LockPlan-Output",
                 "open_seal": "#/components/schemas/OpenSeal-Output",
                 "reseal": "#/components/schemas/Reseal-Output",
@@ -2833,6 +3756,7 @@
                 "select_models": "#/components/schemas/SelectModels",
                 "set_adjustment": "#/components/schemas/SetAdjustment-Output",
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
+                "set_batch": "#/components/schemas/SetBatch-Output",
                 "set_categorical": "#/components/schemas/SetCategorical",
                 "set_censoring": "#/components/schemas/SetCensoring-Output",
                 "set_clusters": "#/components/schemas/SetClusters-Output",
@@ -2848,6 +3772,7 @@
                 "set_lens": "#/components/schemas/SetLens",
                 "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                 "set_missing": "#/components/schemas/SetMissing-Output",
+                "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
                 "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                 "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
@@ -2855,6 +3780,7 @@
                 "set_purpose": "#/components/schemas/SetPurpose",
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                 "set_roles": "#/components/schemas/SetRoles-Output",
+                "set_scales": "#/components/schemas/SetScales-Output",
                 "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                 "set_split": "#/components/schemas/SetSplit-Output",
                 "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -2862,7 +3788,8 @@
                 "set_target": "#/components/schemas/SetTarget",
                 "set_task": "#/components/schemas/SetTask",
                 "set_temporal": "#/components/schemas/SetTemporal-Output",
-                "set_unit": "#/components/schemas/SetUnit"
+                "set_unit": "#/components/schemas/SetUnit",
+                "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
               }
             }
           }
@@ -3571,6 +4498,24 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetAdjustment-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JoinFiles-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImportCodebook-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetBatch-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetMultiplicity-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetScales-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUsualIntake-Output"
                   }
                 ],
                 "discriminator": {
@@ -3582,6 +4527,8 @@
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                    "import_codebook": "#/components/schemas/ImportCodebook-Output",
+                    "join_files": "#/components/schemas/JoinFiles-Output",
                     "lock_plan": "#/components/schemas/LockPlan-Output",
                     "open_seal": "#/components/schemas/OpenSeal-Output",
                     "reseal": "#/components/schemas/Reseal-Output",
@@ -3589,6 +4536,7 @@
                     "select_models": "#/components/schemas/SelectModels",
                     "set_adjustment": "#/components/schemas/SetAdjustment-Output",
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
+                    "set_batch": "#/components/schemas/SetBatch-Output",
                     "set_categorical": "#/components/schemas/SetCategorical",
                     "set_censoring": "#/components/schemas/SetCensoring-Output",
                     "set_clusters": "#/components/schemas/SetClusters-Output",
@@ -3604,6 +4552,7 @@
                     "set_lens": "#/components/schemas/SetLens",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                     "set_missing": "#/components/schemas/SetMissing-Output",
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
                     "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
@@ -3611,6 +4560,7 @@
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                     "set_roles": "#/components/schemas/SetRoles-Output",
+                    "set_scales": "#/components/schemas/SetScales-Output",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                     "set_split": "#/components/schemas/SetSplit-Output",
                     "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -3618,7 +4568,8 @@
                     "set_target": "#/components/schemas/SetTarget",
                     "set_task": "#/components/schemas/SetTask",
                     "set_temporal": "#/components/schemas/SetTemporal-Output",
-                    "set_unit": "#/components/schemas/SetUnit"
+                    "set_unit": "#/components/schemas/SetUnit",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
                   }
                 }
               },
@@ -4552,6 +5503,205 @@
         ],
         "title": "HistogramData"
       },
+      "ImportCodebook-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "import_codebook",
+            "title": "Kind",
+            "default": "import_codebook"
+          },
+          "codebook": {
+            "type": "string",
+            "pattern": "^c[0-9a-f]{10}$",
+            "title": "Codebook"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "table",
+                  "nhanes",
+                  "xpt"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookConflict"
+            },
+            "type": "array",
+            "title": "Asked"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "n_entries": {
+            "type": "integer",
+            "title": "N Entries",
+            "default": 0
+          },
+          "n_matched": {
+            "type": "integer",
+            "title": "N Matched",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "codebook"
+        ],
+        "title": "ImportCodebook",
+        "description": "Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a\nvariable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.\nIts structured fields (units, value-code tables, the variable type) settle readings as the\nuser's own documentation, through the confirmation path ``confirm_readings`` writes; its\nfree-text labels only strengthen the guesses the ask leads with; a field the values contradict\nis asked, never applied. The client names the staged codebook; everything else is the\nserver's, read from the codebook and the values."
+      },
+      "ImportCodebook-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "import_codebook",
+            "title": "Kind",
+            "default": "import_codebook"
+          },
+          "codebook": {
+            "type": "string",
+            "pattern": "^c[0-9a-f]{10}$",
+            "title": "Codebook"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "table",
+                  "nhanes",
+                  "xpt"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookConflict"
+            },
+            "type": "array",
+            "title": "Asked"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "n_entries": {
+            "type": "integer",
+            "title": "N Entries",
+            "default": 0
+          },
+          "n_matched": {
+            "type": "integer",
+            "title": "N Matched",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "codebook",
+          "name",
+          "form",
+          "items",
+          "units",
+          "labels",
+          "asked",
+          "kept",
+          "n_entries",
+          "n_matched"
+        ],
+        "title": "ImportCodebook",
+        "description": "Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a\nvariable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.\nIts structured fields (units, value-code tables, the variable type) settle readings as the\nuser's own documentation, through the confirmation path ``confirm_readings`` writes; its\nfree-text labels only strengthen the guesses the ask leads with; a field the values contradict\nis asked, never applied. The client names the staged codebook; everything else is the\nserver's, read from the codebook and the values."
+      },
       "InterviewStep": {
         "properties": {
           "key": {
@@ -4749,6 +5899,559 @@
           "error"
         ],
         "title": "JobView"
+      },
+      "JoinCounts-Input": {
+        "properties": {
+          "relation": {
+            "type": "string",
+            "enum": [
+              "one-to-one",
+              "one-to-many",
+              "many-to-one"
+            ],
+            "title": "Relation"
+          },
+          "table_rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Table Rows"
+          },
+          "file_rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Rows"
+          },
+          "matched_keys": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Matched Keys"
+          },
+          "table_unmatched": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Table Unmatched"
+          },
+          "file_unmatched": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Unmatched"
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Rows"
+          },
+          "added_columns": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Added Columns"
+          },
+          "renamed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Renamed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "relation",
+          "table_rows",
+          "file_rows",
+          "matched_keys",
+          "table_unmatched",
+          "file_unmatched",
+          "rows",
+          "added_columns"
+        ],
+        "title": "JoinCounts",
+        "description": "What the join's preview counted, recorded with the answer (the server's): the rows on each\nside, the identifier values they share, the rows with no partner on each side, and the rows\nthe joined table holds."
+      },
+      "JoinCounts-Output": {
+        "properties": {
+          "relation": {
+            "type": "string",
+            "enum": [
+              "one-to-one",
+              "one-to-many",
+              "many-to-one"
+            ],
+            "title": "Relation"
+          },
+          "table_rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Table Rows"
+          },
+          "file_rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Rows"
+          },
+          "matched_keys": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Matched Keys"
+          },
+          "table_unmatched": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Table Unmatched"
+          },
+          "file_unmatched": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Unmatched"
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Rows"
+          },
+          "added_columns": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Added Columns"
+          },
+          "renamed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Renamed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "relation",
+          "table_rows",
+          "file_rows",
+          "matched_keys",
+          "table_unmatched",
+          "file_unmatched",
+          "rows",
+          "added_columns",
+          "renamed"
+        ],
+        "title": "JoinCounts",
+        "description": "What the join's preview counted, recorded with the answer (the server's): the rows on each\nside, the identifier values they share, the rows with no partner on each side, and the rows\nthe joined table holds."
+      },
+      "JoinFiles-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "join_files",
+            "title": "Kind",
+            "default": "join_files"
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^f[0-9a-f]{10}$",
+            "title": "File"
+          },
+          "on": {
+            "type": "string",
+            "minLength": 1,
+            "title": "On"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "default": "left"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinCounts-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "file",
+          "on"
+        ],
+        "title": "JoinFiles",
+        "description": "Join a file added to the project to the table on a shared identifier (NHANES ships each\ncomponent as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the\ntable (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with\none. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its\nreason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,\nrecorded with the answer."
+      },
+      "JoinFiles-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "join_files",
+            "title": "Kind",
+            "default": "join_files"
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^f[0-9a-f]{10}$",
+            "title": "File"
+          },
+          "on": {
+            "type": "string",
+            "minLength": 1,
+            "title": "On"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "default": "left"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinCounts-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "file",
+          "on",
+          "right_on",
+          "how",
+          "name",
+          "counts"
+        ],
+        "title": "JoinFiles",
+        "description": "Join a file added to the project to the table on a shared identifier (NHANES ships each\ncomponent as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the\ntable (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with\none. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its\nreason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,\nrecorded with the answer."
+      },
+      "JoinPreview": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "on": {
+            "type": "string",
+            "title": "On"
+          },
+          "right_on": {
+            "type": "string",
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How"
+          },
+          "table": {
+            "$ref": "#/components/schemas/JoinSide"
+          },
+          "file_side": {
+            "$ref": "#/components/schemas/JoinSide"
+          },
+          "relation": {
+            "type": "string",
+            "title": "Relation"
+          },
+          "matched_keys": {
+            "type": "integer",
+            "title": "Matched Keys"
+          },
+          "table_unmatched": {
+            "type": "integer",
+            "title": "Table Unmatched"
+          },
+          "file_unmatched": {
+            "type": "integer",
+            "title": "File Unmatched"
+          },
+          "rows": {
+            "type": "integer",
+            "title": "Rows"
+          },
+          "added_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added Columns"
+          },
+          "renamed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Renamed"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinRefusal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "on",
+          "right_on",
+          "how",
+          "table",
+          "file_side",
+          "relation",
+          "matched_keys",
+          "table_unmatched",
+          "file_unmatched",
+          "rows",
+          "added_columns",
+          "renamed",
+          "refusal",
+          "sentence"
+        ],
+        "title": "JoinPreview",
+        "description": "What a join would do before it is committed: each side's rows and identifier values, the\nrelation (one-to-one, one-to-many, many-to-one; many-to-many is refused), the rows with no\npartner on each side, the joined table's rows, its new and renamed columns, and the sentence\nthe join would record."
+      },
+      "JoinPreviewRequest": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "on": {
+            "type": "string",
+            "title": "On"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "default": "left"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file",
+          "on"
+        ],
+        "title": "JoinPreviewRequest",
+        "description": "The join to count: the added file, the identifier (``right_on`` when the file names it\notherwise), and which rows the joined table keeps."
+      },
+      "JoinRefusal": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "type": "array",
+            "title": "Exits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "exits"
+        ],
+        "title": "JoinRefusal"
+      },
+      "JoinSide": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rows": {
+            "type": "integer",
+            "title": "Rows"
+          },
+          "keys": {
+            "type": "integer",
+            "title": "Keys"
+          },
+          "blank_keys": {
+            "type": "integer",
+            "title": "Blank Keys"
+          },
+          "repeats": {
+            "type": "boolean",
+            "title": "Repeats"
+          },
+          "max_repeat": {
+            "type": "integer",
+            "title": "Max Repeat"
+          },
+          "example": {
+            "title": "Example"
+          },
+          "example_count": {
+            "type": "integer",
+            "title": "Example Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "rows",
+          "keys",
+          "blank_keys",
+          "repeats",
+          "max_repeat",
+          "example",
+          "example_count"
+        ],
+        "title": "JoinSide"
+      },
+      "JoinSpec": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "pattern": "^f[0-9a-f]{10}$",
+            "title": "File"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "on": {
+            "type": "string",
+            "title": "On"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "default": "left"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinCounts-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file",
+          "name",
+          "on",
+          "right_on",
+          "how",
+          "counts"
+        ],
+        "title": "JoinSpec",
+        "description": "One file joined to the table (``joins`` slot, keyed by the file's id, in answer order)."
       },
       "LevelValues": {
         "properties": {
@@ -5282,7 +6985,8 @@
                 "enum": [
                   "half_minimum",
                   "censoring_aware",
-                  "as_missing"
+                  "as_missing",
+                  "qrilc"
                 ]
               },
               {
@@ -5330,6 +7034,31 @@
         ],
         "title": "MissingSpec",
         "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest.\n\n``m``: the imputations under multiple imputation. ``below_detection`` and ``censored_columns``:\nhow the blanks of columns whose values lie below a detection limit are filled. ``acknowledged``\nand ``reason``: the recorded attestation that keeps a blocked answer (a single fill or the\nmissing-indicator method under inference; a median fill of non-detections, with its reason)."
+      },
+      "MultiplicitySpec": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "bh",
+              "stated_count",
+              "none"
+            ],
+            "title": "Method"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method",
+          "acknowledged"
+        ],
+        "title": "MultiplicitySpec"
       },
       "OpenSeal-Input": {
         "properties": {
@@ -5986,6 +7715,34 @@
               }
             ]
           },
+          "scales": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ScaleSpec-Output"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scales"
+          },
+          "usual_intake": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/UsualIntakeSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usual Intake"
+          },
           "outcome_unit": {
             "anyOf": [
               {
@@ -6150,6 +7907,54 @@
                 "type": "null"
               }
             ]
+          },
+          "joins": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JoinSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joins"
+          },
+          "codebooks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CodebookSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codebooks"
+          },
+          "batch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MultiplicitySpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6183,6 +7988,8 @@
           "follow_up",
           "sensitivity",
           "measurement_error",
+          "scales",
+          "usual_intake",
           "outcome_unit",
           "column_units",
           "roles_unconfirmed",
@@ -6194,7 +8001,11 @@
           "clusters",
           "estimand",
           "adjustment",
-          "outcome_scale"
+          "outcome_scale",
+          "joins",
+          "codebooks",
+          "batch",
+          "multiplicity"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -7016,6 +8827,317 @@
         "title": "RowStep",
         "description": "One step of the participant flow (CONSORT/STROBE style)."
       },
+      "ScaleSpec-Input": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+            "title": "Name"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 3,
+            "title": "Items"
+          },
+          "reverse": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reverse"
+          },
+          "low": {
+            "type": "integer",
+            "title": "Low"
+          },
+          "high": {
+            "type": "integer",
+            "title": "High"
+          },
+          "scoring": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "mean"
+            ],
+            "title": "Scoring",
+            "default": "sum"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "reflective",
+              "formative"
+            ],
+            "title": "Kind"
+          },
+          "structure": {
+            "type": "string",
+            "enum": [
+              "unidimensional",
+              "multidimensional"
+            ],
+            "title": "Structure",
+            "default": "unidimensional"
+          },
+          "factors": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 2.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factors"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "exposure",
+              "covariate"
+            ],
+            "title": "Role",
+            "default": "exposure"
+          },
+          "correction": {
+            "type": "string",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Correction",
+            "default": "none"
+          },
+          "reliability": {
+            "type": "string",
+            "enum": [
+              "internal_consistency",
+              "test_retest",
+              "calibration_substudy"
+            ],
+            "title": "Reliability",
+            "default": "internal_consistency"
+          },
+          "retest": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retest"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[^`\\n\\r]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "items",
+          "low",
+          "high",
+          "kind"
+        ],
+        "title": "ScaleSpec",
+        "description": "One scale: its items, the instrument's key (the reverse-coded items and the response scale\n``low``–``high`` they are turned over on), how the score is formed, what kind of construct it\nmeasures (``reflective``: the items are caused by it; ``formative``: an index defined by its\ncomponents, such as a diet-quality score), its structure, the role the score takes in the\nmodels, and whether its coefficient is corrected for measurement error, from which reliability."
+      },
+      "ScaleSpec-Output": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+            "title": "Name"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 3,
+            "title": "Items"
+          },
+          "reverse": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reverse"
+          },
+          "low": {
+            "type": "integer",
+            "title": "Low"
+          },
+          "high": {
+            "type": "integer",
+            "title": "High"
+          },
+          "scoring": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "mean"
+            ],
+            "title": "Scoring",
+            "default": "sum"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "reflective",
+              "formative"
+            ],
+            "title": "Kind"
+          },
+          "structure": {
+            "type": "string",
+            "enum": [
+              "unidimensional",
+              "multidimensional"
+            ],
+            "title": "Structure",
+            "default": "unidimensional"
+          },
+          "factors": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 2.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factors"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "exposure",
+              "covariate"
+            ],
+            "title": "Role",
+            "default": "exposure"
+          },
+          "correction": {
+            "type": "string",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Correction",
+            "default": "none"
+          },
+          "reliability": {
+            "type": "string",
+            "enum": [
+              "internal_consistency",
+              "test_retest",
+              "calibration_substudy"
+            ],
+            "title": "Reliability",
+            "default": "internal_consistency"
+          },
+          "retest": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retest"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[^`\\n\\r]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "items",
+          "reverse",
+          "low",
+          "high",
+          "scoring",
+          "kind",
+          "structure",
+          "factors",
+          "role",
+          "correction",
+          "reliability",
+          "retest",
+          "reference",
+          "n_boot",
+          "instrument"
+        ],
+        "title": "ScaleSpec",
+        "description": "One scale: its items, the instrument's key (the reverse-coded items and the response scale\n``low``–``high`` they are turned over on), how the score is formed, what kind of construct it\nmeasures (``reflective``: the items are caused by it; ``formative``: an index defined by its\ncomponents, such as a diet-quality score), its structure, the role the score takes in the\nmodels, and whether its coefficient is corrected for measurement error, from which reliability."
+      },
       "SealCells": {
         "properties": {
           "state": {
@@ -7484,6 +9606,87 @@
           "acknowledged"
         ],
         "title": "SetAggregation"
+      },
+      "SetBatch-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_batch",
+            "title": "Kind",
+            "default": "set_batch"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "covariate",
+              "reference_combat",
+              "outcome_combat",
+              "none",
+              "not_a_batch"
+            ],
+            "title": "Method"
+          },
+          "figures": {
+            "type": "boolean",
+            "title": "Figures",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "method"
+        ],
+        "title": "SetBatch",
+        "description": "How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``\nadds ComBat with the outcome protected for figures only: never the matrix the tests read."
+      },
+      "SetBatch-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_batch",
+            "title": "Kind",
+            "default": "set_batch"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "covariate",
+              "reference_combat",
+              "outcome_combat",
+              "none",
+              "not_a_batch"
+            ],
+            "title": "Method"
+          },
+          "figures": {
+            "type": "boolean",
+            "title": "Figures",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "method",
+          "figures"
+        ],
+        "title": "SetBatch",
+        "description": "How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``\nadds ComBat with the outcome protected for figures only: never the matrix the tests read."
       },
       "SetCategorical": {
         "properties": {
@@ -8623,7 +10826,8 @@
                 "enum": [
                   "half_minimum",
                   "censoring_aware",
-                  "as_missing"
+                  "as_missing",
+                  "qrilc"
                 ]
               },
               {
@@ -8717,7 +10921,8 @@
                 "enum": [
                   "half_minimum",
                   "censoring_aware",
-                  "as_missing"
+                  "as_missing",
+                  "qrilc"
                 ]
               },
               {
@@ -8766,6 +10971,71 @@
         ],
         "title": "SetMissing",
         "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both."
+      },
+      "SetMultiplicity-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_multiplicity",
+            "title": "Kind",
+            "default": "set_multiplicity"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "bh",
+              "stated_count",
+              "none"
+            ],
+            "title": "Method"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetMultiplicity",
+        "description": "How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):\nBenjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests\nstated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the\nrecorded attestation (``acknowledged``)."
+      },
+      "SetMultiplicity-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_multiplicity",
+            "title": "Kind",
+            "default": "set_multiplicity"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "bh",
+              "stated_count",
+              "none"
+            ],
+            "title": "Method"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method",
+          "acknowledged"
+        ],
+        "title": "SetMultiplicity",
+        "description": "How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):\nBenjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests\nstated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the\nrecorded attestation (``acknowledged``)."
       },
       "SetOrientation": {
         "properties": {
@@ -9139,6 +11409,56 @@
         ],
         "title": "SetRoles",
         "description": "The confirmed reading of every column except the outcome.\n\n``unconfirmed`` is the server's, never the client's (BLUEPRINT §14 rule 2): the proposals below\nhigh confidence this answer records exactly as proposed, read from the roles the server showed.\nA bulk confirm records them, and no number-changing default reads them until each has its own\n``confirm_role``."
+      },
+      "SetScales-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_scales",
+            "title": "Kind",
+            "default": "set_scales"
+          },
+          "scales": {
+            "items": {
+              "$ref": "#/components/schemas/ScaleSpec-Input"
+            },
+            "type": "array",
+            "title": "Scales"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "scales"
+        ],
+        "title": "SetScales",
+        "description": "The multi-item scales scored as predictors (MS8): each one's items become one score in the\nmodels. An empty list is the answer \"no scale is scored\"."
+      },
+      "SetScales-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_scales",
+            "title": "Kind",
+            "default": "set_scales"
+          },
+          "scales": {
+            "items": {
+              "$ref": "#/components/schemas/ScaleSpec-Output"
+            },
+            "type": "array",
+            "title": "Scales"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "scales"
+        ],
+        "title": "SetScales",
+        "description": "The multi-item scales scored as predictors (MS8): each one's items become one score in the\nmodels. An empty list is the answer \"no scale is scored\"."
       },
       "SetSensitivity-Input": {
         "properties": {
@@ -9794,6 +12114,261 @@
         ],
         "title": "SetUnit",
         "description": "When a unit repeats: is one row of the analysis a unit (combined) or a record?"
+      },
+      "SetUsualIntake-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_usual_intake",
+            "title": "Kind",
+            "default": "set_usual_intake"
+          },
+          "nutrient": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Nutrient"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "order_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Column"
+          },
+          "weekend": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Weekend"
+          },
+          "weekend_coding": {
+            "type": "string",
+            "enum": [
+              "indicator",
+              "nhanes_day"
+            ],
+            "title": "Weekend Coding",
+            "default": "indicator"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "default": "whole"
+          },
+          "consumer_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumer Column"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff Kind"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "nutrient",
+          "model"
+        ],
+        "title": "SetUsualIntake",
+        "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
+      },
+      "SetUsualIntake-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_usual_intake",
+            "title": "Kind",
+            "default": "set_usual_intake"
+          },
+          "nutrient": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Nutrient"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "order_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Column"
+          },
+          "weekend": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Weekend"
+          },
+          "weekend_coding": {
+            "type": "string",
+            "enum": [
+              "indicator",
+              "nhanes_day"
+            ],
+            "title": "Weekend Coding",
+            "default": "indicator"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "default": "whole"
+          },
+          "consumer_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumer Column"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff Kind"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "nutrient",
+          "model",
+          "days",
+          "order_column",
+          "weekend",
+          "weekend_coding",
+          "population",
+          "consumer_column",
+          "cutoff",
+          "cutoff_kind",
+          "n_boot"
+        ],
+        "title": "SetUsualIntake",
+        "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
       },
       "SplitSpec": {
         "properties": {
@@ -10538,6 +13113,123 @@
           "time_column"
         ],
         "title": "TemporalSpec"
+      },
+      "UsualIntakeSpec": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "order_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Column"
+          },
+          "weekend": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Weekend"
+          },
+          "weekend_coding": {
+            "type": "string",
+            "enum": [
+              "indicator",
+              "nhanes_day"
+            ],
+            "title": "Weekend Coding",
+            "default": "indicator"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "default": "whole"
+          },
+          "consumer_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumer Column"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff Kind"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model",
+          "days",
+          "order_column",
+          "weekend",
+          "weekend_coding",
+          "population",
+          "consumer_column",
+          "cutoff",
+          "cutoff_kind",
+          "n_boot"
+        ],
+        "title": "UsualIntakeSpec"
       },
       "ValidationError": {
         "properties": {
@@ -14569,6 +17261,112 @@
         "title": "HoldoutOption",
         "type": "object"
       },
+      "ImportCodebook": {
+        "additionalProperties": false,
+        "description": "Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a\nvariable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.\nIts structured fields (units, value-code tables, the variable type) settle readings as the\nuser's own documentation, through the confirmation path ``confirm_readings`` writes; its\nfree-text labels only strengthen the guesses the ask leads with; a field the values contradict\nis asked, never applied. The client names the staged codebook; everything else is the\nserver's, read from the codebook and the values.",
+        "properties": {
+          "kind": {
+            "const": "import_codebook",
+            "default": "import_codebook",
+            "title": "Kind",
+            "type": "string"
+          },
+          "codebook": {
+            "pattern": "^c[0-9a-f]{10}$",
+            "title": "Codebook",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "enum": [
+                  "table",
+                  "nhanes",
+                  "xpt"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Form"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "object"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "object"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookConflict"
+            },
+            "title": "Asked",
+            "type": "array"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Kept",
+            "type": "array"
+          },
+          "n_entries": {
+            "default": 0,
+            "title": "N Entries",
+            "type": "integer"
+          },
+          "n_matched": {
+            "default": 0,
+            "title": "N Matched",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "codebook",
+          "name",
+          "form",
+          "items",
+          "units",
+          "labels",
+          "asked",
+          "kept",
+          "n_entries",
+          "n_matched"
+        ],
+        "title": "ImportCodebook",
+        "type": "object"
+      },
       "Inference": {
         "additionalProperties": false,
         "description": "How the coefficient table's intervals were made (AUDIT_REPORT §5 WP2;\n``turbotab/core/models/inference.py``): the estimator, the covariance, and the clusters.",
@@ -14931,6 +17729,153 @@
           "method"
         ],
         "title": "Interval",
+        "type": "object"
+      },
+      "JoinCounts": {
+        "additionalProperties": false,
+        "description": "What the join's preview counted, recorded with the answer (the server's): the rows on each\nside, the identifier values they share, the rows with no partner on each side, and the rows\nthe joined table holds.",
+        "properties": {
+          "relation": {
+            "enum": [
+              "one-to-one",
+              "one-to-many",
+              "many-to-one"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "table_rows": {
+            "minimum": 0,
+            "title": "Table Rows",
+            "type": "integer"
+          },
+          "file_rows": {
+            "minimum": 0,
+            "title": "File Rows",
+            "type": "integer"
+          },
+          "matched_keys": {
+            "minimum": 0,
+            "title": "Matched Keys",
+            "type": "integer"
+          },
+          "table_unmatched": {
+            "minimum": 0,
+            "title": "Table Unmatched",
+            "type": "integer"
+          },
+          "file_unmatched": {
+            "minimum": 0,
+            "title": "File Unmatched",
+            "type": "integer"
+          },
+          "rows": {
+            "minimum": 0,
+            "title": "Rows",
+            "type": "integer"
+          },
+          "added_columns": {
+            "minimum": 0,
+            "title": "Added Columns",
+            "type": "integer"
+          },
+          "renamed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Renamed",
+            "type": "object"
+          }
+        },
+        "required": [
+          "relation",
+          "table_rows",
+          "file_rows",
+          "matched_keys",
+          "table_unmatched",
+          "file_unmatched",
+          "rows",
+          "added_columns",
+          "renamed"
+        ],
+        "title": "JoinCounts",
+        "type": "object"
+      },
+      "JoinFiles": {
+        "additionalProperties": false,
+        "description": "Join a file added to the project to the table on a shared identifier (NHANES ships each\ncomponent as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the\ntable (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with\none. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its\nreason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,\nrecorded with the answer.",
+        "properties": {
+          "kind": {
+            "const": "join_files",
+            "default": "join_files",
+            "title": "Kind",
+            "type": "string"
+          },
+          "file": {
+            "pattern": "^f[0-9a-f]{10}$",
+            "title": "File",
+            "type": "string"
+          },
+          "on": {
+            "minLength": 1,
+            "title": "On",
+            "type": "string"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Right On"
+          },
+          "how": {
+            "default": "left",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinCounts"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "kind",
+          "file",
+          "on",
+          "right_on",
+          "how",
+          "name",
+          "counts"
+        ],
+        "title": "JoinFiles",
         "type": "object"
       },
       "LabeledOption": {
@@ -17051,6 +19996,170 @@
         "title": "ScaleQuestion",
         "type": "object"
       },
+      "ScaleSpec": {
+        "additionalProperties": false,
+        "description": "One scale: its items, the instrument's key (the reverse-coded items and the response scale\n``low``–``high`` they are turned over on), how the score is formed, what kind of construct it\nmeasures (``reflective``: the items are caused by it; ``formative``: an index defined by its\ncomponents, such as a diet-quality score), its structure, the role the score takes in the\nmodels, and whether its coefficient is corrected for measurement error, from which reliability.",
+        "properties": {
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 3,
+            "title": "Items",
+            "type": "array"
+          },
+          "reverse": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reverse",
+            "type": "array"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          },
+          "high": {
+            "title": "High",
+            "type": "integer"
+          },
+          "scoring": {
+            "default": "sum",
+            "enum": [
+              "sum",
+              "mean"
+            ],
+            "title": "Scoring",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "reflective",
+              "formative"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "structure": {
+            "default": "unidimensional",
+            "enum": [
+              "unidimensional",
+              "multidimensional"
+            ],
+            "title": "Structure",
+            "type": "string"
+          },
+          "factors": {
+            "anyOf": [
+              {
+                "maximum": 10,
+                "minimum": 2,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Factors"
+          },
+          "role": {
+            "default": "exposure",
+            "enum": [
+              "exposure",
+              "covariate"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "correction": {
+            "default": "none",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Correction",
+            "type": "string"
+          },
+          "reliability": {
+            "default": "internal_consistency",
+            "enum": [
+              "internal_consistency",
+              "test_retest",
+              "calibration_substudy"
+            ],
+            "title": "Reliability",
+            "type": "string"
+          },
+          "retest": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Retest",
+            "type": "array"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reference"
+          },
+          "n_boot": {
+            "default": 200,
+            "maximum": 2000,
+            "minimum": 50,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "pattern": "^[^`\\n\\r]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Instrument"
+          }
+        },
+        "required": [
+          "name",
+          "items",
+          "reverse",
+          "low",
+          "high",
+          "scoring",
+          "kind",
+          "structure",
+          "factors",
+          "role",
+          "correction",
+          "reliability",
+          "retest",
+          "reference",
+          "n_boot",
+          "instrument"
+        ],
+        "title": "ScaleSpec",
+        "type": "object"
+      },
       "SealBasis": {
         "additionalProperties": false,
         "description": "How the held-out rows were drawn: one of four states, never inferred silently.",
@@ -17137,7 +20246,8 @@
             "enum": [
               "rows",
               "events",
-              "rows in the rarest class"
+              "rows in the rarest class",
+              "rows in the rarest level"
             ],
             "title": "Unit",
             "type": "string"
@@ -17917,6 +21027,47 @@
         "title": "SetAggregation",
         "type": "object"
       },
+      "SetBatch": {
+        "additionalProperties": false,
+        "description": "How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``\nadds ComBat with the outcome protected for figures only: never the matrix the tests read.",
+        "properties": {
+          "kind": {
+            "const": "set_batch",
+            "default": "set_batch",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "covariate",
+              "reference_combat",
+              "outcome_combat",
+              "none",
+              "not_a_batch"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "figures": {
+            "default": false,
+            "title": "Figures",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "method",
+          "figures"
+        ],
+        "title": "SetBatch",
+        "type": "object"
+      },
       "SetCensoring": {
         "additionalProperties": false,
         "description": "The follow-up question's \"no\" (audit RO-03): nobody's follow-up ended before the event could\nbe seen, so the yes/no outcome counts events over one period for everyone. Stands only while\n``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then\n``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that\nvaries (block and record).",
@@ -18490,7 +21641,8 @@
                 "enum": [
                   "half_minimum",
                   "censoring_aware",
-                  "as_missing"
+                  "as_missing",
+                  "qrilc"
                 ],
                 "type": "string"
               },
@@ -18539,6 +21691,39 @@
           "reason"
         ],
         "title": "SetMissing",
+        "type": "object"
+      },
+      "SetMultiplicity": {
+        "additionalProperties": false,
+        "description": "How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):\nBenjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests\nstated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the\nrecorded attestation (``acknowledged``).",
+        "properties": {
+          "kind": {
+            "const": "set_multiplicity",
+            "default": "set_multiplicity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "bh",
+              "stated_count",
+              "none"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "method",
+          "acknowledged"
+        ],
+        "title": "SetMultiplicity",
         "type": "object"
       },
       "SetRepeatKind": {
@@ -18658,6 +21843,31 @@
           "unconfirmed"
         ],
         "title": "SetRoles",
+        "type": "object"
+      },
+      "SetScales": {
+        "additionalProperties": false,
+        "description": "The multi-item scales scored as predictors (MS8): each one's items become one score in the\nmodels. An empty list is the answer \"no scale is scored\".",
+        "properties": {
+          "kind": {
+            "const": "set_scales",
+            "default": "set_scales",
+            "title": "Kind",
+            "type": "string"
+          },
+          "scales": {
+            "items": {
+              "$ref": "#/components/schemas/ScaleSpec"
+            },
+            "title": "Scales",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "scales"
+        ],
+        "title": "SetScales",
         "type": "object"
       },
       "SetSensitivity": {
@@ -18960,6 +22170,142 @@
           "time_column"
         ],
         "title": "SetTemporal",
+        "type": "object"
+      },
+      "SetUsualIntake": {
+        "additionalProperties": false,
+        "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``.",
+        "properties": {
+          "kind": {
+            "const": "set_usual_intake",
+            "default": "set_usual_intake",
+            "title": "Kind",
+            "type": "string"
+          },
+          "nutrient": {
+            "minLength": 1,
+            "title": "Nutrient",
+            "type": "string"
+          },
+          "model": {
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "order_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Order Column"
+          },
+          "weekend": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Weekend",
+            "type": "array"
+          },
+          "weekend_coding": {
+            "default": "indicator",
+            "enum": [
+              "indicator",
+              "nhanes_day"
+            ],
+            "title": "Weekend Coding",
+            "type": "string"
+          },
+          "population": {
+            "default": "whole",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "type": "string"
+          },
+          "consumer_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Consumer Column"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cutoff Kind"
+          },
+          "n_boot": {
+            "default": 200,
+            "maximum": 2000,
+            "minimum": 50,
+            "title": "N Boot",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "nutrient",
+          "model",
+          "days",
+          "order_column",
+          "weekend",
+          "weekend_coding",
+          "population",
+          "consumer_column",
+          "cutoff",
+          "cutoff_kind",
+          "n_boot"
+        ],
+        "title": "SetUsualIntake",
         "type": "object"
       },
       "ShelfArtifact": {
@@ -19640,6 +22986,27 @@
             ],
             "default": null,
             "title": "Caption"
+          },
+          "method": {
+            "default": "bootstrap",
+            "enum": [
+              "bootstrap",
+              "design"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
           }
         },
         "required": [
@@ -19654,7 +23021,9 @@
           "interval",
           "level",
           "min_ok_share",
-          "caption"
+          "caption",
+          "method",
+          "df"
         ],
         "title": "SubstitutionBand",
         "type": "object"
@@ -19825,6 +23194,26 @@
             ],
             "default": null,
             "title": "Band Ok"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InferenceExit"
+            },
+            "title": "Exits",
+            "type": "array"
           }
         },
         "required": [
@@ -19839,7 +23228,9 @@
           "fixed_delta",
           "fixed_ci_low",
           "fixed_ci_high",
-          "band_ok"
+          "band_ok",
+          "refused",
+          "exits"
         ],
         "title": "SubstitutionModel",
         "type": "object"
@@ -20568,6 +23959,631 @@
           "n_missing"
         ],
         "title": "UnitCounts",
+        "type": "object"
+      },
+      "UsualIntakeAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "nutrient": {
+            "title": "Nutrient",
+            "type": "string"
+          },
+          "model": {
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "long",
+                  "wide"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Format"
+          },
+          "days": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "population": {
+            "default": "whole",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "type": "string"
+          },
+          "population_statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Population Statement"
+          },
+          "n_persons": {
+            "default": 0,
+            "title": "N Persons",
+            "type": "integer"
+          },
+          "n_recalls": {
+            "default": 0,
+            "title": "N Recalls",
+            "type": "integer"
+          },
+          "recalls": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Recalls",
+            "type": "object"
+          },
+          "n_repeat": {
+            "default": 0,
+            "title": "N Repeat",
+            "type": "integer"
+          },
+          "zero_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Zero Share"
+          },
+          "zeros_replaced": {
+            "default": 0,
+            "title": "Zeros Replaced",
+            "type": "integer"
+          },
+          "covariates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Covariates",
+            "type": "array"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Parameters",
+            "type": "object"
+          },
+          "percentiles": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/UsualIntakeEstimate"
+            },
+            "default": {},
+            "title": "Percentiles",
+            "type": "object"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualIntakeEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cutoff Kind"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualIntakeEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "share_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Share Label"
+          },
+          "day_one": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Day One",
+            "type": "object"
+          },
+          "mean_of_days": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Mean Of Days",
+            "type": "object"
+          },
+          "variance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualIntakeVariance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Weight"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nutrient",
+          "model",
+          "applies",
+          "refused",
+          "format",
+          "days",
+          "population",
+          "population_statement",
+          "n_persons",
+          "n_recalls",
+          "recalls",
+          "n_repeat",
+          "zero_share",
+          "zeros_replaced",
+          "covariates",
+          "parameters",
+          "percentiles",
+          "mean",
+          "cutoff",
+          "cutoff_kind",
+          "share",
+          "share_label",
+          "day_one",
+          "mean_of_days",
+          "variance",
+          "weight",
+          "assumptions",
+          "concerns",
+          "methods"
+        ],
+        "title": "UsualIntakeAnalysis",
+        "type": "object"
+      },
+      "UsualIntakeArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "offer": {
+            "$ref": "#/components/schemas/UsualIntakeOffer"
+          },
+          "analyses": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UsualIntakeAnalysis"
+            },
+            "title": "Analyses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "offer",
+          "analyses"
+        ],
+        "title": "UsualIntakeArtifact",
+        "type": "object"
+      },
+      "UsualIntakeCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "days": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "zero_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Zero Share"
+          },
+          "n_persons": {
+            "default": 0,
+            "title": "N Persons",
+            "type": "integer"
+          },
+          "n_repeat": {
+            "default": 0,
+            "title": "N Repeat",
+            "type": "integer"
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "enum": [
+                  "amount_only",
+                  "two_part"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Suggested"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Why"
+          }
+        },
+        "required": [
+          "column",
+          "days",
+          "zero_share",
+          "n_persons",
+          "n_repeat",
+          "suggested",
+          "why"
+        ],
+        "title": "UsualIntakeCandidate",
+        "type": "object"
+      },
+      "UsualIntakeEstimate": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          }
+        },
+        "required": [
+          "value",
+          "se",
+          "ci_low",
+          "ci_high"
+        ],
+        "title": "UsualIntakeEstimate",
+        "type": "object"
+      },
+      "UsualIntakeOffer": {
+        "additionalProperties": false,
+        "properties": {
+          "offered": {
+            "title": "Offered",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "estimand": {
+            "title": "Estimand",
+            "type": "string"
+          },
+          "association": {
+            "title": "Association",
+            "type": "string"
+          },
+          "population_question": {
+            "title": "Population Question",
+            "type": "string"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "long",
+                  "wide"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Format"
+          },
+          "recalls": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Recalls",
+            "type": "object"
+          },
+          "n_persons": {
+            "default": 0,
+            "title": "N Persons",
+            "type": "integer"
+          },
+          "n_repeat": {
+            "default": 0,
+            "title": "N Repeat",
+            "type": "integer"
+          },
+          "candidates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UsualIntakeCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "offered",
+          "reason",
+          "estimand",
+          "association",
+          "population_question",
+          "format",
+          "recalls",
+          "n_persons",
+          "n_repeat",
+          "candidates"
+        ],
+        "title": "UsualIntakeOffer",
+        "type": "object"
+      },
+      "UsualIntakeVariance": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "enum": [
+              "bootstrap",
+              "brr",
+              "psu_bootstrap",
+              "none"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "replicates": {
+            "default": 0,
+            "title": "Replicates",
+            "type": "integer"
+          },
+          "ok": {
+            "default": 0,
+            "title": "Ok",
+            "type": "integer"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
+          },
+          "fay": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fay"
+          },
+          "n_strata": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Strata"
+          },
+          "n_psu": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Psu"
+          }
+        },
+        "required": [
+          "method",
+          "replicates",
+          "ok",
+          "df",
+          "fay",
+          "n_strata",
+          "n_psu"
+        ],
+        "title": "UsualIntakeVariance",
         "type": "object"
       },
       "ValidationOption": {
