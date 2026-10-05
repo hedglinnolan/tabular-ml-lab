@@ -152,6 +152,12 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     frame = frame.reset_index(drop=True)  # the legacy code was written for read_csv frames
     if target is not None and target not in frame.columns:
         target = None
+    # The routing gate (p05, audit RO-02's ordering guard): a text column the user said holds
+    # numbers (its read-numbers repair) is checked as the numbers the working table reads, so an
+    # impossible outcome value is found, and settled, before the seal is drawn. The text-number
+    # findings themselves read the text as written.
+    written = frame
+    frame = repairs.numbers_read(written, ctx.state)
 
     from turbotab import engine
     from turbotab.core import detectors
@@ -173,7 +179,7 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
         spoken.append(sas)
     # WP1 (audit MA-05, MA-16, MA-18): what values mean, each with its repair. A column the app's
     # own text-number finding reads is not also reported, without a lever, by the legacy checks.
-    own = repairs.text_number_findings(frame)
+    own = repairs.text_number_findings(written)
     for found in (repairs.ambiguous_date_finding(frame), repairs.infinite_finding(frame)):
         if found is not None:
             own.append(found)
@@ -196,9 +202,14 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
         if family(f["id"]) == "pack::genomics::data_type":
             omics.restate_raw_counts(f)
     read = {c for _, f in own if family(f["id"]) == "text_numbers" for c in f["affected_columns"]}
+    # The lab pack's own "numbers stored as text" says it has no control yet; the app's text-number
+    # finding about the same column carries one (read as numbers), so only that one is spoken.
     spoken = [pair for pair in spoken
               if not (family(pair[1]["id"]) in ("numeric_as_text", "text_missing")
-                      and set(pair[1]["affected_columns"]) & read)]
+                      and set(pair[1]["affected_columns"]) & read)
+              and not (family(pair[1]["id"]) == "pack::clinical::text_numeric"
+                       and pair[1]["affected_columns"]
+                       and set(pair[1]["affected_columns"]) <= read)]
     spoken.extend(own)
     ranked = sorted(
         spoken,

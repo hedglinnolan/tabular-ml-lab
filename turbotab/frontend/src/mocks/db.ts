@@ -808,12 +808,13 @@ function valueOf(d: Decision): ProjectState[Slot] {
       return d.scales as ProjectState[Slot];
     case "set_follow_up":
       return { time_column: d.time_column, entry_column: d.entry_column ?? null,
-               horizon: d.horizon ?? null };
+               landmark: d.landmark ?? null, horizon: d.horizon ?? null,
+               prediction_horizon: d.prediction_horizon ?? null };
     case "set_censoring":
       return d.acknowledged ? "same_attested" : "same";
     case "set_clusters":
       return { column: d.column ?? null, adjust: d.adjust ?? null,
-               acknowledged: d.acknowledged ?? false };
+               acknowledged: d.acknowledged ?? false, none_of: d.none_of ?? [] };
     case "set_estimand":
       return { exposure: d.exposure ?? null, family: d.family ?? false,
                effect: d.effect ?? "total", contrast: d.contrast ?? null, measure: d.measure };
@@ -918,6 +919,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     estimand: null,
     adjustment: null,
     outcome_scale: null,
+    numbers_read: null,
     joins: null,
     codebooks: null,
     batch: null,

@@ -703,6 +703,11 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
     leave_out : "none" only: further total-energy columns (the energy role) that leave the model
         with ``energy_column``. Under "none" total energy is not in the model at all: that is
         what "no energy adjustment" means (audit ME-02).
+    factor_notes : the partition methods: why each column's kcal per unit is what ``atwater``
+        gives (the readings ledger's: "recorded in standard drinks of 14 g: … = 98 kcal").
+    declared_only : the partition methods: every nutrient's kcal per unit is given in ``atwater``
+        by its exact column (the readings ledger settled it); one that is not is refused rather
+        than read from its name (BLUEPRINT §14.3: a ``_g`` suffix never says grams).
 
     Which columns leave the model: total energy under "none", "residual_energy_dropped" and
     "density"; under "partition" and "all_components" it is replaced by kcal from everything
@@ -716,13 +721,16 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
 
     def __init__(self, method: EnergyMethod = "residual", energy_column: Optional[str] = "energy_kcal",
                  nutrient_columns: Sequence[str] = (), log_transform: bool = False,
-                 atwater: Optional[Mapping[str, float]] = None, leave_out: Sequence[str] = ()):
+                 atwater: Optional[Mapping[str, float]] = None, leave_out: Sequence[str] = (),
+                 factor_notes: Optional[Mapping[str, str]] = None, declared_only: bool = False):
         self.method = method
         self.energy_column = energy_column
         self.nutrient_columns = nutrient_columns
         self.log_transform = log_transform
         self.atwater = atwater
         self.leave_out = leave_out
+        self.factor_notes = factor_notes
+        self.declared_only = declared_only
 
     # -- fitting -----------------------------------------------------------
 
@@ -859,7 +867,14 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
                     self.method_, f"the partition subtracts kcal from {E}, and its median daily "
                                  f"value is in the kilojoule range (7,000–11,000), not kcal; "
                                  f"convert it to kcal first")
+        given = {str(k) for k in (self.atwater or {})}
+        notes = dict(self.factor_notes or {})
         for n, reading in readings.items():
+            if self.declared_only and n not in given:
+                raise EnergyAdjustmentNotApplicable(
+                    self.method_, f"{n}'s unit is not recorded, so the kcal each of its units "
+                                 f"carries is not known; record its unit (the energy question asks "
+                                 f"it) before energy is split into kcal from each source.")
             if not reading.declared:
                 confirmed = complete and check.verdict == "pass" and n in check.macro_columns.values()
                 if not confirmed:
@@ -868,12 +883,12 @@ class EnergyAdjuster(TransformerMixin, BaseEstimator):
                            "for the reconstruction to check.")
                     raise EnergyAdjustmentNotApplicable(
                         self.method_, f"{n} does not say what unit it is in, and the Atwater "
-                                     f"reconstruction could not confirm it is grams: {why} If it "
-                                     f"is in grams, a _g suffix on its name says so.")
+                                     f"reconstruction could not confirm it is grams: {why} Record "
+                                     f"its unit (the energy question asks it).")
             self.factors_[n] = float(reading.factor)
-            self.factor_notes_[n] = reading.reason if reading.declared else (
+            self.factor_notes_[n] = notes.get(n) or (reading.reason if reading.declared else (
                 f"{n} is {reading.role}; the Atwater reconstruction on the fitting rows confirms "
-                f"grams, so {reading.factor:g} kcal/g")
+                f"grams, so {reading.factor:g} kcal/g"))
         other = e - sum(self.factors_[n] * _numeric(X, n) for n in self.nutrients_)
         with np.errstate(divide="ignore", invalid="ignore"):
             share = other / np.abs(e)
@@ -1868,7 +1883,8 @@ def relative_effect_rows(matrix: pd.DataFrame, nutrients: Sequence[str],
                          factors: Mapping[str, float], *,
                          table: Optional[Callable[[pd.DataFrame], Sequence[Mapping[str, Any]]]] = None,
                          coefficients: Optional[Sequence[Mapping[str, Any]]] = None,
-                         weights: Optional[Sequence[float]] = None) -> List[Dict[str, Any]]:
+                         weights: Optional[Sequence[float]] = None,
+                         units: Optional[Mapping[str, str]] = None) -> List[Dict[str, Any]]:
     """Each nutrient's average relative causal effect from the all-components model (ME-14).
 
     For nutrient j with kcal term x_j and every other energy term x_k (``kcal_from_other``
@@ -1886,6 +1902,9 @@ def relative_effect_rows(matrix: pd.DataFrame, nutrients: Sequence[str],
 
     ``weights`` (one per row; MS4): under a surveyed population each row's survey weight, so the
     shares are the population's, as the estimate the design-based table gives is.
+
+    ``units`` (each nutrient's unit in words, as the readings ledger settled it: "g", "standard
+    drink of 14 g"): what "per" names; without it, the name's suffix.
     """
     kcal = [f"kcal_from_{n}" for n in nutrients if f"kcal_from_{n}" in matrix.columns]
     if "kcal_from_other" in matrix.columns:
@@ -1916,7 +1935,7 @@ def relative_effect_rows(matrix: pd.DataFrame, nutrients: Sequence[str],
         shares = ", ".join(f"{k.replace('kcal_from_', '')} {w[k]:.0%}" for k in others)
         meaning = (f"{n} in place of the other energy sources, weighted by their share of the "
                    f"remaining energy{among} ({shares}): the average relative effect, per "
-                   f"{_unit_word(n)}")
+                   f"{(units or {}).get(n) or _unit_word(n)}")
 
         def scaled(v: Any, _f: float = f) -> Optional[float]:
             return None if v is None else float(v) * _f

@@ -842,19 +842,51 @@ class FollowUpSpec(_Value):
 
     time_column: str
     entry_column: str | None = None  # staggered or delayed entry: when each row came under observation
-    # MS6: the horizon a time-to-event prediction is scored and calibrated at, on the follow-up's
-    # time scale; None reads the median follow-up time of the rows the models learn from, stated.
+    # The routing gate (RO-01 on a time-to-event outcome): a rule on the follow-up time selects on
+    # the outcome. Follow-up starting later (``landmark``: rows whose follow-up ended by then leave,
+    # every other row is at risk from it) and ending earlier (``horizon``: events after it are
+    # censored at it) are the outcome's own answers instead, on the follow-up's time scale.
+    landmark: float | None = None
     horizon: float | None = None
+    # MS6: the prediction horizon, the time a time-to-event prediction's risk is scored and
+    # calibrated at, on the follow-up's time scale; None reads the median follow-up time of the rows
+    # the models learn from, stated. It changes no row (the horizon above ends follow-up; this one
+    # only says where predictions are judged), so it lies after the landmark and before the horizon.
+    prediction_horizon: float | None = None
 
 
 class SetFollowUp(_DecisionModel):
-    """The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."""
+    """The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.
+
+    ``landmark``: follow-up counted from this time on (a landmark, or the customary "the first
+    years of follow-up excluded" for reverse causation): a row whose follow-up ended at or before
+    it, by an event or not, was not at risk then and leaves, and every other row is at risk from
+    it (left truncation; the estimate is among those event-free and followed at the landmark).
+    ``horizon``: follow-up ends at this time: an event after it counts as censored at it.
+    ``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes
+    no row."""
 
     kind: Literal["set_follow_up"] = "set_follow_up"
     column: str = Field(min_length=1)
     time_column: str = Field(min_length=1)
     entry_column: str | None = None
-    horizon: float | None = Field(default=None, gt=0)  # MS6: FollowUpSpec.horizon
+    landmark: float | None = Field(default=None, gt=0)
+    horizon: float | None = Field(default=None, gt=0)
+    prediction_horizon: float | None = Field(default=None, gt=0)  # MS6: FollowUpSpec's
+
+    @model_validator(mode="after")
+    def _landmark_before_horizon(self) -> "SetFollowUp":
+        if self.landmark is not None and self.horizon is not None and self.landmark >= self.horizon:
+            raise ValueError("the landmark must come before the horizon")
+        if self.prediction_horizon is not None:
+            # No row is followed past the horizon, and none is at risk before the landmark, so a
+            # risk by a time outside them cannot be scored (the censoring weights would be zero).
+            if self.horizon is not None and self.prediction_horizon >= self.horizon:
+                raise ValueError("the prediction horizon must come before follow-up ends at the "
+                                 "horizon")
+            if self.landmark is not None and self.prediction_horizon <= self.landmark:
+                raise ValueError("the prediction horizon must come after the landmark")
+        return self
 
 
 class SetGrain(_DecisionModel):
@@ -1097,13 +1129,22 @@ class ClusterSpec(_Value):
     column: str | None = None
     adjust: ClusterAdjustment | None = None
     acknowledged: bool = False  # "no grouping" kept although a column reads as one
+    # "Nothing groups them": the columns that read as a grouping when it was answered, each of
+    # which the answer says groups nothing (filled by the server; ``estimand.py``).
+    none_of: list[str] = Field(default_factory=list)
 
 
 class SetClusters(_DecisionModel):
+    """The grouping above the person (audit RO-08). The answer is also each named column's
+    ``cluster`` reading (BLUEPRINT §14.3): a grouping confirms it, "nothing groups them" denies
+    each column that read as one (``none_of``, filled by the server), and a later confirmation of
+    that reading stands over it, as the answer stands over an earlier one."""
+
     kind: Literal["set_clusters"] = "set_clusters"
     column: str | None = None
     adjust: ClusterAdjustment | None = None
     acknowledged: bool = False
+    none_of: list[str] = Field(default_factory=list)
 
 
 EffectKind = Literal["total", "direct"]
@@ -1163,6 +1204,15 @@ class CovariateAnswers(_Value):
     acknowledged: bool = False
     # "Further adjusted for" it: a labeled secondary model beside the primary.
     further: bool = False
+    # A direct effect only (MODELING_SEQUENCE §1 step 3, "A direct effect also asks for mediator–
+    # outcome confounders"; §2, "Exposure–mediator interaction routes to counterfactual mediation
+    # methods"): for a covariate that is not a mediator, whether it is a common cause of a mediator
+    # and the outcome; for a mediator, whether the exposure's effect could differ with its level,
+    # and, when it could, the recorded attestation that keeps the direct effect at its reference
+    # level (block and record).
+    confounds_mediator: Answer3 | None = None
+    interacts: Answer3 | None = None
+    interaction_attested: bool = False
 
 
 class AdjustmentAnswer(CovariateAnswers):
@@ -1237,6 +1287,13 @@ class LockPlan(_DecisionModel):
     kind: Literal["lock_plan"] = "lock_plan"
     plan: dict[str, Any] | None = None
     digest: str | None = None
+    # Where estimates were first displayed (the server's, never a client's): under inference, by
+    # this lock; under prediction, before the purpose became inference (the routing gate: the
+    # coefficients seen under prediction, then the adjustment set chosen under inference), with the
+    # outcome they were of and the last record before they were shown.
+    seen: Literal["inference", "prediction"] = "inference"
+    seen_target: str | None = None
+    seen_at: int | None = None
 
 
 class ApplyRepair(_DecisionModel):
@@ -1539,6 +1596,11 @@ class ProjectState(BaseModel):
     # Audit RO-10 (WP18): the scale the user chose for a positive, markedly skewed outcome; under
     # "log" the target slot names the derived ``ln_<column>`` (``SetOutcomeScale``)
     outcome_scale: OutcomeScaleSpec | None = None
+    # The routing gate (p05): each applied repair that reads a text column as numbers (a
+    # ``text_numbers__`` or ``below_detection__`` finding's), by finding id → ``{option, params}``
+    # (None once dismissed or deferred), written beside the finding's disposition so the findings
+    # stage reads these numbers without recomputing for every other repair.
+    numbers_read: dict[str, Any] | None = None
     # V2 definition of done §1 (DATAIN): the files joined to the table, by file id in answer order
     # (``join_files``; the ingest stage reads it), and each imported codebook by its id
     # (``import_codebook``): what its structured fields settled, its units and labels, and what
@@ -1621,6 +1683,13 @@ _SLOT_FOR: dict[str, Callable[[Any], str]] = {}
 # kind -> its writes as ``[(slot, key, value), …]``: one answer that writes several keyed entries
 # (``confirm_readings``: each listed reading where ``confirm_reading`` would write it).
 _ENTRIES: dict[str, Callable[[Any], list[tuple[str, str, Any]]]] = {}
+# kind -> keyed entries it writes beside its own slot, as ``[(slot, key, value), …]``: an answer
+# that is also a reading's confirmation (``set_clusters`` names a grouping, so it confirms that
+# column's ``cluster`` reading; its "nothing groups them" denies each grouping it was given over),
+# written where that confirmation is kept, so the latest word about one reading wins, whichever
+# answer gave it (BLUEPRINT §14.3: every confirmation is honored); or a fact a narrower consumer
+# reads (an applied read-numbers repair in ``numbers_read``).
+_CONFIRMS: dict[str, Callable[[Any], list[tuple[str, str, Any]]]] = {}
 _VALIDATORS: dict[str, list[Callable[[Any, Any], None]]] = {}
 _COMPLETIONS: dict[str, list[Callable[[Any, Any], Any]]] = {}
 
@@ -1642,6 +1711,7 @@ def register_kind(
     also: Mapping[str, Callable[[Any], Any]] | None = None,
     slot_for: Callable[[Any], str] | None = None,
     entries: Callable[[Any], list[tuple[str, str, Any]]] | None = None,
+    confirms: Callable[[Any], list[tuple[str, str, Any]]] | None = None,
 ) -> type[BaseModel]:
     """Declare that decisions of ``model_cls`` write ``slot``.
 
@@ -1659,6 +1729,9 @@ def register_kind(
     ``slot_for(decision)``, for a keyed kind, names the slot one decision writes where
     it is not ``slot`` (``confirm_reading`` keeps a role's confirmation beside the
     others ``confirm_role`` wrote, so confirming a role reshapes no table).
+    ``confirms(decision)``, for an unconditional kind, keyed or not, names keyed entries it writes
+    beside its slot, ``[(slot, key, value), …]``: the readings its answer confirms, written where
+    their own confirmations are, so the latest word about a reading wins.
     Returns the class, so it also works as a decorator via ``functools.partial``.
     """
     kind = kind_of(model_cls)
@@ -1700,6 +1773,10 @@ def register_kind(
         _ENTRIES[kind] = entries
     else:
         _ENTRIES.pop(kind, None)
+    if confirms is not None:
+        _CONFIRMS[kind] = confirms
+    else:
+        _CONFIRMS.pop(kind, None)
     return model_cls
 
 
@@ -1902,12 +1979,28 @@ def _for_this_outcome(decision: Any, slots: Mapping[str, Any]) -> bool:
 register_kind(OpenSeal, "seal_opened", value=lambda d: True, holds=_for_this_outcome)
 register_kind(Reseal, "seal_opened", value=lambda d: None, holds=_for_this_outcome)
 register_kind(LockPlan, "plan_locked", value=lambda d: True)
+
+
+def _reads_numbers(finding_id: str) -> bool:
+    """A finding whose repair reads a text column as numbers (``repairs.READS_NUMBERS``)."""
+    return str(finding_id).startswith(("text_numbers__", "below_detection__"))
+
+
+# An applied repair that reads a text column as numbers is also kept in ``numbers_read`` (and taken
+# out of it by a later dismissal or deferral), which the findings stage reads (the routing gate).
 register_kind(ApplyRepair, "findings", key=lambda d: d.finding_id,
-              value=lambda d: FindingDisposition(action="applied", option=d.option, params=d.params))
+              value=lambda d: FindingDisposition(action="applied", option=d.option, params=d.params),
+              confirms=lambda d: ([("numbers_read", d.finding_id,
+                                    {"option": d.option, "params": dict(d.params or {})})]
+                                  if _reads_numbers(d.finding_id) else []))
 register_kind(DeferFinding, "findings", key=lambda d: d.finding_id,
-              value=lambda d: FindingDisposition(action="deferred", to=d.to))
+              value=lambda d: FindingDisposition(action="deferred", to=d.to),
+              confirms=lambda d: ([("numbers_read", d.finding_id, None)]
+                                  if _reads_numbers(d.finding_id) else []))
 register_kind(DismissFinding, "findings", key=lambda d: d.finding_id,
-              value=lambda d: FindingDisposition(action="dismissed", reason=d.reason))
+              value=lambda d: FindingDisposition(action="dismissed", reason=d.reason),
+              confirms=lambda d: ([("numbers_read", d.finding_id, None)]
+                                  if _reads_numbers(d.finding_id) else []))
 register_kind(SetFeatureTable, "feature_table",
               value=lambda d: FeatureTableSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetCategorical, "categorical")
@@ -1918,7 +2011,8 @@ register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetFollowUp, "follow_up",
               value=lambda d: FollowUpSpec(time_column=d.time_column, entry_column=d.entry_column,
-                                           horizon=d.horizon),
+                                           landmark=d.landmark, horizon=d.horizon,
+                                           prediction_horizon=d.prediction_horizon),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetOutcomeUnit, "outcome_unit", value=lambda d: d.unit,
               holds=lambda d, slots: slots.get("target") == d.column)
@@ -1937,7 +2031,11 @@ register_kind(SetMeasurementError, "measurement_error",
 register_kind(SetCensoring, "censoring",
               value=lambda d: "same_attested" if d.acknowledged else "same",
               holds=lambda d, slots: slots.get("target") == d.column)
-register_kind(SetClusters, "clusters", value=lambda d: ClusterSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetClusters, "clusters", value=lambda d: ClusterSpec(**d.model_dump(exclude={"kind"})),
+              confirms=lambda d: ([("reading_confirmations", f"cluster:{d.column}", "yes")]
+                                  if d.column else
+                                  [("reading_confirmations", f"cluster:{c}", "no")
+                                   for c in d.none_of]))
 register_kind(SetEstimand, "estimand", value=lambda d: EstimandSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetAdjustment, "adjustment", value=lambda d: None,
               entries=lambda d: [("adjustment", column, AdjustmentAnswer(
@@ -2053,6 +2151,17 @@ def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
              and not (task == "regression" and n_unique <= 2)]
     if decision.task == "regression" and not numeric:
         # WP18 (audit RO-10): the answer refuses what the skip never states, so the two agree.
+        # The routing gate (p05): numbers written as text are read as numbers by their finding's
+        # repair, offered here first, where the outcome question needs it.
+        read = _read_numbers_exits(decision.column, ctx)
+        if read:
+            raise Refusal(
+                "task_mismatch",
+                f"`{decision.column}` holds numbers written as text (a SAS or Stata \".\", a "
+                f"spreadsheet error, a comma), so as it stands it has no mean to model as a "
+                f"regression outcome: read it as numbers first.",
+                exits=[*read, *exits, {"label": "Choose another outcome", "decision": None}],
+            )
         raise Refusal(
             "task_mismatch",
             f"`{decision.column}` holds labels, not numbers, so it has no mean to model as a "
@@ -2088,6 +2197,29 @@ def _task_fits_the_outcome(decision: SetTask, ctx: Any) -> None:
             f"column says whether the event happened, so it has exactly 2.",
             exits=exits or [{"label": "Choose another outcome", "decision": None}],
         )
+
+
+def _read_numbers_exits(column: str, ctx: Any) -> list[dict[str, Any]]:
+    """The repairs that read ``column``'s text as numbers (its ``text_numbers__`` finding's, and its
+    values below a detection limit's), as exits, when the findings are fresh."""
+    from turbotab.core import repairs
+
+    reader = _ctx(ctx, "artifact")
+    if not callable(reader):
+        return []
+    try:
+        findings = reader("findings")
+    except Exception:  # noqa: BLE001 - no findings: no repair to offer
+        return []
+    out = []
+    for finding in repairs.findings_of(findings):
+        if str(finding.get("id")) not in (f"text_numbers__{column}", f"below_detection__{column}"):
+            continue
+        for option in finding.get("repairs") or []:
+            if option.get("decision"):
+                out.append({"label": f"`{column}`: {str(option.get('label') or option.get('key'))}",
+                            "decision": option["decision"]})
+    return out
 
 
 def _follow_up_belongs_to_the_outcome(decision: SetFollowUp, ctx: Any) -> None:
@@ -2902,10 +3034,25 @@ OUTCOME_RULE = ("Keeping rows by their outcome selects on the value being explai
                 "the estimates, and no one whose outcome is still unknown could be screened by it.")
 
 
-def _on_the_outcome(rule: Any, target: str) -> bool:
+def _on_the_outcome(rule: Any, target: str | Sequence[str]) -> bool:
     """The rule reads the outcome: as its column, as the column its ranges are set by, or (a
-    Goldberg screen) as any input of the screen, such as the body weight its BMR reads."""
-    return target in as_rule(rule).reads()
+    Goldberg screen) as any input of the screen, such as the body weight its BMR reads.
+    ``target`` may be every column of the outcome (:func:`outcome_columns`)."""
+    columns = {target} if isinstance(target, str) else set(target)
+    return bool(columns & set(as_rule(rule).reads()))
+
+
+def outcome_columns(state: Any) -> list[str]:
+    """The columns the outcome is: the target, and for a time to event its follow-up time (the
+    routing gate: a rule `followup_years >= 3` kept rows by half the outcome (time, event)). The
+    entry time says when a row came under observation, a baseline fact, so it is not one."""
+    target = getattr(state, "target", None)
+    if target is None:
+        return []
+    spec = getattr(state, "follow_up", None)
+    if spec is not None and getattr(state, "task", None) == "time_to_event":
+        return [target, spec.time_column]
+    return [target]
 
 
 def _records_in(ctx: Any) -> list["DecisionRecord"] | None:
@@ -2974,10 +3121,15 @@ def _exclusions_leave_the_outcome_alone(decision: SetExclusions, ctx: Any) -> No
     target = _target_of(ctx)
     if target is _UNKNOWN or target is None:
         return
-    on = [i for i, rule in enumerate(decision.rules) if _on_the_outcome(rule, target)]
+    state = _state(ctx)
+    columns = outcome_columns(state) if state is not None and state.target == target else [target]
+    on = [i for i, rule in enumerate(decision.rules) if _on_the_outcome(rule, columns)]
     if not on:
         return
     kept = SetExclusions(rules=[r for i, r in enumerate(decision.rules) if i not in on])
+    timed = [i for i in on if not _on_the_outcome(decision.rules[i], target)]
+    if timed and state is not None and state.follow_up is not None:
+        raise _follow_up_rule_refusal(state, [decision.rules[i] for i in timed], kept)
     raise Refusal(
         "rule_on_outcome",
         f"`{target}` is the outcome. {OUTCOME_RULE} Say who is studied by what was known before "
@@ -2986,6 +3138,74 @@ def _exclusions_leave_the_outcome_alone(decision: SetExclusions, ctx: Any) -> No
                *_outcome_repair_exits(target, ctx),
                {"label": "Restrict by a variable measured before the outcome", "decision": None}],
     )
+
+
+def _follow_up_rule_refusal(state: Any, rules: Sequence[Any], kept: SetExclusions) -> Refusal:
+    """A rule on a time-to-event outcome's follow-up time (the routing gate's p12: `followup_years
+    >= 3`, "exclude early events", accepted as eligibility). The follow-up time is half of the
+    outcome: dropping rows by it selects on the outcome, and under prediction no one's follow-up is
+    known in advance. What the rule meant is the outcome's own answer: follow-up counted from a
+    landmark (people whose follow-up ended before it, by an event or not, were not at risk then
+    and leave; everyone else is at risk from it), or follow-up ended at a horizon (later events
+    censored at it), never rows kept by how long they happened to be followed."""
+    spec = state.follow_up
+    time = spec.time_column
+    lows = [float(r.low) for r in (as_rule(x) for x in rules)
+            if getattr(r, "column", None) == time and getattr(r, "low", None) is not None]
+    highs = [float(r.high) for r in (as_rule(x) for x in rules)
+             if getattr(r, "column", None) == time and getattr(r, "high", None) is not None]
+    base = {"column": state.target, "time_column": time, "entry_column": spec.entry_column,
+            "landmark": spec.landmark, "horizon": spec.horizon,
+            "prediction_horizon": spec.prediction_horizon}
+    exits: list[dict[str, Any]] = [{"label": f"Drop the rule on `{time}`", "decision": kept}]
+
+    def follow_up(**change: float) -> SetFollowUp:
+        # A declared prediction horizon (MS6) outside the new follow-up cannot be scored at, so the
+        # answer leaves it out and the fit says the median follow-up time is used instead.
+        spec_ = {**base, **change}
+        ph, ends_, starts_ = spec_["prediction_horizon"], spec_["horizon"], spec_["landmark"]
+        if ph is not None and ((ends_ is not None and ph >= ends_)
+                               or (starts_ is not None and ph <= starts_)):
+            spec_["prediction_horizon"] = None
+        return SetFollowUp(**spec_)
+
+    landmark = max(lows) if lows else None
+    horizon = min(highs) if highs else None
+    ends = horizon if horizon is not None else spec.horizon
+    starts = landmark if landmark is not None else spec.landmark
+    if landmark is not None and landmark > 0 and (ends is None or landmark < ends):
+        exits.append({"label": (f"Count follow-up from `{landmark:g}` on (a landmark): rows whose "
+                                f"follow-up ended by then leave, and the effect is among those "
+                                f"event-free and followed at `{landmark:g}`"),
+                      "decision": follow_up(landmark=landmark)})
+    if horizon is not None and horizon > 0 and (starts is None or starts < horizon):
+        exits.append({"label": (f"End follow-up at `{horizon:g}`: events after it count as "
+                                f"censored there, and no row leaves"),
+                      "decision": follow_up(horizon=horizon)})
+    exits.append({"label": "Restrict by a variable measured before the outcome", "decision": None})
+    return Refusal(
+        "rule_on_outcome",
+        f"`{time}` is the follow-up time of `{state.target}`: a time to event is its time and its "
+        f"event together, so {OUTCOME_RULE[0].lower()}{OUTCOME_RULE[1:]} To leave out the first "
+        f"years of follow-up, count follow-up from a landmark; to stop at a time, end follow-up "
+        f"there.",
+        exits=exits)
+
+
+def _follow_up_has_no_rule(decision: "SetFollowUp", ctx: Any) -> None:
+    """A rule already on the column named as the follow-up time would become a rule on the
+    outcome (the routing gate's p12, in the other order)."""
+    state = _state(ctx)
+    rules = list(state.exclusions or []) if state is not None else []
+    on = [r for r in rules if _on_the_outcome(r, decision.time_column)]
+    if not on:
+        return
+    raise Refusal(
+        "rule_on_outcome",
+        f"An eligibility rule reads `{decision.time_column}`, so naming it the follow-up time would "
+        f"keep rows by their outcome. {OUTCOME_RULE}",
+        exits=[{"label": f"Drop the rule on `{decision.time_column}` first",
+                "decision": SetExclusions(rules=[r for r in rules if r not in on])}])
 
 
 def _new_outcome_has_no_rule(decision: SetTarget, ctx: Any) -> None:
@@ -3009,11 +3229,11 @@ def _revert_leaves_no_rule_on_the_outcome(decision: "Revert", ctx: Any) -> None:
     after = state_after(decision, ctx)
     if after is None or after.target is None:
         return
-    if not any(_on_the_outcome(r, after.target) for r in after.exclusions or []):
+    if not any(_on_the_outcome(r, outcome_columns(after)) for r in after.exclusions or []):
         return
     now = _state(ctx)
     if now is not None and now.target == after.target and \
-            any(_on_the_outcome(r, now.target) for r in now.exclusions or []):
+            any(_on_the_outcome(r, outcome_columns(now)) for r in now.exclusions or []):
         return  # already so before this revert: not this revert's doing
     raise Refusal(
         "rule_on_outcome",
@@ -3090,22 +3310,63 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
         kept = [n for n in decision.nutrients if n not in gone]
         exits = ([{"label": "Adjust only the nutrients still in the model", "decision": with_(nutrients=kept)}]
                  if kept and decision.energy_column not in gone else [])
+        # Which answer left each out: the missing-values answer, a repair, or (under inference) the
+        # adjustment set's answers (a mediator, a collider, a cause of neither).
+        from turbotab.core.estimand import adjustment_left_out
+        from turbotab.core.repairs import unusable_columns
+
+        spec = state.missing
+        by_missing = set(spec.drop_columns) if spec is not None else set()
+        by_repair = set(unusable_columns(state))
+        by_answers = set(adjustment_left_out(state))
+        why = [w for w, cols in (("the missing-values answer", by_missing),
+                                 ("a repair that marked it unusable", by_repair),
+                                 ("the adjustment set's answers", by_answers))
+               if set(gone) & cols]
         raise Refusal(
             "left_out",
-            f"{_and(gone)} {'was' if len(gone) == 1 else 'were'} left out of the predictors with the "
-            f"missing values, so energy adjustment cannot use {'it' if len(gone) == 1 else 'them'}.",
+            f"{_and(gone)} {'was' if len(gone) == 1 else 'were'} left out of the predictors by "
+            f"{_and(why) if why else 'an earlier answer'}, so energy adjustment cannot use "
+            f"{'it' if len(gone) == 1 else 'them'}.",
             exits=exits + [{"label": "Do not adjust for energy", "decision": with_(method="none")}],
         )
     from turbotab.core.methods.energy import METHOD_TABLE, applicable_methods
 
-    table = applicable_methods(sorted(columns or roles), decision.energy_column, decision.nutrients)
+    atwater = None
+    found: dict[str, Any] = {}
+    partition = decision.method in ("partition", "all_components")
+    if partition:
+        # BLUEPRINT §14.3 (the ledger's repair 3 residue): each source is split into kcal by its
+        # settled kcal per unit — the user's recorded unit, or grams the Atwater test reads from
+        # the values — never by its name's suffix. Read here on the rows a check before the seal
+        # may read; an unsettled one is asked below, at the answer that reads it.
+        from turbotab.core.readings import energy_source_factors
+
+        found = energy_source_factors(state, list(decision.nutrients), store=_store_of(ctx),
+                                      row_ids=_partition_rows(ctx))
+        atwater = {c: float(f.factor) for c, f in found.items() if f.settled}
+    table = applicable_methods(sorted(columns or roles), decision.energy_column, decision.nutrients,
+                               atwater=atwater)
     verdict = table.get(decision.method, {"ok": True})
     if not verdict["ok"]:
         exits = [{"label": METHOD_TABLE[m]["label"], "decision": with_(method=m)}
                  for m, v in table.items() if v["ok"] and m != decision.method]
         raise Refusal("method_not_applicable", str(verdict["reason"]), exits=exits)
-    if decision.method in ("partition", "all_components"):
-        _partition_runs_on_the_data(decision, ctx, with_, table)
+    if partition:
+        # A total beside its parts is refused whatever the units (the parts count twice); its exit
+        # names the totals, whose units are then asked. Then each unsettled unit is asked, before
+        # the data check reads any source by a unit nobody settled.
+        _partition_runs_on_the_data(decision, ctx, with_, table, atwater, nesting_only=True)
+        from turbotab.core.readings import Unsettled, energy_sources_or_ask
+
+        try:
+            energy_sources_or_ask(state, list(decision.nutrients), found=found)
+        except Unsettled as waiting:
+            raise Refusal("reading_unsettled", str(waiting), exits=[
+                *waiting.exits,
+                *({"label": METHOD_TABLE[m]["label"], "decision": with_(method=m)}
+                  for m in ("residual", "standard") if table.get(m, {}).get("ok"))]) from None
+        _partition_runs_on_the_data(decision, ctx, with_, table, atwater)
     if decision.strata is not None:
         info = _info(ctx, decision.strata)
         known = columns is None or decision.strata in columns
@@ -3123,27 +3384,15 @@ def _energy_adjustment_fits_the_roles(decision: SetEnergyAdjustment, ctx: Any) -
 PARTITION_CHECK_ROWS = 5_000
 
 
-def _partition_runs_on_the_data(decision: SetEnergyAdjustment, ctx: Any,
-                                with_: Callable[..., SetEnergyAdjustment],
-                                table: Mapping[str, Mapping[str, Any]]) -> None:
-    """Refuse a partition the fit would refuse, or one that counts a total and its parts twice.
-
-    The same checks the fit makes (energy.partition_refusal), on a sample of the rows outside the
-    held-out set: a unit question, asked of the data before the answer is recorded, so the design
-    never fails on it afterwards.
-    """
+def _partition_rows(ctx: Any) -> Any:
+    """The rows a partition check before the seal reads (``_partition_runs_on_the_data``'s pool):
+    under inference every analyzed row, under prediction every row outside the held-out set, at
+    most :data:`PARTITION_CHECK_ROWS`; None with no store to read."""
     import numpy as np
 
-    from turbotab.core.methods.energy import METHOD_TABLE, partition_refusal
-
-    opener = _ctx(ctx, "store")
-    try:
-        store = opener() if callable(opener) else None
-    except Exception:  # noqa: BLE001 - no data to check: the fit decides
-        store = None
-    E, nutrients = decision.energy_column, list(decision.nutrients)
-    if store is None or E is None or not {E, *nutrients} <= set(store.columns):
-        return
+    store = _store_of(ctx)
+    if store is None:
+        return None
     pool = np.arange(int(store.n_rows), dtype=np.int64)
     state = _ctx(ctx, "state")
     if getattr(state, "purpose", None) == "inference":
@@ -3162,10 +3411,41 @@ def _partition_runs_on_the_data(decision: SetEnergyAdjustment, ctx: Any,
         if sealed is not None and len(sealed):
             pool = np.setdiff1d(pool, np.asarray(sealed, dtype=np.int64), assume_unique=True)
     if len(pool) > PARTITION_CHECK_ROWS:
-        pool = np.sort(np.random.default_rng(0).choice(pool, size=PARTITION_CHECK_ROWS, replace=False))
+        pool = np.sort(np.random.default_rng(0).choice(pool, size=PARTITION_CHECK_ROWS,
+                                                       replace=False))
+    return pool
+
+
+def _partition_runs_on_the_data(decision: SetEnergyAdjustment, ctx: Any,
+                                with_: Callable[..., SetEnergyAdjustment],
+                                table: Mapping[str, Mapping[str, Any]],
+                                atwater: Mapping[str, float] | None = None, *,
+                                nesting_only: bool = False) -> None:
+    """Refuse a partition the fit would refuse, or one that counts a total and its parts twice.
+
+    The same checks the fit makes (energy.partition_refusal), on a sample of the rows outside the
+    held-out set: a unit question, asked of the data before the answer is recorded, so the design
+    never fails on it afterwards. ``atwater``: each source's settled kcal per unit (the readings
+    ledger's). ``nesting_only``: only a total beside its own parts is refused.
+    """
+    import numpy as np
+
+    from turbotab.core.methods.energy import METHOD_TABLE, partition_refusal
+
+    opener = _ctx(ctx, "store")
+    try:
+        store = opener() if callable(opener) else None
+    except Exception:  # noqa: BLE001 - no data to check: the fit decides
+        store = None
+    E, nutrients = decision.energy_column, list(decision.nutrients)
+    if store is None or E is None or not {E, *nutrients} <= set(store.columns):
+        return
+    pool = _partition_rows(ctx)
     frame = store.materialize([E, *nutrients], pool)
     nested = effective_nesting(ctx, frame, nutrients)
-    refused = partition_refusal(frame, E, nutrients, nested=nested)
+    if nesting_only and not any(nested.get(n) in nutrients for n in nutrients):
+        return
+    refused = partition_refusal(frame, E, nutrients, nested=nested, atwater=atwater)
     if refused is None:
         return
     exits: list[dict[str, Any]] = []
@@ -4090,6 +4370,7 @@ register_validator("set_outcome_unit", _unit_names_the_outcome)
 register_validator("set_column_unit", _column_unit_fits)
 register_validator("set_exposure_form", _form_fits_the_column)
 register_validator("set_follow_up", _follow_up_belongs_to_the_outcome)
+register_validator("set_follow_up", _follow_up_has_no_rule)
 register_validator("set_roles", _roles_name_real_columns)
 register_completion("set_roles", _roles_record_what_rode_along)
 register_validator("confirm_role", _confirmed_role_names_a_column)
@@ -4202,10 +4483,20 @@ def fold(records: Sequence[DecisionRecord]) -> ProjectState:
             entries[keyed(decision)] = _SLOT_VALUE[decision.kind](decision)
             slots[slot] = entries
             _confirmed_role_is_the_role(slots, slot, keyed(decision), entries[keyed(decision)])
+            confirmed = _CONFIRMS.get(decision.kind)
+            for extra, entry, value in (confirmed(decision) if confirmed is not None else ()):
+                others = dict(slots.get(extra) or {})
+                others[entry] = value
+                slots[extra] = others
         else:
             slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
             for extra, fn in _ALSO.get(decision.kind, {}).items():
                 slots[extra] = fn(decision)
+            confirmed = _CONFIRMS.get(decision.kind)
+            for slot, entry, value in (confirmed(decision) if confirmed is not None else ()):
+                entries = dict(slots.get(slot) or {})
+                entries[entry] = value
+                slots[slot] = entries
     base = dict(slots)
     for decision in live:
         holds = _HOLDS.get(decision.kind)

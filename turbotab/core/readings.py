@@ -1625,6 +1625,9 @@ def unsettled_codes(state: Any, columns: Iterable[str],
 # column but total energy kept as a covariate (``residual``, ``density_multivariate``).
 COMPUTING_METHODS = ("residual", "residual_energy_dropped", "density", "density_multivariate",
                      "partition", "all_components")
+# The energy models that split total energy into kcal from each named source: each source's kcal
+# per unit is read from its settled unit (:func:`energy_sources_or_ask`).
+PARTITION_METHODS = ("partition", "all_components")
 
 
 def energy_plan(state: Any, predictors: Iterable[str]) -> tuple[set[str], set[str]]:
@@ -1757,6 +1760,12 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
                        f"(one slope); the fit waits for the answer for each.")
         raise Unsettled(f"{message} {ask_text(needed, state)}", labeled(needed, state),
                         ask_exits(needed, state))
+    # The energy models that convert each source to kcal (the partition, the all-components model)
+    # read each source's kcal per unit from its settled unit, never from its name.
+    adj = _get(state, "energy_adjustment")
+    if adj is not None and str(_get(adj, "method")) in PARTITION_METHODS:
+        energy_sources_or_ask(state, [c for c in (_get(adj, "nutrients") or ()) if c in preds],
+                              store=store)
     return preds
 
 
@@ -2146,6 +2155,9 @@ class KcalPerUnit:
     settled: bool
     why: str
     route: str | None = None
+    # The unit the factor is per, as recorded (``g``, ``kg``, ``kcal``, ``kj``, ``drinks:14``) or
+    # read by the values (``g``); None while unsettled.
+    unit: str | None = None
 
 
 # The kcal one unit of an energy source carries, by its recorded unit (BLUEPRINT §14.3: derived
@@ -2199,6 +2211,14 @@ def drink_units() -> tuple[str, ...]:
     return tuple(drinks_value(i / 100) for i in range(lo, hi + 1))
 
 
+def per_unit_words(value: Any) -> str:
+    """One recorded unit, as what an estimate is "per": g, kg, kcal, kJ, standard drink of 14 g."""
+    grams = parse_drinks(value)
+    if grams is not None:
+        return f"standard drink of {_grams_text(grams)} g"
+    return {"kj": "kJ", "pct_energy": "% of energy"}.get(str(value), str(value))
+
+
 def unit_words(value: Any) -> str:
     """A recorded unit in words: kJ, kcal, standard drinks of 14 g."""
     grams = parse_drinks(value)
@@ -2247,7 +2267,7 @@ def kcal_per_unit(state: Any, column: str, store: Any = None, *,
                                    f"alcohol only")
             return KcalPerUnit(column, per_gram * grams, True,
                                f"recorded in {unit_words(unit)}: {why} × {_grams_text(grams)} g "
-                               f"= {per_gram * grams:g} kcal per drink")
+                               f"= {per_gram * grams:g} kcal per drink", unit=unit)
         if unit in ("g", "kg"):
             per_gram, why, _ = atwater()
             if per_gram is None:
@@ -2255,12 +2275,12 @@ def kcal_per_unit(state: Any, column: str, store: Any = None, *,
             scale = 1000.0 if unit == "kg" else 1.0
             return KcalPerUnit(column, per_gram * scale, True,
                                f"recorded in {unit}: {why}" + (" × 1,000 per kg" if scale > 1
-                                                               else ""))
+                                                               else ""), unit=unit)
         if unit == "kcal":
-            return KcalPerUnit(column, 1.0, True, "recorded in kcal")
+            return KcalPerUnit(column, 1.0, True, "recorded in kcal", unit=unit)
         if unit == "kj":
             return KcalPerUnit(column, 1.0 / KCAL_PER_KJ, True,
-                               f"recorded in kJ: 1/{KCAL_PER_KJ} kcal per kJ")
+                               f"recorded in kJ: 1/{KCAL_PER_KJ} kcal per kJ", unit=unit)
         if unit == "pct_energy":
             return KcalPerUnit(column, None, False,
                                f"`{column}` is recorded as a share of energy, which carries no "
@@ -2275,14 +2295,15 @@ def kcal_per_unit(state: Any, column: str, store: Any = None, *,
         per_gram, why, _ = atwater()
         if per_gram is not None:
             return KcalPerUnit(column, per_gram, True, f"in grams by its values ({verdict.evidence}): "
-                                                       f"{why}")
+                                                       f"{why}", unit="g")
     said = f": {verdict.evidence}" if verdict is not None and verdict.evidence else ""
     return KcalPerUnit(column, None, False,
                        f"`{column}`'s unit is not recorded, and a name never says it (an InBody "
                        f"`Protein` is kilograms of body protein; alcohol is kept in drinks){said}")
 
 
-def factor_verdicts(state: Any, store: Any, columns: Iterable[str]) -> dict[str, Verdict]:
+def factor_verdicts(state: Any, store: Any, columns: Iterable[str],
+                    row_ids: Any = None) -> dict[str, Verdict]:
     """``unit:factor`` by the values for each of ``columns``: the registry's one test
     (:func:`by_values`, :func:`factor_in_grams`) against the settled total-energy column, over the
     columns that name a macronutrient total beside it (NUTRITION_PACK §01). Empty with no store or
@@ -2299,10 +2320,72 @@ def factor_verdicts(state: Any, store: Any, columns: Iterable[str]) -> dict[str,
     totals = [c for c in store.columns if c != energy and _names_a_macro_total(c)]
     wanted = list(dict.fromkeys([energy, *totals, *(c for c in columns if c in names)]))
     try:
-        frame = store.materialize(wanted)
+        # ``row_ids``: the rows a check before the seal may read (never a held-out one).
+        frame = store.materialize(wanted) if row_ids is None else store.materialize(wanted,
+                                                                                    row_ids)
     except Exception:  # noqa: BLE001 - no values to read: only a recorded unit settles
         return {}
     return {c: by_values("unit:factor", frame, energy, c) for c in columns if c in frame.columns}
+
+
+def frame_factor_verdicts(state: Any, frame: Any, columns: Iterable[str]) -> dict[str, Verdict]:
+    """``unit:factor`` by the values of ``frame`` alone (:func:`factor_verdicts` reads the store):
+    for a consumer that holds the rows it fits on and no store. Empty without a settled total-energy
+    column among them: only a recorded unit settles then."""
+    names = {str(c) for c in (frame.columns if frame is not None else ())}
+    energy = next((c for c, r in settled_roles(state).items() if r == "energy"), None)
+    if energy is None or energy not in names:
+        return {}
+    return {str(c): by_values("unit:factor", frame, energy, str(c)) for c in columns
+            if str(c) in names}
+
+
+def energy_source_factors(state: Any, columns: Iterable[str], *, store: Any = None,
+                          frame: Any = None, row_ids: Any = None) -> dict[str, KcalPerUnit]:
+    """Each energy source's kcal per unit for an energy model that converts it to kcal (the
+    partition and the all-components model), read as :func:`kcal_per_unit` reads it: the user's
+    recorded unit, else grams the registry's Atwater test reads from the values of ``store`` (every
+    row) or ``frame`` (the rows at hand); never the name (BLUEPRINT §14.3: the ledger's repair 3
+    residue, `alcohol_g` holding US drinks moved at 7 kcal per unit by its suffix)."""
+    columns = [str(c) for c in columns]
+    if store is not None:
+        verdicts = factor_verdicts(state, store, columns, row_ids)
+    elif frame is not None:
+        verdicts = frame_factor_verdicts(state, frame, columns)
+    else:
+        verdicts = {}
+    return {c: kcal_per_unit(state, c, verdict=verdicts.get(c)) for c in columns}
+
+
+def energy_sources_or_ask(state: Any, columns: Iterable[str], *, store: Any = None,
+                          frame: Any = None, row_ids: Any = None,
+                          found: Mapping[str, KcalPerUnit] | None = None) -> dict[str, KcalPerUnit]:
+    """:func:`energy_source_factors` (or ``found``, already read), once every one is settled; else
+    :class:`Unsettled`, asking each unsettled source's unit (:func:`factor_exits`), or naming the
+    recorded unit that carries no constant kcal per unit."""
+    found = dict(found) if found is not None else energy_source_factors(
+        state, columns, store=store, frame=frame, row_ids=row_ids)
+    refused = [f for f in found.values() if not f.settled and confirmation(state, "unit", f.column)]
+    if refused:
+        f = refused[0]
+        exits = [e for e in factor_exits(f.column) if e.get("decision")]
+        raise Unsettled(f"{f.why}, so an energy model that converts it to kcal has no kcal per unit "
+                        f"to read. Record its unit as an amount, or adjust for energy another way.",
+                        [Reading((f.column,), "unit", None, "low", f.why, False, "proposed")],
+                        exits)
+    waiting = [f for f in found.values() if not f.settled]
+    if waiting:
+        names = [f.column for f in waiting]
+        one = len(names) == 1
+        raise Unsettled(
+            f"{listing(names)} {'is' if one else 'are'} split into {'its' if one else 'their'} kcal "
+            f"by the energy model, but {'its' if one else 'their'} unit is not recorded, so the kcal "
+            f"each unit carries would be a guess (a name never says it: an `alcohol_g` may count "
+            f"standard drinks). Record {'its' if one else 'each'} unit.",
+            [Reading((f.column,), "unit", "g", "medium", f.why, False, "proposed")
+             for f in waiting],
+            [e for f in waiting for e in factor_exits(f.column)])
+    return found
 
 
 def unsettled_factors(state: Any, columns: Iterable[str], store: Any = None) -> list[str]:
@@ -3082,6 +3165,12 @@ CONSUMERS: tuple[Consumer, ...] = (
              kinds=("unit:factor",)),
     # MS1: the imputation's energy identity computes with each source's kcal per unit, settled only.
     Consumer(_C + "stages.modeling:_settled_factors", ("energy_factor",), True, SETTLED_ONLY,
+             kinds=("unit:factor",)),
+    # The routing gate's ledger residue: the partition methods split each source into kcal by its
+    # settled kcal per unit, asked at the energy question and read by the design, never the name.
+    Consumer(_C + "decisions:_energy_adjustment_fits_the_roles", ("energy_factor",), True, ASK,
+             kinds=("unit:factor",)),
+    Consumer(_C + "models.pipeline:_energy_factors", ("energy_factor",), True, ASK,
              kinds=("unit:factor",)),
     # The sixth gate: the curve's Shift and the design read the nesting the user confirmed,
     # whichever column it names (``readings.nesting``).

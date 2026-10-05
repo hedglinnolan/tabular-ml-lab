@@ -9,6 +9,12 @@ places where they meet wave 1a, each a rule one package wrote that the other's m
   scope the lockbox test (constitution §06) observes by perturbation. MODELING_SEQUENCE §1.1's
   inference order holds in it: the copies are drawn first, then each copy's scale scores, then
   each copy's design-based fit.
+* **Two times on the follow-up's scale** (the routing gate and MS6). The routing gate's repair
+  (landed beside wave 1b) made ``horizon`` the end of follow-up: events after it are censored
+  there, so the outcome changes. MS6 had named the time predicted risks are scored and calibrated
+  at ``horizon`` too, which changes no row. They are two answers: MS6's is
+  ``prediction_horizon``, and it lies after the landmark and before the end of follow-up, where
+  Graf's censoring weights are still positive.
 * **The population answer binds the pooled curve** (MS2–MS4). Under the surveyed population every
   display is design-based or blocked and recorded (MODELING_SEQUENCE §4), and under multiple
   imputation every display is pooled (§2) with ν_com the design df (§1.1). The substitution curve
@@ -349,3 +355,83 @@ def test_under_the_population_answer_the_linear_contrast_pools_the_copies_design
     assert sub["band"]["method"] == "design" and sub["band"]["df"] == r["degf"]
     # The pooled df sits below the design's: Barnard–Rubin never exceeds the complete-data df.
     assert 0 < r["df"] <= r["degf"]
+
+
+# ── two times on the follow-up's scale ───────────────────────────────────────
+
+
+def test_follow_up_ends_at_its_horizon_and_risks_are_judged_at_the_prediction_horizon(tmp_path):
+    """One follow-up answer with both times: follow-up ends at 3 (the routing gate: later events
+    censored at 3) and predicted risks are judged at 2 (MS6). The fit scores and calibrates at 2
+    and says so; with no prediction horizon declared it reads the median follow-up time of the
+    outcome as censored at 3, computed here by NumPy from the raw columns. A prediction horizon at
+    or past the end of follow-up is refused when the answer is made: at 3 every row still at risk
+    is censored, so the censoring survival Graf's weights divide by is 0 (Kaplan–Meier of the
+    censoring by NumPy). The record's sentence says both, verbatim. The gate's own exits, offered
+    for a rule on the follow-up time, keep a declared prediction horizon that still fits and drop
+    one that no longer does."""
+    from turbotab.core import decisions as d
+    from turbotab.core import voice
+    from turbotab.core.decisions import FollowUpSpec, SplitSpec
+    from turbotab.core.tests.acceptance.test_ms6_prediction_validation import _stages, _state
+
+    rng = np.random.default_rng(41)
+    n = 240
+    X = rng.normal(size=(n, 2))
+    t_event = rng.exponential(np.exp(-(X @ np.array([0.7, -0.4]))) * 3.0)
+    t_cens = rng.uniform(1.0, 6.0, n)
+    time = np.minimum(t_event, t_cens)
+    event = (t_event <= t_cens).astype(int)
+    frame = pd.DataFrame({"x1": X[:, 0], "x2": X[:, 1], "pid": np.arange(n), "time": time,
+                          "dead": event})
+    split = SplitSpec(holdout=0.0, seed=4, folds=5)
+
+    def fitted(follow_up: FollowUpSpec, folder: str):
+        st = _state(frame, task="time_to_event", target="dead", models=["cox"], split=split,
+                    event="1", follow_up=follow_up)
+        return _stages(frame, st, tmp_path / folder)[-1].data
+
+    both = fitted(FollowUpSpec(time_column="time", horizon=3.0, prediction_horizon=2.0), "both")
+    assert both["horizon"] == 2.0 and both["primary_metric"] == "brier_t"
+    assert both["horizon_note"] == ("Scored and calibrated by `time` = `2`, the declared "
+                                    "prediction horizon.")
+    assert both["models"][0]["calibration_horizon"]["horizon"] == 2.0
+    ended = fitted(FollowUpSpec(time_column="time", horizon=3.0), "ended")
+    median = float(np.median(np.minimum(time, 3.0)))
+    assert ended["horizon"] == pytest.approx(median, rel=1e-12)
+    assert ended["horizon_note"].endswith("as no prediction horizon was declared with the "
+                                          "follow-up.")
+
+    # Why the prediction horizon must come before the end of follow-up: the censoring's
+    # Kaplan–Meier survival at 3, once follow-up ends there, is 0.
+    t3, e3 = np.minimum(time, 3.0), np.where(time > 3.0, 0, event)
+    survival = 1.0
+    for t in np.unique(t3[e3 == 0]):
+        survival *= 1 - np.sum((t3 == t) & (e3 == 0)) / np.sum(t3 >= t)
+    assert survival == 0.0
+    with pytest.raises(ValueError, match="before follow-up ends"):
+        d.SetFollowUp(column="dead", time_column="time", horizon=3.0, prediction_horizon=3.0)
+    with pytest.raises(ValueError, match="after the landmark"):
+        d.SetFollowUp(column="dead", time_column="time", landmark=1.0, prediction_horizon=0.5)
+
+    st = _state(frame, task="time_to_event", target="dead", models=["cox"], split=split,
+                event="1", follow_up=FollowUpSpec(time_column="time", horizon=3.0,
+                                                  prediction_horizon=2.0))
+    said = voice.sentence_for(d.SetFollowUp(column="dead", time_column="time", horizon=3.0,
+                                            prediction_horizon=2.0), st, {})
+    assert said == ("`dead` was analyzed as a time to event, each row followed until `time`, at the "
+                    "event or when follow-up ended without it; follow-up ended at `3`: events "
+                    "after it were censored there; predicted risks were scored and calibrated by "
+                    "`time` = `2`, the declared prediction horizon.")
+
+    from turbotab.core.decisions import ExclusionRule, _follow_up_rule_refusal
+
+    def ended_by(high: float) -> tuple[float, float | None]:
+        rule = ExclusionRule(column="time", high=high, reason="followed up to then")
+        refusal = _follow_up_rule_refusal(st, [rule], d.SetExclusions(rules=[]))
+        answer = next(e["decision"] for e in refusal.exits
+                      if str(e["label"]).startswith("End follow-up"))
+        return answer["horizon"], answer["prediction_horizon"]
+
+    assert ended_by(2.5) == (2.5, 2.0)
+    assert ended_by(1.5) == (1.5, None)

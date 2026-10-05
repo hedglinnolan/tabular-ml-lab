@@ -2293,6 +2293,43 @@
             "title": "Further",
             "default": false
           },
+          "confounds_mediator": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confounds Mediator"
+          },
+          "interacts": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interacts"
+          },
+          "interaction_attested": {
+            "type": "boolean",
+            "title": "Interaction Attested",
+            "default": false
+          },
           "exposure": {
             "type": "string",
             "title": "Exposure"
@@ -2309,6 +2346,9 @@
           "keep",
           "acknowledged",
           "further",
+          "confounds_mediator",
+          "interacts",
+          "interaction_attested",
           "exposure"
         ],
         "title": "AdjustmentAnswer"
@@ -2708,6 +2748,13 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "none_of": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "None Of"
           }
         },
         "additionalProperties": false,
@@ -2715,7 +2762,8 @@
         "required": [
           "column",
           "adjust",
-          "acknowledged"
+          "acknowledged",
+          "none_of"
         ],
         "title": "ClusterSpec",
         "description": "The cluster answer: the column grouping participants (a site, a centre, a household, a\nbatch), or None when nothing groups them; under inference how the model takes it."
@@ -3442,6 +3490,43 @@
             "type": "boolean",
             "title": "Further",
             "default": false
+          },
+          "confounds_mediator": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confounds Mediator"
+          },
+          "interacts": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interacts"
+          },
+          "interaction_attested": {
+            "type": "boolean",
+            "title": "Interaction Attested",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3507,6 +3592,43 @@
             "type": "boolean",
             "title": "Further",
             "default": false
+          },
+          "confounds_mediator": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confounds Mediator"
+          },
+          "interacts": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interacts"
+          },
+          "interaction_attested": {
+            "type": "boolean",
+            "title": "Interaction Attested",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3519,7 +3641,10 @@
           "proxy",
           "keep",
           "acknowledged",
-          "further"
+          "further",
+          "confounds_mediator",
+          "interacts",
+          "interaction_attested"
         ],
         "title": "CovariateAnswers",
         "description": "The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_\nSEQUENCE §1 step 3). The covariate's role is derived from these, never chosen directly."
@@ -4835,6 +4960,17 @@
             ],
             "title": "Entry Column"
           },
+          "landmark": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landmark"
+          },
           "horizon": {
             "anyOf": [
               {
@@ -4845,6 +4981,17 @@
               }
             ],
             "title": "Horizon"
+          },
+          "prediction_horizon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prediction Horizon"
           }
         },
         "additionalProperties": false,
@@ -4852,7 +4999,9 @@
         "required": [
           "time_column",
           "entry_column",
-          "horizon"
+          "landmark",
+          "horizon",
+          "prediction_horizon"
         ],
         "title": "FollowUpSpec",
         "description": "How long each row of a time-to-event outcome was observed (WP12,\n``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,\nwhen the event happened or follow-up ended without it, both on one time scale."
@@ -6753,6 +6902,37 @@
               }
             ],
             "title": "Digest"
+          },
+          "seen": {
+            "type": "string",
+            "enum": [
+              "inference",
+              "prediction"
+            ],
+            "title": "Seen",
+            "default": "inference"
+          },
+          "seen_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen Target"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
           }
         },
         "additionalProperties": false,
@@ -6793,6 +6973,37 @@
               }
             ],
             "title": "Digest"
+          },
+          "seen": {
+            "type": "string",
+            "enum": [
+              "inference",
+              "prediction"
+            ],
+            "title": "Seen",
+            "default": "inference"
+          },
+          "seen_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen Target"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
           }
         },
         "additionalProperties": false,
@@ -6800,7 +7011,10 @@
         "required": [
           "kind",
           "plan",
-          "digest"
+          "digest",
+          "seen",
+          "seen_target",
+          "seen_at"
         ],
         "title": "LockPlan",
         "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone."
@@ -7940,6 +8154,18 @@
               }
             ]
           },
+          "numbers_read": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numbers Read"
+          },
           "joins": {
             "anyOf": [
               {
@@ -8034,6 +8260,7 @@
           "estimand",
           "adjustment",
           "outcome_scale",
+          "numbers_read",
           "joins",
           "codebooks",
           "batch",
@@ -9840,6 +10067,13 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "none_of": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "None Of"
           }
         },
         "additionalProperties": false,
@@ -9847,7 +10081,8 @@
         "required": [
           "kind"
         ],
-        "title": "SetClusters"
+        "title": "SetClusters",
+        "description": "The grouping above the person (audit RO-08). The answer is also each named column's\n``cluster`` reading (BLUEPRINT §14.3): a grouping confirms it, \"nothing groups them\" denies\neach column that read as one (``none_of``, filled by the server), and a later confirmation of\nthat reading stands over it, as the answer stands over an earlier one."
       },
       "SetClusters-Output": {
         "properties": {
@@ -9887,6 +10122,13 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "none_of": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "None Of"
           }
         },
         "additionalProperties": false,
@@ -9895,9 +10137,11 @@
           "kind",
           "column",
           "adjust",
-          "acknowledged"
+          "acknowledged",
+          "none_of"
         ],
-        "title": "SetClusters"
+        "title": "SetClusters",
+        "description": "The grouping above the person (audit RO-08). The answer is also each named column's\n``cluster`` reading (BLUEPRINT §14.3): a grouping confirms it, \"nothing groups them\" denies\neach column that read as one (``none_of``, filled by the server), and a later confirmation of\nthat reading stands over it, as the answer stands over an earlier one."
       },
       "SetColumnUnit-Input": {
         "properties": {
@@ -10553,6 +10797,18 @@
             ],
             "title": "Entry Column"
           },
+          "landmark": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landmark"
+          },
           "horizon": {
             "anyOf": [
               {
@@ -10564,6 +10820,18 @@
               }
             ],
             "title": "Horizon"
+          },
+          "prediction_horizon": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prediction Horizon"
           }
         },
         "additionalProperties": false,
@@ -10574,7 +10842,7 @@
           "time_column"
         ],
         "title": "SetFollowUp",
-        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."
+        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.\n\n``landmark``: follow-up counted from this time on (a landmark, or the customary \"the first\nyears of follow-up excluded\" for reverse causation): a row whose follow-up ended at or before\nit, by an event or not, was not at risk then and leaves, and every other row is at risk from\nit (left truncation; the estimate is among those event-free and followed at the landmark).\n``horizon``: follow-up ends at this time: an event after it counts as censored at it.\n``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes\nno row."
       },
       "SetFollowUp-Output": {
         "properties": {
@@ -10605,6 +10873,18 @@
             ],
             "title": "Entry Column"
           },
+          "landmark": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landmark"
+          },
           "horizon": {
             "anyOf": [
               {
@@ -10616,6 +10896,18 @@
               }
             ],
             "title": "Horizon"
+          },
+          "prediction_horizon": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prediction Horizon"
           }
         },
         "additionalProperties": false,
@@ -10625,10 +10917,12 @@
           "column",
           "time_column",
           "entry_column",
-          "horizon"
+          "landmark",
+          "horizon",
+          "prediction_horizon"
         ],
         "title": "SetFollowUp",
-        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."
+        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.\n\n``landmark``: follow-up counted from this time on (a landmark, or the customary \"the first\nyears of follow-up excluded\" for reverse causation): a row whose follow-up ended at or before\nit, by an event or not, was not at risk then and leaves, and every other row is at risk from\nit (left truncation; the estimate is among those event-free and followed at the landmark).\n``horizon``: follow-up ends at this time: an event after it counts as censored at it.\n``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes\nno row."
       },
       "SetGrain-Input": {
         "properties": {
@@ -15105,6 +15399,45 @@
             "default": false,
             "title": "Further",
             "type": "boolean"
+          },
+          "confounds_mediator": {
+            "anyOf": [
+              {
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Confounds Mediator"
+          },
+          "interacts": {
+            "anyOf": [
+              {
+                "enum": [
+                  "yes",
+                  "no",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interacts"
+          },
+          "interaction_attested": {
+            "default": false,
+            "title": "Interaction Attested",
+            "type": "boolean"
           }
         },
         "required": [
@@ -15115,7 +15448,10 @@
           "proxy",
           "keep",
           "acknowledged",
-          "further"
+          "further",
+          "confounds_mediator",
+          "interacts",
+          "interaction_attested"
         ],
         "title": "CovariateAnswers",
         "type": "object"
@@ -18769,12 +19105,48 @@
             ],
             "default": null,
             "title": "Digest"
+          },
+          "seen": {
+            "default": "inference",
+            "enum": [
+              "inference",
+              "prediction"
+            ],
+            "title": "Seen",
+            "type": "string"
+          },
+          "seen_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Seen Target"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Seen At"
           }
         },
         "required": [
           "kind",
           "plan",
-          "digest"
+          "digest",
+          "seen",
+          "seen_target",
+          "seen_at"
         ],
         "title": "LockPlan",
         "type": "object"
@@ -22371,6 +22743,7 @@
       },
       "SetClusters": {
         "additionalProperties": false,
+        "description": "The grouping above the person (audit RO-08). The answer is also each named column's\n``cluster`` reading (BLUEPRINT §14.3): a grouping confirms it, \"nothing groups them\" denies\neach column that read as one (``none_of``, filled by the server), and a later confirmation of\nthat reading stands over it, as the answer stands over an earlier one.",
         "properties": {
           "kind": {
             "const": "set_clusters",
@@ -22410,13 +22783,21 @@
             "default": false,
             "title": "Acknowledged",
             "type": "boolean"
+          },
+          "none_of": {
+            "items": {
+              "type": "string"
+            },
+            "title": "None Of",
+            "type": "array"
           }
         },
         "required": [
           "kind",
           "column",
           "adjust",
-          "acknowledged"
+          "acknowledged",
+          "none_of"
         ],
         "title": "SetClusters",
         "type": "object"
@@ -22733,7 +23114,7 @@
       },
       "SetFollowUp": {
         "additionalProperties": false,
-        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.",
+        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.\n\n``landmark``: follow-up counted from this time on (a landmark, or the customary \"the first\nyears of follow-up excluded\" for reverse causation): a row whose follow-up ended at or before\nit, by an event or not, was not at risk then and leaves, and every other row is at risk from\nit (left truncation; the estimate is among those event-free and followed at the landmark).\n``horizon``: follow-up ends at this time: an event after it counts as censored at it.\n``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes\nno row.",
         "properties": {
           "kind": {
             "const": "set_follow_up",
@@ -22763,6 +23144,19 @@
             "default": null,
             "title": "Entry Column"
           },
+          "landmark": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Landmark"
+          },
           "horizon": {
             "anyOf": [
               {
@@ -22775,6 +23169,19 @@
             ],
             "default": null,
             "title": "Horizon"
+          },
+          "prediction_horizon": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Prediction Horizon"
           }
         },
         "required": [
@@ -22782,7 +23189,9 @@
           "column",
           "time_column",
           "entry_column",
-          "horizon"
+          "landmark",
+          "horizon",
+          "prediction_horizon"
         ],
         "title": "SetFollowUp",
         "type": "object"

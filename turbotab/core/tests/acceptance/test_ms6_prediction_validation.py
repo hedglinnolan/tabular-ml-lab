@@ -290,7 +290,8 @@ def test_1_with_delayed_entry_the_time_to_event_primary_falls_back_to_c_and_says
                                   np.full(n, 0.3), 2.0))
     st = _state(frame, task="time_to_event", target="dead", models=["cox"], event="1",
                 split=SplitSpec(holdout=0.0, seed=2, folds=5),
-                follow_up=FollowUpSpec(time_column="time", entry_column="entry", horizon=2.0))
+                follow_up=FollowUpSpec(time_column="time", entry_column="entry",
+                                       prediction_horizon=2.0))
     *_, fit = _stages(frame, st, tmp_path)
     data = fit.data
     assert data["primary_metric"] == "c_index" and data["ranking"] == "highest C-index"
@@ -735,19 +736,22 @@ def test_5_every_task_reports_calibration_or_says_it_was_not_assessed(tmp_path):
     assert [c["level"] for c in m["calibration_levels"]] == ["mid", "high"]
     tte = frame[["pid", "x1", "x2", "time", "dead"]]
     st = _state(frame, task="time_to_event", target="dead", models=["cox"], split=split, event="1",
-                follow_up=FollowUpSpec(time_column="time", horizon=2.0))
+                follow_up=FollowUpSpec(time_column="time", prediction_horizon=2.0))
     *_, fit = _stages(tte, st, tmp_path / "tte")
     m = fit.data["models"][0]
     assert fit.data["horizon"] == 2.0
-    assert fit.data["horizon_note"] == "Scored and calibrated by `time` = `2`, the declared horizon."
+    assert fit.data["horizon_note"] == ("Scored and calibrated by `time` = `2`, the declared "
+                                       "prediction horizon.")
     assert m["calibration_horizon"]["horizon"] == 2.0 and m["calibration_note"] is None
-    said = voice.sentence_for(d.SetFollowUp(column="dead", time_column="time", horizon=2.0),
+    said = voice.sentence_for(d.SetFollowUp(column="dead", time_column="time",
+                                            prediction_horizon=2.0),
                               st, {})
     assert said == ("`dead` was analyzed as a time to event, each row followed until `time`, at the "
                     "event or when follow-up ended without it; predicted risks were scored and "
-                    "calibrated by `time` = `2`, the declared horizon.")
+                    "calibrated by `time` = `2`, the declared prediction horizon.")
     early = float(np.min(frame["time"])) / 2
-    st = st.model_copy(update={"follow_up": FollowUpSpec(time_column="time", horizon=early)})
+    st = st.model_copy(update={"follow_up": FollowUpSpec(time_column="time",
+                                                         prediction_horizon=early)})
     *_, fit = _stages(tte, st, tmp_path / "early")
     m = fit.data["models"][0]
     assert m["calibration_horizon"] is None

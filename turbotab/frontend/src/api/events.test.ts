@@ -91,6 +91,7 @@ function view(): ProjectView {
       estimand: null,
       adjustment: null,
       outcome_scale: null,
+      numbers_read: null,
       joins: null,
       codebooks: null,
       batch: null,

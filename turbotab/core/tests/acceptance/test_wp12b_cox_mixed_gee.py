@@ -271,7 +271,8 @@ def test_3_the_cox_model_is_reached_through_the_server(tmp_path):
         fit = d.artifact("fit")
         view = d.view()
     assert view["state"]["follow_up"] == {"time_column": "followup_years", "entry_column": None,
-                                          "horizon": None}
+                                          "landmark": None, "horizon": None,
+                                          "prediction_horizon": None}
     said = next(r["sentence"] for r in view["decisions"]
                 if r["decision"]["kind"] == "set_follow_up")
     assert said.startswith("`cvd_event` was analyzed as a time to event, each row followed until "

@@ -941,12 +941,13 @@ def _register_contracts() -> None:
         "horizon_calibration", "Calibration by a horizon, and by level", run_order=5.0,
         needs=("a time to event with its follow-up and a horizon",
                "or an ordinal or multiclass outcome"),
-        question="(stated: the horizon is declared with the follow-up, else the median follow-up "
-                 "time)",
+        question="(stated: the prediction horizon is declared with the follow-up, else the median "
+                 "follow-up time)",
         options=stated(
             "by_horizon_and_level", "At the horizon; by level for ordinal and multiclass outcomes",
             "Calibration is often left unreported for these tasks",
-            "Stated: the horizon is declared with the follow-up, else the median follow-up time",
+            "Stated: the prediction horizon is declared with the follow-up, else the median "
+            "follow-up time",
             "Stated beside the fit scores", ("recommended", "available")),
         storyboard=("each row's risk by the horizon", "the Kaplan–Meier observed risk",
                     "observed against expected, by risk group", "the calibration slope"),
@@ -954,8 +955,8 @@ def _register_contracts() -> None:
                  "predicted risk and the calibration slope",
         relations=(
             Relation("implies", "horizon",
-                     "the Brier score and calibration are read at the declared horizon, or at the "
-                     "median follow-up time, stated", condition="a time-to-event outcome",
+                     "the Brier score and calibration are read at the declared prediction horizon, "
+                     "or at the median follow-up time, stated", condition="a time-to-event outcome",
                      enforced_by="turbotab.core.models.performance:horizon_calibration",
                      id="time_to_event_horizon"),
             Relation("implies", "not_assessed_note",

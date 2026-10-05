@@ -198,14 +198,24 @@ def fixture_truth(name: str) -> Truth:
 ADJUSTMENT_FIELDS = ("causes_exposure", "causes_outcome", "after_exposure")
 
 
+# A direct effect's own answers (MODELING_SEQUENCE §1 step 3 and §2), declared as ``field=value``.
+DIRECT_FIELDS = ("confounds_mediator", "interacts")
+
+
 def adjustment_truth(truth: Truth, column: str) -> dict[str, Any]:
     """A covariate's answers to the disjunctive cause criterion, as the fixture's author knows its
     causal place: ``adjust:<column>`` → ``"yes,yes,no"`` (causes the exposure, causes the outcome,
-    changed by the exposure), optionally followed by ``,instrument`` or ``,proxy``."""
+    changed by the exposure), optionally followed by ``,instrument`` or ``,proxy``, and, for a
+    direct effect, ``,confounds_mediator=yes`` (a common cause of a mediator and the outcome) or
+    ``,interacts=no`` (the exposure's effect does not differ with this mediator's level)."""
     parts = [p.strip() for p in truth.answer("adjust", column).split(",")]
     out: dict[str, Any] = dict(zip(ADJUSTMENT_FIELDS, parts[:3]))
     out["instrument"] = "instrument" in parts[3:]
     out["proxy"] = "proxy" in parts[3:]
+    for part in parts[3:]:
+        name, _, value = part.partition("=")
+        if name in DIRECT_FIELDS and value:
+            out[name] = value
     return out
 
 
@@ -222,7 +232,7 @@ def answer_adjustment(post: Callable[[dict[str, Any]], Any], card: dict[str, Any
         truths = {c: adjustment_truth(truth, c) for c in group["columns"]}
         if guess is not None and all({k: t[k] for k in ADJUSTMENT_FIELDS} == {
                 k: guess[k] for k in ADJUSTMENT_FIELDS} and not t["instrument"] and not t["proxy"]
-                                     for t in truths.values()):
+                and not any(k in t for k in DIRECT_FIELDS) for t in truths.values()):
             decisions = [group["decision"]]
         else:
             by: dict[tuple[Any, ...], list[str]] = {}

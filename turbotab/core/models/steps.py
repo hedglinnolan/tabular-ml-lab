@@ -11,6 +11,7 @@ from typing import Any, Mapping, Sequence
 
 from turbotab.core.methods.energy import (
     MIN_LEVEL_ROWS,
+    PARTITION_METHODS,
     RESIDUAL_METHODS,
     EnergyAdjuster,
     StratifiedEnergyAdjuster,
@@ -18,7 +19,8 @@ from turbotab.core.methods.energy import (
 
 
 def energy_step(adjustment: Any, predictors: Sequence[str],
-                roles: Mapping[str, str] | None = None) -> Any | None:
+                roles: Mapping[str, str] | None = None,
+                factors: Mapping[str, Mapping[str, Any]] | None = None) -> Any | None:
     """The energy-adjustment pipeline step for an ``EnergyAdjustment`` slot, or None.
 
     None when nothing was answered: the predictors then reach the model as their roles give them.
@@ -29,6 +31,10 @@ def energy_step(adjustment: Any, predictors: Sequence[str],
     The strata column stratifies the residual methods only; it leaves the output when it is not
     itself a predictor. Either way the adjusted nutrient carries no difference between levels
     (one constant for every level), so leaving the strata column out of the model is sound.
+
+    ``factors`` (``{nutrient: {"factor", "why"}}``, the readings ledger's settled kcal per unit:
+    ``readings.energy_source_factors``) are what the partition methods convert each source by;
+    given, a source missing from them is refused, never read from its name (BLUEPRINT §14.3).
     """
     if adjustment is None:
         return None
@@ -45,6 +51,14 @@ def energy_step(adjustment: Any, predictors: Sequence[str],
             strata=adjustment.strata, log_transform=adjustment.log_transform,
             drop_strata=adjustment.strata not in predictors, method=adjustment.method,
         )
+    if factors is not None and adjustment.method in PARTITION_METHODS:
+        return EnergyAdjuster(adjustment.method, adjustment.energy_column,
+                              list(adjustment.nutrients), log_transform=adjustment.log_transform,
+                              atwater={str(c): float(f["factor"]) for c, f in factors.items()
+                                       if f.get("factor") is not None},
+                              factor_notes={str(c): str(f.get("why") or "")
+                                            for c, f in factors.items()},
+                              declared_only=True)
     return EnergyAdjuster(adjustment.method, adjustment.energy_column, list(adjustment.nutrients),
                           log_transform=adjustment.log_transform)
 

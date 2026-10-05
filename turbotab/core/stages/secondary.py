@@ -114,7 +114,7 @@ def secondary_stage(ctx: StageContext) -> Bundle:
                     f"two differ by the adjustment alone")
     spec2 = design_spec(state, frame[[*spec.inputs, *extra]],
                         [*spec.predictors, *[c for c in extra if c not in spec.predictors]],
-                        column_info=info)
+                        column_info=info, energy_factors=spec.energy_factors)
 
     outcome = Outcome(name=target, labels=outcome_levels(task, frame[target].to_numpy(), state.event))
     levels = None

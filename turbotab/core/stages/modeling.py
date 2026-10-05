@@ -422,12 +422,22 @@ def design_stage(ctx: StageContext) -> Bundle:
             y_rows = store.materialize([state.target], design_ids)[state.target]
         # MS7: a batch perfectly confounded with the outcome is refused under both purposes.
         confounded = batch_refusal(state, store, design_ids, task)
+        # The partition methods convert each energy source by its kcal per unit as the readings
+        # ledger settled it over every row (a recorded unit, or grams by the Atwater test), never
+        # by its name (BLUEPRINT §14.3; ``readings.predictors_or_ask`` asked any still unsettled).
+        factors = None
+        from turbotab.core.methods.energy import PARTITION_METHODS
+
+        if adj is not None and adj.method in PARTITION_METHODS:
+            from turbotab.core.readings import energy_source_factors
+
+            factors = energy_source_factors(state, list(adj.nutrients), store=store)
     if confounded:
         raise ValueError(confounded)
     from turbotab.core.methods.qc_drift import working_qc_sd
 
     spec = design_spec(state, X, predictors, column_info=info,
-                       qc=working_qc_sd(ctx.inputs.get("working")))
+                       qc=working_qc_sd(ctx.inputs.get("working")), energy_factors=factors)
     from turbotab.core.methods.omics import design_refusal
 
     refused = design_refusal(state, X, families)  # WP11: raw omics values into a linear family
@@ -628,21 +638,23 @@ def _baseline_cv(task: str, X: Any, y: Any, pairs: Sequence[Any],
 
 
 def follow_up_horizon(state: Any, y: Any) -> tuple[float | None, str | None]:
-    """A time to event's horizon (MS6): the one declared with the follow-up, else the median
-    follow-up time of these rows (the rows the models learn from), stated as such."""
+    """A time to event's prediction horizon (MS6): the one declared with the follow-up, else the
+    median follow-up time of these rows (the rows the models learn from, after any end of
+    follow-up the follow-up answer set), stated as such. It changes no row: the follow-up's own
+    ``horizon`` is where follow-up ends (the routing gate), this one where predictions are judged."""
     spec = getattr(state, "follow_up", None)
-    declared = getattr(spec, "horizon", None) if spec is not None else None
+    declared = getattr(spec, "prediction_horizon", None) if spec is not None else None
     column = getattr(spec, "time_column", None) if spec is not None else None
     named = f"`{column}`" if column else "follow-up"
     if declared is not None:
         return float(declared), (f"Scored and calibrated by {named} = `{float(declared):g}`, the "
-                                 f"declared horizon.")
+                                 f"declared prediction horizon.")
     times = np.asarray(np.asarray(y)["time"], dtype=float) if len(y) else np.zeros(0)
     if not len(times):
         return None, None
     h = float(np.median(times))
     return h, (f"Scored and calibrated by {named} = `{h:g}`, the median follow-up time of the "
-               f"training rows, as no horizon was declared with the follow-up.")
+               f"training rows, as no prediction horizon was declared with the follow-up.")
 
 
 def _baseline_scores(task: str, X: Any, y: Any, folds: Any, fold_keys: Sequence[int]) -> list[dict[str, float]]:
@@ -1944,9 +1956,13 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
         domain = domain_of(matrix.index, survey)
         weights = np.zeros(len(matrix))
         weights[domain.keep] = domain.raw
+    from turbotab.core.readings import per_unit_words
+
+    units = {str(c): per_unit_words(f.get("unit")) for c, f in (spec.energy_factors or {}).items()
+             if f.get("unit")}
     try:
         extra = relative_effect_rows(matrix, list(adj.nutrients), factors, table=table,
-                                     coefficients=rows, weights=weights)
+                                     coefficients=rows, weights=weights, units=units)
     except Exception:  # noqa: BLE001 - the coefficients stand without their contrasts
         import logging
 

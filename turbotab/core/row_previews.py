@@ -145,8 +145,11 @@ def exclusions_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     rules = list(decision.rules) or list(state.exclusions or [])
     # A range rule's cut is drawn on its column; a Goldberg screen's cut-offs differ per person,
     # so it shows in the row flow only.
+    from turbotab.core.decisions import outcome_columns
+
+    outcome = set(outcome_columns(state))  # a time to event's follow-up time is the outcome too
     shown = [i for i, r in enumerate(rules)
-             if getattr(r, "kind", "range") == "range" and state.target not in r.reads()]
+             if getattr(r, "kind", "range") == "range" and not outcome & set(r.reads())]
     if shown:
         # One count per rule in rule order, its not-recorded and not-screened lines included.
         drops = rule_drops(after if decision.rules else before)

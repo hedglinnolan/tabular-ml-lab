@@ -1281,6 +1281,44 @@ def column_expressions(findings: Any, dispositions: Any) -> dict[str, str]:
     return out
 
 
+# The families whose repair reads a text column as numbers (``text_numbers``, ``below_detection``).
+READS_NUMBERS = ("text_numbers", "below_detection")
+
+
+def numbers_read(frame: pd.DataFrame, state: Any) -> pd.DataFrame:
+    """``frame`` with each text column an applied ``text_numbers`` or ``below_detection`` repair
+    reads as numbers (``state.numbers_read``), read as the working table reads it (the same SQL,
+    composed as the working table composes it: :func:`column_expressions`). The routing gate's p05:
+    an `sbp` with SAS "." read as numbers by its repair held 999, 0 and 1300 that no plausibility
+    check ever saw, because the checks ran on the text; they run on these numbers instead. The
+    frame itself when nothing is read."""
+    import duckdb
+    import pyarrow as pa
+
+    read = getattr(state, "numbers_read", None) or {}
+    reading = {str(fid): FindingDisposition(action="applied", option=str(v["option"]),
+                                            params=dict(v.get("params") or {}))
+               for fid, v in read.items() if isinstance(v, Mapping)
+               and (fam := family_for(fid)) is not None and fam.key in READS_NUMBERS}
+    wanted = {c: sql for c, sql in column_expressions(None, reading).items()
+              if c in frame.columns and frame[c].dtype == object}
+    if not wanted:
+        return frame
+    out = frame.copy()
+    con = duckdb.connect()
+    try:
+        for column, sql in wanted.items():
+            text = [None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v)
+                    for v in frame[column].tolist()]
+            con.register("__numbers", pa.table({column: pa.array(text, pa.string())}))
+            got = con.execute(f"SELECT {sql} AS v FROM __numbers").fetchnumpy()["v"]
+            out[column] = pd.to_numeric(pd.Series(got, index=frame.index), errors="coerce")
+            con.unregister("__numbers")
+    finally:
+        con.close()
+    return out
+
+
 def exclusion_rules(dispositions: Any, findings: Any = None) -> list[ExclusionRule]:
     """Range rules for the rows applied repairs exclude, after the eligibility answer's own."""
     rules: list[ExclusionRule] = []
