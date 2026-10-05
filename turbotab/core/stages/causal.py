@@ -119,6 +119,9 @@ class CausalDesignArtifact(_Model):
     overlap: OverlapView | None = None
     variation: VariationView | None = None
     positivity: PositivityView = PositivityView(violated=False)
+    # The effect among the exposed reads positivity on its own terms (a propensity above 1 − b);
+    # a yes/no exposure's card carries both readings, the decision gate reads the one it asks for.
+    positivity_att: PositivityView | None = None
     missing: MissingView | None = None
     survey: SurveyView = SurveyView(population=False)
     leash: str = ""
@@ -351,10 +354,12 @@ def n_limit(task: str, y: np.ndarray) -> int:
     return int(len(y))
 
 
-def _design(ctx: StageContext, prep: Prepared, *,
-            sample_only: bool = False) -> tuple[Any, str | None, str | None]:
+def _design(ctx: StageContext, prep: Prepared, *, sample_only: bool = False,
+            decision: Any = None) -> tuple[Any, str | None, str | None]:
     """The variance design for the lane's rows: ``(Design | None, weight column, cluster
-    column)``; raises :class:`Withheld` when the survey answer or the clusters stop it."""
+    column)``; raises :class:`Withheld` when the survey answer or the clusters stop it. Too few
+    clusters withhold the lane with the lane's own ways forward (:func:`_cluster_floor_exits`),
+    not the primary model's."""
     from turbotab.core.models.causal import Design
     from turbotab.core.models.inference import floor_refusal, resolve_clusters
     from turbotab.core.stages.modeling import _survey
@@ -382,10 +387,27 @@ def _design(ctx: StageContext, prep: Prepared, *,
     if clusters is not None:
         refused = floor_refusal(clusters, prep.task)
         if refused is not None:
-            raise Withheld(refused[0], refused[1])
+            raise Withheld(refused[0], _cluster_floor_exits(refused[1], decision))
         if clusters.clustered:
             return Design(psu=np.asarray(clusters.codes), label="clusters"), None, clusters.column
     return None, None, None
+
+
+def _cluster_floor_exits(exits: Sequence[Mapping[str, Any]],
+                         decision: Any) -> list[Mapping[str, Any]]:
+    """The lane's ways past too few clusters. The primary model's exits include a model family
+    (a random-intercept mixed model) that leaves the lane withheld, since the lane's own variance
+    still rests on the clusters; the lane's way forward is to keep the primary model only, recorded
+    as such, or to answer the unit question so each unit is one row."""
+    out: list[Mapping[str, Any]] = []
+    if decision is not None:
+        out.append({"label": "Keep the primary model only",
+                    "decision": decision.model_copy(update={"method": "none"})})
+    # The unit question's pointer (``models.inference.floor_refusal``'s first exit, no decision):
+    # combining rows removes the clusters the variance rests on.
+    out.extend(e for e in exits
+               if e.get("decision") is None and str(e.get("label", "")).startswith("Combine"))
+    return out
 
 
 # ── causal_design ────────────────────────────────────────────────────────────
@@ -440,7 +462,7 @@ def _causal_design(ctx: StageContext) -> Bundle:
         prep = prepare(ctx)
     except Withheld as exc:
         return _not_offered(exposure, exc.reason)
-    population = bool(state.survey is not None and state.survey.estimand == "population")
+    population = _surveyed_population(state)
     try:
         design, weight_column, _ = _design(ctx, prep)
     except Withheld:
@@ -455,14 +477,22 @@ def _causal_design(ctx: StageContext) -> Bundle:
         return _not_offered(exposure, str(exc))
     overlap_view = variation_view = None
     positivity = PositivityView(violated=False)
+    positivity_att = None
     X = prep.X if prep.X.shape[1] else np.zeros((len(prep.y), 1))
     if prep.exposure_kind == "binary":
         [g] = est.cross_fit(est.learner_factory("linear"), True, X, prep.d, splits[0], weights, seed)
         found = est.overlap(g, prep.d, est.tmle_gbound(len(prep.y)), weights)
         overlap_view = OverlapView(model="main-terms logistic regression, cross-fitted over 5 folds",
                                    **dataclasses.asdict(found))
+        weighted = weights is not None
         if found.violated:
-            positivity = PositivityView(violated=True, reason=_positivity_reason(prep, found))
+            positivity = PositivityView(violated=True,
+                                        reason=_positivity_reason(prep, found, weighted=weighted))
+        found_att = est.overlap(g, prep.d, est.tmle_gbound(len(prep.y)), weights, target="ATT")
+        positivity_att = PositivityView(
+            violated=found_att.violated,
+            reason=(_positivity_reason(prep, found_att, target="ATT", weighted=weighted)
+                    if found_att.violated else None))
     else:
         [m] = est.cross_fit(est.learner_factory("linear"), False, X, prep.d, splits[0], weights, seed)
         found_v = est.variation(prep.d, m, weights)
@@ -486,7 +516,8 @@ def _causal_design(ctx: StageContext) -> Bundle:
         exposure_kind=prep.exposure_kind, level=prep.level, task=prep.task, n=int(len(prep.y)),
         n_limit=limit, candidates=prep.x_names, many=many, options=opts, recommended=first,
         assumptions=[AssumptionView(**a) for a in assumptions], overlap=overlap_view,
-        variation=variation_view, positivity=positivity, missing=prep.missing,
+        variation=variation_view, positivity=positivity, positivity_att=positivity_att,
+        missing=prep.missing,
         survey=SurveyView(population=population, weight=weight_column),
         leash=("Offered under inference after the exposure, its effect and the adjustment set are "
                "declared; the assumptions are declared before any estimate."))
@@ -494,15 +525,44 @@ def _causal_design(ctx: StageContext) -> Bundle:
     return Bundle(data=artifact.model_dump(mode="json"))
 
 
-def _positivity_reason(prep: Prepared, found: Any) -> str:
+def _share(found: Any, weighted: bool) -> str:
+    """The share beyond the bound, said on the scale it was measured on: a survey-weighted share
+    is not the row count's share, so it is named as weighted."""
+    return (f"{found.share_outside:.1%} of the survey-weighted total" if weighted
+            else f"{found.share_outside:.1%}")
+
+
+def _positivity_reason(prep: Prepared, found: Any, *, target: str = "ATE",
+                       weighted: bool = False) -> str:
     b = found.bound
-    return (f"{found.n_outside:,} of {len(prep.y):,} rows ({found.share_outside:.1%}, at or above "
-            f"the lane's line of 1%) have a propensity outside [{b:.4f}, {1 - b:.4f}], the bound "
+    head = f"{found.n_outside:,} of {len(prep.y):,} rows ({_share(found, weighted)}, at or above " \
+           f"the lane's line of 1%)"
+    if target == "ATT":
+        return (f"For the effect among the exposed, {head} have a propensity above {1 - b:.4f}, "
+                f"the bound the estimator caps at: for them not being exposed is all but "
+                f"impossible given the covariates, so no comparable unexposed row informs what "
+                f"their outcome would have been and the estimate leans on extrapolation there "
+                f"(practical positivity violation; Hernán & Robins 2020, §3.3). Trim to the rows "
+                f"where both levels are plausible, which changes the estimand to the average "
+                f"effect among them, or keep every row and record it.")
+    return (f"{head} have a propensity outside [{b:.4f}, {1 - b:.4f}], the bound "
             f"the estimator caps at: for them one level of `{prep.exposure}` is all but "
             f"impossible given the covariates, so their weights are capped and the estimate leans "
             f"on extrapolation there (practical positivity violation; Hernán & Robins 2020, §3.3). "
             f"Trim to the rows where both levels are plausible, which changes the estimand to "
             f"them, or keep every row and record it.")
+
+
+def _violation_clause(prep: Prepared, found: Any = None, found_v: Any = None, *,
+                      target: str = "ATE", weighted: bool = False) -> str:
+    """The methods sentence's account of a positivity violation kept on the record: the
+    estimator's own reading, in numbers."""
+    if found_v is not None:
+        return f"the covariates explain {found_v.r2:.0%} of `{prep.exposure}`'s variance"
+    b = found.bound
+    where = (f"above {1 - b:.4f}" if target == "ATT" else f"outside [{b:.4f}, {1 - b:.4f}]")
+    return (f"{found.n_outside:,} of {len(prep.y):,} rows ({_share(found, weighted)}) have a "
+            f"propensity {where}")
 
 
 def _variation_reason(prep: Prepared, found: Any) -> str:
@@ -519,6 +579,11 @@ def _withheld(base: dict[str, Any], reason: str, exits: Sequence[Mapping[str, An
     artifact = CausalArtifact(**{**base, "withheld": reason,
                                  "exits": [CausalExit(**_exit(e)) for e in exits], "estimates": []})
     return Bundle(data=artifact.model_dump(mode="json"))
+
+
+def _surveyed_population(state: Any) -> bool:
+    """Whether the survey answer asks for the surveyed population (the weights' estimand)."""
+    return bool(state.survey is not None and state.survey.estimand == "population")
 
 
 def default_learner(n: int) -> str:
@@ -582,7 +647,8 @@ def causal_stage(ctx: StageContext) -> Bundle:
                          [{"label": causal.METHOD_LABELS["dml_plr"], "decision": decision.model_copy(
                              update={"method": "dml_plr", "trim": None, "population": "all"})}])
     try:
-        design, weight_column, cluster_column = _design(ctx, prep, sample_only=spec.sample_only)
+        design, weight_column, cluster_column = _design(ctx, prep, sample_only=spec.sample_only,
+                                                        decision=decision)
     except Withheld as exc:
         return _withheld(base, exc.reason, exc.exits)
     if method == "pds_lasso" and weight_column is not None:
@@ -609,6 +675,8 @@ def causal_stage(ctx: StageContext) -> Bundle:
     own_seed = seed if method == "dml_irm" else seed + 500
     bound = est.tmle_gbound(n)
     n_trimmed = 0
+    weighted = weights is not None
+    violation = None  # the methods sentence's account of a violation kept on the record
     if binary:
         if method == "pds_lasso" or (method == "tmle" and learner == "linear"):
             G = np.column_stack([np.ones(n), X])
@@ -623,8 +691,10 @@ def causal_stage(ctx: StageContext) -> Bundle:
         base["overlap"] = OverlapView(model=model, **dataclasses.asdict(found))
         base["assumptions"] = card(found=found)
         if found.violated and spec.trim is None and not spec.acknowledged:
-            return _withheld(base, _positivity_reason(prep, found),
+            return _withheld(base, _positivity_reason(prep, found, target=target, weighted=weighted),
                              causal.positivity_exits(decision, binary=True))
+        if found.violated and spec.trim is None:
+            violation = _violation_clause(prep, found, target=target, weighted=weighted)
         if spec.trim is not None:
             keep = est.trim_rows(g, spec.trim)
             n_trimmed = int((~keep).sum())
@@ -653,6 +723,8 @@ def causal_stage(ctx: StageContext) -> Bundle:
         if found_v.violated and not spec.acknowledged:
             return _withheld(base, _variation_reason(prep, found_v),
                              causal.positivity_exits(decision, binary=False))
+        if found_v.violated:
+            violation = _violation_clause(prep, found_v=found_v)
     ctx.progress(0.3, f"Estimating by {causal.METHOD_LABELS[method].lower()}")
     outcome_binary = prep.task == "binary"
     if method == "dml_plr":
@@ -669,18 +741,25 @@ def causal_stage(ctx: StageContext) -> Bundle:
     else:
         result = est.pds_lasso(y, d, X)
     measure = "risk_difference" if outcome_binary else "mean_difference"
+    exposed = spec.population == "exposed"
     label = ("Effect per unit" if method in ("dml_plr", "pds_lasso") else
-             "Effect among the exposed" if spec.population == "exposed" else "Average effect")
+             "Effect among the exposed" if exposed else "Average effect")
     estimates = [CausalEstimate(label=label, measure=measure, estimate=result.estimate,
                                 se=result.se, ci_low=result.ci[0], ci_high=result.ci[1],
                                 p_value=result.p_value, df=result.df)]
-    for key, words_ in (("risk_ratio", "Marginal risk ratio"), ("odds_ratio", "Marginal odds ratio")):
+    rr_words = "risk ratio among the exposed" if exposed else "marginal risk ratio"
+    for key, words_ in (("risk_ratio", rr_words), ("odds_ratio", "marginal odds ratio")):
         extra = result.extra.get(key)
         if extra:
-            estimates.append(CausalEstimate(label=words_, measure=key, estimate=extra["estimate"],
-                                            se=extra["se_log"], ci_low=extra["ci"][0],
-                                            ci_high=extra["ci"][1], p_value=None, df=result.df,
-                                            scale="ratio"))
+            estimates.append(CausalEstimate(label=words_[:1].upper() + words_[1:], measure=key,
+                                            estimate=extra["estimate"], se=extra["se_log"],
+                                            ci_low=extra["ci"][0], ci_high=extra["ci"][1],
+                                            p_value=None, df=result.df, scale="ratio"))
+    # A level with no events (or only events): the ratio is 0 or undefined, so it is not reported,
+    # and neither is an E-value from it (``models.causal.ratio_refusals``).
+    refused = {name: str(result.extra[key]) for key, name in
+               (("ratio_refused", rr_words), ("odds_refused", "marginal odds ratio"))
+               if result.extra.get(key)}
     selection = None
     if method == "pds_lasso":
         names = prep.x_names
@@ -701,10 +780,14 @@ def causal_stage(ctx: StageContext) -> Bundle:
               "y": y, "exposure_column": prep.exposure,
               "benchmarks": {raw: [c for c in union if raw in prep.x_sources.get(c, [c])]
                              for raw in prep.raw(union)}}
+    # The partially linear model's estimate is one least-squares coefficient of the outcome's
+    # residual on the exposure's: its robustness value is that fit's.
+    if method == "dml_plr":
+        ls["final_stage"] = result.extra["final_stage"]
     sensitivity = causal.sensitivity_for(
         [e.model_dump() for e in estimates], method=method, exposure=prep.exposure,
         outcome=str(state.target), outcome_sd=None if outcome_binary else float(np.std(y, ddof=1)),
-        **ls)
+        ratio_refused=refused.get(rr_words), population=spec.population, **ls)
     methods = causal.methods_sentence(
         method=method, exposure=prep.exposure, outcome=str(state.target),
         effect=str(getattr(estimand, "effect", "total") or "total"), adjusted=prep.adjusted,
@@ -714,7 +797,9 @@ def causal_stage(ctx: StageContext) -> Bundle:
         weight=weight_column,
         cluster=cluster_column, selected=None if selection is None else selection.model_dump(),
         candidates=len(prep.x_names),
-        measure_words="difference in risk" if outcome_binary else "difference in the mean outcome"
+        measure_words="difference in risk" if outcome_binary else "difference in the mean outcome",
+        violation=violation, sample_only=bool(spec.sample_only and _surveyed_population(state)),
+        ratios_refused=refused or None,
     ) + causal.sensitivity_sentence(sensitivity)
     artifact = CausalArtifact(
         **base, estimates=estimates, repetitions=list(result.repetitions), n=n,

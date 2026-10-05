@@ -28,11 +28,12 @@ prediction"):
   §3.1–3.5) are each shown with the diagnostic the data allow, and the decision records each one
   as declared. The estimate is computed only after.
 * **Positivity** (block and record): 1% or more of the rows with a propensity outside
-  ``[b, 1 − b]`` (b, tmle's truncation level ``5/(√n ln n)``; the 1% is this app's stated line), or
+  ``[b, 1 − b]`` (b, tmle's truncation level ``5/(√n ln n)``; the 1% is this app's stated line;
+  for the effect among the exposed, a propensity above ``1 − b``, its own reading), or
   a continuous exposure the covariates explain to R² ≥ 0.9 (a variance inflation factor of 10),
   are refused until the analyst trims to the overlap population
   (propensities in [0.1, 0.9]; Crump, Hotz, Imbens & Mitnik 2009, *Biometrika* 96:187) or records
-  that every row is kept.
+  that every row is kept. The methods sentence then says which, with the violation's numbers.
 * **A survey design** (MODELING_SEQUENCE ruling 6): the weights enter every nuisance fit and the
   estimating equation of the DML and TMLE estimators; the post-double-selection lasso's plug-in
   penalty is derived for independent, unweighted rows, so under the surveyed-population answer it
@@ -498,33 +499,86 @@ def assumption_card(*, exposure: str, exposure_kind: str, adjusted: Sequence[str
 # ── sensitivity to unmeasured confounding (ruling 10) ────────────────────────
 
 
+CHERNOZHUKOV_OVB = "Chernozhukov, Cinelli, Newey, Sharma & Syrgkanis 2022, NBER w30302"
+# Why an estimator's effect is not one least-squares coefficient (no Cinelli–Hazlett robustness
+# value), in words true for every learner it takes: TMLE with main-terms models fits them on every
+# row, not by cross-fitting, so its reason names what it averages instead.
+NOT_ONE_COEFFICIENT: dict[str, str] = {
+    "dml_irm": "double/debiased machine learning in the interactive model fits its nuisance "
+               "models by cross-fitted learners",
+    "tmle": "targeted maximum likelihood averages its targeted outcome model's predictions, not "
+            "one coefficient",
+}
+# The robustness value's name in the methods text, per estimator whose effect is one coefficient.
+ROBUSTNESS_NAMES: dict[str, str] = {
+    "pds_lasso": "the Cinelli–Hazlett robustness value (each selected covariate a named benchmark)",
+    "dml_plr": ("the Cinelli–Hazlett robustness value of the final least-squares step, the "
+                "outcome's residual on the exposure's (the form the omitted-variable bound of "
+                f"{CHERNOZHUKOV_OVB} takes in the partially linear model), the median over the "
+                "sample splits"),
+}
+
+
+def final_stage_robustness(final_stage: Sequence[Mapping[str, float]], *, exposure: str,
+                           estimate: float, alpha: float = 0.05) -> dict[str, Any]:
+    """The partially linear model's robustness value: the Cinelli–Hazlett robustness value of each
+    split's final least-squares step (the outcome's residual regressed on the exposure's, no
+    intercept: its classical t and ``n − 1`` degrees of freedom, as ``lm(u ~ 0 + v)`` reports them),
+    by ESTIMAND's :func:`turbotab.core.models.effects.robustness_value`, the median over splits as
+    the estimate is. In the partially linear model the omitted-variable bias bound of Chernozhukov
+    et al. 2022 (``|bias| ≤ S·C_Y·C_D``, ``S² = E[ε²]/E[(D − m)²]``) is this regression's, so with
+    both strengths equal its point robustness value is Cinelli & Hazlett's ``½(√(f⁴ + 4f²) − f²)``,
+    ``f² = θ²/S²``; the value at α is Cinelli & Hazlett's for the same fit."""
+    import numpy as np
+
+    from turbotab.core.models import effects
+
+    ts = [float(s["t"]) for s in final_stage]
+    dofs = [float(s["dof"]) for s in final_stage]
+    return {"exposure": exposure, "estimate": float(estimate),
+            "t": float(np.median(ts)), "dof": float(np.median(dofs)),
+            "partial_r2": float(np.median([effects.partial_r2(t, f) for t, f in zip(ts, dofs)])),
+            "rv": float(np.median([effects.robustness_value(t, f) for t, f in zip(ts, dofs)])),
+            "rv_alpha": float(np.median([effects.robustness_value(t, f, alpha=alpha)
+                                         for t, f in zip(ts, dofs)])),
+            "benchmarks": [], "alpha": alpha, "splits": len(ts),
+            "step": "the final least-squares step (the outcome's residual on the exposure's)"}
+
+
 def sensitivity_for(estimates: Sequence[Mapping[str, Any]], *, method: str, exposure: str,
                     outcome: str, outcome_sd: float | None, matrix: Any = None, y: Any = None,
                     exposure_column: str | None = None,
-                    benchmarks: Mapping[str, Sequence[str]] | None = None) -> dict[str, Any]:
+                    benchmarks: Mapping[str, Sequence[str]] | None = None,
+                    final_stage: Sequence[Mapping[str, float]] | None = None,
+                    ratio_refused: str | None = None, population: str = "all") -> dict[str, Any]:
     """Sensitivity to unmeasured confounding, REQUIRED in the causal lane (MODELING_SEQUENCE §0
     ruling 10), by ESTIMAND's :func:`turbotab.core.models.effects.unmeasured_confounding`, the one
-    function every inference result calls:
+    function every inference result calls (and its ``robustness_value``):
 
     * a numeric outcome's difference: the E-value of the standardized difference (VanderWeele &
       Ding 2017's approximation, from the outcome's standard deviation and the estimate's standard
       error);
-    * a yes/no outcome: the E-value of the marginal risk ratio the estimator reports beside its risk
-      difference (targeted maximum likelihood);
+    * a yes/no outcome: the E-value of the risk ratio the estimator reports beside its risk
+      difference (targeted maximum likelihood's marginal one; the interactive model's from its
+      doubly robust means, marginal or among the exposed);
     * post-double selection, whose estimate is a least-squares coefficient on the exposure and the
       selected covariates (``matrix``, ``y``): the Cinelli–Hazlett robustness value too, ranked
-      first, each selected covariate a named benchmark (``benchmarks``).
+      first, each selected covariate a named benchmark (``benchmarks``);
+    * the partially linear model, whose estimate is one least-squares coefficient of the outcome's
+      residual on the exposure's (``final_stage``): that fit's robustness value, ranked first
+      (:func:`final_stage_robustness`), for a numeric or a yes/no outcome.
 
-    DML's and TMLE's estimates come from cross-fitted learners, not one least-squares fit, so no
-    robustness value is computed for them; and a risk difference with no ratio beside it (the
-    double/debiased models on a yes/no outcome) carries no risks to form an E-value from. Each says
-    so, and a lane estimate whose required analysis could not be computed says that too.
+    The interactive model's and TMLE's effects average predictions, so they have no robustness
+    value; a risk difference with no ratio beside it (the partially linear model on a yes/no
+    outcome, or a ratio refused because a level has no events: ``ratio_refused``) has no E-value.
+    Each says so, and a lane estimate whose required analysis could not be computed says that too.
     ``estimates`` are the artifact's (``CausalEstimate`` dumps), the reported one first."""
     from turbotab.core.models import effects
     from turbotab.core.stages.effects import sensitivity_reading
 
     first = dict(estimates[0])
-    out: dict[str, Any] = {"required": True, "computed": False, "measure": first["measure"],
+    out: dict[str, Any] = {"required": True, "computed": False, "method": method,
+                           "measure": first["measure"],
                            "estimate": first.get("estimate"), "methods": [], "e_value": None,
                            "robustness": None, "reading": "", "not_computed": None}
     least_squares = matrix is not None and y is not None and exposure_column is not None
@@ -541,20 +595,27 @@ def sensitivity_for(estimates: Sequence[Mapping[str, Any]], *, method: str, expo
             measure="risk_ratio", estimate=float(ratio["estimate"]), ci_low=ratio.get("ci_low"),
             ci_high=ratio.get("ci_high")) if ratio is not None else
             {"methods": [], "e_value": None, "robustness": None})
-        what = "the marginal risk ratio"
+        what = ("the risk ratio among the exposed" if population == "exposed"
+                else "the marginal risk ratio")
         if least_squares:  # a linear-probability least-squares coefficient: its robustness value
             found["robustness"] = effects.linear_sensitivity(
                 matrix, y, exposure_column, benchmarks).as_dict()
             found["methods"] = ["robustness_value", *found["methods"]]
+    if final_stage and found.get("robustness") is None:
+        found["robustness"] = final_stage_robustness(final_stage, exposure=exposure,
+                                                     estimate=float(first["estimate"]))
+        found["methods"] = ["robustness_value", *found["methods"]]
     out.update(methods=list(found["methods"]), e_value=found.get("e_value"),
                robustness=found.get("robustness"), computed=bool(found["methods"]))
     missing = []
     if found.get("robustness") is None:
         missing.append("no robustness value: it is defined for one least-squares coefficient "
-                       f"({effects.CINELLI_HAZLETT}), and {METHOD_PHRASES.get(method, method)} "
-                       "fits its nuisance models by cross-fitted learners")
+                       f"({effects.CINELLI_HAZLETT}), and "
+                       + NOT_ONE_COEFFICIENT.get(method, f"{METHOD_PHRASES.get(method, method)} "
+                                                         f"gave no least-squares fit for it"))
     if found.get("e_value") is None:
-        missing.append("no E-value: a risk difference with no risk ratio beside it carries no "
+        missing.append(f"no E-value: {ratio_refused}" if ratio_refused else
+                       "no E-value: a risk difference with no risk ratio beside it carries no "
                        "risks to form one from")
     said = "; ".join(missing)
     out["not_computed"] = (said[:1].upper() + said[1:] + ".") if missing else None
@@ -570,9 +631,9 @@ def sensitivity_sentence(sensitivity: Mapping[str, Any] | None) -> str:
     if not sensitivity:
         return ""
     if sensitivity.get("computed"):
+        method = str(sensitivity.get("method") or "pds_lasso")
         return " " + sensitivity_clause(sensitivity["methods"], {
-            "robustness_value": "the Cinelli–Hazlett robustness value (each selected covariate a "
-                                "named benchmark)"})
+            "robustness_value": ROBUSTNESS_NAMES.get(method, ROBUSTNESS_NAMES["pds_lasso"])})
     return (" Sensitivity to unmeasured confounding, required in the causal lane, could not be "
             f"computed for this estimate: {str(sensitivity.get('not_computed') or '')[:1].lower()}"
             f"{str(sensitivity.get('not_computed') or '')[1:]}")
@@ -592,9 +653,20 @@ def methods_sentence(*, method: str, exposure: str, outcome: str, effect: str,
                      weight: str | None = None, cluster: str | None = None,
                      selected: Mapping[str, Sequence[str]] | None = None,
                      candidates: int | None = None, trim_at: float = TRIM_AT,
-                     measure_words: str = "difference in the mean outcome") -> str:
+                     measure_words: str = "difference in the mean outcome",
+                     violation: str | None = None, sample_only: bool = False,
+                     ratios_refused: Mapping[str, str] | None = None) -> str:
     """The sentence the methods section carries for the causal estimate (asserted verbatim by the
-    acceptance test). Every number in it is the estimate's own."""
+    acceptance test). Every number in it is the estimate's own.
+
+    The block-and-record choices it rests on are said in it, never left to the Record alone:
+    ``violation`` (what the estimator's own positivity reading found, when every row was kept on
+    the record) replaces positivity among the declared assumptions with the violation and its
+    consequence; ``sample_only`` (an estimate recorded as unweighted under the surveyed-population
+    answer, post-double selection's exit) says the estimate is unweighted and for these
+    participants only;
+    ``ratios_refused`` (a yes/no outcome whose level has no events) says which ratios are not
+    reported and why."""
     x, y = _tick(exposure), _tick(outcome)
     covariates = _listing(adjusted, limit=6) if adjusted else "no covariate"
     head = f"The {effect} effect of {x} on {y} was also estimated"
@@ -613,13 +685,17 @@ def methods_sentence(*, method: str, exposure: str, outcome: str, effect: str,
                 f"regressed on the exposure's; the estimate is the median over {repetitions} "
                 f"random sample {'split' if repetitions == 1 else 'splits'}")
     elif method == "dml_irm":
-        whom = (f"the effect among the exposed ({x} = {_tick(level)})" if population == "exposed"
+        exposed = population == "exposed"
+        whom = (f"the effect among the exposed ({x} = {_tick(level)})" if exposed
                 else _everyone(trimmed))
+        # The effect among the exposed needs the outcome model of the unexposed only (DoubleML's
+        # ATTE score fits g₀ alone).
+        predicted = ("the outcome among the unexposed" if exposed
+                     else "the outcome at each exposure level")
         text = (f"{head} by double/debiased machine learning in the interactive model "
                 f"({CHERNOZHUKOV}; {DOUBLEML}), as {whom}: the {measure_words} between {x} = "
-                f"{_tick(level)} and the other level; {learner_words} predicted the outcome at each "
-                f"exposure "
-                f"level and the propensity from {covariates}, each fit on the other {folds - 1} of "
+                f"{_tick(level)} and the other level; {learner_words} predicted {predicted} "
+                f"and the propensity from {covariates}, each fit on the other {folds - 1} of "
                 f"{folds} folds, with propensities bounded to [{bound:.4f}, {1 - bound:.4f}]; the "
                 f"estimate is the median over {repetitions} random sample "
                 f"{'split' if repetitions == 1 else 'splits'}")
@@ -658,9 +734,33 @@ def methods_sentence(*, method: str, exposure: str, outcome: str, effect: str,
     elif cluster:
         text += (f" The folds kept each {_tick(cluster)}'s rows together, and the variance is "
                  f"cluster-robust by {_tick(cluster)}.")
-    text += (" It rests on the declared assumptions of no unmeasured confounding given the "
-             "adjustment set, positivity, consistency and time ordering.")
+    if sample_only:
+        why = (": the plug-in lasso's penalty assumes unweighted rows, so" if method == "pds_lasso"
+               else ", so")
+        text += (f" As recorded, the survey weights were not used{why} the estimate is unweighted "
+                 f"and describes these participants only, not the surveyed population.")
+    if ratios_refused:
+        text += _ratios_refused_sentence(ratios_refused)
+    if violation:
+        where = (f"one level of {x} is all but impossible given the covariates"
+                 if level is not None else f"{x} barely varies given the covariates")
+        text += (" It rests on the declared assumptions of no unmeasured confounding given the "
+                 f"adjustment set, consistency and time ordering. Positivity is practically "
+                 f"violated: {violation}; every row was kept, as recorded, so the estimate "
+                 f"extrapolates where {where}, a stated limitation.")
+    else:
+        text += (" It rests on the declared assumptions of no unmeasured confounding given the "
+                 "adjustment set, positivity, consistency and time ordering.")
     return text
+
+
+def _ratios_refused_sentence(refused: Mapping[str, str]) -> str:
+    """Which ratios of risks are not reported (``{"marginal risk ratio": why, …}``), and why (a
+    level with no events, or only events)."""
+    reasons = list(dict.fromkeys(refused.values()))
+    if len(reasons) == 1:
+        return f" No {' or '.join(refused)} is reported: {reasons[0]}."
+    return "".join(f" No {name} is reported: {why}." for name, why in refused.items())
 
 
 def _everyone(trimmed: int) -> str:
@@ -692,7 +792,9 @@ def _record_sentence(d: Any, state: Any, ctx: Any) -> str:
     if d.trim is not None:
         text += (f"; rows with a propensity outside [{d.trim:g}, {1 - d.trim:g}] are trimmed, so it "
                  f"estimates the effect in the overlap population")
-    if d.acknowledged:
+    # Kept on the record: said as a violation only where the card read one for this estimand (the
+    # card absent, the record stands as the analyst wrote it).
+    if d.acknowledged and card_violation(ctx, d) is not False:
         text += ("; every row is kept although positivity is practically violated, a stated "
                  "limitation")
     if d.sample_only:
@@ -889,28 +991,50 @@ def _assumptions_are_declared(decision: Any, ctx: Any) -> None:
          {"label": "Keep the primary model only", "decision": _with(decision, method="none")}])
 
 
+def card_positivity(design: Mapping[str, Any] | None, population: str) -> Mapping[str, Any] | None:
+    """The causal card's positivity reading for the estimand asked: the effect among the exposed
+    reads its own (a propensity above ``1 − b``: an exposed-like row with no comparable unexposed
+    one), every other estimand the average effect's (a propensity outside ``[b, 1 − b]``)."""
+    if design is None:
+        return None
+    return design.get("positivity_att" if population == "exposed" else "positivity")
+
+
+def card_violation(ctx: Any, decision: Any) -> bool | None:
+    """Whether the causal card reads positivity as practically violated for this decision's
+    estimand; None when there is no card (or no reading) to say."""
+    found = card_positivity(_design_artifact(ctx), str(decision.population))
+    return None if found is None else bool(found.get("violated"))
+
+
 def _positivity_holds(decision: Any, ctx: Any) -> None:
     """Block and record: a practical positivity violation is refused until the rows are trimmed to
-    the overlap population or every row is kept on the record (MODELING_SEQUENCE §4)."""
+    the overlap population or every row is kept on the record (MODELING_SEQUENCE §4). The reading
+    is the estimand's own: the effect among the exposed is not refused for unexposed rows with a
+    propensity near 0, which it never extrapolates to."""
     if decision.method == "none" or decision.acknowledged or decision.trim is not None:
         return
     design = _design_artifact(ctx)
-    if design is None:
-        return
-    positivity = design.get("positivity") or {}
+    positivity = card_positivity(design, str(decision.population)) or {}
     if not positivity.get("violated"):
         return
     raise _refusal("positivity", str(positivity.get("reason")), positivity_exits(
-        decision, binary=design.get("exposure_kind") == "binary"))
+        decision, binary=(design or {}).get("exposure_kind") == "binary"))
 
 
 def positivity_exits(decision: Any, *, binary: bool) -> list[dict[str, Any]]:
-    """The ways past a positivity violation: trimming (a yes/no exposure), or the record."""
+    """The ways past a positivity violation: trimming (a yes/no exposure), or the record. Trimming
+    estimates the average effect in the overlap population; asked for the effect among the
+    exposed, its label says it changes that estimand too."""
     exits: list[dict[str, Any]] = []
     if binary:
         method = decision.method if decision.method in ("dml_irm", "tmle") else "tmle"
-        exits.append({"label": f"Trim to propensities in [{TRIM_AT:g}, {1 - TRIM_AT:g}] (the "
-                               f"overlap population)",
+        label = f"Trim to propensities in [{TRIM_AT:g}, {1 - TRIM_AT:g}] (the overlap population)"
+        if decision.population == "exposed":
+            label = (f"Trim to propensities in [{TRIM_AT:g}, {1 - TRIM_AT:g}] and estimate the "
+                     f"average effect there (the overlap population), not the effect among the "
+                     f"exposed")
+        exits.append({"label": label,
                       "decision": _with(decision, method=method, trim=TRIM_AT, population="all")})
     exits.append({"label": "Keep every row; record that positivity is practically violated",
                   "decision": _with(decision, acknowledged=True)})
@@ -989,8 +1113,8 @@ _register()
 
 __all__ = [
     "ASSUMPTIONS", "ASSUMPTION_WORDS", "CANDIDATES_PER", "CONTRACTS", "METHODS", "METHOD_LABELS",
-    "RELATIONS", "STATED", "TRIM_AT", "assumption_card",
-    "causal_gate", "stated_reason",
+    "RELATIONS", "ROBUSTNESS_NAMES", "STATED", "TRIM_AT", "assumption_card",
+    "card_positivity", "card_violation", "causal_gate", "final_stage_robustness", "stated_reason",
     "current_causal", "many_candidates", "methods_sentence", "options", "plan_reason",
     "positivity_exits", "sensitivity_for", "sensitivity_sentence",
 ]

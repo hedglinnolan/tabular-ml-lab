@@ -17192,6 +17192,17 @@
               "reason": null
             }
           },
+          "positivity_att": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositivityView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "missing": {
             "anyOf": [
               {
@@ -17235,6 +17246,7 @@
           "overlap",
           "variation",
           "positivity",
+          "positivity_att",
           "missing",
           "survey",
           "leash"
