@@ -337,6 +337,14 @@ def representative_decisions():
         d.SetBatch(column="batch", method="not_a_batch"),
         d.SetMultiplicity(method="bh"),
         d.SetMultiplicity(method="none", acknowledged=True),
+        d.SetScales(scales=[
+            d.ScaleSpec(name="stress_score", items=["pss_1", "pss_2", "pss_3", "pss_4"],
+                        reverse=["pss_4"], low=0, high=4, kind="reflective",
+                        correction="regression_calibration", instrument="PSS-4"),
+            d.ScaleSpec(name="diet_score", items=["dq_1", "dq_2", "dq_3"], low=0, high=10,
+                        kind="formative", role="covariate", correction="regression_calibration",
+                        reliability="test_retest", retest=["dq_1_t2", "dq_2_t2", "dq_3_t2"]),
+        ]),
     ]
 
 

@@ -463,6 +463,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetMultiplicity-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetScales-Input"
                   }
                 ],
                 "discriminator": {
@@ -514,7 +517,8 @@
                     "join_files": "#/components/schemas/JoinFiles-Input",
                     "import_codebook": "#/components/schemas/ImportCodebook-Input",
                     "set_batch": "#/components/schemas/SetBatch-Input",
-                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Input"
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Input",
+                    "set_scales": "#/components/schemas/SetScales-Input"
                   }
                 },
                 "title": "Decision"
@@ -961,6 +965,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetMultiplicity-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetScales-Input"
                   }
                 ],
                 "discriminator": {
@@ -1012,7 +1019,8 @@
                     "join_files": "#/components/schemas/JoinFiles-Input",
                     "import_codebook": "#/components/schemas/ImportCodebook-Input",
                     "set_batch": "#/components/schemas/SetBatch-Input",
-                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Input"
+                    "set_multiplicity": "#/components/schemas/SetMultiplicity-Input",
+                    "set_scales": "#/components/schemas/SetScales-Input"
                   }
                 },
                 "title": "Decision"
@@ -3713,6 +3721,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetMultiplicity-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetScales-Output"
               }
             ],
             "title": "Decision",
@@ -3758,6 +3769,7 @@
                 "set_purpose": "#/components/schemas/SetPurpose",
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                 "set_roles": "#/components/schemas/SetRoles-Output",
+                "set_scales": "#/components/schemas/SetScales-Output",
                 "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                 "set_split": "#/components/schemas/SetSplit-Output",
                 "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -4486,6 +4498,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetMultiplicity-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetScales-Output"
                   }
                 ],
                 "discriminator": {
@@ -4530,6 +4545,7 @@
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                     "set_roles": "#/components/schemas/SetRoles-Output",
+                    "set_scales": "#/components/schemas/SetScales-Output",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                     "set_split": "#/components/schemas/SetSplit-Output",
                     "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -7683,6 +7699,20 @@
               }
             ]
           },
+          "scales": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ScaleSpec-Output"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scales"
+          },
           "outcome_unit": {
             "anyOf": [
               {
@@ -7928,6 +7958,7 @@
           "follow_up",
           "sensitivity",
           "measurement_error",
+          "scales",
           "outcome_unit",
           "column_units",
           "roles_unconfirmed",
@@ -8764,6 +8795,317 @@
         ],
         "title": "RowStep",
         "description": "One step of the participant flow (CONSORT/STROBE style)."
+      },
+      "ScaleSpec-Input": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+            "title": "Name"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 3,
+            "title": "Items"
+          },
+          "reverse": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reverse"
+          },
+          "low": {
+            "type": "integer",
+            "title": "Low"
+          },
+          "high": {
+            "type": "integer",
+            "title": "High"
+          },
+          "scoring": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "mean"
+            ],
+            "title": "Scoring",
+            "default": "sum"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "reflective",
+              "formative"
+            ],
+            "title": "Kind"
+          },
+          "structure": {
+            "type": "string",
+            "enum": [
+              "unidimensional",
+              "multidimensional"
+            ],
+            "title": "Structure",
+            "default": "unidimensional"
+          },
+          "factors": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 2.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factors"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "exposure",
+              "covariate"
+            ],
+            "title": "Role",
+            "default": "exposure"
+          },
+          "correction": {
+            "type": "string",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Correction",
+            "default": "none"
+          },
+          "reliability": {
+            "type": "string",
+            "enum": [
+              "internal_consistency",
+              "test_retest",
+              "calibration_substudy"
+            ],
+            "title": "Reliability",
+            "default": "internal_consistency"
+          },
+          "retest": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retest"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[^`\\n\\r]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "items",
+          "low",
+          "high",
+          "kind"
+        ],
+        "title": "ScaleSpec",
+        "description": "One scale: its items, the instrument's key (the reverse-coded items and the response scale\n``low``–``high`` they are turned over on), how the score is formed, what kind of construct it\nmeasures (``reflective``: the items are caused by it; ``formative``: an index defined by its\ncomponents, such as a diet-quality score), its structure, the role the score takes in the\nmodels, and whether its coefficient is corrected for measurement error, from which reliability."
+      },
+      "ScaleSpec-Output": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+            "title": "Name"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 3,
+            "title": "Items"
+          },
+          "reverse": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reverse"
+          },
+          "low": {
+            "type": "integer",
+            "title": "Low"
+          },
+          "high": {
+            "type": "integer",
+            "title": "High"
+          },
+          "scoring": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "mean"
+            ],
+            "title": "Scoring",
+            "default": "sum"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "reflective",
+              "formative"
+            ],
+            "title": "Kind"
+          },
+          "structure": {
+            "type": "string",
+            "enum": [
+              "unidimensional",
+              "multidimensional"
+            ],
+            "title": "Structure",
+            "default": "unidimensional"
+          },
+          "factors": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 2.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factors"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "exposure",
+              "covariate"
+            ],
+            "title": "Role",
+            "default": "exposure"
+          },
+          "correction": {
+            "type": "string",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Correction",
+            "default": "none"
+          },
+          "reliability": {
+            "type": "string",
+            "enum": [
+              "internal_consistency",
+              "test_retest",
+              "calibration_substudy"
+            ],
+            "title": "Reliability",
+            "default": "internal_consistency"
+          },
+          "retest": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retest"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^[^`\\n\\r]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "items",
+          "reverse",
+          "low",
+          "high",
+          "scoring",
+          "kind",
+          "structure",
+          "factors",
+          "role",
+          "correction",
+          "reliability",
+          "retest",
+          "reference",
+          "n_boot",
+          "instrument"
+        ],
+        "title": "ScaleSpec",
+        "description": "One scale: its items, the instrument's key (the reverse-coded items and the response scale\n``low``–``high`` they are turned over on), how the score is formed, what kind of construct it\nmeasures (``reflective``: the items are caused by it; ``formative``: an index defined by its\ncomponents, such as a diet-quality score), its structure, the role the score takes in the\nmodels, and whether its coefficient is corrected for measurement error, from which reliability."
       },
       "SealCells": {
         "properties": {
@@ -11036,6 +11378,56 @@
         ],
         "title": "SetRoles",
         "description": "The confirmed reading of every column except the outcome.\n\n``unconfirmed`` is the server's, never the client's (BLUEPRINT §14 rule 2): the proposals below\nhigh confidence this answer records exactly as proposed, read from the roles the server showed.\nA bulk confirm records them, and no number-changing default reads them until each has its own\n``confirm_role``."
+      },
+      "SetScales-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_scales",
+            "title": "Kind",
+            "default": "set_scales"
+          },
+          "scales": {
+            "items": {
+              "$ref": "#/components/schemas/ScaleSpec-Input"
+            },
+            "type": "array",
+            "title": "Scales"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "scales"
+        ],
+        "title": "SetScales",
+        "description": "The multi-item scales scored as predictors (MS8): each one's items become one score in the\nmodels. An empty list is the answer \"no scale is scored\"."
+      },
+      "SetScales-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_scales",
+            "title": "Kind",
+            "default": "set_scales"
+          },
+          "scales": {
+            "items": {
+              "$ref": "#/components/schemas/ScaleSpec-Output"
+            },
+            "type": "array",
+            "title": "Scales"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "scales"
+        ],
+        "title": "SetScales",
+        "description": "The multi-item scales scored as predictors (MS8): each one's items become one score in the\nmodels. An empty list is the answer \"no scale is scored\"."
       },
       "SetSensitivity-Input": {
         "properties": {
@@ -19201,6 +19593,170 @@
         "title": "ScaleQuestion",
         "type": "object"
       },
+      "ScaleSpec": {
+        "additionalProperties": false,
+        "description": "One scale: its items, the instrument's key (the reverse-coded items and the response scale\n``low``–``high`` they are turned over on), how the score is formed, what kind of construct it\nmeasures (``reflective``: the items are caused by it; ``formative``: an index defined by its\ncomponents, such as a diet-quality score), its structure, the role the score takes in the\nmodels, and whether its coefficient is corrected for measurement error, from which reliability.",
+        "properties": {
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 3,
+            "title": "Items",
+            "type": "array"
+          },
+          "reverse": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reverse",
+            "type": "array"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          },
+          "high": {
+            "title": "High",
+            "type": "integer"
+          },
+          "scoring": {
+            "default": "sum",
+            "enum": [
+              "sum",
+              "mean"
+            ],
+            "title": "Scoring",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "reflective",
+              "formative"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "structure": {
+            "default": "unidimensional",
+            "enum": [
+              "unidimensional",
+              "multidimensional"
+            ],
+            "title": "Structure",
+            "type": "string"
+          },
+          "factors": {
+            "anyOf": [
+              {
+                "maximum": 10,
+                "minimum": 2,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Factors"
+          },
+          "role": {
+            "default": "exposure",
+            "enum": [
+              "exposure",
+              "covariate"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "correction": {
+            "default": "none",
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Correction",
+            "type": "string"
+          },
+          "reliability": {
+            "default": "internal_consistency",
+            "enum": [
+              "internal_consistency",
+              "test_retest",
+              "calibration_substudy"
+            ],
+            "title": "Reliability",
+            "type": "string"
+          },
+          "retest": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Retest",
+            "type": "array"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reference"
+          },
+          "n_boot": {
+            "default": 200,
+            "maximum": 2000,
+            "minimum": 50,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "pattern": "^[^`\\n\\r]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Instrument"
+          }
+        },
+        "required": [
+          "name",
+          "items",
+          "reverse",
+          "low",
+          "high",
+          "scoring",
+          "kind",
+          "structure",
+          "factors",
+          "role",
+          "correction",
+          "reliability",
+          "retest",
+          "reference",
+          "n_boot",
+          "instrument"
+        ],
+        "title": "ScaleSpec",
+        "type": "object"
+      },
       "SealBasis": {
         "additionalProperties": false,
         "description": "How the held-out rows were drawn: one of four states, never inferred silently.",
@@ -19287,7 +19843,8 @@
             "enum": [
               "rows",
               "events",
-              "rows in the rarest class"
+              "rows in the rarest class",
+              "rows in the rarest level"
             ],
             "title": "Unit",
             "type": "string"
@@ -20883,6 +21440,31 @@
           "unconfirmed"
         ],
         "title": "SetRoles",
+        "type": "object"
+      },
+      "SetScales": {
+        "additionalProperties": false,
+        "description": "The multi-item scales scored as predictors (MS8): each one's items become one score in the\nmodels. An empty list is the answer \"no scale is scored\".",
+        "properties": {
+          "kind": {
+            "const": "set_scales",
+            "default": "set_scales",
+            "title": "Kind",
+            "type": "string"
+          },
+          "scales": {
+            "items": {
+              "$ref": "#/components/schemas/ScaleSpec"
+            },
+            "title": "Scales",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "scales"
+        ],
+        "title": "SetScales",
         "type": "object"
       },
       "SetSensitivity": {

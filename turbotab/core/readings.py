@@ -1650,6 +1650,12 @@ def energy_plan(state: Any, predictors: Iterable[str]) -> tuple[set[str], set[st
     return set(), set()
 
 
+def scale_items(state: Any) -> set[str]:
+    """The items of the declared scales (``set_scales``; MS8): answers on each scale's response
+    scale by that answer, scored into one column, never fit as their own values."""
+    return {str(c) for s in (_get(state, "scales") or []) for c in (_get(s, "items") or [])}
+
+
 def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
                       order: Sequence[str] | None = None, drop: Iterable[str] = (), *,
                       store: Any = None) -> list[str]:
@@ -1681,7 +1687,22 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
             [*(confirm_exit("code_or_count", c, "amount",
                             f"`{c}` is an amount, as the energy answer reads it") for c in clash),
              {"label": "Change the energy answer (the energy question)", "decision": None}])
-    asked_for = [c for c in [*preds, *pending] if c not in left and c not in amounts]
+    # MS8: a declared scale's items are answers on its response scale by the scale's answer, summed
+    # into its score, so their code-or-amount reading is not asked; one recorded as codes is refused
+    # here, since the score would ignore that answer.
+    scored = scale_items(state) & {*preds, *pending}
+    coded = [c for c in sorted(scored) if confirmation(state, "code_or_count", c) == "code"]
+    if coded and not role_readings:
+        raise Unsettled(
+            f"{listing(coded)} {'is' if len(coded) == 1 else 'are'} recorded as codes for "
+            f"categories, but the scales answer sums {'it' if len(coded) == 1 else 'them'} as "
+            f"answers into a score. Say which holds: the codes answer or the scales answer.",
+            [reading("code_or_count", c, "code", state=state) for c in coded],
+            [*(confirm_exit("code_or_count", c, "amount",
+                            f"`{c}` holds answers, as the scales answer reads it") for c in coded),
+             {"label": "Change the scales answer", "decision": None}])
+    asked_for = [c for c in [*preds, *pending]
+                 if c not in left and c not in amounts and c not in scored]
     if any(k in ASSAY_LENSES for k in (_get(state, "lens") or [])):
         # Under an assay lens an exposure is a measured feature, an amount by that answer
         # (:func:`unsettled_codes`); its values are not read for the question (20,000 genes).
@@ -2954,6 +2975,10 @@ CONSUMERS: tuple[Consumer, ...] = (
              via=_C + "stages.proposals:proposals_stage"),
     Consumer(_C + "stages.modeling:_measurement_error_line", ("roles", "total_energy_names"),
              True, SETTLED_ONLY),
+    # MS8: the scales answer reads its items' roles and codes through the ledger (the scales stage
+    # reads its covariates off the design, ``design_spec``, which reads settled roles only).
+    Consumer(_C + "scales:_scale_items_are_settled_predictors", ("roles",), True, ASK),
+    Consumer(_C + "scales:_answers_fit_the_response_scale", ("predictor_codes",), True, ASK),
     Consumer(_C + "models.inference:resolve_clusters", ("identifier", "roles"), True, ASK,
              kinds=("cluster", "role")),
     Consumer(_C + "stages.modeling:fit_stage", ("identifier",), True, ASK,

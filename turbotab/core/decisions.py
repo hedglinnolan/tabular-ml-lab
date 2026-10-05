@@ -269,6 +269,77 @@ class MeasurementErrorSpec(_Value):
     n_boot: int = Field(default=200, ge=50, le=2000)
 
 
+# MS8 (MODELING_SEQUENCE §0 ruling 8): a multi-item scale scored as one predictor, its reliability
+# (ω; α labeled customary), and the correction of its coefficient for measurement error. The
+# arithmetic and its sources are in turbotab/core/methods/scales.py; the leash in turbotab/core/scales.py.
+ScaleKind = Literal["reflective", "formative"]
+ScaleStructure = Literal["unidimensional", "multidimensional"]
+ScaleCorrection = Literal["none", "regression_calibration"]
+ReliabilitySource = Literal["internal_consistency", "test_retest", "calibration_substudy"]
+DEFAULT_GROUP_FACTORS = 3  # psych::omega's default number of group factors
+
+
+class ScaleSpec(_Value):
+    """One scale: its items, the instrument's key (the reverse-coded items and the response scale
+    ``low``–``high`` they are turned over on), how the score is formed, what kind of construct it
+    measures (``reflective``: the items are caused by it; ``formative``: an index defined by its
+    components, such as a diet-quality score), its structure, the role the score takes in the
+    models, and whether its coefficient is corrected for measurement error, from which reliability."""
+
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z_][A-Za-z0-9_.]*$")
+    items: list[str] = Field(min_length=3)
+    reverse: list[str] = Field(default_factory=list)
+    low: int
+    high: int
+    scoring: Literal["sum", "mean"] = "sum"
+    kind: ScaleKind
+    structure: ScaleStructure = "unidimensional"
+    factors: int | None = Field(default=None, ge=2, le=10)  # group factors (multidimensional)
+    role: Literal["exposure", "covariate"] = "exposure"
+    correction: ScaleCorrection = "none"
+    reliability: ReliabilitySource = "internal_consistency"
+    # A repeat administration: its items in the order of ``items`` (scored with the same key), or
+    # one column holding its score as recorded.
+    retest: list[str] = Field(default_factory=list)
+    reference: str | None = None  # a calibration substudy's reference measure (blank outside it)
+    n_boot: int = Field(default=200, ge=50, le=2000)
+    instrument: str | None = Field(default=None, max_length=80, pattern=r"^[^`\n\r]+$")
+
+    @model_validator(mode="after")
+    def _keyed(self) -> "ScaleSpec":
+        if len(set(self.items)) != len(self.items):
+            raise ValueError("each item may be listed only once")
+        if not self.high > self.low:
+            raise ValueError("the response scale's highest answer must exceed its lowest")
+        stray = [c for c in self.reverse if c not in self.items]
+        if stray:
+            raise ValueError(f"reverse-coded items must be items of the scale: {', '.join(stray)}")
+        if len(set(self.reverse)) != len(self.reverse):
+            raise ValueError("each reverse-coded item may be listed only once")
+        if self.factors is not None and self.structure != "multidimensional":
+            raise ValueError("group factors belong to a multidimensional scale")
+        if self.reliability == "test_retest" and len(self.retest) not in (1, len(self.items)):
+            raise ValueError("a repeat administration is its items, one per item of the scale, or "
+                             "one column holding its score")
+        if self.reliability != "test_retest" and self.retest:
+            raise ValueError("a repeat administration is read only for a test–retest reliability")
+        if self.reliability == "calibration_substudy" and not self.reference:
+            raise ValueError("a calibration substudy needs its reference measure's column")
+        if self.reliability != "calibration_substudy" and self.reference:
+            raise ValueError("a reference measure is read only for a calibration substudy")
+        return self
+
+    def group_factors(self) -> int:
+        """The factors the reliability's factor analysis extracts: 1 for a unidimensional scale."""
+        if self.structure != "multidimensional":
+            return 1
+        return int(self.factors or DEFAULT_GROUP_FACTORS)
+
+    def columns(self) -> list[str]:
+        """Every column the scale reads: its items, a repeat administration, a reference."""
+        return [*self.items, *self.retest, *([self.reference] if self.reference else [])]
+
+
 class EnergyAdjustment(_Value):
     method: EnergyMethod
     energy_column: str | None = None
@@ -527,6 +598,27 @@ class SetMultiplicity(_DecisionModel):
     kind: Literal["set_multiplicity"] = "set_multiplicity"
     method: MultiplicityMethod
     acknowledged: bool = False
+
+
+class SetScales(_DecisionModel):
+    """The multi-item scales scored as predictors (MS8): each one's items become one score in the
+    models. An empty list is the answer "no scale is scored"."""
+
+    kind: Literal["set_scales"] = "set_scales"
+    scales: list[ScaleSpec]
+
+    @model_validator(mode="after")
+    def _apart(self) -> "SetScales":
+        names = [s.name for s in self.scales]
+        if len(set(names)) != len(names):
+            raise ValueError("each scale needs a name of its own")
+        seen: dict[str, str] = {}
+        for s in self.scales:
+            for c in s.items:
+                if c in seen:
+                    raise ValueError(f"{c} is an item of both {seen[c]} and {s.name}")
+                seen[c] = s.name
+        return self
 
 
 class SetMissing(_DecisionModel):
@@ -1243,7 +1335,7 @@ Decision = Annotated[
         ConfirmReading, ConfirmReadings, SetOutcomeScale,
         Reseal, LockPlan,
         SetCensoring, SetClusters, SetEstimand, SetAdjustment,
-        JoinFiles, ImportCodebook, SetBatch, SetMultiplicity,
+        JoinFiles, ImportCodebook, SetBatch, SetMultiplicity, SetScales,
     ],
     Field(discriminator="kind"),
 ]
@@ -1325,6 +1417,8 @@ class ProjectState(BaseModel):
     # WP12 (audit §5): methods a reviewer expects
     sensitivity: list[SensitivityAnalysis] | None = None  # analyses beside the primary's rows
     measurement_error: MeasurementErrorSpec | None = None  # regression calibration, or none
+    # MS8: the multi-item scales scored as predictors, their reliability and correction
+    scales: list[ScaleSpec] | None = None
     # WP13 (audit IN-05): the outcome's unit as the user recorded it (holds while its column is
     # the target); a unit the name does not spell out is proposed, never stated, until then
     outcome_unit: str | None = None
@@ -1764,6 +1858,7 @@ register_kind(SetAdjustment, "adjustment", value=lambda d: None,
 register_kind(SetBatch, "batch", value=lambda d: BatchSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetMultiplicity, "multiplicity",
               value=lambda d: MultiplicitySpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetScales, "scales")
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -4143,3 +4238,5 @@ from turbotab.core import structural as _structural  # noqa: E402,F401
 # Joins and codebook import (DATAIN): their validators, completions and sentences.
 from turbotab.core import assembly as _assembly  # noqa: E402,F401
 from turbotab.core import codebook as _codebook  # noqa: E402,F401
+# The scales question's refusals (``set_scales``; MS8) live with its routing and contract.
+from turbotab.core import scales as _scales  # noqa: E402,F401

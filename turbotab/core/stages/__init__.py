@@ -48,6 +48,15 @@ WP12 (AUDIT_REPORT §5, methods a reviewer expects):
     calibration  heavy   deps: oriented, findings, structure, working,      reads measurement_error, energy_adjustment,
                                cohort, design, target_info                   aggregation, purpose …; requires measurement_error, models
 
+MS8 (MODELING_SEQUENCE §0 ruling 8):
+
+    scales       heavy   deps: working, design, split,              reads scales, purpose, models, missing,
+                               target_info, cohort                   roles …; requires scales, models
+
+    ``design`` reads ``scales`` too: each declared scale's items are scored into one column after the
+    fill (``methods.scales.ScaleScorer``). ``scales`` estimates each scale's reliability and, under
+    inference, its corrected coefficient (``stages.scales``).
+
     ``sensitivity`` refits each chosen family on the rows each analysis's exclusion rules keep (the
     primary beside every-row and any other screen; Banna et al. 2017). ``calibration`` corrects
     energy-adjusted exposures for day-to-day error in the recalls each person's row averages
@@ -100,6 +109,7 @@ ROLE_READS: tuple[str, ...] = ("roles", "roles_unconfirmed", "role_confirmations
 # leave covariates out of an inference model (``decisions.left_out``).
 WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
+from turbotab.core.stages.scales import SCALES_READS, scales_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
 from turbotab.core.stages.target import target_info_stage
@@ -379,10 +389,11 @@ def build_graph() -> Graph:
             # design 19 (WP17): the adjustment answers leave covariates out under inference; a
             # grouping answered "adjust for it" enters as fixed effects.
             # design 20 (wave 1, MS7): normalization, then values below detection, then the log; the
-            # in-fold D-ratio filter and reference ComBat; a batch confounded with the outcome refused.
+            # in-fold D-ratio filter and reference ComBat; a batch confounded with the outcome refused;
+            # a declared scale's items scored into one column after the fill (MS8).
             Stage("design", 20, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event", "lens", "findings", "exposure_forms", "follow_up", "batch",
+                   "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    *WP17_READS),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
@@ -476,6 +487,12 @@ def build_graph() -> Graph:
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),
+            # scales 1 (MS8): each declared scale's reliability (ω; α labeled customary) and, under
+            # inference, its coefficient corrected by regression calibration given the covariates,
+            # beside the uncorrected one; items imputed before scoring under multiple imputation.
+            Stage("scales", 1, ("working", "design", "split", "target_info", "cohort"),
+                  SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
+                  label="Estimating each scale's reliability"),
         ]
     )
 
