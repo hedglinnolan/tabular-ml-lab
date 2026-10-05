@@ -12,6 +12,7 @@ export type Route =
   | { name: "stage-lab" }
   | { name: "stage-lab-m2" }
   | { name: "m2-lab" }
+  | { name: "methods-questlog" }
   | { name: "missing"; path: string };
 
 const EVENT = "turbotab:navigate";
@@ -34,6 +35,7 @@ export function parseRoute(path: string): Route {
   if (/^\/lab\/stage\/?$/.test(path)) return { name: "stage-lab" };
   if (/^\/lab\/stage\/m2\/?$/.test(path)) return { name: "stage-lab-m2" };
   if (/^\/lab\/m2\/?$/.test(path)) return { name: "m2-lab" };
+  if (/^\/lab\/methods-questlog\/?$/.test(path)) return { name: "methods-questlog" };
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };
   return { name: "missing", path };

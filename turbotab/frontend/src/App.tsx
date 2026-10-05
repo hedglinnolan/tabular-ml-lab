@@ -20,6 +20,9 @@ const StageLabM2Screen = lazy(() =>
   import("./screens/StageLabM2Screen").then((m) => ({ default: m.StageLabM2Screen })),
 );
 const M2Screen = lazy(() => import("./explore/m2/M2Screen").then((m) => ({ default: m.M2Screen })));
+const QuestScreen = lazy(() =>
+  import("./explore/methods-questlog/QuestScreen").then((m) => ({ default: m.QuestScreen })),
+);
 
 function Routes() {
   const route = useRoute();
@@ -56,6 +59,12 @@ function Routes() {
       return (
         <Suspense fallback={<Header />}>
           <M2Screen />
+        </Suspense>
+      );
+    case "methods-questlog":
+      return (
+        <Suspense fallback={<Header />}>
+          <QuestScreen />
         </Suspense>
       );
     case "missing":
