@@ -679,6 +679,8 @@ function slotOf(d: Decision): Slot | null {
       return "multiplicity";
     case "set_scales":
       return "scales";
+    case "set_usual_intake":
+      return "usual_intake";
     case "revert":
       return null;
   }
@@ -822,6 +824,7 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_outcome_unit":
       return d.unit;
     case "set_exposure_form": // keyed by column; the fold merges it
+    case "set_usual_intake": // keyed by its dietary component; the fold merges it
     case "set_column_unit": // keyed by column; the fold merges it
     case "confirm_role": // keyed by column; the fold merges it
     case "confirm_reading": // keyed by kind and column; the fold merges it
@@ -898,6 +901,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     sensitivity: null,
     measurement_error: null,
     scales: null,
+    usual_intake: null,
     outcome_unit: null,
     column_units: null,
     roles_unconfirmed: null,
@@ -978,6 +982,15 @@ export function fold(records: DecisionRecord[]): ProjectState {
       // A keyed slot: one form per column (turbotab/core/decisions.py, exposure_forms).
       const form = { form: d.form, knots: d.knots ?? null };
       state.exposure_forms = { ...(state.exposure_forms ?? {}), [d.column]: form };
+      continue;
+    }
+    if (d.kind === "set_usual_intake") {
+      // A keyed slot: one analysis per dietary component (turbotab/core/decisions.py, usual_intake).
+      const { kind: _k, nutrient, ...spec } = d;
+      state.usual_intake = {
+        ...(state.usual_intake ?? {}),
+        [nutrient]: spec as NonNullable<ProjectState["usual_intake"]>[string],
+      };
       continue;
     }
     (state as Record<Slot, unknown>)[slot] =

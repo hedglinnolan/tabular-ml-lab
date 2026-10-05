@@ -78,6 +78,7 @@ function view(): ProjectView {
       sensitivity: null,
       measurement_error: null,
       scales: null,
+      usual_intake: null,
       outcome_unit: null,
       column_units: null,
       roles_unconfirmed: null,

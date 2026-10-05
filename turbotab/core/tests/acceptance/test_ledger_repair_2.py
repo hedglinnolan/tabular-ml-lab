@@ -886,6 +886,15 @@ def _probe_models_validator_codes(value: str) -> Any:
 
 # ── the time column ──
 
+def _probe_recall_order(value: str) -> Any:
+    """The NCI usual-intake method orders a long table's recalls by the confirmed time column."""
+    from turbotab.core.stages.usual_intake import recall_order
+
+    state = _confirm(d.SetTarget(column="y"), kind="time_column", column="visit", value=value)
+    return recall_order(state, {"repeats": {"replicate_index": "visit"}},
+                        d.UsualIntakeSpec(model="amount_only"))
+
+
 def _probe_time_column(value: str) -> Any:
     from turbotab.core.stages.working import time_column
 
@@ -1342,6 +1351,8 @@ PROBES: dict[tuple[str, str], tuple[Callable[[str], Any], Callable[[str], Any]]]
         (_probe_models_validator_codes, lambda v: None),
     ("turbotab.core.stages.working:time_column", "time_column"):
         (_probe_time_column, lambda v: "visit"),
+    ("turbotab.core.stages.usual_intake:recall_order", "time_column"):
+        (_probe_recall_order, lambda v: "visit"),
     ("turbotab.core.stages.proposals:energy_unit_reading", "unit:energy"):
         (_probe_energy_reading_unit,
          lambda v: (v, 1, True) if v in ("kcal", "kj") else (None, 1, False)),

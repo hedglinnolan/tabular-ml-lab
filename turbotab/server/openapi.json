@@ -466,6 +466,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetScales-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUsualIntake-Input"
                   }
                 ],
                 "discriminator": {
@@ -518,7 +521,8 @@
                     "import_codebook": "#/components/schemas/ImportCodebook-Input",
                     "set_batch": "#/components/schemas/SetBatch-Input",
                     "set_multiplicity": "#/components/schemas/SetMultiplicity-Input",
-                    "set_scales": "#/components/schemas/SetScales-Input"
+                    "set_scales": "#/components/schemas/SetScales-Input",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Input"
                   }
                 },
                 "title": "Decision"
@@ -968,6 +972,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetScales-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUsualIntake-Input"
                   }
                 ],
                 "discriminator": {
@@ -1020,7 +1027,8 @@
                     "import_codebook": "#/components/schemas/ImportCodebook-Input",
                     "set_batch": "#/components/schemas/SetBatch-Input",
                     "set_multiplicity": "#/components/schemas/SetMultiplicity-Input",
-                    "set_scales": "#/components/schemas/SetScales-Input"
+                    "set_scales": "#/components/schemas/SetScales-Input",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Input"
                   }
                 },
                 "title": "Decision"
@@ -3724,6 +3732,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetScales-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetUsualIntake-Output"
               }
             ],
             "title": "Decision",
@@ -3777,7 +3788,8 @@
                 "set_target": "#/components/schemas/SetTarget",
                 "set_task": "#/components/schemas/SetTask",
                 "set_temporal": "#/components/schemas/SetTemporal-Output",
-                "set_unit": "#/components/schemas/SetUnit"
+                "set_unit": "#/components/schemas/SetUnit",
+                "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
               }
             }
           }
@@ -4501,6 +4513,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetScales-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUsualIntake-Output"
                   }
                 ],
                 "discriminator": {
@@ -4553,7 +4568,8 @@
                     "set_target": "#/components/schemas/SetTarget",
                     "set_task": "#/components/schemas/SetTask",
                     "set_temporal": "#/components/schemas/SetTemporal-Output",
-                    "set_unit": "#/components/schemas/SetUnit"
+                    "set_unit": "#/components/schemas/SetUnit",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
                   }
                 }
               },
@@ -7713,6 +7729,20 @@
             ],
             "title": "Scales"
           },
+          "usual_intake": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/UsualIntakeSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usual Intake"
+          },
           "outcome_unit": {
             "anyOf": [
               {
@@ -7959,6 +7989,7 @@
           "sensitivity",
           "measurement_error",
           "scales",
+          "usual_intake",
           "outcome_unit",
           "column_units",
           "roles_unconfirmed",
@@ -12084,6 +12115,261 @@
         "title": "SetUnit",
         "description": "When a unit repeats: is one row of the analysis a unit (combined) or a record?"
       },
+      "SetUsualIntake-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_usual_intake",
+            "title": "Kind",
+            "default": "set_usual_intake"
+          },
+          "nutrient": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Nutrient"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "order_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Column"
+          },
+          "weekend": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Weekend"
+          },
+          "weekend_coding": {
+            "type": "string",
+            "enum": [
+              "indicator",
+              "nhanes_day"
+            ],
+            "title": "Weekend Coding",
+            "default": "indicator"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "default": "whole"
+          },
+          "consumer_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumer Column"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff Kind"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "nutrient",
+          "model"
+        ],
+        "title": "SetUsualIntake",
+        "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
+      },
+      "SetUsualIntake-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_usual_intake",
+            "title": "Kind",
+            "default": "set_usual_intake"
+          },
+          "nutrient": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Nutrient"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "order_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Column"
+          },
+          "weekend": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Weekend"
+          },
+          "weekend_coding": {
+            "type": "string",
+            "enum": [
+              "indicator",
+              "nhanes_day"
+            ],
+            "title": "Weekend Coding",
+            "default": "indicator"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "default": "whole"
+          },
+          "consumer_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumer Column"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff Kind"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "nutrient",
+          "model",
+          "days",
+          "order_column",
+          "weekend",
+          "weekend_coding",
+          "population",
+          "consumer_column",
+          "cutoff",
+          "cutoff_kind",
+          "n_boot"
+        ],
+        "title": "SetUsualIntake",
+        "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
+      },
       "SplitSpec": {
         "properties": {
           "holdout": {
@@ -12827,6 +13113,123 @@
           "time_column"
         ],
         "title": "TemporalSpec"
+      },
+      "UsualIntakeSpec": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "order_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Column"
+          },
+          "weekend": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Weekend"
+          },
+          "weekend_coding": {
+            "type": "string",
+            "enum": [
+              "indicator",
+              "nhanes_day"
+            ],
+            "title": "Weekend Coding",
+            "default": "indicator"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "default": "whole"
+          },
+          "consumer_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumer Column"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff Kind"
+          },
+          "n_boot": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 50.0,
+            "title": "N Boot",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model",
+          "days",
+          "order_column",
+          "weekend",
+          "weekend_coding",
+          "population",
+          "consumer_column",
+          "cutoff",
+          "cutoff_kind",
+          "n_boot"
+        ],
+        "title": "UsualIntakeSpec"
       },
       "ValidationError": {
         "properties": {
@@ -21769,6 +22172,142 @@
         "title": "SetTemporal",
         "type": "object"
       },
+      "SetUsualIntake": {
+        "additionalProperties": false,
+        "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``.",
+        "properties": {
+          "kind": {
+            "const": "set_usual_intake",
+            "default": "set_usual_intake",
+            "title": "Kind",
+            "type": "string"
+          },
+          "nutrient": {
+            "minLength": 1,
+            "title": "Nutrient",
+            "type": "string"
+          },
+          "model": {
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "order_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Order Column"
+          },
+          "weekend": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Weekend",
+            "type": "array"
+          },
+          "weekend_coding": {
+            "default": "indicator",
+            "enum": [
+              "indicator",
+              "nhanes_day"
+            ],
+            "title": "Weekend Coding",
+            "type": "string"
+          },
+          "population": {
+            "default": "whole",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "type": "string"
+          },
+          "consumer_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Consumer Column"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cutoff Kind"
+          },
+          "n_boot": {
+            "default": 200,
+            "maximum": 2000,
+            "minimum": 50,
+            "title": "N Boot",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "nutrient",
+          "model",
+          "days",
+          "order_column",
+          "weekend",
+          "weekend_coding",
+          "population",
+          "consumer_column",
+          "cutoff",
+          "cutoff_kind",
+          "n_boot"
+        ],
+        "title": "SetUsualIntake",
+        "type": "object"
+      },
       "ShelfArtifact": {
         "additionalProperties": false,
         "description": "The ``shelf`` artifact: every family that can model the task, best first.",
@@ -23420,6 +23959,631 @@
           "n_missing"
         ],
         "title": "UnitCounts",
+        "type": "object"
+      },
+      "UsualIntakeAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "nutrient": {
+            "title": "Nutrient",
+            "type": "string"
+          },
+          "model": {
+            "enum": [
+              "none",
+              "amount_only",
+              "two_part"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "long",
+                  "wide"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Format"
+          },
+          "days": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "population": {
+            "default": "whole",
+            "enum": [
+              "whole",
+              "consumers"
+            ],
+            "title": "Population",
+            "type": "string"
+          },
+          "population_statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Population Statement"
+          },
+          "n_persons": {
+            "default": 0,
+            "title": "N Persons",
+            "type": "integer"
+          },
+          "n_recalls": {
+            "default": 0,
+            "title": "N Recalls",
+            "type": "integer"
+          },
+          "recalls": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Recalls",
+            "type": "object"
+          },
+          "n_repeat": {
+            "default": 0,
+            "title": "N Repeat",
+            "type": "integer"
+          },
+          "zero_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Zero Share"
+          },
+          "zeros_replaced": {
+            "default": 0,
+            "title": "Zeros Replaced",
+            "type": "integer"
+          },
+          "covariates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Covariates",
+            "type": "array"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Parameters",
+            "type": "object"
+          },
+          "percentiles": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/UsualIntakeEstimate"
+            },
+            "default": {},
+            "title": "Percentiles",
+            "type": "object"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualIntakeEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cutoff"
+          },
+          "cutoff_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "EAR",
+                  "AI",
+                  "UL",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cutoff Kind"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualIntakeEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "share_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Share Label"
+          },
+          "day_one": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Day One",
+            "type": "object"
+          },
+          "mean_of_days": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Mean Of Days",
+            "type": "object"
+          },
+          "variance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsualIntakeVariance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Weight"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nutrient",
+          "model",
+          "applies",
+          "refused",
+          "format",
+          "days",
+          "population",
+          "population_statement",
+          "n_persons",
+          "n_recalls",
+          "recalls",
+          "n_repeat",
+          "zero_share",
+          "zeros_replaced",
+          "covariates",
+          "parameters",
+          "percentiles",
+          "mean",
+          "cutoff",
+          "cutoff_kind",
+          "share",
+          "share_label",
+          "day_one",
+          "mean_of_days",
+          "variance",
+          "weight",
+          "assumptions",
+          "concerns",
+          "methods"
+        ],
+        "title": "UsualIntakeAnalysis",
+        "type": "object"
+      },
+      "UsualIntakeArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "offer": {
+            "$ref": "#/components/schemas/UsualIntakeOffer"
+          },
+          "analyses": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UsualIntakeAnalysis"
+            },
+            "title": "Analyses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "offer",
+          "analyses"
+        ],
+        "title": "UsualIntakeArtifact",
+        "type": "object"
+      },
+      "UsualIntakeCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "days": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "zero_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Zero Share"
+          },
+          "n_persons": {
+            "default": 0,
+            "title": "N Persons",
+            "type": "integer"
+          },
+          "n_repeat": {
+            "default": 0,
+            "title": "N Repeat",
+            "type": "integer"
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "enum": [
+                  "amount_only",
+                  "two_part"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Suggested"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Why"
+          }
+        },
+        "required": [
+          "column",
+          "days",
+          "zero_share",
+          "n_persons",
+          "n_repeat",
+          "suggested",
+          "why"
+        ],
+        "title": "UsualIntakeCandidate",
+        "type": "object"
+      },
+      "UsualIntakeEstimate": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          }
+        },
+        "required": [
+          "value",
+          "se",
+          "ci_low",
+          "ci_high"
+        ],
+        "title": "UsualIntakeEstimate",
+        "type": "object"
+      },
+      "UsualIntakeOffer": {
+        "additionalProperties": false,
+        "properties": {
+          "offered": {
+            "title": "Offered",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "estimand": {
+            "title": "Estimand",
+            "type": "string"
+          },
+          "association": {
+            "title": "Association",
+            "type": "string"
+          },
+          "population_question": {
+            "title": "Population Question",
+            "type": "string"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "long",
+                  "wide"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Format"
+          },
+          "recalls": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Recalls",
+            "type": "object"
+          },
+          "n_persons": {
+            "default": 0,
+            "title": "N Persons",
+            "type": "integer"
+          },
+          "n_repeat": {
+            "default": 0,
+            "title": "N Repeat",
+            "type": "integer"
+          },
+          "candidates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UsualIntakeCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "offered",
+          "reason",
+          "estimand",
+          "association",
+          "population_question",
+          "format",
+          "recalls",
+          "n_persons",
+          "n_repeat",
+          "candidates"
+        ],
+        "title": "UsualIntakeOffer",
+        "type": "object"
+      },
+      "UsualIntakeVariance": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "enum": [
+              "bootstrap",
+              "brr",
+              "psu_bootstrap",
+              "none"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "replicates": {
+            "default": 0,
+            "title": "Replicates",
+            "type": "integer"
+          },
+          "ok": {
+            "default": 0,
+            "title": "Ok",
+            "type": "integer"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
+          },
+          "fay": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fay"
+          },
+          "n_strata": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Strata"
+          },
+          "n_psu": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Psu"
+          }
+        },
+        "required": [
+          "method",
+          "replicates",
+          "ok",
+          "df",
+          "fay",
+          "n_strata",
+          "n_psu"
+        ],
+        "title": "UsualIntakeVariance",
         "type": "object"
       },
       "ValidationOption": {

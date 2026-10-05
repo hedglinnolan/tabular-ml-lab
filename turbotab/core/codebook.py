@@ -47,37 +47,64 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-CONTRACT: dict[str, Any] = {
-    "method": "import_codebook",
-    "slot": "ingest (a reading source: before the roles and every question that reads them)",
-    "data_scope": "descriptive: each documented column's values are read only to find a "
-                  "contradiction; what settles a reading is the user's documentation, never the "
-                  "values, and no outcome is read",
-    "needs": ("a codebook naming the table's columns: a variable table, an NHANES codebook page, "
-              "or an XPT file's labels",),
-    "routing": {
-        "question": "Do you have a data dictionary for this table?",
-        "where": "after the table is read, before the roles (it answers what the card would ask)",
-        "options": {"import": "structured fields settle readings; labels guide the guesses "
-                              "(sound for both purposes: it is the user's own documentation)",
-                    "skip": "every reading is asked as before"},
-        "leash": {"structured field": "settles, recorded as the codebook's",
-                  "free-text label": "strengthens the guess only (names never settle)",
-                  "contradicted by the values": "asked, never applied",
-                  "answered otherwise by the user": "the user's answer stands"},
-    },
-    "storyboard": ("read the codebook's variables", "match them to the table's columns",
-                   "check each structured field against the values",
-                   "settle the fields the values do not contradict; ask the rest"),
-    "sentence": "codebook_sentence",
-    "relations": {
-        "implies": ("the readings it settles leave the ask card",
-                    "its labels lead the remaining guesses"),
-        "conflicts": ("a field the values contradict (asked, never applied)",
-                      "a reading the user answered otherwise (the user's answer stands)"),
-        "enables": ("an outcome's documented unit in its sentences",),
-    },
-}
+def _contract() -> Any:
+    """The codebook import's method contract (BLUEPRINT §13), in the one registry
+    (``turbotab.core.contracts``)."""
+    from turbotab.core.contracts import MethodContract, Option, Relation, register_contract
+
+    both = ("prediction", "inference")
+    return register_contract(MethodContract(
+        key="import_codebook", label="Importing a codebook", slot="ingest", scope="descriptive",
+        scope_note=("Each documented column's values are read only to find a contradiction; what "
+                    "settles a reading is the user's documentation, never the values, and no "
+                    "outcome is read."),
+        needs=("a codebook naming the table's columns: a variable table, an NHANES codebook page, "
+               "or an XPT file's labels",),
+        question="Do you have a data dictionary for this table?",
+        place="after the table is read, before the roles (it answers what the card would ask)",
+        decision="import_codebook",
+        options=(
+            Option("import", "Import it",
+                   "Customary: the codebook is how a survey's variables are documented",
+                   dict.fromkeys(both, "Sound for both purposes: it is the user's own "
+                                       "documentation; its structured fields settle readings, its "
+                                       "labels only guide the guesses."),
+                   dict.fromkeys(both, "recommended")),
+            Option("skip", "No codebook", "Customary for a table without one",
+                   dict.fromkeys(both, "Sound: every reading is asked as before."),
+                   dict.fromkeys(both, "available")),
+        ),
+        storyboard=("read the codebook's variables", "match them to the table's columns",
+                    "check each structured field against the values",
+                    "settle the fields the values do not contradict; ask the rest"),
+        sentence="turbotab.core.codebook:codebook_sentence",
+        relations=(
+            Relation("implies", "structured_field_settles",
+                     "settles, recorded as the codebook's: the readings it settles leave the ask "
+                     "card", condition="a structured field (a unit, a code table, a type)",
+                     id="structured field", enforced_by="turbotab.core.codebook:assess"),
+            Relation("implies", "labels_lead_the_guesses",
+                     "strengthens the guess only (names never settle): its labels lead the "
+                     "remaining guesses", condition="a free-text label", id="free-text label",
+                     enforced_by="turbotab.core.readings:labeled"),
+            Relation("conflicts", "contradicted_by_the_values", "asked, never applied",
+                     condition="a field the values contradict", id="contradicted by the values",
+                     rung="refused",
+                     exits=("confirm what the codebook documents", "confirm what the values say"),
+                     enforced_by="turbotab.core.codebook:assess"),
+            Relation("conflicts", "answered_otherwise", "the user's answer stands",
+                     condition="a reading the user answered otherwise",
+                     id="answered otherwise by the user", rung="refused",
+                     exits=("answer the reading again",),
+                     enforced_by="turbotab.core.codebook:assess"),
+            Relation("enables", "documented_outcome_unit",
+                     "An outcome's documented unit is stated in its sentences.",
+                     enforced_by="turbotab.core.readings:codebook_unit"),
+        ),
+        sources=("BLUEPRINT §14.2 (let the codebook answer)", "V2 definition of done §1")))
+
+
+CONTRACT = _contract()
 
 TABLE_SUFFIXES = (".csv", ".tsv", ".txt", ".xlsx", ".xls")
 HTML_SUFFIXES = (".htm", ".html")

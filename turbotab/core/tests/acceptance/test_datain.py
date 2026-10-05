@@ -985,12 +985,15 @@ def test_chain_upload_join_codebook_card_through_the_server(tmp_path):
 
 def test_contracts_declare_every_field_of_the_method_contract():
     """BLUEPRINT §13: slot, data scope, needs, routing (question, options, leash), storyboard,
-    sentence and relations, for the join and the codebook import."""
+    sentence and relations, for the join and the codebook import, each in the one registry."""
+    from turbotab.core.contracts import CONTRACTS
+
     for contract in (assembly.CONTRACT, cb.CONTRACT):
-        assert {"slot", "data_scope", "needs", "routing", "storyboard", "sentence",
-                "relations"} <= set(contract)
-        assert {"question", "where", "options", "leash"} <= set(contract["routing"])
-        assert contract["relations"]
-    assert assembly.CONTRACT["routing"]["leash"]["many-to-many"].startswith("refuse")
-    assert cb.CONTRACT["routing"]["leash"]["contradicted by the values"] == "asked, never applied"
-    assert cb.CONTRACT["routing"]["leash"]["free-text label"].startswith("strengthens the guess")
+        assert CONTRACTS[contract.key] is contract and contract.slot == "ingest"
+        assert contract.scope_note and contract.needs and contract.question and contract.place
+        assert contract.options and contract.storyboard and contract.sentence and contract.relations
+    assert assembly.CONTRACT.scope == "row_local" and cb.CONTRACT.scope == "descriptive"
+    many = assembly.CONTRACT.relation("conflicts", "many_to_many")
+    assert many.rung == "refused" and many.exits
+    assert cb.CONTRACT.relation("contradicted by the values").says == "asked, never applied"
+    assert cb.CONTRACT.relation("free-text label").says.startswith("strengthens the guess")

@@ -70,12 +70,15 @@ CONTRACT = register_contract(MethodContract(
     key="scales",
     label="Scale scores, their reliability and the correction for measurement error",
     decision="set_scales",
-    slot="in-fold steps",
-    scope={
-        "scoring by the instrument's key (reverse coding; the sum or the mean)": "row-local",
-        "item-level imputation before scoring": "training fold",
-        "reliability (ω; α labeled customary)": "training fold",
-        "regression calibration of the score's coefficient": "training fold",
+    slot="in_fold",
+    scope="training_fold",
+    # After the fill (and the batch step) and before the energy step (models/pipeline.py).
+    run_order=5.5,
+    parts={
+        "scoring by the instrument's key (reverse coding; the sum or the mean)": "row_local",
+        "item-level imputation before scoring": "training_fold",
+        "reliability (ω; α labeled customary)": "training_fold",
+        "regression calibration of the score's coefficient": "training_fold",
     },
     needs=("three or more numeric items on one response scale, each a confirmed exposure or "
            "covariate",
@@ -99,7 +102,7 @@ CONTRACT = register_contract(MethodContract(
                {"inference": "Shown labeled customary only: its assumptions usually fail and it "
                              "usually understates reliability (McNeish 2018).",
                 "prediction": "Shown labeled customary only (McNeish 2018)."},
-               {"inference": "rank lower", "prediction": "rank lower"}),
+               {"inference": "rank_lower", "prediction": "rank_lower"}),
         Option("none", "No correction: the uncorrected estimate",
                "Customary: most papers report the score's coefficient as estimated",
                {"inference": "Sound as the primary analysis: for one error-prone exposure its test "
@@ -113,19 +116,19 @@ CONTRACT = register_contract(MethodContract(
                {"inference": "Sound as a declared secondary analysis: a repeat administration "
                              "includes transient error, conditional on the covariates.",
                 "prediction": PREDICTION},
-               {"inference": "recommended", "prediction": "refuse"}),
+               {"inference": "recommended", "prediction": "refused"}),
         Option("rc_calibration_substudy", "Regression calibration against a calibration substudy",
                "Customary in nutritional cohorts with a validation substudy (Freedman et al. 2011)",
                {"inference": "Sound as a declared secondary analysis, under the reference "
                              "measure's own assumptions, conditional on the covariates.",
                 "prediction": PREDICTION},
-               {"inference": "recommended", "prediction": "refuse"}),
+               {"inference": "recommended", "prediction": "refused"}),
         Option("rc_internal_consistency", "Regression calibration from ω (a reflective scale)",
                "Psychometric papers disattenuate by the Spearman correction (β/α)",
                {"inference": "Sound as a declared secondary analysis when conditional on the "
                              "covariates (Keogh, Shaw & Gustafson 2020). " + TRANSIENT,
                 "prediction": PREDICTION},
-               {"inference": "available", "prediction": "refuse"}),
+               {"inference": "available", "prediction": "refused"}),
         Option("spearman", "Dividing the coefficient by α or ω (the Spearman correction)",
                "Customary in psychometric papers",
                {"inference": "Unsound: with covariates the slope is attenuated by the reliability "
@@ -133,12 +136,12 @@ CONTRACT = register_contract(MethodContract(
                              "correlates with the covariates (Keogh, Shaw & Gustafson 2020); "
                              "regression calibration replaces it.",
                 "prediction": PREDICTION},
-               {"inference": "refuse", "prediction": "refuse"}),
+               {"inference": "refused", "prediction": "refused"}),
         Option("rc_internal_consistency_formative",
                "Regression calibration of a formative index from α or ω",
                "Seen in nutrition papers that disattenuate a diet score by its α",
                {"inference": "Refused: " + FORMATIVE, "prediction": PREDICTION},
-               {"inference": "refuse", "prediction": "refuse"}),
+               {"inference": "refused", "prediction": "refused"}),
     ),
     storyboard=(
         "Turn each reverse-coded item over on the response scale",
@@ -154,45 +157,45 @@ CONTRACT = register_contract(MethodContract(
                  "Under inference with missing items, the items are multiply imputed and the score "
                  "is formed in each completed copy (Eekhout et al. 2014); the reliability and the "
                  "correction are estimated in each copy and pooled by Rubin's rules.",
-                 "turbotab.core.models.pipeline:shared_steps"),
+                 enforced_by="turbotab.core.models.pipeline:shared_steps"),
         Relation("implies", "the items read as answers, not codes",
                  "The scale's answer settles each item's code-or-amount reading for the fit: its "
                  "items are answers on the response scale, summed into one score.",
-                 "turbotab.core.readings:predictors_or_ask"),
+                 enforced_by="turbotab.core.readings:predictors_or_ask"),
         Relation("implies", "every outcome-model covariate in the calibration model",
                  "The calibration regresses the score on every other column of the model's matrix "
                  "(Boe et al. 2023).",
-                 "turbotab.core.stages.scales:scales_stage"),
+                 enforced_by="turbotab.core.stages.scales:scales_stage"),
         Relation("implies", "a bootstrap that re-estimates the reliability",
                  "Each bootstrap replicate re-estimates the reliability (the whole factor analysis, "
                  "the test–retest mean square, or the calibration regression) before it "
                  "recalibrates.",
-                 "turbotab.core.methods.scales:correct"),
+                 enforced_by="turbotab.core.methods.scales:correct"),
         Relation("implies", "the repeat administration and the reference stay out of the model",
                  "A repeat administration or a reference measure is read by the reliability only, "
                  "never as a predictor.",
-                 "turbotab.core.scales:_scale_items_are_settled_predictors"),
+                 enforced_by="turbotab.core.scales:_scale_items_are_settled_predictors"),
         Relation("conflicts", "disattenuation of a formative index by α or ω",
                  "Refused under inference: " + FORMATIVE,
-                 "turbotab.core.scales:_correction_fits_purpose_and_construct",
-                 exits=("a test–retest ICC from a repeat administration",
+                 enforced_by="turbotab.core.scales:_correction_fits_purpose_and_construct",
+                 rung="refused", exits=("a test–retest ICC from a repeat administration",
                         "a calibration substudy", "the uncorrected estimate")),
         Relation("conflicts", "a correction under prediction", "Refused: " + PREDICTION,
-                 "turbotab.core.scales:_correction_fits_purpose_and_construct",
-                 exits=("the uncorrected score",)),
+                 enforced_by="turbotab.core.scales:_correction_fits_purpose_and_construct",
+                 rung="refused", exits=("the uncorrected score",)),
         Relation("conflicts", "codes counted as answers",
                  "Refused until each value outside the response scale is recoded to missing.",
-                 "turbotab.core.scales:_answers_fit_the_response_scale",
-                 exits=("recode the codes to missing (the sentinel finding)",
+                 enforced_by="turbotab.core.scales:_answers_fit_the_response_scale",
+                 rung="refused", exits=("recode the codes to missing (the sentinel finding)",
                         "a wider response scale")),
         Relation("invalidates", "a functional form recorded on an item",
                  "Scoring replaces the item with the score, so a form recorded on the item is "
                  "re-asked, never silently kept.",
-                 "turbotab.core.scales:_items_carry_no_form"),
+                 enforced_by="turbotab.core.scales:_items_carry_no_form"),
         Relation("invalidates", "the calibration when the adjustment set changes",
                  "The calibration reads the model's covariates, so a change to the roles recomputes "
                  "it.",
-                 "turbotab.core.stages:build_graph"),
+                 enforced_by="turbotab.core.stages:build_graph"),
     ),
 ))
 

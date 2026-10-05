@@ -345,6 +345,9 @@ def representative_decisions():
                         kind="formative", role="covariate", correction="regression_calibration",
                         reliability="test_retest", retest=["dq_1_t2", "dq_2_t2", "dq_3_t2"]),
         ]),
+        # The NCI usual-intake method: one component's distribution, with the EAR's share
+        d.SetUsualIntake(nutrient="protein_g", model="amount_only", order_column="recall",
+                         weekend=["weekend"], cutoff=46, cutoff_kind="EAR"),
     ]
 
 

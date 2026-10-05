@@ -1661,8 +1661,8 @@ def zeros_finding(frame: pd.DataFrame, lenses: Sequence[str] | None, target: str
 
 
 def _register_contracts() -> None:
-    from turbotab.core.methods.contract import (CONTRACTS, ContractOption, MethodContract, Relation,
-                                                register_contract)
+    from turbotab.core.contracts import (CONTRACTS, ContractOption, MethodContract, Relation,
+                                        register_contract)
 
     if "omics_normalization" in CONTRACTS:
         return
@@ -1882,7 +1882,7 @@ def methods_paragraph(state: Any, steps: Sequence[str], family: str, split: Mapp
     counts, the fill of values below detection, how the folds kept units together, and an exposure
     family's tests and multiplicity."""
     from turbotab.core.methods import qc_drift
-    from turbotab.core.methods.contract import paragraph
+    from turbotab.core.contracts import paragraph
 
     purpose = str(getattr(state, "purpose", None) or "prediction")
     choices = chain_choices(state, steps, family)

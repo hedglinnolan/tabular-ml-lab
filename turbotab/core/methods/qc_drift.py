@@ -494,7 +494,7 @@ def run_reference_rows(frame: pd.DataFrame, plan: QCPlan,
     registered contract whose scope lets it run before the seal. A step that reads participants
     (the D-ratio) is refused here: it belongs in each training fold."""
     from turbotab.core.decisions import Refusal
-    from turbotab.core.methods.contract import PRE_SEAL_SCOPES, contract
+    from turbotab.core.contracts import PRE_SEAL_SCOPES, contract
 
     steps = list(plan.steps() if steps is None else steps)
     for key in steps:
@@ -896,8 +896,8 @@ def describe_d_ratio(spec: Mapping[str, Any]) -> tuple[str, str]:
 
 def _register() -> None:
     from turbotab.core.decisions import register_validator
-    from turbotab.core.methods.contract import (CONTRACTS, ContractOption, MethodContract, Relation,
-                                                register_contract)
+    from turbotab.core.contracts import (CONTRACTS, ContractOption, MethodContract, Relation,
+                                        register_contract)
     from turbotab.core.voice import register_repair_sentence
 
     # The finding is answered by the reference-rows family (WP18), which offers these options

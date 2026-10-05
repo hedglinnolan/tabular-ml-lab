@@ -28,7 +28,7 @@ Each item below is the package's acceptance item, as written:
 Every expected value comes from a path independent of the code under test: R 4.6.1 (``stats``,
 ``sva`` 3.60, ``survival``) through ``Rscript`` on a CSV this file writes, pandas computations
 written from the published definitions (``omics_references``), scipy and statsmodels, or the truth
-of a simulation. Scopes are not taken from the contracts: :func:`contract.observed_scope` changes
+of a simulation. Scopes are not taken from the contracts: :func:`contracts.observed_scope` changes
 the outcome, the other study rows and the reference rows in turn and watches one study row.
 """
 from __future__ import annotations
@@ -45,7 +45,7 @@ from turbotab.core.decisions import (FindingDisposition, MissingSpec, ProjectSta
 from turbotab.core.methods import batch as B
 from turbotab.core.methods import omics
 from turbotab.core.methods import qc_drift as Q
-from turbotab.core.methods.contract import CONTRACTS, observed_scope, options_for
+from turbotab.core.contracts import CONTRACTS, observed_scope, options_for
 from turbotab.core.tests.acceptance.omics_references import (drifting_run, needs_r, pqn_by_hand,
                                                              run_r)
 
@@ -1125,8 +1125,8 @@ def test_7_every_ms7_method_enters_through_its_contract_in_the_run_order_of_sect
     the D-ratio, the normalization, the detection-limit fill, the log, batch, screening and
     scaling; the exposure family's multiplicity at evaluation. A method that runs before the seal
     has a scope that may (row-local, reference rows); none reads a participant there."""
-    from turbotab.core.methods.contract import (BEFORE_THE_SEAL, PRE_SEAL_SCOPES, PURPOSES, SCOPES,
-                                                SLOTS, run_order)
+    from turbotab.core.contracts import (BEFORE_THE_SEAL, PRE_SEAL_SCOPES, PURPOSES, SCOPES,
+                                        SLOTS, run_order)
 
     sentence_from_sibling = {"qc_detection_filter", "qc_rsd_filter", "qc_pqn", "qc_rows_leave",
                              "multiplicity"}  # stated in QC-RLSC's, the normalization's, the table's

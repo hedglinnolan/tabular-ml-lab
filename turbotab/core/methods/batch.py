@@ -717,8 +717,8 @@ def methods_clause(run: Mapping[str, Any]) -> str | None:
 
 def _register() -> None:
     from turbotab.core.decisions import register_validator
-    from turbotab.core.methods.contract import (CONTRACTS, ContractOption, MethodContract, Relation,
-                                                register_contract)
+    from turbotab.core.contracts import (CONTRACTS, ContractOption, MethodContract, Relation,
+                                        register_contract)
     from turbotab.core.voice import register_sentence
 
     register_validator("set_batch", _batch_answer_fits)

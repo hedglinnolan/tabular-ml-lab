@@ -27,7 +27,7 @@ from turbotab.core.decisions import (ApplyRepair, ProjectState, Refusal, SelectM
                                      SetMissing, SetMultiplicity, validate)
 from turbotab.core.methods import omics
 from turbotab.core.methods import qc_drift as Q
-from turbotab.core.methods.contract import fired, run_order
+from turbotab.core.contracts import fired, run_order
 from turbotab.core.stages.modeling import read_assignment
 from turbotab.core.tests.acceptance.omics_chains import genomics_batches, metabolomics_run
 from turbotab.core.tests.graph_runner import GraphRun

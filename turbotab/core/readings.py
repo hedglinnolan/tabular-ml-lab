@@ -3001,6 +3001,13 @@ CONSUMERS: tuple[Consumer, ...] = (
     Consumer(_C + "coach:aggregation_coach", ("repeat_kind",), False, WORDS_ONLY),
     Consumer(_C + "stages.calibration:calibration_stage", ("repeat_kind",), True, SETTLED_ONLY,
              via=_C + "stages.working:effective_repeat_kind"),
+    # the NCI usual-intake method: recalls only where the repeats are settled as repeats, ordered
+    # only by a settled time column or the user's own; an EAR refused only for a settled energy role
+    Consumer(_C + "stages.usual_intake:gate", ("repeat_kind",), True, SETTLED_ONLY,
+             via=_C + "stages.working:effective_repeat_kind"),
+    Consumer(_C + "stages.usual_intake:recall_order", ("time_column",), True, SETTLED_ONLY,
+             via=_C + "stages.working:time_column", kinds=("time_column",)),
+    Consumer(_C + "usual_intake:_cutoff_fits_the_reference", ("roles",), True, SETTLED_ONLY),
     Consumer(_C + "stages.proposals:recall_days", ("recall_days", "repeat_kind"), True,
              SETTLED_ONLY),
     Consumer(_C + "stages.working:time_column", ("time_column",), True, SETTLED_ONLY,

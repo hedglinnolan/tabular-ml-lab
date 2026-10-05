@@ -139,6 +139,8 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "multiplicity";
     case "set_scales":
       return "scales";
+    case "set_usual_intake":
+      return "usual_intake";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

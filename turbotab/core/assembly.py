@@ -35,34 +35,69 @@ from typing import Any, Mapping
 
 ROW_ID = "__row_id"
 
-CONTRACT: dict[str, Any] = {
-    "method": "join_files",
-    "slot": "ingest",
-    "data_scope": "row-local: a joined row's values are its own and its partner's (matched by the "
-                  "identifier alone); no other row and no outcome is read",
-    "needs": ("an added file, ingested", "a column in both that identifies the unit"),
-    "routing": {
-        "question": "Which file joins this table, and on which identifier?",
-        "where": "before the opening sequence (the ingest stage rebuilds the table)",
-        "options": {"left": "keep every row of the table (customary for NHANES: the "
-                            "demographics file is the frame); sound for both purposes",
-                    "inner": "keep only the rows with a partner; sound when the analysis needs "
-                             "both files' columns, and the dropped rows are stated"},
-        "leash": {"one-to-one": "allow", "one-to-many": "allow, the new row count stated",
-                  "many-to-one": "allow", "many-to-many": "refuse, with its reason and exits",
-                  "no matching value": "refuse", "identifier types differ": "refuse"},
-    },
-    "storyboard": ("count each side's rows and identifier values", "match the values",
-                   "count the rows with no partner on each side", "join, numbering the rows anew"),
-    "sentence": "join_sentence",
-    "relations": {
-        "implies": ("the row counts are previewed before the join is committed",
-                    "the file's variable labels join the table's (the XPT codebook form)"),
-        "invalidates": ("every stage computed on the table before the join (the ingest stage "
-                        "reads the joins)",),
-        "conflicts": ("an identifier that repeats in both files (many-to-many)",),
-    },
-}
+def _contract() -> Any:
+    """The join's method contract (BLUEPRINT §13), in the one registry (``turbotab.core.contracts``)."""
+    from turbotab.core.contracts import MethodContract, Option, Relation, register_contract
+
+    both = ("prediction", "inference")
+    return register_contract(MethodContract(
+        key="join_files", label="Joining files on a shared identifier", slot="ingest",
+        scope="row_local",
+        scope_note=("A joined row's values are its own and its partner's, matched by the identifier "
+                    "alone; no other row and no outcome is read."),
+        needs=("an added file, ingested", "a column in both that identifies the unit"),
+        question="Which file joins this table, and on which identifier?",
+        place="before the opening sequence (the ingest stage rebuilds the table)",
+        decision="join_files", stage="ingest",
+        options=(
+            Option("left", "Keep every row of the table",
+                   "Customary for NHANES: the demographics file is the frame",
+                   dict.fromkeys(both, "Sound for both purposes: no row of the table is lost, and "
+                                       "a row with no partner holds blanks for the file's columns."),
+                   dict.fromkeys(both, "recommended")),
+            Option("inner", "Keep only the rows with a partner",
+                   "Customary when the analysis needs both files' columns",
+                   dict.fromkeys(both, "Sound when the analysis needs both files' columns and the "
+                                       "rows it drops are stated."),
+                   dict.fromkeys(both, "available")),
+        ),
+        storyboard=("count each side's rows and identifier values", "match the values",
+                    "count the rows with no partner on each side",
+                    "join, numbering the rows anew"),
+        sentence="turbotab.core.assembly:join_sentence",
+        relations=(
+            Relation("implies", "row_counts_previewed",
+                     "The row counts (one-to-one, one-to-many, unmatched on each side) are "
+                     "previewed before the join is committed.",
+                     enforced_by="turbotab.core.assembly:preview"),
+            Relation("implies", "labels_join",
+                     "The file's variable labels join the table's (the XPT codebook form).",
+                     enforced_by="turbotab.core.assembly:file_meta"),
+            Relation("invalidates", "stages_before_the_join",
+                     "Every stage computed on the table before the join is recomputed: the ingest "
+                     "stage reads the joins.",
+                     enforced_by="turbotab.core.stages:build_graph"),
+            Relation("conflicts", "many_to_many",
+                     "Refused: an identifier that repeats in both files pairs every row of a value "
+                     "with every row of it on the other side.",
+                     condition="an identifier that repeats in both files", rung="refused",
+                     exits=("join on a column that names one row per unit in one of the files",
+                            "combine the file's rows to one per identifier first"),
+                     enforced_by="turbotab.core.assembly:plan"),
+            Relation("conflicts", "no_matching_identifier",
+                     "Refused: no value of the identifier is in both files, so the join would add "
+                     "only blanks.", rung="refused",
+                     exits=("join on another column",), enforced_by="turbotab.core.assembly:plan"),
+            Relation("conflicts", "identifier_types_differ",
+                     "Refused: the identifier holds numbers in one file and text in the other, so "
+                     "no value of one can equal a value of the other.", rung="refused",
+                     exits=("join on a column both files write the same way",),
+                     enforced_by="turbotab.core.assembly:plan"),
+        ),
+        sources=("V2 definition of done §1 (minimal multi-file assembly)",)))
+
+
+CONTRACT = _contract()
 
 
 @dataclass

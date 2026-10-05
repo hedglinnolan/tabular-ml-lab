@@ -948,22 +948,24 @@ def test_5_the_contract_declares_every_part_and_each_relation_names_live_code():
     from turbotab.core.scales import CONTRACT
 
     assert CONTRACTS["scales"] is CONTRACT and CONTRACT.decision == "set_scales"
-    assert CONTRACT.scope["scoring by the instrument's key (reverse coding; the sum or the mean)"] \
-        == "row-local"
+    assert CONTRACT.slot == "in_fold" and CONTRACT.scope == "training_fold"
+    assert CONTRACT.parts["scoring by the instrument's key (reverse coding; the sum or the mean)"] \
+        == "row_local"
     assert CONTRACT.storyboard and CONTRACT.needs and "Step 4" in CONTRACT.place
     for target in [CONTRACT.sentence, *(r.enforced_by for r in CONTRACT.relations)]:
         module, name = target.split(":")
         assert callable(getattr(importlib.import_module(module), name)), target
-    kinds = {(r.kind, r.other) for r in CONTRACT.relations}
+    kinds = {(r.kind, r.target) for r in CONTRACT.relations}
     assert ("conflicts", "disattenuation of a formative index by α or ω") in kinds
     assert ("implies", "item-level multiple imputation before scoring") in kinds
     assert ("invalidates", "a functional form recorded on an item") in kinds
     inference = {o["key"]: o for o in CONTRACT.options_for("inference")}
     prediction = {o["key"]: o for o in CONTRACT.options_for("prediction")}
-    assert inference["omega"]["rung"] == "recommended" and inference["alpha"]["rung"] == "rank lower"
-    assert inference["rc_internal_consistency_formative"]["rung"] == "refuse"
-    assert inference["spearman"]["rung"] == "refuse"
-    assert all(prediction[k]["rung"] == "refuse" for k in prediction if k.startswith("rc_"))
+    assert inference["omega"]["rung"] == "recommended" and inference["alpha"]["rung"] == "rank_lower"
+    assert inference["rc_internal_consistency_formative"]["rung"] == "refused"
+    assert inference["spearman"]["rung"] == "refused"
+    assert all(prediction[k]["rung"] == "refused" for k in prediction if k.startswith("rc_"))
+    assert all(r.rung == "refused" and r.exits for r in CONTRACT.relations if r.kind == "conflicts")
     assert all(o["customary"] and o["sound"] for o in inference.values())
     assert CONTRACT.options_for("inference")[0]["rung"] == "recommended"
 
