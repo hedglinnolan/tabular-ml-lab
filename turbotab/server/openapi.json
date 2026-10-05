@@ -21529,6 +21529,27 @@
             ],
             "default": null,
             "title": "Caption"
+          },
+          "method": {
+            "default": "bootstrap",
+            "enum": [
+              "bootstrap",
+              "design"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
           }
         },
         "required": [
@@ -21543,7 +21564,9 @@
           "interval",
           "level",
           "min_ok_share",
-          "caption"
+          "caption",
+          "method",
+          "df"
         ],
         "title": "SubstitutionBand",
         "type": "object"
@@ -21714,6 +21737,26 @@
             ],
             "default": null,
             "title": "Band Ok"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InferenceExit"
+            },
+            "title": "Exits",
+            "type": "array"
           }
         },
         "required": [
@@ -21728,7 +21771,9 @@
           "fixed_delta",
           "fixed_ci_low",
           "fixed_ci_high",
-          "band_ok"
+          "band_ok",
+          "refused",
+          "exits"
         ],
         "title": "SubstitutionModel",
         "type": "object"

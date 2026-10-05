@@ -1867,8 +1867,8 @@ def _unit_word(column: str) -> str:
 def relative_effect_rows(matrix: pd.DataFrame, nutrients: Sequence[str],
                          factors: Mapping[str, float], *,
                          table: Optional[Callable[[pd.DataFrame], Sequence[Mapping[str, Any]]]] = None,
-                         coefficients: Optional[Sequence[Mapping[str, Any]]] = None
-                         ) -> List[Dict[str, Any]]:
+                         coefficients: Optional[Sequence[Mapping[str, Any]]] = None,
+                         weights: Optional[Sequence[float]] = None) -> List[Dict[str, Any]]:
     """Each nutrient's average relative causal effect from the all-components model (ME-14).
 
     For nutrient j with kcal term x_j and every other energy term x_k (``kcal_from_other``
@@ -1883,13 +1883,24 @@ def relative_effect_rows(matrix: pd.DataFrame, nutrients: Sequence[str],
     Firth) gives ``θ_j`` its interval as it gives any coefficient one. Without ``table`` (no
     intervals: prediction) the estimate is read off ``coefficients``. Reported per unit of the
     nutrient: × its kcal per unit (``factors``).
+
+    ``weights`` (one per row; MS4): under a surveyed population each row's survey weight, so the
+    shares are the population's, as the estimate the design-based table gives is.
     """
     kcal = [f"kcal_from_{n}" for n in nutrients if f"kcal_from_{n}" in matrix.columns]
     if "kcal_from_other" in matrix.columns:
         kcal.append("kcal_from_other")
     if len(kcal) < 2:
         return []
-    means = matrix[kcal].astype(float).mean()
+    if weights is None:
+        means = matrix[kcal].astype(float).mean()
+        among = ""
+    else:
+        wv = np.asarray(weights, dtype=float)
+        use = np.isfinite(wv) & (wv > 0)
+        means = pd.Series(np.average(matrix[kcal].astype(float).to_numpy()[use], axis=0,
+                                     weights=wv[use]), index=kcal)
+        among = " in the surveyed population"
     by_feature = {str(r["feature"]): r for r in (coefficients or [])}
     rows: List[Dict[str, Any]] = []
     for n in nutrients:
@@ -1904,7 +1915,7 @@ def relative_effect_rows(matrix: pd.DataFrame, nutrients: Sequence[str],
         f = float(factors.get(n, 1.0))
         shares = ", ".join(f"{k.replace('kcal_from_', '')} {w[k]:.0%}" for k in others)
         meaning = (f"{n} in place of the other energy sources, weighted by their share of the "
-                   f"remaining energy ({shares}): the average relative effect, per "
+                   f"remaining energy{among} ({shares}): the average relative effect, per "
                    f"{_unit_word(n)}")
 
         def scaled(v: Any, _f: float = f) -> Optional[float]:

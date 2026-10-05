@@ -334,7 +334,10 @@ def build_graph() -> Graph:
             Stage("shelf", 10, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
-                   "outcome_order", "exposure_forms", *WP17_READS),
+                   "outcome_order", "exposure_forms",
+                   # MS4: under the population answer the families with no design-based
+                   # estimator rank last, their block said before they are chosen.
+                   "survey", *WP17_READS),
                   shelf_stage, heavy=True,
                   requires=("roles",), label="Ranking the model families for this table"),
             # design 6: the estimand and coefficient meanings are read off the matrix, and the

@@ -294,7 +294,8 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
                        total_kind: TotalKind = "variable", min_support: float = 0.5,
                        nested: Optional[Mapping[str, str]] = None,
                        label_k: Optional[float] = None, total: Optional[str] = None,
-                       scale: Scale = "kcal", shift: Optional[Shift] = None) -> Dict[str, Any]:
+                       scale: Scale = "kcal", shift: Optional[Shift] = None,
+                       weights: Optional[Sequence[float]] = None) -> Dict[str, Any]:
     """The average change in prediction when k kcal move from ``donor`` to ``recipient``.
 
     Parameters
@@ -321,6 +322,9 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
         sets the effect label's unit ("per 5% of energy") and the k it reports (nearest 5).
     shift : a prepared :class:`Shift` (a ``PercentEnergyShift`` for the percent scale) used in
         place of one built from the arguments above.
+    weights : one per row of ``X``: each k's average is weighted by them (a survey weight, the
+        people a row stands for: the curve over a surveyed population, MS4). The support's
+        fractions and the stopping rule still count rows.
 
     Returns a dict with ``donor, recipient, ks, delta, on_support_fraction, stopped_at,
     total_kind, effect_label, note`` plus ``live, effect_sentence, label_k, n_on_support,
@@ -371,11 +375,18 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
         masks[i] = mask
 
     live = np.array([stopped_at is None or k < stopped_at for k in k_values]) & masks.any(axis=1)
+    # Under a surveyed population (MS4) each row counts as the people its survey weight stands for.
+    w = None if weights is None else np.asarray(weights, dtype=float)[rows]
+
+    def mean(values: np.ndarray, where: np.ndarray) -> float:
+        return float(np.mean(values[where])) if w is None else float(np.average(values[where],
+                                                                                weights=w[where]))
+
     delta: List[Optional[float]] = [
-        float(np.mean(diffs[i, masks[i]])) if live[i] else None for i in range(k_values.size)]
+        mean(diffs[i], masks[i]) if live[i] else None for i in range(k_values.size)]
     fixed = _fixed_population(masks, live)
     fixed_delta: List[Optional[float]] = [
-        float(np.mean(diffs[i, fixed])) if live[i] and fixed.any() else None
+        mean(diffs[i], fixed) if live[i] and fixed.any() else None
         for i in range(k_values.size)]
     through = float(k_values[np.flatnonzero(live)[-1]]) if live.any() else None
 
