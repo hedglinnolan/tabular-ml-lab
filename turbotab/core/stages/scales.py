@@ -103,6 +103,9 @@ class ScaleResult(_Model):
     reliability: ScaleReliability
     correction: ScaleCorrection | None = None
     not_corrected: str | None = None
+    # A correction blocked and recorded (the population answer with no design-based estimator,
+    # MODELING_SEQUENCE §4): its ways forward, each a decision the client can post
+    exits: list[dict[str, Any]] = []
     imputation: dict[str, Any] | None = None  # {m, imputed: {item: cells}}
     concerns: list[str] = []
     methods: str
@@ -143,11 +146,28 @@ def _retest_score(frame: pd.DataFrame, spec: Any) -> np.ndarray | None:
                        spec.scoring)
 
 
+# MS4 (MODELING_SEQUENCE §4, "population estimand without a design-based estimator"): the
+# calibration and the refit beside it are fit on these rows as sampled, so under the surveyed
+# population the correction is blocked and recorded, with the sample-only attestation its exit.
+POPULATION = ("The correction and the uncorrected coefficient beside it have no design-based "
+              "estimator here: they would describe these participants, not the surveyed population "
+              "the survey answer names, and their intervals would ignore the strata and PSUs.")
+
+
+def population_block() -> tuple[str, list[dict[str, Any]]]:
+    from turbotab.core.models.survey import SAMPLE_EXIT
+
+    return POPULATION, [{"label": SAMPLE_EXIT,
+                         "decision": {"kind": "set_survey", "estimand": "sample"}}]
+
+
 def scale_result(spec: Any, copies: Sequence[pd.DataFrame], frame: pd.DataFrame, y: np.ndarray, *,
                  task: str, inference: bool, family: Any, pipeline: Any, outcome: Any,
                  seed: int, imputation: dict[str, Any] | None,
-                 progress: Any = None) -> dict[str, Any]:
-    """One scale's result over the completed copies (one copy without multiple imputation)."""
+                 progress: Any = None,
+                 blocked: tuple[str, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
+    """One scale's result over the completed copies (one copy without multiple imputation).
+    ``blocked``: the reason and exits that hold its correction (the population answer, MS4)."""
     from turbotab.core.methods import scales as S
     from turbotab.core.scales import FORMATIVE, PREDICTION
 
@@ -224,10 +244,13 @@ def scale_result(spec: Any, copies: Sequence[pd.DataFrame], frame: pd.DataFrame,
     # ── the correction ──
     correction = None
     why = None
+    exits: list[dict[str, Any]] = []
     if spec.correction == "none":
         why = None
     elif not inference:
         why = PREDICTION
+    elif blocked is not None:
+        why, exits = blocked[0], list(blocked[1])
     elif family is None or pipeline is None:
         why = (f"The correction refits a least-squares, logistic or proportional-odds model; choose "
                f"the {'proportional-odds' if task == 'ordinal' else 'linear'} family among the "
@@ -260,7 +283,7 @@ def scale_result(spec: Any, copies: Sequence[pd.DataFrame], frame: pd.DataFrame,
     return {"name": spec.name, "items": list(spec.items), "reverse": list(spec.reverse),
             "scoring": spec.scoring, "kind": spec.kind, "structure": structure, "role": spec.role,
             "n_rows": int(len(copies[0])), "reliability": rel, "correction": correction,
-            "not_corrected": why, "imputation": imputation, "concerns": concerns}
+            "not_corrected": why, "exits": exits, "imputation": imputation, "concerns": concerns}
 
 
 def _correct(spec: Any, copies: Sequence[pd.DataFrame], keyed_copies: Sequence[pd.DataFrame],
@@ -391,6 +414,9 @@ def scales_stage(ctx: StageContext) -> Bundle:
     key = FAMILY_FOR.get(task)
     family = get_family(key) if key and key in (state.models or []) and key in pipelines else None
     pipeline = pipelines.get(key) if family is not None else None
+    survey = getattr(state, "survey", None)
+    blocked = (population_block() if inference and survey is not None
+               and survey.estimand == "population" else None)
     out = []
     for n, s in enumerate(specs):
         def progress(k: int, total: int, _n: int = n, _name: str = s.name) -> None:
@@ -401,7 +427,7 @@ def scales_stage(ctx: StageContext) -> Bundle:
         result = scale_result(s, copies, frame, y, task=task, inference=inference, family=family,
                               pipeline=pipeline, outcome=outcome, seed=seed,
                               imputation=imputation if imputation and imputation.get("m") else None,
-                              progress=progress)
+                              progress=progress, blocked=blocked)
         out.append(result)
     corrected = [r for r in out if r["correction"] is not None]
     if len(corrected) > 1:
@@ -411,11 +437,7 @@ def scales_stage(ctx: StageContext) -> Bundle:
                 f"error-prone exposures in one model, estimates “may become attenuated, "
                 f"inflated, or can even change direction” (Freedman et al. 2011); a univariate "
                 f"correction does not undo that.")
-    survey = getattr(state, "survey", None)
     for r in corrected:
-        if survey is not None and survey.estimand == "population":
-            r["concerns"].append("The correction is fit without the survey weights: it corrects "
-                                 "these participants' coefficient, not the surveyed population's.")
         grain = getattr(state, "grain", None)
         if grain is not None and grain.grain == "repeated" and state.unit == "row":
             r["concerns"].append("Rows repeat by unit, and the bootstrap resamples rows, so its "
@@ -435,5 +457,5 @@ SCALES_READS = ("scales", "purpose", "models", "task", "event", "target", "outco
                 "missing", "split", "roles", "roles_unconfirmed", "role_confirmations",
                 "reading_confirmations", "shape_confirmations", "survey", "grain", "unit")
 
-__all__ = ["SCALES_READS", "ScaleCorrection", "ScaleReliability", "ScaleResult", "ScalesArtifact",
-           "scale_result", "scales_stage"]
+__all__ = ["POPULATION", "SCALES_READS", "ScaleCorrection", "ScaleReliability", "ScaleResult",
+           "ScalesArtifact", "population_block", "scale_result", "scales_stage"]

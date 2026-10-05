@@ -127,9 +127,10 @@ GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 def build_graph() -> Graph:
     return Graph(
         [
-            # ingest reads the joins (DATAIN, V2 definition of done §1): the files joined to the
-            # table on a shared identifier, in answer order (``join_files``).
-            Stage("ingest", 1, (), ("joins",), ingest_stage, heavy=True, label="Reading the file"),
+            # ingest 2 (wave 1, DATAIN, V2 definition of done §1): SAS transport files are read as R
+            # reads them, and the files joined to the table on a shared identifier, in answer order
+            # (``join_files``), are joined here.
+            Stage("ingest", 2, (), ("joins",), ingest_stage, heavy=True, label="Reading the file"),
             # ── M2: what the table is (M2_CONTRACT §2) ──
             # oriented 3 (WP14): the names are read before the shape, and the shape is scale-aware.
             Stage("oriented", 3, ("ingest",), ("orientation", "feature_table"), oriented_stage,
@@ -445,7 +446,9 @@ def build_graph() -> Graph:
             # only where it excludes every other unit (never alcohol or a minor source); the parts of
             # totals as the user confirmed them.
             # substitution 13 (WP17): as fit 16.
-            Stage("substitution", 13, ("working", "fit", "design"),
+            # substitution 14 (wave 1, MS4): under the population answer the curve is the
+            # population's, weighted, with a linearized band.
+            Stage("substitution", 14, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -474,7 +477,9 @@ def build_graph() -> Graph:
             # sensitivity 6 (recognition's leash): its clusters read settled roles only.
             # sensitivity 8 (ledger repair 2): as fit 15.
             # sensitivity 9 (WP17): as fit 16.
-            Stage("sensitivity", 9, ("working", "design", "split", "target_info"),
+            # sensitivity 10 (wave 1, MS4): a family with no design-based estimator is blocked under
+            # the population answer.
+            Stage("sensitivity", 10, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
@@ -483,7 +488,8 @@ def build_graph() -> Graph:
             # confirmations; calibration applies only on an answered repeat kind.
             # calibration 6 (ledger repair 2): as design 17.
             # calibration 7 (WP17): as fit 16.
-            Stage("calibration", 7,
+            # calibration 8 (wave 1, MS4): blocked and recorded under the population answer.
+            Stage("calibration", 8,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
@@ -496,7 +502,9 @@ def build_graph() -> Graph:
             # scales 1 (MS8): each declared scale's reliability (ω; α labeled customary) and, under
             # inference, its coefficient corrected by regression calibration given the covariates,
             # beside the uncorrected one; items imputed before scoring under multiple imputation.
-            Stage("scales", 1, ("working", "design", "split", "target_info", "cohort"),
+            # scales 2 (wave 1, MS4): under the population answer the correction is blocked and
+            # recorded, its exit the sample-only attestation.
+            Stage("scales", 2, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
                   label="Estimating each scale's reliability"),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the

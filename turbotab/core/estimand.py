@@ -773,7 +773,8 @@ HOLDS: dict[str, tuple[str, ...]] = {
     "estimand": ("inference",),
     "adjustment": ("inference",),
 }
-ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary")
+# ``scales`` (MS8): a declared scale's corrected coefficient and the uncorrected one beside it.
+ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "scales")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
@@ -833,6 +834,18 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
     if stage == "sensitivity":
         out["families"] = []
         out["changes"] = {}
+        return out
+    if stage == "scales":
+        # Each scale's reliability stays (it describes the items, not an effect); its corrected
+        # coefficient and the uncorrected one beside it wait for the plan.
+        scales = []
+        for sc in out.get("scales") or []:
+            sc = dict(sc)
+            if sc.get("correction") is not None:
+                sc["correction"] = None
+                sc["not_corrected"] = reason
+            scales.append(sc)
+        out["scales"] = scales
         return out
     for key in ("curves", "families", "models", "estimates", "rows", "fits"):
         if key in out:
