@@ -84,6 +84,7 @@ turbotab/core/tests/      pytest
 turbotab/server/          FastAPI app (HTTP + SSE only; no statistics here)
 turbotab/server/tests/    pytest (TestClient)
 turbotab/frontend/        Vite + React app; builds to turbotab/frontend/dist, served by the server
+turbotab/deploy/          the desktop launcher (macOS, Windows) and the server image (Docker); DEPLOY.md
 docs/turbotab-next/       BLUEPRINT.md (this), INBOX.md, milestone notes
 ```
 

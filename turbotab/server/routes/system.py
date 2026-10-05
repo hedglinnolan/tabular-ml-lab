@@ -16,8 +16,13 @@ router = APIRouter(tags=["system"])
 
 @router.get("/health", response_model=Health)
 def health(request: Request) -> Health:
+    """The build, the mode, and in server mode who is signed in and how (a sign-out control only
+    where signing out means something: under ``password``, not behind the institution's proxy)."""
     settings = get_settings(request)
-    return Health(version=__version__, mode=settings.mode, workers=get_service(request).runner.workers)
+    auth = getattr(request.app.state, "auth", None)
+    return Health(version=__version__, mode=settings.mode, workers=get_service(request).runner.workers,
+                  user=request.scope.get("turbotab.user"),
+                  auth=auth.config.mode if auth is not None else "none")
 
 
 @router.get(

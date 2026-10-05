@@ -12,6 +12,7 @@
           "system"
         ],
         "summary": "Health",
+        "description": "The build, the mode, and in server mode who is signed in and how (a sign-out control only\nwhere signing out means something: under ``password``, not behind the institution's proxy).",
         "operationId": "health_api_health_get",
         "responses": {
           "200": {
@@ -6648,13 +6649,38 @@
           "workers": {
             "type": "integer",
             "title": "Workers"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User",
+            "description": "Server mode: the signed-in user; null in local mode"
+          },
+          "auth": {
+            "type": "string",
+            "enum": [
+              "none",
+              "password",
+              "proxy"
+            ],
+            "title": "Auth",
+            "description": "How users sign in: none (local mode), password, or proxy (the institution's single sign-on)",
+            "default": "none"
           }
         },
         "type": "object",
         "required": [
           "version",
           "mode",
-          "workers"
+          "workers",
+          "user",
+          "auth"
         ],
         "title": "Health"
       },
