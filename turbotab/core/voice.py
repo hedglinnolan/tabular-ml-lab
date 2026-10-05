@@ -708,6 +708,12 @@ def _confirmed(reading: str, column: str, value: Any) -> str:
         coding = parse_sex_coding(value) or {}
         said = (f"{col} was confirmed to code "
                 + " and ".join(f"{sex} as {tick(level)}" for level, sex in coding.items()))
+    elif d.reading == "time_invariant":
+        said = (f"{col} was confirmed to hold one value for each unit, so the clustered imputation "
+                f"carries a unit's recorded value to its blank rows and imputes it once per unit "
+                f"where no row records it" if value == "yes" else
+                f"{col} was confirmed as able to change between a unit's rows, so the clustered "
+                f"imputation imputes it row by row")
     else:
         said = f"{col}'s {str(d.reading).replace('_', ' ')} was confirmed as {tick(value)}"
     return said
@@ -870,7 +876,7 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
     if d.strategy == "multiple_imputation":
         energy = _energy_column(state)
         with_energy = f" and total energy ({tick(energy)})" if energy else ""
-        m = tick(getattr(d, "m", 20))
+        m = int(getattr(d, "m", 20) or 20)  # a count the rule computes, not a header: no ticks
         if getattr(d, "imputation_model", "compatible") == "passive":
             # MS1 (MODELING_SEQUENCE §4): the customary chained equations, terms derived per copy
             how = ("by multiple imputation by chained equations, any nonlinear term derived in "

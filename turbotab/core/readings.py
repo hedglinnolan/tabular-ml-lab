@@ -74,10 +74,11 @@ KINDS: dict[str, str] = {
     "detection_limit": "the value a result below a detection limit is read at",
     "injection_order": "the column that orders an assay run's injections",
     "batch": "the column naming each injection's analytical batch",
+    "time_invariant": "whether the column holds one value for each unit of clustered rows",
 }
 # The kinds ``confirm_reading`` records (the others are answered by their own decisions).
 CONFIRMABLE = ("role", "cluster", "unit", "day_count", "code_or_count", "time_column",
-               "nested_in", "sex_coding")
+               "nested_in", "sex_coding", "time_invariant")
 # The values a confirmation may record, per kind (``day_count``: a whole number of days).
 UNIT_VALUES = ("kcal", "kj", "g", "kg", "lb", "cm", "m", "in", "years", "months", "weeks", "days",
                "pct_energy")
@@ -88,6 +89,7 @@ VALUES: dict[str, tuple[str, ...]] = {
     "unit": UNIT_VALUES,
     "code_or_count": ("code", "amount"),
     "time_column": ("orders",),
+    "time_invariant": ("yes", "no"),
 }
 
 PREDICTOR_ROLES = ("exposure", "covariate", "energy")
@@ -1306,6 +1308,22 @@ KIND_RULES: dict[str, KindRule] = {r.kind: r for r in (
               "the order samples were prepared or stored in, not injected",
               "a time that is not the acquisition time"),
              settled_by="the user's choice of the QC-RLSC option, which names it"),
+    # MI repair (ruling 12): clustered multiple imputation imputes a time-invariant column once per
+    # unit and carries a unit's recorded value to its blank rows. A covariate recorded only at
+    # baseline (education) agrees within every unit because each unit records it once, exactly as
+    # a characteristic that changes between visits but was asked once would; and few recorded rows
+    # agree by chance. No value test excludes either, so the user settles it. A column whose
+    # recorded values differ within a unit is out of the question's scope (no one value per unit
+    # holds its records; it is imputed row by row), unless the user confirms it anyway.
+    KindRule("time_invariant", "the column holds one value for each unit of clustered rows, so "
+                               "the clustered imputation carries a unit's recorded value to its "
+                               "blank rows and imputes it once per unit where no row records it",
+             ("a characteristic that can change between a unit's rows but was recorded once (an "
+              "education or an income asked only at baseline)",
+              "a measure whose few recorded values per unit agree by chance"),
+             settled_by="the user's confirmation, one column at a time or listed in one block; "
+                        "a column whose recorded values differ within a unit is imputed row by "
+                        "row without asking, since no one value per unit holds its records"),
     KindRule("batch", "the column naming each injection's analytical batch, within which QC-RLSC "
                       "fits one curve",
              ("a sample-preparation plate or box that does not split the analytical run",
@@ -2507,6 +2525,54 @@ def nested_exits(column: str, parent: str) -> list[dict[str, Any]]:
                       f"that column)", "decision": None}]
 
 
+# ── time-invariance under clustered imputation (MODELING_SEQUENCE §0 ruling 12) ─
+
+TIME_INVARIANT_WORDS = {"yes": "one value for each unit (carried to the unit's blank rows; "
+                               "imputed once per unit where no row records it)",
+                        "no": "can change between a unit's rows (imputed row by row)"}
+
+
+def time_invariance(state: Any, column: str, values: Any, units: Any) -> Reading:
+    """Whether ``column`` holds one value for each unit (``units``: a code per row), as the ledger
+    holds it: the user's confirmation, else a guess from the values that is never settled
+    (:data:`KIND_RULES` ``time_invariant``: a covariate asked only at baseline agrees within every
+    unit as a characteristic that does not change would, and so do few recorded values by chance).
+    The guess is "yes" where the recorded values agree within every unit, its evidence how many
+    units record it on two or more rows, on one, and on none; "no" where they differ within a unit
+    (no one value per unit holds those records)."""
+    import numpy as np
+    import pandas as pd
+
+    recorded = confirmation(state, "time_invariant", column)
+    if recorded is not None:
+        return Reading((str(column),), "time_invariant", str(recorded), "high",
+                       recorded_evidence(state, "time_invariant", column), False, "confirmed")
+    col = pd.Series(np.asarray(values, dtype=object)).reset_index(drop=True)
+    codes = pd.Series(np.asarray(units)).reset_index(drop=True)
+    rec = col.notna().to_numpy()
+    g = col[rec].astype(str).groupby(codes[rec].to_numpy())
+    distinct = g.nunique()
+    sizes = g.size()
+    n_units = int(codes.nunique())
+    differ = int((distinct > 1).sum())
+    if differ:
+        return Reading((str(column),), "time_invariant", "no", "medium",
+                       f"its recorded values differ within {differ:,} of the {n_units:,} units",
+                       False, "proposed")
+    several, once = int((sizes >= 2).sum()), int((sizes == 1).sum())
+    none = n_units - int(len(sizes))
+    return Reading((str(column),), "time_invariant", "yes", "medium" if several else "low",
+                   f"one recorded value in each unit that records it: {several:,} units record it "
+                   f"on two or more rows, {once:,} on one row, {none:,} on none", False, "proposed")
+
+
+def time_invariance_exit(column: str, value: str) -> dict[str, Any]:
+    """The confirmation of ``column``'s time-invariance as ``value`` (``yes`` or ``no``)."""
+    return confirm_exit("time_invariant", column, value,
+                        f"`{column}` holds {TIME_INVARIANT_WORDS[value]}" if value == "yes"
+                        else f"`{column}` {TIME_INVARIANT_WORDS[value]}")
+
+
 # ── values below a detection limit ───────────────────────────────────────────
 
 
@@ -2818,7 +2884,8 @@ def read_from_values_sentence(items: Sequence[Mapping[str, Any]]) -> str:
 # (one slope or an indicator per level); a unit or a day count moves a screen's bounds; a sex
 # coding the sex-specific references; the order of records the values first, last and change take.
 CONSEQUENCE = {"cluster": 0, "role": 1, "code_or_count": 2, "unit": 3, "day_count": 3,
-               "sex_coding": 4, "time_column": 5, "outcome_unit": 6, "nested_in": 6}
+               "time_invariant": 3, "sex_coding": 4, "time_column": 5, "outcome_unit": 6,
+               "nested_in": 6}
 FAMILY_MIN = 5  # this many readings of one kind, one guess and one name pattern are one family
 
 
@@ -2887,6 +2954,8 @@ def guess_words(r: Reading) -> str:
     if r.kind == "sex_coding" and r.value:
         coding = parse_sex_coding(r.value) or {}
         return ", ".join(f"{k} {v}" for k, v in coding.items())
+    if r.kind == "time_invariant":
+        return TIME_INVARIANT_WORDS.get(str(r.value), str(r.value))
     return _GUESS_WORDS.get(str(r.value), str(r.value))
 
 
@@ -2967,6 +3036,8 @@ def _alternatives(r: Reading, state: Any = None) -> list[str]:
         return [str(r.value)]
     if r.kind == "time_column":
         return ["orders"]
+    if r.kind == "time_invariant":
+        return ["yes", "no"] if r.value != "no" else ["no", "yes"]
     return [str(r.value)] if r.value is not None else []
 
 
@@ -3006,6 +3077,8 @@ def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, 
                                                         f"{role_words(r.value)}")]
         elif r.kind == "cluster":
             out += cluster_exits(state, r.column)[:2]
+        elif r.kind == "time_invariant":
+            out += [time_invariance_exit(r.column, value) for value in _alternatives(r)]
         else:
             for value in _alternatives(r, state):
                 out.append(confirm_exit(r.kind, r.column, value,
@@ -3178,6 +3251,11 @@ CONSUMERS: tuple[Consumer, ...] = (
     # BLUEPRINT §14.3: the imputation model reads the codes the design settled (``spec.categorical``).
     Consumer(_C + "methods.missing:imputation_frame", ("predictor_codes",), True, SETTLED_ONLY,
              via=_C + "stages.modeling:fit_stage", kinds=("code_or_count",)),
+    # MI repair (ruling 12): the clustered imputation carries and imputes once per unit only the
+    # columns whose time-invariance the user confirmed; a column whose records agree within every
+    # unit and is not yet confirmed either way is asked (``_missing_for_table`` holds the table).
+    Consumer(_C + "methods.missing:time_invariant_columns", (), True, ASK,
+             kinds=("time_invariant",)),
     Consumer(_C + "decisions:_roles_record_what_rode_along", ("roles",), True, ASK),
     Consumer(_C + "decisions:_answers_keep_settled_roles", ("roles",), True, ASK),
     Consumer(_C + "decisions:_answers_keep_settled_readings",
@@ -3393,5 +3471,5 @@ __all__ = [
     "nesting_parents", "nutrients_by_values", "parse_drinks", "text_numbers", "unit_words",
     "unit_record", "CODEBOOK_EVIDENCE", "codebook_label", "codebook_source", "codebook_unit",
     "label_guess", "labeled", "recorded_evidence", "BATCH_KINDS", "batch_readings",
-    "injection_order_reading",
+    "injection_order_reading", "TIME_INVARIANT_WORDS", "time_invariance", "time_invariance_exit",
 ]

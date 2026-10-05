@@ -993,11 +993,23 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
 
         design = survey.design if survey is not None and getattr(survey, "answer", None) == "population" \
             else None
+        once: list[str] = []
+        if clustered and answer.get("imputation_levels") != "single_level":
+            # Ruling 12 with the ledger (BLUEPRINT §14.1): only a column the user confirmed as one
+            # value per unit is carried and imputed once per unit; one whose records agree within
+            # every unit, unconfirmed, is asked before any copy is drawn.
+            from turbotab.core.methods.missing import time_invariance_ask, time_invariant_columns
+
+            once, ask = time_invariant_columns(state, X, clusters.codes, gaps)
+            if ask:
+                reason, exits = time_invariance_ask(ask, clusters.column, state)
+                return TableMissing(refusal=reason, exits=exits)
         try:
             imputations = impute_for_inference(spec, X, y, task, seed=seed, progress=progress,
                                                cancelled=ctx.cancelled, survey=design,
                                                clusters=clusters if clustered else None,
-                                               nested=nested, factors=_settled_factors(ctx, spec))
+                                               nested=nested, factors=_settled_factors(ctx, spec),
+                                               time_invariant=once)
         except ImputationRefused as exc:
             zeros = list(getattr(exc, "zeros", None) or [])
             exits: list[dict[str, Any]] = []
@@ -2765,10 +2777,18 @@ def _pooled_note(m: int, entries: Sequence[Mapping[str, Any]], n_boot: int, supp
     ``design``, each copy's curve and variance are the surveyed population's (MS4)."""
     what = f"the data's {m} imputed copies" if supplied else f"the {m} imputations"
     parts = []
-    if any(e.get("pooled") == "contrast" for e in entries):
-        parts.append("for the linear all-components model the curve is the exact contrast of the "
-                     "pooled coefficients, with Rubin's total variance and Barnard–Rubin degrees of "
-                     "freedom")
+    exact = [e for e in entries if e.get("pooled") == "contrast"]
+    if exact:
+        # Any linear model whose move changes every row's terms by the same amount takes this
+        # path (the standard, partition and all-components models alike), so it is named by
+        # that property, never by one energy model.
+        mixed = len(exact) < len(entries)
+        whose = (f"for {', '.join(str(e.get('label') or e.get('family')) for e in exact)} "
+                 if mixed else "")
+        parts.append(f"{whose}the move changes every row's model terms by the same amount, so "
+                     f"{'its' if mixed else 'the'} curve is the exact contrast of the pooled "
+                     f"coefficients, with Rubin's total variance and Barnard–Rubin degrees of "
+                     f"freedom")
     if any(e.get("pooled") == "per_k" for e in entries):
         how = ("each copy's survey-weighted curve over the surveyed population, pooled at each k by "
                "Rubin's rules with each copy's Taylor-linearized variance as its within-copy "

@@ -8,8 +8,11 @@ and M2_CONTRACT §4 (:data:`RULE`):
   (MODELING_SEQUENCE §0 ruling 5, §1.1) the imputation is compatible with the analysis model
   (``methods.smcfcs``: SMC-FCS for splines, logs, ratios and logistic or Cox outcomes; logged
   quantities on the log scale; the energy sources and the rest imputed and total energy derived;
-  knots fixed on the observed values, :class:`FixedForms`), holds the survey design and the
-  clustering (ruling 12), takes m = max(20, the percentage of rows with an imputed value) and
+  knots fixed on the observed values, :class:`FixedForms`, held by every stage that fits the
+  copies, :func:`copy_pipeline`), holds the survey design (in every covariate model and, under
+  SMC-FCS, in the substantive model) and the clustering (ruling 12; a column is imputed once per
+  unit only once the user confirmed it as one value per unit, a reading of the ledger:
+  :func:`time_invariant_columns`), takes m = max(20, the percentage of rows with an imputed value) and
   reports its Monte Carlo error, and every estimate shown is pooled, the substitution curve
   included. Passive imputation with a declared nonlinear term and single-level imputation on
   clustered rows are blocked and recorded (:func:`missing_block`). The data's own imputed copies
@@ -108,6 +111,10 @@ class MissingMethod:
 
 
 METHODS: dict[str, MissingMethod] = {}
+# m follows White, Royston & Wood's rule (``imputation.m_rule``): never a fixed 20 in a label.
+M_WORDS = "m at least 20, more when more rows are incomplete"
+MI_LABEL = f"Multiple imputation ({M_WORDS})"
+MI_EXIT_LABEL = f"Multiple imputation with the outcome and energy ({M_WORDS})"
 
 
 def register_method(method: MissingMethod) -> MissingMethod:
@@ -116,7 +123,7 @@ def register_method(method: MissingMethod) -> MissingMethod:
 
 
 register_method(MissingMethod(
-    key="multiple_imputation", label="Multiple imputation (m = 20)",
+    key="multiple_imputation", label=MI_LABEL,
     customary="Customary in epidemiology (Sterne et al. 2009, BMJ 338:b2393)",
     sound={"inference": "Sound: with the outcome and energy in the imputation model it is unbiased "
                         "under missing at random and its intervals carry the imputation's "
@@ -492,7 +499,7 @@ def missing_block(spec_missing: Mapping[str, Any] | None, purpose: str | None,
     if strategy != "impute" and not indicator:
         return None
     mi = {**base, "strategy": "multiple_imputation", "indicators": False, "categorical": "impute"}
-    exits = [_exit("Multiple imputation with the outcome and energy (m = 20)", mi),
+    exits = [_exit(MI_EXIT_LABEL, mi),
              _exit("Complete cases, with their assumption stated", cc), keep]
     if indicator:
         return (f"Under inference the missing-indicator method is blocked until it is recorded: "
@@ -754,27 +761,84 @@ def copy_template(template: Any, plan: Mapping[str, Any]) -> Any:
     return pipe
 
 
+def copy_pipeline(template: Any, imputations: Any = None) -> Any:
+    """The unfitted pipeline a stage fits one of its copies with: under multiple imputation
+    (``imputations`` given) :func:`copy_template` of its plan, so every stage that fits the copies
+    (the fit's pooled table, the declared models of Table 2, a scale's correction) holds the same
+    knots in every copy and never median-fills inside one (MODELING_SEQUENCE §1.1; §4, median fill
+    for the inference table); otherwise a plain clone. Wave-1 verification found Table 2's models
+    fit with plain clones: 35 knot sets over 35 copies, pooled as if one basis."""
+    from sklearn.base import clone
+
+    if imputations is None:
+        return clone(template)
+    return copy_template(template, dict(getattr(imputations, "plan", None) or {}))
+
+
 # ── the plan: what the imputation model holds (MS1, MS2) ─────────────────────
 
 
-def unit_level_columns(X: pd.DataFrame, units: np.ndarray, columns: Sequence[str]) -> list[str]:
-    """The ``columns`` that are constant within every unit wherever they are recorded, with at least
-    one unit recording them on two or more rows (ruling 12's time-invariant variables, read from
-    the values; the record lists them, and a column that varies within any unit is row-level)."""
-    out = []
-    codes = pd.Series(np.asarray(units))
+def time_invariant_columns(state: Any, X: pd.DataFrame, units: Any, columns: Sequence[str]
+                           ) -> tuple[list[str], list[Any]]:
+    """Under clustered multiple imputation (ruling 12), which of the incomplete ``columns`` hold one
+    value for each unit, as the readings ledger holds it (``readings.time_invariance``; BLUEPRINT
+    §14.1: a number-changing consumer reads only settled readings): (the columns the user confirmed
+    as one value per unit, the readings still to ask). A column whose recorded values agree within
+    every unit is asked until confirmed either way: a covariate recorded only at baseline agrees
+    as a characteristic that never changes does, so the values cannot settle it (§14.3). A column
+    whose records differ within a unit is out of the question's scope and imputed row by row,
+    unless the user confirmed it as one value per unit."""
+    from turbotab.core.readings import time_invariance
+
+    once: list[str] = []
+    ask: list[Any] = []
     for c in columns:
-        col = X[c].reset_index(drop=True)
-        rec = col.notna()
-        if not rec.any():
-            continue
-        g = col[rec].groupby(codes[rec.to_numpy()].to_numpy())
-        n = g.size()
-        if not (n >= 2).any():
-            continue
-        if int(g.nunique().max()) <= 1:
-            out.append(c)
-    return out
+        r = time_invariance(state, c, X[c].to_numpy(), units)
+        if r.state == "confirmed":
+            if str(r.value) == "yes":
+                once.append(c)
+        elif str(r.value) == "yes":
+            ask.append(r)
+    return once, ask
+
+
+def time_invariance_ask(readings: Sequence[Any], unit: str | None, state: Any = None
+                        ) -> tuple[str, list[dict[str, Any]]]:
+    """The question the clustered imputation asks before it runs (BLUEPRINT §14.2: the guess first,
+    one tap): (the reason the table waits, the exits, a block confirmation first)."""
+    from turbotab.core.readings import ask_exits, ask_text
+    from turbotab.core.voice import listing, tick
+
+    named = listing([r.column for r in readings])
+    by = tick(unit or "unit")
+    reason = (f"The rows repeat by {by}, and the recorded values of {named} agree within every "
+              f"{by}. Each may be the {by}'s own value, carried to its blank rows and imputed "
+              f"once per {by} where no row records it, or one that can change between its rows, "
+              f"imputed row by row; the values cannot tell the two apart (a covariate asked only "
+              f"at baseline agrees as one that never changes does). {ask_text(readings, state)}")
+    return reason, ask_exits(readings, state)
+
+
+def carry_within_units(values: pd.Series, units: Any) -> tuple[pd.Series, int, int]:
+    """A column confirmed as one value per unit, its blank rows given their unit's recorded value
+    (the most frequent where the unit's records differ; the first in row order on a tie): (the
+    column, the cells carried, the units whose records differ). A unit with no recorded value is
+    left blank, for the imputation to fill once."""
+    s = values.reset_index(drop=True)
+    codes = pd.Series(np.asarray(units)).reset_index(drop=True)
+    rec = s.notna()
+    if not rec.any():
+        return values, 0, 0
+    frame = pd.DataFrame({"u": codes[rec].to_numpy(), "v": s[rec].to_numpy()})
+    counts = frame.groupby(["u", "v"], sort=False).size()
+    chosen = counts.groupby(level=0, sort=False).idxmax()
+    per_unit = pd.Series([pair[1] for pair in chosen.to_numpy()], index=chosen.index)
+    differ = int((frame.groupby("u")["v"].nunique() > 1).sum())
+    fill = codes.map(per_unit)
+    carried = (~rec) & fill.notna()
+    out = s.where(~carried, fill)
+    out.index = values.index
+    return out, int(carried.sum()), differ
 
 
 def design_variables(survey_design: Any, index: pd.Index) -> tuple[pd.DataFrame, dict[str, Any]] | None:
@@ -821,11 +885,79 @@ def binary01(y: Any) -> np.ndarray:
     return (pd.Series(values).astype(object) == levels[-1]).to_numpy(dtype=float)
 
 
-def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any]) -> Any:
+class _DesignTerms:
+    """The survey design's columns as terms of the imputation's substantive model: each stratum and
+    each PSU-within-stratum level but the first as an indicator, the weight standardized, all
+    encoded on the levels and the moments of every analyzed row (complete columns, so the encoding
+    is fixed), with any term the others and an intercept already span left out."""
+
+    def __init__(self, data: pd.DataFrame, columns: Sequence[str]):
+        self.parts: list[tuple[str, Any]] = []
+        self.n = len(data)
+        for c in columns:
+            if c not in data.columns:
+                continue
+            values = data[c]
+            if pd.api.types.is_numeric_dtype(values):
+                x = values.to_numpy(dtype=float)
+                sd = float(np.std(x))
+                if sd > 0:
+                    self.parts.append((c, (float(np.mean(x)), sd)))
+            else:
+                levels = sorted(pd.unique(values.dropna()), key=str)
+                for level in levels[1:]:
+                    self.parts.append((c, level))
+        self.keep: list[int] | None = None
+
+    def select(self, analysis: np.ndarray, raw: pd.DataFrame) -> None:
+        """Keep each design term that adds a dimension to the intercept, the analysis model's
+        terms (``analysis``, every row) and the design terms kept before it."""
+        full = self._encode(raw)
+        kept = np.column_stack([np.ones((len(raw), 1)), analysis])
+        rank = int(np.linalg.matrix_rank(kept))
+        keep: list[int] = []
+        for j in range(full.shape[1]):
+            trial = np.column_stack([kept, full[:, j]])
+            r = int(np.linalg.matrix_rank(trial))
+            if r > rank:
+                keep.append(j)
+                kept, rank = trial, r
+        self.keep = keep
+
+    def _encode(self, raw: pd.DataFrame) -> np.ndarray:
+        out = []
+        for c, p in self.parts:
+            if isinstance(p, tuple):
+                out.append((pd.to_numeric(raw[c], errors="coerce").to_numpy(dtype=float) - p[0]) / p[1])
+            else:
+                out.append((raw[c].astype(object).to_numpy() == p).astype(float))
+        return np.column_stack(out) if out else np.zeros((len(raw), 0))
+
+    def __call__(self, raw: pd.DataFrame, analysis: np.ndarray) -> np.ndarray:
+        if self.keep is None:
+            # the sampler's first call is the outcome model's fit on every row; were it a subset,
+            # the terms are chosen against the intercept alone, once, so every call agrees
+            self.select(analysis if len(raw) == self.n else np.zeros((len(raw), 0)), raw)
+        return self._encode(raw)[:, self.keep]
+
+
+def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any],
+                       design: tuple[pd.DataFrame, Sequence[str]] | None = None) -> Any:
     """The analysis model as SMC-FCS reads it: the design is the pipeline's own shared steps
     (normalization, energy adjustment, the form with fixed knots, levels, one-hot), refit on the
     current completed rows once per iteration (the energy residual's line is re-estimated, as in
-    each copy) and row-local once fit; the outcome model is the task's (linear, logistic, Cox)."""
+    each copy) and row-local once fit; the outcome model is the task's (linear, logistic, Cox).
+
+    ``design``: (the imputation data, its survey-design columns). The design's strata, PSUs and
+    weight then enter the substantive model too, beside the analysis model's terms (MS2 repair).
+    SMC-FCS assumes an auxiliary variable of the covariate models is independent of the outcome
+    given the substantive model's covariates (Bartlett et al. 2015, §5.3; ``smcfcs``'s
+    documentation: auxiliary variables are "assumed to be conditionally independent of the outcome
+    given the covariates in the substantive model"); a design-based analysis declares no design
+    term, so with the design in the covariate models only, an outcome that differs by stratum
+    makes that assumption false and biased the pooled design-based estimates (z −0.06 over 40
+    replicates, about 7 Monte Carlo SE). An imputation model at least as general as the analysis
+    model is the congenial direction (Meng 1994; Reiter, Raghunathan & Kinney 2006)."""
     from sklearn.base import clone
 
     from turbotab.core.methods.smcfcs import Outcome, Substantive
@@ -841,14 +973,16 @@ def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any]) -
     template = transformer(steps)
     inputs = list(spec.inputs)
     holder: dict[str, Any] = {}
+    terms = _DesignTerms(*design) if design is not None and list(design[1]) else None
 
     def refresh(raw: pd.DataFrame) -> None:
         holder["T"] = clone(template).fit(raw[inputs])
 
-    def design(raw: pd.DataFrame) -> np.ndarray:
+    def matrix(raw: pd.DataFrame) -> np.ndarray:
         if "T" not in holder:
             refresh(raw)
-        return np.asarray(holder["T"].transform(raw[inputs]), dtype=float)
+        M = np.asarray(holder["T"].transform(raw[inputs]), dtype=float)
+        return M if terms is None else np.column_stack([M, terms(raw, M)])
 
     kind = SUBSTANTIVE[task]
     if kind == "cox":
@@ -860,7 +994,7 @@ def engine_substantive(spec: Any, task: str, y: Any, forms: Mapping[str, Any]) -
         outcome = Outcome("logistic", y=binary01(y))
     else:
         outcome = Outcome("linear", y=np.asarray(y, dtype=float))
-    return Substantive(outcome=outcome, design=design, refresh=refresh)
+    return Substantive(outcome=outcome, design=matrix, refresh=refresh)
 
 
 @dataclass
@@ -887,6 +1021,13 @@ class ImputationPlan:
     m_asked: int = 20
     n_incomplete: int = 0
     exclude: list[str] = field(default_factory=list)
+    # passive chained equations chosen for a logistic or Cox model with no derived term: the
+    # customary imputation, only approximately compatible with that outcome model
+    approximate: bool = False
+    # clustered rows: each confirmed one-value-per-unit column's cells carried from its unit's
+    # recorded value, and the units whose records of it differ
+    carried: dict[str, int] = field(default_factory=dict)
+    unit_differ: dict[str, int] = field(default_factory=dict)
 
 
 OTHER = "__other_energy"
@@ -894,7 +1035,8 @@ OTHER = "__other_energy"
 
 def imputation_plan(spec: Any, X: pd.DataFrame, y: Any, task: str, *, survey: Any = None,
                     clusters: Any = None, nested: Mapping[str, str] | None = None,
-                    factors: Mapping[str, float] | None = None) -> ImputationPlan:
+                    factors: Mapping[str, float] | None = None,
+                    time_invariant: Sequence[str] | None = None) -> ImputationPlan:
     """The imputation model for the inference table (MODELING_SEQUENCE §1.1, step 1):
 
     * **compatible with the analysis model**: SMC-FCS when the outcome is binary or time-to-event,
@@ -904,36 +1046,50 @@ def imputation_plan(spec: Any, X: pd.DataFrame, y: Any, task: str, *, survey: An
       copies are passive, which :func:`missing_block` holds). The answer's ``imputation_model``
       "passive" asks for the customary chained equations whatever the terms;
     * logged quantities on the log scale; the energy identity; knots fixed on observed values;
-    * the survey design's strata, PSU and weight (``survey``: a ``SurveyDesign``);
-    * with clustered rows (``clusters``) and unless the answer is ``"single_level"``, time-invariant
-      variables once per unit and the unit means of the rest;
-    * m by the rule (:func:`~turbotab.core.methods.imputation.m_rule`).
+    * the survey design's strata, PSU and weight (``survey``: a ``SurveyDesign``), in every
+      covariate model and, under SMC-FCS, in the substantive model (:func:`engine_substantive`);
+    * with clustered rows (``clusters``) and unless the answer is ``"single_level"``: the columns
+      the user confirmed as one value per unit (``time_invariant``, read through the ledger by
+      :func:`time_invariant_columns`) carried from each unit's recorded value to its blank rows
+      (:func:`carry_within_units`: not imputed, so not counted for m) and imputed once per unit
+      where no row records them; every other column row by row with the unit means of the rest;
+    * m by the rule (:func:`~turbotab.core.methods.imputation.m_rule`), over the rows still blank.
     """
     from turbotab.core.methods.imputation import M_DEFAULT, OUTCOME_PREFIX, m_rule
     from turbotab.core.methods.smcfcs import Identity, Variable
 
     answer = dict(getattr(spec, "missing", None) or {})
+    units = None
+    unit_column = None
+    once: list[str] = []
+    carried: dict[str, int] = {}
+    unit_differ: dict[str, int] = {}
+    single = answer.get("imputation_levels") == "single_level"
+    if clusters is not None and getattr(clusters, "clustered", False) and not single:
+        units = np.asarray(clusters.codes, dtype=np.int64)
+        unit_column = clusters.column
+        level_columns = set(getattr(spec, "levels", []) or [])
+        once = [c for c in dict.fromkeys(time_invariant or []) if c in X.columns
+                and c in spec.inputs and c not in level_columns]
+        if once:
+            X = X.copy()
+            for c in once:
+                X[c], carried[c], unit_differ[c] = carry_within_units(X[c], units)
     data, impute, kinds, censored, levels = imputation_frame(spec, X, y, task)
     nonlinear = nonlinear_terms(spec, task)
     passive = answer.get("imputation_model") == "passive"
     substantive_kind = SUBSTANTIVE.get(task)
     smc = (not passive) and substantive_kind is not None and (
         substantive_kind in ("logistic", "cox") or bool(nonlinear))
-    compatible = (not passive) and (smc or not nonlinear)
+    approximate = passive and not nonlinear and substantive_kind in ("logistic", "cox")
+    compatible = (smc or not nonlinear) and not approximate
     logged = [c for c in logged_columns(spec) if c in data.columns]
     terms = [c for c in data.columns if c.startswith(OUTCOME_PREFIX)]
     if smc:
         data = data.drop(columns=terms)
     identity = energy_identity(spec, X, factors, nested)
     variables: list[Any] = []
-    unit_level: list[str] = []
-    units = None
-    unit_column = None
-    single = answer.get("imputation_levels") == "single_level"
-    if clusters is not None and getattr(clusters, "clustered", False) and not single:
-        units = np.asarray(clusters.codes, dtype=np.int64)
-        unit_column = clusters.column
-        unit_level = unit_level_columns(X, units, impute)
+    unit_level = [c for c in once if c in impute]
     for c in impute:
         if identity is not None and c == identity[0]:
             continue  # total energy is derived from its sources and other
@@ -962,7 +1118,9 @@ def imputation_plan(spec: Any, X: pd.DataFrame, y: Any, task: str, *, survey: An
                 data[c] = frame[c].to_numpy()
             design = {**names, "columns": list(frame.columns)}
     forms = fixed_forms(spec, X)
-    substantive = engine_substantive(spec, task, y, forms) if smc else None
+    substantive = (engine_substantive(spec, task, y, forms,
+                                      design=(data, design["columns"]) if design else None)
+                   if smc else None)
     blank = np.zeros(len(X), dtype=bool)
     for c in impute:
         blank |= X[c].isna().to_numpy()
@@ -971,25 +1129,28 @@ def imputation_plan(spec: Any, X: pd.DataFrame, y: Any, task: str, *, survey: An
     return ImputationPlan(
         mode="smcfcs" if smc else "fcs", compatible=compatible, substantive_kind=substantive_kind,
         nonlinear=nonlinear, data=data, variables=variables, identity=ident, units=units,
-        unit_column=unit_column, unit_level=unit_level, design=design,
+        unit_column=unit_column, unit_level=list(once), design=design,
         # drawn on the log scale: total energy under the identity is derived from its parts
         logged=[c for c in logged if c in impute and not (identity is not None and c == identity[0])],
         forms=forms, substantive=substantive, levels=levels,
         kinds={c: k for c, k in kinds.items() if c in data.columns},
-        m=m_rule(n_incomplete, len(X), asked), m_asked=asked, n_incomplete=n_incomplete)
+        m=m_rule(n_incomplete, len(X), asked), m_asked=asked, n_incomplete=n_incomplete,
+        approximate=approximate, carried=carried, unit_differ=unit_differ)
 
 
 def impute_for_inference(spec: Any, X: pd.DataFrame, y: Any, task: str, *, seed: int = 0,
                          progress: Any = None, cancelled: Any = None, survey: Any = None,
                          clusters: Any = None, nested: Mapping[str, str] | None = None,
-                         factors: Mapping[str, float] | None = None) -> Any:
+                         factors: Mapping[str, float] | None = None,
+                         time_invariant: Sequence[str] | None = None) -> Any:
     """The completed copies of ``X`` the inference table is pooled over (``Imputations``, each frame
     holding ``X``'s columns, a level column's blanks left as they were), drawn as
-    :func:`imputation_plan` says; ``Imputations.plan`` is the record's source."""
+    :func:`imputation_plan` says; ``Imputations.plan`` is the record's source. ``time_invariant``:
+    the columns the user confirmed as one value per unit (:func:`time_invariant_columns`)."""
     from turbotab.core.methods.smcfcs import impute
 
     plan = imputation_plan(spec, X, y, task, survey=survey, clusters=clusters, nested=nested,
-                           factors=factors)
+                           factors=factors, time_invariant=time_invariant)
     out = impute(plan.data, plan.variables, mode=plan.mode, substantive=plan.substantive,
                  identity=plan.identity, units=plan.units, m=plan.m, seed=seed,
                  progress=progress, cancelled=cancelled, kinds=plan.kinds)
@@ -1011,6 +1172,11 @@ def impute_for_inference(spec: Any, X: pd.DataFrame, y: Any, task: str, *, seed:
         "design": plan.design, "unit": plan.unit_column if plan.units is not None else None,
         "unit_level": list(plan.unit_level), "forms": plan.forms, "levels": list(plan.levels),
         "m_asked": plan.m_asked, "n_incomplete": plan.n_incomplete, "n_rows": int(len(X)),
+        "approximate": plan.approximate, "carried": dict(plan.carried),
+        "unit_differ": {c: k for c, k in plan.unit_differ.items() if k},
+        "unit_imputed": [v.name for v in plan.variables if v.unit_level],
+        "row_level": [v.name for v in plan.variables if not v.unit_level
+                      and not v.name.startswith("__")],
     }
     return out
 
@@ -1110,6 +1276,11 @@ def multiple_imputation_info(imputations: Any, spec: Any, n_rows: int,
         "design_weight": (design or {}).get("weight") if design else None,
         "df_com": float(df_com) if df_com is not None else None,
         "unit": plan.get("unit"), "unit_level": list(plan.get("unit_level") or []),
+        "unit_carried": {str(c): int(n) for c, n in (plan.get("carried") or {}).items()},
+        "unit_imputed": list(plan.get("unit_imputed") or []),
+        "unit_differ": {str(c): int(n) for c, n in (plan.get("unit_differ") or {}).items()},
+        "row_level": list(plan.get("row_level") or []),
+        "approximate": bool(plan.get("approximate")),
         "knots": {c: list(v["knots"]) for c, v in (plan.get("forms") or {}).items() if "knots" in v},
         "cuts": {c: list(v["cuts"]) for c, v in (plan.get("forms") or {}).items() if "cuts" in v},
         "m_asked": int(plan.get("m_asked") or imputations.m),
@@ -1151,7 +1322,13 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
             with_terms = f" with {listing(terms, ticked=False)}" if terms else ""
             how = (f"by substantive-model-compatible fully conditional specification (SMC-FCS; "
                    f"{BARTLETT}), compatible with the analysis model, a {kind} model{with_terms}")
-        elif not record.get("compatible", True):
+        elif record.get("approximate"):
+            kind = {"logistic": "logistic", "cox": "Cox"}.get(str(record.get("substantive")),
+                                                             str(record.get("substantive")))
+            how = (f"by chained equations with the outcome in the imputation model, as the answer "
+                   f"chose; they match the analysis model, a {kind} model, only approximately, "
+                   f"which SMC-FCS would match exactly ({BARTLETT})")
+        elif not record.get("compatible", True) and record.get("terms"):
             how = (f"by chained equations with the outcome in the imputation model, with "
                    f"{listing(list(record.get('terms') or []), ticked=False)} derived in each "
                    f"copy (passive imputation), kept as a recorded limitation: {PASSIVE_CAUTION}")
@@ -1166,10 +1343,14 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
             text += (f"; {listing(logged)} {plural(len(logged), 'was', 'were')} imputed on the log "
                      f"scale, as the analysis takes {plural(len(logged), 'its', 'their')} log")
         if record.get("identity_energy"):
+            infeasible = int(record.get("identity_infeasible") or 0)
             text += (f"; the energy sources ({listing(record.get('identity_sources') or [])}) and the "
                      f"rest of energy were imputed and total energy "
                      f"({tick(record['identity_energy'])}) derived as their sum, so the rest is "
-                     f"never negative")
+                     f"never negative"
+                     + (f" except on the {infeasible:,} {plural(infeasible, 'row', 'rows')} whose "
+                        f"recorded sources alone already reach the recorded total"
+                        if infeasible else ""))
         for column, knots in (record.get("knots") or {}).items():
             text += (f"; the knots of {tick(column)} ({', '.join(num(k) for k in knots)}) were "
                      f"placed once on its observed values and held in every copy")
@@ -1180,15 +1361,11 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
                                                    ("weight", "design_weight")) if record.get(k)]
         if design:
             text += (f"; the survey {listing([f'{w} ({tick(c)})' for w, c in design], ticked=False)}"
-                     f" were in the imputation model")
+                     f" were in the imputation model"
+                     + (": in each covariate model and, beside the analysis model's terms, in its "
+                        "outcome model" if model == "smcfcs" else ""))
         if record.get("unit"):
-            unit = tick(record["unit"])
-            once = list(record.get("unit_level") or [])
-            text += (f"; with rows clustered by {unit}, "
-                     + (f"{listing(once)} {plural(len(once), 'was', 'were')} imputed once per {unit} "
-                        f"and " if once else "")
-                     + f"each row-level variable with the {unit} means of the others and its "
-                       f"own mean over the {unit}'s other rows")
+            text += _clustered_clause(record)
     pooled = "" if model == "supplied" else "; the estimates were pooled by Rubin's rules"
     if record.get("tests_d1"):
         pooled += ", multi-parameter tests by D1 (Li, Raghunathan & Rubin 1991)"
@@ -1200,6 +1377,35 @@ def mi_sentence(record: Mapping[str, Any]) -> str:
         text += (f"; the largest Monte Carlo error, for {tick(record.get('mc_feature'))}, was "
                  f"{100 * ratio:.1f}% of its standard error")
     return finish(text)
+
+
+def _clustered_clause(record: Mapping[str, Any]) -> str:
+    """The sentence's clause on clustered rows (ruling 12): the columns the user confirmed as one
+    value per unit, carried from a unit's recorded value to its blank rows and imputed once per
+    unit where no row records them; the rest imputed row by row with the unit means."""
+    from turbotab.core.voice import listing, plural, tick
+
+    unit = tick(record["unit"])
+    once = list(record.get("unit_level") or [])
+    carried = sum(int(n) for n in (record.get("unit_carried") or {}).values())
+    imputed = list(record.get("unit_imputed") or [])
+    rows = record.get("row_level")
+    row_level = True if rows is None else bool(rows)
+    parts = []
+    if once:
+        n = len(once)
+        how = []
+        if carried:
+            how.append(f"carried from the rows that record {plural(n, 'it', 'them')} to the {unit}'s "
+                       f"blank rows ({carried:,} {plural(carried, 'value', 'values')})")
+        if imputed:
+            how.append(f"imputed once per {unit} where no row records {plural(n, 'it', 'them')}")
+        parts.append(f"{listing(once)} {plural(n, 'was', 'were')} confirmed as one value per {unit}"
+                     + (f", {' and '.join(how)}" if how else ""))
+    if row_level:
+        parts.append(f"each row-level variable was imputed with the {unit} means of the others and "
+                     f"its own mean over the {unit}'s other rows")
+    return f"; with rows clustered by {unit}, " + "; ".join(parts) if parts else ""
 
 
 def mi_concerns(imputations: Any, rows: Sequence[Mapping[str, Any]], n_rows: int) -> list[str]:
@@ -1223,12 +1429,37 @@ def mi_concerns(imputations: Any, rows: Sequence[Mapping[str, Any]], n_rows: int
              and float(r["mc_se"]) / float(r["se"]) > MC_RULE]
     if noisy:
         named = ", ".join(f"`{n}` ({v:.0%})" for n, v in noisy[:3])
-        out.append(f"The Monte Carlo error exceeds 10% of the standard error for {named} "
-                   f"({WHITE_ROYSTON_WOOD}): another set of m imputations would move it; raise m.")
+        if getattr(imputations, "method", "") == "supplied":
+            out.append(f"The Monte Carlo error exceeds 10% of the standard error for {named} "
+                       f"({WHITE_ROYSTON_WOOD}): the data's provider drew only {imputations.m} "
+                       f"copies, which cannot be added to here, so these estimates would move with "
+                       f"another set of the provider's copies; read their last digits with that in "
+                       f"mind.")
+        else:
+            out.append(f"The Monte Carlo error exceeds 10% of the standard error for {named} "
+                       f"({WHITE_ROYSTON_WOOD}): another set of m imputations would move it; "
+                       f"raise m.")
     failed = int(getattr(imputations, "rejection_failures", 0) or 0)
     if failed:
         out.append(f"SMC-FCS kept no candidate for {failed:,} draws within its limit of 1,000 "
                    f"candidates each; those values kept their last candidate, as R's smcfcs does.")
+    infeasible = int(getattr(imputations, "identity_infeasible", 0) or 0)
+    if infeasible:
+        plan = dict(getattr(imputations, "plan", None) or {})
+        energy = (plan.get("identity") or {}).get("energy")
+        out.append(f"On {infeasible:,} {'row' if infeasible == 1 else 'rows'} the recorded energy "
+                   f"sources alone already reach the recorded total energy (`{energy}`), so no "
+                   f"value of the blank sources leaves the rest of energy above zero there; check "
+                   f"those rows' units and totals before reading the energy terms.")
+    plan = dict(getattr(imputations, "plan", None) or {})
+    differ = {c: k for c, k in (plan.get("unit_differ") or {}).items() if k}
+    if differ:
+        unit = plan.get("unit") or "unit"
+        named = ", ".join(f"`{c}` ({k:,})" for c, k in list(differ.items())[:3])
+        out.append(f"Confirmed as one value per `{unit}`, {named} {'has' if len(differ) == 1 else 'have'} "
+                   f"recorded values that differ within some `{unit}`s (the count in brackets): "
+                   f"their recorded values were kept, and each such `{unit}`'s blank rows took its "
+                   f"most frequent recorded value.")
     return out
 
 
@@ -1392,16 +1623,25 @@ def _register_contracts() -> None:
                      enforced_by="turbotab.core.stages:build_graph",
                      id="mi.form_change_invalidates_imputations"),
             Relation("implies", "design_in_imputation",
-                     "the strata, PSU and weight in the imputation model, and ν_com = the design "
+                     "the strata, PSU and weight in every covariate model and, under SMC-FCS, in "
+                     "the outcome model beside the analysis model's terms, and ν_com = the design "
                      "df in Rubin's rules and D1", purposes=inference,
                      condition="a survey design with a population estimand",
                      enforced_by=f"{here}:design_variables",
                      id="mi.survey_implies_design_variables_and_df"),
             Relation("implies", "clustered_imputation",
-                     "time-invariant variables imputed once per unit, the rest with unit means",
+                     "the columns confirmed as one value per unit carried to the unit's blank rows "
+                     "and imputed once per unit, the rest row by row with unit means",
                      purposes=inference, condition="rows a unit repeats",
-                     enforced_by=f"{here}:unit_level_columns",
+                     enforced_by=f"{here}:carry_within_units",
                      id="mi.clusters_imply_clustered_imputation"),
+            Relation("implies", "time_invariance_question",
+                     "each incomplete column whose recorded values agree within every unit is "
+                     "asked: one value per unit, or one that can change between its rows (the "
+                     "values cannot tell; BLUEPRINT §14.3)", purposes=inference,
+                     condition="clustered imputation of rows a unit repeats",
+                     enforced_by=f"{here}:time_invariant_columns",
+                     id="mi.clusters_ask_time_invariance"),
             Relation("precedes", "scales",
                      "a scale's items are imputed before it is scored in each copy, never the "
                      "score itself (MODELING_SEQUENCE §1.1)", purposes=inference,
@@ -1532,9 +1772,10 @@ def imputation_model_options(purpose: str | None) -> list[dict[str, Any]]:
 
 __all__ = [
     "imputation_model_options", "MI_CONTRACTS", "CopyGuard", "FixedForms", "ImputationPlan",
-    "PASSIVE_CAUTION", "SINGLE_LEVEL_CAUTION", "copy_template", "design_variables",
+    "PASSIVE_CAUTION", "SINGLE_LEVEL_CAUTION", "copy_pipeline", "copy_template", "design_variables",
     "energy_identity", "fixed_forms", "imputation_plan", "logged_columns", "mi_sentence",
-    "nonlinear_terms", "supplied_copies", "unit_level_columns",
+    "nonlinear_terms", "supplied_copies", "carry_within_units", "time_invariance_ask",
+    "time_invariant_columns", "MI_EXIT_LABEL", "MI_LABEL", "M_WORDS", "engine_substantive",
     "BELOW_DETECTION_LABELS", "BelowDetection", "BelowDetectionFill", "COMPLETE_CASE_ASSUMPTION",
     "EnergyAwareImputer", "INDICATOR_CAUTION", "LEFT_CENSORED", "METHODS", "MI_ASSUMPTION",
     "MissingMethod", "ROW_LOSS_SHARE", "RULE", "SINGLE_FILL_CAUTION", "ZEROS", "below_detection_options",

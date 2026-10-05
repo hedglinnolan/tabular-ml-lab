@@ -384,14 +384,15 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
                      retests: Mapping[str, np.ndarray | None],
                      references: Mapping[str, np.ndarray | None], *, task: str, family: Any,
                      pipeline: Any, outcome: Any, seed: int, clusters: Any,
-                     progress: Any = None) -> dict[str, dict[str, Any]]:
+                     progress: Any = None, imputations: Any = None) -> dict[str, dict[str, Any]]:
     """Every score in ``specs`` corrected together in each copy, each combined over the copies by
     Rubin's rules (one copy: as it is). Raises ``ScaleRefused`` naming the score whose data refuse
-    (``which``, its position in ``specs``), or None when they refuse together."""
-    from sklearn.base import clone
-
+    (``which``, its position in ``specs``), or None when they refuse together. ``imputations``:
+    the multiple imputations ``copies`` come from, whose plan each copy's pipeline follows (the
+    knots placed once on the observed values; no median fill inside a copy: ``copy_pipeline``)."""
     from turbotab.core.methods import scales as S
     from turbotab.core.methods.imputation import pool_rows, pool_scalar
+    from turbotab.core.methods.missing import copy_pipeline
     from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.linear import model_matrix
 
@@ -403,7 +404,7 @@ def _correct_jointly(specs: Sequence[Any], copies: Sequence[pd.DataFrame],
     for k, X_k in enumerate(copies):
         if progress is not None:
             progress(k, len(copies))
-        fitted = fit_pipeline(clone(pipeline), X_k, y)
+        fitted = fit_pipeline(copy_pipeline(pipeline, imputations), X_k, y)
         matrix = model_matrix(fitted, X_k)
         names = [str(c) for c in matrix.columns]
         for i, s in enumerate(specs):
@@ -541,6 +542,7 @@ def scales_stage(ctx: StageContext) -> Bundle:
 
     copies: list[pd.DataFrame] = [X]
     imputation = None
+    imputations = None
     if inference and spec.multiple_imputation() and X.isna().any().any():
         ctx.progress(0.05, "Imputing the items, with the outcome, before scoring")
         try:
@@ -603,7 +605,7 @@ def scales_stage(ctx: StageContext) -> Bundle:
     corrections, refused = (correct_together(
         eligible, copies=copies, keyed=keyed, y=y, retests=retests, references=references,
         task=task, family=family, pipeline=pipeline, outcome=outcome, seed=seed,
-        clusters=clusters, progress=progress) if eligible else ({}, {}))
+        clusters=clusters, progress=progress, imputations=imputations) if eligible else ({}, {}))
     for r, s in zip(out, specs):
         correction = corrections.get(s.name)
         if s.name in refused:

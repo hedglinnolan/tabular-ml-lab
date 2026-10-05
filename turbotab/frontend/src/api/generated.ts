@@ -1134,7 +1134,7 @@ export interface components {
              * Reading
              * @enum {string}
              */
-            reading: "role" | "cluster" | "unit" | "day_count" | "code_or_count" | "time_column" | "nested_in" | "sex_coding";
+            reading: "role" | "cluster" | "unit" | "day_count" | "code_or_count" | "time_column" | "nested_in" | "sex_coding" | "time_invariant";
             /** Column */
             column: string;
             /** Value */
@@ -2915,7 +2915,7 @@ export interface components {
              * Reading
              * @enum {string}
              */
-            reading: "role" | "cluster" | "unit" | "day_count" | "code_or_count" | "time_column" | "nested_in" | "sex_coding";
+            reading: "role" | "cluster" | "unit" | "day_count" | "code_or_count" | "time_column" | "nested_in" | "sex_coding" | "time_invariant";
             /** Column */
             column: string;
             /** Value */
@@ -9220,6 +9220,35 @@ export interface components {
              * @default []
              */
             unit_level: string[];
+            /**
+             * Unit Carried
+             * @default {}
+             */
+            unit_carried: {
+                [key: string]: number;
+            };
+            /**
+             * Unit Imputed
+             * @default []
+             */
+            unit_imputed: string[];
+            /**
+             * Unit Differ
+             * @default {}
+             */
+            unit_differ: {
+                [key: string]: number;
+            };
+            /**
+             * Row Level
+             * @default []
+             */
+            row_level: string[];
+            /**
+             * Approximate
+             * @default false
+             */
+            approximate: boolean;
             /**
              * Knots
              * @default {}

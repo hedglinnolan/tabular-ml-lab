@@ -215,7 +215,12 @@ class MissingData(_Model):
     design_weight: str | None = None
     df_com: float | None = None  # the complete-data df Rubin's rules used (the design's)
     unit: str | None = None  # clustered imputation: the unit column
-    unit_level: list[str] = []  # imputed once per unit
+    unit_level: list[str] = []  # confirmed as one value per unit (the readings ledger)
+    unit_carried: dict[str, int] = {}  # of those, cells carried from the unit's recorded value
+    unit_imputed: list[str] = []  # of those, imputed once per unit where no row records them
+    unit_differ: dict[str, int] = {}  # units whose records of a confirmed column differ
+    row_level: list[str] = []  # clustered imputation: the columns imputed row by row
+    approximate: bool = False  # passive chained equations for a logistic or Cox model, no term
     knots: dict[str, list[float]] = {}  # placed once on the observed values, held in every copy
     cuts: dict[str, list[float]] = {}
     m_asked: int | None = None

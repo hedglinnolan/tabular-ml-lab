@@ -466,7 +466,9 @@ def effects_stage(ctx: StageContext) -> Bundle:
     # population answer, the clustering by unit, parts of totals left to their own models in the
     # energy identity), so under multiple imputation Model 2 pools the fit's own completed copies.
     # Model 3's copies are imputed with its columns; it differs in rows from the rest only under
-    # complete cases, where no imputation model reads the design.
+    # complete cases, where no imputation model reads the design. Every copy is fit as the fit
+    # stage fits it (MI repair, ``missing.copy_pipeline``): the knots placed once on the observed
+    # values, and an impute step that refuses a blank made inside the copy, never the median.
     from turbotab.core.readings import nesting
 
     parts = dict((design.objects or {}).get("nested") or {})
@@ -536,9 +538,8 @@ class _Run:
             concerns=[reason]).model_dump(mode="json")
 
     def family_block(self, family: Any, build_pipeline: Any) -> dict[str, Any]:
-        from sklearn.base import clone
-
         from turbotab.core import estimand as est
+        from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.effects import split_rows
         from turbotab.core.models.inner_cv import fit_pipeline
         from turbotab.core.models.linear import model_matrix
@@ -571,10 +572,14 @@ class _Run:
         first: dict[str, Any] = {}
         curve: tuple[str, list[str]] | None = None  # a spline's straight-line and nonlinear columns
         supported = family.key in SEQUENCE_FAMILIES
+        imputed = getattr(self.missing, "imputations", None) if self.missing else None
         for k, X_k in enumerate(self.copies(self.missing, self.frame)):
             self._unless_cancelled()
             X = X_k[list(self.spec.inputs)]
-            fitted = fit_pipeline(with_units(clone(pipeline), units), X, self.y)
+            # Under multiple imputation each copy is fit as the fit stage fits it (MI repair):
+            # the knots placed once on the observed values, and an impute step that refuses a
+            # blank made inside the copy instead of median-filling it (``copy_pipeline``).
+            fitted = fit_pipeline(with_units(copy_pipeline(pipeline, imputed), units), X, self.y)
             if self.levels is not None:
                 fitted[-1].level_names_ = list(self.levels)
             classes = list(getattr(fitted[-1], "classes_", [])) or None
@@ -707,10 +712,10 @@ class _Run:
                      failures: dict[str, str], predictors: Sequence[str], design: Any) -> Any:
         """Model 3 in each of its copies (its own rows; under multiple imputation, copies imputed
         with its added columns), and, when its rows are fewer than the primary's, the primary's
-        adjustment refit on those rows (returned)."""
-        from sklearn.base import clone
-
+        adjustment refit on those rows (returned). Each copy is fit as the fit stage fits one
+        (``copy_pipeline``), on the knots its own imputation placed."""
         from turbotab.core import estimand as est
+        from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.inner_cv import fit_pipeline
         from turbotab.core.models.linear import model_matrix
         from turbotab.core.stages.modeling import with_units
@@ -726,10 +731,12 @@ class _Run:
         units3 = (pd.Series(self.clusters3.codes, index=self.frame3.index)
                   if self.clusters3 is not None and self.clusters3.clustered else None)
         comparison = None
+        imputed3 = getattr(self.missing3, "imputations", None) if self.missing3 else None
         for k, X_k in enumerate(self.copies(self.missing3, self.frame3)):
             self._unless_cancelled()
             X3 = X_k[list(self.spec3.inputs)]
-            fitted3 = fit_pipeline(with_units(clone(pipeline3), units3), X3, self.y3)
+            fitted3 = fit_pipeline(with_units(copy_pipeline(pipeline3, imputed3), units3), X3,
+                                   self.y3)
             if self.levels is not None:
                 fitted3[-1].level_names_ = list(self.levels)
             classes3 = list(getattr(fitted3[-1], "classes_", [])) or None
