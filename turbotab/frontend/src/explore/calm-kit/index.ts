@@ -15,7 +15,7 @@ import "./tokens.css";
 import "./base.css";
 
 export { FX, STEPS, STEP_BY_ID, optionOf, stepOf } from "./fixture";
-export type { Angle, Fixture, Option, Preview, QuietLabel, SectionId, StageId, Step, StripColumn } from "./fixture";
+export type { Angle, Fixture, Now, NowLayout, Option, Preview, QuietLabel, SectionId, StageId, Step, StripColumn } from "./fixture";
 export {
   ORDER,
   PLAN_STEPS,
@@ -45,7 +45,7 @@ export { footprint, route, viewsFor } from "./router";
 export type { Footprint, Layout } from "./router";
 export { useWalk, storyLength } from "./useWalk";
 export type { Flip, WalkApi } from "./useWalk";
-export { Canvas, CanvasFrame, readoutOf } from "./canvas/Canvas";
+export { Canvas, CanvasFrame, readoutOf, readoutOfViews, restOf } from "./canvas/Canvas";
 export { Angles, Strip, View, Views } from "./canvas/layouts";
 export { Mattered, Table2 } from "./canvas/Results";
 export { Cells, FlowBars, Hist, Lineage, Scatter } from "./canvas/views";

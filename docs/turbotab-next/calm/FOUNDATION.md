@@ -31,6 +31,17 @@ Per screen:
 - column names as plain text, never boxed chips;
 - one type family (Source Sans 3) with tabular numbers; no serif/sans/mono "voices";
 - at most one quiet label per option ("Recommended", "Common practice", "Not available yet");
+- **Two registers.** Nolan, 2026-10-05, on the kit's copy: *"a bit impenetrable… big on technical
+  jargon"*. The card speaks plain language a researcher from another field understands at once:
+  the question, the lede, each option's name and one-line consequence, the canvas caption, the
+  readout, the coach line and the Angles questions ("Should sugar's calories replace other
+  calories, or add to them?", not "a substitution or an addition"). The technical name of a method
+  rides along quietly: an option's `term` sits on its top edge while it is pointed at or focused
+  ("Known as Willett's cut-offs", "residual method", "substitution", "disjunctive cause
+  criterion"), never as a second label. The manuscript keeps the methods register, because it is
+  written for the paper. Every meaning and every number stays exact; where plain words would
+  change a meaning, the term stays and is defined in place in at most 12 words ("Mediators are what
+  sugar changes that in turn changes glucose");
 - teaching behind one "Why does this matter?" disclosure;
 - the record, the map and provenance one click away, never all on screen at once.
 
@@ -103,7 +114,7 @@ The layout follows from the footprint:
 | two or more columns change | **Strip** | a ranked strip of every changed column (top 12, then "and N more"), each with its before → after measure; the first is focused large; pointing or arrow keys move the focus |
 | rows change | **Flow** | the participant flow with the changed step lit, then who leaves (one distribution), then how they differ from who stays |
 | what feeds where changes | **Routing** | the lineage from raw columns to roles to the model's inputs; the re-routed paths drawn in the choice color; counts per role |
-| the contract declares tradeoffs | **Angles** | two or three linked panels, each titled with the one question it answers, and a small option-by-question table that follows the pointer |
+| the contract declares tradeoffs | **Angles** | two linked panels, each one question and one picture, and a small option table (the option and at most two short answers) that follows the pointer |
 
 Rules:
 1. The largest measured change is the primary view, and gets the most room.
@@ -117,7 +128,13 @@ Rules:
    locked.** Seeing estimates while choosing invites choosing by the estimate. The canvas shows
    the data, its flow and its structure; Table 2 and "Which of my decisions mattered?" come after
    the lock.
-7. A preview that shows nothing changing says so in one line rather than drawing an empty chart.
+7. A preview that shows nothing changing says so in one line, over your data now, rather than
+   drawing an empty chart; so does an option that is not available.
+8. **The canvas is never empty.** At rest, before anything is pointed at, it shows "your data now"
+   for the open question: the column or columns it is about, drawn in gray, in the layout its
+   options use (the people in the analysis as a flow, the nutrients as a strip, what the models read
+   as a lineage, the plan as it stands as angles), with one line saying what it is. Nolan wants most
+   of the screen for the canvas, and empty space wastes it.
 
 ## 6 · Comparing structures fairly
 

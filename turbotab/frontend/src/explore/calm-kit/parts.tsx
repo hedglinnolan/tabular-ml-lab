@@ -53,7 +53,8 @@ export interface OptionListProps {
 export const POINT_GRACE_MS = 160;
 
 /** The options: hover tints, choosing fills, disabled ones say why in their one line; arrow keys
- *  move through them (a native radio group). */
+ *  move through them (a native radio group). Each speaks plainly; its technical name (`term`, the
+ *  second register) sits on its top edge while it is pointed at or focused (FOUNDATION §2). */
 export function OptionList({ step, chosen, pointed, onPoint, onChoose }: OptionListProps) {
   const name = useId();
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,6 +106,11 @@ export function OptionList({ step, chosen, pointed, onPoint, onChoose }: OptionL
           <span className={k.optWhat}>
             <Plain text={o.what} />
           </span>
+          {o.term ? (
+            <span className={k.optTerm} data-testid={`term-${o.id}`}>
+              Known as <Plain text={o.term} />
+            </span>
+          ) : null}
         </label>
       ))}
     </fieldset>

@@ -80,9 +80,9 @@ const HUE: Record<MatteredRow["varies"], string> = {
   rows: "var(--cat-2)",
 };
 const VARIES: Record<MatteredRow["varies"], string> = {
-  primary: "The primary model",
-  adjustment: "Changes the adjustment",
-  rows: "Changes the rows",
+  primary: "The main model",
+  adjustment: "Changes what is adjusted for",
+  rows: "Changes who is included",
 };
 
 export function Mattered({ results }: { results: Results }) {
@@ -96,14 +96,14 @@ export function Mattered({ results }: { results: Results }) {
   return (
     <div className={k.panels}>
       <p className={k.lead}>
-        Sensitivity, never a way to choose. Across the {rows.length} specifications declared before any estimate was shown, the estimate of{" "}
-        {exposure} spans {fmtEst(width)}; {below ? "every interval lies below zero." : above ? "every interval lies above zero." : "some intervals include zero."}
+        Checks, never a way to choose. Across the {rows.length} versions of the analysis planned before any estimate was shown, the estimate
+        for {exposure} spans {fmtEst(width)}; {below ? "every interval lies below zero." : above ? "every interval lies above zero." : "some intervals include zero."}
       </p>
       <div className={k.tableWrap}>
         <table className={k.t2} data-testid="mattered">
           <thead>
             <tr>
-              <th scope="col">Specification</th>
+              <th scope="col">Version</th>
               <th scope="col">Estimate (95% CI)</th>
               <th scope="col" className={k.ci} aria-label="Interval" />
               <th scope="col">Rows</th>

@@ -46,8 +46,8 @@ const LAYOUTS: { title: string; step: string; option: string }[] = [
   { title: "Routing: what feeds where", step: "model1", option: "guess" },
   { title: "Angles: the declared tradeoffs", step: "contrast", option: "addition" },
   { title: "Angles: total or direct", step: "effect", option: "direct" },
-  { title: "Nothing changes: one line", step: "missing", option: "complete_case" },
-  { title: "Not available: the engine's refusal", step: "exclusions", option: "goldberg_schofield" },
+  { title: "Nothing changes: one line over your data now", step: "missing", option: "complete_case" },
+  { title: "Not available: why, over your data now", step: "exclusions", option: "goldberg_schofield" },
 ];
 
 function Demo({ title, children, note }: { title: string; children: ReactNode; note?: ReactNode }) {
@@ -57,6 +57,27 @@ function Demo({ title, children, note }: { title: string; children: ReactNode; n
       {note ? <p style={{ margin: 0, color: "var(--muted)", maxWidth: "70ch" }}>{note}</p> : null}
       {children}
     </section>
+  );
+}
+
+/** The canvas at rest, before anything is pointed at: your data now, in the layout the options use. */
+const RESTS: { title: string; step: string }[] = [
+  { title: "At rest, flow: who is in the analysis", step: "exclusions" },
+  { title: "At rest, strip: the nutrients as recorded", step: "energy" },
+  { title: "At rest, routing: what the models read", step: "adjust:body" },
+  { title: "At rest, angles: the plan as it stands", step: "effect" },
+];
+
+function RestDemo({ title, step }: { title: string; step: string }) {
+  const s = STEP_BY_ID[step]!;
+  const [flip, setFlip] = useState<Flip>("now");
+  const [frame, setFrame] = useState<number | null>(null);
+  return (
+    <Demo title={title} note={`${s.question.replaceAll("`", "")} · nothing pointed at`}>
+      <div data-testid="demo-rest">
+        <CanvasFrame step={s} option={null} flip={flip} setFlip={setFlip} frame={frame} setFrame={setFrame} testid={`rest-${step}`} />
+      </div>
+    </Demo>
   );
 }
 
@@ -80,7 +101,10 @@ function OptionStates() {
   const [chosen, setChosen] = useState<string | null>("none");
   const [pointed, setPointed] = useState<string | null>("willett_2013_by_sex");
   return (
-    <Demo title="Options" note="Pointed (hover tint), chosen (filled), a quiet label each at most, and a disabled option that says why. Arrow keys move through them.">
+    <Demo
+      title="Options"
+      note="Pointed (hover tint), chosen (filled), a quiet label each at most, and a disabled option that says why. Each speaks plainly; pointing at one shows its technical name on its top edge. Arrow keys move through them."
+    >
       <div style={{ maxWidth: 440 }}>
         <OptionList step={s} chosen={chosen} pointed={pointed} onPoint={setPointed} onChoose={setChosen} />
       </div>
@@ -184,6 +208,16 @@ export function KitDemo() {
         <ChainDemo />
         <CardDemo />
         <OptionStates />
+        <Demo
+          title="The canvas at rest"
+          note="Never empty: before anything is pointed at, your data now for the open question, in gray, in the layout its options use. A choice that changes nothing, or is not available, keeps this picture and says so in one line."
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))", gap: 28, alignItems: "start" }}>
+            {RESTS.map((r) => (
+              <RestDemo key={r.step} {...r} />
+            ))}
+          </div>
+        </Demo>
         <Demo title="The canvas grammar" note="The router picks each layout from the option's footprint, measured from the engine's own views.">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))", gap: 28, alignItems: "start" }}>
             {LAYOUTS.map((l) => (

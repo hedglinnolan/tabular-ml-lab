@@ -1,11 +1,13 @@
 /**
  * The canvas: the dynamic window where the user's data speaks (FOUNDATION §3, §5). One flip ("Your
  * data now" ⇄ "With this choice") and one storyboard drive every view; the router picks the layout
- * from the option's footprint; at most three views show, the rest behind "More angles". After the
+ * from the option's footprint; at most three views show, the rest behind "More angles". It is never
+ * empty: at rest, and under an option that changes nothing or is not available, it draws the
+ * question's columns as they are now, in gray, in the layout its options use (rule 8). After the
  * lock it holds Table 2 and "Which of my decisions mattered?".
  */
 import { useState, type ReactNode } from "react";
-import type { ConsequenceView, Option, Step } from "../fixture";
+import type { ConsequenceView, Now, Option, Step } from "../fixture";
 import { route, viewsFor, type Layout } from "../router";
 import { fmtInt, fmtR, plain } from "../text";
 import type { Flip, WalkApi } from "../useWalk";
@@ -21,60 +23,71 @@ export interface Readout {
   after: string | null;
 }
 
-/** The headline numbers pinned beside the views (BLUEPRINT §11.1): rows, r, the model's inputs. */
-export function readoutOf(o: Option | null): Readout[] {
-  if (!o) return [];
+const matrixSize = (l: { nodes: { lane: string; count?: number | null }[] }) =>
+  l.nodes.filter((n) => n.lane === "matrix").reduce((c, n) => c + (n.count || 1), 0);
+
+/** The headline numbers pinned beside the views (BLUEPRINT §11.1): people, r, the model's inputs. */
+export function readoutOfViews(views: ConsequenceView[], restOnly = false): Readout[] {
   const out: Readout[] = [];
-  const views = o.preview.views as ConsequenceView[];
   const flow = views.find((v) => v.kind === "row_flow");
   if (flow && flow.kind === "row_flow") {
     const a = flow.before[flow.before.length - 1]?.n ?? 0;
     const b = flow.after[flow.after.length - 1]?.n ?? a;
-    out.push({ label: "Rows", now: fmtInt(a), after: b !== a ? fmtInt(b) : null });
+    out.push({ label: "People", now: fmtInt(a), after: !restOnly && b !== a ? fmtInt(b) : null });
   }
   const rel = views.find((v) => v.kind === "relationship");
   if (rel && rel.kind === "relationship" && rel.r_before !== null && rel.r_after !== null) {
-    out.push({ label: `r with ${plain(rel.x_label)}`, now: fmtR(rel.r_before), after: fmtR(rel.r_after) !== fmtR(rel.r_before) ? fmtR(rel.r_after) : null });
+    const changed = fmtR(rel.r_after) !== fmtR(rel.r_before);
+    out.push({ label: `Correlation with ${plain(rel.x_label)}`, now: fmtR(rel.r_before), after: !restOnly && changed ? fmtR(rel.r_after) : null });
   }
   const lin = views.find((v) => v.kind === "lineage");
-  if (lin && lin.kind === "lineage" && lin.before && out.length < 2) {
-    const size = (l: typeof lin.after) => l.nodes.filter((n) => n.lane === "matrix").reduce((c, n) => c + (n.count || 1), 0);
-    const a = size(lin.before);
-    const b = size(lin.after);
-    if (a !== b) out.push({ label: "Model inputs", now: fmtInt(a), after: fmtInt(b) });
+  if (lin && lin.kind === "lineage" && out.length < 2) {
+    const a = matrixSize(lin.before ?? lin.after);
+    const b = matrixSize(lin.after);
+    if (restOnly) out.push({ label: "Model inputs", now: fmtInt(a), after: null });
+    else if (lin.before && a !== b) out.push({ label: "Model inputs", now: fmtInt(a), after: fmtInt(b) });
   }
   return out.slice(0, 2);
 }
 
-function captionOf(o: Option | null, layout: Layout, after: boolean, primary: ConsequenceView | undefined): ReactNode {
-  if (!o) return "Point at an option to see what it does to your data.";
+export function readoutOf(o: Option | null): Readout[] {
+  return o ? readoutOfViews(o.preview.views as ConsequenceView[]) : [];
+}
+
+/** Your data now for a question: its own, or the one an earlier answer leaves (the lock's). */
+export function restOf(step: Step | null, answers?: Record<string, string>): Now | null {
+  if (!step) return null;
+  const by = step.now_by;
+  const got = by && answers ? answers[by.step] : undefined;
+  return (got && by?.options[got]) || step.now;
+}
+
+/** The canvas's one line: what it shows, in the card's register. */
+function captionOf(o: Option | null, layout: Layout, after: boolean, primary: ConsequenceView | undefined, rest: Now | null): ReactNode {
+  if (!o) return rest ? plain(rest.caption) : "";
   if (layout === "refused") {
-    // one calm line: the engine's refusal when it is short, else the option's own line, which says it
+    // one calm line: the refusal when it is short, else the option's own line, which says it
     const full = plain(o.refusal ?? o.preview.refusal?.message);
     return full.split(/\s+/).length <= 30 ? full : plain(o.what);
   }
-  if (!after) {
-    const flow = o.preview.views.find((v) => v.kind === "row_flow");
-    if (flow && flow.kind === "row_flow") return <>Your data now: <b>{fmtInt(flow.before[flow.before.length - 1]?.n ?? 0)}</b> rows.</>;
-    return "Your data now, before this choice.";
-  }
-  if (layout === "none") return plain(o.preview.note ?? primary?.caption ?? null);
-  return plain(primary?.caption ?? o.preview.note);
+  if (layout === "none") return plain(o.preview.caption ?? o.preview.note ?? o.preview.views[0]?.caption ?? null);
+  if (!after) return rest ? plain(rest.caption) : "Your data now, before this choice.";
+  return plain(o.preview.caption ?? primary?.caption ?? o.preview.note);
 }
 
-function keyOf(layout: Layout, primary: ConsequenceView | undefined): ReactNode {
-  if (layout === "none" || layout === "refused") return null;
-  const cut = primary?.kind === "row_flow" || (primary?.kind === "distribution" && primary.before_label === "Every measured value");
+function Key({ now, cut }: { now: boolean; cut: boolean }) {
   return (
     <div className={k.key}>
       <span>
         <i style={{ background: "var(--data-context)" }} />
-        {cut ? "Stays" : "Your data now"}
+        {cut && !now ? "Stays" : "Your data now"}
       </span>
-      <span>
-        <i style={{ background: "var(--data-affected)" }} />
-        {cut ? "Leaves with this choice" : "What this choice touches"}
-      </span>
+      {now ? null : (
+        <span>
+          <i style={{ background: "var(--data-affected)" }} />
+          {cut ? "Leaves with this choice" : "What this choice touches"}
+        </span>
+      )}
     </div>
   );
 }
@@ -86,32 +99,72 @@ export interface CanvasFrameProps {
   setFlip: (f: Flip) => void;
   frame: number | null;
   setFrame: (i: number | null) => void;
+  /** The recorded answers, for a rest picture that follows one (the lock's). */
+  answers?: Record<string, string>;
   title?: string;
   testid?: string;
 }
 
-/** The canvas for one option (no walk needed: the kit demo draws every layout with it). */
-export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, title = "Your data", testid = "canvas" }: CanvasFrameProps) {
+/** The question's columns as they are now, in gray, in the layout its options use. */
+function RestPicture({ step, rest, option, linked }: { step: Step; rest: Now; option: Option | null; linked: Linked }) {
+  const p = { after: false, frame: null, linked };
+  if (rest.layout === "angles")
+    return <Angles step={step} angles={rest.angles ?? []} views={rest.views} activeId={option?.id ?? null} {...p} />;
+  if (rest.layout === "strip")
+    return (
+      <Strip
+        cols={rest.strip ?? []}
+        title={rest.title}
+        focusColumn={option?.id ?? null}
+        rest={rest.views.length ? <Views views={rest.views} {...p} /> : null}
+        {...p}
+      />
+    );
+  return <Views views={rest.views} {...p} />;
+}
+
+/** The canvas for one option, or for none (no walk needed: the kit demo draws every layout with it). */
+export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, answers, title = "Your data", testid = "canvas" }: CanvasFrameProps) {
   const [lit, setLit] = useState<string | null>(null);
   const linked: Linked = { lit, setLit };
+  const rest = restOf(step, answers);
   const layout: Layout = option ? route(option.preview, { disabled: option.disabled }) : "none";
-  const after = flip === "after" && !!option && layout !== "refused";
-  const { shown, more } = option ? viewsFor(layout, option.preview) : { shown: [], more: [] };
+  // Nothing pointed at, a choice that changes nothing, or one not available: your data now.
+  const quiet = !option || layout === "none" || layout === "refused";
+  const after = flip === "after" && !quiet;
+  const { shown, more } = option && !quiet ? viewsFor(layout, option.preview) : { shown: [], more: [] };
   const primary = shown[0] ?? (option?.preview.views[0] as ConsequenceView | undefined);
   const n = storyLength(option);
   const story = primary && "story" in primary ? (primary.story ?? []) : [];
-  const coach = after ? (shown.flatMap((v) => v.coach)[0]?.text ?? (layout === "none" ? primary?.coach[0]?.text : undefined)) : undefined;
-  const readout = layout === "angles" ? [] : after || !option ? readoutOf(option) : readoutOf(option).map((r) => ({ ...r, after: null }));
-  const p = { option: option!, after, frame, linked };
+  const coach = after ? shown.flatMap((v) => v.coach)[0]?.text : undefined;
+  const readout = quiet
+    ? rest
+      ? readoutOfViews(rest.views, true)
+      : []
+    : layout === "angles"
+      ? []
+      : after
+        ? readoutOf(option)
+        : readoutOf(option).map((r) => ({ ...r, after: null }));
+  const p = { after, frame, linked };
+  const cut = !quiet && (primary?.kind === "row_flow" || (primary?.kind === "distribution" && primary.before_label === "Every measured value"));
+  const basis = quiet ? (rest?.basis ?? option?.preview.basis) : option?.preview.basis;
   return (
-    <section className={k.canvas} aria-live="polite" data-testid={testid} data-layout={option ? layout : "empty"} data-flip={after ? "after" : "now"}>
+    <section
+      className={k.canvas}
+      aria-live="polite"
+      data-testid={testid}
+      data-layout={option ? layout : "rest"}
+      data-rest={quiet && rest ? rest.layout : undefined}
+      data-flip={after ? "after" : "now"}
+    >
       <div className={k.chead}>
         <h2>{title}</h2>
         <div className={k.flip} role="group" aria-label="Show your data now or with this choice">
           <button type="button" data-s="now" aria-pressed={!after} onClick={() => setFlip("now")} data-testid="flip-now">
             Your data now
           </button>
-          <button type="button" data-s="after" aria-pressed={after} disabled={!option || layout === "refused"} onClick={() => setFlip("after")} data-testid="flip-after">
+          <button type="button" data-s="after" aria-pressed={after} disabled={quiet} onClick={() => setFlip("after")} data-testid="flip-after">
             With this choice
           </button>
         </div>
@@ -122,7 +175,7 @@ export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, titl
             <button
               key={i}
               type="button"
-              aria-label={`Step ${i + 1}: ${story[i]?.label ?? ""}`}
+              aria-label={`Step ${i + 1}: ${plain(story[i]?.label)}`}
               aria-current={frame === i ? "step" : undefined}
               onClick={() => setFrame(i)}
             />
@@ -132,7 +185,7 @@ export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, titl
         </div>
       ) : null}
       <p className={k.caption} data-testid="caption">
-        {captionOf(option, layout, after, primary)}
+        {captionOf(option, layout, after, primary, rest)}
       </p>
       {readout.length ? (
         <div className={k.readout} data-testid="readout">
@@ -148,9 +201,12 @@ export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, titl
         </div>
       ) : null}
       {coach ? <div className={k.coach}>{plain(coach)}</div> : null}
-      {option && step && layout === "angles" ? <Angles {...p} step={step} /> : null}
-      {option && layout === "strip" ? <Strip {...p} rest={<Views views={shown} after={after} frame={frame} linked={linked} />} /> : null}
-      {option && (layout === "flow" || layout === "focus" || layout === "routing") ? <Views views={shown} after={after} frame={frame} linked={linked} /> : null}
+      {quiet && step && rest ? <RestPicture step={step} rest={rest} option={option} linked={linked} /> : null}
+      {option && !quiet && step && layout === "angles" ? (
+        <Angles step={step} angles={option.preview.angles ?? []} views={option.preview.views as ConsequenceView[]} activeId={option.id} {...p} />
+      ) : null}
+      {option && !quiet && layout === "strip" ? <Strip cols={option.preview.strip ?? []} {...p} rest={<Views views={shown} {...p} />} /> : null}
+      {option && !quiet && (layout === "flow" || layout === "focus" || layout === "routing") ? <Views views={shown} {...p} /> : null}
       {more.length ? (
         <details className={k.more}>
           <summary>More angles ({more.length})</summary>
@@ -161,13 +217,13 @@ export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, titl
           </div>
         </details>
       ) : null}
-      {keyOf(layout, primary)}
-      {option?.preview.basis ? <p className={k.basis}>{plain(option.preview.basis)}</p> : null}
+      <Key now={quiet || !after} cut={cut} />
+      {basis ? <p className={k.basis}>{plain(basis)}</p> : null}
     </section>
   );
 }
 
-/** The canvas bound to the walk: the open question's active option, or the results. */
+/** The canvas bound to the walk: the open question's active option, its data now, or the results. */
 export function Canvas({ walk, title }: { walk: WalkApi; title?: string }) {
   const { state, results } = walk;
   if (results && (state.open === "table2" || state.open === "mattered")) {
@@ -188,6 +244,7 @@ export function Canvas({ walk, title }: { walk: WalkApi; title?: string }) {
       setFlip={walk.setFlip}
       frame={walk.frame}
       setFrame={walk.setFrame}
+      answers={walk.state.answers}
       title={title}
     />
   );

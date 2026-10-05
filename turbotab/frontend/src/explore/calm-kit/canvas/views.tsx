@@ -84,7 +84,8 @@ export function Hist({ before, after, mode, after_on, marks = [], unit, title }:
   const max = Math.max(1, ...before.counts, ...(mode === "transform" ? after.counts : []));
   const y = scaleLinear().domain([0, max]).range([0, H]);
   const ticks = x.ticks(5);
-  const visibleMarks = mode === "cut" && !after_on ? [] : marks;
+  // The marks are the choice's (a cut, a range in the new unit): drawn with it, never on "now".
+  const visibleMarks = after_on ? marks : [];
   return (
     <figure className={k.panel} style={{ margin: 0 }} ref={ref as React.RefObject<HTMLElement>}>
       {title ? <h3>{title}</h3> : null}
@@ -213,14 +214,14 @@ export function Scatter({ view, after_on, frame }: { view: RelationshipView; aft
 
 // ── the participant flow ─────────────────────────────────────────────────────
 
-export function FlowBars({ view, after_on, linked }: { view: RowFlowView; after_on: boolean; linked?: Linked }) {
+export function FlowBars({ view, after_on, linked, bare = false }: { view: RowFlowView; after_on: boolean; linked?: Linked; bare?: boolean }) {
   const tip = useTip();
   const steps = after_on ? view.after : view.before;
   const total = Math.max(1, ...view.before.map((s) => s.n), ...view.after.map((s) => s.n + s.dropped));
   const x = scaleLinear().domain([0, total]).range([0, 1]);
   return (
     <figure className={k.panel} style={{ margin: 0 }}>
-      <h3>{plain(view.title)}</h3>
+      {bare ? null : <h3>{plain(view.title)}</h3>}
       <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
         {steps.map((s) => {
           const lit = linked?.lit === s.key;
@@ -396,12 +397,12 @@ export function Lineage({
 
 // ── cells ────────────────────────────────────────────────────────────────────
 
-export function Cells({ view, after_on }: { view: TableFocusView; after_on: boolean }) {
+export function Cells({ view, after_on, bare = false }: { view: TableFocusView; after_on: boolean; bare?: boolean }) {
   const cols = after_on ? view.columns_after : view.columns_before;
   const hit = new Set(view.changed.map(([r, c]) => `${r}|${c}`));
   return (
     <figure className={k.panel} style={{ margin: 0 }}>
-      <h3>{plain(view.title)}</h3>
+      {bare ? null : <h3>{plain(view.title)}</h3>}
       <div className={k.tableWrap}>
         <table className={k.cells}>
           <thead>

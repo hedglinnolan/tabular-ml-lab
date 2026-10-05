@@ -38,15 +38,17 @@ export interface StripColumn {
   hist_after: { edges: number[]; counts: number[] };
 }
 
-/** One declared tradeoff: a question, and the view, text or list that answers it. */
+/** One declared tradeoff: one question and the one picture that answers it (FOUNDATION §5). */
 export interface Angle {
   question: string;
-  /** Index into the preview's views. */
+  /** Its column in the option table (a word or two). */
+  head: string;
+  /** The picture: an index into the preview's views … */
   view?: number;
-  text?: string;
+  /** … or a list of marks (what can follow), each with its reason on hover. */
   list?: { name: string; ok: boolean; why?: string }[];
-  /** This option's answer, for the option-by-question table. */
-  cell: string;
+  /** This option's answer, for the option table (absent at rest). */
+  cell?: string;
   /** Columns the choice touches in this angle's view (drawn in the choice color). */
   touch?: string[];
 }
@@ -54,6 +56,8 @@ export interface Angle {
 export interface Preview {
   source: string;
   basis: string;
+  /** The canvas caption in the card's plain register, restating the primary view's (absent: the view's own). */
+  caption?: string;
   /** The engine's note when nothing can be drawn (rule 7: one line, no empty chart). */
   note: string | null;
   views: ConsequenceView[];
@@ -65,16 +69,36 @@ export interface Preview {
 
 export interface Option {
   id: string;
+  /** Its plain name (the card's register, FOUNDATION §2). */
   name: string;
   /** Its one-line consequence (≤ 16 words). */
   what: string;
   label?: QuietLabel;
+  /** Its technical name, the quiet second register: shown when the option is pointed at. */
+  term?: string;
   disabled?: boolean;
   /** The engine's refusal, for a disabled option. */
   refusal?: string;
   /** The engine's methods sentence this answer records. */
   sentence: string | null;
   preview: Preview;
+}
+
+/** The layouts "your data now" is drawn in: the layout the question's options use. */
+export type NowLayout = "focus" | "strip" | "flow" | "routing" | "angles";
+
+/** The canvas at rest (FOUNDATION §5 rule 8): the question's columns as they are now, in gray. */
+export interface Now {
+  layout: NowLayout;
+  caption: string;
+  basis: string;
+  source: string;
+  /** The Strip's heading at rest. */
+  title?: string;
+  /** Drawn in their before state. */
+  views: ConsequenceView[];
+  strip?: StripColumn[];
+  angles?: Angle[];
 }
 
 export interface Step {
@@ -94,6 +118,10 @@ export interface Step {
   slot: string;
   /** The captured previews hold only when these earlier answers do. */
   requires?: Record<string, string[]>;
+  /** Your data now, for the canvas at rest. */
+  now: Now;
+  /** Your data now when it follows an earlier answer (the lock: the Model 1 answer's models). */
+  now_by?: { step: string; options: Record<string, Now> };
 }
 
 export interface EffectRow {
@@ -153,6 +181,24 @@ export interface Fixture {
 }
 
 export const FX = raw as unknown as Fixture;
+
+/** A rest view in the fixture names an option's engine view (`ref`) rather than copying it. */
+type RawView = ConsequenceView | { ref: [string, number]; title?: string };
+
+function resolveNow(step: Step, now: Now): void {
+  now.views = (now.views as RawView[]).map((v) => {
+    if (!("ref" in v)) return v;
+    const [id, i] = v.ref;
+    const view = step.options.find((o) => o.id === id)?.preview.views[i];
+    if (!view) throw new Error(`${step.id}: no view ${id}/${i} for its rest picture`);
+    return v.title ? ({ ...view, title: v.title } as ConsequenceView) : view;
+  });
+}
+for (const step of FX.steps) {
+  resolveNow(step, step.now);
+  for (const n of Object.values(step.now_by?.options ?? {})) resolveNow(step, n);
+}
+
 export const STEPS: Step[] = FX.steps;
 export const STEP_BY_ID: Record<string, Step> = Object.fromEntries(STEPS.map((s) => [s.id, s]));
 

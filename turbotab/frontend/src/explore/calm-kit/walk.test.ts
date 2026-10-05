@@ -74,12 +74,14 @@ describe("the scenario walk", () => {
       const text = JSON.stringify(manuscript(s));
       for (const p of printed) expect(text).not.toContain(p);
     }
-    // nor in any option's preview
-    for (const st of STEPS)
+    // nor in any option's preview, nor in any question's data now
+    for (const st of STEPS) {
+      expect(JSON.stringify(st.now), st.id).not.toMatch(/coefficient [+−-]?\d/);
       for (const o of st.options) {
         const text = JSON.stringify(o.preview);
         expect(text, `${st.id}/${o.id}`).not.toMatch(/coefficient [+−-]?\d/);
       }
+    }
   });
 
   it("revisits a recorded step from the chain, and returns to the frontier after a change", () => {
@@ -149,6 +151,33 @@ describe("the kit's data", () => {
     const ours = readFileSync(resolve(here, "tokens.css"), "utf8");
     const theirs = readFileSync(resolve(here, "../../../../../docs/turbotab-next/calm/tokens.css"), "utf8");
     expect(ours).toBe(theirs);
+  });
+
+  it("never leaves the canvas empty: every question has its data now", () => {
+    for (const s of STEPS) {
+      const n = s.now;
+      expect(n.views.length + (n.strip?.length ?? 0), s.id).toBeGreaterThan(0);
+      expect(n.caption, s.id).toBeTruthy();
+      for (const a of n.angles ?? []) expect(a.view !== undefined && n.views[a.view], `${s.id}: ${a.question}`).toBeTruthy();
+      // the strip at rest is the columns as recorded: nothing in it changes
+      for (const c of n.strip ?? []) expect([c.shift, c.output, c.sd_after], `${s.id}: ${c.column}`).toEqual([0, c.column, c.sd_before]);
+    }
+  });
+
+  it("gives each Angles panel one question and one picture, and the option table at most three short columns", () => {
+    const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
+    for (const s of STEPS)
+      for (const o of s.options) {
+        const angles = o.preview.angles ?? [];
+        if (!angles.length) continue;
+        // the option's name and two answers
+        expect(angles.length, `${s.id}/${o.id}`).toBeLessThanOrEqual(2);
+        for (const a of angles) {
+          expect(Number(a.view !== undefined) + Number(!!a.list), `${s.id}/${o.id}: ${a.question}`).toBe(1);
+          expect(words(a.head), a.head).toBeLessThanOrEqual(2);
+          expect(words(a.cell ?? ""), a.cell).toBeLessThanOrEqual(4);
+        }
+      }
   });
 
   it("keeps every card within the calm budget's word limits", () => {

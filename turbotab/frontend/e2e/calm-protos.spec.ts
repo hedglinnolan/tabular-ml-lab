@@ -8,7 +8,7 @@
  * Table 2 and "Which of my decisions mattered?", and reset again; then the four must print the same
  * Table 2, the same interval note (Model 2's degrees of freedom) and the same alternatives, and
  * those must be the engine's (SCENARIO.md). The kit demo (#/kit) is checked in light and dark at
- * 1440 and 390 px: no sideways scroll, every layout drawn, nothing fetched from /api/.
+ * 1440 and 390 px: no sideways scroll, every layout and the canvas at rest drawn, nothing fetched from /api/.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { walker as map } from "./calm-protos/map";
@@ -84,12 +84,19 @@ test("the four structures show the same Table 2 and the same alternatives", () =
   expect(Object.keys(mattered[first!]!).length).toBeGreaterThanOrEqual(6);
 });
 
-test("the chooser opens each structure", async ({ page }) => {
+test("the chooser opens each built structure and says which are not built yet", async ({ page }) => {
   for (const w of WALKERS) {
     await page.goto("/calm.html#/");
     const id = w.path.split("#/")[1]!;
-    await page.getByTestId(`structure-${id}`).click();
-    await expect(page).toHaveURL(new RegExp(`#/${id}$`));
+    const card = page.getByTestId(`structure-${id}`);
+    if ((await card.getAttribute("aria-disabled")) === "true") {
+      // not built: no link, says so; its route still opens the shared reference walk
+      await expect(card).toContainText("Not built yet");
+      await page.goto(w.path);
+    } else {
+      await card.click();
+      await expect(page).toHaveURL(new RegExp(`#/${id}$`));
+    }
     await expect(page.getByTestId("proto-reset")).toBeVisible();
   }
 });
@@ -102,7 +109,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
       await page.goto("/calm.html#/kit");
       await expect(page.getByTestId("kit")).toBeVisible();
-      for (const layout of ["focus", "strip", "flow", "routing", "angles", "none", "refused"])
+      for (const layout of ["focus", "strip", "flow", "routing", "angles", "none", "refused", "rest"])
         await expect(page.getByTestId(`demo-${layout}`).first(), layout).toBeVisible();
       await expect(page.getByTestId("table2")).toBeVisible();
       await expect(page.getByTestId("mattered")).toBeVisible();

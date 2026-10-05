@@ -231,6 +231,7 @@
   left: -9999px;
 }
 .opt {
+  position: relative;
   display: grid;
   grid-template-columns: 22px 1fr auto;
   gap: 3px 14px;
@@ -295,6 +296,30 @@
   color: var(--muted);
   font-size: 14px;
   white-space: nowrap;
+}
+/* the second register: the option's technical name, on its top edge while it is pointed at or
+   focused; it never moves the options (FOUNDATION §2, two registers) */
+.optTerm {
+  position: absolute;
+  left: 46px;
+  top: -9px;
+  max-width: calc(100% - 62px);
+  padding: 0 6px;
+  font-size: 13px;
+  line-height: 17px;
+  color: var(--muted);
+  background: var(--ground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.opt:hover .optTerm,
+.opt:focus-within .optTerm {
+  opacity: 1;
+  transition-delay: 0.2s;
 }
 .opt[data-off="true"] {
   cursor: default;
@@ -646,6 +671,9 @@
   background: var(--canvas-line);
   overflow: hidden;
 }
+.strip[data-now="true"] .stripBar {
+  background: transparent;
+}
 .stripBar i {
   display: block;
   height: 100%;
@@ -679,25 +707,45 @@
   font-size: 15px;
   font-weight: 600;
 }
-.angleText {
-  margin: 0;
-  font-size: 15.5px;
-}
-.angleList {
+/* what can follow a choice: filled marks run, hollow ones cannot (the reason on hover) */
+.marks {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 4px;
+  gap: 5px;
   font-size: 15px;
 }
-.angleList li[data-ok="false"] {
+.marks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.marks i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--data-context);
+  border: 1.5px solid var(--data-context);
+}
+.marks[data-after="true"] li[data-ok="true"] i {
+  background: var(--data-affected);
+  border-color: var(--data-affected);
+}
+.marks li[data-ok="false"] {
   color: var(--canvas-muted);
 }
-.angleList small {
-  display: block;
-  color: var(--canvas-muted);
-  font-size: 13.5px;
+.marks li[data-ok="false"] i {
+  background: transparent;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .otable {
   width: 100%;
