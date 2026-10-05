@@ -606,6 +606,9 @@ class SetBatch(_DecisionModel):
 
 # MS7 (MODELING_SEQUENCE §2, "An exposure family"): the multiplicity method of an exposure family.
 MultiplicityMethod = Literal["bh", "stated_count", "none"]
+# The estimand card's names for the same methods (ESTIMAND): a family declared with the estimand
+# writes its method into this one slot, so the latest answer, whichever question gave it, holds.
+ESTIMAND_MULTIPLICITY: dict[str, str] = {"fdr_bh": "bh", "count_stated": "stated_count"}
 
 
 class MultiplicitySpec(_Value):
@@ -1112,14 +1115,19 @@ class SetClusters(_DecisionModel):
 
 EffectKind = Literal["total", "direct"]
 EnergyContrast = Literal["substitution", "addition"]
-# The effect measure (MODELING_SEQUENCE §0 ruling 9). The engine fits the conditional measures of
-# each family; the marginal risk difference and risk ratio (g-computation) are named so that a
-# request for them is refused with the reason, never silently answered with an odds ratio.
+# The effect measure (MODELING_SEQUENCE §0 ruling 9): a difference or a ratio, conditional or
+# marginal. Each family fits its conditional measure; a yes/no outcome's marginal risk difference
+# and risk ratio are standardized over the analyzed rows from its logistic model (g-computation,
+# ``turbotab/core/models/effects.py``); another task's request for them is refused with the reason.
 EffectMeasure = Literal["mean_difference", "odds_ratio", "hazard_ratio", "cumulative_odds_ratio",
                         "relative_risk_ratio", "risk_difference", "risk_ratio",
                         "exposure_mean_difference"]
 # The exposure family's sentinel in the adjustment answers: answered for every exposure of the family.
 EXPOSURE_FAMILY = "*"
+# An exposure family's multiplicity method (MODELING_SEQUENCE §2: "An exposure family implies
+# multiplicity control"): Benjamini–Hochberg q-values across the family, or, for a few declared
+# nutrient hypotheses, unadjusted p-values with the number of tests stated.
+Multiplicity = Literal["fdr_bh", "count_stated"]
 
 
 class EstimandSpec(_Value):
@@ -1132,6 +1140,10 @@ class EstimandSpec(_Value):
     effect: EffectKind = "total"
     contrast: EnergyContrast | None = None  # an energy-bearing exposure: substitution or addition
     measure: EffectMeasure
+    # ESTIMAND (MODELING_SEQUENCE §1 step 2): a family's multiplicity method (filled "fdr_bh" when a
+    # family is declared without one), and an omics family's unadjusted p-values kept as recorded
+    multiplicity: Multiplicity | None = None
+    multiplicity_acknowledged: bool = False
 
 
 class SetEstimand(_DecisionModel):
@@ -1141,11 +1153,15 @@ class SetEstimand(_DecisionModel):
     effect: EffectKind = "total"
     contrast: EnergyContrast | None = None
     measure: EffectMeasure
+    multiplicity: Multiplicity | None = None
+    multiplicity_acknowledged: bool = False
 
     @model_validator(mode="after")
     def _one_or_a_family(self) -> "SetEstimand":
         if self.family == (self.exposure is not None and self.exposure != ""):
             raise ValueError("name one exposure, or declare the exposure family, not both")
+        if self.multiplicity is not None and not self.family:
+            raise ValueError("a multiplicity method belongs to an exposure family")
         return self
 
 
@@ -1190,6 +1206,45 @@ class SetAdjustment(_DecisionModel):
     kind: Literal["set_adjustment"] = "set_adjustment"
     exposure: str = Field(min_length=1)
     answers: dict[str, CovariateAnswers] = Field(min_length=1)
+
+
+class ModelSequenceSpec(_Value):
+    """The declared adjustment sequence beside the primary model (MODELING_SEQUENCE §1 row 11):
+    Model 1's columns (the field's age, sex and energy, as the user names them), declared for one
+    exposure (or the family's ``*``). The crude model, Model 2 (the primary, the full adjustment
+    set) and Model 3 (plus the possible mediators the adjustment answers set beside it) follow from
+    the answers already given."""
+
+    exposure: str
+    model_1: list[str] = Field(default_factory=list)
+
+
+class SetModelSequence(_DecisionModel):
+    kind: Literal["set_model_sequence"] = "set_model_sequence"
+    exposure: str = Field(min_length=1)
+    model_1: list[str] = Field(default_factory=list)
+
+
+DiagnosticCheck = Literal["proportional_hazards", "influence"]
+# What a failed check changes, as recorded (MODELING_SEQUENCE §1 row 11: "a failed check leads to
+# a recorded change, never a silent switch"): the estimate kept and labeled with the failure; the
+# exposure's hazard ratio before and after the median event time; the primary refit without the
+# influential rows, beside it.
+DiagnosticAction = Literal["keep_labeled", "period_hazard_ratios", "without_influential"]
+
+
+class DiagnosticResponse(_Value):
+    exposure: str  # the exposure (or the family's ``*``) the check was made for
+    action: DiagnosticAction
+
+
+class RespondDiagnostic(_DecisionModel):
+    """The recorded response to a failed diagnostic of the primary model (``models/effects.py``)."""
+
+    kind: Literal["respond_diagnostic"] = "respond_diagnostic"
+    exposure: str = Field(min_length=1)
+    check: DiagnosticCheck
+    action: DiagnosticAction
 
 
 class OpenSeal(_DecisionModel):
@@ -1441,6 +1496,7 @@ Decision = Annotated[
         SetCensoring, SetClusters, SetEstimand, SetAdjustment,
         JoinFiles, ImportCodebook, SetBatch, SetMultiplicity, SetScales,
         SetUsualIntake,
+        SetModelSequence, RespondDiagnostic,
     ],
     Field(discriminator="kind"),
 ]
@@ -1574,6 +1630,10 @@ class ProjectState(BaseModel):
     # multiplicity method (``set_batch``, ``set_multiplicity``)
     batch: BatchSpec | None = None
     multiplicity: MultiplicitySpec | None = None
+    # ESTIMAND (MODELING_SEQUENCE §1 row 11): the declared adjustment sequence beside the primary,
+    # and each failed diagnostic's recorded response, by check (``turbotab/core/models/effects.py``)
+    model_sequence: ModelSequenceSpec | None = None
+    diagnostic_responses: dict[str, DiagnosticResponse] | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1998,7 +2058,11 @@ register_kind(SetClusters, "clusters", value=lambda d: ClusterSpec(**d.model_dum
                                   if d.column else
                                   [("reading_confirmations", f"cluster:{c}", "no")
                                    for c in d.none_of]))
-register_kind(SetEstimand, "estimand", value=lambda d: EstimandSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetEstimand, "estimand", value=lambda d: EstimandSpec(**d.model_dump(exclude={"kind"})),
+              also={"multiplicity": lambda d: MultiplicitySpec(
+                  method=ESTIMAND_MULTIPLICITY[d.multiplicity],
+                  acknowledged=d.multiplicity_acknowledged)
+                  if d.family and d.multiplicity else None})
 register_kind(SetAdjustment, "adjustment", value=lambda d: None,
               entries=lambda d: [("adjustment", column, AdjustmentAnswer(
                   exposure=d.exposure, **answers.model_dump()))
@@ -2009,6 +2073,11 @@ register_kind(SetMultiplicity, "multiplicity",
 register_kind(SetScales, "scales")
 register_kind(SetUsualIntake, "usual_intake", key=lambda d: d.nutrient,
               value=lambda d: UsualIntakeSpec(**d.model_dump(exclude={"kind", "nutrient"})))
+# ESTIMAND: the declared model sequence, and each failed diagnostic's response (keyed by its check)
+register_kind(SetModelSequence, "model_sequence",
+              value=lambda d: ModelSequenceSpec(exposure=d.exposure, model_1=list(d.model_1)))
+register_kind(RespondDiagnostic, "diagnostic_responses", key=lambda d: d.check,
+              value=lambda d: DiagnosticResponse(exposure=d.exposure, action=d.action))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))

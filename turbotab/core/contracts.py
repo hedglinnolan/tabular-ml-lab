@@ -138,6 +138,8 @@ class MethodContract:
     parts: Mapping[str, Scope] = field(default_factory=dict)
     leash: Mapping[str, Rung] = field(default_factory=dict)
     sentence: Callable[..., str] | str | None = None
+    # The package that declared it (``ESTIMAND``), so its chain test finds every relation it owns.
+    package: str = ""
 
     def short_of(self, option: str | None) -> str:
         return self.option_shorts.get(option or "", self.short)
@@ -239,7 +241,7 @@ def scope_of(key: str, option: str | None = None) -> Scope:
 DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.qc_drift", "turbotab.core.methods.omics", "turbotab.core.methods.batch",
     "turbotab.core.scales", "turbotab.core.usual_intake", "turbotab.core.assembly",
-    "turbotab.core.codebook",
+    "turbotab.core.codebook", "turbotab.core.stages.effects",
 )
 
 

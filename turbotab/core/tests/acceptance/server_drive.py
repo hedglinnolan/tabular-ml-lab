@@ -71,6 +71,15 @@ def _post_when_reached(client: Any, url: str, body: dict[str, Any], timeout: flo
         time.sleep(0.1)
 
 
+def every_row(model: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every coefficient a served model carries. Under inference with a declared exposure the fit is
+    served as the Table 2 display (ESTIMAND; Westreich & Greenland 2013): ``coefficients`` holds the
+    exposure's rows and every other row sits in ``adjustment_terms``, the appendix titled
+    "adjustment terms, not effect estimates". A test that checks a covariate's coefficient (that a
+    code reached the fit as indicators, that age was adjusted for) reads both."""
+    return [*(model.get("coefficients") or []), *(model.get("adjustment_terms") or [])]
+
+
 def answer_plan(drive: Any, exposure: str, *, effect: str = "total", contrast: str | None = None,
                 timeout: float = 240.0) -> list[dict[str, Any]]:
     """Under inference, the exposure and its effect (WP17, MODELING_SEQUENCE §1 steps 2–3), then the
@@ -108,7 +117,12 @@ def answer_estimand(drive: Any, exposure: str, *, effect: str = "total",
     confirmation it needs, which the fixture's truth answers (``settle_post``)."""
     card = drive.artifact("proposals")["estimand"]
     option = next((e for e in card["exposures"] if e["column"] == exposure), None)
-    fitted = next(m["measure"] for m in card["measures"] if m["fitted"])
+    # The outcome model's own measure (ESTIMAND: a yes/no outcome's card also fits the marginal
+    # risk difference and ratio, ranked first when the event is common), unless the fixture's
+    # author declares another (``measure:<exposure>``).
+    fitted = drive.truth.get(f"measure:{exposure}") or next(
+        m["measure"] for m in card["measures"]
+        if m["fitted"] and m.get("conditioning", "conditional") != "marginal")
     body: dict[str, Any] = {"kind": "set_estimand", "exposure": exposure, "effect": effect,
                             "measure": fitted}
     chosen = contrast or drive.truth.get(f"contrast:{exposure}") or "substitution"

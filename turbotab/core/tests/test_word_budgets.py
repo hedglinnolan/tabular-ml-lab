@@ -348,6 +348,15 @@ def representative_decisions():
         # The NCI usual-intake method: one component's distribution, with the EAR's share
         d.SetUsualIntake(nutrient="protein_g", model="amount_only", order_column="recall",
                          weekend=["weekend"], cutoff=46, cutoff_kind="EAR"),
+        # ESTIMAND (MODELING_SEQUENCE §1 rows 2 and 11): a marginal measure, a family's
+        # multiplicity, the declared model sequence and a failed diagnostic's response
+        d.SetEstimand(exposure="fiber_g", measure="risk_difference"),
+        d.SetEstimand(family=True, measure="mean_difference", multiplicity="count_stated"),
+        d.SetModelSequence(exposure="protein_g", model_1=["age", "sex", "energy_kcal"]),
+        d.SetModelSequence(exposure="protein_g", model_1=[]),
+        d.RespondDiagnostic(exposure="protein_g", check="proportional_hazards",
+                            action="period_hazard_ratios"),
+        d.RespondDiagnostic(exposure="protein_g", check="influence", action="keep_labeled"),
     ]
 
 

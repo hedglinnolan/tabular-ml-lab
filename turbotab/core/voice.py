@@ -1425,15 +1425,29 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
                 "addition": " (an addition: its calories added, every other energy source "
                             "fixed)"}.get(d.contrast or "", "")
     if d.family:  # every exposure in turn, adjusted for the covariates (the feature-wise family)
+        from turbotab.core.estimand import family_exposures
+
         scale = (f"as the {MEASURE_WORDS[d.measure]}" if d.measure == "exposure_mean_difference"
                  else f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per unit of each")
+        n = len(family_exposures(state)) if state is not None else 0
+        count = f"all {n:,} tests" if n else "every test"
+        each = ("with its Benjamini–Hochberg q-value across " + count
+                if (d.multiplicity or "fdr_bh") == "fdr_bh" else
+                f"with its unadjusted p-value, the number of tests stated ({count})")
         text = (f"The analysis estimates the {d.effect} effect of each exposure in turn{on}"
-                f"{contrast}, {scale}, with the false-discovery rate stated")
+                f"{contrast}, {scale}, every member reported {each}")
+        if d.multiplicity == "count_stated" and d.multiplicity_acknowledged:
+            text += (", kept for an omics family as recorded although the field expects "
+                     "false-discovery control")
     else:
         text = (f"The analysis estimates the {d.effect} effect of {tick(d.exposure)}{on}{contrast}, "
                 f"as a {MEASURE_WORDS.get(d.measure, d.measure)} per unit of {tick(d.exposure)}")
     if d.measure in NON_COLLAPSIBLE:
         text += ", given the adjustment set"
+    from turbotab.core.estimand import G_COMPUTATION, MARGINAL
+
+    if d.measure in MARGINAL:
+        text += f", by {G_COMPUTATION}, the model's conditional odds ratio reported beside it"
     if d.effect == "direct":
         text += "; a direct effect holds the mediators fixed and needs their confounders adjusted too"
     return text
@@ -1481,7 +1495,41 @@ def _set_adjustment(d: Any, state: Any, ctx: Any) -> str:
         text += (f". An exposure–mediator interaction with {listing(attested)} was not ruled out "
                  f"and was kept as a recorded limitation: the direct effect is at "
                  f"{'its' if len(attested) == 1 else 'their'} reference level only")
+    # ESTIMAND (MODELING_SEQUENCE §2): under an odds or hazard ratio a cause of the outcome only
+    # changes the conditional estimand, and the record says so.
+    from turbotab.core.estimand import precision_note
+
+    note = precision_note(getattr(spec, "measure", None),
+                          [c for c, f in derived.items() if f.role == "precision" and f.adjusted])
+    if note:
+        text += ". " + note[:-1] if note.endswith(".") else ". " + note
     return text
+
+
+@register_sentence("set_model_sequence")
+def _set_model_sequence(d: Any, state: Any, ctx: Any) -> str:
+    # ESTIMAND (MODELING_SEQUENCE §1 row 11): the declared adjustment sequence beside the primary.
+    from turbotab.core.decisions import EXPOSURE_FAMILY
+
+    whose = "each exposure" if d.exposure == EXPOSURE_FAMILY else tick(d.exposure)
+    one = (f"; Model 1, adjusted for {listing(d.model_1, limit=6)}" if d.model_1 else "")
+    return (f"The estimate of {whose} is reported in a declared sequence of models: unadjusted"
+            f"{one}; Model 2, the primary, with the full adjustment set; and Model 3, further "
+            f"adjusted for any possible mediators the answers set beside the primary, which is "
+            f"not a total effect")
+
+
+@register_sentence("respond_diagnostic")
+def _respond_diagnostic(d: Any, state: Any, ctx: Any) -> str:
+    # ESTIMAND (MODELING_SEQUENCE §1 row 11): a failed check leads to a recorded change.
+    from turbotab.core.decisions import EXPOSURE_FAMILY
+    from turbotab.core.estimand import ACTION_WORDS
+
+    whose = "each exposure's" if d.exposure == EXPOSURE_FAMILY else f"{tick(d.exposure)}'s"
+    check = {"proportional_hazards": "proportional-hazards check (Schoenfeld residuals)",
+             "influence": "influence check (Cook's distance)"}[d.check]
+    return (f"The {check} of {whose} primary model failed; the response recorded is "
+            f"{ACTION_WORDS[d.action]}")
 
 
 def stated_grain_reason(column: str) -> str:
