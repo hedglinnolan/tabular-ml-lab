@@ -397,8 +397,12 @@ def fit_refused_without_a_number(drive: Any, body: dict[str, Any]) -> dict[str, 
 
 
 def coefficients(fit: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Every coefficient the fit computed: under inference the exposure's rows and the appendix of
+    adjustment terms the Table 2 display sets apart (``server_drive.every_row``)."""
+    from turbotab.core.tests.acceptance.server_drive import every_row
+
     model = next(m for m in fit["models"] if m.get("coefficients"))
-    return {c["feature"]: c for c in model["coefficients"]}
+    return {c["feature"]: c for c in every_row(model)}
 
 
 def strings(x: Any) -> list[str]:

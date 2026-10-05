@@ -139,6 +139,14 @@ class Coefficient(_Model):
     fmi: float | None = None
 
 
+class AdjustmentTerm(Coefficient):
+    """A coefficient that is not an effect estimate (ESTIMAND; Westreich & Greenland 2013): an
+    adjustment term, the intercept or a modifier's main effect, with why. Served apart from the
+    exposure's rows, under the title ``models/effects.py`` gives the appendix."""
+
+    why: str
+
+
 class InferenceExit(_Model):
     """A way forward when no interval can be reported, as a refusal's exits are shaped."""
 
@@ -316,6 +324,10 @@ class FittedModel(_Model):
     internal_external: InternalExternal | None = None
     # Under inference, the tests each spline or quintile exposure carries (WP12a).
     exposure_tests: list[ExposureTest] = []
+    # ESTIMAND: under inference with a declared exposure, set by the server: ``coefficients`` holds
+    # the exposure's rows only, and every other row is here, in the appendix titled
+    # "adjustment terms, not effect estimates" (the Table 2 fallacy; Westreich & Greenland 2013).
+    adjustment_terms: list[AdjustmentTerm] | None = None
 
 
 class Selection(_Model):
@@ -366,6 +378,10 @@ class EstimandAnnotation(_Model):
     left_out: dict[str, str]  # column -> its derived role
     secondary: list[str]  # the declared "further adjusted for" model's added columns
     features: list[str]  # the model-matrix columns carrying the exposure's effect
+    # ESTIMAND: the title of each model's ``adjustment_terms``, and an exposure family's
+    # multiplicity statement (its method, the number of tests, and the two labels)
+    appendix: str | None = None
+    multiplicity: str | None = None
 
 
 class FitArtifact(_Model):
@@ -512,7 +528,7 @@ MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {
 }
 
 __all__ = [
-    "AtOpening", "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
+    "AdjustmentTerm", "AtOpening", "BandEstimate", "Baseline", "BrantCheck", "BrantColumn", "ExposureTest", "NestedColumn", "SubstitutionBand", "Coefficient", "DesignArtifact", "Inference", "InferenceExit", "DesignModel", "DesignStep", "FitArtifact", "FittedModel", "HoldoutDetail",
     "MODELING_ARTIFACTS", "MatrixShape", "MetricSummary", "MissingData", "OmittedEnergy", "Selection", "ShelfArtifact", "ShelfFamily",
     "SubstitutionArtifact", "SubstitutionModel", "SubstitutionPair", "SubstitutionSupport",
 ]

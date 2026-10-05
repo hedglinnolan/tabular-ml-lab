@@ -76,6 +76,19 @@ adjustment cards and every option's customary and sound labels, the seal plan th
     ``secondary`` fits the primary model and the model further adjusted for the covariates the
     answers declare beside it (unknown timing, or "further adjusted for"), on the same rows.
 
+ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11 and 12; turbotab/core/stages/effects.py):
+
+    effects      heavy   deps: working, design, split, target_info   reads the estimand, the
+                                                                      adjustment answers, the model
+                                                                      sequence, the diagnostic
+                                                                      responses …; requires models,
+                                                                      estimand
+
+    ``effects`` reports the exposure across the declared models (unadjusted, Model 1, Model 2 the
+    primary, Model 3), its adjustment terms apart, the marginal risk difference and ratio when the
+    estimand declares one, the primary's diagnostics and their recorded responses, and its
+    sensitivity to unmeasured confounding.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -102,6 +115,7 @@ WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
+from turbotab.core.stages.effects import EFFECTS_READS, effects_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
@@ -304,9 +318,12 @@ def build_graph() -> Graph:
             # proposals 17 (WP17): every option of the energy, missing-values and exclusions
             # questions labeled customary and sound, ordered by purpose, with a tension line; the
             # estimand and adjustment cards.
-            Stage("proposals", 17, ("working", "roles"),
+            # proposals 18 (ESTIMAND): the outcome's event share ranks the effect measures
+            # (MODELING_SEQUENCE §0 ruling 9), so the proposals read the event; Model 1 of the
+            # declared sequence is offered beside the adjustment card, so they read it too.
+            Stage("proposals", 18, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
-                   "sex_codings", "task", *WP17_READS),
+                   "sex_codings", "task", "event", "model_sequence", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
@@ -459,6 +476,11 @@ def build_graph() -> Graph:
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),
+            # ── ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11, 12): the exposure's effect as declared ──
+            Stage("effects", 1, ("working", "design", "split", "target_info"),
+                  EFFECTS_READS, effects_stage, heavy=True,
+                  requires=("models", "estimand"),
+                  label="Reporting the exposure's effect across the declared models"),
         ]
     )
 

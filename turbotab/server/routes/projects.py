@@ -1,9 +1,10 @@
 """Projects, decisions and stage results."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from starlette.concurrency import run_in_threadpool
 
+from turbotab.core.plan_lock import PlanExport
 from turbotab.core.provenance import MethodsText
 from turbotab.server.routes import get_service, get_settings, refusal, require_local
 from turbotab.server.schemas import (
@@ -114,6 +115,19 @@ def methods(request: Request, pid: str) -> MethodsText:
     superseded before anything was seen folded out, and every change made after the estimates
     were seen or the held-out rows were opened kept and marked (audit WP16)."""
     return get_service(request).methods(pid)
+
+
+@router.get(
+    "/projects/{pid}/plan",
+    response_class=Response,
+    responses={200: {"model": PlanExport, "content": {"application/json": {}}},
+               404: refusal("No such project")},
+)
+def plan(request: Request, pid: str) -> Response:
+    """The analysis plan for external registration (MODELING_SEQUENCE §1 row 12): the plan as
+    declared, its timestamp and its SHA-256 over canonical JSON, as canonical JSON bytes that are
+    the same for the same decision log."""
+    return Response(content=get_service(request).plan(pid), media_type="application/json")
 
 
 @router.get(

@@ -240,12 +240,33 @@ MEASURE_WORDS = {
                                  "other level (the limma design)"),
 }
 NON_COLLAPSIBLE = {"odds_ratio", "hazard_ratio", "cumulative_odds_ratio", "relative_risk_ratio"}
+# Ruling 9: the effect measure is part of the estimand, "difference or ratio; conditional or
+# marginal". A linear model's difference is both (collapsible: the conditional and the marginal
+# difference agree); every ratio a family fits is conditional; the marginal risk difference and
+# ratio are standardized over the analyzed rows from a yes/no outcome's logistic model.
+MEASURE_SCALE = {"mean_difference": "difference", "risk_difference": "difference",
+                 "exposure_mean_difference": "difference"}
+MARGINAL = ("risk_difference", "risk_ratio")
+MARGINAL_TASKS = ("binary",)
+G_COMPUTATION = ("standardization over the analyzed rows (g-computation) from the logistic model, "
+                 "with a bootstrap of the whole chain for its interval")
 NOT_FITTED = {
-    "risk_difference": "a marginal risk difference needs standardization over the covariates "
-                       "(g-computation), which TurboTab does not fit yet",
-    "risk_ratio": "a marginal risk ratio needs standardization over the covariates "
-                  "(g-computation), which TurboTab does not fit yet",
+    "risk_difference": "a marginal risk difference is standardized here from a yes/no outcome's "
+                       "logistic model only",
+    "risk_ratio": "a marginal risk ratio is standardized here from a yes/no outcome's logistic "
+                  "model only",
 }
+
+
+def measure_facts(measure: str) -> dict[str, Any]:
+    """Ruling 9's two labels of a measure, and whether it is collapsible."""
+    scale = MEASURE_SCALE.get(measure, "ratio")
+    marginal = measure in MARGINAL
+    both = measure in ("mean_difference",)
+    return {"scale": scale,
+            "conditioning": "conditional and marginal" if both else
+            ("marginal" if marginal else "conditional"),
+            "collapsible": measure not in NON_COLLAPSIBLE}
 
 
 # What the feature-wise family (``models/featurewise.py``) estimates for an exposure family, each
@@ -256,28 +277,88 @@ FAMILY_MEASURE_OF_TASK = {"regression": "mean_difference", "binary": "exposure_m
 
 
 def fitted_measures(task: str | None, family: bool = False) -> list[str]:
-    """The measures the engine fits for ``task``: one exposure's, the task's model family's; an
-    exposure family's, the feature-wise family's."""
+    """The measures the engine fits for ``task``: one exposure's, the task's model family's and,
+    for a yes/no outcome, the marginal risk difference and ratio standardized from it; an exposure
+    family's, the feature-wise family's."""
     fitted = (FAMILY_MEASURE_OF_TASK if family else MEASURE_OF_TASK).get(str(task))
-    return [fitted] if fitted else []
-
-
-def measures_offered(task: str | None, family: bool = False) -> list[dict[str, Any]]:
-    """The effect measures the estimand question offers for ``task``: the ones the engine fits,
-    then (for a yes/no outcome) the marginal ones it does not, each with why."""
-    out = []
-    for fitted in fitted_measures(task, family):
-        out.append({"measure": fitted, "label": MEASURE_WORDS[fitted], "fitted": True,
-                    "reason": ("non-collapsible: adding a covariate that predicts the outcome "
-                               "changes it even without confounding" if fitted in NON_COLLAPSIBLE
-                               else "the feature-wise family's: each exposure modeled on the "
-                                    "outcome and the covariates" if fitted == "exposure_mean_difference"
-                               else "collapsible: the conditional and the marginal difference "
-                                    "agree in a linear model")})
-    if task == "binary" and not family:
-        out += [{"measure": m, "label": MEASURE_WORDS[m], "fitted": False, "reason": why}
-                for m, why in NOT_FITTED.items()]
+    out = [fitted] if fitted else []
+    if not family and task in MARGINAL_TASKS:
+        out += list(MARGINAL)
     return out
+
+
+def event_share(values: Any, event: Any) -> float | None:
+    """The share of recorded rows at the event level the user named (matched as the fit codes it,
+    ``stages.rows._level_key``); None while no event is named or it is no level here."""
+    import pandas as pd
+
+    from turbotab.core.stages.rows import _level_key
+
+    present = pd.Series(values).dropna()
+    if event is None or present.empty:
+        return None
+    hit = present.astype(object).map(_level_key) == _level_key(event)
+    return float(hit.mean()) if hit.any() else None
+
+
+def marginal_first(task: str | None, prevalence: float | None) -> bool:
+    """Ruling 9: the marginal measures rank first for a yes/no outcome whose event is common
+    (above 10%, where the odds ratio no longer approximates the risk ratio; Zhang & Yu 1998)."""
+    from turbotab.core.models.effects import COMMON_OUTCOME
+
+    return task in MARGINAL_TASKS and prevalence is not None and prevalence > COMMON_OUTCOME
+
+
+def _measure_reason(measure: str, prevalence: float | None) -> str:
+    from turbotab.core.models.effects import COMMON_OUTCOME, ZHANG_YU
+
+    if measure in MARGINAL:
+        common = (f"; the event is common here ({prevalence:.0%} of rows), so the odds ratio "
+                  f"overstates the risk ratio ({ZHANG_YU})" if prevalence is not None
+                  and prevalence > COMMON_OUTCOME else "")
+        return (f"marginal: each row's predicted risk averaged over the analyzed rows "
+                f"(g-computation from the logistic model), so adding a cause of the outcome only "
+                f"does not change it{common}")
+    if measure in NON_COLLAPSIBLE:
+        return ("conditional and non-collapsible: adding a covariate that predicts the outcome "
+                "changes it even without confounding")
+    if measure == "exposure_mean_difference":
+        return "the feature-wise family's: each exposure modeled on the outcome and the covariates"
+    return "collapsible: the conditional and the marginal difference agree in a linear model"
+
+
+def measures_offered(task: str | None, family: bool = False,
+                     prevalence: float | None = None) -> list[dict[str, Any]]:
+    """The effect measures the estimand question offers for ``task``, each with ruling 9's labels
+    (a difference or a ratio; conditional or marginal; collapsible or not) and why, ranked: for a
+    yes/no outcome whose event is common (``prevalence`` above 10%) the marginal risk difference and
+    ratio first, else the model's conditional measure first. Another task's request for a marginal
+    measure is named and refused (:data:`NOT_FITTED`)."""
+    fitted = fitted_measures(task, family)
+    if marginal_first(task, prevalence) and not family:
+        fitted = [m for m in fitted if m in MARGINAL] + [m for m in fitted if m not in MARGINAL]
+    out = [{"measure": m, "label": MEASURE_WORDS[m], "fitted": True,
+            "reason": _measure_reason(m, prevalence), **measure_facts(m), "rank": i + 1}
+           for i, m in enumerate(fitted)]
+    if not family and task is not None and task not in MARGINAL_TASKS:
+        out += [{"measure": m, "label": MEASURE_WORDS[m], "fitted": False, "reason": why,
+                 **measure_facts(m), "rank": None} for m, why in NOT_FITTED.items()]
+    return out
+
+
+def precision_note(measure: str | None, columns: Sequence[str]) -> str | None:
+    """MODELING_SEQUENCE §2 (the effect measure): "adding a precision covariate under an OR or HR
+    *changes* the conditional estimand, and the app says so". None for a collapsible measure or
+    when no column is a cause of the outcome only."""
+    if measure not in NON_COLLAPSIBLE or not columns:
+        return None
+    one = len(columns) == 1
+    return (f"Under a {MEASURE_WORDS[measure]}, adjusting for {_listing(list(columns))}, "
+            f"{'a cause' if one else 'causes'} of the outcome only, changes the conditional "
+            f"estimand, not only its precision: the ratio is non-collapsible ({DANIEL}).")
+
+
+DANIEL = "Daniel, Zhang & Farewell 2021, Biom J 63:528"
 
 
 def _base_left_out(state: Any) -> list[str]:
@@ -652,12 +733,21 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
                        "guess": None, "reason": "The pack says nothing about these; each is asked.",
                        "derived": None, "derived_words": None, "decision": None})
     derived = derived_roles(state)
+    measure = _get(spec, "measure")
+    for g in groups:  # the relation the measure carries (MODELING_SEQUENCE §2), said where it bites
+        g["estimand_note"] = (precision_note(measure, g["columns"])
+                              if g.get("derived") == "precision" else None)
+    precision = [c for c, d in derived.items() if d.role == "precision" and d.adjusted]
     return {
         "exposure": exposure, "effect": effect, "family": bool(_get(spec, "family")),
         "questions": QUESTIONS,
         "groups": groups,
         "answered": {c: {"role": d.role, "words": ROLE_WORDS[d.role], "adjusted": d.adjusted,
-                         "secondary": d.secondary, "why": d.why} for c, d in derived.items()},
+                         "secondary": d.secondary, "why": d.why,
+                         "estimand_note": (precision_note(measure, [c])
+                                           if d.role == "precision" and d.adjusted else None)}
+                     for c, d in derived.items()},
+        "estimand_note": precision_note(measure, precision),
         "adjusted": [c for c, d in derived.items() if d.adjusted],
         "left_out": [c for c, d in derived.items() if not d.adjusted],
         "secondary": secondary_columns(state),
@@ -675,9 +765,79 @@ QUESTIONS = {
 }
 
 
-def estimand_card(state: Any, task: str | None) -> dict[str, Any] | None:
+# ── an exposure family's multiplicity (MODELING_SEQUENCE §2: "An exposure family implies
+# multiplicity control: BH q-values for feature-wise analyses; for a few … nutrient hypotheses, the
+# number of tests stated. Every member is shown. This is not selection.") ────────────────────────
+
+BENJAMINI_HOCHBERG = "Benjamini & Hochberg 1995, J R Stat Soc B 57:289"
+ROTHMAN = "Rothman 1990, Epidemiology 1:43"
+METABOLOMICS_PACK = "METABOLOMICS_PACK §08"
+OMICS_LENSES = ("metabolomics", "genomics")
+MULTIPLICITY_WORDS = {
+    "fdr_bh": "Benjamini–Hochberg q-values across the family",
+    "count_stated": "unadjusted p-values, with the number of tests stated",
+}
+
+
+def omics_family(state: Any) -> bool:
+    return bool(set(_get(state, "lens") or []) & set(OMICS_LENSES))
+
+
+def multiplicity_question(state: Any, n: int) -> dict[str, Any]:
+    """The family's multiplicity method, each option labeled customary and sound (BLUEPRINT north
+    star 5), soundest first: Benjamini–Hochberg always; unadjusted p-values with the count stated
+    are customary for a few declared nutrient hypotheses (Rothman 1990) and unsound for an omics
+    family (``METABOLOMICS_PACK §08``: "per-feature testing with multiple-testing correction is
+    expected, and its absence is a fatal flaw in review"), where they are blocked and recorded."""
+    omics = omics_family(state)
+    options = [
+        {"key": "fdr_bh", "label": MULTIPLICITY_WORDS["fdr_bh"].capitalize(),
+         "customary": {"field": "metabolomics and genomics",
+                       "text": "per-feature tests with false-discovery control (q < 0.05) are the "
+                               "field's standard",
+                       "source": METABOLOMICS_PACK},
+         "sound": {"purpose": "inference", "verdict": "sound",
+                   "reason": f"controls the expected share of false discoveries among the {n:,} "
+                             f"tests ({BENJAMINI_HOCHBERG}), and every member is still shown"}},
+        {"key": "count_stated", "label": MULTIPLICITY_WORDS["count_stated"].capitalize(),
+         "customary": {"field": "nutritional epidemiology",
+                       "text": "a few declared nutrient hypotheses are reported without adjustment",
+                       "source": ROTHMAN},
+         "sound": ({"purpose": "inference", "verdict": "unsound",
+                    "reason": f"{n:,} tests at p < 0.05 give about {0.05 * n:,.0f} false positives "
+                              f"by chance alone; the omics field treats an unadjusted table as a "
+                              f"fatal flaw ({METABOLOMICS_PACK})"} if omics else
+                   {"purpose": "inference", "verdict": "conditional",
+                    "reason": f"sound for a few hypotheses each declared on its own, read with all "
+                              f"{n:,} tests in view (STROBE item 20: \"multiplicity of analyses\")"})},
+    ]
+    customary_first = "fdr_bh" if omics else "count_stated"
+    tension = (None if omics else
+               f"For a few declared nutrient hypotheses the field reports unadjusted p-values with "
+               f"the count stated ({ROTHMAN}); Benjamini–Hochberg controls the false-discovery rate "
+               f"across all {n:,} of them.")
+    return {"question": "multiplicity", "options": options, "customary_first": customary_first,
+            "tension": tension, "n_tests": n}
+
+
+def multiplicity_statement(state: Any, spec: Any, n: int) -> str:
+    """The sentence a family's table and methods carry: its method and the number of tests."""
+    method = _get(spec, "multiplicity") or "fdr_bh"
+    if method == "fdr_bh":
+        return (f"{n:,} exposures were tested, each in turn; Benjamini–Hochberg q-values control "
+                f"the false-discovery rate across all {n:,} ({BENJAMINI_HOCHBERG}), and every "
+                f"member is shown, significant or not.")
+    kept = (" It was kept for an omics family as recorded: the field expects false-discovery "
+            "control." if omics_family(state) else "")
+    return (f"{n:,} exposures were tested, each in turn; p-values are not adjusted for "
+            f"multiplicity, and all {n:,} tests are stated (customary for a few declared nutrient "
+            f"hypotheses, {ROTHMAN}), with every member shown.{kept}")
+
+
+def estimand_card(state: Any, task: str | None, prevalence: float | None = None) -> dict[str, Any] | None:
     """What the estimand question offers: the exposure candidates, the effects, the contrast for an
-    energy-bearing exposure, and only the measures the engine fits (the others named, refused)."""
+    energy-bearing exposure, and the measures ruling 9 labels (difference or ratio; conditional or
+    marginal), ranked by the outcome's ``prevalence`` (the event's share) for a yes/no outcome."""
     if _get(state, "purpose") != "inference" or _get(state, "roles") is None:
         return None
     candidates = exposure_candidates(state)
@@ -689,9 +849,11 @@ def estimand_card(state: Any, task: str | None) -> dict[str, Any] | None:
         # 2): offered with two or more exposures, as an omics table's features are.
         "family": ({"n": len(family), "energy_contrast": family_contrast_applies(state),
                     "measures": measures_offered(task, family=True),
+                    "multiplicity": multiplicity_question(state, len(family)),
                     "consequence": (f"Each of the {len(family):,} exposures is reported in turn, "
                                     f"adjusted for the covariates but not for the other exposures, "
-                                    f"with a false-discovery statement (the feature-wise family).")}
+                                    f"with its multiplicity method; every member is shown (the "
+                                    f"feature-wise family).")}
                    if len(family) >= 2 and fitted_measures(task, family=True) else None),
         "effects": [
             {"effect": "total", "label": "Total effect",
@@ -703,7 +865,8 @@ def estimand_card(state: Any, task: str | None) -> dict[str, Any] | None:
              "consequence": "More of it in place of other calories, total energy held fixed."},
             {"contrast": "addition", "label": "Addition",
              "consequence": "Its calories added on top, every other source held fixed."}],
-        "measures": measures_offered(task),
+        "measures": measures_offered(task, prevalence=prevalence),
+        "prevalence": prevalence,
     }
 
 
@@ -726,10 +889,11 @@ def caption(state: Any, task: str | None = None) -> str | None:
         family = family_exposures(state)
         scale = (f"as the {MEASURE_WORDS[measure]}" if measure == "exposure_mean_difference"
                  else f"as a {MEASURE_WORDS.get(measure, measure)} per unit of each")
+        method = MULTIPLICITY_WORDS[_get(spec, "multiplicity") or "fdr_bh"]
         text = (f"The {effect} effect of each of the {len(family):,} exposures "
                 f"({_listing(family, limit=3)}) on {_tick(target)}, one at a time"
                 + (f" ({what})" if what else "")
-                + f", {scale}, with the false-discovery rate stated")
+                + f", {scale}, every member shown, with {method} ({len(family):,} tests)")
     else:
         exposure = _get(spec, "exposure")
         text = (f"The {effect} effect of {_tick(exposure)} on {_tick(target)}"
@@ -740,28 +904,139 @@ def caption(state: Any, task: str | None = None) -> str | None:
     fe = fixed_effects_column(state)
     parts = ([_listing(adjusted, limit=6)] if adjusted else []) + (
         [f"an intercept for each {_tick(fe)} (fixed effects)"] if fe else [])
-    text += (f", conditional on {' and '.join(parts)}" if parts
-             else ", with no covariate adjusted for")
+    if measure in MARGINAL and not _get(spec, "family"):
+        text += (f", standardized over the analyzed rows' {' and '.join(parts)}" if parts
+                 else ", with no covariate to standardize over")
+        text += (" by g-computation from the logistic model, whose conditional odds ratio is "
+                 "shown beside it")
+    else:
+        text += (f", conditional on {' and '.join(parts)}" if parts
+                 else ", with no covariate adjusted for")
     out = [c for c, d in derived.items() if not d.adjusted and d.role in ("mediator", "collider")]
     if out:
         text += f"; {_listing(out)} left out as {'a consequence' if len(out) == 1 else 'consequences'} of the exposure"
     if measure in NON_COLLAPSIBLE:
         text += "; a conditional ratio, which changes with the covariates even without confounding"
+        precision = [c for c, d in derived.items() if d.role == "precision" and d.adjusted]
+        if precision:
+            text += (f": adjusting for {_listing(precision)}, "
+                     f"{'a cause' if len(precision) == 1 else 'causes'} of the outcome only, "
+                     f"changes the conditional estimand, not only its precision")
     second = secondary_columns(state)
     if second:
         text += f". Declared beside it: further adjusted for {_listing(second)}"
     return text + f" (the adjustment set by the disjunctive cause criterion, {VANDERWEELE})."
 
 
-def primary_features(fitted_features: Iterable[str], exposure: str) -> list[str]:
-    """The model-matrix columns that carry the exposure's effect (its own column, or the spline or
-    quintile terms the form made of it)."""
+def primary_features(fitted_features: Iterable[str], exposure: str,
+                     predictors: Iterable[str] = ()) -> list[str]:
+    """The model-matrix columns that carry the exposure's effect: its own column, the column an
+    energy model made of it (``<exposure>_adj``, ``<exposure>_per_<E>``, ``kcal_from_<exposure>``),
+    and the spline or quintile terms the form made of either. A name that begins with the exposure's
+    but belongs to a longer predictor of ``predictors`` (``fat_sat`` beside the exposure ``fat``) is
+    that predictor's, not the exposure's."""
+    exposure = str(exposure)
+    longer = [str(p) for p in predictors if str(p) != exposure and str(p).startswith(f"{exposure}_")]
     out = []
     for f in fitted_features:
         name = str(f)
-        if name == exposure or name.startswith(f"{exposure}_") or name.startswith(f"{exposure}["):
-            out.append(name)
+        base = name[len("kcal_from_"):] if name.startswith("kcal_from_") else name
+        if not (base == exposure or base.startswith(f"{exposure}_") or base.startswith(f"{exposure}[")):
+            continue
+        if any(base == p or base.startswith(f"{p}_") for p in longer):
+            continue
+        out.append(name)
     return out
+
+
+# ── the declared model sequence (MODELING_SEQUENCE §1 row 11) ────────────────
+# "The declared object is a crude model, a declared adjustment sequence (Model 1: age, sex and
+# energy; Model 2: plus confounders; optional Model 3: plus possible mediators, labeled) and the
+# primary model, shown for the exposure only." The crude model is always shown (STROBE item 16a:
+# "Give unadjusted estimates and, if applicable, confounder-adjusted estimates"); Model 2 is the
+# primary; Model 3 adds the columns the adjustment answers set beside it. Model 1's columns are the
+# user's: a name never decides which column is age or sex (BLUEPRINT §14), so the pack's guess
+# leads and one tap declares it.
+
+_MODEL_ONE = {"age", "sex", "gender"}
+_NHANES_MODEL_ONE = {"RIDAGEYR", "RIAGENDR"}
+
+
+def energy_terms_columns(state: Any) -> list[str]:
+    """The total-energy columns among the settled predictors (the energy role)."""
+    return [c for c, r in predictor_roles(state).items() if r == "energy"]
+
+
+def model_one_allowed(state: Any) -> list[str]:
+    """The columns Model 1 may hold: the primary's adjusted covariates and total energy."""
+    derived = derived_roles(state)
+    return [c for c, d in derived.items() if d.adjusted] + [
+        c for c in energy_terms_columns(state) if c not in derived]
+
+
+def model_one_guess(state: Any) -> list[str]:
+    """The pack's guess at Model 1 (NUTRITION_PACK §08: "Model 1 age, sex, energy"): the allowed
+    columns whose names read as age or sex, and total energy. A proposal the user confirms."""
+    from turbotab.core.recognizers import tokens
+
+    allowed = model_one_allowed(state)
+    energy = set(energy_terms_columns(state))
+    return [c for c in allowed if c in energy or str(c).upper() in _NHANES_MODEL_ONE
+            or set(tokens(c)) & _MODEL_ONE]
+
+
+def current_model_sequence(state: Any) -> Any:
+    """The declared sequence while it is for the current exposure and every Model 1 column is still
+    in the primary set (a change of exposure or adjustment set re-asks it: MODELING_SEQUENCE §2,
+    "invalidates"); None otherwise."""
+    spec = _get(state, "model_sequence")
+    current = current_estimand(state)
+    if spec is None or current is None or _get(spec, "exposure") != exposure_key(current):
+        return None
+    allowed = set(model_one_allowed(state))
+    return spec if all(c in allowed for c in _get(spec, "model_1") or []) else None
+
+
+def model_sequence_card(state: Any) -> dict[str, Any] | None:
+    """Model 1's declaration as the effects stage offers it: the declared columns, or the pack's
+    guess with the one-tap decision that declares it."""
+    spec = current_estimand(state)
+    if spec is None or _get(state, "purpose") != "inference":
+        return None
+    declared = current_model_sequence(state)
+    guess = model_one_guess(state)
+    return {"declared": list(_get(declared, "model_1") or []) if declared is not None else None,
+            "guess": guess, "allowed": model_one_allowed(state),
+            "decision": {"kind": "set_model_sequence", "exposure": exposure_key(spec),
+                         "model_1": guess},
+            "reason": ("The field's Model 1 adjusts for age, sex and energy (NUTRITION_PACK §08); "
+                       "say which columns those are. Model 2 is the primary, Model 3 adds the "
+                       "possible mediators your answers set beside it.")}
+
+
+# ── a failed diagnostic's recorded response (MODELING_SEQUENCE §1 row 11) ────
+
+DIAGNOSTIC_ACTIONS = {
+    "proportional_hazards": ("period_hazard_ratios", "keep_labeled"),
+    "influence": ("without_influential", "keep_labeled"),
+}
+ACTION_WORDS = {
+    "period_hazard_ratios": "the exposure's hazard ratio before and after the median event time, "
+                            "beside the average over follow-up",
+    "without_influential": "the primary model refit without the influential rows, beside it",
+    "keep_labeled": "the estimate kept, labeled with the failed check",
+}
+
+
+def current_responses(state: Any) -> dict[str, str]:
+    """Each check's recorded action, while it is for the current exposure."""
+    spec = current_estimand(state)
+    if spec is None:
+        return {}
+    key = exposure_key(spec)
+    return {check: str(_get(r, "action"))
+            for check, r in (_get(state, "diagnostic_responses") or {}).items()
+            if _get(r, "exposure") == key}
 
 
 # ── what the server withholds while the plan is unanswered ───────────────────
@@ -773,7 +1048,7 @@ HOLDS: dict[str, tuple[str, ...]] = {
     "estimand": ("inference",),
     "adjustment": ("inference",),
 }
-ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary")
+ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "effects")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
@@ -841,15 +1116,34 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
 
 
 def annotate_fit(artifact: Any, state: Any) -> Any:
-    """The served fit under a declared estimand: the caption worded from it, and which rows of each
-    table are the exposure's effect (the rest are adjustment terms, not effect estimates)."""
+    """The served fit under a declared estimand: the caption worded from it, and the Table 2
+    display (Westreich & Greenland 2013): each model's ``coefficients`` hold the exposure's rows
+    only (every member of an exposure family), and every other row moves to ``adjustment_terms``,
+    titled "adjustment terms, not effect estimates" (``models/effects.py``)."""
+    from turbotab.core.models.effects import APPENDIX_TITLE, split_rows
+
     if not isinstance(artifact, dict) or _get(state, "purpose") != "inference":
         return artifact
     spec = current_estimand(state)
     if spec is None:
         return artifact
     exposures = exposures_of(state, spec)
+    predictors = list(predictor_roles(state))
     out = dict(artifact)
+    features: set[str] = set()
+    models = []
+    for m in out.get("models") or []:
+        m = dict(m)
+        rows = m.get("coefficients")
+        if rows:
+            mine = {f for e in exposures
+                    for f in primary_features([r.get("feature") for r in rows], e, predictors)}
+            features |= mine
+            shown, appendix = split_rows(rows, mine)
+            m["coefficients"], m["adjustment_terms"] = shown, appendix
+        models.append(m)
+    out["models"] = models
+    family = bool(_get(spec, "family"))
     out["estimand"] = {
         "exposure": exposure_key(spec), "effect": _get(spec, "effect"),
         "measure": _get(spec, "measure"),
@@ -857,9 +1151,9 @@ def annotate_fit(artifact: Any, state: Any) -> Any:
         "adjusted": [c for c, d in derived_roles(state).items() if d.adjusted],
         "left_out": {c: d.role for c, d in derived_roles(state).items() if not d.adjusted},
         "secondary": secondary_columns(state),
-        "features": sorted({f for m in out.get("models") or [] for e in exposures
-                            for f in primary_features([r.get("feature") for r in
-                                                       (m.get("coefficients") or [])], e)}),
+        "features": sorted(features),
+        "appendix": APPENDIX_TITLE,
+        "multiplicity": multiplicity_statement(state, spec, len(exposures)) if family else None,
     }
     return out
 
@@ -1100,7 +1394,9 @@ def _estimand_measure_is_fitted(decision: Any, ctx: Any) -> None:
             f"An exposure family is reported by the feature-wise family, which fits a numeric or "
             f"yes/no outcome, not a {str(task).replace('_', ' ')} one; name one exposure.",
             [{"label": "Name one exposure", "decision": None}])
-    if decision.measure in NOT_FITTED:
+    if task and decision.measure in fitted_measures(task, decision.family):
+        return
+    if decision.measure in NOT_FITTED and not (task in MARGINAL_TASKS and not decision.family):
         exits = ([{"label": f"Report the {MEASURE_WORDS[fitted]}",
                    "decision": decision.model_copy(update={"measure": fitted})}] if fitted else [])
         raise _refusal("measure_not_fitted",
@@ -1114,6 +1410,34 @@ def _estimand_measure_is_fitted(decision: Any, ctx: Any) -> None:
             f"not a {MEASURE_WORDS.get(decision.measure, decision.measure)}.",
             [{"label": f"Report the {MEASURE_WORDS[fitted]}",
               "decision": decision.model_copy(update={"measure": fitted})}])
+
+
+def _family_declares_its_multiplicity(decision: Any, ctx: Any) -> Any:
+    """An exposure family declared without a multiplicity method is declared with
+    Benjamini–Hochberg (the sound default; MODELING_SEQUENCE §2), so the record says which."""
+    if decision.family and decision.multiplicity is None:
+        return decision.model_copy(update={"multiplicity": "fdr_bh"})
+    return decision
+
+
+def _omics_family_without_fdr_is_recorded(decision: Any, ctx: Any) -> None:
+    """Block and record (MODELING_SEQUENCE review: "A per-feature table without it is
+    block-and-record"): an omics family reported by unadjusted p-values waits for its attestation;
+    the exit is Benjamini–Hochberg."""
+    state = _state(ctx)
+    if (not decision.family or decision.multiplicity != "count_stated"
+            or decision.multiplicity_acknowledged or not omics_family(state)):
+        return
+    n = len(family_exposures(state)) if state is not None else 0
+    raise _refusal(
+        "family_without_fdr",
+        f"An omics family of {n:,} exposures reported by unadjusted p-values gives about "
+        f"{0.05 * n:,.0f} false positives at p < 0.05 by chance alone; per-feature testing without "
+        f"multiple-testing correction is \"a fatal flaw in review\" ({METABOLOMICS_PACK}).",
+        [{"label": "Benjamini–Hochberg q-values across the family",
+          "decision": decision.model_copy(update={"multiplicity": "fdr_bh"})},
+         {"label": "Keep unadjusted p-values, with the number of tests stated; record that",
+          "decision": decision.model_copy(update={"multiplicity_acknowledged": True})}])
 
 
 def _estimand_contrast_fits_the_exposure(decision: Any, ctx: Any) -> None:
@@ -1298,8 +1622,91 @@ def _models_fit_the_family(decision: Any, ctx: Any) -> None:
          {"label": "Name one exposure instead", "decision": None}])
 
 
+# set_model_sequence and respond_diagnostic (MODELING_SEQUENCE §1 row 11)
+
+
+def _sequence_follows_the_plan(decision: Any, ctx: Any) -> None:
+    from turbotab.core.voice import question_name
+
+    state = _state(ctx)
+    if _get(state, "purpose") == "prediction":
+        raise _not_inference("a model sequence")
+    if state is None:
+        return
+    spec = current_estimand(state)
+    if spec is None or adjustment_answer(state) is None and asked_covariates(state):
+        raise _refusal("no_plan",
+                       f"Declare the exposure and answer {question_name('adjustment')} first: "
+                       f"Model 1 is a part of the primary model's adjustment set.",
+                       [{"label": f"Answer {question_name('estimand')} first", "decision": None}])
+    exposure = exposure_key(spec)
+    if decision.exposure != exposure:
+        raise _refusal("other_exposure",
+                       f"The model sequence is declared for the exposure, {_tick(exposure)}, not "
+                       f"{_tick(decision.exposure)}.",
+                       [{"label": f"Declare it for {_tick(exposure)}",
+                         "decision": decision.model_copy(update={"exposure": exposure})}])
+    allowed = model_one_allowed(state)
+    strangers = [c for c in decision.model_1 if c not in allowed]
+    if strangers:
+        raise _refusal(
+            "not_in_the_primary",
+            f"{_listing(strangers)} {'is' if len(strangers) == 1 else 'are'} not adjusted for in "
+            f"the primary model; Model 1 holds some of its adjustment set (the field's age, sex "
+            f"and energy), so each model adds to the one before.",
+            [{"label": "Model 1: " + (_listing([c for c in decision.model_1 if c in allowed])
+                                      or "none"),
+              "decision": decision.model_copy(update={"model_1": [
+                  c for c in decision.model_1 if c in allowed]})}])
+
+
+def _response_fits_the_check(decision: Any, ctx: Any) -> None:
+    state = _state(ctx)
+    if _get(state, "purpose") == "prediction":
+        raise _not_inference("a diagnostic's response")
+    if decision.action not in DIAGNOSTIC_ACTIONS[decision.check]:
+        raise _refusal(
+            "action_not_for_check",
+            f"{ACTION_WORDS[decision.action].capitalize()} is not a response to the "
+            f"{decision.check.replace('_', ' ')} check.",
+            [{"label": ACTION_WORDS[a].capitalize(),
+              "decision": decision.model_copy(update={"action": a})}
+             for a in DIAGNOSTIC_ACTIONS[decision.check]])
+    if state is None:
+        return
+    spec = current_estimand(state)
+    if spec is None:
+        raise _refusal("no_estimand", "The checks are of the primary model, which waits for the "
+                                      "exposure and its effect to be declared.",
+                       [{"label": "Declare the exposure and its effect first", "decision": None}])
+    if decision.exposure != exposure_key(spec):
+        raise _refusal("other_exposure",
+                       f"The checks are of the primary model for {_tick(exposure_key(spec))}.",
+                       [{"label": f"Respond for {_tick(exposure_key(spec))}",
+                         "decision": decision.model_copy(update={"exposure": exposure_key(spec)})}])
+    # The record says the check failed, so it must have: read as the effects stage reported it.
+    from turbotab.core.decisions import _ctx
+
+    shown = _artifact(ctx, "effects")
+    if shown is None:
+        if callable(_ctx(ctx, "artifact")):
+            raise _refusal("check_not_shown",
+                           "The checks are reported with the effects, which are not computed for "
+                           "this plan yet; respond once they are shown.",
+                           [{"label": "Wait for the effects", "decision": None}])
+        return  # no reader in this context (a direct validation): nothing to read
+    found = [d for f in shown.get("families") or [] for d in f.get("diagnostics") or []
+             if d.get("check") == decision.check]
+    if not any(d.get("status") == "failed" for d in found):
+        status = found[0].get("status") if found else "not reported"
+        raise _refusal("check_not_failed",
+                       f"The {decision.check.replace('_', ' ')} check of the primary model is "
+                       f"{status.replace('_', ' ')}, so there is no failure to respond to.",
+                       [{"label": "Keep the analysis as it is", "decision": None}])
+
+
 def _register() -> None:
-    from turbotab.core.decisions import register_validator
+    from turbotab.core.decisions import register_completion, register_validator
 
     register_validator("set_censoring", _censoring_names_the_outcome)
     register_validator("set_censoring", _same_follow_up_against_the_data)
@@ -1309,6 +1716,10 @@ def _register() -> None:
     register_validator("set_estimand", _estimand_names_a_predictor)
     register_validator("set_estimand", _estimand_measure_is_fitted)
     register_validator("set_estimand", _estimand_contrast_fits_the_exposure)
+    register_validator("set_estimand", _omics_family_without_fdr_is_recorded)
+    register_completion("set_estimand", _family_declares_its_multiplicity)
+    register_validator("set_model_sequence", _sequence_follows_the_plan)
+    register_validator("respond_diagnostic", _response_fits_the_check)
     register_validator("set_adjustment", _adjustment_follows_the_estimand)
     register_validator("set_adjustment", _answers_hold_together)
     register_validator("set_adjustment", _mediators_stay_out_of_a_total_effect)

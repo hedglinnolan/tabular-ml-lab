@@ -155,6 +155,7 @@ const fit: FitArtifact = {
       role: null,
       ...wp9,
       exposure_tests: [],
+      adjustment_terms: null,
     },
     {
       family: "elastic_net",
@@ -174,6 +175,7 @@ const fit: FitArtifact = {
       role: null,
       ...wp9,
       exposure_tests: [],
+      adjustment_terms: null,
     },
     {
       family: "boosted_trees",
@@ -193,6 +195,7 @@ const fit: FitArtifact = {
       role: null,
       ...wp9,
       exposure_tests: [],
+      adjustment_terms: null,
     },
   ],
   holdout_sealed: true,

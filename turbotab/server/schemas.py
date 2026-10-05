@@ -617,8 +617,43 @@ class EstimandChoice(Model):
 class EstimandMeasure(Model):
     measure: str
     label: str
-    fitted: bool  # False: named, and refused with the reason (not fitted by TurboTab yet)
+    fitted: bool  # False: named, and refused with the reason (not fitted for this outcome)
     reason: str
+    # ESTIMAND (ruling 9): a difference or a ratio; conditional, marginal, or both (collapsible);
+    # and its rank on the card (None: named and refused)
+    scale: Literal["difference", "ratio"] = "ratio"
+    conditioning: str = "conditional"
+    collapsible: bool = False
+    rank: int | None = None
+
+
+class LabeledChoice(Model):
+    """An option with north star 5's two labels (as ``custom_sound`` shapes them)."""
+
+    key: str
+    label: str
+    customary: dict[str, str]  # field, text, source
+    sound: dict[str, str]  # purpose, verdict, reason
+
+
+class MultiplicityQuestion(Model):
+    """ESTIMAND (MODELING_SEQUENCE §2): an exposure family's multiplicity method."""
+
+    question: Literal["multiplicity"]
+    options: list[LabeledChoice]
+    customary_first: str
+    tension: str | None
+    n_tests: int
+
+
+class EstimandFamily(Model):
+    """Every exposure reported in turn (the feature-wise family), with its multiplicity method."""
+
+    n: int
+    energy_contrast: bool
+    measures: list[EstimandMeasure]
+    multiplicity: MultiplicityQuestion | None = None
+    consequence: str
 
 
 class EstimandCard(Model):
@@ -628,6 +663,8 @@ class EstimandCard(Model):
     effects: list[EstimandChoice]
     contrasts: list[EstimandChoice]
     measures: list[EstimandMeasure]
+    family: EstimandFamily | None = None
+    prevalence: float | None = None  # ESTIMAND: the event's share, which ranks the measures
 
 
 class AdjustmentGroup(Model):
@@ -641,6 +678,9 @@ class AdjustmentGroup(Model):
     derived: str | None  # the role the guess derives
     derived_words: str | None
     decision: dict[str, Any] | None
+    # ESTIMAND (MODELING_SEQUENCE §2): under an odds or hazard ratio, a cause of the outcome only
+    # changes the conditional estimand, and the card says so
+    estimand_note: str | None = None
 
 
 class DerivedRole(Model):
@@ -649,6 +689,7 @@ class DerivedRole(Model):
     adjusted: bool  # in the primary model
     secondary: bool  # in the declared "further adjusted for" model
     why: str
+    estimand_note: str | None = None
 
 
 class AdjustmentCard(Model):
@@ -663,6 +704,17 @@ class AdjustmentCard(Model):
     left_out: list[str]
     secondary: list[str]
     source: str
+    estimand_note: str | None = None
+
+
+class ModelSequenceCard(Model):
+    """ESTIMAND (MODELING_SEQUENCE §1 row 11): Model 1's declaration, the pack's guess leading."""
+
+    declared: list[str] | None
+    guess: list[str]
+    allowed: list[str]
+    decision: dict[str, Any]
+    reason: str
 
 
 class ProposalsArtifact(Model):
@@ -685,6 +737,9 @@ class ProposalsArtifact(Model):
     labels: QuestionLabels | None = None
     estimand: EstimandCard | None = None
     adjustment: AdjustmentCard | None = None
+    # ESTIMAND: Model 1 of the declared sequence, offered beside the adjustment answers so it is
+    # declared before any estimate is shown
+    model_sequence: ModelSequenceCard | None = None
 
 
 # ── the table the analysis reads (M2_CONTRACT §2; turbotab/core/stages/working.py) ──────────
@@ -951,3 +1006,8 @@ ARTIFACT_MODELS.update({"sensitivity": SensitivityArtifact, "calibration": Calib
 from turbotab.core.stages.secondary import SecondaryArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"secondary": SecondaryArtifact})
+
+# ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11, 12): the exposure's effect across the declared models.
+from turbotab.core.stages.effects import EffectsArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"effects": EffectsArtifact})

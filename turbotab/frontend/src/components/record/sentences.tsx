@@ -123,6 +123,10 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "estimand";
     case "set_adjustment":
       return "adjustment";
+    case "set_model_sequence":
+      return "model_sequence";
+    case "respond_diagnostic":
+      return "diagnostic_responses";
     case "set_sensitivity":
       return "sensitivity";
     case "set_measurement_error":

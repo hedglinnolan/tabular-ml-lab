@@ -288,7 +288,9 @@ def sentence(client, pid: str, kind: str) -> str:
 
 
 def row(model: dict, feature: str) -> dict:
-    return next(c for c in model["coefficients"] if c["feature"] == feature)
+    from turbotab.core.tests.acceptance.server_drive import every_row
+
+    return next(c for c in every_row(model) if c["feature"] == feature)
 
 
 DIET_ROLES = {"SEQN": "identifier", "DR1TKCAL": "covariate", "DR1TFIBE": "exposure",

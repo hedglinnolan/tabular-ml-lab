@@ -592,7 +592,9 @@ def test_2b_hs_crp_asks_its_scale_and_the_log_scale_is_honored(client, folder):
     model = artifact(client, pid, "fit")["models"][0]
     X = np.column_stack([np.ones(len(df)), df["fiber_g"].to_numpy(float), df["age"].to_numpy(float)])
     beta = np.linalg.lstsq(X, np.log(df["hs_crp"].to_numpy(float)), rcond=None)[0]
-    got = {r["feature"]: r for r in model["coefficients"]}
+    from turbotab.core.tests.acceptance.server_drive import every_row
+
+    got = {r["feature"]: r for r in every_row(model)}  # age: in the adjustment terms' appendix
     assert got["fiber_g"]["estimate"] == pytest.approx(beta[1], rel=1e-8)
     assert got["age"]["estimate"] == pytest.approx(beta[2], rel=1e-8)
 

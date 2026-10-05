@@ -982,6 +982,14 @@ class ProjectService:
             except Refusal:
                 log.exception("the analysis plan of %s could not be locked", pid)
 
+    def plan(self, pid: str) -> bytes:
+        """The analysis-plan export (ESTIMAND; MODELING_SEQUENCE §1 row 12): canonical JSON of the
+        plan as the decision log holds it, with its timestamp and SHA-256 (``plan_lock.plan_export``)."""
+        from turbotab.core.plan_lock import plan_export
+
+        self.workspace.get(pid)
+        return plan_export(self.log(pid).records())
+
     def methods(self, pid: str) -> Any:
         """The methods text built from the decision log (``turbotab.core.provenance``)."""
         from turbotab.core.provenance import methods_text
