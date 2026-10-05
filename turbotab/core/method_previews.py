@@ -632,36 +632,41 @@ def time_varying_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 
 def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
-    """Each energy-adjusted exposure's recalls, mean and calibrated value, and λ at the most common
-    number of recalls, as the calibration stage computes them (``stages.calibration``: the cohort's
-    rows, the linear pipeline refit on them, each day through the same steps, the days centered on
-    the person's value; ``methods.calibration.calibrate``), without the outcome model or its
+    """Each reported error-prone intake's recalls, mean and calibrated value, and its attenuation
+    Γ_jj at the most common number of recalls, as the calibration stage computes them (MS5,
+    ``stages.calibration``: the cohort's people with a recall day, the linear pipeline refit on
+    them, each day through the same steps and centered on the person's value
+    (``recall_matrix``), every error-prone column calibrated jointly with every other column of the
+    model as a covariate (``methods.calibration.calibrate``)), without the outcome model or its
     bootstrap. None when the stage would not calibrate (its reason is the stage's)."""
     from sklearn.base import clone
 
-    from turbotab.core.methods.calibration import CalibrationRefused, Replicates, calibrate
+    from turbotab.core.methods.calibration import CalibrationRefused, Recalls, calibrate
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
-    from turbotab.core.stages.calibration import (UNIVARIATE_METHODS, adjusted_exposures,
-                                                  combine_rule, day_rows, replicate_values)
+    from turbotab.core.stages.calibration import (_nonlinear, combine_rule, day_rows, error_prone,
+                                                  recall_matrix)
     from turbotab.core.stages.data import open_store
 
     spec_me = after.measurement_error
     design = sctx.inputs["design"]
     pipelines = design.objects["pipelines"]
     adj = after.energy_adjustment
-    if ("linear" not in (after.models or []) or "linear" not in pipelines or adj is None
-            or adj.method not in UNIVARIATE_METHODS):
+    if "linear" not in (after.models or []) or "linear" not in pipelines:
         return None
     spec = DesignSpec.from_dict(design.objects["spec"])
+    energy = adj.energy_column if adj is not None and adj.method != "none" else None
     rows = sctx.inputs["cohort"].frames["rows"]["row_id"].to_numpy(dtype=np.int64)
     with open_store(sctx) as store:
         frame = modeling_frame(store, list(spec.inputs), rows)
-    X = frame[list(spec.inputs)]
-    steps = clone(pipelines["linear"])
-    fitted = steps[:-1].fit(X)  # the transform steps only: outcome-free
+    X_all = frame[list(spec.inputs)]
+    raw_columns = list(dict.fromkeys([*spec.inputs, *([energy] if energy else [])]))
+    days = day_rows(sctx, raw_columns, rows)
+    day_unit = days.pop("__unit").to_numpy(dtype=np.int64)
+    position = {int(r): i for i, r in enumerate(frame.index.to_numpy(dtype=np.int64))}
+    day_person = np.array([position.get(int(u), -1) for u in day_unit], dtype=np.int64)
 
-    class _Fitted:  # model_matrix and adjusted_exposures read a fitted pipeline's steps
+    class _Fitted:  # model_matrix, error_prone and recall_matrix read a fitted pipeline's steps
         def __init__(self, inner: Any):
             self.steps = [*inner.steps, ("model", None)]
             self._inner = inner
@@ -669,44 +674,62 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
         def __getitem__(self, key: Any) -> Any:
             return self._inner
 
-    whole = _Fitted(fitted)
-    matrix = model_matrix(whole, X).astype(float)
-    energy = adj.energy_column if adj.method != "none" else None
-    raw_columns = list(dict.fromkeys([*spec.inputs, *([energy] if energy else [])]))
-    days = day_rows(sctx, raw_columns, rows)
-    units = days.pop("__unit").to_numpy(dtype=np.int64)
-    person_of = {int(r): i for i, r in enumerate(frame.index.to_numpy(dtype=np.int64))}
-    items = adjusted_exposures(whole, spec.roles)
-    wanted = set(spec_me.exposures)
-    if wanted:
-        items = [i for i in items if i["source"] in wanted or i["feature"] in wanted]
+    template = clone(pipelines["linear"])
+    first = _Fitted(clone(template)[:-1].fit(X_all))  # the transform steps only: outcome-free
+    columns = [str(c) for c in model_matrix(first, X_all).columns]
+    items = error_prone(first, columns, spec.roles, energy)
+    if not items or any(_nonlinear(columns, i["feature"]) for i in items):
+        return None
     working = dict(getattr(sctx.inputs["working"], "data", sctx.inputs["working"]))
-    day_matrix = model_matrix(whole, days[list(spec.inputs)])
-    columns = [str(c) for c in matrix.columns]
-    Xm = matrix.to_numpy(dtype=float)
+    raw = list(dict.fromkeys(c for i in items for c in i["inputs"]))
+    if any(combine_rule(after, working, c) != "mean" for c in raw):
+        return None
+    features = [i["feature"] for i in items]
+    wanted = set(spec_me.exposures)
+    named = [i for i in items if i["source"] in wanted or i["feature"] in wanted]
+    exposure_roles = {c for c, r in spec.roles.items() if r == "exposure"}
+    reported = named or [i for i in items if i["source"] in exposure_roles] or list(items)
+    # the people the stage calibrates: a recall day, and (complete cases) every input recorded
+    on_day = day_person >= 0
+    day_frame = days.loc[on_day].reset_index(drop=True)
+    day_of = day_person[on_day]
+    keep = np.bincount(day_of, minlength=len(frame)) >= 1
+    if X_all.isna().to_numpy().any() and (spec.missing or {}).get("strategy") == "complete_case":
+        keep &= ~X_all.isna().any(axis=1).to_numpy()
+    persons = np.flatnonzero(keep)
+    remap = np.full(len(frame), -1)
+    remap[persons] = np.arange(len(persons))
+    day_mask = remap[day_of] >= 0
+    day_frame = day_frame.loc[day_mask].reset_index(drop=True)
+    day_of = remap[day_of[day_mask]]
+    order = np.argsort(day_of, kind="stable")
+    day_frame, day_of = day_frame.iloc[order].reset_index(drop=True), day_of[order]
+    X = X_all.iloc[persons]
+    fitted = _Fitted(clone(template)[:-1].fit(X))
+    matrix = model_matrix(fitted, X)
+    if [str(c) for c in matrix.columns] != columns:
+        return None
+    values, who = recall_matrix(fitted, X, day_frame, day_of, raw, features, matrix)
+    rec = Recalls.of(values, who, len(X))
+    have = rec.counts() >= 1
+    if not have.all():
+        rec = rec.subset(have)
+    J = [columns.index(f) for f in features]
+    others = [c for c in range(len(columns)) if c not in set(J)]
+    Xm = matrix.to_numpy(dtype=float)[have]
+    try:
+        cal = calibrate(rec, Xm[:, others] if others else None)
+    except CalibrationRefused as refused:
+        return {"exposures": [{**i, "refused": str(refused)} for i in reported]}
+    modal = cal.modal_k
+    gamma = cal.slope(modal)
+    means = rec.means()
     out = []
-    for item in items:
-        if combine_rule(after, working, item["source"]) != "mean":
-            continue
-        j = columns.index(item["feature"])
-        values, person = replicate_values(day_matrix, days, units, person_of, item, Xm[:, j])
-        rep = Replicates.of(values, person, len(frame))
-        k = rep.counts()
-        have = k >= 1
-        keep = np.flatnonzero(have)
-        remap = np.full(rep.n_persons, -1)
-        remap[keep] = np.arange(len(keep))
-        kept = Replicates(rep.values, remap[rep.person], len(keep))
-        others = np.delete(Xm[keep], j, axis=1)
-        try:
-            cal = calibrate(kept, others)
-        except CalibrationRefused as refused:
-            out.append({**item, "refused": str(refused)})
-            continue
-        modal = int(np.bincount(k[have].astype(np.int64)).argmax())
-        out.append({**item, "lambda": float(cal.sigma2_xz / (cal.sigma2_xz + cal.sigma2_u / modal)),
-                    "modal": modal, "means": kept.means(), "calibrated": cal.calibrated,
-                    "values": kept.values, "person": kept.person, "n": int(len(keep)),
+    for item in reported:
+        j = features.index(item["feature"])
+        out.append({**item, "lambda": float(gamma[j, j]), "modal": modal,
+                    "means": means[:, j], "calibrated": cal.calibrated[:, j],
+                    "values": rec.values[:, j], "person": rec.person, "n": int(cal.n),
                     "n_repeat": int(cal.within.n_repeat)})
     return {"exposures": out}
 

@@ -484,6 +484,27 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetForms-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModification-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ViewOutcome-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetLevers-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSelection-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetIntendedUse-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUpdating-Input"
                   }
                 ],
                 "discriminator": {
@@ -542,7 +563,14 @@
                     "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
                     "set_causal": "#/components/schemas/SetCausal-Input",
                     "set_time_varying": "#/components/schemas/SetTimeVarying-Input",
-                    "set_explain": "#/components/schemas/SetExplain-Input"
+                    "set_explain": "#/components/schemas/SetExplain-Input",
+                    "set_forms": "#/components/schemas/SetForms-Input",
+                    "set_modification": "#/components/schemas/SetModification-Input",
+                    "view_outcome": "#/components/schemas/ViewOutcome-Input",
+                    "set_levers": "#/components/schemas/SetLevers-Input",
+                    "set_selection": "#/components/schemas/SetSelection-Input",
+                    "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
+                    "set_updating": "#/components/schemas/SetUpdating-Input"
                   }
                 },
                 "title": "Decision"
@@ -1063,6 +1091,27 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetForms-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModification-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ViewOutcome-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetLevers-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSelection-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetIntendedUse-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUpdating-Input"
                   }
                 ],
                 "discriminator": {
@@ -1121,7 +1170,14 @@
                     "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
                     "set_causal": "#/components/schemas/SetCausal-Input",
                     "set_time_varying": "#/components/schemas/SetTimeVarying-Input",
-                    "set_explain": "#/components/schemas/SetExplain-Input"
+                    "set_explain": "#/components/schemas/SetExplain-Input",
+                    "set_forms": "#/components/schemas/SetForms-Input",
+                    "set_modification": "#/components/schemas/SetModification-Input",
+                    "view_outcome": "#/components/schemas/ViewOutcome-Input",
+                    "set_levers": "#/components/schemas/SetLevers-Input",
+                    "set_selection": "#/components/schemas/SetSelection-Input",
+                    "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
+                    "set_updating": "#/components/schemas/SetUpdating-Input"
                   }
                 },
                 "title": "Decision"
@@ -4503,6 +4559,27 @@
               },
               {
                 "$ref": "#/components/schemas/SetExplain-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetForms-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetModification-Output"
+              },
+              {
+                "$ref": "#/components/schemas/ViewOutcome-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetLevers-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetSelection-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetIntendedUse-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetUpdating-Output"
               }
             ],
             "title": "Decision",
@@ -4539,11 +4616,15 @@
                 "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                 "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                 "set_follow_up": "#/components/schemas/SetFollowUp-Output",
+                "set_forms": "#/components/schemas/SetForms-Output",
                 "set_grain": "#/components/schemas/SetGrain-Output",
+                "set_intended_use": "#/components/schemas/SetIntendedUse-Output",
                 "set_lens": "#/components/schemas/SetLens",
+                "set_levers": "#/components/schemas/SetLevers-Output",
                 "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                 "set_missing": "#/components/schemas/SetMissing-Output",
                 "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
+                "set_modification": "#/components/schemas/SetModification-Output",
                 "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
                 "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
@@ -4553,6 +4634,7 @@
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                 "set_roles": "#/components/schemas/SetRoles-Output",
                 "set_scales": "#/components/schemas/SetScales-Output",
+                "set_selection": "#/components/schemas/SetSelection-Output",
                 "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                 "set_split": "#/components/schemas/SetSplit-Output",
                 "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -4562,7 +4644,9 @@
                 "set_temporal": "#/components/schemas/SetTemporal-Output",
                 "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
                 "set_unit": "#/components/schemas/SetUnit",
-                "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
+                "set_updating": "#/components/schemas/SetUpdating-Output",
+                "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                "view_outcome": "#/components/schemas/ViewOutcome-Output"
               }
             }
           }
@@ -5350,6 +5434,27 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetForms-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModification-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ViewOutcome-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetLevers-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSelection-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetIntendedUse-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUpdating-Output"
                   }
                 ],
                 "discriminator": {
@@ -5385,11 +5490,15 @@
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                     "set_follow_up": "#/components/schemas/SetFollowUp-Output",
+                    "set_forms": "#/components/schemas/SetForms-Output",
                     "set_grain": "#/components/schemas/SetGrain-Output",
+                    "set_intended_use": "#/components/schemas/SetIntendedUse-Output",
                     "set_lens": "#/components/schemas/SetLens",
+                    "set_levers": "#/components/schemas/SetLevers-Output",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                     "set_missing": "#/components/schemas/SetMissing-Output",
                     "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
+                    "set_modification": "#/components/schemas/SetModification-Output",
                     "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
@@ -5399,6 +5508,7 @@
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                     "set_roles": "#/components/schemas/SetRoles-Output",
                     "set_scales": "#/components/schemas/SetScales-Output",
+                    "set_selection": "#/components/schemas/SetSelection-Output",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                     "set_split": "#/components/schemas/SetSplit-Output",
                     "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -5408,7 +5518,9 @@
                     "set_temporal": "#/components/schemas/SetTemporal-Output",
                     "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
                     "set_unit": "#/components/schemas/SetUnit",
-                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
+                    "set_updating": "#/components/schemas/SetUpdating-Output",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                    "view_outcome": "#/components/schemas/ViewOutcome-Output"
                   }
                 }
               },
@@ -5467,14 +5579,17 @@
         ],
         "title": "ExplainSpec"
       },
-      "ExposureFormSpec": {
+      "ExposureFormSpec-Input": {
         "properties": {
           "form": {
             "type": "string",
             "enum": [
               "linear",
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form"
           },
@@ -5490,16 +5605,205 @@
               }
             ],
             "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "harrell"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "default": "all"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "form"
+        ],
+        "title": "ExposureFormSpec",
+        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles; ``knots_rule`` \"harrell\" when k was set by the\ndeclared rule on ``n_effective``), quintile indicators with a trend test, indicators at declared\ncut points (``cuts``), one data-derived cut point, or, for an exposure with a mass at zero,\nnon-consumers as their own category beside a spline among consumers. ``domain`` \"consumers\"\nrestricts the analysis to consumers (an estimand change, STROBE-nut nut-14). ``acknowledged``\nkeeps a blocked-and-recorded form as a recorded limitation. ``scale`` is the exposure's\ntransform as it stood when the form was declared (``methods.exposure_form.transform_signature``):\na later transform makes the form stale, re-asked and never kept. ``unit`` is the unit the\nestimate is per, on that scale (the estimand's unit)."
+      },
+      "ExposureFormSpec-Output": {
+        "properties": {
+          "form": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "spline",
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
+            ],
+            "title": "Form"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 3.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "harrell"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "default": "all"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "form",
-          "knots"
+          "knots",
+          "knots_rule",
+          "n_effective",
+          "cuts",
+          "domain",
+          "acknowledged",
+          "scale",
+          "unit"
         ],
         "title": "ExposureFormSpec",
-        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles), or quintile indicators with a trend test."
+        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles; ``knots_rule`` \"harrell\" when k was set by the\ndeclared rule on ``n_effective``), quintile indicators with a trend test, indicators at declared\ncut points (``cuts``), one data-derived cut point, or, for an exposure with a mass at zero,\nnon-consumers as their own category beside a spline among consumers. ``domain`` \"consumers\"\nrestricts the analysis to consumers (an estimand change, STROBE-nut nut-14). ``acknowledged``\nkeeps a blocked-and-recorded form as a recorded limitation. ``scale`` is the exposure's\ntransform as it stood when the form was declared (``methods.exposure_form.transform_signature``):\na later transform makes the form stale, re-asked and never kept. ``unit`` is the unit the\nestimate is per, on that scale (the estimand's unit)."
       },
       "FamilyInfo": {
         "properties": {
@@ -6618,6 +6922,84 @@
         "title": "ImportCodebook",
         "description": "Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a\nvariable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.\nIts structured fields (units, value-code tables, the variable type) settle readings as the\nuser's own documentation, through the confirmation path ``confirm_readings`` writes; its\nfree-text labels only strengthen the guesses the ask leads with; a field the values contradict\nis asked, never applied. The client names the staged codebook; everything else is the\nserver's, read from the codebook and the values."
       },
+      "IntendedUseSpec": {
+        "properties": {
+          "use": {
+            "type": "string",
+            "enum": [
+              "decision_support",
+              "risk_estimation"
+            ],
+            "title": "Use"
+          },
+          "threshold_low": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold Low"
+          },
+          "threshold_high": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold High"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "subgroups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subgroups"
+          },
+          "fairness": {
+            "type": "string",
+            "enum": [
+              "none",
+              "subgroup_performance"
+            ],
+            "title": "Fairness",
+            "default": "subgroup_performance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "use",
+          "threshold_low",
+          "threshold_high",
+          "threshold",
+          "subgroups",
+          "fairness"
+        ],
+        "title": "IntendedUseSpec"
+      },
       "InterviewStep": {
         "properties": {
           "key": {
@@ -6645,6 +7027,8 @@
               "adjustment",
               "time_varying",
               "energy_adjustment",
+              "form",
+              "modification",
               "causal",
               "models",
               "substitution",
@@ -6707,7 +7091,9 @@
                 "type": "string",
                 "enum": [
                   "scale",
-                  "order"
+                  "order",
+                  "stale",
+                  "adjustment"
                 ]
               },
               {
@@ -7396,6 +7782,62 @@
         "title": "LevelValues",
         "description": "A number per level of another column (a PAL per activity category)."
       },
+      "LeverSpec": {
+        "properties": {
+          "forms": {
+            "type": "string",
+            "enum": [
+              "none",
+              "rule",
+              "inner_cv"
+            ],
+            "title": "Forms",
+            "default": "none"
+          },
+          "variance_filter": {
+            "type": "string",
+            "enum": [
+              "none",
+              "near_zero",
+              "top"
+            ],
+            "title": "Variance Filter",
+            "default": "none"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "imbalance": {
+            "type": "string",
+            "enum": [
+              "none",
+              "weights",
+              "undersample",
+              "oversample"
+            ],
+            "title": "Imbalance",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "forms",
+          "variance_filter",
+          "keep",
+          "imbalance"
+        ],
+        "title": "LeverSpec"
+      },
       "Lineage": {
         "properties": {
           "nodes": {
@@ -7831,6 +8273,30 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "whole_chain_bootstrap",
+              "model_based",
+              "rubin_only"
+            ],
+            "title": "Interval",
+            "default": "whole_chain_bootstrap"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
           }
         },
         "additionalProperties": false,
@@ -7838,7 +8304,9 @@
         "required": [
           "method",
           "exposures",
-          "n_boot"
+          "n_boot",
+          "interval",
+          "adjustment"
         ],
         "title": "MeasurementErrorSpec"
       },
@@ -8060,6 +8528,90 @@
         ],
         "title": "ModelSequenceSpec",
         "description": "The declared adjustment sequence beside the primary model (MODELING_SEQUENCE §1 row 11):\nModel 1's columns (the field's age, sex and energy, as the user names them), declared for one\nexposure (or the family's ``*``). The crude model, Model 2 (the primary, the full adjustment\nset) and Model 3 (plus the possible mediators the adjustment answers set beside it) follow from\nthe answers already given."
+      },
+      "ModificationSpec": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Kind"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers-Output"
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "post_hoc": {
+            "type": "boolean",
+            "title": "Post Hoc",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "low",
+          "high",
+          "levels",
+          "answers",
+          "post_hoc"
+        ],
+        "title": "ModificationSpec",
+        "description": "One declared modifier or second exposure (``turbotab.core.methods.interaction``).\n\n``exposure`` is the declared exposure the analysis is about (it holds while that is the\nexposure); ``low`` and ``high`` its contrast on its final scale (None: the interquartile\ncontrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th\npercentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure\nof an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates\nwere seen, or so marked); it counts in the family either way."
       },
       "MultiplicitySpec": {
         "properties": {
@@ -8283,6 +8835,77 @@
           "scale"
         ],
         "title": "OutcomeScaleSpec"
+      },
+      "OutcomeViewSpec": {
+        "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "relationship",
+              "distribution"
+            ],
+            "title": "View"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "training",
+                  "analyzed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Rows"
+          },
+          "levers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Levers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "view",
+          "column",
+          "target",
+          "rows",
+          "n_rows",
+          "levers"
+        ],
+        "title": "OutcomeViewSpec"
       },
       "PlanExport": {
         "properties": {
@@ -8769,7 +9392,7 @@
             "anyOf": [
               {
                 "additionalProperties": {
-                  "$ref": "#/components/schemas/ExposureFormSpec"
+                  "$ref": "#/components/schemas/ExposureFormSpec-Output"
                 },
                 "type": "object"
               },
@@ -9133,6 +9756,99 @@
                 "type": "null"
               }
             ]
+          },
+          "modifications": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ModificationSpec"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modifications"
+          },
+          "form_domains": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "all",
+                    "consumers"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Domains"
+          },
+          "outcome_views": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/OutcomeViewSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Views"
+          },
+          "levers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeverSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectionSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "intended_use": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntendedUseSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdatingSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -9189,7 +9905,14 @@
           "diagnostic_responses",
           "causal",
           "time_varying",
-          "explain"
+          "explain",
+          "modifications",
+          "form_domains",
+          "outcome_views",
+          "levers",
+          "selection",
+          "intended_use",
+          "updating"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -10582,6 +11305,104 @@
         ],
         "title": "SelectModels"
       },
+      "SelectionSpec": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "elastic_net",
+              "stability",
+              "screening",
+              "stepwise",
+              "univariable",
+              "vip"
+            ],
+            "title": "Method",
+            "default": "none"
+          },
+          "where": {
+            "type": "string",
+            "enum": [
+              "in_fold",
+              "outside"
+            ],
+            "title": "Where",
+            "default": "in_fold"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "pre_selected": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no",
+                  "yes",
+                  "other_data",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Selected"
+          },
+          "sensitivity": {
+            "type": "boolean",
+            "title": "Sensitivity",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method",
+          "where",
+          "keep",
+          "threshold",
+          "q",
+          "pre_selected",
+          "sensitivity"
+        ],
+        "title": "SelectionSpec"
+      },
       "SensitivityAnalysis-Input": {
         "properties": {
           "label": {
@@ -11973,7 +12794,10 @@
             "enum": [
               "linear",
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form"
           },
@@ -11989,6 +12813,79 @@
               }
             ],
             "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "harrell"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "default": "all"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           }
         },
         "additionalProperties": false,
@@ -11999,7 +12896,7 @@
           "form"
         ],
         "title": "SetExposureForm",
-        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.\nLeft without ``knots``, a spline takes k by the declared rule on the analyzed rows (the\ncompletion records it); ``scale`` and ``unit`` are the server's."
       },
       "SetExposureForm-Output": {
         "properties": {
@@ -12019,7 +12916,10 @@
             "enum": [
               "linear",
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form"
           },
@@ -12035,6 +12935,79 @@
               }
             ],
             "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "harrell"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "default": "all"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           }
         },
         "additionalProperties": false,
@@ -12043,10 +13016,17 @@
           "kind",
           "column",
           "form",
-          "knots"
+          "knots",
+          "knots_rule",
+          "n_effective",
+          "cuts",
+          "domain",
+          "acknowledged",
+          "scale",
+          "unit"
         ],
         "title": "SetExposureForm",
-        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.\nLeft without ``knots``, a spline takes k by the declared rule on the analyzed rows (the\ncompletion records it); ``scale`` and ``unit`` are the server's."
       },
       "SetFeatureTable-Input": {
         "properties": {
@@ -12276,6 +13256,58 @@
         "title": "SetFollowUp",
         "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.\n\n``landmark``: follow-up counted from this time on (a landmark, or the customary \"the first\nyears of follow-up excluded\" for reverse causation): a row whose follow-up ended at or before\nit, by an event or not, was not at risk then and leaves, and every other row is at risk from\nit (left truncation; the estimate is among those event-free and followed at the landmark).\n``horizon``: follow-up ends at this time: an event after it counts as censored at it.\n``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes\nno row."
       },
+      "SetForms-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_forms",
+            "title": "Kind",
+            "default": "set_forms"
+          },
+          "forms": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExposureFormSpec-Input"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Forms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "forms"
+        ],
+        "title": "SetForms",
+        "description": "The form question's one-tap answer (MODELING_SEQUENCE §1 row 5; BLUEPRINT §14.2): a form for\neach listed column, the exposure's and its continuous confounders', each checked and completed\nas its own ``set_exposure_form`` would be."
+      },
+      "SetForms-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_forms",
+            "title": "Kind",
+            "default": "set_forms"
+          },
+          "forms": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExposureFormSpec-Output"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Forms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "forms"
+        ],
+        "title": "SetForms",
+        "description": "The form question's one-tap answer (MODELING_SEQUENCE §1 row 5; BLUEPRINT §14.2): a form for\neach listed column, the exposure's and its continuous confounders', each checked and completed\nas its own ``set_exposure_form`` would be."
+      },
       "SetGrain-Input": {
         "properties": {
           "kind": {
@@ -12362,6 +13394,171 @@
         ],
         "title": "SetGrain"
       },
+      "SetIntendedUse-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_intended_use",
+            "title": "Kind",
+            "default": "set_intended_use"
+          },
+          "use": {
+            "type": "string",
+            "enum": [
+              "decision_support",
+              "risk_estimation"
+            ],
+            "title": "Use"
+          },
+          "threshold_low": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold Low"
+          },
+          "threshold_high": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold High"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "subgroups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subgroups"
+          },
+          "fairness": {
+            "type": "string",
+            "enum": [
+              "none",
+              "subgroup_performance"
+            ],
+            "title": "Fairness",
+            "default": "subgroup_performance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "use"
+        ],
+        "title": "SetIntendedUse"
+      },
+      "SetIntendedUse-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_intended_use",
+            "title": "Kind",
+            "default": "set_intended_use"
+          },
+          "use": {
+            "type": "string",
+            "enum": [
+              "decision_support",
+              "risk_estimation"
+            ],
+            "title": "Use"
+          },
+          "threshold_low": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold Low"
+          },
+          "threshold_high": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold High"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "subgroups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subgroups"
+          },
+          "fairness": {
+            "type": "string",
+            "enum": [
+              "none",
+              "subgroup_performance"
+            ],
+            "title": "Fairness",
+            "default": "subgroup_performance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "use",
+          "threshold_low",
+          "threshold_high",
+          "threshold",
+          "subgroups",
+          "fairness"
+        ],
+        "title": "SetIntendedUse"
+      },
       "SetLens": {
         "properties": {
           "kind": {
@@ -12395,6 +13592,128 @@
         ],
         "title": "SetLens"
       },
+      "SetLevers-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_levers",
+            "title": "Kind",
+            "default": "set_levers"
+          },
+          "forms": {
+            "type": "string",
+            "enum": [
+              "none",
+              "rule",
+              "inner_cv"
+            ],
+            "title": "Forms",
+            "default": "none"
+          },
+          "variance_filter": {
+            "type": "string",
+            "enum": [
+              "none",
+              "near_zero",
+              "top"
+            ],
+            "title": "Variance Filter",
+            "default": "none"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "imbalance": {
+            "type": "string",
+            "enum": [
+              "none",
+              "weights",
+              "undersample",
+              "oversample"
+            ],
+            "title": "Imbalance",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetLevers"
+      },
+      "SetLevers-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_levers",
+            "title": "Kind",
+            "default": "set_levers"
+          },
+          "forms": {
+            "type": "string",
+            "enum": [
+              "none",
+              "rule",
+              "inner_cv"
+            ],
+            "title": "Forms",
+            "default": "none"
+          },
+          "variance_filter": {
+            "type": "string",
+            "enum": [
+              "none",
+              "near_zero",
+              "top"
+            ],
+            "title": "Variance Filter",
+            "default": "none"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "imbalance": {
+            "type": "string",
+            "enum": [
+              "none",
+              "weights",
+              "undersample",
+              "oversample"
+            ],
+            "title": "Imbalance",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "forms",
+          "variance_filter",
+          "keep",
+          "imbalance"
+        ],
+        "title": "SetLevers"
+      },
       "SetMeasurementError-Input": {
         "properties": {
           "kind": {
@@ -12424,6 +13743,30 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "whole_chain_bootstrap",
+              "model_based",
+              "rubin_only"
+            ],
+            "title": "Interval",
+            "default": "whole_chain_bootstrap"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
           }
         },
         "additionalProperties": false,
@@ -12433,7 +13776,7 @@
           "method"
         ],
         "title": "SetMeasurementError",
-        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011)."
+        "description": "Whether the intakes the recalls measure are corrected for day-to-day error, by regression\ncalibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).\n``adjustment`` is filled by the server from the state, never by the client."
       },
       "SetMeasurementError-Output": {
         "properties": {
@@ -12464,6 +13807,30 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "whole_chain_bootstrap",
+              "model_based",
+              "rubin_only"
+            ],
+            "title": "Interval",
+            "default": "whole_chain_bootstrap"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
           }
         },
         "additionalProperties": false,
@@ -12472,10 +13839,12 @@
           "kind",
           "method",
           "exposures",
-          "n_boot"
+          "n_boot",
+          "interval",
+          "adjustment"
         ],
         "title": "SetMeasurementError",
-        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011)."
+        "description": "Whether the intakes the recalls measure are corrected for day-to-day error, by regression\ncalibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).\n``adjustment`` is filled by the server from the state, never by the client."
       },
       "SetMissing-Input": {
         "properties": {
@@ -12771,6 +14140,206 @@
           "model_1"
         ],
         "title": "SetModelSequence"
+      },
+      "SetModification-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_modification",
+            "title": "Kind",
+            "default": "set_modification"
+          },
+          "modifier": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Modifier"
+          },
+          "modification": {
+            "type": "string",
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Modification",
+            "default": "effect_modification"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers-Input"
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "post_hoc": {
+            "type": "boolean",
+            "title": "Post Hoc",
+            "default": false
+          },
+          "withdraw": {
+            "type": "boolean",
+            "title": "Withdraw",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "modifier"
+        ],
+        "title": "SetModification",
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."
+      },
+      "SetModification-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_modification",
+            "title": "Kind",
+            "default": "set_modification"
+          },
+          "modifier": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Modifier"
+          },
+          "modification": {
+            "type": "string",
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Modification",
+            "default": "effect_modification"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers-Output"
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "post_hoc": {
+            "type": "boolean",
+            "title": "Post Hoc",
+            "default": false
+          },
+          "withdraw": {
+            "type": "boolean",
+            "title": "Withdraw",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "modifier",
+          "modification",
+          "exposure",
+          "low",
+          "high",
+          "levels",
+          "answers",
+          "post_hoc",
+          "withdraw"
+        ],
+        "title": "SetModification",
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."
       },
       "SetMultiplicity-Input": {
         "properties": {
@@ -13260,6 +14829,209 @@
         "title": "SetScales",
         "description": "The multi-item scales scored as predictors (MS8): each one's items become one score in the\nmodels. An empty list is the answer \"no scale is scored\"."
       },
+      "SetSelection-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_selection",
+            "title": "Kind",
+            "default": "set_selection"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "elastic_net",
+              "stability",
+              "screening",
+              "stepwise",
+              "univariable",
+              "vip"
+            ],
+            "title": "Method",
+            "default": "none"
+          },
+          "where": {
+            "type": "string",
+            "enum": [
+              "in_fold",
+              "outside"
+            ],
+            "title": "Where",
+            "default": "in_fold"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "pre_selected": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no",
+                  "yes",
+                  "other_data",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Selected"
+          },
+          "sensitivity": {
+            "type": "boolean",
+            "title": "Sensitivity",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetSelection"
+      },
+      "SetSelection-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_selection",
+            "title": "Kind",
+            "default": "set_selection"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "elastic_net",
+              "stability",
+              "screening",
+              "stepwise",
+              "univariable",
+              "vip"
+            ],
+            "title": "Method",
+            "default": "none"
+          },
+          "where": {
+            "type": "string",
+            "enum": [
+              "in_fold",
+              "outside"
+            ],
+            "title": "Where",
+            "default": "in_fold"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "pre_selected": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no",
+                  "yes",
+                  "other_data",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Selected"
+          },
+          "sensitivity": {
+            "type": "boolean",
+            "title": "Sensitivity",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method",
+          "where",
+          "keep",
+          "threshold",
+          "q",
+          "pre_selected",
+          "sensitivity"
+        ],
+        "title": "SetSelection"
+      },
       "SetSensitivity-Input": {
         "properties": {
           "kind": {
@@ -13509,7 +15281,8 @@
             "type": "string",
             "enum": [
               "kcal",
-              "percent_energy"
+              "percent_energy",
+              "share_reallocation"
             ],
             "title": "Scale",
             "default": "kcal"
@@ -13572,7 +15345,8 @@
             "type": "string",
             "enum": [
               "kcal",
-              "percent_energy"
+              "percent_energy",
+              "share_reallocation"
             ],
             "title": "Scale",
             "default": "kcal"
@@ -14233,6 +16007,57 @@
         "title": "SetUnit",
         "description": "When a unit repeats: is one row of the analysis a unit (combined) or a record?"
       },
+      "SetUpdating-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_updating",
+            "title": "Kind",
+            "default": "set_updating"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "shrinkage"
+            ],
+            "title": "Method",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetUpdating"
+      },
+      "SetUpdating-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_updating",
+            "title": "Kind",
+            "default": "set_updating"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "shrinkage"
+            ],
+            "title": "Method",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetUpdating"
+      },
       "SetUsualIntake-Input": {
         "properties": {
           "kind": {
@@ -14786,7 +16611,8 @@
             "type": "string",
             "enum": [
               "kcal",
-              "percent_energy"
+              "percent_energy",
+              "share_reallocation"
             ],
             "title": "Scale",
             "default": "kcal"
@@ -15115,6 +16941,8 @@
               "adjustment",
               "time_varying",
               "energy_adjustment",
+              "form",
+              "modification",
               "causal",
               "models",
               "substitution",
@@ -15413,6 +17241,25 @@
         ],
         "title": "TimeVaryingSpec"
       },
+      "UpdatingSpec": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "shrinkage"
+            ],
+            "title": "Method",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method"
+        ],
+        "title": "UpdatingSpec"
+      },
       "UsualIntakeSpec": {
         "properties": {
           "model": {
@@ -15598,6 +17445,183 @@
           "count"
         ],
         "title": "ValueCount"
+      },
+      "ViewOutcome-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "view_outcome",
+            "title": "Kind",
+            "default": "view_outcome"
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "relationship",
+              "distribution"
+            ],
+            "title": "View"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "training",
+                  "analyzed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Rows"
+          },
+          "levers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "view"
+        ],
+        "title": "ViewOutcome"
+      },
+      "ViewOutcome-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "view_outcome",
+            "title": "Kind",
+            "default": "view_outcome"
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "relationship",
+              "distribution"
+            ],
+            "title": "View"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "training",
+                  "analyzed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Rows"
+          },
+          "levers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "view",
+          "columns",
+          "target",
+          "rows",
+          "n_rows",
+          "levers"
+        ],
+        "title": "ViewOutcome"
       },
       "Where": {
         "properties": {
@@ -16699,6 +18723,99 @@
         "title": "BeeswarmInput",
         "type": "object"
       },
+      "Benchmark": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "default": "spline_benchmark",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "default": "Regression with splines (benchmark)",
+            "title": "Label",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "versus_baseline": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Versus Baseline"
+          },
+          "differences": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Differences",
+            "type": "array"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "metric",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "versus_baseline",
+          "differences",
+          "sentence"
+        ],
+        "title": "Benchmark",
+        "type": "object"
+      },
       "BenchmarkResult": {
         "additionalProperties": false,
         "properties": {
@@ -16782,6 +18899,37 @@
         "title": "BenchmarkResult",
         "type": "object"
       },
+      "BinPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "n"
+        ],
+        "title": "BinPoint",
+        "type": "object"
+      },
       "BrantCheck": {
         "additionalProperties": false,
         "description": "Brant's (1990) Wald test of the proportional-odds assumption: overall, and per column.",
@@ -16839,9 +18987,97 @@
         "title": "BrantColumn",
         "type": "object"
       },
+      "CalibratedContrast": {
+        "additionalProperties": false,
+        "description": "The substitution as the difference of calibrated coefficients (all-components).",
+        "properties": {
+          "donor": {
+            "title": "Donor",
+            "type": "string"
+          },
+          "recipient": {
+            "title": "Recipient",
+            "type": "string"
+          },
+          "step_kcal": {
+            "title": "Step Kcal",
+            "type": "number"
+          },
+          "naive": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Naive"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          }
+        },
+        "required": [
+          "donor",
+          "recipient",
+          "step_kcal",
+          "naive",
+          "estimate",
+          "se",
+          "ci_low",
+          "ci_high"
+        ],
+        "title": "CalibratedContrast",
+        "type": "object"
+      },
       "CalibratedExposure": {
         "additionalProperties": false,
-        "description": "One energy-adjusted exposure: its uncorrected and its calibrated coefficient.",
+        "description": "One error-prone column: its uncorrected and its calibrated coefficient.",
         "properties": {
           "feature": {
             "title": "Feature",
@@ -16950,6 +19186,18 @@
             "default": null,
             "title": "Ci High"
           },
+          "delta_se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delta Se"
+          },
           "attenuation": {
             "anyOf": [
               {
@@ -16961,18 +19209,6 @@
             ],
             "default": null,
             "title": "Attenuation"
-          },
-          "attenuation_se": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Attenuation Se"
           },
           "within_variance": {
             "anyOf": [
@@ -17051,8 +19287,8 @@
           "se",
           "ci_low",
           "ci_high",
+          "delta_se",
           "attenuation",
-          "attenuation_se",
           "within_variance",
           "between_variance",
           "n_persons",
@@ -17233,9 +19469,143 @@
             "title": "Rows",
             "type": "string"
           },
+          "role": {
+            "const": "secondary",
+            "default": "secondary",
+            "title": "Role",
+            "type": "string"
+          },
+          "label": {
+            "default": "corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption)",
+            "title": "Label",
+            "type": "string"
+          },
+          "test": {
+            "default": "The test of no association is the uncorrected model's: “the usual statistical test of the null hypothesis (no exposure effect) remains theoretically valid” (Freedman et al. 2011, J Natl Cancer Inst 103:1086); the calibrated estimate gives the size, with its own interval.",
+            "title": "Test",
+            "type": "string"
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "enum": [
+                  "univariate",
+                  "multivariate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Calibration"
+          },
+          "calibrated": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Calibrated",
+            "type": "array"
+          },
+          "covariates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Covariates",
+            "type": "array"
+          },
+          "order": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Order",
+            "type": "array"
+          },
+          "resampling": {
+            "anyOf": [
+              {
+                "enum": [
+                  "persons",
+                  "clusters",
+                  "psu_within_strata"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resampling"
+          },
+          "weighted": {
+            "default": false,
+            "title": "Weighted",
+            "type": "boolean"
+          },
+          "imputations": {
+            "default": 0,
+            "title": "Imputations",
+            "type": "integer"
+          },
+          "boot_copies": {
+            "default": 0,
+            "title": "Boot Copies",
+            "type": "integer"
+          },
+          "attenuation": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attenuation"
+          },
+          "within_covariance": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Within Covariance"
+          },
           "n_persons": {
             "default": 0,
             "title": "N Persons",
+            "type": "integer"
+          },
+          "n_boot": {
+            "default": 0,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "n_boot_ok": {
+            "default": 0,
+            "title": "N Boot Ok",
             "type": "integer"
           },
           "recalls": {
@@ -17252,6 +19622,14 @@
               "$ref": "#/components/schemas/CalibratedExposure"
             },
             "title": "Exposures",
+            "type": "array"
+          },
+          "contrasts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CalibratedContrast"
+            },
+            "title": "Contrasts",
             "type": "array"
           },
           "assumptions": {
@@ -17283,9 +19661,25 @@
           "exits",
           "family",
           "rows",
+          "role",
+          "label",
+          "test",
+          "calibration",
+          "calibrated",
+          "covariates",
+          "order",
+          "resampling",
+          "weighted",
+          "imputations",
+          "boot_copies",
+          "attenuation",
+          "within_covariance",
           "n_persons",
+          "n_boot",
+          "n_boot_ok",
           "recalls",
           "exposures",
+          "contrasts",
           "assumptions",
           "concerns",
           "methods"
@@ -19186,6 +21580,81 @@
         "title": "DesignArtifact",
         "type": "object"
       },
+      "DesignBased": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "folds": {
+            "title": "Folds",
+            "type": "integer"
+          },
+          "repeats": {
+            "title": "Repeats",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          },
+          "families": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Choice"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "source",
+          "metric",
+          "folds",
+          "repeats",
+          "note",
+          "families",
+          "choice",
+          "sentence"
+        ],
+        "title": "DesignBased",
+        "type": "object"
+      },
       "DesignModel": {
         "additionalProperties": false,
         "properties": {
@@ -19769,6 +22238,34 @@
           "converted": {
             "title": "Converted",
             "type": "boolean"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sd"
+          },
+          "sd_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "design_weighted",
+                  "sample"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sd Basis"
           }
         },
         "required": [
@@ -19780,7 +22277,9 @@
           "limit",
           "interval_includes_null",
           "rare",
-          "converted"
+          "converted",
+          "sd",
+          "sd_basis"
         ],
         "title": "EValueResult",
         "type": "object"
@@ -20876,6 +23375,209 @@
         "title": "Estimates",
         "type": "object"
       },
+      "EvaluationArtifact": {
+        "additionalProperties": false,
+        "description": "The ``evaluation`` artifact (module docstring).",
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "scores_shown": {
+            "title": "Scores Shown",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Metric"
+          },
+          "reported_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reported Family"
+          },
+          "benchmark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Benchmark"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "interpretable": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interpretable"
+          },
+          "decision_curve": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision Curve"
+          },
+          "subgroups": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Subgroups",
+            "type": "array"
+          },
+          "shrinkage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Shrinkage"
+          },
+          "internal_external": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Internal External",
+            "type": "array"
+          },
+          "inclusion": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Inclusion"
+          },
+          "design_based": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesignBased"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "hand_levers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Hand Levers",
+            "type": "array"
+          },
+          "estimates": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimates"
+          },
+          "sentences": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sentences",
+            "type": "array"
+          }
+        },
+        "required": [
+          "purpose",
+          "task",
+          "scores_shown",
+          "note",
+          "metric",
+          "reported_family",
+          "benchmark",
+          "interpretable",
+          "decision_curve",
+          "subgroups",
+          "shrinkage",
+          "internal_external",
+          "inclusion",
+          "design_based",
+          "hand_levers",
+          "estimates",
+          "sentences"
+        ],
+        "title": "EvaluationArtifact",
+        "type": "object"
+      },
       "ExclusionProposal": {
         "description": "One of the pack's exclusion rules, with the rows it would remove. Never pre-selected.",
         "properties": {
@@ -21153,6 +23855,195 @@
         "title": "ExplainArtifact",
         "type": "object"
       },
+      "ExploreArtifact": {
+        "additionalProperties": false,
+        "description": "The ``explore`` artifact (module docstring).",
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_holdout": {
+            "title": "N Holdout",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ExploreFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "more": {
+            "default": 0,
+            "title": "More",
+            "type": "integer"
+          },
+          "proposed_subgroups": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Proposed Subgroups",
+            "type": "array"
+          },
+          "viewed": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Viewed",
+            "type": "array"
+          },
+          "hand_levers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HandLever"
+            },
+            "title": "Hand Levers",
+            "type": "array"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "rows",
+          "n_rows",
+          "n_holdout",
+          "findings",
+          "more",
+          "proposed_subgroups",
+          "viewed",
+          "hand_levers",
+          "sentence"
+        ],
+        "title": "ExploreArtifact",
+        "type": "object"
+      },
+      "ExploreFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "outcome_view": {
+            "default": false,
+            "title": "Outcome View",
+            "type": "boolean"
+          },
+          "viewed": {
+            "default": false,
+            "title": "Viewed",
+            "type": "boolean"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          },
+          "points": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BinPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GroupQuality"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Detail"
+          },
+          "lever": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lever"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Record"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "summary",
+          "columns",
+          "outcome_view",
+          "viewed",
+          "view",
+          "points",
+          "groups",
+          "detail",
+          "lever",
+          "record"
+        ],
+        "title": "ExploreFinding",
+        "type": "object"
+      },
       "ExposureFormOption": {
         "description": "One form an exposure can enter the model in (WP12a; ``turbotab/core/methods/exposure_form.py``\n``options``), with north star 5's two labels, in the order of soundness for the purpose.",
         "properties": {
@@ -21160,7 +24051,11 @@
             "enum": [
               "spline",
               "linear",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline",
+              "consumers_only"
             ],
             "title": "Value",
             "type": "string"
@@ -21180,6 +24075,18 @@
           "consequence": {
             "title": "Consequence",
             "type": "string"
+          },
+          "rung": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rung"
           }
         },
         "required": [
@@ -21187,9 +24094,133 @@
           "label",
           "customary",
           "sound",
-          "consequence"
+          "consequence",
+          "rung"
         ],
         "title": "ExposureFormOption",
+        "type": "object"
+      },
+      "ExposureFormSpec": {
+        "additionalProperties": false,
+        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles; ``knots_rule`` \"harrell\" when k was set by the\ndeclared rule on ``n_effective``), quintile indicators with a trend test, indicators at declared\ncut points (``cuts``), one data-derived cut point, or, for an exposure with a mass at zero,\nnon-consumers as their own category beside a spline among consumers. ``domain`` \"consumers\"\nrestricts the analysis to consumers (an estimand change, STROBE-nut nut-14). ``acknowledged``\nkeeps a blocked-and-recorded form as a recorded limitation. ``scale`` is the exposure's\ntransform as it stood when the form was declared (``methods.exposure_form.transform_signature``):\na later transform makes the form stale, re-asked and never kept. ``unit`` is the unit the\nestimate is per, on that scale (the estimand's unit).",
+        "properties": {
+          "form": {
+            "enum": [
+              "linear",
+              "spline",
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "maximum": 5,
+                "minimum": 3,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "const": "harrell",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cuts"
+          },
+          "domain": {
+            "default": "all",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "type": "string"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "form",
+          "knots",
+          "knots_rule",
+          "n_effective",
+          "cuts",
+          "domain",
+          "acknowledged",
+          "scale",
+          "unit"
+        ],
+        "title": "ExposureFormSpec",
         "type": "object"
       },
       "ExposureTest": {
@@ -21203,7 +24234,10 @@
           "form": {
             "enum": [
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form",
             "type": "string"
@@ -21213,7 +24247,13 @@
               "overall",
               "nonlinear",
               "trend",
-              "global"
+              "global",
+              "companion_q2",
+              "companion_q3",
+              "companion_q4",
+              "companion_q5",
+              "companion_trend",
+              "cut"
             ],
             "title": "Test",
             "type": "string"
@@ -21338,6 +24378,57 @@
             "default": null,
             "title": "Medians"
           },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "boundaries": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Boundaries"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reference"
+          },
+          "what": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "What"
+          },
           "caption": {
             "title": "Caption",
             "type": "string"
@@ -21357,6 +24448,10 @@
           "ci_high",
           "knots",
           "medians",
+          "label",
+          "boundaries",
+          "reference",
+          "what",
           "caption"
         ],
         "title": "ExposureTest",
@@ -21766,6 +24861,8 @@
                   "adjustment",
                   "time_varying",
                   "energy_adjustment",
+                  "form",
+                  "modification",
                   "causal",
                   "models",
                   "substitution",
@@ -22576,6 +25673,14 @@
             ],
             "default": null,
             "title": "Methods"
+          },
+          "score_concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Score Concerns",
+            "type": "array"
           }
         },
         "required": [
@@ -22603,7 +25708,8 @@
           "performance",
           "nested_cv",
           "adjustment_terms",
-          "methods"
+          "methods",
+          "score_concerns"
         ],
         "title": "FittedModel",
         "type": "object"
@@ -22696,6 +25802,293 @@
           "varies"
         ],
         "title": "FollowUpCandidate",
+        "type": "object"
+      },
+      "FormNeed": {
+        "additionalProperties": false,
+        "description": "One column the form question asks about.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "exposure",
+              "confounder"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "receives": {
+            "title": "Receives",
+            "type": "string"
+          },
+          "scale": {
+            "title": "Scale",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "zero_share": {
+            "title": "Zero Share",
+            "type": "number"
+          },
+          "mass_at_zero": {
+            "title": "Mass At Zero",
+            "type": "boolean"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "rule_knots": {
+            "title": "Rule Knots",
+            "type": "integer"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/FormOptionCard"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "proposal": {
+            "additionalProperties": true,
+            "title": "Proposal",
+            "type": "object"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Route"
+          }
+        },
+        "required": [
+          "column",
+          "role",
+          "receives",
+          "scale",
+          "unit",
+          "zero_share",
+          "mass_at_zero",
+          "n_effective",
+          "rule_knots",
+          "rule",
+          "options",
+          "proposal",
+          "label",
+          "route"
+        ],
+        "title": "FormNeed",
+        "type": "object"
+      },
+      "FormOptionCard": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "consequence": {
+            "title": "Consequence",
+            "type": "string"
+          },
+          "rung": {
+            "title": "Rung",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "customary",
+          "sound",
+          "consequence",
+          "rung"
+        ],
+        "title": "FormOptionCard",
+        "type": "object"
+      },
+      "FormStated": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "why"
+        ],
+        "title": "FormStated",
+        "type": "object"
+      },
+      "FormsArtifact": {
+        "additionalProperties": false,
+        "description": "The ``forms`` stage: the functional-form question's card (MODELING_SEQUENCE §1 row 5).",
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "rule_knots": {
+            "title": "Rule Knots",
+            "type": "integer"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "needs": {
+            "items": {
+              "$ref": "#/components/schemas/FormNeed"
+            },
+            "title": "Needs",
+            "type": "array"
+          },
+          "stated": {
+            "items": {
+              "$ref": "#/components/schemas/FormStated"
+            },
+            "title": "Stated",
+            "type": "array"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "beside": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beside"
+          }
+        },
+        "required": [
+          "purpose",
+          "ready",
+          "exposure",
+          "task",
+          "n_effective",
+          "rule_knots",
+          "rule",
+          "needs",
+          "stated",
+          "answer",
+          "beside"
+        ],
+        "title": "FormsArtifact",
         "type": "object"
       },
       "GoldbergRule": {
@@ -22981,6 +26374,147 @@
           "stated"
         ],
         "title": "GrainReading",
+        "type": "object"
+      },
+      "GroupQuality": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "missing_share": {
+            "title": "Missing Share",
+            "type": "number"
+          }
+        },
+        "required": [
+          "group",
+          "n",
+          "missing_share"
+        ],
+        "title": "GroupQuality",
+        "type": "object"
+      },
+      "HandLever": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          },
+          "what": {
+            "title": "What",
+            "type": "string"
+          },
+          "then": {
+            "title": "Then",
+            "type": "string"
+          },
+          "now": {
+            "title": "Now",
+            "type": "string"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "view",
+          "what",
+          "then",
+          "now",
+          "sentence"
+        ],
+        "title": "HandLever",
+        "type": "object"
+      },
+      "Heterogeneity": {
+        "additionalProperties": false,
+        "properties": {
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "df_num": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df Num"
+          },
+          "df_den": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df Den"
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "enum": [
+                  "F",
+                  "chi2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distribution"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statistic",
+          "df_num",
+          "df_den",
+          "distribution",
+          "p",
+          "caption"
+        ],
+        "title": "Heterogeneity",
         "type": "object"
       },
       "HoldoutDetail": {
@@ -24272,6 +27806,82 @@
         "title": "LevelCalibration",
         "type": "object"
       },
+      "Lever": {
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/LeverOption"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "options"
+        ],
+        "title": "Lever",
+        "type": "object"
+      },
+      "LeverOption": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "rung": {
+            "title": "Rung",
+            "type": "string"
+          },
+          "in_fold": {
+            "default": false,
+            "title": "In Fold",
+            "type": "boolean"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound",
+          "rung",
+          "in_fold",
+          "decision"
+        ],
+        "title": "LeverOption",
+        "type": "object"
+      },
       "LockPlan": {
         "additionalProperties": false,
         "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone.",
@@ -25549,6 +29159,290 @@
           "reason"
         ],
         "title": "ModelSequenceCard",
+        "type": "object"
+      },
+      "ModificationArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "family_count": {
+            "additionalProperties": true,
+            "title": "Family Count",
+            "type": "object"
+          },
+          "modifications": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ModificationResult"
+            },
+            "title": "Modifications",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "exposure",
+          "family_count",
+          "modifications",
+          "methods"
+        ],
+        "title": "ModificationArtifact",
+        "type": "object"
+      },
+      "ModificationFit": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "scale": {
+            "enum": [
+              "ratio",
+              "difference"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "effects": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Effects",
+            "type": "array"
+          },
+          "joint": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Joint",
+            "type": "array"
+          },
+          "multiplicative": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Multiplicative",
+            "type": "array"
+          },
+          "reri": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Reri",
+            "type": "array"
+          },
+          "additive": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Additive",
+            "type": "array"
+          },
+          "heterogeneity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Heterogeneity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "pooled": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pooled"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "measure",
+          "scale",
+          "n_rows",
+          "effects",
+          "joint",
+          "multiplicative",
+          "reri",
+          "additive",
+          "heterogeneity",
+          "pooled",
+          "concerns"
+        ],
+        "title": "ModificationFit",
+        "type": "object"
+      },
+      "ModificationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "modifier": {
+            "title": "Modifier",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "declared",
+              "suggested by data inspection"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "contrast": {
+            "title": "Contrast",
+            "type": "string"
+          },
+          "low": {
+            "title": "Low",
+            "type": "number"
+          },
+          "high": {
+            "title": "High",
+            "type": "number"
+          },
+          "strata": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Strata",
+            "type": "array"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "adjusted_for": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Adjusted For",
+            "type": "array"
+          },
+          "second_adjusted_for": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Second Adjusted For",
+            "type": "array"
+          },
+          "waiting": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Waiting",
+            "type": "array"
+          },
+          "families": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ModificationFit"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "modifier",
+          "kind",
+          "exposure",
+          "status",
+          "contrast",
+          "low",
+          "high",
+          "strata",
+          "reference",
+          "adjusted_for",
+          "second_adjusted_for",
+          "waiting",
+          "families",
+          "sentence",
+          "concerns"
+        ],
+        "title": "ModificationResult",
         "type": "object"
       },
       "MultiplicityQuestion": {
@@ -26987,6 +30881,87 @@
         "title": "ProposalsArtifact",
         "type": "object"
       },
+      "Quantity": {
+        "additionalProperties": false,
+        "description": "One reported quantity: on a ratio scale ``estimate`` is the ratio (the RERI its own value);\non a difference scale the difference.",
+        "properties": {
+          "stratum": {
+            "title": "Stratum",
+            "type": "string"
+          },
+          "a": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a0",
+                  "a1"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "A"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "P"
+          }
+        },
+        "required": [
+          "stratum",
+          "a",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "p"
+        ],
+        "title": "Quantity",
+        "type": "object"
+      },
       "QuestionLabels": {
         "description": "WP17 (north star 5): each question's options with \"customary in <field>\" and \"sound for\n<purpose>\", soundest first (``turbotab/core/custom_sound.py``).",
         "properties": {
@@ -27671,6 +31646,108 @@
           "n_dropped_observed"
         ],
         "title": "RowComparison",
+        "type": "object"
+      },
+      "SampleSize": {
+        "additionalProperties": false,
+        "description": "Riley et al.'s minimum sample size, computed before the shelf is ranked (TRIPOD+AI 10).",
+        "properties": {
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "parameters": {
+            "title": "Parameters",
+            "type": "integer"
+          },
+          "criteria": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SampleSizeCriterion"
+            },
+            "title": "Criteria",
+            "type": "array"
+          },
+          "binding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Binding"
+          },
+          "below": {
+            "default": false,
+            "title": "Below",
+            "type": "boolean"
+          },
+          "r2_cs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "R2 Cs"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "minimum",
+          "n_rows",
+          "parameters",
+          "criteria",
+          "binding",
+          "below",
+          "r2_cs",
+          "sentence"
+        ],
+        "title": "SampleSize",
+        "type": "object"
+      },
+      "SampleSizeCriterion": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "what": {
+            "title": "What",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "what",
+          "n"
+        ],
+        "title": "SampleSizeCriterion",
         "type": "object"
       },
       "ScaleCorrection": {
@@ -30161,7 +34238,7 @@
       },
       "SetExposureForm": {
         "additionalProperties": false,
-        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.",
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.\nLeft without ``knots``, a spline takes k by the declared rule on the analyzed rows (the\ncompletion records it); ``scale`` and ``unit`` are the server's.",
         "properties": {
           "kind": {
             "const": "set_exposure_form",
@@ -30178,7 +34255,10 @@
             "enum": [
               "linear",
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form",
             "type": "string"
@@ -30196,13 +34276,98 @@
             ],
             "default": null,
             "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "const": "harrell",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cuts"
+          },
+          "domain": {
+            "default": "all",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "type": "string"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
           }
         },
         "required": [
           "kind",
           "column",
           "form",
-          "knots"
+          "knots",
+          "knots_rule",
+          "n_effective",
+          "cuts",
+          "domain",
+          "acknowledged",
+          "scale",
+          "unit"
         ],
         "title": "SetExposureForm",
         "type": "object"
@@ -30329,6 +34494,32 @@
         "title": "SetFollowUp",
         "type": "object"
       },
+      "SetForms": {
+        "additionalProperties": false,
+        "description": "The form question's one-tap answer (MODELING_SEQUENCE §1 row 5; BLUEPRINT §14.2): a form for\neach listed column, the exposure's and its continuous confounders', each checked and completed\nas its own ``set_exposure_form`` would be.",
+        "properties": {
+          "kind": {
+            "const": "set_forms",
+            "default": "set_forms",
+            "title": "Kind",
+            "type": "string"
+          },
+          "forms": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExposureFormSpec"
+            },
+            "minProperties": 1,
+            "title": "Forms",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "forms"
+        ],
+        "title": "SetForms",
+        "type": "object"
+      },
       "SetGrain": {
         "additionalProperties": false,
         "properties": {
@@ -30374,9 +34565,161 @@
         "title": "SetGrain",
         "type": "object"
       },
+      "SetIntendedUse": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_intended_use",
+            "default": "set_intended_use",
+            "title": "Kind",
+            "type": "string"
+          },
+          "use": {
+            "enum": [
+              "decision_support",
+              "risk_estimation"
+            ],
+            "title": "Use",
+            "type": "string"
+          },
+          "threshold_low": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold Low"
+          },
+          "threshold_high": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold High"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold"
+          },
+          "subgroups": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Subgroups",
+            "type": "array"
+          },
+          "fairness": {
+            "default": "subgroup_performance",
+            "enum": [
+              "none",
+              "subgroup_performance"
+            ],
+            "title": "Fairness",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "use",
+          "threshold_low",
+          "threshold_high",
+          "threshold",
+          "subgroups",
+          "fairness"
+        ],
+        "title": "SetIntendedUse",
+        "type": "object"
+      },
+      "SetLevers": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_levers",
+            "default": "set_levers",
+            "title": "Kind",
+            "type": "string"
+          },
+          "forms": {
+            "default": "none",
+            "enum": [
+              "none",
+              "rule",
+              "inner_cv"
+            ],
+            "title": "Forms",
+            "type": "string"
+          },
+          "variance_filter": {
+            "default": "none",
+            "enum": [
+              "none",
+              "near_zero",
+              "top"
+            ],
+            "title": "Variance Filter",
+            "type": "string"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Keep"
+          },
+          "imbalance": {
+            "default": "none",
+            "enum": [
+              "none",
+              "weights",
+              "undersample",
+              "oversample"
+            ],
+            "title": "Imbalance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "forms",
+          "variance_filter",
+          "keep",
+          "imbalance"
+        ],
+        "title": "SetLevers",
+        "type": "object"
+      },
       "SetMeasurementError": {
         "additionalProperties": false,
-        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011).",
+        "description": "Whether the intakes the recalls measure are corrected for day-to-day error, by regression\ncalibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).\n``adjustment`` is filled by the server from the state, never by the client.",
         "properties": {
           "kind": {
             "const": "set_measurement_error",
@@ -30405,13 +34748,40 @@
             "minimum": 50,
             "title": "N Boot",
             "type": "integer"
+          },
+          "interval": {
+            "default": "whole_chain_bootstrap",
+            "enum": [
+              "whole_chain_bootstrap",
+              "model_based",
+              "rubin_only"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Adjustment"
           }
         },
         "required": [
           "kind",
           "method",
           "exposures",
-          "n_boot"
+          "n_boot",
+          "interval",
+          "adjustment"
         ],
         "title": "SetMeasurementError",
         "type": "object"
@@ -30569,6 +34939,114 @@
           "model_1"
         ],
         "title": "SetModelSequence",
+        "type": "object"
+      },
+      "SetModification": {
+        "additionalProperties": false,
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure.",
+        "properties": {
+          "kind": {
+            "const": "set_modification",
+            "default": "set_modification",
+            "title": "Kind",
+            "type": "string"
+          },
+          "modifier": {
+            "minLength": 1,
+            "title": "Modifier",
+            "type": "string"
+          },
+          "modification": {
+            "default": "effect_modification",
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Modification",
+            "type": "string"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exposure"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "High"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Levels"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers"
+            },
+            "title": "Answers",
+            "type": "object"
+          },
+          "post_hoc": {
+            "default": false,
+            "title": "Post Hoc",
+            "type": "boolean"
+          },
+          "withdraw": {
+            "default": false,
+            "title": "Withdraw",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "modifier",
+          "modification",
+          "exposure",
+          "low",
+          "high",
+          "levels",
+          "answers",
+          "post_hoc",
+          "withdraw"
+        ],
+        "title": "SetModification",
         "type": "object"
       },
       "SetMultiplicity": {
@@ -30748,6 +35226,115 @@
         "title": "SetScales",
         "type": "object"
       },
+      "SetSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_selection",
+            "default": "set_selection",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "default": "none",
+            "enum": [
+              "none",
+              "elastic_net",
+              "stability",
+              "screening",
+              "stepwise",
+              "univariable",
+              "vip"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "where": {
+            "default": "in_fold",
+            "enum": [
+              "in_fold",
+              "outside"
+            ],
+            "title": "Where",
+            "type": "string"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Keep"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Q"
+          },
+          "pre_selected": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no",
+                  "yes",
+                  "other_data",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pre Selected"
+          },
+          "sensitivity": {
+            "default": false,
+            "title": "Sensitivity",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "method",
+          "where",
+          "keep",
+          "threshold",
+          "q",
+          "pre_selected",
+          "sensitivity"
+        ],
+        "title": "SetSelection",
+        "type": "object"
+      },
       "SetSensitivity": {
         "additionalProperties": false,
         "description": "Analyses beside the primary, each on the rows its own exclusion rules keep (audit ME-16).\n\nBanna et al. 2017: \"analyses in the total sample without exclusion of participants should\nalso be conducted and reported\". An empty list is the answer \"no sensitivity analysis\".",
@@ -30899,7 +35486,8 @@
             "default": "kcal",
             "enum": [
               "kcal",
-              "percent_energy"
+              "percent_energy",
+              "share_reallocation"
             ],
             "title": "Scale",
             "type": "string"
@@ -31220,6 +35808,32 @@
         "title": "SetTimeVarying",
         "type": "object"
       },
+      "SetUpdating": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_updating",
+            "default": "set_updating",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "default": "none",
+            "enum": [
+              "none",
+              "shrinkage"
+            ],
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetUpdating",
+        "type": "object"
+      },
       "SetUsualIntake": {
         "additionalProperties": false,
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``.",
@@ -31520,11 +36134,23 @@
           "basis": {
             "title": "Basis",
             "type": "string"
+          },
+          "sample_size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SampleSize"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "families",
-          "basis"
+          "basis",
+          "sample_size"
         ],
         "title": "ShelfArtifact",
         "type": "object"
@@ -32285,6 +36911,18 @@
             ],
             "default": null,
             "title": "Step Percent"
+          },
+          "curve_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Curve Label"
           }
         },
         "required": [
@@ -32303,7 +36941,8 @@
           "support",
           "omitted_energy",
           "scale",
-          "step_percent"
+          "step_percent",
+          "curve_label"
         ],
         "title": "SubstitutionArtifact",
         "type": "object"
@@ -32692,6 +37331,18 @@
             ],
             "default": null,
             "title": "Df"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
           }
         },
         "required": [
@@ -32710,7 +37361,8 @@
           "refused",
           "exits",
           "pooled",
-          "df"
+          "df",
+          "level"
         ],
         "title": "SubstitutionModel",
         "type": "object"
@@ -34776,6 +39428,101 @@
           "level"
         ],
         "title": "VersusBaseline",
+        "type": "object"
+      },
+      "ViewOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "view_outcome",
+            "default": "view_outcome",
+            "title": "Kind",
+            "type": "string"
+          },
+          "view": {
+            "enum": [
+              "relationship",
+              "distribution"
+            ],
+            "title": "View",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "enum": [
+                  "training",
+                  "analyzed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rows"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Rows"
+          },
+          "levers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Levers"
+          }
+        },
+        "required": [
+          "kind",
+          "view",
+          "columns",
+          "target",
+          "rows",
+          "n_rows",
+          "levers"
+        ],
+        "title": "ViewOutcome",
         "type": "object"
       },
       "WeightSummary": {

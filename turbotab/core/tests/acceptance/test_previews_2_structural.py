@@ -96,7 +96,9 @@ def test_2_an_allow_listed_kinds_slot_feeds_no_stage_but_as_the_reason_says():
     """The stages that read each allow-listed kind's slot (``Stage.reads``): none for the plan lock,
     the re-seal and the censoring answer; the findings' dispositions for a deferral or a dismissal
     (tested below: only an applied repair changes anything); the outcome's unit for the words of
-    the target's card, the substitution curve's labels and the explanations' axes."""
+    the target's card, the substitution curve's labels and the explanations' axes; an outcome view
+    (wave 2b, EXPLORE) for Explore's "viewed" flags and the sentence of a lever set by hand after
+    it (``stages.explore.hand_levers``), which the evaluation stage quotes."""
     from turbotab.core.stages import build_graph
 
     graph = build_graph()
@@ -104,6 +106,7 @@ def test_2_an_allow_listed_kinds_slot_feeds_no_stage_but_as_the_reason_says():
                for kind in UNPREVIEWED}
     assert readers["lock_plan"] == readers["reseal"] == readers["set_censoring"] == []
     assert readers["set_outcome_unit"] == ["explain", "substitution", "target_info"]
+    assert readers["view_outcome"] == ["evaluation", "explore"]
     assert d.SLOTS["defer_finding"] == d.SLOTS["dismiss_finding"] == "findings"
 
 

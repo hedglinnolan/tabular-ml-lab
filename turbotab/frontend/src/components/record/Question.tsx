@@ -47,6 +47,8 @@ export const GRAMMAR: Record<QuestionKey, Grammar> = {
   missing: "choice",
   split: "choice",
   energy_adjustment: "choice",
+  form: "choice",
+  modification: "choice",
   causal: "choice",
   models: "choice",
   substitution: "choice",

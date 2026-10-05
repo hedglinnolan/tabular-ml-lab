@@ -45,6 +45,8 @@ const questionKeys = [
   "adjustment",
   "time_varying",
   "energy_adjustment",
+  "form",
+  "modification",
   "causal",
   "models",
   "substitution",

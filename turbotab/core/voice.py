@@ -1287,18 +1287,24 @@ def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
         text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in "
                 f"steps of {tick(number(d.step_kcal))} kcal {fixed}")
     n_boot = int(getattr(d, "n_boot", 0) or 0)
+    from turbotab.core.methods.substitution import class_clause
     from turbotab.core.models.survey import substitution_clause
 
+    # A multiclass outcome: one curve per class (its contract's clause), so each band is a class's.
+    per_class = class_clause(state)
+    if per_class:
+        text += f"; {per_class}"
     # MS4: the design's band replaces the refits. The sentence reads the decision and the state
     # only, so the methods text restates it whole when the survey answer changes (:func:`restate`).
-    population = substitution_clause(state, n_boot)
+    population = substitution_clause(state, n_boot, per_class=bool(per_class))
     if population:
         text += f"; {population}"
     elif n_boot:
         # Under inference the curve and its refits read every analyzed row (BLUEPRINT §12 ruling 3).
         rows = ("every analyzed row" if getattr(state, "purpose", None) == "inference"
                 else "training rows")
-        text += (f"; its band comes from {count(n_boot)} refits of each model on bootstrap "
+        whose = "each class's band comes" if per_class else "its band comes"
+        text += (f"; {whose} from {count(n_boot)} refits of each model on bootstrap "
                  f"resamples of {rows}")
     if getattr(d, "acknowledged", False):
         # The recorded attestation of the omitted-sources block under inference (audit ME-05).
@@ -1485,22 +1491,19 @@ def _set_sensitivity(d: Any, state: Any, ctx: Any) -> str:
 @register_sentence("set_measurement_error")
 def _set_measurement_error(d: Any, state: Any, ctx: Any) -> str:
     if d.method == "none":
-        return ("Energy-adjusted exposures were not corrected for day-to-day error in the "
-                "recalls")
-    which = (f"{listing(d.exposures)}" if d.exposures else "every energy-adjusted exposure")
+        return "Intakes were not corrected for day-to-day error in the recalls"
+    which = (f"{listing(d.exposures)}" if d.exposures else "every intake the recalls measure")
     from turbotab.core.models.survey import population_answer
 
-    if population_answer(state):
-        # MS4 (MODELING_SEQUENCE §4): the calibration stage blocks it under the surveyed
-        # population, so the record says so. The methods text restates this sentence whole when
-        # the survey answer changes (:func:`restate`).
-        return (f"Univariate regression calibration of {which} was asked for, but under the "
-                f"surveyed population it has no design-based variance (a bootstrap by PSU within "
-                f"strata over the whole chain), so it was blocked and recorded, and the estimates "
-                f"are uncorrected")
-    return (f"Univariate regression calibration was applied to {which}, with the day-to-day "
-            f"variance estimated from repeated recalls and intervals from {count(d.n_boot)} "
-            f"bootstrap refits over people")
+    # MS5 (MODELING_SEQUENCE §0 ruling 7): a declared secondary analysis, every error-prone intake
+    # calibrated jointly, its interval from a bootstrap over the whole chain; under the surveyed
+    # population the fits are weighted and PSUs are resampled within strata. The methods text
+    # restates this sentence whole when the survey answer changes (:func:`restate`).
+    over = (", resampling PSUs within strata with the fits survey-weighted"
+            if population_answer(state) else "")
+    return (f"Regression calibration of {which} from the repeated recalls was declared as a "
+            f"secondary analysis beside the uncorrected estimate, with intervals from "
+            f"{count(d.n_boot)} bootstrap resamples of the whole chain{over}")
 
 
 restated_whole("set_measurement_error")
@@ -1591,10 +1594,17 @@ def _set_clusters(d: Any, state: Any, ctx: Any) -> str:
         denied = list(getattr(d, "none_of", None) or [])
         if d.acknowledged and denied:
             one = len(denied) == 1
-            text += (f", although {listing(denied, limit=3)} {'reads' if one else 'read'} as a "
-                     f"site, centre, household or batch; the answer was kept over that reading, so "
-                     f"the intervals do not cluster by {'it' if one else 'them'}, and it is a "
-                     f"stated limitation")
+            text += (f", although {listing(denied, limit=3)} {'reads' if one else 'read'} as "
+                     f"{'a possible grouping' if one else 'possible groupings'} of the participants "
+                     f"(a site, centre, household or batch, by name or by values); the answer was "
+                     f"kept over that reading, so the intervals do not cluster by "
+                     f"{'it' if one else 'them'}, and it is a stated limitation")
+        elif denied:
+            # The leash note: columns asked by their values alone (a category with many labels).
+            one = len(denied) == 1
+            text += (f"; {listing(denied, limit=3)} {'was' if one else 'were'} asked whether "
+                     f"{'it groups' if one else 'they group'} the participants, and the answer "
+                     f"was that {'it does' if one else 'they do'} not")
         elif d.acknowledged:
             text += (", although a column reads as a site, centre, household or batch; the answer "
                      "was kept over that reading and is a stated limitation")
@@ -1774,9 +1784,16 @@ def _set_grain(d: Any, state: Any, ctx: Any) -> str:
 @register_sentence("set_repeat_kind")
 def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
     whose = _whose(state)
+    over_copies = ""
+    if d.repeat_kind != "imputed_copies" and getattr(d, "acknowledged", False):
+        # The routing gate's leash note (block and record): kept over rows read as imputed copies.
+        from turbotab.core.structural import COPIES_CONCERN
+
+        over_copies = (f"; recorded as a limitation: the rows read as imputed copies of one "
+                       f"record, which were not pooled by Rubin's rules, and {COPIES_CONCERN}")
     if d.repeat_kind == "repeats":
         return (f"{whose[:1].upper()}{whose[1:]} rows were taken as repeated measurements of the "
-                f"same quantity, not different time points")
+                f"same quantity, not different time points{over_copies}")
     if d.repeat_kind == "imputed_copies":  # audit I18 (WP18)
         from turbotab.core.structural import COPIES_CONCERN
 
@@ -1793,7 +1810,7 @@ def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
     text = f"{whose[:1].upper()}{whose[1:]} rows were taken as different time points"
     if d.time_column:
         text += f", ordered by {tick(d.time_column)}"
-    return text
+    return text + over_copies
 
 
 @register_sentence("set_unit")
@@ -1976,6 +1993,57 @@ def _lock_plan(d: Any, state: Any, ctx: Any) -> str:
             f"seen")
 
 
+@register_sentence("view_outcome")
+def _view_outcome(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: an outcome view recorded as looked at (forking paths;
+    ``turbotab/core/stages/explore.py``)."""
+    from turbotab.core.stages.explore import view_sentence, view_standing
+
+    tail = view_standing(d, state, ctx)  # the standing clause, restated as the answers change
+    return f"{view_sentence(d, state)}. {tail}" if tail else view_sentence(d, state)
+
+
+@register_standing("view_outcome")
+def _view_outcome_standing(d: Any, state: Any, ctx: Any) -> str | None:
+    """The levers on the viewed columns set after the view, said on the answers as they stand."""
+    from turbotab.core.stages.explore import view_standing
+
+    return view_standing(d, state, ctx)
+
+
+@register_sentence("set_levers")
+def _set_levers(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: Explore's levers as in-fold rules (``turbotab/core/methods/levers.py``)."""
+    from turbotab.core.methods.levers import decision_sentence
+
+    return decision_sentence(d, state)
+
+
+@register_sentence("set_selection")
+def _set_selection(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: the selection menu (``turbotab/core/models/variable_selection.py``)."""
+    from turbotab.core.models.variable_selection import decision_sentence
+
+    return decision_sentence(d, state)
+
+
+@register_sentence("set_intended_use")
+def _set_intended_use(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: intended use, the decision curve and subgroups
+    (``turbotab/core/models/decision_curve.py``)."""
+    from turbotab.core.models.decision_curve import intended_use_sentence
+
+    return intended_use_sentence(d, state)
+
+
+@register_sentence("set_updating")
+def _set_updating(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: model updating (TRIPOD+AI 12f)."""
+    from turbotab.core.models.decision_curve import updating_sentence
+
+    return updating_sentence(d, state)
+
+
 @register_sentence("set_explain")
 def _set_explain(d: Any, state: Any, ctx: Any) -> str:
     """Wave 2, EXPLAIN: what the explanations are, and that they are not effects
@@ -2076,6 +2144,8 @@ _QUESTION_NAME = {
     "missing": "the missing-values question",
     "split": "the held-out rows question",
     "energy_adjustment": "the energy-adjustment question",
+    "form": "the functional-form question",  # FORM
+    "modification": "the effect-modifier question",  # FORM
     "models": "the model families question",
     "substitution": "the substitution question",
     "open_seal": "opening the seal",

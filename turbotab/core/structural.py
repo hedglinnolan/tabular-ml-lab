@@ -25,7 +25,10 @@ rules that ask instead, and the refusals that keep each answer honest:
   Under inference, copies kept as records are each analyzed as a completed dataset with its own
   outcome and pooled by Rubin's rules (MS3; ``stages.modeling._copies_for_table``), so the answer
   is accepted; combining them per unit instead is blocked and recorded
-  (:func:`_imputed_copies_are_not_combined_unrecorded`).
+  (:func:`_imputed_copies_are_not_combined_unrecorded`), and so is answering "repeated
+  measurements" or "time points" over rows the structure reads as imputed copies, the
+  Rubin's-rules answer its first exit, whether the answer comes under inference or the purpose
+  becomes inference after it (:func:`copies_refusal`; the routing gate's leash note).
 
 "Markedly skewed" is West et al.'s reference value, as Kim (2013, *Restor Dent Endod* 38:52–54)
 reports it: "West et al. (1996) proposed a reference of substantial departure from normality as an
@@ -493,6 +496,82 @@ def _imputed_copies_are_recorded(decision: SetRepeatKind, ctx: Any) -> None:
                       exits=[{"label": "Choose one of the dataset's columns", "decision": None}])
 
 
+CDC_DXA = ("The extra variability due to imputation CANNOT be incorporated by simply analyzing a "
+           "SINGLE dataset as if the imputed values were true values")
+
+
+def copies_refusal(answer: SetRepeatKind, structure: Mapping[str, Any] | None) -> Refusal | None:
+    """The refusal of a repeats or time-points answer over rows the structure reads as imputed
+    copies (None when it does not apply): the routing gate's leash note. Taken as repeated
+    measurements or time points, the copies are analyzed as measured values, so their mean or their
+    pooled rows carry no imputation variance (CDC, NHANES DXA: "The extra variability due to
+    imputation CANNOT be incorporated by simply analyzing a SINGLE dataset as if the imputed values
+    were true values"). Block and record, as combining the copies is: the exit leading is the copies
+    answer, each copy analyzed and pooled by Rubin's rules; the other keeps the answer, recorded as a
+    limitation (``acknowledged``)."""
+    if answer.repeat_kind == "imputed_copies" or answer.acknowledged:
+        return None
+    found = (structure or {}).get("repeats") or {}
+    if found.get("reading") != "imputed_copies":
+        return None
+    numbered = found.get("implicate_column")
+    by = f", numbered by `{numbered}`" if numbered else ""
+    said = "repeated measurements" if answer.repeat_kind == "repeats" else "time points"
+    return Refusal(
+        "copies_read_as_repeats",
+        f"The rows read as imputed copies of one record{by}. Taken as {said}, the copies are "
+        f"analyzed as measured values, and {COPIES_CONCERN} (CDC, NHANES DXA multiple imputation: "
+        f"\"{CDC_DXA}\"). As imputed copies, each copy is analyzed as a completed dataset and the "
+        f"estimates are pooled by Rubin's rules.",
+        exits=[{"label": "Imputed copies, each analyzed and pooled by Rubin's rules",
+                "decision": SetRepeatKind(repeat_kind="imputed_copies",
+                                          implicate_column=numbered)},
+               {"label": f"Keep {said}, recorded: intervals too narrow",
+                "decision": answer.model_copy(update={"acknowledged": True})}])
+
+
+def _repeats_reading(ctx: Any) -> Mapping[str, Any] | None:
+    """The structure stage's artifact: fresh, else the newest computed (``shown``). Its repeats
+    reading is the data's, whatever the answer recorded since, so an answer that sets the stage
+    recomputing (the repeats answer itself) never leaves the check reading nothing."""
+    found = _artifact(ctx, "structure")
+    if found is not None:
+        return found
+    shown = _ctx(ctx, "shown")
+    try:
+        value = shown("structure") if callable(shown) else None
+    except Exception:  # noqa: BLE001 - nothing computed: nothing to check against
+        return None
+    value = getattr(value, "data", value)
+    return value if isinstance(value, Mapping) else None
+
+
+def _copies_are_not_repeats_unrecorded(decision: SetRepeatKind, ctx: Any) -> None:
+    """Under inference, a repeats or time-points answer over rows read as imputed copies is blocked
+    and recorded (:func:`copies_refusal`)."""
+    if getattr(_state(ctx), "purpose", None) != "inference":
+        return
+    refused = copies_refusal(decision, _repeats_reading(ctx))
+    if refused is not None:
+        raise refused
+
+
+def _inference_over_copies_read_as_repeats(decision: Any, ctx: Any) -> None:
+    """The same block, reached the other way: the repeats answer given under prediction over rows
+    read as imputed copies, then the purpose made inference. The purpose waits until the repeats
+    answer is the copies' (pooled by Rubin's rules) or recorded."""
+    if getattr(decision, "purpose", None) != "inference":
+        return
+    spec = getattr(_state(ctx), "repeat_kind", None)
+    if spec is None:
+        return
+    refused = copies_refusal(SetRepeatKind(**spec.model_dump()), _repeats_reading(ctx))
+    if refused is not None:
+        raise Refusal(refused.code, refused.message + " Answer how the rows repeat again before "
+                                                      "the purpose becomes inference.",
+                      exits=refused.exits)
+
+
 def _imputed_copies_are_not_combined_unrecorded(decision: SetUnit, ctx: Any) -> None:
     """Audit I18 (MS3): under inference, combining a unit's imputed copies into one row treats imputed
     values as measured (CDC: "The extra variability due to imputation CANNOT be incorporated by
@@ -523,11 +602,13 @@ register_validator("set_outcome_scale", _outcome_scale_fits)
 register_validator("set_roles", _log_outcome_source_is_no_predictor)
 register_validator("set_exclusions", _no_rule_on_the_outcome_source)
 register_validator("set_repeat_kind", _imputed_copies_are_recorded)
+register_validator("set_repeat_kind", _copies_are_not_repeats_unrecorded)
+register_validator("set_purpose", _inference_over_copies_read_as_repeats)
 register_validator("set_unit", _imputed_copies_are_not_combined_unrecorded)
 
 __all__ = [
-    "COPIES_CONCERN", "LATER_RULES", "ORDERED_SCALES", "OTHER_LABEL", "OTHER_LENS", "SKEW_MARKED",
-    "derived_columns", "log_outcome", "order_question", "outcome_source", "proposed_order",
+    "CDC_DXA", "COPIES_CONCERN", "LATER_RULES", "ORDERED_SCALES", "OTHER_LABEL", "OTHER_LENS",
+    "SKEW_MARKED", "copies_refusal", "derived_columns", "log_outcome", "order_question", "outcome_source", "proposed_order",
     "task_followup_possible",
     "repeat_kind_of", "scale_question", "skewness", "task_followup",
 ]

@@ -100,6 +100,8 @@ export const SUBJECT: Record<QuestionKey, string> = {
   missing: "the missing values",
   split: "the seal",
   energy_adjustment: "the energy adjustment",
+  form: "the functional form",
+  modification: "the effect modifiers",
   causal: "the causal estimate",
   models: "the models",
   substitution: "the substitution",
@@ -173,6 +175,8 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
   // The generic question's cards (compose.ts): the causal lane's and the time-varying lane's.
   const causalDesign = useStage(pid, view, "causal_design");
   const timeVarying = useStage(pid, view, "time_varying");
+  // FORM: the form question's card.
+  const forms = useStage(pid, view, "forms");
   const summaries = useColumnSummaries(pid, stages.ingest?.status === "fresh").data;
 
   const [reopened, setReopened] = useState<Partial<Record<QuestionKey, boolean>>>({});
@@ -648,6 +652,7 @@ export function Record({ pid, view }: { pid: string; view: ProjectView }) {
           proposals: proposals?.artifact,
           causalDesign: causalDesign?.artifact,
           timeVarying: timeVarying?.artifact,
+          forms: forms?.artifact,
           columns,
         });
         const subject = SUBJECT[key];

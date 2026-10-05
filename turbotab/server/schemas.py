@@ -695,11 +695,15 @@ class ExposureFormOption(Model):
     """One form an exposure can enter the model in (WP12a; ``turbotab/core/methods/exposure_form.py``
     ``options``), with north star 5's two labels, in the order of soundness for the purpose."""
 
-    value: Literal["spline", "linear", "quintiles"]
+    # FORM (MODELING_SEQUENCE §1 row 5): declared categories, a data-derived cut point, a mass at
+    # zero's non-consumers apart, and the consumers-only domain
+    value: Literal["spline", "linear", "quintiles", "categories", "optimal", "zero_spline",
+                   "consumers_only"]
     label: str
     customary: str  # customary in the field, with a source
     sound: str  # sound for the declared purpose, with the reason
     consequence: str
+    rung: str | None = None  # its leash rung for the purpose (§11.3)
 
 
 class EnergyUnitReading(Model):
@@ -1152,6 +1156,16 @@ ARTIFACT_MODELS.update({"time_varying": TimeVaryingArtifact})
 from turbotab.core.models.explain import ExplainArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"explain": ExplainArtifact})
+# Wave 2, FORM: the functional-form question's card, and each declared modifier's analysis.
+from turbotab.core.methods.exposure_form import FormsArtifact  # noqa: E402
+from turbotab.core.methods.interaction import ModificationArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"forms": FormsArtifact, "modification": ModificationArtifact})
+# Wave 2, EXPLORE: Explore after the seal, and the benchmark, decision curve and design-based scores.
+from turbotab.core.stages.explore import ExploreArtifact  # noqa: E402
+from turbotab.core.stages.evaluation import EvaluationArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"explore": ExploreArtifact, "evaluation": EvaluationArtifact})
 # MS8: each declared scale's reliability and, under inference, its corrected coefficient
 # (turbotab/core/stages/scales.py), so the frontend can type the artifact by its stage name.
 from turbotab.core.stages.scales import ScalesArtifact  # noqa: E402

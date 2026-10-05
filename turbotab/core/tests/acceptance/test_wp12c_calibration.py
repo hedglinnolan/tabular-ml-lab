@@ -34,6 +34,14 @@ Carroll, Ruppert, Stefanski & Crainiceanu 2006, *Measurement Error in Nonlinear 
 an FFQ against a recall reference: each person's mean of k recalls is the exposure, and the spread
 of their days estimates its error.
 
+**MS5** (``test_ms5_regression_calibration.py``) made the method multivariate where the model holds
+several error-prone intakes (total energy beside the adjusted nutrient; the standard model's
+nutrient and energy), took the replication-data estimator of Carroll et al. (2006, §4.4; R
+``mecor``'s convention, the between-person variance on n − 1), and took the interval as the
+percentile interval of a bootstrap over the whole chain. The tests below are this package's,
+updated to that method: the REML comparison now agrees to O(p/n), and the server's reference is
+the joint calibration by hand.
+
 **References, each independent of the engine.**
 
 * statsmodels ``MixedLM`` (REML) on the recalls with the model's covariates as fixed effects: its
@@ -101,10 +109,12 @@ def _reml(w: np.ndarray, person: np.ndarray, age: np.ndarray, sex: np.ndarray) -
 
 @pytest.mark.parametrize("k", [2, 3])
 def test_6_balanced_recalls_give_the_reml_attenuation_and_freedmans_division(k):
-    """With k recalls each, λ is the REML variance components' σ²_b / (σ²_b + σ²_e / k) and the
-    calibrated coefficient is the uncorrected OLS coefficient divided by λ ("division of the
-    unadjusted relative risk estimate by the … attenuation factor"), both to 10⁻⁶ (statsmodels'
-    REML optimum is found numerically; the engine's moment estimates are closed-form)."""
+    """With k recalls each, the day-to-day variance is the REML σ²_e to 10⁻⁶ (for balanced recalls
+    both are the within-person mean square), λ is the REML components' σ²_b / (σ²_b + σ²_e / k) to
+    1% (REML divides the between-person sum of squares by n − p, Carroll's estimator by n − 1:
+    O(p/n) apart, 0.3% here), and the calibrated coefficient is the uncorrected OLS coefficient
+    divided by the engine's λ ("division of the unadjusted relative risk estimate by the …
+    attenuation factor") exactly."""
     rng = np.random.default_rng(10 + k)
     n = 1200
     age, sex, w, person, y = _people(rng, n, np.full(n, k))
@@ -116,11 +126,11 @@ def test_6_balanced_recalls_give_the_reml_attenuation_and_freedmans_division(k):
     s2b, s2e = _reml(w, person, age, sex)
     lam = s2b / (s2b + s2e / k)
     naive = float(sm.OLS(y, sm.add_constant(X)).fit().params[1])
-    assert result.attenuation == pytest.approx(lam, rel=1e-6)
+    assert result.attenuation == pytest.approx(lam, rel=1e-2)
     assert result.naive == pytest.approx(naive, rel=1e-10)
-    assert result.estimate == pytest.approx(naive / lam, rel=1e-6)
+    assert result.estimate == pytest.approx(naive / result.attenuation, rel=1e-12)
     assert result.sigma2_u == pytest.approx(s2e, rel=1e-6)
-    assert result.sigma2_xz == pytest.approx(s2b, rel=1e-6)
+    assert result.sigma2_xz == pytest.approx(s2b, rel=1e-2)
     assert result.recalls == {k: n} and result.n_repeat == n
 
 
@@ -301,45 +311,54 @@ def runs(recalls, tmp_path_factory) -> dict:
 
 
 def reference(frame: pd.DataFrame, energy_in_model: bool) -> dict:
-    """Everything from the CSV, with statsmodels and pandas: the residual adjustment on person
-    means, each day adjusted with the same slope, REML components of the days, OLS on the people."""
+    """Everything from the CSV, with statsmodels, pandas and NumPy: the residual adjustment on
+    person means, each day adjusted with the same slope; with total energy in the model it is
+    calibrated with the adjusted protein (both come from the recalls), else the protein alone:
+    the pooled within-person covariance of the days, the Schur complement S of the (n − 1)
+    covariance of the people's means given age and sex, Γ = (S − Σ_uu/2) S⁻¹, OLS on the people,
+    the calibrated coefficients (Γᵀ)⁻¹β̃ (Carroll et al. 2006 §4.4; Rosner et al. 1990)."""
     people = frame.groupby("participant_id", sort=True).agg(
         protein=("protein_g", "mean"), energy=("energy_kcal", "mean"), age=("age", "first"),
         sex=("sex", "first"), ldl=("ldl", "first"), k=("protein_g", "size"))
     slope = float(sm.OLS(people["protein"], sm.add_constant(people["energy"])).fit().params["energy"])
     center = float(people["energy"].mean())
     people["adj"] = people["protein"] - slope * (people["energy"] - center)
-    days = frame.assign(adj=frame["protein_g"] - slope * (frame["energy_kcal"] - center))
-    codes = pd.Categorical(days["participant_id"], categories=people.index).codes
+    f = frame.sort_values("participant_id", kind="stable")
+    n, k = len(people), 2
+    adj_days = (f["protein_g"] - slope * (f["energy_kcal"] - center)).to_numpy().reshape(n, k)
+    e_days = f["energy_kcal"].to_numpy(dtype=float).reshape(n, k)
+    days = np.stack([adj_days, e_days], axis=2) if energy_in_model else adj_days[:, :, None]
+    p = days.shape[2]
+    Wb = days.mean(axis=1)
+    dev = days - Wb[:, None, :]
+    Su = np.einsum("ikp,ikq->pq", dev, dev) / (n * (k - 1))
     male = (people["sex"] == "M").astype(float).to_numpy()
-    covariates = ["age", "male"] + (["energy"] if energy_in_model else [])
-    people["male"] = male
-    long = pd.DataFrame({"w": days["adj"].to_numpy(), "g": codes,
-                         **{c: people[c].to_numpy()[codes] for c in covariates}})
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        m = smf.mixedlm("w ~ " + " + ".join(covariates), long, groups=long["g"]).fit(
-            reml=True, method="bfgs", gtol=1e-12)
-    s2b, s2e = float(m.cov_re.iloc[0, 0]), float(m.scale)
-    lam = s2b / (s2b + s2e / 2)
-    X = np.column_stack([np.ones(len(people)), people["adj"], *[people[c] for c in covariates]])
+    Z = np.column_stack([people["age"], male])
+    V = np.column_stack([Wb, Z])
+    C = np.cov(V, rowvar=False)
+    S = C[:p, :p] - C[:p, p:] @ np.linalg.solve(C[p:, p:], C[p:, :p])
+    gamma = (S - Su / k) @ np.linalg.inv(S)
+    X = np.column_stack([np.ones(n), Wb, Z])
     y = people["ldl"].to_numpy(dtype=float)
     beta = np.linalg.lstsq(X, y, rcond=None)[0]
+    calibrated = np.linalg.solve(gamma.T, beta[1:p + 1])
     se = np.sqrt(np.diag(hc3_by_definition(X, y - X @ beta)))
     t = stats.t.ppf(0.975, len(y) - X.shape[1])
-    return {"lam": lam, "naive": beta[1], "naive_ci": (beta[1] - t * se[1], beta[1] + t * se[1]),
-            "p": 2 * stats.t.sf(abs(beta[1] / se[1]), len(y) - X.shape[1]), "s2b": s2b, "s2e": s2e,
-            "n": len(people)}
+    return {"lam": gamma[0, 0], "naive": beta[1], "naive_ci": (beta[1] - t * se[1], beta[1] + t * se[1]),
+            "p": 2 * stats.t.sf(abs(beta[1] / se[1]), len(y) - X.shape[1]), "s2e": Su[0, 0],
+            "s2b": (S - Su / k)[0, 0], "Su": Su, "estimate": calibrated[0], "n": n,
+            "calibrated": calibrated}
 
 
 def test_6_the_server_calibrates_the_residual_protein_as_an_independent_refit_does(recalls, runs):
-    """Two recalls per person combined by the mean, protein energy-adjusted by the residual method,
-    purpose inference: the calibration artifact's λ, within- and between-person variances and the
-    corrected coefficient match the statsmodels reference from the CSV to 10⁻⁶; the uncorrected
-    coefficient, its HC3 interval and its p-value (Freedman: the test that stays valid) match the
-    independent least squares on every eligible person; the attenuation the correction removes is
-    large on this fixture (λ ≈ 0.33), and the corrected interval covers the generating slope 0.8
-    where the uncorrected one does not."""
+    """Two recalls per person combined by the mean, protein energy-adjusted by the residual method
+    with total energy kept in the model (BLUEPRINT §12 ruling 1), purpose inference: both come from
+    the recalls, so they are calibrated jointly (MS5). The calibration artifact's λ (the adjusted
+    protein's diagonal of Γ), within- and between-person variances and the corrected coefficient
+    match the NumPy reference from the CSV to 10⁻⁶; the uncorrected coefficient, its HC3 interval
+    and its p-value (Freedman: the test that stays valid) match the independent least squares on
+    every eligible person; the attenuation the correction removes is large on this fixture, and
+    the corrected interval covers the generating slope 0.8 where the uncorrected one does not."""
     frame, _ = recalls
     cal, fit = runs["residual"], runs["fit"]
     assert cal["applies"] and cal["purpose"] == "inference" and cal["rows"] == "all eligible rows"
@@ -359,29 +378,53 @@ def test_6_the_server_calibrates_the_residual_protein_as_an_independent_refit_do
     # package), so the coefficient the calibration corrects is the one the fit reports.
     reported = next(c for c in fit["models"][0]["coefficients"] if c["feature"] == exposure["feature"])
     assert reported["estimate"] == pytest.approx(exposure["naive"], rel=1e-9)
-    assert exposure["estimate"] == pytest.approx(ref["naive"] / ref["lam"], rel=1e-6)
+    assert exposure["estimate"] == pytest.approx(ref["estimate"], rel=1e-6)
+    assert cal["calibration"] == "multivariate" and set(cal["calibrated"]) == {"protein_g_adj",
+                                                                                "energy_kcal"}
     assert exposure["naive_ci_low"] == pytest.approx(ref["naive_ci"][0], rel=1e-7)
     assert exposure["naive_ci_high"] == pytest.approx(ref["naive_ci"][1], rel=1e-7)
     assert exposure["p"] == pytest.approx(ref["p"], rel=1e-6)
     assert exposure["n_boot"] == exposure["n_boot_ok"] == 200
     assert exposure["ci_low"] < exposure["estimate"] < exposure["ci_high"]
-    assert 0.25 < ref["lam"] < 0.4
+    assert 0.25 < ref["lam"] < 0.5
     assert not exposure["naive_ci_low"] <= TRUE_SLOPE <= exposure["naive_ci_high"]
     assert exposure["ci_low"] <= TRUE_SLOPE <= exposure["ci_high"]
-    # The methods sentence names the method, its sources, the recall days and λ.
+    # The methods sentence names the joint calibration, its sources and the recall days.
     methods = cal["methods"]
-    assert "univariate regression calibration" in methods and "Freedman et al. 2011" in methods
-    assert "2 recalls each" in methods and f"λ = {exposure['attenuation']:.2f}" in methods
-    assert any("remains theoretically valid" in a for a in cal["assumptions"])
+    assert methods.startswith("Usual intakes of `energy_kcal` and `protein_g_adj` were calibrated "
+                              "jointly with every outcome-model covariate in the calibration model")
+    assert "Rosner, Spiegelman & Willett 1990" in methods and "2 recalls each" in methods
+    assert "remains theoretically valid" in cal["test"]
 
 
-def test_6_under_the_standard_model_univariate_calibration_is_refused_with_freedmans_reason(runs):
+def test_6_under_the_standard_model_the_nutrient_and_energy_are_calibrated_jointly(recalls, runs):
     """Freedman: univariate adjustment "for the unadjusted intakes used in the standard and partition
-    models is inappropriate"; the stage says so rather than calibrate."""
+    models is inappropriate …; the multivariate adjustment is recommended in this case". MS5 fits
+    the multivariate one: under the standard model protein and total energy are calibrated jointly,
+    the calibrated protein coefficient the joint closed form on the raw recall days by NumPy to
+    1e-6."""
+    frame, _ = recalls
     cal = runs["standard"]
-    assert not cal["applies"] and not cal["exposures"]
-    assert "Univariate adjustment for the unadjusted intakes used in the standard and partition " \
-           "models is inappropriate" in cal["reason"]
+    assert cal["applies"] and cal["calibration"] == "multivariate"
+    assert set(cal["calibrated"]) == {"protein_g", "energy_kcal"}
+    people = frame.groupby("participant_id", sort=True).agg(
+        protein=("protein_g", "mean"), energy=("energy_kcal", "mean"), age=("age", "first"),
+        sex=("sex", "first"), ldl=("ldl", "first"))
+    f = frame.sort_values("participant_id", kind="stable")
+    n = len(people)
+    days = np.stack([f["protein_g"].to_numpy(dtype=float).reshape(n, 2),
+                     f["energy_kcal"].to_numpy(dtype=float).reshape(n, 2)], axis=2)
+    Wb = days.mean(axis=1)
+    Su = np.einsum("ikp,ikq->pq", days - Wb[:, None], days - Wb[:, None]) / n
+    Z = np.column_stack([people["age"], (people["sex"] == "M").astype(float)])
+    C = np.cov(np.column_stack([Wb, Z]), rowvar=False)
+    S = C[:2, :2] - C[:2, 2:] @ np.linalg.solve(C[2:, 2:], C[2:, :2])
+    X = np.column_stack([np.ones(n), Wb, Z])
+    beta = np.linalg.lstsq(X, people["ldl"].to_numpy(dtype=float), rcond=None)[0]
+    calibrated = np.linalg.solve(((S - Su / 2) @ np.linalg.inv(S)).T, beta[1:3])
+    (protein,) = cal["exposures"]
+    assert protein["feature"] == "protein_g"
+    assert protein["estimate"] == pytest.approx(calibrated[0], rel=1e-6)
 
 
 def test_6_no_correction_still_states_the_recall_days(runs):
@@ -389,9 +432,9 @@ def test_6_no_correction_still_states_the_recall_days(runs):
     mean averages (IN-22's limitation line: the number of recall days, and no calibration)."""
     cal = runs["none"]
     assert cal["method"] == "none" and not cal["applies"]
-    assert cal["methods"] == ("Energy-adjusted exposures were the mean of each participant's "
-                              "recalls (2 recalls each, 800 participants) and were not corrected "
-                              "for day-to-day error.")
+    assert cal["methods"] == ("Intakes were the mean of each participant's recalls (2 recalls "
+                              "each, 800 participants) and were not corrected for day-to-day "
+                              "error.")
 
 
 def test_6_under_prediction_calibration_is_refused_with_exits(recalls, tmp_path_factory):
@@ -411,7 +454,9 @@ def test_6_under_prediction_calibration_is_refused_with_exits(recalls, tmp_path_
         error = r.json()["error"]
         assert error["code"] == "not_for_prediction"
         assert error["exits"][0]["decision"] == {"kind": "set_measurement_error", "method": "none",
-                                                 "exposures": [], "n_boot": 200}
+                                                 "exposures": [], "n_boot": 200,
+                                                 "interval": "whole_chain_bootstrap",
+                                                 "adjustment": None}
         assert d.post({"kind": "set_measurement_error", "method": "none"}).status_code == 200
 
 

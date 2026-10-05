@@ -29,6 +29,8 @@ const NEEDS: Record<QuestionKey, string[]> = {
   missing: [],
   split: [],
   energy_adjustment: ["proposals"],
+  form: ["forms"],
+  modification: [],
   causal: ["causal_design"],
   models: ["shelf"],
   substitution: ["fit"],
@@ -113,6 +115,12 @@ function sequenceGate(
       return Object.keys(state.roles).some((c) => /^WT(DRD1|DR2D|MEC2YR|INT2YR)$/i.test(c))
         ? null
         : "No column reads as a survey weight, so there is no surveyed population to weight to.";
+    case "form":
+      // turbotab/core/methods/exposure_form.py: stated under prediction; the mock never asks it.
+      return "Each predictor enters as each family takes it; a spline can be declared for any.";
+    case "modification":
+      // turbotab/core/methods/interaction.py: stated until a modifier is declared.
+      return "No effect modifier or second exposure is declared.";
     case "causal":
       // turbotab/core/causal.py: the causal lane is never offered under prediction.
       return state.purpose === "prediction"
@@ -236,12 +244,17 @@ export function route(
   for (const key of QUESTION_KEYS) {
     // open_seal writes the seal_opened slot (turbotab/core/interview.py SLOT_OF); the follow-up
     // is answered by a time to event's follow-up or a yes/no outcome's "same for everyone".
+    // FORM: the form and modifier questions read their own slots (turbotab/core/interview.py)
     const value =
       key === "open_seal"
         ? state.seal_opened
         : key === "follow_up"
           ? (state.follow_up ?? state.censoring)
-          : state[key];
+          : key === "form"
+            ? state.exposure_forms
+            : key === "modification"
+              ? state.modifications
+              : state[key];
     const decision_id = writers.get(key) ?? null;
     if (key === "orientation" && value !== null) {
       steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [], followup: null, ask: null });

@@ -229,6 +229,14 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "explain":  # wave 2: an explanation shows what a model learned from the outcome
         return any(f.get("explained") for f in artifact.get("families") or []
                    if isinstance(f, Mapping))
+    if stage == "modification":  # FORM: a declared modifier's effects, RERI or ratio of ratios
+        return any(q.get("estimate") is not None
+                   for m in artifact.get("modifications") or [] if isinstance(m, Mapping)
+                   for f in m.get("families") or [] if isinstance(f, Mapping)
+                   for q in f.get("effects") or [] if isinstance(q, Mapping))
+    if stage == "evaluation":  # wave 2, EXPLORE: under inference, the selection sensitivity's tests
+        estimates = artifact.get("estimates")
+        return isinstance(estimates, Mapping) and bool(estimates.get("path"))
     return False
 
 

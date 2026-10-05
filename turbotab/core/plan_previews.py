@@ -13,7 +13,12 @@ building, drawn on their own rows in the closed vocabulary (BLUEPRINT §11 rule 
 |                       | Model 3                                                                  |
 | ``set_multiplicity``  | relationship: each test's threshold against its rank (flat, or BH's line)|
 | ``set_exposure_form`` | relationship: the exposure against the terms the model sees, a frame per |
-|                       | term · distribution with the knots or cut points marked · lineage        |
+|                       | term · distribution with the knots or cut points marked · lineage; a     |
+|                       | consumers-only domain adds the row flow of whom the estimate is about    |
+| ``set_forms``         | the declared exposure's form, as ``set_exposure_form`` draws it, on the  |
+|                       | state the whole one-tap answer leaves (wave 2b integration)              |
+| ``set_modification``  | distribution of the modifier with the strata the effect is reported at   |
+|                       | marked (wave 2b integration; outcome-blind)                              |
 | ``set_clusters``      | distribution of the rows per group · lineage (fixed effects)             |
 | ``set_survey``        | distribution of the exposure, unweighted and weighted · row flow of the  |
 |                       | rows the design holds                                                    |
@@ -634,29 +639,49 @@ def _received(design: Design, name: str, column: str) -> np.ndarray:
 def form_terms(design: Design, facts: Mapping[str, Any],
                x: np.ndarray) -> list[tuple[str, np.ndarray]]:
     """The terms the form puts in the matrix, each as ``(name, values per row)``: the column itself
-    (linear); the spline's straight-line and nonlinear columns; or, for quintiles, the group (1–5)
-    and the trend score (each row's quintile median)."""
-    if facts["form"] == "spline":
+    (linear); the spline's straight-line and nonlinear columns, after a mass at zero's consumer
+    indicator; for quintiles, the group (1–5) and the trend score (each row's quintile median);
+    for declared categories, the category; for a data-derived cut point, the indicator above it
+    (the last three FORM's, wave 2b)."""
+    form = facts["form"]
+    if form in ("spline", "zero_spline"):
         return [(t, design.matrix[t].to_numpy(dtype=float)) for t in facts["terms"]]
-    if facts["form"] == "quintiles":
+    if form in ("quintiles", "categories"):
         from turbotab.core.methods.exposure_form import quantile_group
 
         group = quantile_group(x, np.asarray(facts["cuts"]))
+        number = np.where(group < 0, np.nan, group + 1.0)
+        if form == "categories":
+            return [(f"category (1–{len(facts['cuts']) + 1})", number)]
         medians = np.asarray(facts["medians"])
         score = np.where(group < 0, np.nan, medians[np.clip(group, 0, len(medians) - 1)])
-        return [("quintile (1–5)", np.where(group < 0, np.nan, group + 1.0)),
-                (f"{facts['name']} (quintile median)", score)]
+        return [("quintile (1–5)", number), (f"{facts['name']} (quintile median)", score)]
+    if form == "optimal":
+        cut = float(facts["cuts"][0])
+        return [(f"{facts['name']} above the cut",
+                 np.where(np.isfinite(x), (x > cut).astype(float), np.nan))]
     return [(facts["name"], x)]
 
 
-def exposure_form_views(decision: Any, ctx: PreviewContext) -> list[Any]:
-    from turbotab.core.methods.exposure_form import KNOT_PERCENTILES
+def exposure_form_views(decision: Any, ctx: PreviewContext, after: Any = None) -> list[Any]:
+    """``after``: the state the answer leaves when ``decision`` is one column of a larger answer
+    (``set_forms``); else the state ``decision`` leaves."""
+    from turbotab.core.methods.exposure_form import KNOT_PERCENTILES, domain_columns
 
     ids = pool(ctx)
     if ids is None:
         return []
-    after = after_state(decision, ctx)
-    then = fit_design(ctx, after, ids)
+    after = after if after is not None else after_state(decision, ctx)
+    # FORM (wave 2b): under a consumers-only domain the fit learns the form on consumers alone
+    # (the cohort's domain step: a recorded value above zero).
+    inside_now = decision.column in domain_columns(ctx.state)
+    inside = decision.column in domain_columns(after)
+    then_ids = ids
+    if inside and not inside_now and decision.column in ctx.datastore.columns:
+        own = pd.to_numeric(ctx.datastore.materialize([decision.column], ids)[decision.column],
+                            errors="coerce").to_numpy(dtype=float)
+        then_ids = np.asarray(ids)[np.isfinite(own) & (own > 0)]
+    then = fit_design(ctx, after, then_ids)
     if then is None:
         return []
     now = fit_design(ctx, ctx.state, ids)
@@ -670,20 +695,40 @@ def exposure_form_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     form = facts["form"]
     marks: list[Mark] = []
     story: list[RelationshipFrame] = []
-    if form == "spline":
+    n_seen = int(np.isfinite(x).sum())
+    learned = (f"Learned from {fmt_count(n_seen)} {drawn(ctx)}{rows_word(ctx)} rows of {tick(name)}; "
+               f"the fit learns them again on its own rows.")
+    if form in ("spline", "zero_spline"):
         k = len(facts["knots"])
         pct = KNOT_PERCENTILES.get(k) if not facts.get("notes") else None
+        of = " of consumers" if form == "zero_spline" else ""
         for i, value in enumerate(facts["knots"]):
-            marks.append(Mark(value=float(value),
-                              label=f"knot {i + 1}" + (f" · {pct[i] * 100:g}th pct" if pct else "")))
-        story = [RelationshipFrame(label=frame_label(f"{terms[0][0]}: the straight-line term"),
-                                   points=points(x, terms[0][1]), r=None,
-                                   fit_line=FitLine(slope=1.0, intercept=0.0), y_label=terms[0][0])]
+            marks.append(Mark(value=float(value), label=f"knot {i + 1}" + (
+                f" · {pct[i] * 100:g}th pct{of}" if pct else "")))
+        # A mass at zero (FORM): non-consumers are the reference, set apart by the consumer
+        # indicator; the spline's terms follow it, each 0 at zero.
+        spline = terms[1:] if form == "zero_spline" else terms
+        if form == "zero_spline":
+            story.append(RelationshipFrame(label=frame_label(f"{terms[0][0]}: any intake"),
+                                           points=points(x, terms[0][1]), r=None,
+                                           y_label=terms[0][0]))
+        story.append(RelationshipFrame(label=frame_label(f"{spline[0][0]}: the straight-line term"),
+                                       points=points(x, spline[0][1]), r=None,
+                                       fit_line=FitLine(slope=1.0, intercept=0.0),
+                                       y_label=spline[0][0]))
         story += [RelationshipFrame(label=frame_label(f"{t}: bends past knot {j}"),
                                     points=points(x, v), r=None, y_label=t)
-                  for j, (t, v) in enumerate(terms[1:-1], start=1)]
-        text = (f"{tick(name)} enters as {len(terms)} terms, a restricted cubic spline with "
-                f"knots at {series(facts['knots'])}.")
+                  for j, (t, v) in enumerate(spline[1:-1], start=1)]
+        if form == "zero_spline":
+            consumers = int((np.nan_to_num(x, nan=0.0) > 0).sum())
+            text = (f"{tick(name)}: non-consumers apart, then a restricted cubic spline among "
+                    f"consumers, knots at {series(facts['knots'])}.")
+            learned = (f"Learned from the {fmt_count(consumers)} consumers among "
+                       f"{fmt_count(n_seen)} {drawn(ctx)}{rows_word(ctx)} rows; the fit learns them "
+                       f"again on its own rows.")
+        else:
+            text = (f"{tick(name)} enters as {len(terms)} terms, a restricted cubic spline with "
+                    f"knots at {series(facts['knots'])}.")
     elif form == "quintiles":
         marks = [Mark(value=float(c), label=f"Q{i + 1} | Q{i + 2}")
                  for i, c in enumerate(facts["cuts"])]
@@ -691,6 +736,27 @@ def exposure_form_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                                    points=points(x, terms[0][1]), r=None, y_label=terms[0][0])]
         text = (f"{tick(name)} enters as 4 indicators against its lowest fifth; cut at "
                 f"{series(facts['cuts'])}.")
+    elif form == "categories":
+        # FORM: cut points declared from outside these data, nothing learned from them.
+        cuts = facts["cuts"]
+        marks = [Mark(value=float(c), label=f"C{i + 1} | C{i + 2}") for i, c in enumerate(cuts)]
+        story = [RelationshipFrame(label=frame_label("Cut at the declared points"),
+                                   points=points(x, terms[0][1]), r=None, y_label=terms[0][0])]
+        text = (f"{tick(name)} enters as {len(cuts)} indicators against its lowest category, cut "
+                f"at {series(cuts)} as declared.")
+        learned = (f"Declared from outside the data; {fmt_count(n_seen)} {drawn(ctx)}"
+                   f"{rows_word(ctx)} rows of {tick(name)} fall among {len(cuts) + 1} categories.")
+    elif form == "optimal":
+        # FORM: each fit searches the cut on the outcome; a preview reads no outcome, so the form
+        # step's own stand-in (the median) is drawn, and said to be one.
+        cut = float(facts["cuts"][0])
+        marks = [Mark(value=cut, label="the median, standing in for the searched cut")]
+        story = [RelationshipFrame(label=frame_label("1 above the cut, 0 at or below"),
+                                   points=points(x, terms[0][1]), r=None, y_label=terms[0][0])]
+        text = (f"{tick(name)}: one indicator above a cut point searched on the outcome in each "
+                f"fit; the median stands in.")
+        learned = (f"The cut is searched on the outcome in each fit; here the median of "
+                   f"{fmt_count(n_seen)} {drawn(ctx)}{rows_word(ctx)} rows holds its place.")
     else:
         text = f"{tick(name)} enters as itself: one straight-line term, one coefficient per unit."
     ctx.read["form"] = {"column": decision.column, "name": name, "form": form,
@@ -710,13 +776,31 @@ def exposure_form_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         r_after=None,
         story=story,
     )]
+    if inside != inside_now:
+        # FORM: the consumers-only domain is an estimand change, the cohort's own row flow
+        # (``stages.rows.cohort_flow``'s domain step) before and after the answer.
+        from turbotab.core import row_previews as rp
+
+        _, _, [(now_steps, _), (then_steps, _)] = rp._flows(ctx, [ctx.state, after])
+        n_now, n_then = int(now_steps[-1]["n"]), int(then_steps[-1]["n"])
+        column = tick(decision.column)
+        views.append(RowFlowView(
+            title=title("Whom the estimate is about"),
+            caption=caption(
+                f"{fmt_count(n_then)} of {fmt_count(n_now)} rows consume {column}: the estimate is "
+                f"about consumers only." if inside else
+                f"Non-consumers of {column} return: the estimate is about all {fmt_count(n_then)} "
+                f"rows."),
+            emphasis=[s["key"] for s in (then_steps if inside else now_steps)
+                      if str(s["key"]).startswith("domain:")],
+            before=rp._steps(now_steps, rp._sealed(ctx)),
+            after=rp._steps(then_steps, rp._sealed(ctx))))
     if marks:
         hist = histogram(x)
         views.append(DistributionView(
-            title=title(f"Where the {'knots' if form == 'spline' else 'cut points'} fall"),
-            caption=caption(f"Learned from {fmt_count(int(np.isfinite(x).sum()))} {drawn(ctx)}"
-                            f"{rows_word(ctx)} rows of {tick(name)}; the fit learns them again on "
-                            f"its own rows."),
+            title=title(f"Where the {'knots' if form in ('spline', 'zero_spline') else 'cut points'}"
+                        f" fall"),
+            caption=caption(learned),
             emphasis=[decision.column],
             column=name, before=hist, after=hist, before_label=name, after_label=name,
             marks=marks,
@@ -731,6 +815,81 @@ def exposure_form_views(decision: Any, ctx: PreviewContext) -> list[Any]:
             after=then.lineage,
         ))
     return views[:MAX_VIEWS]
+
+
+# ── set_forms (FORM's one tap; wave 2b integration) ──────────────────────────
+
+
+def forms_views(decision: Any, ctx: PreviewContext) -> list[Any]:
+    """The form question's one-tap answer: the declared exposure's form (else the first column the
+    answer gives a curve, else its first column), drawn as ``set_exposure_form`` draws it, on the
+    state the whole answer leaves."""
+    from turbotab.core import estimand as est
+    from turbotab.core.decisions import SetExposureForm
+
+    forms = dict(decision.forms or {})
+    if not forms:
+        return []
+    spec = est.current_estimand(ctx.state)
+    exposure = getattr(spec, "exposure", None) if spec is not None else None
+    column = exposure if exposure in forms else next(
+        (c for c, f in forms.items() if f.form != "linear"), next(iter(forms)))
+    one = SetExposureForm(column=column, **forms[column].model_dump())
+    return exposure_form_views(one, ctx, after=after_state(decision, ctx))
+
+
+# ── set_modification (FORM, MODELING_SEQUENCE §1 row 7; wave 2b integration) ──
+
+
+def modification_views(decision: Any, ctx: PreviewContext) -> list[Any]:
+    """A declared modifier, outcome-blind: the modifier on the analyzed rows with the strata the
+    modification stage reports the exposure's effect at (``methods.interaction.layout``'s rule: a
+    category's levels; a two-valued modifier's two values; a numeric one's declared values, else
+    its 25th and 75th percentiles), the first the reference."""
+    from turbotab.core.methods.interaction import bound_exposure
+
+    after = after_state(decision, ctx)
+    exposure = bound_exposure(after)
+    ids = pool(ctx)
+    if decision.withdraw or exposure is None or ids is None or \
+            decision.modifier not in ctx.datastore.columns:
+        return []
+    frame = ctx.datastore.materialize([decision.modifier], ids)
+    raw = frame[decision.modifier].dropna()
+    numbers = pd.to_numeric(raw, errors="coerce")
+    m = tick(decision.modifier)
+    a = tick(exposure)
+    if len(raw) and numbers.notna().all():
+        x = numbers.to_numpy(dtype=float)
+        distinct = np.unique(x)
+        stated = decision.levels
+        values = ([float(v) for v in distinct] if len(distinct) == 2 and not stated else
+                  [float(v) for v in stated] if stated else
+                  [float(v) for v in np.quantile(x, [0.25, 0.75])])
+        hist = histogram(x)
+        marks = [Mark(value=v, label="reference" if i == 0 else f"stratum {i + 1}")
+                 for i, v in enumerate(values)]
+        text = (f"The effect of {a} is reported at {m} = {series(values)}, against "
+                f"{num(values[0])}.")
+        ctx.read["modification"] = {"modifier": decision.modifier, "strata": values}
+        return [DistributionView(
+            title=title(f"Where {m} is stratified"),
+            caption=caption(text), emphasis=[decision.modifier], column=decision.modifier,
+            before=hist, after=hist, before_label=decision.modifier,
+            after_label=decision.modifier, marks=marks)]
+    levels = sorted(raw.astype(str).unique().tolist())
+    if not levels:
+        return []
+    codes = pd.Categorical(raw.astype(str), categories=levels).codes.astype(float)
+    hist = histogram(codes, edges=[i - 0.5 for i in range(len(levels) + 1)])
+    marks = [Mark(value=float(i), label=str(level)) for i, level in enumerate(levels)]
+    ctx.read["modification"] = {"modifier": decision.modifier, "strata": levels}
+    return [DistributionView(
+        title=title(f"Rows in each level of {m}"),
+        caption=caption(f"The effect of {a} is estimated in each of the {fmt_count(len(levels))} "
+                        f"levels of {m}, against one reference."),
+        emphasis=[decision.modifier], column=decision.modifier, before=hist, after=hist,
+        before_label="rows per level", after_label="rows per level", marks=marks)]
 
 
 # ── set_clusters ─────────────────────────────────────────────────────────────
@@ -1210,6 +1369,8 @@ register_consequence("set_adjustment", adjustment_views)
 register_consequence("set_model_sequence", model_sequence_views)
 register_consequence("set_multiplicity", multiplicity_views)
 register_consequence("set_exposure_form", exposure_form_views)
+register_consequence("set_forms", forms_views)  # FORM's one tap (wave 2b integration)
+register_consequence("set_modification", modification_views)  # FORM (wave 2b integration)
 register_consequence("set_clusters", clusters_views)
 register_consequence("set_survey", survey_views)
 register_consequence("set_follow_up", follow_up_views)

@@ -162,6 +162,10 @@ class EValueResult(_Model):
     interval_includes_null: bool | None = None
     rare: bool | None = None
     converted: bool
+    # A difference's E-value: the standard deviation it was standardized by, and whose it is
+    # (MODELING_SEQUENCE §0 ruling 14): the surveyed population's (design-weighted) or the rows'.
+    sd: float | None = None
+    sd_basis: Literal["design_weighted", "sample"] | None = None
 
 
 class BenchmarkResult(_Model):
@@ -1282,20 +1286,21 @@ class _Run:
             return float(np.average(values[domain.keep], weights=domain.weight))
         return float(np.mean(values))
 
-    def _outcome_sd(self) -> float:
-        """The outcome's standard deviation: the population's under the surveyed-population answer
-        (R survey's ``svyvar``), else the rows', by the one rule the causal lane uses too
-        (``models.effects.outcome_sd``; MODELING_SEQUENCE §0 ruling 14)."""
-        from turbotab.core.models.effects import outcome_sd
+    def _outcome_sd(self) -> tuple[float, str]:
+        """The outcome's standard deviation and its basis: the population's under the
+        surveyed-population answer (R survey's ``svyvar`` over the design's domain, every family
+        shown there being design-based), else the rows', by the one rule the causal lane uses too
+        (``models.effects.estimand_sd``; MODELING_SEQUENCE §0 ruling 14)."""
+        from turbotab.core.models.effects import estimand_sd
 
-        values = self.y.astype(float)
+        values = np.asarray(self.y.astype(float))
         design = self._design()
         if design is not None:
             from turbotab.core.models.survey import domain_of
 
             domain = domain_of(self.frame.index, design)
-            return outcome_sd(values[domain.keep], domain.weight)
-        return outcome_sd(values)
+            return estimand_sd(values[domain.keep], domain.raw)
+        return estimand_sd(values)
 
     def _marginal_sensitivity(self, feature: str, c: MarginalContrast,
                               imputed: bool) -> Sensitivity:
@@ -1316,7 +1321,11 @@ class _Run:
         feature = str(row.feature)
         design = self._design()
         if self.task == "regression":
-            sd = self._outcome_sd()
+            # MODELING_SEQUENCE §0 ruling 14: the SD the estimand speaks of. Under the surveyed-
+            # population answer every family shown is design-based and reports the population's
+            # difference, standardized by the outcome's design-weighted SD over the same domain;
+            # otherwise by the analyzed rows' own SD.
+            sd, basis = self._outcome_sd()
             matrix = y = None
             benchmarks = None
             reason = None
@@ -1343,7 +1352,7 @@ class _Run:
                 measure="mean_difference", estimate=float(row.estimate), ci_low=row.ci_low,
                 ci_high=row.ci_high, se=row.se, outcome_sd=sd, matrix=matrix, y=y,
                 exposure_column=feature if matrix is not None else None, benchmarks=benchmarks,
-                covariance=covariance)
+                covariance=covariance, sd_basis=basis)
             return self._sensitivity(feature, found, imputed, reason, what=what)
         if family.key == "featurewise":
             return Sensitivity(feature=feature, methods=[], reading="",
@@ -1444,11 +1453,21 @@ SENSITIVITY_NAMES = {
     "e_value": "the E-value for the estimate and for the confidence limit nearer the null"}
 
 
+# MODELING_SEQUENCE §0 ruling 14: under the surveyed-population answer a difference's E-value is
+# standardized by the population's SD, which the methods text says (the rows' own SD is the
+# default reading of VanderWeele & Ding's approximation, and goes unsaid).
+POPULATION_SD = ("the difference standardized by the outcome's design-weighted standard deviation "
+                 "in the surveyed population")
+
+
 def sensitivity_clause(methods: Sequence[str], names: Mapping[str, str] | None = None,
-                       of: str | None = None) -> str:
+                       of: str | None = None, sd_basis: str | None = None) -> str:
     """The methods text's sentence for the analyses that ran, in rank order; ``of`` names what
-    they bound when it is not the reported estimate itself."""
+    they bound when it is not the reported estimate itself, and ``sd_basis`` the E-value's
+    standard deviation, named when it is the surveyed population's."""
     words = {**SENSITIVITY_NAMES, **(names or {})}
+    if sd_basis == "design_weighted" and "e_value" in words:
+        words["e_value"] = f"{words['e_value']}, {POPULATION_SD}"
     subject = f" of {of}" if of else ""
     return (f"Sensitivity to unmeasured confounding{subject} is reported by "
             f"{' and by '.join(words[m] for m in methods)}, never as a pass or a fail.")
@@ -1585,7 +1604,9 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
         if robustness is not None:
             names["robustness_value"] = robustness
         of = STRAIGHT_LINE if any(s.of == STRAIGHT_LINE for s in lines) else None
-        text += " " + sensitivity_clause(lines[0].methods, names, of=of)
+        e = lines[0].e_value
+        text += " " + sensitivity_clause(lines[0].methods, names, of=of,
+                                         sd_basis=e.sd_basis if e is not None else None)
     if artifact.multiplicity:
         text += " " + artifact.multiplicity
     return text
@@ -1873,6 +1894,7 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
         ),
         sources=("Gelman & Loken 2013",)),
 ))
-__all__ = ["EFFECTS_READS", "EffectsArtifact", "EffectsFamily", "SENSITIVITY_NAMES", "SequenceFit",
+__all__ = ["EFFECTS_READS", "EffectsArtifact", "EffectsFamily", "POPULATION_SD", "SENSITIVITY_NAMES",
+           "SequenceFit",
            "effects_stage", "energy_outputs", "matrix_sources", "matrix_table", "methods_sentence",
            "sensitivity_clause", "sensitivity_reading", "supplied_copies_reason"]

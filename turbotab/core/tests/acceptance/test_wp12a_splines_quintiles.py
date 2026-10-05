@@ -440,10 +440,13 @@ def test_1_a_quintile_cut_holds_its_value_in_the_lower_group_as_qcut_does():
 def test_1_under_inference_the_spline_ranks_first_and_quintiles_are_tagged_customary():
     for purpose in ("inference", "prediction"):
         options = ef.options(purpose)
-        assert [o["value"] for o in options] == ["spline", "linear", "quintiles"]
+        # FORM widened the menu (the shelf is never shortened): declared categories and the
+        # data-derived cut point follow, ranked lower (blocked and recorded under inference).
+        assert [o["value"] for o in options] == ["spline", "linear", "quintiles", "categories",
+                                                 "optimal"]
         for option in options:
             assert option["customary"] and option["sound"]
-    quintiles = ef.options("inference")[-1]
+    quintiles = ef.options("inference")[2]
     assert quintiles["customary"].startswith("Customary") and "quintiles remain expected" in quintiles["customary"]
     assert quintiles["sound"].startswith("Weaker for inference")
     pack = (REPO / "docs" / "turbotab" / "research" / "NUTRITION_PACK.md").read_text()

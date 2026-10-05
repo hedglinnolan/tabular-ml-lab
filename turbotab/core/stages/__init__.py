@@ -135,6 +135,21 @@ Wave 2, EXPLAIN (V2 definition of done §2, "Explainability"; turbotab/core/mode
     cross-validated score against the baseline) and the family's architecture. Under inference it
     is an estimate stage: withheld until the plan's questions are answered, and locking the plan.
 
+Wave 2, FORM (MODELING_SEQUENCE §1 rows 5 and 7; turbotab/core/methods/exposure_form.py and
+interaction.py):
+
+    forms        heavy   deps: working, cohort, target_info   reads the estimand, the adjustment
+                                                              answers, the transforms …; requires
+                                                              purpose
+    modification heavy   deps: working, design, split,        reads the declared modifiers and the
+                               target_info                    plan …; requires modifications, models
+
+    ``forms`` is the functional-form question's card: which continuous terms take a declared form,
+    on which scale, with k by Harrell's rule. ``modification`` estimates each declared effect
+    modifier or second exposure against a single reference, with the RERI and the ratio of ratios;
+    under inference it is an estimate stage. ``cohort`` reads the forms: a consumers-only domain
+    leaves the non-consumers on a line of their own.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -161,6 +176,8 @@ WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.scales import SCALES_READS, scales_stage
 from turbotab.core.stages.explain import EXPLAIN_READS, explain_stage
+from turbotab.core.stages.explore import EXPLORE_READS, explore_stage
+from turbotab.core.stages.evaluation import EVALUATION_READS, evaluation_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
 from turbotab.core.stages.effects import EFFECTS_READS, effects_stage
@@ -169,6 +186,8 @@ from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.usual_intake import USUAL_INTAKE_READS, usual_intake_stage
 from turbotab.core.stages.time_varying import TIME_VARYING_READS, time_varying_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
+from turbotab.core.methods.exposure_form import FORMS_READS, forms_stage  # FORM
+from turbotab.core.methods.interaction import MODIFICATION_READS, modification_stage  # FORM
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 
@@ -254,11 +273,16 @@ def build_graph() -> Graph:
             # own option; a run order is no intensity; no "no pooled QCs" beside the QC rows found.
             # findings 19 (wave-1 repairs integrated): both findings 18s, the routing gate's and MS7
             # repair's.
+            # findings 20 (LEASH, the routing gate's claims note): values below a detection limit
+            # the app's own finding reads, repair and all, are left to it by the lab pack's
+            # censored-values finding; a text predictor confirmed "amount" through the ledger is
+            # checked by the plausibility checks as the numbers the fit reads.
             Stage(
                 "findings",
-                19,
+                20,
                 ("oriented",),
-                ("lens", "target", "column_units", "sex_codings", "numbers_read"),
+                ("lens", "target", "column_units", "sex_codings", "numbers_read",
+                 "shape_confirmations", "categorical", "aggregation"),
                 findings_stage,
                 heavy=True,
                 requires=("lens",),
@@ -356,7 +380,9 @@ def build_graph() -> Graph:
             # it is proposed excluded (RO-10).
             # roles 11 (the routing gate): the column named as the outcome's follow-up time is the
             # outcome's time, proposed "time" by the user's own follow-up answer.
-            Stage("roles", 11, ("working",),
+            # roles 12 (LEASH): under inference, every column that can structurally group rows is
+            # read by its values for the grouping question (``turbotab.core.groupings``).
+            Stage("roles", 12, ("working",),
                   ("lens", "target", "purpose", "grain", "outcome_scale", "follow_up", "task"),
                   roles_stage,
                   heavy=True, label="Reading what each column is"),
@@ -404,7 +430,10 @@ def build_graph() -> Graph:
             # declared sequence is offered beside the adjustment card, so they read it too.
             # proposals 19 (wave 2a integration): both proposals 18s, the routing gate's and
             # ESTIMAND's, in one card.
-            Stage("proposals", 19, ("working", "roles"),
+            # proposals 20 (LEASH): the adjustment card's guesses cover clinical measurements,
+            # medications and lifestyle under the exposure-outcome pairing, in blocks of the same
+            # guess, with a multi-select answer; the grouping question's card shows each guess.
+            Stage("proposals", 20, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
@@ -415,9 +444,11 @@ def build_graph() -> Graph:
             # cohort 6 (wave 1, MS7): the pooled QCs a drift correction read leave as reference rows.
             # cohort 7 (the routing gate): a time-to-event outcome's landmark leaves the rows whose
             # follow-up ended by it, on a line of its own.
-            Stage("cohort", 7, ("working", "target_info"),
+            # cohort 8 (FORM): the consumers-only domain of a food with many non-consumers leaves
+            # the non-consumers on a line of their own (an estimand change, STROBE-nut nut-14).
+            Stage("cohort", 8, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
-                   *WP17_READS, "follow_up", "task"), cohort_stage,
+                   *WP17_READS, "follow_up", "task", "form_domains"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.
             # split 4 (audit WP15, IN-24): the chronology counts held-out rows that predate training.
@@ -439,7 +470,10 @@ def build_graph() -> Graph:
             # shelf 12 (MS6): the measured estimate counts the comparisons' repeated k-fold.
             # shelf 13 (REPAIR-VALID): ... and the refits of the grouping's internal–external
             # validation under prediction.
-            Stage("shelf", 13, ("working", "cohort", "target_info", "split"),
+            # shelf 14 (wave 2b integration): shelf 13 of REPAIR-VALID and of EXPLORE, one engine;
+            # under prediction Riley's minimum runs before the ranking; below it the regression
+            # families rank first (``models.selection.shelf_order``).
+            Stage("shelf", 14, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms",
@@ -490,13 +524,16 @@ def build_graph() -> Graph:
             # left as sva leaves it.
             # design 22 (wave-1 repairs integrated): both design 21s, the routing gate's and MS7
             # repair's.
+            # design 23 (wave 2, EXPLORE): Explore's levers as in-fold rules and the selection menu's
+            # in-fold step, under prediction (``methods.levers``, ``models.variable_selection``).
             # design 23 (EXPORT): the model matrix the shared steps made is kept as a file of the
             # artifact (canonical Parquet, read by no stage downstream), so the export hashes it
             # and a replay compares it byte for byte (V2 definition of done §3.6).
-            Stage("design", 23, ("working", "split", "target_info"),
+            # design 24 (wave 2b integration): design 23 of EXPLORE and of EXPORT on one engine.
+            Stage("design", 24, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
-                   "column_units", *WP17_READS),
+                   "column_units", *WP17_READS, "levers", "selection"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -547,7 +584,11 @@ def build_graph() -> Graph:
             # total energy; the survey design in SMC-FCS's outcome model; a column carried and
             # imputed once per unit only when the ledger's time-invariance reading is confirmed,
             # asked otherwise; the Cox draws' baseline hazard as smcfcs takes it.
-            Stage("fit", 22, ("working", "design", "split", "target_info", "cohort"),
+            # fit 23 (wave 2b integration): REPAIR-VALID's fit 22 with EXPLORE's: the concerns that
+            # quote a score are named (withheld from a client under inference, ruling 13); the
+            # comparison substrate is kept for the evaluation stage; under prediction with the
+            # population answer, the note points to the design-based scores.
+            Stage("fit", 23, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -629,11 +670,14 @@ def build_graph() -> Graph:
             # calibration 8 (wave 1, MS4): blocked and recorded under the population answer.
             # calibration 9 (SURVEY repair): the block's exits are decisions (the sample-only
             # attestation; no correction).
-            Stage("calibration", 9,
+            # calibration 10 (MS5): every error-prone intake calibrated jointly inside each imputed
+            # copy, a declared secondary with a whole-chain bootstrap (PSUs within strata, clusters
+            # or people), the adjustment set it was declared under kept.
+            Stage("calibration", 10,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
-                  label="Correcting energy-adjusted intakes for day-to-day error"),
+                  label="Correcting intakes for day-to-day error in the recalls"),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             Stage("secondary", 4, ("working", "design", "split", "target_info"),
@@ -674,7 +718,9 @@ def build_graph() -> Graph:
             # effects 4 (wave 1b repairs integrated): every copy fit as the fit fits one (the knots
             # placed once, no median fill; REPAIR-MI); Model 3 held by its own imputation's question
             # carries that question's exits, and the methods text lists only the models reported.
-            Stage("effects", 4, ("working", "design", "split", "target_info"),
+            # effects 5 (wave 2b, LEASH): a difference's E-value records the SD it was standardized
+            # by and whose it is, and the methods text names the surveyed population's.
+            Stage("effects", 5, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand"),
                   label="Reporting the exposure's effect across the declared models"),
@@ -689,7 +735,9 @@ def build_graph() -> Graph:
             Stage("causal_design", 2, ("working", "split", "target_info"), CAUSAL_READS,
                   causal_design_stage, heavy=True, requires=("estimand",),
                   label="Reading the causal lane's assumptions and overlap"),
-            Stage("causal", 2, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
+            # causal 3 (wave 2b, LEASH): the lane's E-value of a difference records the SD it was
+            # standardized by and whose it is, and the methods text names the surveyed population's.
+            Stage("causal", 3, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
                   causal_stage, heavy=True, requires=("causal", "models"),
                   label="Estimating the effect in the causal lane"),
             # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
@@ -709,6 +757,36 @@ def build_graph() -> Graph:
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models"),
                   label="Explaining each fitted model"),
+            # ── Wave 2, FORM (MODELING_SEQUENCE §1 rows 5 and 7) ──
+            # forms: the functional-form question's card, read on the analyzed rows: the declared
+            # exposure and each adjusted continuous confounder on its final scale, k by Harrell's
+            # rule on the effective sample size, a mass at zero, the options for each role. It reads
+            # no form answer, so answering it never recomputes it.
+            Stage("forms", 1, ("working", "cohort", "target_info"), FORMS_READS, forms_stage,
+                  heavy=True, requires=("purpose",),
+                  label="Reading which continuous terms take a declared form"),
+            # modification: each declared effect modifier or second exposure, against a single
+            # reference on both scales (Knol & VanderWeele 2012); an estimate stage.
+            Stage("modification", 1, ("working", "design", "split", "target_info"),
+                  MODIFICATION_READS, modification_stage, heavy=True,
+                  requires=("modifications", "models"),
+                  label="Estimating the declared effect modification"),
+            # ── Wave 2, EXPLORE (MODELING_SEQUENCE §0 ruling 3; §1 rows 1, 9, 11) ──
+            # explore reads the training rows under prediction and every analyzed row under
+            # inference: each finding tied to its lever, outcome views recorded as looked at;
+            # evaluation fits the regression-with-splines benchmark on the fit's own folds, weighs
+            # the interpretable model against the flexible ones, draws the decision curve, scores
+            # subgroups, offers shrinkage, runs internal–external CV and design-based CV, and under
+            # inference shows no cross-validated score (only a declared selection sensitivity).
+            Stage("explore", 1, ("working", "cohort", "split", "target_info"),
+                  (*EXPLORE_READS, *ROLE_READS, *WP17_READS), explore_stage, heavy=True,
+                  requires=("target", "split"), label="Exploring the rows Explore may read"),
+            # evaluation 2 (wave 2b integration): the seal's opening left its reads, as nothing it
+            # computes reads it (a re-seal withholds scores and changes no number, wave 2c).
+            Stage("evaluation", 2, ("working", "fit", "design", "split", "target_info"),
+                  (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
+                  requires=("models",),
+                  label="Fitting the benchmark and weighing the models"),
         ]
     )
 

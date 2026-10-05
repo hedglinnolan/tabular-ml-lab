@@ -356,10 +356,12 @@ def test_1_the_methods_are_the_records_sentences_by_strobe_section(inference):
     for e in said:
         assert e["text"] == route[e["record_id"]]["sentence"]  # verbatim
     keys = [s["key"] for s in doc["sections"]]
-    assert keys == ["design", "participants", "variables", "measurement", "statistical", "after",
-                    "reproducibility"]
+    # (wave 2b, FORM) the form question's answer says how each continuous term enters (STROBE 11)
+    assert keys == ["design", "participants", "variables", "measurement", "quantitative",
+                    "statistical", "after", "reproducibility"]
     by = {s["key"]: s for s in doc["sections"]}
     kinds = {k: [e["kind"] for e in by[k]["entries"]] for k in keys}
+    assert kinds["quantitative"] == ["set_forms"]
     assert kinds["design"] == ["set_purpose"]
     assert kinds["participants"] == ["set_exclusions"]
     assert {"set_target", "set_roles", "set_estimand"} <= set(kinds["variables"])

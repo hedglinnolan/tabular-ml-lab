@@ -587,14 +587,17 @@ def sensitivity_for(estimates: Sequence[Mapping[str, Any]], *, method: str, expo
                     exposure_column: str | None = None,
                     benchmarks: Mapping[str, Sequence[str]] | None = None,
                     final_stage: Sequence[Mapping[str, float]] | None = None,
-                    ratio_refused: str | None = None, population: str = "all") -> dict[str, Any]:
+                    ratio_refused: str | None = None, population: str = "all",
+                    sd_basis: str | None = None) -> dict[str, Any]:
     """Sensitivity to unmeasured confounding, REQUIRED in the causal lane (MODELING_SEQUENCE §0
     ruling 10), by ESTIMAND's :func:`turbotab.core.models.effects.unmeasured_confounding`, the one
     function every inference result calls (and its ``robustness_value``):
 
     * a numeric outcome's difference: the E-value of the standardized difference (VanderWeele &
       Ding 2017's approximation, from the outcome's standard deviation and the estimate's standard
-      error);
+      error), the SD the estimand speaks of (MODELING_SEQUENCE §0 ruling 14: the design-weighted
+      SD under the surveyed-population answer, ``sd_basis`` "design_weighted"; else the rows'
+      own), from :func:`turbotab.core.models.effects.estimand_sd`, as the effects stage reads it;
     * a yes/no outcome: the E-value of the risk ratio the estimator reports beside its risk
       difference (targeted maximum likelihood's marginal one; the interactive model's from its
       doubly robust means, marginal or among the exposed);
@@ -629,7 +632,7 @@ def sensitivity_for(estimates: Sequence[Mapping[str, Any]], *, method: str, expo
             ci_high=first.get("ci_high"), se=first.get("se"), outcome_sd=outcome_sd,
             matrix=matrix if least_squares else None, y=y if least_squares else None,
             exposure_column=exposure_column if least_squares else None, benchmarks=benchmarks,
-            covariance=covariance)
+            covariance=covariance, sd_basis=sd_basis)
     else:
         ratio = next((e for e in estimates if e.get("measure") == "risk_ratio"), None)
         found = (effects.unmeasured_confounding(
@@ -675,7 +678,8 @@ def sensitivity_sentence(sensitivity: Mapping[str, Any] | None) -> str:
     if sensitivity.get("computed"):
         method = str(sensitivity.get("method") or "pds_lasso")
         return " " + sensitivity_clause(sensitivity["methods"], {
-            "robustness_value": ROBUSTNESS_NAMES.get(method, ROBUSTNESS_NAMES["pds_lasso"])})
+            "robustness_value": ROBUSTNESS_NAMES.get(method, ROBUSTNESS_NAMES["pds_lasso"])},
+            sd_basis=(sensitivity.get("e_value") or {}).get("sd_basis"))
     return (" Sensitivity to unmeasured confounding, required in the causal lane, could not be "
             f"computed for this estimate: {str(sensitivity.get('not_computed') or '')[:1].lower()}"
             f"{str(sensitivity.get('not_computed') or '')[1:]}")

@@ -261,12 +261,19 @@ class SensitivityAnalysis(_Value):
 
 
 MeasurementErrorMethod = Literal["none", "regression_calibration"]
+# MS5 (MODELING_SEQUENCE §0 ruling 7): a calibrated coefficient's interval comes from a bootstrap
+# over the whole chain; model-based and Rubin-only intervals are refused (methods/calibration.py).
+CalibrationInterval = Literal["whole_chain_bootstrap", "model_based", "rubin_only"]
 
 
 class MeasurementErrorSpec(_Value):
     method: MeasurementErrorMethod
-    exposures: list[str] = Field(default_factory=list)  # [] = every energy-adjusted exposure
+    exposures: list[str] = Field(default_factory=list)  # [] = every exposure the recalls measure
     n_boot: int = Field(default=200, ge=50, le=2000)
+    interval: CalibrationInterval = "whole_chain_bootstrap"
+    # The adjustment set the calibration was declared under, as the server recorded it (a change
+    # to it invalidates the declaration: MODELING_SEQUENCE §2; stages/calibration.py).
+    adjustment: list[str] | None = None
 
 
 # MS8 (MODELING_SEQUENCE §0 ruling 8): a multi-item scale scored as one predictor, its reliability
@@ -426,7 +433,10 @@ MAX_BOOT = 2000
 # The scale a substitution moves energy on: kcal (the same amount on every row), or a share of each
 # row's own total energy, "5% of energy from X replaced by Y", the field's expected figure
 # (NUTRITION_PACK §05; audit B24, D19).
-SubstitutionScale = Literal["kcal", "percent_energy"]
+# "share_reallocation" (a compositional, isometric log-ratio reallocation of shares) is named so that
+# a request for it is refused with its reason, never silently read as a kcal swap: MODELING_SEQUENCE
+# §0 ruling 11 sends it to v2.x (``methods.exposure_form``'s refusal offers the kcal substitution).
+SubstitutionScale = Literal["kcal", "percent_energy", "share_reallocation"]
 
 
 class SubstitutionSpec(_Value):
@@ -581,13 +591,16 @@ class SetSensitivity(_DecisionModel):
 
 
 class SetMeasurementError(_DecisionModel):
-    """Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
-    (univariate regression calibration; audit IN-22, Freedman et al. 2011)."""
+    """Whether the intakes the recalls measure are corrected for day-to-day error, by regression
+    calibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).
+    ``adjustment`` is filled by the server from the state, never by the client."""
 
     kind: Literal["set_measurement_error"] = "set_measurement_error"
     method: MeasurementErrorMethod
     exposures: list[str] = Field(default_factory=list)
     n_boot: int = Field(default=200, ge=50, le=2000)
+    interval: CalibrationInterval = "whole_chain_bootstrap"
+    adjustment: list[str] | None = None
 
     @field_validator("exposures")
     @classmethod
@@ -908,7 +921,9 @@ class SetRepeatKind(_DecisionModel):
     time_column: str | None = None
     levels: list[str] | None = None  # the declared order of a text time column's levels
     implicate_column: str | None = None  # imputed copies: the column numbering them (``_MULT_``)
-    acknowledged: bool = False  # imputed copies under inference: analyzed without Rubin's rules
+    # imputed copies under inference: analyzed without Rubin's rules; or repeats or time points
+    # answered over rows the structure reads as imputed copies (block and record)
+    acknowledged: bool = False
 
     @field_validator("levels")
     @classmethod
@@ -958,25 +973,72 @@ class SetCategorical(_DecisionModel):
 
 
 # WP12a (audit ME-17, ME-19): the form an exposure takes, and the order of an ordinal outcome.
+# FORM (MODELING_SEQUENCE §1 row 5): declared cut points ("categories"), a data-derived "optimal"
+# cut point (blocked and recorded under inference), and a food with many non-consumers'
+# "zero_spline" (non-consumers their own category, a spline among consumers).
 
-ExposureFormKind = Literal["linear", "spline", "quintiles"]
+ExposureFormKind = Literal["linear", "spline", "quintiles", "categories", "optimal", "zero_spline"]
+FormDomain = Literal["all", "consumers"]
 
 
 class ExposureFormSpec(_Value):
     """How one numeric predictor enters the models: a straight line, a restricted cubic spline
-    (``knots`` 3–5, at Harrell's percentiles), or quintile indicators with a trend test."""
+    (``knots`` 3–5, at Harrell's percentiles; ``knots_rule`` "harrell" when k was set by the
+    declared rule on ``n_effective``), quintile indicators with a trend test, indicators at declared
+    cut points (``cuts``), one data-derived cut point, or, for an exposure with a mass at zero,
+    non-consumers as their own category beside a spline among consumers. ``domain`` "consumers"
+    restricts the analysis to consumers (an estimand change, STROBE-nut nut-14). ``acknowledged``
+    keeps a blocked-and-recorded form as a recorded limitation. ``scale`` is the exposure's
+    transform as it stood when the form was declared (``methods.exposure_form.transform_signature``):
+    a later transform makes the form stale, re-asked and never kept. ``unit`` is the unit the
+    estimate is per, on that scale (the estimand's unit)."""
 
     form: ExposureFormKind
     knots: int | None = Field(default=None, ge=3, le=5)
+    knots_rule: Literal["harrell"] | None = None
+    n_effective: float | None = None
+    cuts: list[float] | None = None
+    domain: FormDomain = "all"
+    acknowledged: bool = False
+    scale: str | None = None
+    unit: str | None = None
 
 
 class SetExposureForm(_DecisionModel):
-    """The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."""
+    """The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.
+    Left without ``knots``, a spline takes k by the declared rule on the analyzed rows (the
+    completion records it); ``scale`` and ``unit`` are the server's."""
 
     kind: Literal["set_exposure_form"] = "set_exposure_form"
     column: str = Field(min_length=1)
     form: ExposureFormKind
     knots: int | None = Field(default=None, ge=3, le=5)
+    knots_rule: Literal["harrell"] | None = None
+    n_effective: float | None = None
+    cuts: list[float] | None = None
+    domain: FormDomain = "all"
+    acknowledged: bool = False
+    scale: str | None = None
+    unit: str | None = None
+
+    @field_validator("cuts")
+    @classmethod
+    def _increasing(cls, value: list[float] | None) -> list[float] | None:
+        if value is not None and (not value or any(b <= a for a, b in zip(value, value[1:]))):
+            raise ValueError("cut points are one or more values, each above the one before")
+        return value
+
+    def spec(self) -> ExposureFormSpec:
+        return ExposureFormSpec(**self.model_dump(exclude={"kind", "column"}))
+
+
+class SetForms(_DecisionModel):
+    """The form question's one-tap answer (MODELING_SEQUENCE §1 row 5; BLUEPRINT §14.2): a form for
+    each listed column, the exposure's and its continuous confounders', each checked and completed
+    as its own ``set_exposure_form`` would be."""
+
+    kind: Literal["set_forms"] = "set_forms"
+    forms: dict[str, ExposureFormSpec] = Field(min_length=1)
 
 
 class SetOutcomeOrder(_DecisionModel):
@@ -1247,6 +1309,53 @@ class SetAdjustment(_DecisionModel):
     answers: dict[str, CovariateAnswers] = Field(min_length=1)
 
 
+# FORM (MODELING_SEQUENCE §1 row 7, §2; Knol & VanderWeele 2012): effect modification (the
+# exposure's effect across strata of a modifier, on the exposure's own adjustment set) and
+# interaction (the joint effect of two exposures, the adjustment set asked again for the second).
+ModificationKind = Literal["effect_modification", "interaction"]
+
+
+class ModificationSpec(_Value):
+    """One declared modifier or second exposure (``turbotab.core.methods.interaction``).
+
+    ``exposure`` is the declared exposure the analysis is about (it holds while that is the
+    exposure); ``low`` and ``high`` its contrast on its final scale (None: the interquartile
+    contrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th
+    percentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure
+    of an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates
+    were seen, or so marked); it counts in the family either way."""
+
+    kind: ModificationKind
+    exposure: str | None = None
+    low: float | None = None
+    high: float | None = None
+    levels: list[float] | None = None
+    answers: dict[str, CovariateAnswers] = Field(default_factory=dict)
+    post_hoc: bool = False
+
+
+class SetModification(_DecisionModel):
+    """Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."""
+
+    kind: Literal["set_modification"] = "set_modification"
+    modifier: str = Field(min_length=1)
+    modification: ModificationKind = "effect_modification"
+    exposure: str | None = None
+    low: float | None = None
+    high: float | None = None
+    levels: list[float] | None = None
+    answers: dict[str, CovariateAnswers] = Field(default_factory=dict)
+    post_hoc: bool = False
+    withdraw: bool = False
+
+    def spec(self) -> ModificationSpec | None:
+        if self.withdraw:
+            return None
+        return ModificationSpec(kind=self.modification, exposure=self.exposure, low=self.low,
+                                high=self.high, levels=self.levels, answers=dict(self.answers),
+                                post_hoc=self.post_hoc)
+
+
 class ModelSequenceSpec(_Value):
     """The declared adjustment sequence beside the primary model (MODELING_SEQUENCE §1 row 11):
     Model 1's columns (the field's age, sex and energy, as the user names them), declared for one
@@ -1423,6 +1532,120 @@ class SetExplain(_DecisionModel):
     exposures: list[str] = Field(default_factory=list)
     reseeds: int = Field(default=5, ge=0, le=20)
     as_effect: bool = False
+
+
+# Wave 2, EXPLORE (MODELING_SEQUENCE §0 ruling 3; §1 rows 1, 2, 8, 9, 11; ``stages/explore.py``,
+# ``methods/levers.py``, ``models/variable_selection.py``, ``models/decision_curve.py``).
+# ``view_outcome``: an outcome view the user opened in Explore, recorded as looked at under both
+# purposes (forking paths; Gelman & Loken 2013). ``target``, ``rows``, ``n_rows`` and ``levers``
+# (each viewed column's lever answers at its first look) are filled by the server.
+OutcomeView = Literal["relationship", "distribution"]
+
+
+class OutcomeViewSpec(_Value):
+    view: OutcomeView
+    column: str
+    target: str | None = None
+    rows: Literal["training", "analyzed"] | None = None
+    n_rows: int | None = None
+    levers: dict[str, str] = Field(default_factory=dict)
+
+
+class ViewOutcome(_DecisionModel):
+    kind: Literal["view_outcome"] = "view_outcome"
+    view: OutcomeView
+    columns: list[str] = Field(default_factory=list)  # relationship: the predictors; else the outcome
+    target: str | None = None
+    rows: Literal["training", "analyzed"] | None = None
+    n_rows: int | None = None
+    levers: dict[str, dict[str, str]] | None = None
+
+
+# ``set_levers`` (prediction): Explore's levers as in-fold rules the resampling repeats. ``forms``:
+# every continuous predictor a restricted cubic spline with k by Harrell's rule, or linear against
+# spline chosen by inner cross-validation; ``variance_filter``: near-zero-variance predictors, or all
+# but the ``keep`` most variable, dropped in each training fold; ``imbalance``: a correction fitted
+# in-fold and followed by recalibration (TRIPOD+AI 13).
+LeverForms = Literal["none", "rule", "inner_cv"]
+VarianceFilter = Literal["none", "near_zero", "top"]
+ImbalanceCorrection = Literal["none", "weights", "undersample", "oversample"]
+
+
+class LeverSpec(_Value):
+    forms: LeverForms = "none"
+    variance_filter: VarianceFilter = "none"
+    keep: int | None = Field(default=None, ge=1)
+    imbalance: ImbalanceCorrection = "none"
+
+
+class SetLevers(_DecisionModel):
+    kind: Literal["set_levers"] = "set_levers"
+    forms: LeverForms = "none"
+    variance_filter: VarianceFilter = "none"
+    keep: int | None = Field(default=None, ge=1)
+    imbalance: ImbalanceCorrection = "none"
+
+
+# ``set_selection`` (MODELING_SEQUENCE §1 row 8): the selection menu, in-fold under prediction (or
+# ``where = "outside"``, refused: a false performance number), a labeled sensitivity analysis under
+# inference; ``pre_selected`` is TRIPOD+AI 9a's question.
+SelectionMethod = Literal["none", "elastic_net", "stability", "screening", "stepwise",
+                          "univariable", "vip"]
+
+
+class SelectionSpec(_Value):
+    method: SelectionMethod = "none"
+    where: Literal["in_fold", "outside"] = "in_fold"
+    keep: int | None = Field(default=None, ge=1)
+    threshold: float | None = Field(default=None, gt=0, lt=1)
+    q: int | None = Field(default=None, ge=1)
+    pre_selected: Literal["no", "yes", "other_data", "unknown"] | None = None
+    sensitivity: bool = False
+
+
+class SetSelection(_DecisionModel):
+    kind: Literal["set_selection"] = "set_selection"
+    method: SelectionMethod = "none"
+    where: Literal["in_fold", "outside"] = "in_fold"
+    keep: int | None = Field(default=None, ge=1)
+    threshold: float | None = Field(default=None, gt=0, lt=1)
+    q: int | None = Field(default=None, ge=1)
+    pre_selected: Literal["no", "yes", "other_data", "unknown"] | None = None
+    sensitivity: bool = False
+
+
+# ``set_intended_use`` (MODELING_SEQUENCE §1 row 2, prediction; TRIPOD+AI 12e, 14, 15, 23a): decision
+# support gates the decision curve and its threshold range; ``subgroups`` are the columns whose
+# groups get performance with intervals; ``fairness`` records the approach, even "none".
+class IntendedUseSpec(_Value):
+    use: Literal["decision_support", "risk_estimation"]
+    threshold_low: float | None = Field(default=None, gt=0, lt=1)
+    threshold_high: float | None = Field(default=None, gt=0, lt=1)
+    # the decision threshold declared from the decision's harms (None: chosen in-fold by Youden's J)
+    threshold: float | None = Field(default=None, gt=0, lt=1)
+    subgroups: list[str] = Field(default_factory=list)
+    fairness: Literal["none", "subgroup_performance"] = "subgroup_performance"
+
+
+class SetIntendedUse(_DecisionModel):
+    kind: Literal["set_intended_use"] = "set_intended_use"
+    use: Literal["decision_support", "risk_estimation"]
+    threshold_low: float | None = Field(default=None, gt=0, lt=1)
+    threshold_high: float | None = Field(default=None, gt=0, lt=1)
+    threshold: float | None = Field(default=None, gt=0, lt=1)
+    subgroups: list[str] = Field(default_factory=list)
+    fairness: Literal["none", "subgroup_performance"] = "subgroup_performance"
+
+
+# ``set_updating`` (TRIPOD+AI 12f): uniform shrinkage of a regression model's coefficients by the
+# optimism-corrected calibration slope, stated as model updating, or none.
+class UpdatingSpec(_Value):
+    method: Literal["none", "shrinkage"] = "none"
+
+
+class SetUpdating(_DecisionModel):
+    kind: Literal["set_updating"] = "set_updating"
+    method: Literal["none", "shrinkage"] = "none"
 
 
 class OpenSeal(_DecisionModel):
@@ -1690,6 +1913,8 @@ Decision = Annotated[
         SetCausal,
         SetTimeVarying,
         SetExplain,
+        SetForms, SetModification,
+        ViewOutcome, SetLevers, SetSelection, SetIntendedUse, SetUpdating,
     ],
     Field(discriminator="kind"),
 ]
@@ -1834,6 +2059,30 @@ class ProjectState(BaseModel):
     time_varying: TimeVaryingSpec | None = None
     # Wave 2, EXPLAIN: how the fitted models are described (``turbotab/core/models/explain.py``)
     explain: ExplainSpec | None = None
+    # FORM (MODELING_SEQUENCE §1 row 7): each declared effect modifier or second exposure, by its
+    # column (None once withdrawn; ``turbotab/core/methods/interaction.py``)
+    modifications: dict[str, ModificationSpec | None] | None = None
+    # FORM: the declared exposure's consumers-only domain (an estimand change, STROBE-nut nut-14),
+    # by column, kept apart from the forms so that a form answer never reshapes the participant
+    # flow; only "consumers" entries are kept
+    form_domains: dict[str, FormDomain] | None = None
+    # Wave 2, EXPLORE (``turbotab/core/stages/explore.py``): the outcome views looked at, keyed
+    # ``"<view>:<column>"``; Explore's levers as in-fold rules; the selection menu's answer; the
+    # intended use; model updating
+    outcome_views: dict[str, OutcomeViewSpec] | None = None
+    levers: LeverSpec | None = None
+    selection: SelectionSpec | None = None
+    intended_use: IntendedUseSpec | None = None
+    updating: UpdatingSpec | None = None
+
+    @field_validator("form_domains", mode="after")
+    @classmethod
+    def _consumers_only(cls, value: Any) -> Any:
+        """FORM: "all" is the default domain, so only a consumers-only entry is held."""
+        if not value:
+            return None
+        kept = {c: v for c, v in value.items() if v == "consumers"}
+        return kept or None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -2228,8 +2477,16 @@ register_kind(SetFeatureTable, "feature_table",
               value=lambda d: FeatureTableSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetCategorical, "categorical")
 register_kind(SetSurvey, "survey", value=lambda d: SurveySpec(**d.model_dump(exclude={"kind"})))
-register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column,
-              value=lambda d: ExposureFormSpec(form=d.form, knots=d.knots))
+register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column, value=lambda d: d.spec(),
+              confirms=lambda d: [("form_domains", d.column, d.domain)])
+# FORM: the form question's one-tap answer writes each column's entry where ``set_exposure_form``
+# would, so a later answer for one column stands over it.
+register_kind(SetForms, "exposure_forms", value=lambda d: None,
+              entries=lambda d: [*(("exposure_forms", column, spec)
+                                   for column, spec in d.forms.items()),
+                                 *(("form_domains", column, spec.domain)
+                                   for column, spec in d.forms.items())])
+register_kind(SetModification, "modifications", key=lambda d: d.modifier, value=lambda d: d.spec())
 register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetFollowUp, "follow_up",
@@ -2285,6 +2542,19 @@ register_kind(SetTimeVarying, "time_varying",
               value=lambda d: TimeVaryingSpec(**d.model_dump(exclude={"kind"})))
 # Wave 2, EXPLAIN: its validators live with the method (``turbotab/core/models/explain.py``).
 register_kind(SetExplain, "explain", value=lambda d: ExplainSpec(**d.model_dump(exclude={"kind"})))
+# Wave 2, EXPLORE: each viewed column is its own entry, so a later look at one column keeps the
+# others' (the view's completion carries each column's first-look lever answers forward).
+register_kind(ViewOutcome, "outcome_views", value=lambda d: None,
+              entries=lambda d: [("outcome_views", f"{d.view}:{c}", OutcomeViewSpec(
+                  view=d.view, column=c, target=d.target, rows=d.rows, n_rows=d.n_rows,
+                  levers=dict((d.levers or {}).get(c) or {})))
+                  for c in (d.columns or ([d.target] if d.target else []))])
+register_kind(SetLevers, "levers", value=lambda d: LeverSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetSelection, "selection",
+              value=lambda d: SelectionSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetIntendedUse, "intended_use",
+              value=lambda d: IntendedUseSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetUpdating, "updating", value=lambda d: UpdatingSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -2584,7 +2854,21 @@ def _roles_record_what_rode_along(decision: SetRoles, ctx: Any) -> SetRoles:
         except Exception:  # noqa: BLE001 - nothing was shown
             proposals = []
     if proposals:
-        return decision.model_copy(update={"unconfirmed": rode_along(decision.roles, proposals)})
+        # The routing gate's leash note: a bulk answer that changes one column re-records every
+        # other role as it stands. A role the ledger already holds settled (confirmed one by one,
+        # or the user's own earlier answer) and recorded again unchanged is the user's word kept,
+        # never a proposal riding along, so it is not re-asked and nothing it settled reopens.
+        from turbotab.core.readings import role_reading
+
+        state = _state(ctx)
+        kept = set()
+        if state is not None and getattr(state, "roles", None):
+            for column, role in decision.roles.items():
+                held = role_reading(state, column)
+                if held is not None and held.settled and held.value == role:
+                    kept.add(column)
+        return decision.model_copy(update={"unconfirmed": [
+            c for c in rode_along(decision.roles, proposals) if c not in kept]})
     # No proposal was ever computed, so none was shown and none could ride along: the roles are
     # the user's own answer (a script, a unit test, or a client that names them itself).
     return decision.model_copy(update={"unconfirmed": []})
@@ -4247,15 +4531,18 @@ def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
     cc = {"label": "Complete cases, with their assumption stated",
           "decision": _missing_base(decision, strategy="complete_case", acknowledged=False)}
     if decision.imputation_model == "passive":
+        # FORM: every nonlinear form, the declared categories and a mass at zero's among them.
+        words = {"spline": "restricted cubic spline", "quintiles": "quintile form",
+                 "categories": "categorical form", "optimal": "categorical form",
+                 "zero_spline": "spline among consumers"}
         forms = {c: f for c, f in (getattr(state, "exposure_forms", None) or {}).items()
-                 if getattr(f, "form", None) in ("spline", "quintiles")}
+                 if getattr(f, "form", None) in words}
         adj = getattr(state, "energy_adjustment", None)
         logged = adj is not None and ((adj.method in ("residual", "residual_energy_dropped")
                                        and adj.log_transform)
                                       or adj.method in ("density", "density_multivariate"))
         if forms or logged:
-            named = [f"a {'restricted cubic spline' if f.form == 'spline' else 'quintile form'} of "
-                     f"`{c}`" for c, f in forms.items()]
+            named = [f"a {words[f.form]} of `{c}`" for c, f in forms.items()]
             if logged:
                 named.append("the energy model's log or ratio")
             # each phrase already ticks its column, so the phrases are joined as words (``_and``
@@ -4509,12 +4796,14 @@ def _form_fits_the_column(decision: SetExposureForm, ctx: Any) -> None:
     to a spline only."""
     linear = {"label": f"Keep `{decision.column}` a straight line",
               "decision": SetExposureForm(column=decision.column, form="linear")}
-    if decision.knots is not None and decision.form != "spline":
+    # FORM: a mass at zero's spline among consumers has knots too (``methods.exposure_form``).
+    if decision.knots is not None and decision.form not in ("spline", "zero_spline"):
         raise Refusal(
             "knots_without_spline",
             f"Knots belong to a spline; the {decision.form} form has none.",
             exits=[{"label": f"{decision.form.capitalize()} without knots",
-                    "decision": SetExposureForm(column=decision.column, form=decision.form)}])
+                    "decision": SetExposureForm(column=decision.column, form=decision.form,
+                                                cuts=decision.cuts, domain=decision.domain)}])
     columns = _columns_of(ctx)
     if columns is not None and (decision.column not in columns or decision.column == ROW_ID):
         raise Refusal("unknown_column", f"This dataset has no column named `{decision.column}`.",
@@ -4617,9 +4906,36 @@ def _calibration_is_for_inference(decision: SetMeasurementError, ctx: Any) -> No
                {"label": "Change the purpose to inference", "decision": None}])
 
 
+def _calibrated_interval_is_the_whole_chain(decision: SetMeasurementError, ctx: Any) -> None:
+    """MS5 (MODELING_SEQUENCE §2): a calibrated coefficient's interval comes from a bootstrap over
+    the whole chain; a model-based or Rubin-only one is refused, with the bootstrap as its exit."""
+    if decision.method == "none" or decision.interval == "whole_chain_bootstrap":
+        return
+    from turbotab.core.methods.calibration import interval_refusal
+
+    raise Refusal(
+        "calibrated_interval", interval_refusal(decision.interval) or "",
+        exits=[{"label": "Take the interval from a bootstrap over the whole chain",
+                "decision": decision.model_copy(update={"interval": "whole_chain_bootstrap"})},
+               {"label": "Record no calibration", "decision": SetMeasurementError(method="none")}])
+
+
+def _calibration_records_its_adjustment_set(decision: SetMeasurementError, ctx: Any) -> Any:
+    """The adjustment set the calibration is declared under, from the state, never from the client:
+    a change to it invalidates the declaration (MODELING_SEQUENCE §2)."""
+    state = _state(ctx)
+    if decision.method == "none" or state is None:
+        return decision.model_copy(update={"adjustment": None})
+    from turbotab.core.stages.calibration import declared_adjustment
+
+    return decision.model_copy(update={"adjustment": declared_adjustment(state)})
+
+
 register_validator("set_sensitivity", _sensitivity_rules_are_eligibility_rules)
 register_validator("set_measurement_error", _calibrated_exposures_are_columns)
 register_validator("set_measurement_error", _calibration_is_for_inference)
+register_validator("set_measurement_error", _calibrated_interval_is_the_whole_chain)
+register_completion("set_measurement_error", _calibration_records_its_adjustment_set)
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_outcome_order", _order_names_the_outcome)
 register_validator("set_outcome_unit", _unit_names_the_outcome)
@@ -4975,3 +5291,7 @@ from turbotab.core import usual_intake as _usual_intake  # noqa: E402,F401
 from turbotab.core import causal as _causal  # noqa: E402,F401
 # V2 causal row: a time-varying exposure by g-methods (its gate, refusals and §13 contract).
 from turbotab.core import time_varying as _time_varying  # noqa: E402,F401
+# FORM (MODELING_SEQUENCE §1 rows 5 and 7): the functional form's and the declared modifiers'
+# refusals, completions, sentences and contracts.
+from turbotab.core.methods import exposure_form as _exposure_form  # noqa: E402,F401
+from turbotab.core.methods import interaction as _interaction  # noqa: E402,F401

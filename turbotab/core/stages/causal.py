@@ -806,14 +806,15 @@ def causal_stage(ctx: StageContext) -> Bundle:
     if method == "dml_plr":
         ls["final_stage"] = result.extra["final_stage"]
     # A difference's E-value standardizes by the SD the estimand speaks of: the population's under
-    # the surveyed-population answer (the design weights the estimate carries), else the rows', by
-    # the effects stage's one rule (MODELING_SEQUENCE §0 ruling 14).
-    from turbotab.core.models.effects import outcome_sd
+    # the surveyed-population answer (the design weights the estimate carries, over the lane's
+    # rows), else the rows', by the effects stage's one rule (MODELING_SEQUENCE §0 ruling 14).
+    from turbotab.core.models.effects import estimand_sd
 
+    sd, basis = estimand_sd(y, weights)
     sensitivity = causal.sensitivity_for(
         [e.model_dump() for e in estimates], method=method, exposure=prep.exposure,
-        outcome=str(state.target), outcome_sd=None if outcome_binary else outcome_sd(y, weights),
-        ratio_refused=refused.get(rr_words), population=spec.population, **ls)
+        outcome=str(state.target), outcome_sd=None if outcome_binary else sd,
+        ratio_refused=refused.get(rr_words), population=spec.population, sd_basis=basis, **ls)
     methods = causal.methods_sentence(
         method=method, exposure=prep.exposure, outcome=str(state.target),
         effect=str(getattr(estimand, "effect", "total") or "total"), adjusted=prep.adjusted,

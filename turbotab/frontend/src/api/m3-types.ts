@@ -71,6 +71,10 @@ export type SetAdjustment = Extract<Decision, { kind: "set_adjustment" }>;
 export type CovariateAnswers = SetAdjustment["answers"][string];
 export type SetCausal = Extract<Decision, { kind: "set_causal" }>;
 export type SetTimeVarying = Extract<Decision, { kind: "set_time_varying" }>;
+// FORM: the functional form (one column, or the card's one tap) and a declared modifier.
+export type SetExposureForm = Extract<Decision, { kind: "set_exposure_form" }>;
+export type SetForms = Extract<Decision, { kind: "set_forms" }>;
+export type SetModification = Extract<Decision, { kind: "set_modification" }>;
 export type Revert = Extract<Decision, { kind: "revert" }>;
 
 // ── the stages no surface reads yet ──────────────────────────────────────────
@@ -87,6 +91,9 @@ export type AssumptionView = S["AssumptionView"];
 export type TimeVaryingArtifact = S["TimeVaryingArtifact"];
 export type LaneOption = S["LaneOption"];
 export type ExplainArtifact = S["ExplainArtifact"];
+// FORM: the form question's card (the `forms` stage).
+export type FormsArtifact = S["FormsArtifact"];
+export type FormNeed = S["FormNeed"];
 
 export interface M3StageArtifacts {
   sensitivity: SensitivityArtifact;
@@ -99,6 +106,7 @@ export interface M3StageArtifacts {
   causal: CausalArtifact;
   time_varying: TimeVaryingArtifact;
   explain: ExplainArtifact;
+  forms: FormsArtifact;
 }
 
 type Exactly<L extends readonly unknown[], U> = [U] extends [L[number]]
@@ -118,5 +126,6 @@ const m3Stages = [
   "causal",
   "time_varying",
   "explain",
+  "forms",
 ] as const;
 export const M3_STAGES: Exactly<typeof m3Stages, keyof M3StageArtifacts> = m3Stages;

@@ -894,6 +894,7 @@ export function shelf(state: ProjectState, c: CohortArtifact, task: Task | null)
       };
     }),
     basis: `Ranked for ${state.purpose ?? "prediction"} on ${fmt(n)} rows and ${fmt(p)} predictors.`,
+    sample_size: null,
   };
 }
 
@@ -1283,6 +1284,7 @@ export function fit(
       nested_cv: null,
       adjustment_terms: null,
       methods: null,
+      score_concerns: [],
     };
   });
   // The fit computes the held-out scores; as on the server (turbotab/core/seal.py), the route
@@ -1343,6 +1345,7 @@ export function substitution(
   const banded = spec.n_boot > 0;
   return {
     carried: [],
+    curve_label: null,
     band: banded
       ? {
           n_boot: spec.n_boot,
@@ -1396,6 +1399,7 @@ export function substitution(
         exits: [],
         pooled: null,
         df: null,
+        level: null,
       };
     }),
   };

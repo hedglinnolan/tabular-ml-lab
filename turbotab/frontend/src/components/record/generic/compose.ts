@@ -2,7 +2,8 @@
  * The generic question (pure): what an open step without a bespoke component shows and records,
  * composed from the server's own words — the teaching entry's question and one line, and the
  * options the step's stage serves (the follow-up candidates, the groupings the roles read, the
- * estimand and adjustment cards, the causal card, the time-varying card), each with its labels
+ * estimand and adjustment cards, the causal card, the time-varying card, the form card and the
+ * declared modifiers), each with its labels
  * where the server gives them (customary in a field, sound for the purpose; north star 5).
  *
  * Nothing here invents an answer: an option's decision is the one the card offers, filled with
@@ -20,9 +21,12 @@ import type {
   CausalDesignArtifact,
   CovariateAnswers,
   EstimandCard,
+  FormsArtifact,
   SetCausal,
   SetClusters,
   SetEstimand,
+  SetExposureForm,
+  SetModification,
   SetTimeVarying,
   TimeVaryingArtifact,
 } from "../../../api/m3-types";
@@ -100,6 +104,8 @@ export interface ComposeContext {
   proposals?: ProposalsArtifact | null | undefined;
   causalDesign?: CausalDesignArtifact | null | undefined;
   timeVarying?: TimeVaryingArtifact | null | undefined;
+  /** FORM: the form question's card (the `forms` stage). */
+  forms?: FormsArtifact | null | undefined;
   /** The table's columns as it stands the right way round (no `__row_id`). */
   columns?: ColumnInfo[] | undefined;
 }
@@ -686,6 +692,132 @@ function timeVarying(ctx: ComposeContext): GenericQuestion {
   };
 }
 
+// ── the functional form (FORM, MODELING_SEQUENCE §1 row 5) ───────────────────
+
+const RUNG_TAG: Record<string, { text: string; tone: "usual" | "na" | "badge" }> = {
+  recommended: { text: "recommended", tone: "usual" },
+  rank_lower: { text: "ranks lower", tone: "badge" },
+  block_and_record: { text: "blocked and recorded", tone: "na" },
+};
+
+function form(ctx: ComposeContext): GenericQuestion {
+  const card = ctx.forms;
+  if (!card || !card.ready)
+    return { grammar: "choice", data: [], options: [], fields: [], waiting: "forms" };
+  const one = (column: string, value: string): SetExposureForm => ({
+    // The server completes a spline's k by the declared rule, and the scale and unit it is on.
+    kind: "set_exposure_form",
+    column,
+    form: value as SetExposureForm["form"],
+    knots: null,
+    knots_rule: null,
+    n_effective: null,
+    cuts: null,
+    domain: "all",
+    acknowledged: false,
+    scale: null,
+    unit: null,
+  });
+  const options: GenericOption[] = [];
+  if (card.answer) {
+    options.push({
+      key: "__proposals",
+      label: "Every proposed form",
+      line: `Each column takes the form the card proposes; ${card.rule}`,
+      chips: card.needs.map((n) => n.column),
+      build: () => card.answer as unknown as Decision,
+    });
+  }
+  for (const need of card.needs) {
+    for (const o of need.options) {
+      const tag = RUNG_TAG[o.rung];
+      options.push({
+        key: `${need.column}:${o.value}`,
+        label: `${need.column} (${need.role}): ${o.label}`,
+        line: o.consequence,
+        labels: { customary: o.customary, sound: o.sound },
+        tags: tag ? [tag] : undefined,
+        note: need.label ?? undefined,
+        build: () => one(need.column, o.value),
+      });
+    }
+  }
+  const data = [
+    ...card.needs.map(
+      (n) => `${tick(n.column)} (${n.role}) on its ${n.scale} scale, per ${n.unit}${n.mass_at_zero ? "; a mass at zero" : ""}.`,
+    ),
+    ...card.stated.map((x) => `${tick(x.column)}: ${x.why}`),
+    ...(card.beside ? [card.beside] : []),
+  ];
+  return { grammar: "choice", data, options, fields: [] };
+}
+
+// ── effect modification and interaction (FORM, MODELING_SEQUENCE §1 row 7) ───
+
+function modification(ctx: ComposeContext): GenericQuestion {
+  const exposure = ctx.state.estimand?.family ? null : (ctx.state.estimand?.exposure ?? null);
+  const declared = Object.entries(ctx.state.modifications ?? {})
+    .filter(([, m]) => m)
+    .map(([c]) => c);
+  const set = (modifier: string, v: FieldValues, withdraw = false): SetModification => ({
+    kind: "set_modification",
+    modifier,
+    modification: ((v.modification?.[0] as SetModification["modification"]) ??
+      "effect_modification") as SetModification["modification"],
+    exposure,
+    low: null,
+    high: null,
+    levels: null,
+    answers: {},
+    post_hoc: false,
+    withdraw,
+  });
+  // Any covariate of the model may be declared a modifier; the server refuses another column
+  // with its exits, and asks an interaction's second exposure its adjustment answers.
+  const candidates = Object.entries((ctx.state.roles ?? {}) as Record<string, string>)
+    .filter(([c, r]) => r === "covariate" && c !== exposure && c !== ctx.state.target)
+    .map(([c]) => c)
+    .filter((c) => !declared.includes(c));
+  const options: GenericOption[] = [
+    ...candidates.map((c) => ({
+      key: c,
+      label: c,
+      line: exposure
+        ? `The effect of \`${exposure}\` across \`${c}\`, against one reference, on both scales.`
+        : "Declared for the exposure once its question is answered.",
+      build: (v: FieldValues) => set(c, v),
+    })),
+    ...declared.map((c) => ({
+      key: `withdraw:${c}`,
+      label: `Withdraw ${c}`,
+      line: "Taken back from the declared modifiers.",
+      build: (v: FieldValues) => set(c, v, true),
+    })),
+  ];
+  const data = [
+    ...(ctx.step.reason ? [ctx.step.reason] : []),
+    ...(declared.length ? [`Declared: ${listing(declared)}.`] : []),
+  ];
+  return {
+    grammar: "choice",
+    data,
+    options,
+    fields: [
+      {
+        name: "modification",
+        label: "Declared as",
+        kind: "one",
+        choices: [
+          { value: "effect_modification", label: "effect modification (the exposure's effect across it)" },
+          { value: "interaction", label: "interaction (a second exposure)" },
+        ],
+        initial: ["effect_modification"],
+        appliesTo: candidates,
+      },
+    ],
+  };
+}
+
 // ── what the task question still asks (WP18, RO-10) ──────────────────────────
 
 /**
@@ -724,6 +856,8 @@ export const COMPOSERS: Partial<Record<QuestionKey, (ctx: ComposeContext) => Gen
   estimand,
   adjustment,
   time_varying: timeVarying,
+  form,
+  modification,
   causal,
 };
 

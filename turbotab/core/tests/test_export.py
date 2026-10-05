@@ -315,3 +315,35 @@ def test_the_replay_refuses_a_file_that_differs_naming_both_hashes(tmp_path):
     assert replay.close(1.0, 1.0 + 1e-13) and not replay.close(1.0, 1.0 + 1e-11)
     assert replay.close(1e6, 1e6 + 1e-7) and replay.close(None, None) and not replay.close(None, 0)
     json.dumps(report.model_dump())
+
+
+def test_the_performance_table_keeps_the_fits_unweighted_label():
+    """MS4 and EXPLORE (ruling 13): under prediction with survey weights the fit's own scores are
+    unweighted and labeled so (its models' note); the bundle keeps the label on every row and says
+    it under the table, and under the surveyed-population answer says the population's design-based
+    scores are not in it. The numbers are the fit's, unchanged."""
+    from turbotab.core.stages.modeling import PREDICTION_POPULATION_SCORES, UNWEIGHTED_SCORES
+
+    def fit(note: str | None) -> dict[str, Any]:
+        return {"primary_metric": "rmse", "metric_labels": {"rmse": "RMSE"},
+                "models": [{"family": "a", "label": "A", "concerns": [note] if note else [],
+                            "cv": {"rmse": {"estimate": 1.2, "ci_low": 1.0, "ci_high": 1.4,
+                                            "se": 0.1}},
+                            "calibration": {"slope": {"estimate": 0.9}}}],
+                "result": {"basis": "own_score", "family": "a", "metric": "rmse",
+                           "estimate": 1.2, "sentence": "S."}}
+
+    [plain] = tables.performance(fit(None))
+    assert plain.caption == "S." and not any("unweighted" in r["basis"] for r in plain.rows)
+    [sample] = tables.performance(fit(UNWEIGHTED_SCORES))
+    assert [r["basis"] for r in sample.rows] == [
+        "cross-validated (k-fold), unweighted", "out-of-fold predictions, unweighted",
+        "its own score, declared before any score was seen, unweighted"]
+    assert sample.caption == ("S. Every score is unweighted: it describes how the models predict "
+                              "these participants, not the population the survey weights stand "
+                              "for.")
+    [population] = tables.performance(fit(PREDICTION_POPULATION_SCORES))
+    assert population.caption == sample.caption + (
+        " The surveyed population's performance, by design-based cross-validation, is not in this "
+        "table.")
+    assert [r["estimate"] for r in population.rows] == [r["estimate"] for r in plain.rows]

@@ -467,6 +467,11 @@ def _steps(ctx: Any) -> list[Any] | None:
 
 
 OUTCOME_QUESTIONS = ("event", "task", "follow_up")
+# FORM: one column's form may be declared whenever the user sees it (a spline drawn from the
+# relationship view, say): the form question still comes after the domain transforms, and a form
+# a later transform leaves stale is asked again there, never kept (``methods.exposure_form``). The
+# question's own one-tap answer (``set_forms``) is asked in order.
+ANSWERED_ANY_TIME = ("set_exposure_form",)
 
 
 def _answers_in_order(decision: Any, ctx: Any) -> None:
@@ -478,6 +483,8 @@ def _answers_in_order(decision: Any, ctx: Any) -> None:
     from turbotab.core.interview import first_unanswered
     from turbotab.core.voice import question_name
 
+    if decision.kind in ANSWERED_ANY_TIME:
+        return
     steps = _steps(ctx)
     question = question_of(decision.kind)
     if not steps or question is None:

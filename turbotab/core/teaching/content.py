@@ -1511,7 +1511,93 @@ TIME_VARYING = {
     "evidence": None,
 }
 
+# FORM (MODELING_SEQUENCE §1 row 5; turbotab/core/methods/exposure_form.py): asked after the energy
+# model, so the knots, cut points and unit belong to the exposure's final scale.
+NUT07 = f"{_NUT}#07 · EDA and presentation"
+FORM = {
+    "key": "form",
+    "title": "The form of each continuous term",
+    "question": "How does the exposure, and each continuous confounder, enter the model?",
+    "one_liner": "Declared before estimates, on the final scale: a spline by default, k by "
+                 "Harrell's rule, quintiles reported beside it.",
+    "why": "A straight line a curve does not follow biases the estimate, and a confounder cut into "
+           "a few groups leaves confounding behind. Choosing the form after seeing a nonlinearity "
+           "test inflates the test of association, so the form is declared first and its overall "
+           "test is the one reported.",
+    "consumer": "The fit, its tests, the quintile table beside it and the estimand's unit read it.",
+    "options": [
+        option("spline", "Restricted cubic spline",
+               "A smooth curve, linear in the tails, with an overall and a nonlinearity test."),
+        option("zero_spline", "Non-consumers apart",
+               "Non-consumers are the reference; a spline among consumers, knots at their "
+               "percentiles."),
+        option("linear", "Straight line", "One coefficient per unit; no curvature."),
+        option("quintiles", "Quintiles", "Four indicators against the lowest fifth, and a p for "
+                                         "linear trend."),
+        option("categories", "Declared cut points",
+               "Indicators at cut points chosen outside these data, the lowest the reference."),
+    ],
+    "terms": [
+        term("knot", "A point where the spline's cubic pieces join; placed at Harrell's "
+                     "percentiles of the values the model sees."),
+        term("p for linear trend", "A test that the outcome rises linearly across quintile "
+                                   "medians; it is not a test of a dose–response."),
+        term("mass at zero", "Many recorded zeros, such as non-consumers of a food; they tie the "
+                             "lowest knots and quintile cut points."),
+    ],
+    "drawer": {"sections": [
+        section("The spline and its quintiles",
+                "Restricted cubic spline of outcome vs energy-adjusted intake: 3–5 knots at "
+                "conventional percentiles (3 knots at 10/50/90, or 4 at 5/35/65/95), and a "
+                "reported p for non-linearity; quintiles remain expected alongside.",
+                "CONVENTION", NUT07),
+        section("The trend across quintiles",
+                "Report the quintile table and the spline figure side by side, with p for trend "
+                "using the median of each quintile as a continuous score, not the quintile "
+                "number.",
+                "CONVENTION", NUT08),
+    ]},
+    "evidence": None,
+}
+
+# FORM (MODELING_SEQUENCE §1 row 7; turbotab/core/methods/interaction.py). Stated until a modifier
+# is declared; the second exposure of an interaction re-asks the adjustment set.
+MODIFICATION = {
+    "key": "modification",
+    "title": "Effect modifiers and interactions",
+    "question": "Does the exposure's effect differ across a subgroup, or with a second exposure?",
+    "one_liner": "Declared before estimates; reported on the additive and multiplicative scales "
+                 "against a single reference.",
+    "why": "Effect modification is one exposure's effect varying across strata of another "
+           "variable; interaction is the joint effect of two exposures, so the second exposure's "
+           "confounders must be adjusted too. Subgroups chosen after seeing the estimates are "
+           "labeled suggested by data inspection and counted with the rest.",
+    "consumer": "The modification analysis, its RERI and ratio of ratios, and the family of "
+                "tests read it.",
+    "options": [
+        option("effect_modification", "Effect modification",
+               "The exposure's effect within each stratum, on its own adjustment set."),
+        option("interaction", "Interaction",
+               "The joint effect of two exposures; the adjustment set is asked again for the "
+               "second."),
+        option("none", "None declared", "No product term enters the model."),
+    ],
+    "terms": [
+        term("RERI", "The relative excess risk due to interaction: how far the joint effect "
+                     "exceeds the sum of the separate effects, on the additive scale."),
+        term("single reference", "One combination, both factors at their reference, that every "
+                                 "other combination is compared with."),
+    ],
+    "drawer": {"sections": [
+        section("Subgroups, marked as declared",
+                "Show a forest plot of subgroup and sensitivity analyses with their prespecified "
+                "or post-hoc status marked.",
+                "CONVENTION", NUT08),
+    ]},
+    "evidence": None,
+}
+
 ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, PURPOSE, GRAIN,
            REPEAT_KIND, UNIT, AGGREGATION, TEMPORAL, ROLES, CLUSTERS, SURVEY, EXCLUSIONS, MISSING,
-           SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, TIME_VARYING, ENERGY_ADJUSTMENT, CAUSAL, MODELS,
-           SUBSTITUTION, OPEN_SEAL]
+           SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, TIME_VARYING, ENERGY_ADJUSTMENT, FORM,
+           MODIFICATION, CAUSAL, MODELS, SUBSTITUTION, OPEN_SEAL]

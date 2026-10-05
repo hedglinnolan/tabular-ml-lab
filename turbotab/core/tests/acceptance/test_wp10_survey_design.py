@@ -700,7 +700,7 @@ class _Store:
 
 def test_partial_designs_are_attested_and_a_persons_rows_stay_one_unit():
     """Weights with no strata or PSU named are blocked until attested (the record says what the
-    intervals assume); under prediction the question is refused, not answered. With no PSU column
+    intervals assume); under prediction it is answered too (ruling 13). With no PSU column
     and a person's rows repeating, the person is the sampling unit (reference: the definition with
     the person as PSU and one stratum, df = persons − 1); a person whose rows sit in two PSUs makes
     the design inconsistent, and the fit says so rather than estimate."""
@@ -726,10 +726,11 @@ def test_partial_designs_are_attested_and_a_persons_rows_stay_one_unit():
     assert attested["acknowledged"] is True
     recorded = d.validate(attested, ctx)
     assert "no PSU column" in voice.sentence_for(recorded, state)
-    with pytest.raises(d.Refusal) as refused:
-        d.validate({"kind": "set_survey", "estimand": "sample"},
-                   {"state": state.model_copy(update={"purpose": "prediction"})})
-    assert refused.value.code == "not_inference"
+    # MODELING_SEQUENCE ruling 13 (2026-10-05): under prediction the answer says whose performance
+    # the scores estimate (the population's by design-based cross-validation), so it is accepted.
+    answered = d.validate({"kind": "set_survey", "estimand": "sample"},
+                          {"state": state.model_copy(update={"purpose": "prediction"})})
+    assert answered.estimand == "sample"
 
     spec = d.SurveySpec(estimand="population", weight="sampling_weight", acknowledged=True)
     fitted = for_fit(state.model_copy(update={"survey": spec}), _Store(frame), unit_column="pid")

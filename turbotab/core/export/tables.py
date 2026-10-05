@@ -331,6 +331,28 @@ def _metric_order(fit: Mapping[str, Any]) -> list[str]:
     return [*order, *[m for m in labels if m not in order]]
 
 
+# MS4 and EXPLORE (MODELING_SEQUENCE ruling 13): under prediction the fit's own scores are
+# unweighted when the table has survey weights, and labeled so; the bundle keeps the label on every
+# row and says it under the table. The surveyed population's performance (the evaluation stage's
+# design-based cross-validation) is not tabulated yet, and the caption says that too.
+UNWEIGHTED = "unweighted"
+UNWEIGHTED_CAPTION = ("Every score is unweighted: it describes how the models predict these "
+                      "participants, not the population the survey weights stand for.")
+POPULATION_CAPTION = ("The surveyed population's performance, by design-based cross-validation, "
+                      "is not in this table.")
+
+
+def unweighted(fit: Mapping[str, Any]) -> str | None:
+    """``"population"`` or ``"sample"`` when the fit labels its scores unweighted (the survey's
+    note on its models, ``stages.modeling``), else None."""
+    from turbotab.core.stages.modeling import PREDICTION_POPULATION_SCORES, UNWEIGHTED_SCORES
+
+    notes = {c for m in fit.get("models") or [] for c in (m.get("concerns") or [])}
+    if PREDICTION_POPULATION_SCORES in notes:
+        return "population"
+    return "sample" if UNWEIGHTED_SCORES in notes else None
+
+
 def performance(fit: Mapping[str, Any]) -> list[Table]:
     """The performance table with the declared result (module docstring), from the fit as served."""
     labels = dict(fit.get("metric_labels") or {})
@@ -417,6 +439,12 @@ def performance(fit: Mapping[str, Any]) -> list[Table]:
                          "estimate": score, "ci_low": None, "ci_high": None, "se": None,
                          "role": RESULT})
     caption = result.get("sentence") or "No result is declared."
+    survey = unweighted(fit)
+    if survey is not None:
+        for row in rows:
+            row["basis"] = f"{row['basis']}, {UNWEIGHTED}"
+        caption = " ".join([caption, UNWEIGHTED_CAPTION,
+                            *([POPULATION_CAPTION] if survey == "population" else [])])
     return [Table(
         name="performance",
         title="Table 2. Performance of each model family, and the declared result",

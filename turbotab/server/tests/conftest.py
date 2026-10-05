@@ -156,8 +156,11 @@ def usual_answer(client: TestClient, pid: str, key: str, view: dict) -> dict:
 
         found = cluster_candidates(ProjectState(**state), _artifact(client, pid, "roles"))
         inference = state.get("purpose") == "inference"
+        # LEASH: under inference a column that can group rows by its values is asked too; a fixture
+        # written before that records "nothing groups them", as it was analyzed then.
         return {"kind": "set_clusters", "column": found[0] if found else None,
-                "adjust": "cluster_only" if inference and found else None}
+                "adjust": "cluster_only" if inference and found else None,
+                "acknowledged": not found}
     if key == "estimand":  # the author's declared question (``exposure:<outcome>``: a column, or
         # ``family``), else the first exposure the card offers; on the scale the engine fits
         card = _artifact(client, pid, "proposals").get("estimand") or {}
@@ -174,6 +177,12 @@ def usual_answer(client: TestClient, pid: str, key: str, view: dict) -> dict:
                 "contrast": "substitution" if first["energy_contrast"] else None}
     if key == "adjustment":  # each covariate's answers, from the fixture's declared truth
         return {"kind": "__adjustment__"}
+    if key == "form":  # FORM: each column the card asks about keeps its form (else a line)
+        from turbotab.core.tests.truths import forms_answer
+
+        found = forms_answer(_artifact(client, pid, "forms"), state.get("exposure_forms"),
+                             truth_of(pid))
+        return found or {"kind": "__wait__"}  # nothing asked: the Router is about to say so
     pytest.fail(f"the {key} question has no usual answer; answer it in the test")
 
 
@@ -208,6 +217,9 @@ def prepare(client: TestClient, pid: str, decision: dict, timeout: float = 120.0
         answer = usual_answer(client, pid, first["key"], view)
         if answer["kind"] == "__adjustment__":
             answer_adjustment_card(client, pid)
+            continue
+        if answer["kind"] == "__wait__":
+            time.sleep(0.05)
             continue
         response = answer_settled(client, pid, first["key"], answer)
         assert response.status_code == 200, (first["key"], response.text)

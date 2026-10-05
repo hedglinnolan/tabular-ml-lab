@@ -974,16 +974,21 @@ def models_sentence(state: Any, models: Sequence[str], task: str | None) -> str 
     return text[0].upper() + text[1:]
 
 
-def substitution_clause(state: Any, n_boot: int = 0) -> str | None:
+def substitution_clause(state: Any, n_boot: int = 0, per_class: bool = False) -> str | None:
     """The ``set_substitution`` sentence's clause under the population answer (the curve's
     contract sentence), or None. ``n_boot``: the bootstrap refits the answer asked for, which the
-    design's band replaces and the clause says are not drawn."""
+    design's band replaces and the clause says are not drawn. ``per_class``: a multiclass outcome's
+    curves, one per class (``methods.substitution.class_clause``)."""
     if not population_answer(state):
         return None
     from turbotab.core.voice import count
 
     undrawn = (f" (the {count(n_boot)} bootstrap refits asked for are not drawn: a row bootstrap "
                f"ignores the strata and PSUs)" if n_boot else "")
+    if per_class:
+        return ("over the surveyed population each class's curve is the weighted mean of each "
+                "participant's change in that class's probability under the survey-weighted fit, "
+                f"and its band comes from Taylor linearization over the survey design{undrawn}")
     return ("over the surveyed population its curve is the weighted mean of each participant's "
             "change in the survey-weighted fit, and its band comes from Taylor linearization over "
             f"the survey design{undrawn}")
@@ -1134,13 +1139,17 @@ def _register_contracts() -> None:
                          purposes=("inference",),
                          enforced_by="turbotab.core.stages.modeling:pooled_table",
                          id="multiple_imputation"),
-                Relation("conflicts", "regression calibration",
-                         "Regression calibration has no design-based variance here (a bootstrap "
-                         "by PSU within strata over the whole chain), so it is blocked and "
-                         "recorded.",
-                         purposes=("inference",), rung="block_and_record",
-                         exits=("the sample-only attestation", "no correction"),
-                         enforced_by="turbotab.core.stages.calibration:population_exits",
+                # MS5 (ruling 7): regression calibration is design-based, weighted with a
+                # bootstrap by PSU within strata over the whole chain; blocked and recorded only
+                # where no stratum holds two PSUs.
+                Relation("implies", "regression calibration by PSU within strata",
+                         "Regression calibration and its outcome model are survey-weighted, and "
+                         "its interval comes from a bootstrap resampling PSUs within strata over "
+                         "the whole chain (Rao and Wu's); with no stratum of two PSUs it is "
+                         "blocked and recorded, with the sample-only attestation or no correction "
+                         "as its exits.",
+                         purposes=("inference",),
+                         enforced_by="turbotab.core.stages.calibration:resampling_of",
                          id="regression_calibration"),
                 Relation("conflicts", "a scale's corrected coefficient",
                          "A scale's correction and the uncorrected coefficient beside it are fit "
@@ -1156,11 +1165,12 @@ def _register_contracts() -> None:
                          purposes=("inference",),
                          enforced_by="turbotab.core.provenance:restated", id="restated"),
                 Relation("implies", "cross-validated scores labeled unweighted",
-                         "Cross-validated scores, their calibration and the family comparisons "
-                         "are about the fitting procedure on these rows: they are labeled "
-                         "unweighted, not design-based (awaiting the owner's ruling).",
+                         "Under inference no cross-validated score is shown (MODELING_SEQUENCE "
+                         "ruling 13): the fit's unweighted scores, about the fitting procedure on "
+                         "these rows, are withheld from a client; under prediction the "
+                         "population's are design-based cross-validation (EXPLORE).",
                          purposes=("inference",),
-                         enforced_by="turbotab.core.stages.modeling:fit_stage",
+                         enforced_by="turbotab.core.stages.evaluation:withhold_scores",
                          id="unweighted_scores"),
             ),
             sources=("MODELING_SEQUENCE §0 ruling 6, §2, §4",

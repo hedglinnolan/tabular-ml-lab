@@ -876,6 +876,12 @@ FINAL_STEP_NOTE = (
 PLR_RV_AND_E_VALUE = (PLR_RV + " and by the E-value for the estimate and for the confidence limit "
                                "nearer the null, never as a pass or a fail.")
 PLR_RV_ONLY = PLR_RV + ", never as a pass or a fail."
+# LEASH (ruling 14) under the surveyed-population answer: the E-value's SD is named.
+PLR_RV_AND_E_VALUE_POPULATION = (PLR_RV + " and by the E-value for the estimate and for the "
+                                          "confidence limit nearer the null, the difference "
+                                          "standardized by the outcome's design-weighted standard "
+                                          "deviation in the surveyed population, never as a pass "
+                                          "or a fail.")
 
 
 def e_value_by_hand(estimate: float, se: float, sd: float) -> tuple[float, float]:
@@ -1533,7 +1539,8 @@ cat(toJSON(list(coef = sapply(out, `[`, 1), se = sapply(out, `[`, 2),
         f"regressed on the exposure's; the estimate is the median over 3 random sample splits, on "
         f"{n:,} complete rows. The survey weight `WTMEC2YR` entered every nuisance fit and the "
         f"estimating equation, the folds kept each PSU's rows together, and the variance is "
-        f"linearized over the design's strata and PSUs." + CLOSING + PLR_RV_AND_E_VALUE)
+        f"linearized over the design's strata and PSUs." + CLOSING
+        + PLR_RV_AND_E_VALUE_POPULATION)
     robust = art["sensitivity"]["robustness"]
     assert robust["rv"] == pytest.approx(ref["rv"], abs=1e-8) and robust["rv_alpha"] is None
     # Ruling 14: the E-value standardizes the difference by the surveyed population's SD of the

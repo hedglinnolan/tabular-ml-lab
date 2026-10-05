@@ -691,6 +691,20 @@ function slotOf(d: Decision): Slot | null {
       return "usual_intake";
     case "set_explain":
       return "explain";
+    case "set_forms":
+      return "exposure_forms";
+    case "set_modification":
+      return "modifications";
+    case "view_outcome":
+      return "outcome_views";
+    case "set_levers":
+      return "levers";
+    case "set_selection":
+      return "selection";
+    case "set_intended_use":
+      return "intended_use";
+    case "set_updating":
+      return "updating";
     case "revert":
       return null;
   }
@@ -853,6 +867,15 @@ function valueOf(d: Decision): ProjectState[Slot] {
       const { kind: _k, ...value } = d;
       return value as ProjectState[Slot];
     }
+    case "view_outcome": // one entry per viewed column; the mock records none
+      return null;
+    case "set_levers":
+    case "set_selection":
+    case "set_intended_use":
+    case "set_updating": {
+      const { kind: _k, ...value } = d;
+      return value as ProjectState[Slot];
+    }
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -862,6 +885,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_outcome_unit":
       return d.unit;
     case "set_exposure_form": // keyed by column; the fold merges it
+    case "set_forms": // each column's entry; the fold merges them
+    case "set_modification": // keyed by its modifier; the fold merges it
     case "set_usual_intake": // keyed by its dietary component; the fold merges it
     case "set_column_unit": // keyed by column; the fold merges it
     case "confirm_role": // keyed by column; the fold merges it
@@ -962,6 +987,13 @@ export function fold(records: DecisionRecord[]): ProjectState {
     causal: null,
     time_varying: null,
     explain: null,
+    modifications: null,
+    form_domains: null,
+    outcome_views: null,
+    levers: null,
+    selection: null,
+    intended_use: null,
+    updating: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();
@@ -1030,8 +1062,30 @@ export function fold(records: DecisionRecord[]): ProjectState {
     }
     if (d.kind === "set_exposure_form") {
       // A keyed slot: one form per column (turbotab/core/decisions.py, exposure_forms).
-      const form = { form: d.form, knots: d.knots ?? null };
-      state.exposure_forms = { ...(state.exposure_forms ?? {}), [d.column]: form };
+      const { kind: _k, column, ...form } = d;
+      const spec = {
+        form: form.form, knots: form.knots ?? null, knots_rule: form.knots_rule ?? null,
+        n_effective: form.n_effective ?? null, cuts: form.cuts ?? null,
+        domain: form.domain ?? "all", acknowledged: form.acknowledged ?? false,
+        scale: form.scale ?? null, unit: form.unit ?? null,
+      };
+      state.exposure_forms = { ...(state.exposure_forms ?? {}), [column]: spec };
+      continue;
+    }
+    if (d.kind === "set_forms") {
+      // FORM: each listed column's form, where set_exposure_form would write it.
+      state.exposure_forms = { ...(state.exposure_forms ?? {}), ...d.forms };
+      continue;
+    }
+    if (d.kind === "set_modification") {
+      // FORM: a keyed slot, one declared modifier per column (null once withdrawn).
+      const { kind: _k, modifier, withdraw, modification, ...rest } = d;
+      const spec = withdraw ? null : {
+        kind: modification ?? "effect_modification", exposure: rest.exposure ?? null,
+        low: rest.low ?? null, high: rest.high ?? null, levels: rest.levels ?? null,
+        answers: rest.answers ?? {}, post_hoc: rest.post_hoc ?? false,
+      };
+      state.modifications = { ...(state.modifications ?? {}), [modifier]: spec };
       continue;
     }
     if (d.kind === "set_usual_intake") {

@@ -908,6 +908,7 @@ BUILDER_MODULES: tuple[str, ...] = (
     "turbotab.core.plan_previews",
     "turbotab.core.method_previews",
     "turbotab.core.data_previews",
+    "turbotab.core.explore_previews",  # wave 2b: Explore's levers and the evaluation's answers
 )
 _LOADED = False
 
@@ -956,6 +957,10 @@ UNPREVIEWED: dict[str, str] = {
     "set_censoring": (
         "Says that everyone's follow-up covered the same period, so the yes/no outcome stands as "
         "recorded: no row, column or value changes, and the card quotes the sentence it records."),
+    "view_outcome": (
+        "Records that an outcome view was looked at, on which rows, and each lever's answer then; "
+        "no row, column or value changes, and the methods text discloses a lever set by hand "
+        "afterwards."),
 }
 
 

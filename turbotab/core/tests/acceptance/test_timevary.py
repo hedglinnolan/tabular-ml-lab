@@ -926,7 +926,7 @@ def test_3_through_the_server_no_estimate_comes_before_its_diagnostics(tmp_path)
       sentence says the truncation was declared after the diagnostics were read."""
     import time
 
-    from turbotab.core.tests.acceptance.server_drive import local_server, open_project
+    from turbotab.core.tests.acceptance.server_drive import local_server, open_project, settle_forms
     from turbotab.core.tests.truths import Truth
 
     path = tmp_path / "cohort.csv"
@@ -988,6 +988,8 @@ def test_3_through_the_server_no_estimate_comes_before_its_diagnostics(tmp_path)
         assert record["decision"]["diagnostics_seen"] == key
         assert ("the weights are truncated at the 1st and 99th percentiles, as declared after their "
                 "diagnostics were read") in record["sentence"]
+        # FORM (wave 2b): the form question follows the lane's, and every estimate waits for it.
+        settle_forms(drive)
         end = time.monotonic() + 240
         while True:
             art = drive.artifact("time_varying")
@@ -1079,7 +1081,9 @@ def test_3_no_estimate_is_served_or_locks_the_plan_while_the_lane_is_open():
     assert not plan_lock.shows_estimates("time_varying", served)
     assert plan_lock.shows_estimates("time_varying", {"estimates": {"rows": [{"estimate": 1.2}]}})
     done = feedback_state(time_varying=MSM_LANE.model_copy(update={"truncation": "none"}))
-    assert estimand.served_gate(done, route(done, ALL_FRESH)) is None
+    # (FORM: the form question's card finds no continuous term to declare a form for here)
+    no_forms = {"purpose": "inference", "ready": True, "needs": []}
+    assert estimand.served_gate(done, route(done, ALL_FRESH, {"forms": no_forms})) is None
 
 
 # ── 4 · routing ──────────────────────────────────────────────────────────────

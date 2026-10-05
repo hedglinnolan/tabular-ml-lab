@@ -29,8 +29,8 @@ from turbotab.core.consequences import (
 )
 from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState, missing_strategy
 from turbotab.core.stages.rows import (
-    PREDICTOR_ROLES, _missing_mask, cohort_flow, cohort_inputs, draw_split, landmark_of, predictors,
-    repair_rules, rule_drops, rule_keep,
+    PREDICTOR_ROLES, _missing_mask, cohort_flow, cohort_inputs, domain_of, draw_split, landmark_of,
+    predictors, repair_rules, rule_drops, rule_keep,
 )
 
 MAX_FOCUS_COLUMNS = 12
@@ -97,11 +97,12 @@ def _flows(ctx: PreviewContext, states: Sequence[ProjectState]) -> tuple[Any, An
     for st in states:
         _, _, g = cohort_inputs(st, ingest)
         # The cohort's own flow (``stages.rows.compute_cohort``), the landmark's line included: a
-        # time-to-event outcome's follow-up counted from a landmark drops the rows not at risk then.
+        # time-to-event outcome's follow-up counted from a landmark drops the rows not at risk then;
+        # and (wave 2b, FORM) the declared exposure's consumers-only domain, an estimand change.
         steps, kept = cohort_flow(frame, target=st.target, rules=st.exclusions,
                                   missing=missing_strategy(st), predictor_columns=g,
                                   missing_frame=mask, repairs=repair_rules(st),
-                                  landmark=landmark_of(st))
+                                  landmark=landmark_of(st), domain=domain_of(st))
         results.append((steps, kept))
     return frame, mask, results
 
@@ -402,8 +403,11 @@ def _saved_view(ctx: PreviewContext, saved: Any, drop: list[str], order: list[st
 
 
 def _kept_before_missing(frame: Any, state: ProjectState) -> Any:
+    """The rows the cohort's flow brings to the missing-values step: every step before it, the
+    consumers-only domain (wave 2b, FORM) and the landmark included."""
     _, kept = cohort_flow(frame, target=state.target, rules=state.exclusions, missing=None,
-                          predictor_columns=[], repairs=repair_rules(state))
+                          predictor_columns=[], repairs=repair_rules(state),
+                          landmark=landmark_of(state), domain=domain_of(state))
     return kept
 
 

@@ -1,5 +1,8 @@
-"""The form an exposure takes in the model: a straight line, a restricted cubic spline, or
-quintiles (AUDIT_REPORT §5 WP12, ME-17: "Exposure–response is straight-line only").
+"""The form an exposure takes in the model: a straight line, a restricted cubic spline, quintiles,
+categories at declared cut points, one data-derived cut point, or, for a food with many
+non-consumers, non-consumers as their own category beside a spline among consumers (AUDIT_REPORT
+§5 WP12, ME-17: "Exposure–response is straight-line only"; MODELING_SEQUENCE §1 row 5, the package
+FORM).
 
 NUTRITION_PACK §07G: "**Restricted cubic spline** of outcome vs energy-adjusted intake: 3–5 knots
 at conventional percentiles (**3 knots at 10/50/90**, or 4 at 5/35/65/95) … and a reported **p for
@@ -23,12 +26,45 @@ for j = 1…k − 2, beside x itself: k − 1 columns, linear beyond the outer k
 *Regression Modeling Strategies*, 2nd ed., §2.4.5). The columns are named as ``rms`` prints them:
 ``x``, ``x'``, ``x''``.
 
+**k by a declared rule** (MODELING_SEQUENCE §1 row 5; the review: "Under inference, fix k by a
+declared rule (k=4 by default; 3 for small n; 5 for large n). AIC chooses k using the outcome, so
+under inference it is a recorded data-driven choice"). The rule is Harrell's (RMS §2.4.6): "For
+many datasets, k = 4 offers an adequate fit of the model and is a good compromise between
+flexibility and loss of precision caused by overfitting a small sample. When the sample size is
+large (e.g., n ≥ 100 with a continuous uncensored response variable), k = 5 is a good choice.
+Small samples (< 30, say) may require the use of k = 3." The sample size it reads is the effective
+one Harrell's §4.4 limits a model by (n for a numeric outcome; the smaller of the events and
+non-events; the events of a time to event; n − Σnᵢ³/n² for an ordinal outcome)
+(:func:`knots_by_rule`). A declaration without ``knots`` takes the rule's k, recorded with it.
+
 **The tests** (:func:`exposure_tests`), under inference, use the coefficient table's own
 covariance (HC3, CR2 or the model's information): for a spline, a Wald test that all of its
-columns are zero (any association) and that its nonlinear columns are zero (``rms::anova``'s
-"Nonlinear" row); for quintiles, the trend test of the pack: the exposure scored by the median of
-its quintile (medians of the fitting rows), one column in place of the four indicators, its
-coefficient tested on the same covariance.
+columns are zero, *the test of association*, and that its nonlinear columns are zero
+(``rms::anova``'s "Nonlinear" row). A non-significant nonlinearity test never refits a straight
+line (Grambsch & O'Brien 1991: the test of association's type I error then rises by about half);
+a switch the user records once the estimates were seen is marked so (``plan_lock``). For quintiles,
+the trend test of the pack: the exposure scored by the median of its quintile (medians of the
+fitting rows), one column in place of the four indicators, its coefficient tested on the same
+covariance, labeled "p for linear trend (customary)" (the review: "never 'dose–response'"). Beside
+a declared exposure's spline the quintile table is produced by default, its boundaries and its
+reference stated (MODELING_SEQUENCE §0 ruling 2).
+
+**On the transformed scale.** A form belongs to the exposure's final scale (log, energy model,
+scale scoring, omics normalization): the declaration records that scale
+(:func:`transform_signature`), and a later transform makes it stale (:func:`current_forms`):
+re-asked, never kept, with its knots, its cut points and the estimand's unit
+(MODELING_SEQUENCE §2, "A domain transform of the exposure *invalidates* the functional-form
+answer, the knots, the cut points and the estimand's unit"). A spline or categories on an energy
+residual is the nutrient's curve on the energy-adjusted scale at mean energy, not the substitution
+curve (its label says so, and spline(N) + E is offered as that route).
+
+**The leash** (MODELING_SEQUENCE §4): under inference, quintiles rank lower and sit beside the
+spline; data-derived "optimal" cut points (Altman & Royston 2006: "seriously biased") and a
+continuous confounder cut into three or fewer groups (Brenner & Blettner 1997: "serious residual
+confounding") are blocked and recorded. **Continuous confounders get a declared form too**, a
+spline by default. **Mass at zero** (STROBE-nut nut-11, nut-14): non-consumers as their own
+category beside a spline among consumers with knots at consumers' percentiles, or the
+consumers-only domain recorded as an estimand change.
 """
 from __future__ import annotations
 
@@ -37,10 +73,12 @@ from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, ConfigDict
 from sklearn.base import BaseEstimator, TransformerMixin
 
-Form = Literal["linear", "spline", "quintiles"]
-FORMS: tuple[str, ...] = ("linear", "spline", "quintiles")
+Form = Literal["linear", "spline", "quintiles", "categories", "optimal", "zero_spline"]
+FORMS: tuple[str, ...] = ("linear", "spline", "quintiles", "categories", "optimal", "zero_spline")
+SPLINE_FORMS = ("spline", "zero_spline")
 # Harrell's default percentiles (``rcspline.eval``: ``seq(outer, 1 − outer, length = k)`` with
 # outer 0.10 for 3 knots, 0.05 for 4–6), which are the pack's "10/50/90" and "5/35/65/95".
 KNOT_PERCENTILES: dict[int, tuple[float, ...]] = {
@@ -54,6 +92,26 @@ FRACTIED = 0.05  # ``rcspline.eval``'s and ``rms::rcs``'s default
 SMALL_SAMPLE = 100  # below this many values, the outer knots are the 5th smallest and largest
 QUINTILES = 5
 SCORE_SUFFIX = " (quintile median)"
+# FORM: Harrell's rule for k (RMS §2.4.6), on the effective sample size (RMS §4.4).
+HARRELL_SMALL = 30  # "Small samples (< 30, say) may require the use of k = 3"
+HARRELL_LARGE = 100  # "When the sample size is large (e.g., n ≥ 100 …), k = 5 is a good choice"
+HARRELL_RMS = "Harrell, Regression Modeling Strategies, 2nd ed., §2.4.6"
+# A value at the bottom held by this share of the rows is a mass at zero: ``rcspline.eval``'s own
+# ``fractied``, the share at which it stops treating the lowest value as an ordinary one.
+MASS_AT_ZERO = FRACTIED
+# A confounder with at least this many distinct values is continuous, and its form is declared
+# (MODELING_SEQUENCE §1 row 5, "Continuous confounders get a declared form too"); with fewer it
+# enters as recorded (a straight line, or indicators when declared codes).
+CONTINUOUS = 10
+COARSE_GROUPS = 3  # Brenner & Blettner 1997: residual confounding "if the number of categories is small"
+OPTIMAL_RANGE = (0.10, 0.90)  # the candidate cut points of a minimum-p search (Altman et al. 1994)
+CONSUMER_SUFFIX = "_consumer"
+ABOVE_SUFFIX = "_above"
+TREND_LABEL = "p for linear trend (customary)"
+GRAMBSCH = "Grambsch & O'Brien 1991, Stat Med 10:697"
+ALTMAN = "Altman & Royston 2006, BMJ 332:1080"
+BRENNER = "Brenner & Blettner 1997, Epidemiology 8:429"
+STROBE_NUT = "STROBE-nut (Lachat et al. 2016) nut-14"
 
 
 # ── the restricted cubic spline ──────────────────────────────────────────────
@@ -182,7 +240,66 @@ def spline_names(column: str, n_knots: int) -> list[str]:
     return [column] + [f"{column}{chr(39) * (j + 1)}" for j in range(n_knots - 2)]
 
 
-# ── quintiles ────────────────────────────────────────────────────────────────
+# ── k by a declared rule (Harrell, RMS §2.4.6) ───────────────────────────────
+
+
+def effective_n(task: str | None, y: Any, event: Any = None) -> float | None:
+    """The sample size a model of ``y`` is limited by (Harrell, RMS §4.4, Table 4.1): n for a
+    numeric outcome; the smaller of the events and non-events for a yes/no outcome; the events of a
+    time to event; n − Σnᵢ³/n² over an ordinal outcome's levels. None when it cannot be read."""
+    from turbotab.core.stages.rows import _level_key
+
+    values = pd.Series(np.asarray(y, dtype=object))
+    values = values[values.notna()]
+    n = len(values)
+    if n == 0 or task is None:
+        return None
+    if task in ("regression", "multiclass"):
+        return float(n)
+    keys = values.map(_level_key)
+    if task in ("binary", "time_to_event"):
+        if event is not None:
+            events = int((keys == _level_key(event)).sum())
+        else:
+            numeric = pd.to_numeric(values, errors="coerce")
+            events = int((numeric.fillna(0) != 0).sum()) if numeric.notna().all() else None
+            if events is None:
+                return None
+        return float(events if task == "time_to_event" else min(events, n - events))
+    if task == "ordinal":
+        counts = keys.value_counts().to_numpy(dtype=float)
+        return float(n - (counts ** 3).sum() / n ** 2)
+    return float(n)
+
+
+def knots_by_rule(n_effective: float | None) -> int:
+    """Harrell's rule: 3 knots below an effective sample size of 30, 5 from 100, else 4."""
+    if n_effective is None:
+        return DEFAULT_KNOTS
+    if n_effective < HARRELL_SMALL:
+        return 3
+    return 5 if n_effective >= HARRELL_LARGE else 4
+
+
+EFFECTIVE_WORDS = {"regression": "the number of analyzed rows",
+                   "multiclass": "the number of analyzed rows",
+                   "binary": "the smaller of the events and the non-events",
+                   "time_to_event": "the number of events",
+                   "ordinal": "n − Σnᵢ³/n² over the outcome's levels"}
+
+
+def rule_words(k: int, n_effective: float | None, task: str | None) -> str:
+    """The rule stated: ``k = 5 by Harrell's rule (3 knots below an effective sample size of 30,
+    5 from 100, else 4; here 1,200, the number of analyzed rows)``."""
+    rule = (f"Harrell's rule (3 knots below an effective sample size of {HARRELL_SMALL}, 5 from "
+            f"{HARRELL_LARGE}, else 4")
+    if n_effective is None:
+        return f"k = {k} by {rule})"
+    size = f"{n_effective:,.0f}" if abs(n_effective - round(n_effective)) < 1e-9 else f"{n_effective:,.1f}"
+    return f"k = {k} by {rule}; here {size}, {EFFECTIVE_WORDS.get(str(task), 'the analyzed rows')})"
+
+
+# ── quintiles and categories ─────────────────────────────────────────────────
 
 
 def quantile_cuts(x: Any, groups: int = QUINTILES) -> np.ndarray:
@@ -208,7 +325,65 @@ def quintile_names(column: str) -> list[str]:
     return [f"{column}_Q{g}" for g in range(2, QUINTILES + 1)]
 
 
-# ── the pipeline step ────────────────────────────────────────────────────────
+def category_names(column: str, n_cuts: int) -> list[str]:
+    """``x_C2`` … ``x_C{k+1}``: indicators of the groups above the lowest, at declared cut points."""
+    return [f"{column}_C{g}" for g in range(2, n_cuts + 2)]
+
+
+def boundaries_words(column: str, cuts: Sequence[float], what: str = "quintile") -> str:
+    """``quintile 1: `x` ≤ 12.1 (the reference); quintile 2: 12.1 < `x` ≤ 15 …``: STROBE 16b's
+    category boundaries, the reference named."""
+    c = [f"{v:.4g}" for v in cuts]
+    parts = [f"{what} 1: `{column}` ≤ {c[0]} (the reference)"]
+    for g in range(1, len(c)):
+        parts.append(f"{what} {g + 1}: {c[g - 1]} < `{column}` ≤ {c[g]}")
+    parts.append(f"{what} {len(c) + 1}: `{column}` > {c[-1]}")
+    return "; ".join(parts)
+
+
+# ── a data-derived ("optimal") cut point ──────────────────────────────────────
+
+
+def optimal_cut(values: Any, y: Any, task: str) -> tuple[float, float, int]:
+    """The minimum-p cut point: among the distinct type-7 quantiles of ``values`` from the 10th to
+    the 90th percentile, the one whose two groups' outcomes differ most (Welch's t for a numeric
+    outcome, Pearson's χ² for a yes/no one). Returns (cut, its minimum p, candidates tried). Its p
+    is not a valid test: the search inflates it (Altman et al. 1994)."""
+    from scipy import stats
+
+    x = np.asarray(values, dtype=float)
+    yy = np.asarray(y, dtype=float)
+    keep = np.isfinite(x) & np.isfinite(yy)
+    x, yy = x[keep], yy[keep]
+    if task not in ("regression", "binary"):
+        raise ValueError("A data-derived cut point is searched here for a numeric or a yes/no "
+                         "outcome only.")
+    candidates = np.unique(_quantile(x, np.linspace(OPTIMAL_RANGE[0], OPTIMAL_RANGE[1], 81)))
+    best: tuple[float, float] | None = None
+    tried = 0
+    for c in candidates:
+        high = x > c
+        if high.sum() < 2 or (~high).sum() < 2:
+            continue
+        tried += 1
+        if task == "regression":
+            p = float(stats.ttest_ind(yy[high], yy[~high], equal_var=False).pvalue)
+        else:
+            table = np.array([[np.sum(yy[high] == 1), np.sum(yy[high] != 1)],
+                              [np.sum(yy[~high] == 1), np.sum(yy[~high] != 1)]], dtype=float)
+            if (table.sum(axis=0) == 0).any():
+                continue
+            p = float(stats.chi2_contingency(table, correction=False)[1])
+        if not math.isfinite(p):
+            continue
+        if best is None or p < best[1]:
+            best = (float(c), p)
+    if best is None:
+        raise ValueError("No cut point leaves two groups to compare.")
+    return best[0], best[1], tried
+
+
+# ── what each form learns, and the pipeline step ─────────────────────────────
 
 
 def _form_of(spec: Any) -> tuple[str, int | None]:
@@ -218,30 +393,91 @@ def _form_of(spec: Any) -> tuple[str, int | None]:
     return str(get("form")), (int(get("knots")) if get("knots") is not None else None)
 
 
-class ExposureForms(TransformerMixin, BaseEstimator):
-    """Each named column replaced by its form: a spline basis, or quintile indicators.
+def _field(spec: Any, name: str, default: Any = None) -> Any:
+    if isinstance(spec, str) or spec is None:
+        return default
+    if isinstance(spec, Mapping):
+        return spec.get(name, default)
+    return getattr(spec, name, default)
 
-    ``forms``: column -> ``{"form": "spline", "knots": 4}`` or ``{"form": "quintiles"}`` (a
-    ``linear`` form, or a column not named, passes through). Fit on the rows each fit sees; the
-    knots, the cut points and each quintile's median are kept. Row-local once fit.
+
+def place(spec: Any, values: Any, y: Any = None, task: str | None = None) -> dict[str, Any]:
+    """What a form learns from ``values`` (its recorded values on the fitting rows): a spline's
+    knots, a mass at zero's knots among consumers, quintiles' cut points, declared categories'
+    cut points, the minimum-p cut point (which reads ``y``); and, for a declared exposure's spline,
+    the companion quintiles' cut points (``companion``)."""
+    form, k = _form_of(spec)
+    x = np.asarray(values, dtype=float)
+    x = x[np.isfinite(x)]
+    out: dict[str, Any] = {"form": form, "n_observed": int(len(x))}
+    if form == "spline":
+        knots, notes = rcs_knots(x, k or DEFAULT_KNOTS)
+        out.update(knots=[float(v) for v in knots], notes=list(notes))
+        if _field(spec, "companion"):
+            out["companion_cuts"] = [float(v) for v in quantile_cuts(x)]
+    elif form == "zero_spline":
+        consumers = x[x > 0]
+        knots, notes = rcs_knots(consumers, k or DEFAULT_KNOTS)
+        out.update(knots=[float(v) for v in knots], notes=list(notes),
+                   zeros=int((x == 0).sum()))
+    elif form == "quintiles":
+        out["cuts"] = [float(v) for v in quantile_cuts(x)]
+    elif form == "categories":
+        cuts = _field(spec, "cuts") or []
+        if not cuts:
+            raise ValueError("Categories need their cut points declared.")
+        out["cuts"] = [float(v) for v in cuts]
+    elif form == "optimal":
+        if y is None:
+            raise ValueError("A data-derived cut point is searched on the outcome, which this step "
+                             "was not given.")
+        cut, p, tried = optimal_cut(values, y, task or "regression")
+        out.update(cuts=[cut], p=p, tried=tried)
+    return out
+
+
+def _task_of(y: Any) -> str:
+    values = np.asarray(y)
+    if values.dtype.names:  # a time to event
+        return "time_to_event"
+    finite = pd.to_numeric(pd.Series(values.ravel()), errors="coerce").dropna()
+    return "binary" if set(np.unique(finite)) <= {0, 1} else "regression"
+
+
+class ExposureForms(TransformerMixin, BaseEstimator):
+    """Each named column replaced by its form: a spline basis, quintile or category indicators, a
+    data-derived cut's indicator, or a consumer indicator beside a spline among consumers.
+
+    ``forms``: column -> ``{"form": "spline", "knots": 4}``, ``{"form": "quintiles"}``,
+    ``{"form": "categories", "cuts": [...]}``, ``{"form": "optimal"}`` or
+    ``{"form": "zero_spline", "knots": 4}`` (a ``linear`` form, or a column not named, passes
+    through). Fit on the rows each fit sees; the knots, the cut points and each quintile's median
+    are kept. Row-local once fit.
     """
 
     def __init__(self, forms: Mapping[str, Any] | None = None):
         self.forms = forms
 
-    def _plan(self) -> dict[str, tuple[str, int | None]]:
-        plan = {}
+    def _specs(self) -> dict[str, Any]:
+        specs = {}
         for column, spec in (self.forms or {}).items():
-            form, knots = _form_of(spec)
+            form, _ = _form_of(spec)
             if form not in FORMS:
                 raise ValueError(f"Unknown exposure form {form!r} for {column}.")
             if form != "linear":
-                plan[str(column)] = (form, knots or (DEFAULT_KNOTS if form == "spline" else None))
+                specs[str(column)] = spec
+        return specs
+
+    def _plan(self) -> dict[str, tuple[str, int | None]]:
+        plan = {}
+        for column, spec in self._specs().items():
+            form, knots = _form_of(spec)
+            plan[column] = (form, knots or (DEFAULT_KNOTS if form in SPLINE_FORMS else None))
         return plan
 
-    def fit(self, X: pd.DataFrame, y: Any = None) -> "ExposureForms":
+    def _start(self, X: pd.DataFrame) -> None:
         if not isinstance(X, pd.DataFrame):
-            raise TypeError("ExposureForms needs a pandas DataFrame with named columns.")
+            raise TypeError(f"{type(self).__name__} needs a pandas DataFrame with named columns.")
         self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
         self.n_features_in_ = X.shape[1]
         self.knots_: dict[str, np.ndarray] = {}
@@ -249,30 +485,74 @@ class ExposureForms(TransformerMixin, BaseEstimator):
         self.cuts_: dict[str, np.ndarray] = {}
         self.medians_: dict[str, np.ndarray] = {}
         self.counts_: dict[str, list[int]] = {}
-        for column, (form, knots) in self._plan().items():
-            if column not in X.columns:
-                raise ValueError(f"`{column}` is not among the model's inputs at this step (an "
-                                 f"energy adjustment may have replaced it), so its form cannot "
-                                 f"be applied.")
-            if not pd.api.types.is_numeric_dtype(X[column]):
-                raise ValueError(f"`{column}` is not numeric, so it has no spline or quintiles.")
-            values = X[column].to_numpy(dtype=float, na_value=np.nan)
-            values = values[np.isfinite(values)]
-            if form == "spline":
-                self.knots_[column], self.knot_notes_[column] = rcs_knots(values, knots)
+        self.optimal_: dict[str, dict[str, Any]] = {}
+        self.zeros_: dict[str, int] = {}
+        self.companion_cuts_: dict[str, np.ndarray] = {}
+
+    def _values(self, X: pd.DataFrame, column: str) -> np.ndarray:
+        if column not in X.columns:
+            raise ValueError(f"`{column}` is not among the model's inputs at this step (an "
+                             f"energy adjustment may have replaced it), so its form cannot "
+                             f"be applied.")
+        if not pd.api.types.is_numeric_dtype(X[column]):
+            raise ValueError(f"`{column}` is not numeric, so it has no spline or quintiles.")
+        return X[column].to_numpy(dtype=float, na_value=np.nan)
+
+    def fit(self, X: pd.DataFrame, y: Any = None) -> "ExposureForms":
+        self._start(X)
+        for column, spec in self._specs().items():
+            values = self._values(X, column)
+            form, _ = _form_of(spec)
+            yy = None
+            if form == "optimal" and y is None:
+                # Fit without the outcome (the design's lineage): the median holds the place, and
+                # the lineage says so; every model fit searches the outcome.
+                finite = values[np.isfinite(values)]
+                self._adopt(column, {"form": "optimal", "cuts": [float(np.median(finite))],
+                                     "p": None, "tried": None}, values, strict=True)
                 continue
-            cuts = quantile_cuts(values)
-            group = quantile_group(values, cuts)
-            counts = np.bincount(group, minlength=QUINTILES)[:QUINTILES]
-            if len(np.unique(cuts)) < QUINTILES - 1 or (counts == 0).any():
-                raise ValueError(f"`{column}` has too many tied values to be cut into five "
-                                 f"groups: its quintile cut points are "
-                                 f"{', '.join(f'{c:g}' for c in cuts)}.")
-            self.cuts_[column] = cuts
-            self.medians_[column] = np.array([float(np.median(values[group == g]))
-                                              for g in range(QUINTILES)])
-            self.counts_[column] = [int(c) for c in counts]
+            if form == "optimal":
+                yy = np.asarray(y)
+            self._adopt(column, place(spec, values, yy, _task_of(yy) if yy is not None else None),
+                        values, strict=True)
         return self
+
+    def _adopt(self, column: str, params: Mapping[str, Any], values: np.ndarray, *,
+               strict: bool) -> None:
+        """Hold what ``column``'s form learned (``params``, from :func:`place`); ``strict``: the
+        fitting rows must fill every group (a fit on its own rows), else empty groups are kept
+        (a completed copy at cut points placed on the observed values)."""
+        form = str(params.get("form") or self._plan()[column][0])
+        v = np.asarray(values, dtype=float)
+        v = v[np.isfinite(v)]
+        if form in SPLINE_FORMS:
+            self.knots_[column] = np.asarray(params["knots"], dtype=float)
+            self.knot_notes_[column] = list(params.get("notes") or [])
+            if form == "zero_spline":
+                self.zeros_[column] = int((v == 0).sum())
+            if params.get("companion_cuts") is not None:
+                self.companion_cuts_[column] = np.asarray(params["companion_cuts"], dtype=float)
+            return
+        cuts = np.asarray(params["cuts"], dtype=float)
+        groups = len(cuts) + 1
+        group = quantile_group(v, cuts)
+        counts = np.bincount(group, minlength=groups)[:groups]
+        if strict and form == "quintiles" and (len(np.unique(cuts)) < QUINTILES - 1
+                                              or (counts == 0).any()):
+            raise ValueError(f"`{column}` has too many tied values to be cut into five "
+                             f"groups: its quintile cut points are "
+                             f"{', '.join(f'{c:g}' for c in cuts)}.")
+        if strict and form in ("categories", "optimal") and (counts == 0).any():
+            empty = [g + 1 for g in range(groups) if counts[g] == 0]
+            raise ValueError(f"`{column}` has no value in group {empty[0]} of its cut points "
+                             f"({', '.join(f'{c:g}' for c in cuts)}).")
+        self.cuts_[column] = cuts
+        self.medians_[column] = np.array([float(np.median(v[group == g])) if counts[g]
+                                          else float("nan") for g in range(groups)])
+        self.counts_[column] = [int(c) for c in counts]
+        if form == "optimal":
+            self.optimal_[column] = {"cut": float(cuts[0]), "p": params.get("p"),
+                                     "tried": params.get("tried")}
 
     def _outputs(self, column: str) -> list[str]:
         plan = self._plan()
@@ -281,7 +561,13 @@ class ExposureForms(TransformerMixin, BaseEstimator):
         form, _ = plan[column]
         if form == "spline":
             return spline_names(column, len(self.knots_[column]))
-        return quintile_names(column)
+        if form == "zero_spline":
+            return [f"{column}{CONSUMER_SUFFIX}", *spline_names(column, len(self.knots_[column]))]
+        if form == "quintiles":
+            return quintile_names(column)
+        if form == "categories":
+            return category_names(column, len(self.cuts_[column]))
+        return [f"{column}{ABOVE_SUFFIX}"]
 
     def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
         names: list[str] = []
@@ -301,15 +587,27 @@ class ExposureForms(TransformerMixin, BaseEstimator):
                 continue
             values = X[name].to_numpy(dtype=float, na_value=np.nan)
             form, _ = plan[column]
-            if form == "spline":
+            if form in SPLINE_FORMS:
                 basis = rcs_basis(values, self.knots_[column])
                 names = spline_names(column, len(self.knots_[column]))
+                if form == "zero_spline":
+                    # Non-consumers are their own category (the reference): the consumer
+                    # indicator; every spline column is 0 at zero, the knots all lying above it.
+                    parts[f"{column}{CONSUMER_SUFFIX}"] = np.where(np.isfinite(values),
+                                                                   (values > 0).astype(float),
+                                                                   np.nan)
                 parts[names[0]] = values
                 for j, out in enumerate(names[1:]):
                     parts[out] = basis[:, j]
                 continue
+            if form == "optimal":
+                cut = float(self.cuts_[column][0])
+                parts[f"{column}{ABOVE_SUFFIX}"] = np.where(np.isfinite(values),
+                                                            (values > cut).astype(float), np.nan)
+                continue
             group = quantile_group(values, self.cuts_[column])
-            for g, out in enumerate(quintile_names(column), start=1):
+            outputs = self._outputs(column)
+            for g, out in enumerate(outputs, start=1):
                 parts[out] = np.where(group < 0, np.nan, (group == g).astype(float))
         return pd.DataFrame(parts, index=X.index)
 
@@ -317,7 +615,7 @@ class ExposureForms(TransformerMixin, BaseEstimator):
         """The trend score: each value's quintile median (from the fitting rows)."""
         group = quantile_group(values, self.cuts_[column])
         medians = self.medians_[column]
-        return np.where(group < 0, np.nan, medians[np.clip(group, 0, QUINTILES - 1)])
+        return np.where(group < 0, np.nan, medians[np.clip(group, 0, len(medians) - 1)])
 
     def lineage(self) -> list[dict[str, Any]]:
         """``{output, inputs, operation, formula}`` per output, as the energy step's."""
@@ -329,22 +627,51 @@ class ExposureForms(TransformerMixin, BaseEstimator):
                                 "formula": None})
                 continue
             form, _ = plan[column]
-            if form == "spline":
+            if form in SPLINE_FORMS:
                 knots = self.knots_[column]
                 op = f"restricted cubic spline, {len(knots)} knots"
                 formula = knot_sentence(column, knots, self.knot_notes_[column])
+                if form == "zero_spline":
+                    entries.append({"output": f"{column}{CONSUMER_SUFFIX}", "inputs": [column],
+                                    "operation": "consumer indicator",
+                                    "formula": f"1 when `{column}` > 0; non-consumers "
+                                               f"(`{column}` = 0) are the reference"})
+                    op += " among consumers"
                 for out in spline_names(column, len(knots)):
                     entries.append({"output": out, "inputs": [column], "operation": op,
                                     "formula": formula})
                 continue
             cuts = self.cuts_[column]
-            for g, out in enumerate(quintile_names(column), start=1):
+            if form == "optimal":
+                searched = (self.optimal_.get(column) or {}).get("p") is not None
+                where = (f"the cut point with the smallest outcome p-value on the fitting rows"
+                         if searched else "the median, holding the place of the cut point each "
+                                          "model fit searches on the outcome")
+                entries.append({"output": f"{column}{ABOVE_SUFFIX}", "inputs": [column],
+                                "operation": "data-derived cut point",
+                                "formula": f"1 when `{column}` > {cuts[0]:.4g}, {where}; "
+                                           f"`{column}` ≤ {cuts[0]:.4g} is the reference"})
+                continue
+            word = "quintile" if form == "quintiles" else "category"
+            for g, out in enumerate(self._outputs(column), start=1):
                 low, high = cuts[g - 1], (cuts[g] if g < len(cuts) else None)
                 within = f"{low:.4g} < {column}" + (f" ≤ {high:.4g}" if high is not None else "")
-                entries.append({"output": out, "inputs": [column], "operation": "quintile indicator",
-                                "formula": f"1 when {within} (quintile {g + 1}); quintile 1, "
+                entries.append({"output": out, "inputs": [column], "operation": f"{word} indicator",
+                                "formula": f"1 when {within} ({word} {g + 1}); {word} 1, "
                                            f"{column} ≤ {cuts[0]:.4g}, is the reference"})
         return entries
+
+
+def nonlinear_outputs(step: ExposureForms, column: str) -> list[str]:
+    """The columns a nonlinearity test reads: a spline's nonlinear terms (among consumers for a
+    mass at zero's)."""
+    outputs = step._outputs(column)
+    form = step._plan()[column][0]
+    if form == "spline":
+        return outputs[1:]
+    if form == "zero_spline":
+        return outputs[2:]
+    return []
 
 
 def knot_sentence(column: str, knots: Sequence[float], notes: Sequence[str] = ()) -> str:
@@ -380,8 +707,8 @@ def formed_meanings(terms: Mapping[str, str], step: ExposureForms | None) -> dic
 
     ``terms`` maps a matrix column to what its coefficient means (``methods.energy.describe_model``,
     WP6), read as if each formed column were still one straight-line term; the form step turns it
-    into a spline basis or quintile indicators (WP12a), whose coefficients mean a part of that
-    curve, not a per-unit effect."""
+    into a spline basis or indicators (WP12a), whose coefficients mean a part of that curve, not a
+    per-unit effect."""
     out = dict(terms)
     if step is None:
         return out
@@ -395,8 +722,16 @@ def formed_meanings(terms: Mapping[str, str], step: ExposureForms | None) -> dic
             if form == "spline":
                 out[name] = (f"{base}: term {k + 1} of {len(outputs)} of its restricted cubic "
                              f"spline (read the curve and its tests, not one term)")
-            else:
+            elif form == "zero_spline":
+                out[name] = (f"{base}: consumers against non-consumers at zero intake" if k == 0
+                             else f"{base}: term {k} of {len(outputs) - 1} of its spline among "
+                                  f"consumers (read the curve and its tests, not one term)")
+            elif form == "quintiles":
                 out[name] = f"{base}: quintile {k + 2} against the lowest"
+            elif form == "categories":
+                out[name] = f"{base}: category {k + 2} against the lowest"
+            else:
+                out[name] = f"{base}: above the data-derived cut point against below it"
     return out
 
 
@@ -413,7 +748,7 @@ def formed_name(column: str, adjustment: Any) -> str:
     method, energy = get("method"), get("energy_column")
     if column not in (get("nutrients") or []) or method in (None, "none", "standard"):
         return column
-    if method == "residual":
+    if method in ("residual", "residual_energy_dropped"):
         return f"{column}_adj"
     if method in ("density", "density_multivariate"):
         return f"{column}_per_{energy}"
@@ -427,56 +762,597 @@ def adjusted_forms(forms: Mapping[str, Any], adjustment: Any) -> dict[str, Any]:
 
 def model_terms(predictors: Sequence[str], forms: Mapping[str, Any] | None) -> int:
     """How many columns ``predictors`` put in the model matrix once formed: a spline k − 1, a
-    quintile exposure 4, any other predictor 1 (the count the shelf's per-predictor rules read)."""
+    quintile exposure 4, categories one per cut point, a cut point 1, a mass at zero's k (its
+    consumer indicator and its spline), any other predictor 1 (the count the shelf's
+    per-predictor rules read)."""
     total = 0
     for column in predictors:
         spec = (forms or {}).get(column)
         form, knots = _form_of(spec) if spec is not None else ("linear", None)
         if form == "spline":
             total += (knots or DEFAULT_KNOTS) - 1
+        elif form == "zero_spline":
+            total += (knots or DEFAULT_KNOTS)
         elif form == "quintiles":
             total += QUINTILES - 1
+        elif form == "categories":
+            total += len(_field(spec, "cuts") or []) or 1
         else:
             total += 1
     return total
 
 
+# ── the form as the state holds it: on the exposure's final scale ─────────────
+
+
+def transform_signature(state: Any, column: str) -> str:
+    """The domain transforms ``column`` passes through before its form (MODELING_SEQUENCE §1 row
+    4): its scale's scoring, the omics normalization and batch adjustment, and the energy model's
+    residual or density (with its log, energy column and strata). ``"raw"`` when none does. A form
+    declared on one signature is stale on another (:func:`current_forms`)."""
+    parts: list[str] = []
+    for sc in getattr(state, "scales", None) or []:
+        if _field(sc, "name") == column:
+            parts.append("score:" + ":".join([str(_field(sc, "scoring")),
+                                              ",".join(_field(sc, "items") or []),
+                                              ",".join(sorted(_field(sc, "reverse") or [])),
+                                              f"{_field(sc, 'low')}-{_field(sc, 'high')}"]))
+    try:
+        from turbotab.core.methods.omics import normalization_of
+
+        norm = normalization_of(state)
+    except Exception:  # noqa: BLE001 - a state with no findings normalizes nothing
+        norm = None
+    if norm is not None and column in (norm.get("columns") or []):
+        parts.append(f"normalize:{norm.get('method')}:{norm.get('kind')}")
+    batch = getattr(state, "batch", None)
+    roles = getattr(state, "roles", None) or {}
+    if (batch is not None and _field(batch, "method") == "reference_combat"
+            and roles.get(column) == "exposure"):
+        parts.append(f"batch:{_field(batch, 'method')}:{_field(batch, 'column')}")
+    adj = getattr(state, "energy_adjustment", None)
+    if adj is not None and column in (_field(adj, "nutrients") or []) and \
+            _field(adj, "method") not in ("none", "standard"):
+        parts.append(f"energy:{_field(adj, 'method')}:{_field(adj, 'energy_column')}:"
+                     f"{'log' if _field(adj, 'log_transform') else 'linear'}:"
+                     f"{_field(adj, 'strata') or ''}")
+    return ";".join(parts) or "raw"
+
+
+def scale_words(state: Any, column: str) -> str:
+    """The unit an estimate of ``column`` is per, on its final scale: ``unit of `fiber_g```,
+    ``unit of `fiber_g`'s energy-adjusted residual on `kcal```, ``point of the `pss` score``."""
+    tick = f"`{column}`"
+    for sc in getattr(state, "scales", None) or []:
+        if _field(sc, "name") == column:
+            n = len(_field(sc, "items") or [])
+            return (f"point of the {tick} score (the {_field(sc, 'scoring')} of {n} items, each "
+                    f"{_field(sc, 'low')}–{_field(sc, 'high')})")
+    adj = getattr(state, "energy_adjustment", None)
+    if adj is not None and column in (_field(adj, "nutrients") or []):
+        method, E = _field(adj, "method"), f"`{_field(adj, 'energy_column')}`"
+        strata = _field(adj, "strata")
+        within = f" within each level of `{strata}`" if strata else ""
+        if method in ("residual", "residual_energy_dropped"):
+            if _field(adj, "log_transform"):
+                return (f"unit of {tick}'s energy-adjusted residual (log {tick} on log {E}"
+                        f"{within}, back-transformed at the geometric mean of {E})")
+            return f"unit of {tick}'s energy-adjusted residual on {E}{within}, at mean energy"
+        if method in ("density", "density_multivariate"):
+            return f"unit of {tick} per unit of {E} (a density)"
+    try:
+        from turbotab.core.methods.omics import normalization_of
+
+        norm = normalization_of(state)
+    except Exception:  # noqa: BLE001
+        norm = None
+    if norm is not None and column in (norm.get("columns") or []):
+        return f"unit of {tick} after its {norm.get('method')} normalization"
+    return f"unit of {tick}"
+
+
+def _forms_of(state: Any) -> dict[str, Any]:
+    return {str(c): f for c, f in (getattr(state, "exposure_forms", None) or {}).items()
+            if f is not None}
+
+
+def is_current(state: Any, column: str, spec: Any) -> bool:
+    """A form stands on the scale it was declared on (a form recorded without one stands)."""
+    scale = _field(spec, "scale")
+    return scale is None or scale == transform_signature(state, column)
+
+
+def current_forms(state: Any) -> dict[str, Any]:
+    """Each declared form that still stands: declared on the exposure's present scale. A form a
+    later transform left stale is not applied, its knots and cut points not kept: the form question
+    asks it again (MODELING_SEQUENCE §2)."""
+    return {c: f for c, f in _forms_of(state).items() if is_current(state, c, f)}
+
+
+def stale_forms(state: Any) -> dict[str, Any]:
+    """Each declared form a later domain transform of its column left stale (re-asked)."""
+    return {c: f for c, f in _forms_of(state).items() if not is_current(state, c, f)}
+
+
+def estimand_unit(state: Any, column: str) -> str:
+    """The estimand's unit for ``column``: the unit the standing form declared, else the unit of
+    its present scale (never a stale form's)."""
+    spec = current_forms(state).get(column)
+    unit = _field(spec, "unit") if spec is not None else None
+    return str(unit) if unit else scale_words(state, column)
+
+
+def exposure_of(state: Any) -> str | None:
+    """The one declared exposure (an exposure family has none: its members are each linear)."""
+    from turbotab.core import estimand as est
+
+    spec = est.current_estimand(state)
+    if spec is None or _field(spec, "family"):
+        return None
+    return str(_field(spec, "exposure"))
+
+
+def design_forms(state: Any, present: Sequence[str], numeric: Sequence[str]) -> dict[str, Any]:
+    """The forms the design applies: the standing ones (:func:`current_forms`) of present numeric
+    columns, each as a plain dict; a declared exposure's spline under inference carries the
+    companion quintiles (MODELING_SEQUENCE §0 ruling 2: "the quintile table is produced beside it
+    by default")."""
+    exposure = exposure_of(state) if getattr(state, "purpose", None) == "inference" else None
+    out: dict[str, Any] = {}
+    have, num = set(present), set(numeric)
+    for c, f in current_forms(state).items():
+        if c not in have or c not in num or _form_of(f)[0] == "linear":
+            continue
+        spec = f.model_dump() if hasattr(f, "model_dump") else dict(f)
+        if c == exposure and spec.get("form") == "spline":
+            spec["companion"] = True
+        out[c] = spec
+    return out
+
+
+def domain_columns(state: Any) -> list[str]:
+    """The declared exposure, when its form restricts the analysis to consumers (an estimand
+    change: who the estimate is about, not the scale it is on, so a transform leaves it standing;
+    another exposure does not)."""
+    if getattr(state, "purpose", None) != "inference":
+        return []
+    exposure = exposure_of(state)
+    domains = getattr(state, "form_domains", None) or {}
+    return [c for c, v in domains.items() if c == exposure and v == "consumers"]
+
+
+# ── labels the form changes (MODELING_SEQUENCE §2, corrected relations) ───────
+
+
+def residual_form(state: Any, column: str, spec: Any = None) -> bool:
+    """A spline or categories on an energy residual (the identity with the standard model, linear
+    in N, does not survive a nonlinear basis)."""
+    spec = spec if spec is not None else current_forms(state).get(column)
+    if spec is None or _form_of(spec)[0] == "linear":
+        return False
+    adj = getattr(state, "energy_adjustment", None)
+    return (adj is not None and _field(adj, "method") in ("residual", "residual_energy_dropped")
+            and column in (_field(adj, "nutrients") or []))
+
+
+def residual_label(column: str, energy: str | None) -> str:
+    """The label of a curve or categories on a residual (MODELING_SEQUENCE §2): "It is the
+    nutrient's curve on the energy-adjusted scale at mean energy, not the substitution curve.\""""
+    return (f"the curve of `{column}` on the energy-adjusted scale at mean energy (its residual on "
+            f"`{energy}`), not the substitution curve at fixed total energy: the residual model "
+            f"equals the standard model only for a straight line; a spline of `{column}` with "
+            f"`{energy}` beside it (the standard model) is the route to the substitution curve")
+
+
+def substitution_route(column: str, energy: str | None, nutrients: Sequence[str],
+                       knots: int | None = None) -> list[dict[str, Any]]:
+    """spline(N) + E: the standard model with the spline on the nutrient itself (the decisions)."""
+    return [{"kind": "set_energy_adjustment", "method": "standard", "energy_column": energy,
+             "nutrients": list(nutrients)},
+            {"kind": "set_exposure_form", "column": column, "form": "spline",
+             **({"knots": knots} if knots else {})}]
+
+
+def substitution_curve_label(state: Any, donor: str, recipient: str) -> str | None:
+    """A log or a spline on an energy component: the substitution curve still moves k kcal, but
+    the effect now depends on k and on each person's intake, so the curve is an average over the
+    stated population at the stated k (MODELING_SEQUENCE §2, corrected; the review: "Draft 1 said
+    'ratio rather than difference'; that was wrong"). None for a linear model of both."""
+    adj = getattr(state, "energy_adjustment", None)
+    nutrients = set(_field(adj, "nutrients") or []) if adj is not None else set()
+    logged = [c for c in (donor, recipient) if adj is not None and c in nutrients
+              and _field(adj, "log_transform")]
+    shaped = [c for c in (donor, recipient)
+              if _form_of(current_forms(state).get(c) or "linear")[0] != "linear"]
+    if not logged and not shaped:
+        return None
+    what = []
+    if logged:
+        what.append(f"a log of {' and '.join(f'`{c}`' for c in logged)}")
+    if shaped:
+        what.append(f"a nonlinear form of {' and '.join(f'`{c}`' for c in shaped)}")
+    return (f"With {' and '.join(what)}, moving k kcal no longer has one effect per kcal: each "
+            f"person's effect depends on k and on their own intake, so each point of the curve is "
+            f"an average of those effects over the rows the curve reads, at that k (k-specific), "
+            f"not a coefficient difference"
+            + ("; an all-components contrast is not defined on logged components" if logged
+               else ""))
+
+
+SHARE_REALLOCATION = ("Reallocating shares of a composition (an isometric log-ratio model of the "
+                      "diet, Leite 2016) is not in this version: it goes to v2.x (MODELING_SEQUENCE "
+                      "§0 ruling 11). The kcal substitution moves energy from one source to another "
+                      "at fixed total energy; the share-of-energy swap moves a percentage of each "
+                      "person's energy.")
+
+
 # ── the options, labeled as north star 5 asks ────────────────────────────────
 
+Role = Literal["exposure", "confounder"]
 
-def options(purpose: str | None) -> list[dict[str, Any]]:
-    """The exposure-form options for ``purpose``, ordered by soundness for it, each labeled
-    *customary in* (with its source) and *sound for* (with the reason), independently.
 
-    Under inference the spline leads and quintiles are tagged customary (AUDIT_REPORT §3.6 and
-    the ME-17 recommendation); under prediction the spline still leads (it nests the line), and
-    quintiles come last because they discard the variation within each fifth.
+def _option(value: str, label: str, customary: str, sound: str, consequence: str,
+            rung: str) -> dict[str, Any]:
+    return {"value": value, "label": label, "customary": customary, "sound": sound,
+            "consequence": consequence, "rung": rung}
+
+
+def options(purpose: str | None, role: Role = "exposure", *, mass_at_zero: bool = False,
+            residual: bool = False) -> list[dict[str, Any]]:
+    """The form options for ``purpose`` and ``role``, ordered by soundness for it, each labeled
+    *customary in* (with its source) and *sound for* (with the reason), independently, with its
+    leash rung (MODELING_SEQUENCE §4).
+
+    Under inference the spline leads (for a mass at zero, non-consumers beside a spline among
+    consumers leads), quintiles rank lower and are produced beside it anyway, and data-derived cut
+    points are blocked and recorded; a confounder's categories into three or fewer groups too.
+    Under prediction the spline still leads (it nests the line), and the cut forms come last.
     """
-    spline = {
-        "value": "spline", "label": "Restricted cubic spline",
-        "customary": "Increasingly customary in nutritional epidemiology: \"now near-default\" "
-                     "(NUTRITION_PACK §07G; Desquilbet & Mariotti 2010).",
-        "sound": "Sound: a smooth curve with few parameters, linear in the tails, with a test of "
-                 "nonlinearity; knots at Harrell's percentiles of the fitting rows.",
-        "consequence": "Adds a curve's terms per exposure and a test of whether it bends.",
-    }
-    linear = {
-        "value": "linear", "label": "Straight line",
-        "customary": "Customary: one coefficient per unit of intake.",
-        "sound": "Sound when the relation is close to a line; a curve it misses biases the slope.",
-        "consequence": "One coefficient per unit; no curvature.",
-    }
-    quintiles = {
-        "value": "quintiles", "label": "Quintiles with a trend test",
-        "customary": "Customary in nutritional epidemiology: \"quintiles remain expected "
-                     "alongside\" the spline (NUTRITION_PACK §07G).",
-        "sound": ("Weaker for inference: cutting a continuous intake into fifths discards the "
-                  "variation within each fifth and assumes a step at each cut; the trend test "
-                  "scores each fifth by its median." if purpose == "inference" else
-                  "Weak for prediction: five steps discard the variation within each fifth."),
-        "consequence": "Four indicators against the lowest fifth, and a trend across medians.",
-    }
-    return [spline, linear, quintiles]
+    inference = purpose == "inference"
+    on_residual = (" On a residual it is the curve on the energy-adjusted scale at mean energy, "
+                   "not the substitution curve." if residual else "")
+    spline = _option(
+        "spline", "Restricted cubic spline",
+        "Increasingly customary in nutritional epidemiology: \"now near-default\" "
+        "(NUTRITION_PACK §07G; Desquilbet & Mariotti 2010).",
+        "Sound: a smooth curve with few parameters, linear in the tails, with a test of "
+        "nonlinearity; knots at Harrell's percentiles of the fitting rows." + on_residual,
+        "Adds a curve's terms per exposure and a test of whether it bends.", "recommended")
+    linear = _option(
+        "linear", "Straight line", "Customary: one coefficient per unit of intake.",
+        ("Sound when the relation is close to a line; a curve it misses biases the slope."
+         if role == "exposure" else
+         "Often controls a confounder well (Brenner & Blettner 1997); a curve it misses leaves "
+         "residual confounding."),
+        "One coefficient per unit; no curvature.", "available")
+    quintiles = _option(
+        "quintiles", "Quintiles with a trend test",
+        "Customary in nutritional epidemiology: \"quintiles remain expected alongside\" the "
+        "spline (NUTRITION_PACK §07G).",
+        ("Weaker for inference: cutting a continuous intake into fifths discards the variation "
+         "within each fifth and assumes a step at each cut; the trend test scores each fifth by "
+         "its median." if inference else
+         "Weak for prediction: five steps discard the variation within each fifth."),
+        "Four indicators against the lowest fifth, and a trend across medians.", "rank_lower")
+    categories = _option(
+        "categories", "Categories at declared cut points",
+        "Customary for clinical bands (BMI classes, age bands) and for confounders.",
+        ("Coarser than the variable: the categories assume a step at each cut. A confounder in "
+         "three or fewer groups leaves serious residual confounding (Brenner & Blettner 1997)."
+         if role == "confounder" else
+         "Coarser than the variable; cut points declared from outside these data."),
+        "One indicator per group above the lowest, the boundaries stated.", "rank_lower")
+    optimal = _option(
+        "optimal", "A data-derived cut point",
+        "Seen in clinical papers: the cut point with the smallest p-value.",
+        ("Unsound for inference: a data-derived \"optimal\" cut point leads to serious bias "
+         "(Altman & Royston 2006)." if inference else
+         "Searched inside each training fold; still discards the variation on each side."),
+        "Two groups split where the outcome differs most on these rows.",
+        "block_and_record" if inference else "rank_lower")
+    out = [spline, linear, categories, quintiles, optimal] if role == "confounder" else \
+        [spline, linear, quintiles, categories, optimal]
+    if mass_at_zero and role == "exposure":
+        zero = _option(
+            "zero_spline", "Non-consumers apart, a spline among consumers",
+            "STROBE-nut nut-11 asks how non-consumers were handled.",
+            "Sound for a mass at zero: the non-consumers are their own category (the reference) "
+            "and the curve among consumers has knots at consumers' percentiles.",
+            "A consumer indicator and a spline among consumers.", "recommended")
+        out.insert(0, zero)
+        if inference:
+            out.insert(1, _option(
+                "consumers_only", "Consumers only (an estimand change)",
+                "Common for episodically consumed foods; STROBE-nut nut-14 asks which population.",
+                "Answers a different question: the effect among consumers, not in everyone.",
+                "Non-consumers leave the analysis; the spline is among consumers.", "available"))
+    if not inference:
+        for o in out:
+            o["rung"] = {"spline": "recommended", "zero_spline": "recommended",
+                         "linear": "available"}.get(o["value"], "rank_lower")
+    return out
+
+
+# ── the form question (MODELING_SEQUENCE §1 row 5) ───────────────────────────
+
+
+def _info_of(info: Mapping[str, Any] | None, column: str) -> Mapping[str, Any] | None:
+    if info is None:
+        return None
+    found = info.get(column)
+    if found is None:
+        return None
+    if isinstance(found, Mapping):
+        return found
+    return {"dtype": getattr(found, "dtype", None), "n_unique": getattr(found, "n_unique", None)}
+
+
+def form_needs(state: Any, info: Mapping[str, Any] | None) -> tuple[list[dict[str, str]],
+                                                                    list[dict[str, str]]]:
+    """Under inference, the columns whose form is declared before estimates (the declared exposure
+    and each adjusted continuous confounder: numeric, not codes, at least :data:`CONTINUOUS`
+    distinct values), and those stated instead, each with why. ``info``: column → ``{dtype,
+    n_unique}``."""
+    from turbotab.core import estimand as est
+    from turbotab.core.readings import confirmed_codes
+
+    if getattr(state, "purpose", None) != "inference":
+        return [], []
+    spec = est.current_estimand(state)
+    if spec is None:
+        return [], []
+    roles = est.predictor_roles(state)
+    codes = set(confirmed_codes(state))
+    adj = getattr(state, "energy_adjustment", None)
+    partitioned = set(_field(adj, "nutrients") or []) if adj is not None and \
+        _field(adj, "method") in ("partition", "all_components") else set()
+    scales = {_field(sc, "name"): sc for sc in getattr(state, "scales", None) or []}
+    fe = est.fixed_effects_column(state)
+    needs: list[dict[str, str]] = []
+    stated: list[dict[str, str]] = []
+
+    def continuous(column: str) -> tuple[bool, str]:
+        if column in scales:
+            return True, ""
+        if column in codes:
+            return False, "declared codes: it enters as indicators"
+        found = _info_of(info, column)
+        if found is None:
+            return False, "not read yet"
+        if str(found.get("dtype")) not in ("numeric", "integer"):
+            return False, "a category: it enters as indicators"
+        n = int(found.get("n_unique") or 0)
+        if n < CONTINUOUS:
+            return False, f"{n} distinct values: it enters as recorded"
+        return True, ""
+
+    family = bool(_field(spec, "family"))
+    exposure = None if family else str(_field(spec, "exposure"))
+    if family:
+        for c in est.family_exposures(state):
+            stated.append({"column": c, "why": "a member of the exposure family: each member "
+                                               "enters as a straight line, one test per member"})
+    elif exposure is not None:
+        ok, why = continuous(exposure)
+        if exposure in partitioned:
+            stated.append({"column": exposure, "why": "the energy partition replaces it by its "
+                                                      "kcal, a straight line"})
+        elif ok:
+            needs.append({"column": exposure, "role": "exposure"})
+        else:
+            stated.append({"column": exposure, "why": why})
+    derived = est.derived_roles(state)
+    for c, r in roles.items():
+        if r == "energy" and c not in derived:
+            stated.append({"column": c, "why": "total energy: the energy model sets its term"})
+    for c, d in derived.items():
+        if not d.adjusted or c == exposure or c == fe or c not in roles:
+            continue
+        if roles.get(c) == "energy":
+            stated.append({"column": c, "why": "total energy: the energy model sets its term"})
+            continue
+        if c in partitioned:
+            stated.append({"column": c, "why": "the energy partition replaces it by its kcal"})
+            continue
+        ok, why = continuous(c)
+        if ok:
+            needs.append({"column": c, "role": "confounder"})
+        else:
+            stated.append({"column": c, "why": why})
+    return needs, stated
+
+
+def form_gate(state: Any, card: Mapping[str, Any] | None) -> tuple[str, str | None] | None:
+    """The Router's gate for the form question: stated under prediction (each family's own form
+    stands, a spline one tap away); under inference not applicable when no continuous exposure or
+    confounder is in the model, else asked."""
+    purpose = getattr(state, "purpose", None)
+    if purpose == "prediction":
+        return ("skipped", "Under prediction each predictor enters as each family takes it; the "
+                           "spline benchmark is on the shelf, and a spline can be declared for any "
+                           "numeric predictor.")
+    if purpose != "inference":
+        return None
+    from turbotab.core import estimand as est
+
+    if est.current_estimand(state) is None:
+        # No exposure to declare (no predictor in the model): no form to declare either; else the
+        # question waits behind the estimand's.
+        found = est.estimand_gate(state)
+        return found if found is not None and found[0] == "not_applicable" else None
+    if card is None:
+        return None
+    if card.get("purpose") != "inference" or not card.get("ready", True):
+        return None
+    if not card.get("needs"):
+        return ("not_applicable", "No continuous exposure or confounder is in the model, so no "
+                                  "form is declared; each enters as recorded.")
+    return None
+
+
+def unanswered_forms(state: Any, card: Mapping[str, Any] | None) -> list[str]:
+    """The columns the card asks about with no standing form."""
+    if card is None:
+        return []
+    standing = current_forms(state)
+    return [str(n["column"]) for n in card.get("needs") or [] if str(n["column"]) not in standing]
+
+
+def form_answer(state: Any, card: Mapping[str, Any] | None) -> Any:
+    """The form question's answer: the standing forms, once every column the card asks about has
+    one (a stale form is no answer); None otherwise, and while the card is not read."""
+    if card is None or getattr(state, "purpose", None) != "inference":
+        return None
+    if unanswered_forms(state, card):
+        return None
+    return current_forms(state) or None
+
+
+def zero_share(values: Any) -> tuple[float, bool]:
+    """(the share of recorded values at exactly zero, whether any is negative)."""
+    v = pd.to_numeric(pd.Series(values), errors="coerce").dropna().to_numpy(dtype=float)
+    if not len(v):
+        return 0.0, False
+    return float(np.mean(v == 0)), bool((v < 0).any())
+
+
+def proposal(role: str, purpose: str | None, k: int, *, mass_at_zero: bool) -> dict[str, Any]:
+    """The form the card leads with: a spline with k by the rule; for an exposure with a mass at
+    zero, non-consumers apart and a spline among consumers."""
+    form = "zero_spline" if (mass_at_zero and role == "exposure") else "spline"
+    return {"form": form, "knots": k, "knots_rule": "harrell"}
+
+
+class _Card(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+
+class FormOptionCard(_Card):
+    value: str
+    label: str
+    customary: str
+    sound: str
+    consequence: str
+    rung: str
+
+
+class FormNeed(_Card):
+    """One column the form question asks about."""
+
+    column: str
+    role: Literal["exposure", "confounder"]
+    receives: str  # the column the form step receives (an energy-adjusted one, say)
+    scale: str  # its transforms (``transform_signature``)
+    unit: str  # the estimand's unit on that scale
+    zero_share: float
+    mass_at_zero: bool
+    n_effective: float | None
+    rule_knots: int
+    rule: str
+    options: list[FormOptionCard]
+    proposal: dict[str, Any]
+    label: str | None = None  # a curve on a residual, labeled
+    route: list[dict[str, Any]] | None = None  # spline(N) + E, the substitution curve's route
+
+
+class FormStated(_Card):
+    column: str
+    why: str
+
+
+class FormsArtifact(_Card):
+    """The ``forms`` stage: the functional-form question's card (MODELING_SEQUENCE §1 row 5)."""
+
+    purpose: str | None
+    ready: bool
+    exposure: str | None
+    task: str | None
+    n_effective: float | None
+    rule_knots: int
+    rule: str
+    needs: list[FormNeed]
+    stated: list[FormStated]
+    answer: dict[str, Any] | None  # the card's one-tap ``set_forms``: every proposal
+    beside: str | None
+
+
+FORMS_READS = ("purpose", "target", "task", "event", "estimand", "adjustment", "clusters",
+               "energy_adjustment", "scales", "findings", "batch", "categorical", "lens",
+               "missing", "aggregation", "outcome_order", "roles", "roles_unconfirmed",
+               "role_confirmations", "reading_confirmations", "shape_confirmations",
+               "column_units")
+
+
+def forms_card(state: Any, frame: pd.DataFrame | None, info: Mapping[str, Any] | None,
+               y: Any = None, task: str | None = None) -> dict[str, Any]:
+    """The form question's card: each column it asks about, the column the form receives, its
+    present scale and unit, whether a mass at zero is there, k by the rule on the effective sample
+    size, the options labeled for its role, the proposal, and on a residual its label and the
+    route to the substitution curve; and the columns stated instead, with why."""
+    purpose = getattr(state, "purpose", None)
+    task = task or getattr(state, "task", None)
+    n_eff = effective_n(task, y, getattr(state, "event", None)) if y is not None else None
+    k = knots_by_rule(n_eff)
+    needs, stated = form_needs(state, info)
+    adj = getattr(state, "energy_adjustment", None)
+    entries = []
+    for need in needs:
+        c, role = need["column"], need["role"]
+        share, negative = (zero_share(frame[c]) if frame is not None and c in frame.columns
+                           else (0.0, False))
+        mass = share >= MASS_AT_ZERO and not negative and transform_signature(state, c) == "raw"
+        residual = (adj is not None and _field(adj, "method") in ("residual",
+                                                                   "residual_energy_dropped")
+                    and c in (_field(adj, "nutrients") or []))
+        entry = {
+            "column": c, "role": role, "receives": formed_name(c, adj),
+            "scale": transform_signature(state, c), "unit": scale_words(state, c),
+            "zero_share": round(share, 4), "mass_at_zero": bool(mass),
+            "n_effective": n_eff, "rule_knots": k, "rule": rule_words(k, n_eff, task),
+            "options": options(purpose, "exposure" if role == "exposure" else "confounder",
+                               mass_at_zero=bool(mass), residual=residual),
+            "proposal": proposal(role, purpose, k, mass_at_zero=bool(mass)),
+            "label": (residual_label(c, _field(adj, "energy_column")) if residual else None),
+            "route": (substitution_route(c, _field(adj, "energy_column"),
+                                         list(_field(adj, "nutrients") or []), k)
+                      if residual and role == "exposure" else None),
+        }
+        entries.append(entry)
+    answer = {c["column"]: {k_: v for k_, v in c["proposal"].items()} for c in entries}
+    card = {"purpose": purpose, "ready": True, "exposure": exposure_of(state),
+            "task": task, "n_effective": n_eff, "rule_knots": k,
+            "rule": rule_words(k, n_eff, task), "needs": entries, "stated": stated,
+            "answer": ({"kind": "set_forms", "forms": answer} if answer else None),
+            "beside": ("Quintiles are produced beside the exposure's spline, their boundaries and "
+                       "reference stated, with the p for linear trend (customary)."
+                       if purpose == "inference" else None)}
+    return FormsArtifact.model_validate(card).model_dump(mode="json")
+
+
+def forms_stage(ctx: Any) -> dict[str, Any]:
+    """The ``forms`` stage: the form question's card (MODELING_SEQUENCE §1 row 5), read on the
+    analyzed rows (the cohort's) of the working table."""
+    from turbotab.core.graph import Bundle
+    from turbotab.core.stages.data import open_store
+
+    state = ctx.state
+    if getattr(state, "purpose", None) != "inference":
+        return Bundle(data=forms_card(state, None, None))
+    cohort = ctx.inputs.get("cohort")
+    rows = (cohort.frames["rows"]["row_id"].to_numpy(dtype=np.int64)
+            if cohort is not None and "rows" in (cohort.frames or {}) else None)
+    with open_store(ctx) as store:
+        info = {c.name: {"dtype": c.dtype, "n_unique": c.n_unique} for c in store.info().columns}
+        wanted, _ = form_needs(state, info)
+        columns = [n["column"] for n in wanted if n["column"] in store.columns]
+        target = state.target if state.target in store.columns else None
+        frame = store.materialize(list(dict.fromkeys([*columns, *([target] if target else [])])),
+                                  rows) if (columns or target) else None
+    y = frame[target] if frame is not None and target is not None else None
+    target_info = ctx.inputs.get("target_info")
+    data = getattr(target_info, "data", target_info) or {}
+    task = state.task or (data.get("task") if isinstance(data, Mapping) else None)
+    return Bundle(data=forms_card(state, frame, info, y, task))
 
 
 # ── tests under inference ────────────────────────────────────────────────────
@@ -575,16 +1451,32 @@ def _before_form(pipeline: Any, X: pd.DataFrame) -> pd.DataFrame:
     return X if at == 0 else pipeline[:at].transform(X)
 
 
+def _test(column: str, form: str, test: str, result: Mapping[str, Any] | None = None,
+          **extra: Any) -> dict[str, Any]:
+    base = {"column": column, "form": form, "test": test, "statistic": None, "df_num": None,
+            "df_den": None, "distribution": "z", "p": None, "estimate": None, "ci_low": None,
+            "ci_high": None, "knots": None, "medians": None, "label": None, "boundaries": None,
+            "reference": None}
+    if result is not None:
+        base.update(statistic=result["statistic"], df_num=result["df_num"],
+                    df_den=result["df_den"], distribution=result["distribution"], p=result["p"])
+    base.update(extra)
+    return base
+
+
 def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task: str,
                    clusters: Any, table: Any, outcome: Any = None,
                    survey: Any = None) -> tuple[list[dict[str, Any]], list[str]]:
     """The tests each formed exposure carries under inference, and any concerns about them.
 
     ``table`` is the family's inference table on ``pipeline`` (rows, ``info``, ``cov``). A spline
-    gets two Wald tests (every term; the nonlinear terms); quintiles get the trend test, a refit
-    of the family's inference table with the exposure scored by its quintile medians. The refit
-    takes the table's outcome and, under a surveyed population, its design (WP8, WP10), when the
-    family's ``inference_matrix`` accepts them.
+    gets two Wald tests: every term (the test of association) and the nonlinear terms; a mass at
+    zero's, every term (the consumer indicator with its spline) and the nonlinear terms among
+    consumers; a declared exposure's spline also gets its companion quintiles beside it. Quintiles
+    get their global test and the trend test, a refit of the family's inference table with the
+    exposure scored by its quintile medians; declared categories their global test; a data-derived
+    cut point its coefficient. The refits take the table's outcome and, under a surveyed
+    population, its design (WP8, WP10), when the family's ``inference_matrix`` accepts them.
     """
     step = form_step(pipeline)
     if step is None or table is None:
@@ -607,14 +1499,17 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
         outputs = step._outputs(column)
         if not all(o in where for o in outputs):
             continue
-        if form == "spline":
+        if form in SPLINE_FORMS:
             idx = [where[o] for o in outputs]
+            nonlinear = [where[o] for o in nonlinear_outputs(step, column)]
             knots = knot_sentence(column, step.knots_[column], step.knot_notes_[column])
+            among = " among consumers" if form == "zero_spline" else ""
             for test_kind, chosen, what in (
                     ("overall", idx, f"all {len(idx)} terms of `{column}` are"),
-                    ("nonlinear", idx[1:], f"the {len(idx) - 1} nonlinear "
-                                           f"term{'s' if len(idx) > 2 else ''} of `{column}` "
-                                           f"{'are' if len(idx) > 2 else 'is'}")):
+                    ("nonlinear", nonlinear, f"the {len(nonlinear)} nonlinear "
+                                             f"term{'s' if len(nonlinear) > 1 else ''} of "
+                                             f"`{column}`{among} "
+                                             f"{'are' if len(nonlinear) > 1 else 'is'}")):
                 result = wald_test(estimates, cov, chosen, info, rows)
                 if result is None:
                     if test_kind == "overall":
@@ -622,35 +1517,78 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
                                         f"which this table ({info.get('covariance')}) does not "
                                         f"give.")
                     continue
-                caption = (f"Wald test that {what} zero ({result['basis']}): "
-                           f"{_statistic_words(result)}. {knots[0].upper()}{knots[1:]}.")
-                tests.append({"column": column, "form": "spline", "test": test_kind,
-                              "statistic": result["statistic"], "df_num": result["df_num"],
-                              "df_den": result["df_den"], "distribution": result["distribution"],
-                              "p": result["p"], "estimate": None, "ci_low": None, "ci_high": None,
-                              "knots": [float(v) for v in step.knots_[column]], "medians": None,
-                              "caption": caption})
+                lead = ("The test of association: " if test_kind == "overall" else "")
+                tail = ("" if test_kind == "overall" else
+                        f" A non-significant result does not refit a straight line: dropping the "
+                        f"curve after its test inflates the test of association's type I error "
+                        f"({GRAMBSCH}).")
+                caption = (f"{lead}Wald test that {what} zero ({result['basis']}): "
+                           f"{_statistic_words(result)}. {knots[0].upper()}{knots[1:]}.{tail}")
+                tests.append(_test(column, form, test_kind, result,
+                                   knots=[float(v) for v in step.knots_[column]],
+                                   caption=caption))
+            if column in step.companion_cuts_:
+                found, worry = _companion(family, pipeline, step, column, X, y, task=task,
+                                          clusters=clusters, outcome=outcome, survey=survey)
+                tests.extend(found)
+                concerns.extend(worry)
             continue
-        # MS2: the global test that every quintile indicator is zero, a multi-df Wald test on the
-        # table's own covariance (pooled by D1 under multiple imputation).
         idx = [where[o] for o in outputs]
-        result = wald_test(estimates, cov, idx, info, rows)
-        if result is not None:
-            tests.append({"column": column, "form": "quintiles", "test": "global",
-                          "statistic": result["statistic"], "df_num": result["df_num"],
-                          "df_den": result["df_den"], "distribution": result["distribution"],
-                          "p": result["p"], "estimate": None, "ci_low": None, "ci_high": None,
-                          "knots": None, "medians": [float(v) for v in step.medians_[column]],
-                          "caption": (f"Wald test that all {len(idx)} quintile indicators of "
-                                      f"`{column}` are zero ({result['basis']}): "
-                                      f"{_statistic_words(result)}.")})
-        trend = _trend(family, pipeline, step, column, X, y, task=task, clusters=clusters,
-                       outcome=outcome, survey=survey)
-        if trend is None:
-            concerns.append(f"The trend test for `{column}` could not be computed.")
+        if form in ("quintiles", "categories"):
+            # MS2: the global test that every indicator is zero, a multi-df Wald test on the
+            # table's own covariance (pooled by D1 under multiple imputation).
+            result = wald_test(estimates, cov, idx, info, rows)
+            word = "quintile" if form == "quintiles" else "category"
+            if result is not None:
+                tests.append(_test(
+                    column, form, "global", result,
+                    medians=[float(v) for v in step.medians_[column]],
+                    boundaries=[float(v) for v in step.cuts_[column]],
+                    reference=f"{word} 1, `{column}` ≤ {step.cuts_[column][0]:.4g}",
+                    caption=(f"Wald test that all {len(idx)} {word} indicators of `{column}` are "
+                             f"zero ({result['basis']}): {_statistic_words(result)}. "
+                             f"{boundaries_words(column, step.cuts_[column], word).capitalize()}.")))
+            if form == "categories":
+                continue
+            trend = _trend(family, pipeline, step, column, X, y, task=task, clusters=clusters,
+                           outcome=outcome, survey=survey)
+            if trend is None:
+                concerns.append(f"The trend test for `{column}` could not be computed.")
+                continue
+            tests.append(trend)
             continue
-        tests.append(trend)
+        # A data-derived cut point: its one coefficient, with the search it came from.
+        row = rows[idx[0]]
+        found = step.optimal_.get(column) or {}
+        tests.append(_test(
+            column, form, "cut", None, statistic=(row["estimate"] / row["se"]) if row.get("se")
+            else None, df_num=1, df_den=row.get("df"),
+            distribution="t" if row.get("df") is not None else "z", p=row.get("p"),
+            estimate=row.get("estimate"), ci_low=row.get("ci_low"), ci_high=row.get("ci_high"),
+            boundaries=[float(step.cuts_[column][0])],
+            reference=f"`{column}` ≤ {step.cuts_[column][0]:.4g}",
+            caption=(f"`{column}` above {step.cuts_[column][0]:.4g} against below it: a cut point "
+                     f"the data chose (the smallest of {found.get('tried')} p-values on these "
+                     f"rows), so its p-value and interval are too small: data-derived cut points "
+                     f"lead to serious bias ({ALTMAN}).")))
     return tests, concerns
+
+
+def _refit(family: Any, matrix: pd.DataFrame, y: Any, *, pipeline: Any, task: str, clusters: Any,
+           outcome: Any, survey: Any) -> Any:
+    """The family's inference table on ``matrix``, with the table's outcome and design."""
+    import inspect
+
+    refit = getattr(family, "inference_matrix", None)
+    if refit is None:
+        return None
+    classes = list(getattr(pipeline[-1], "classes_", [])) or None
+    accepts = inspect.signature(refit).parameters
+    extra = {name: value for name, value in (("outcome", outcome), ("survey", survey))
+             if value is not None and name in accepts}
+    if survey is not None and "survey" not in extra:
+        return None  # a refit without the design beside a design-based table would mislead
+    return refit(matrix, y, task=task, classes=classes, clusters=clusters, **extra)
 
 
 def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.DataFrame, y: Any,
@@ -658,11 +1596,9 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
            survey: Any = None) -> dict[str, Any] | None:
     """The trend test on quintile medians: the model matrix with ``column``'s indicators replaced
     by one column, each row's quintile median, refit by the family's own inference table."""
+    from turbotab.core.models.inference import format_p
     from turbotab.core.models.linear import model_matrix
 
-    refit = getattr(family, "inference_matrix", None)
-    if refit is None:
-        return None
     matrix = model_matrix(pipeline, X)
     indicators = quintile_names(column)
     if not all(c in matrix.columns for c in indicators):
@@ -672,37 +1608,118 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
     at = list(matrix.columns).index(indicators[0])
     kept = matrix.drop(columns=indicators)
     kept.insert(at, score_name, step.scores(column, raw))
-    classes = list(getattr(pipeline[-1], "classes_", [])) or None
-    import inspect
-
-    accepts = inspect.signature(refit).parameters
-    extra = {name: value for name, value in (("outcome", outcome), ("survey", survey))
-             if value is not None and name in accepts}
-    if survey is not None and "survey" not in extra:
-        return None  # a trend test without the design beside a design-based table would mislead
-    table = refit(kept, y, task=task, classes=classes, clusters=clusters, **extra)
+    table = _refit(family, kept, y, pipeline=pipeline, task=task, clusters=clusters,
+                   outcome=outcome, survey=survey)
+    if table is None:
+        return None
     row = next((r for r in table.rows if str(r["feature"]) == score_name), None)
     if row is None or row.get("p") is None:
         return None
     medians = ", ".join(f"{m:.4g}" for m in step.medians_[column])
-    from turbotab.core.models.inference import format_p
-
     reference = "t" if row.get("df") is not None else "z"
-    caption = (f"Trend across quintiles of `{column}`: each row scored by its quintile's median "
-               f"({medians}, from the fitting rows), entered as one continuous term in place of "
-               f"the four indicators; its coefficient {row['estimate']:+.4g} per unit, "
-               f"p = {format_p(row['p'])} ({table.info.get('caption', '').rstrip('.')}).")
+    caption = (f"The {TREND_LABEL} across quintiles of `{column}`: each row scored by its "
+               f"quintile's median ({medians}, from the fitting rows), entered as one continuous "
+               f"term in place of the four indicators; its coefficient {row['estimate']:+.4g} per "
+               f"unit, p = {format_p(row['p'])} ({table.info.get('caption', '').rstrip('.')}). A "
+               f"test of a linear trend, not of a dose–response.")
     if survey is not None:
         # The review of the modeling sequence (§1 step 5, quintiles): "Under survey design, state
         # whether cut points are weighted."
         caption += (" The cut points and medians are the analyzed rows' own, unweighted; the "
                     "trend's coefficient and interval are design-based.")
-    return {"column": column, "form": "quintiles", "test": "trend",
-            "statistic": (row["estimate"] / row["se"]) if row.get("se") else None,
-            "df_num": 1, "df_den": row.get("df"), "distribution": reference, "p": row["p"],
-            "estimate": row["estimate"], "ci_low": row.get("ci_low"), "ci_high": row.get("ci_high"),
-            "knots": None, "medians": [float(m) for m in step.medians_[column]],
-            "caption": caption}
+    return _test(column, "quintiles", "trend", None,
+                 statistic=(row["estimate"] / row["se"]) if row.get("se") else None,
+                 df_num=1, df_den=row.get("df"), distribution=reference, p=row["p"],
+                 estimate=row["estimate"], ci_low=row.get("ci_low"), ci_high=row.get("ci_high"),
+                 medians=[float(m) for m in step.medians_[column]],
+                 boundaries=[float(v) for v in step.cuts_[column]], label=TREND_LABEL,
+                 reference=f"quintile 1, `{column}` ≤ {step.cuts_[column][0]:.4g}",
+                 caption=caption)
+
+
+def _companion(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.DataFrame,
+               y: Any, *, task: str, clusters: Any, outcome: Any = None,
+               survey: Any = None) -> tuple[list[dict[str, Any]], list[str]]:
+    """The quintile table beside a declared exposure's spline (MODELING_SEQUENCE §0 ruling 2): the
+    model refit with ``column``'s spline terms replaced by quintile indicators (each quintile
+    against the lowest, the boundaries and the reference stated), and by each row's quintile
+    median (the {TREND_LABEL}). The cut points are the companion's own, placed on the fitting
+    rows (on the observed values under multiple imputation, fixed across copies); the medians are
+    each fit's."""
+    from turbotab.core.models.inference import format_p
+    from turbotab.core.models.linear import model_matrix
+
+    matrix = model_matrix(pipeline, X)
+    terms = step._outputs(column)
+    if not all(c in matrix.columns for c in terms):
+        return [], []
+    raw = _before_form(pipeline, X)[column].to_numpy(dtype=float, na_value=np.nan)
+    cuts = step.companion_cuts_[column]
+    group = quantile_group(raw, cuts)
+    counts = np.bincount(group[group >= 0], minlength=QUINTILES)[:QUINTILES]
+    if (counts == 0).any() or len(np.unique(cuts)) < QUINTILES - 1:
+        return [], [f"The quintiles beside `{column}`'s spline could not be formed: its values are "
+                    f"too heavily tied."]
+    medians = np.array([float(np.median(raw[group == g])) for g in range(QUINTILES)])
+    at = list(matrix.columns).index(terms[0])
+    kept = matrix.drop(columns=terms)
+    indicators = quintile_names(column)
+    for j, name in enumerate(indicators, start=1):
+        kept.insert(at + j - 1, name, np.where(group < 0, np.nan, (group == j).astype(float)))
+    out: list[dict[str, Any]] = []
+    reference = f"quintile 1, `{column}` ≤ {cuts[0]:.4g}"
+    bounds = boundaries_words(column, cuts)
+    # MS4 (the review, §1 step 5, quintiles): "Under survey design, state whether cut points are
+    # weighted."
+    design = (" The cut points and medians are the analyzed rows' own, unweighted; the coefficients "
+              "and intervals are design-based, over the survey design." if survey is not None
+              else "")
+    table = _refit(family, kept, y, pipeline=pipeline, task=task, clusters=clusters,
+                   outcome=outcome, survey=survey)
+    if table is None:
+        return [], [f"The quintiles beside `{column}`'s spline could not be refit."]
+    by = {str(r["feature"]): r for r in table.rows}
+    for g, name in enumerate(indicators, start=2):
+        row = by.get(name)
+        if row is None or row.get("estimate") is None:
+            continue
+        ratio = (f" (ratio {row['ratio']:.3g}, {row['ratio_low']:.3g} to {row['ratio_high']:.3g})"
+                 if row.get("ratio") is not None and row.get("ratio_low") is not None else "")
+        out.append(_test(
+            column, "quintiles", f"companion_q{g}", None,
+            statistic=(row["estimate"] / row["se"]) if row.get("se") else None, df_num=1,
+            df_den=row.get("df"), distribution="t" if row.get("df") is not None else "z",
+            p=row.get("p"), estimate=row["estimate"], ci_low=row.get("ci_low"),
+            ci_high=row.get("ci_high"), medians=[float(m) for m in medians],
+            boundaries=[float(c) for c in cuts], reference=reference,
+            what=f"quintile {g} of `{column}` against the lowest",
+            caption=(f"Beside the spline: quintile {g} of `{column}` against the lowest, "
+                     f"{row['estimate']:+.4g}{ratio}, p = {format_p(row.get('p'))}; {bounds}."
+                     f"{design}")))
+    score_name = f"{column}{SCORE_SUFFIX}"
+    scored = matrix.drop(columns=terms)
+    scored.insert(at, score_name, np.where(group < 0, np.nan,
+                                           medians[np.clip(group, 0, QUINTILES - 1)]))
+    trend_table = _refit(family, scored, y, pipeline=pipeline, task=task, clusters=clusters,
+                         outcome=outcome, survey=survey)
+    row = next((r for r in (trend_table.rows if trend_table is not None else [])
+                if str(r["feature"]) == score_name), None)
+    if row is not None and row.get("p") is not None:
+        listed = ", ".join(f"{m:.4g}" for m in medians)
+        out.append(_test(
+            column, "quintiles", "companion_trend", None,
+            statistic=(row["estimate"] / row["se"]) if row.get("se") else None, df_num=1,
+            df_den=row.get("df"), distribution="t" if row.get("df") is not None else "z",
+            p=row["p"], estimate=row["estimate"], ci_low=row.get("ci_low"),
+            ci_high=row.get("ci_high"), medians=[float(m) for m in medians],
+            boundaries=[float(c) for c in cuts], label=TREND_LABEL, reference=reference,
+            what=f"the {TREND_LABEL} coefficient per unit of `{column}`",
+            caption=(f"Beside the spline, the {TREND_LABEL}: each row scored by its quintile's "
+                     f"median ({listed}), one term in place of the spline; its coefficient "
+                     f"{row['estimate']:+.4g} per unit, p = {format_p(row['p'])}. The spline's "
+                     f"overall test is the test of association; this is a test of a linear trend, "
+                     f"not of a dose–response.{design}")))
+    return out, []
 
 
 def describe(forms: Mapping[str, Any]) -> str:
@@ -717,22 +1734,554 @@ def describe(forms: Mapping[str, Any]) -> str:
                          f"knots at Harrell's percentiles")
             if "knots" not in learned:
                 learned.append("knots")
+        elif form == "zero_spline":
+            parts.append(f"non-consumers of {column} as their own category beside a spline among "
+                         f"consumers with {knots or DEFAULT_KNOTS} knots at consumers' percentiles")
+            if "knots" not in learned:
+                learned.append("knots")
         elif form == "quintiles":
             parts.append(f"quintile indicators of {column} against its lowest fifth")
             if "cut points" not in learned:
                 learned.append("cut points")
+        elif form == "categories":
+            cuts = ", ".join(f"{c:g}" for c in (_field(spec, "cuts") or []))
+            parts.append(f"indicators of {column} at the declared cut points {cuts}, against its "
+                         f"lowest group")
+        elif form == "optimal":
+            parts.append(f"{column} split at the cut point with the smallest outcome p-value")
+            if "data-derived cut points" not in learned:
+                learned.append("data-derived cut points")
     if not parts:
         return "Every exposure enters as a straight line."
     joined = parts[0] if len(parts) == 1 else f"{'; '.join(parts[:-1])}; and {parts[-1]}"
-    return (f"{joined[0].upper()}{joined[1:]}. The {' and '.join(learned)} are learned on the rows "
-            f"each fit sees, every training fold included.")
+    tail = (f" The {' and '.join(learned)} are learned on the rows each fit sees, every training "
+            f"fold included." if learned else "")
+    return f"{joined[0].upper()}{joined[1:]}.{tail}"
 
+
+# ── the record: the sentence a declaration writes ────────────────────────────
+
+
+def form_sentence(column: str, spec: Any, state: Any, task: str | None = None) -> str:
+    """How one predictor entered the models, as the record says it (the rule for k stated; the
+    scale it is on; a mass at zero's two parts; a consumers-only domain as an estimand change;
+    quintiles' trend labeled customary; a coarse or data-derived cut recorded as a limitation; a
+    curve on a residual labeled as what it is)."""
+    from turbotab.core.voice import tick
+
+    form, k = _form_of(spec)
+    purpose = getattr(state, "purpose", None)
+    tested = purpose == "inference"
+    scale = transform_signature(state, column)
+    values = "values" if scale == "raw" else (
+        "energy-adjusted values" if scale.startswith("energy:") or ";energy:" in scale
+        else "values on its transformed scale")
+    adj = getattr(state, "energy_adjustment", None)
+    previous = _forms_of(state).get(column)
+    was = _form_of(previous)[0] if previous is not None else None
+    text: str
+    if form == "linear":
+        text = f"{tick(column)} entered the models as a straight line"
+        if was in ("spline", "zero_spline") and tested:
+            text += (f", in place of the restricted cubic spline declared before; dropping a "
+                     f"curve after its nonlinearity test inflates the test of association's type "
+                     f"I error ({GRAMBSCH})")
+    elif form in SPLINE_FORMS:
+        k = k or DEFAULT_KNOTS
+        rule = (f", {rule_words(k, _field(spec, 'n_effective'), task or getattr(state, 'task', None))},"
+                if _field(spec, "knots_rule") == "harrell" else "")
+        pct = [f"{100 * p:g}" for p in KNOT_PERCENTILES.get(k, ())]
+        if form == "zero_spline":
+            where = (f" at the {', '.join(pct[:-1])} and {pct[-1]} percentiles of consumers' "
+                     f"{values} (`{column}` above 0) in the rows each model was fit on" if pct else "")
+            text = (f"Non-consumers of {tick(column)} (`{column}` = 0) entered the models as their "
+                    f"own category, the reference, beside a restricted cubic spline among "
+                    f"consumers with {tick(k)} knots{rule}{where} (STROBE-nut nut-11)")
+        else:
+            where = (f" at the {', '.join(pct[:-1])} and {pct[-1]} percentiles of its {values} in "
+                     f"the rows each model was fit on (Harrell's placement)" if pct
+                     else f" placed on its {values}")
+            text = (f"{tick(column)} entered the models as a restricted cubic spline with {tick(k)} "
+                    f"knots{rule}{where}")
+        if tested:
+            text += ("; the test of association is the Wald test that every term is zero, and "
+                     "nonlinearity was tested by a Wald test that its nonlinear terms are zero, "
+                     "a non-significant result never refitting a straight line")
+            if form == "spline" and column == exposure_of(state):
+                text += (f"; quintiles were reported beside it, their boundaries and reference "
+                         f"stated, with the {TREND_LABEL} across quintile medians")
+    elif form == "quintiles":
+        trend = (f"; the {TREND_LABEL} scored each quintile by its median, entered as one "
+                 f"continuous term" if tested else "")
+        text = (f"{tick(column)} entered the models as quintiles of its {values} in the rows each "
+                f"model was fit on, the lowest the reference{trend}")
+    elif form == "categories":
+        cuts = _field(spec, "cuts") or []
+        text = (f"{tick(column)} entered the models as {len(cuts) + 1} categories at the declared "
+                f"cut points {', '.join(f'{c:g}' for c in cuts)}, the lowest the reference")
+    else:
+        text = (f"{tick(column)} entered the models split at a data-derived cut point, the one "
+                f"with the smallest outcome p-value on the fitting rows")
+    if _field(spec, "domain") == "consumers":
+        text += (f"; the analysis was restricted to consumers of {tick(column)} (`{column}` above 0): "
+                 f"an estimand change, the effect among consumers, not in the whole population "
+                 f"({STROBE_NUT})")
+    if _field(spec, "acknowledged"):
+        if form == "optimal":
+            text += (f", recorded as a limitation: data-derived cut points lead to serious bias "
+                     f"({ALTMAN})")
+        else:
+            text += (f", recorded as a limitation: a confounder in {COARSE_GROUPS} or fewer groups "
+                     f"leaves serious residual confounding ({BRENNER})")
+    if residual_form(state, column, spec):
+        text += f"; this is {residual_label(column, _field(adj, 'energy_column'))}"
+    return text
+
+
+# ── the leash: refusals, completions and the contract ─────────────────────────
+
+
+def _state(ctx: Any) -> Any:
+    from turbotab.core.decisions import _state as state_of
+
+    return state_of(ctx)
+
+
+def _role_of(state: Any, column: str) -> str:
+    return "exposure" if column == exposure_of(state) else "confounder"
+
+
+def _values_of(ctx: Any, column: str) -> np.ndarray | None:
+    """``column``'s recorded values on the analyzed rows, when the context can read them."""
+    from turbotab.core.decisions import _ctx
+
+    store_fn, analyzed = _ctx(ctx, "store"), _ctx(ctx, "analyzed")
+    if not callable(store_fn):
+        return None
+    try:
+        store = store_fn()
+        if store is None or column not in store.columns:
+            return None
+        rows = analyzed() if callable(analyzed) else None
+        frame = store.materialize([column], rows)
+        return pd.to_numeric(frame[column], errors="coerce").to_numpy(dtype=float)
+    except Exception:  # noqa: BLE001 - a check that cannot read the values checks nothing
+        return None
+
+
+def _form_kind_fits(decision: Any, ctx: Any) -> None:
+    """Cut points belong to categories (and categories need them); a mass at zero's form and the
+    consumers-only domain need zeros and no negative values; a data-derived cut point searches a
+    numeric or yes/no outcome on rows it can see, never across imputed copies; the consumers-only
+    domain is an inference estimand, and the declared exposure's."""
+    from turbotab.core.decisions import Refusal, SetExposureForm
+
+    column = decision.column
+    spline = {"label": "A restricted cubic spline",
+              "decision": SetExposureForm(column=column, form="spline")}
+    if decision.form == "categories" and not decision.cuts:
+        raise Refusal("cuts_needed", f"Categories of `{column}` need their cut points declared, "
+                                     f"from outside these data.",
+                      exits=[spline, {"label": "Declare the cut points", "decision": None}])
+    if decision.cuts and decision.form != "categories":
+        raise Refusal("cuts_without_categories",
+                      f"Cut points belong to categories; the {decision.form} form has none.",
+                      exits=[{"label": f"{decision.form.replace('_', ' ').capitalize()} without "
+                                       f"cut points",
+                              "decision": decision.model_copy(update={"cuts": None})}])
+    state = _state(ctx)
+    purpose = getattr(state, "purpose", None) if state is not None else None
+    if decision.domain == "consumers":
+        if purpose == "prediction":
+            raise Refusal("domain_for_inference",
+                          "A consumers-only domain changes the population the estimate is about; "
+                          "under prediction the model is used on everyone, consumers or not.",
+                          exits=[{"label": "Non-consumers apart, a spline among consumers",
+                                  "decision": SetExposureForm(column=column, form="zero_spline")}])
+        if state is not None and exposure_of(state) not in (None, column):
+            raise Refusal("domain_of_the_exposure",
+                          f"The consumers-only domain is the declared exposure's "
+                          f"(`{exposure_of(state)}`); restricting by `{column}` would change the "
+                          f"population of another effect.",
+                          exits=[{"label": f"Keep everyone; a form of `{column}`", "decision":
+                                  decision.model_copy(update={"domain": "all"})}])
+    if decision.form == "zero_spline" or decision.domain == "consumers":
+        values = _values_of(ctx, column)
+        if values is not None:
+            share, negative = zero_share(values)
+            if negative or share == 0:
+                raise Refusal(
+                    "no_mass_at_zero",
+                    f"`{column}` has {'negative values' if negative else 'no value at zero'}, so "
+                    f"there are no non-consumers to set apart.",
+                    exits=[spline, {"label": "A straight line",
+                                    "decision": SetExposureForm(column=column, form="linear")}])
+    if decision.form == "optimal":
+        task = getattr(state, "task", None) if state is not None else None
+        if task not in (None, "regression", "binary"):
+            raise Refusal("optimal_task",
+                          f"A data-derived cut point is searched here for a numeric or a yes/no "
+                          f"outcome only; this outcome is {task}.",
+                          exits=[spline, {"label": "Quintiles",
+                                          "decision": SetExposureForm(column=column,
+                                                                      form="quintiles")}])
+        missing = getattr(state, "missing", None) if state is not None else None
+        if purpose == "inference" and missing is not None and \
+                getattr(missing, "strategy", None) == "multiple_imputation":
+            raise Refusal("optimal_under_imputation",
+                          "A data-derived cut point would be searched again in every imputed copy, "
+                          "and the copies' estimates would not be of one variable.",
+                          exits=[spline, {"label": "Declare the cut points from outside these data",
+                                          "decision": None}])
+
+
+def _cuts_are_declared_or_recorded(decision: Any, ctx: Any) -> None:
+    """MODELING_SEQUENCE §4 under inference: a data-derived cut point, and a continuous confounder
+    cut into three or fewer groups, are blocked and recorded: refused with their exits (the
+    spline first), kept only with the acknowledgment the record states."""
+    from turbotab.core.decisions import Refusal, SetExposureForm
+
+    state = _state(ctx)
+    if decision.acknowledged or state is None or getattr(state, "purpose", None) != "inference":
+        return
+    column = decision.column
+    role = _role_of(state, column)
+    spline = {"label": "A restricted cubic spline (recommended)",
+              "decision": SetExposureForm(column=column, form="spline")}
+    keep = {"label": "Keep it, recorded as a limitation",
+            "decision": decision.model_copy(update={"acknowledged": True})}
+    if decision.form == "optimal":
+        raise Refusal(
+            "optimal_cut_point",
+            f"A cut point chosen where the outcome differs most on these rows is data-derived: "
+            f"its estimate and p-value are biased away from the null (Altman & Royston 2006: "
+            f"\"the use of a data-derived 'optimal' cutpoint leads to serious bias\").",
+            exits=[spline, {"label": "Quintiles", "decision": SetExposureForm(column=column,
+                                                                              form="quintiles")},
+                   {"label": "Declare the cut points from outside these data", "decision": None},
+                   keep])
+    if decision.form == "categories" and role == "confounder" and \
+            len(decision.cuts or []) + 1 <= COARSE_GROUPS:
+        groups = len(decision.cuts or []) + 1
+        raise Refusal(
+            "coarse_confounder",
+            f"`{column}` is a confounder cut into {groups} groups: within each group it still "
+            f"varies with the exposure, so its confounding is only partly removed (Brenner & "
+            f"Blettner 1997: \"categorization of the confounder may often lead to serious "
+            f"residual confounding if the number of categories is small\").",
+            exits=[spline, {"label": "A straight line",
+                            "decision": SetExposureForm(column=column, form="linear")}, keep])
+
+
+def _forms_each_fit(decision: Any, ctx: Any) -> None:
+    """The one-tap answer: each column's form checked as its own ``set_exposure_form`` is; a
+    refusal's exits keep the other columns' forms."""
+    from turbotab.core import decisions as d
+
+    for column, spec in decision.forms.items():
+        probe = d.SetExposureForm(column=column, **spec.model_dump())
+        try:
+            for fn in d._VALIDATORS.get("set_exposure_form", ()):
+                fn(probe, ctx)
+        except d.Refusal as refused:
+            exits = []
+            for e in refused.exits:
+                taken = e.get("decision")
+                if taken and taken.get("kind") == "set_exposure_form" and \
+                        taken.get("column") == column:
+                    forms = {**{c: s.model_dump() for c, s in decision.forms.items()},
+                             column: {k: v for k, v in taken.items() if k not in ("kind", "column")}}
+                    exits.append({"label": e["label"],
+                                  "decision": {"kind": "set_forms", "forms": forms}})
+                else:
+                    exits.append(e)
+            raise d.Refusal(refused.code, f"`{column}`: {refused.message}", exits=exits) from None
+
+
+def _n_effective(ctx: Any, state: Any) -> float | None:
+    """The effective sample size the rule reads: the form card's (the analyzed rows' outcome),
+    else read from the analyzed rows' outcome here; None when neither can be read."""
+    from turbotab.core.decisions import _ctx
+    from turbotab.core.sequence import artifact
+
+    card = artifact(ctx, "forms") or {}
+    if card.get("n_effective") is not None:
+        return float(card["n_effective"])
+    target = getattr(state, "target", None)
+    store_fn, analyzed = _ctx(ctx, "store"), _ctx(ctx, "analyzed")
+    if not target or not callable(store_fn):
+        return None
+    try:
+        store = store_fn()
+        if store is None or target not in store.columns:
+            return None
+        raw = store.materialize([target], analyzed() if callable(analyzed) else None)[target]
+    except Exception:  # noqa: BLE001 - a rule that cannot read the rows gives k its default
+        return None
+    return effective_n(getattr(state, "task", None), raw, getattr(state, "event", None))
+
+
+def complete_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
+    """A declaration as it is recorded: k by Harrell's rule when a spline gives none (the rule and
+    the effective sample size it read kept with it), and the scale and the estimand's unit it was
+    declared on."""
+    state = _state(ctx)
+    out = dict(spec)
+    if state is None:
+        return out
+    form = out.get("form")
+    if form in SPLINE_FORMS and (out.get("knots") is None or out.get("knots_rule") == "harrell"):
+        # The rule's k, read here on the analyzed rows (a client's own k is kept, without the rule).
+        n_eff = _n_effective(ctx, state)
+        out.update(knots=knots_by_rule(n_eff), knots_rule="harrell", n_effective=n_eff)
+    elif form not in SPLINE_FORMS:
+        out.update(knots_rule=None, n_effective=None)
+    out["scale"] = transform_signature(state, column)
+    out["unit"] = scale_words(state, column)
+    return out
+
+
+def _form_records_its_scale(decision: Any, ctx: Any) -> Any:
+    fields = complete_spec(decision.column, decision.model_dump(exclude={"kind", "column"}), ctx)
+    return decision.model_copy(update=fields)
+
+
+def _forms_record_their_scale(decision: Any, ctx: Any) -> Any:
+    from turbotab.core.decisions import ExposureFormSpec
+
+    forms = {c: ExposureFormSpec(**complete_spec(c, s.model_dump(), ctx))
+             for c, s in decision.forms.items()}
+    return decision.model_copy(update={"forms": forms})
+
+
+def _share_reallocation_refused(decision: Any, ctx: Any) -> None:
+    """MODELING_SEQUENCE §0 ruling 11: a request to reallocate shares (compositional, ilr) is
+    refused with that reason, and the kcal substitution is offered instead."""
+    from turbotab.core.decisions import Refusal
+
+    if getattr(decision, "scale", None) != "share_reallocation":
+        return
+    base = decision.model_dump(exclude={"kind"})
+    raise Refusal(
+        "share_reallocation_v2x", SHARE_REALLOCATION,
+        exits=[{"label": "The kcal substitution", "decision": {
+                    **base, "kind": "set_substitution", "scale": "kcal"}},
+               {"label": "The share-of-energy swap", "decision": {
+                    **base, "kind": "set_substitution", "scale": "percent_energy"}}])
+
+
+def _task_of_ctx(ctx: Any) -> str | None:
+    """The answered task, else the detected one (the server's ``DecisionContext.task``, or its
+    sentence facts' ``detected_task``)."""
+    from turbotab.core.decisions import _ctx
+
+    task = _ctx(ctx, "task") or _ctx(ctx, "detected_task")
+    return str(task) if task else None
+
+
+def _sentence(d: Any, state: Any, ctx: Any) -> str:
+    return form_sentence(d.column, d, state, _task_of_ctx(ctx))
+
+
+def _forms_sentence(d: Any, state: Any, ctx: Any) -> str:
+    parts = [form_sentence(c, s, state, _task_of_ctx(ctx)) for c, s in d.forms.items()]
+    return "; ".join(p[0].lower() + p[1:] if i and p[:1] != "`" else p
+                     for i, p in enumerate(parts))
+
+
+# ── the method contract (BLUEPRINT §13) ──────────────────────────────────────
+
+PACKAGE = "FORM"
+_SENTENCE = "turbotab.core.methods.exposure_form:form_sentence"
+
+
+def _relation(id: str, kind: str, target: str, condition: str, says: str, *,
+              rung: str | None = None, exits: Sequence[str] = (), enforced_by: str = "",
+              purposes: tuple[str, ...] = ("prediction", "inference"),
+              when: tuple[str, ...] = ()) -> Any:
+    from turbotab.core.contracts import Relation
+
+    return Relation(kind, target, says, purposes=purposes, rung=rung, when=when,
+                    exits=tuple(exits), enforced_by=enforced_by, condition=condition, id=id)
+
+
+def _contract_option(key: str, label: str, customary: str, inference: str, prediction: str,
+                     rung_i: str, rung_p: str) -> Any:
+    from turbotab.core.contracts import ContractOption
+
+    return ContractOption(key, label, customary, sound={"inference": inference,
+                                                        "prediction": prediction},
+                          rung={"inference": rung_i, "prediction": rung_p})
+
+
+def _register_contracts() -> None:
+    from turbotab.core.contracts import MethodContract, register_contract
+
+    me = "turbotab.core.methods.exposure_form"
+    register_contract(MethodContract(
+        key="exposure_transform", package=PACKAGE,
+        label="A domain transform of the exposure (log, energy model, scale scoring, omics "
+              "normalization)",
+        slot="in_fold", scope="training_fold",
+        scope_note="the energy residual and the omics normalizations learn from study rows; "
+                   "scoring by a published key is row-local, but the transform's place in the "
+                   "chain is what this contract states",
+        needs=("a declared exposure",), question="energy_adjustment",
+        place="MODELING_SEQUENCE §1 row 4", run_order=1.0,
+        storyboard=("the exposure as recorded", "its transform", "its final scale"),
+        sentence=f"{me}:scale_words",
+        options=(
+            _contract_option("residual", "The energy residual",
+                             "customary (Willett's residual method)",
+                             "Sound for the energy-adjusted scale; a curve on it is not the "
+                             "substitution curve", "Sound: the choice matters little for "
+                             "prediction", "available", "available"),
+            _contract_option("log", "A log scale", "customary for skewed intakes",
+                             "Sound when the effect is multiplicative; the curve is then "
+                             "k-specific", "Sound in-fold", "available", "available"),
+            _contract_option("score", "A scale score", "customary (a sum or mean of items)",
+                             "Sound with its reliability stated", "Sound", "available",
+                             "available"),
+        ),
+        relations=(
+            _relation("transform-invalidates-form", "invalidates", "functional_form",
+                      "a declared form, then any change of the exposure's transform",
+                      "the form, its knots and cut points and the estimand's unit are asked "
+                      "again on the new scale, never kept",
+                      enforced_by=f"{me}:current_forms"),
+            _relation("transform-precedes-form", "precedes", "functional_form", "always",
+                      "the form is declared on the exposure's final scale",
+                      enforced_by="turbotab.core.interview:QUESTION_KEYS"),
+        )))
+    register_contract(MethodContract(
+        key="functional_form", package=PACKAGE,
+        label="The functional form of a continuous exposure or confounder",
+        slot="in_fold", scope="training_fold",
+        option_scopes={"optimal": "model"},
+        scope_note="knots, cut points and quintile medians are placed on the rows each fit sees "
+                   "(every analyzed row under inference; the training fold under prediction); a "
+                   "data-derived cut point also reads the outcome",
+        needs=("a continuous exposure or confounder",), question="form",
+        place="MODELING_SEQUENCE §1 row 5", decision="set_exposure_form", run_order=2.0,
+        leash={"inference": "recommended", "prediction": "available"},
+        storyboard=("the exposure on its final scale", "the knots at Harrell's percentiles",
+                    "the curve and its two tests", "the quintiles beside it"),
+        sentence=_SENTENCE,
+        options=(
+            _contract_option("spline", "Restricted cubic spline, k by Harrell's rule",
+                             "increasingly customary, \"now near-default\" (NUTRITION_PACK §07G)",
+                             "Sound: declared before estimates; the overall test is the test of "
+                             "association", "Sound: nests the line", "recommended",
+                             "recommended"),
+            _contract_option("zero_spline", "Non-consumers apart, a spline among consumers",
+                             "STROBE-nut nut-11 asks how non-consumers were handled",
+                             "Sound for a mass at zero", "Sound for a mass at zero",
+                             "recommended", "recommended"),
+            _contract_option("linear", "Straight line", "customary",
+                             "Sound when the relation is close to a line",
+                             "Sound when close to a line", "available", "available"),
+            _contract_option("quintiles", "Quintiles, beside the spline",
+                             "customary: the field's primary-analysis convention (Turner 2010)",
+                             "A coarser contrast, not a false number: ranked lower, produced "
+                             "beside the spline", "Discards the variation within each fifth",
+                             "rank_lower", "rank_lower"),
+            _contract_option("categories", "Categories at declared cut points",
+                             "customary for clinical bands",
+                             "Coarser; a confounder in three or fewer groups is blocked and "
+                             "recorded", "Coarser", "rank_lower", "rank_lower"),
+            _contract_option("optimal", "A data-derived cut point",
+                             "seen in clinical papers (the minimum p-value)",
+                             "Unsound: serious bias (Altman & Royston 2006)",
+                             "In-fold only; discards the variation on each side",
+                             "block_and_record", "rank_lower"),
+        ),
+        relations=(
+            _relation("k-by-rule", "implies", "the knots", "a spline declared without k",
+                      "k is Harrell's rule on the effective sample size, the rule stated in the "
+                      "record", enforced_by=f"{me}:complete_spec"),
+            _relation("no-silent-linear-refit", "disables", "a linear refit after the nonlinearity "
+                      "test", "a non-significant nonlinearity test",
+                      "the overall test stays the test of association; a switch is recorded "
+                      "after the estimates were seen", purposes=("inference",),
+                      enforced_by=f"{me}:exposure_tests"),
+            _relation("quintiles-beside", "implies", "the quintile table",
+                      "the declared exposure's spline under inference",
+                      "the quintiles are produced beside it, boundaries and reference stated, the "
+                      "p for linear trend (customary) from category medians",
+                      purposes=("inference",), enforced_by=f"{me}:design_forms"),
+            _relation("form-mi-d1", "implies", "D1 pooling", "multiple imputation",
+                      "the overall, nonlinearity and global tests are pooled by D1 at knots fixed "
+                      "on the observed values", purposes=("inference",),
+                      enforced_by="turbotab.core.stages.modeling:_pool_form_tests"),
+            _relation("optimal-cut-blocked", "conflicts", "a data-derived cut point",
+                      "inference", "blocked and recorded (serious bias)", rung="block_and_record",
+                      exits=("a restricted cubic spline", "quintiles",
+                             "cut points declared from outside these data",
+                             "keep it, recorded as a limitation"),
+                      purposes=("inference",), enforced_by=f"{me}:_cuts_are_declared_or_recorded"),
+            _relation("coarse-confounder-blocked", "conflicts", "a confounder in three or fewer "
+                      "groups", "inference", "blocked and recorded (residual confounding)",
+                      rung="block_and_record",
+                      exits=("a restricted cubic spline", "a straight line",
+                             "keep it, recorded as a limitation"),
+                      purposes=("inference",), enforced_by=f"{me}:_cuts_are_declared_or_recorded"),
+            _relation("mass-at-zero", "enables", "non-consumers apart",
+                      "an exposure with a mass at zero",
+                      "non-consumers as their own category beside a spline among consumers, or "
+                      "the consumers-only domain as an estimand change (nut-14)",
+                      enforced_by=f"{me}:forms_card"),
+            _relation("consumers-only-domain", "implies", "the participant flow",
+                      "the consumers-only domain", "the non-consumers leave on a line of their "
+                      "own, and the caption names the population", purposes=("inference",),
+                      enforced_by=f"{me}:domain_columns"),
+            _relation("residual-curve-label", "implies", "the curve's label",
+                      "a spline or categories on an energy residual",
+                      "the nutrient's curve on the energy-adjusted scale at mean energy, with "
+                      "spline(N) + E offered as the substitution route",
+                      enforced_by=f"{me}:residual_label"),
+            _relation("log-or-spline-substitution", "implies", "the substitution curve's label",
+                      "a log or spline on an energy component",
+                      "the curve is a k-specific average over the analyzed rows",
+                      enforced_by=f"{me}:substitution_curve_label"),
+            _relation("share-reallocation-refused", "conflicts", "a share reallocation",
+                      "a request to reallocate shares (ilr)",
+                      "refused: compositional models go to v2.x", rung="refused",
+                      exits=("the kcal substitution", "the share-of-energy swap"),
+                      enforced_by=f"{me}:_share_reallocation_refused"),
+        ),
+        sources=(HARRELL_RMS, GRAMBSCH, ALTMAN, BRENNER, "Desquilbet & Mariotti 2010, Stat Med "
+                 "29:1037", "Lachat et al. 2016, PLoS Med 13:e1002036 (STROBE-nut)",
+                 "Tomova et al. 2022, Am J Clin Nutr 115:189")))
+
+
+def _register() -> None:
+    from turbotab.core.decisions import register_completion, register_validator
+    from turbotab.core.voice import register_sentence
+
+    register_validator("set_exposure_form", _form_kind_fits)
+    register_validator("set_exposure_form", _cuts_are_declared_or_recorded)
+    register_validator("set_forms", _forms_each_fit)
+    register_validator("set_substitution", _share_reallocation_refused, first=True)
+    register_completion("set_exposure_form", _form_records_its_scale)
+    register_completion("set_forms", _forms_record_their_scale)
+    register_sentence("set_exposure_form")(_sentence)
+    register_sentence("set_forms")(_forms_sentence)
+    _register_contracts()
+
+
+_register()
 
 __all__ = [
-    "DEFAULT_KNOTS", "ExposureForms", "FORMS", "FRACTIED", "Form", "KNOT_CHOICES",
-    "KNOT_PERCENTILES", "QUINTILES", "describe", "exposure_tests", "form_columns", "form_step",
-    "formed_meanings",
-    "adjusted_forms", "formed_name", "model_terms",
-    "knot_sentence", "options", "quantile_cuts", "quantile_group", "quintile_names", "rcs_basis",
-    "rcs_knots", "spline_names", "wald_test",
+    "ABOVE_SUFFIX", "CONSUMER_SUFFIX", "CONTINUOUS", "DEFAULT_KNOTS", "ExposureForms", "FORMS",
+    "FORMS_READS", "FRACTIED", "Form", "HARRELL_LARGE", "HARRELL_SMALL", "KNOT_CHOICES",
+    "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "TREND_LABEL",
+    "adjusted_forms", "boundaries_words", "category_names", "complete_spec", "current_forms",
+    "describe", "design_forms", "domain_columns", "effective_n", "estimand_unit",
+    "exposure_tests", "form_answer", "form_columns", "form_gate", "form_needs", "form_sentence",
+    "form_step", "formed_meanings", "formed_name", "forms_card", "forms_stage", "knot_sentence",
+    "knots_by_rule", "model_terms", "nonlinear_outputs", "optimal_cut", "options", "place",
+    "quantile_cuts", "quantile_group", "quintile_names", "rcs_basis", "rcs_knots",
+    "residual_form", "residual_label", "rule_words", "scale_words", "spline_names",
+    "stale_forms", "substitution_curve_label", "substitution_route", "transform_signature",
+    "unanswered_forms", "wald_test",
 ]

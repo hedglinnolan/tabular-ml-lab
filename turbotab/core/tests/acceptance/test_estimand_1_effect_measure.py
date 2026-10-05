@@ -108,8 +108,11 @@ def test_1_the_app_says_a_precision_covariate_changes_a_conditional_ratio(measur
 def test_1_a_group_the_pack_guesses_a_cause_of_the_outcome_only_carries_the_note(monkeypatch):
     """On the one-tap card a group whose guess derives "precision" says it before the tap."""
     st = _state("odds_ratio", "binary").model_copy(update={"adjustment": None})
-    monkeypatch.setitem(estimand.GUESSES, "demographic",
-                        {**estimand.GUESSES["demographic"], "answers": dict(ef.PRECISION)})
+    # LEASH: smoking is read as lifestyle, whose guess the card blocks with the demographics' when
+    # the two guesses agree (the same answers, one tap); both are set to "precision" here.
+    for key in ("demographic", "lifestyle"):
+        monkeypatch.setitem(estimand.GUESSES, key,
+                            {**estimand.GUESSES[key], "answers": dict(ef.PRECISION)})
     card = estimand.adjustment_card(st)
     group = next(g for g in card["groups"] if g["key"] == "demographic")
     assert group["derived"] == "precision"

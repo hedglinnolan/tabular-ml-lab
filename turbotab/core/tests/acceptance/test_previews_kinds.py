@@ -656,7 +656,9 @@ def test_1_set_measurement_error_is_the_measured_against_the_calibrated_exposure
     result, _ = cal.preview("rc", CALIBRATE)
     vocabulary(result)
     rel = view(result, "relationship")
-    assert rel.caption == ("`protein_g_adj`: λ = `0.32` at 2 recalls, from `500` people with "
+    # MS5 (wave 2b): Carroll et al.'s replication-data estimator (n − 1), every error-prone column
+    # calibrated jointly; λ is Γ_jj, the stage's own (test_3 below holds it to 1e-12).
+    assert rel.caption == ("`protein_g_adj`: λ = `0.31` at 2 recalls, from `500` people with "
                            "repeats; values shrink toward the mean.")
     assert [f.label for f in rel.story] == ["Each recall around its person's mean"]
     assert len(rel.story[0].points) == 800  # 1,000 recalls, sampled to the scatter's 800

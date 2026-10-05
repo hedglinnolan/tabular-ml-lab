@@ -95,6 +95,8 @@ SECTION_OF: dict[str, tuple[str, str]] = {
     # how quantitative variables enter
     "set_categorical": ("quantitative", "predictors"),
     "set_exposure_form": ("quantitative", "analysis"),
+    "set_forms": ("quantitative", "analysis"),  # FORM's one tap (wave 2b)
+    "set_levers": ("quantitative", "analysis"),  # EXPLORE's in-fold levers (wave 2b)
     # the statistical methods
     "set_aggregation": ("statistical", "preparation"),
     "set_clusters": ("statistical", "analysis"),
@@ -114,6 +116,13 @@ SECTION_OF: dict[str, tuple[str, str]] = {
     "respond_diagnostic": ("statistical", "analysis"),
     "set_substitution": ("statistical", "analysis"),
     "set_explain": ("statistical", "analysis"),
+    # wave 2b: effect modification and interaction (STROBE 12b), the outcome views Explore
+    # discloses (TRIPOD+AI 7), and prediction's selection, intended use and updating
+    "set_modification": ("statistical", "analysis"),
+    "view_outcome": ("statistical", "preparation"),
+    "set_selection": ("statistical", "analysis"),
+    "set_intended_use": ("statistical", "analysis"),
+    "set_updating": ("statistical", "analysis"),
     "revert": ("other", "other"),
 }
 

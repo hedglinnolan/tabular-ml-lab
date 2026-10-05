@@ -413,10 +413,13 @@ def test_3_no_coefficient_before_the_plan_and_the_roles_come_from_the_answers(tm
         assert groups["demographic"]["columns"] == ["age", "gender"]
         assert groups["dietary"]["columns"] == NUTRIENTS  # other dietary components: confounders
         assert groups["dietary"]["derived"] == "confounder"
-        assert groups["body"]["columns"] == ["weight", "height", "bmi", "waist"]
+        # LEASH: body size, the clinical measurements and the medications share one guess under
+        # sugar → fasting glucose (possible mediators, or measured after the exposure: declared
+        # without them and, beside, with them), so they are one block.
+        assert groups["body"]["columns"] == ["weight", "height", "bmi", "waist", "bp_sys", "bp_di",
+                                             "hdl", "triglycerides", "meds_hbp", "meds_chol"]
         assert groups["body"]["derived"] == "timing_unknown"
-        assert set(groups["unguessed"]["columns"]) == {"cycle_begin_year", "bp_sys", "bp_di", "hdl",
-                                                        "triglycerides", "meds_hbp", "meds_chol"}
+        assert groups["unguessed"]["columns"] == ["cycle_begin_year"]
         assert groups["unguessed"]["guess"] is None  # the pack has no guess: asked plainly
         asked_about = {c for g in card["groups"] for c in g["columns"]}
         assert asked_about == set(NHANES_COVARIATES)  # not sugar, not total energy
@@ -432,8 +435,10 @@ def test_3_no_coefficient_before_the_plan_and_the_roles_come_from_the_answers(tm
         # Still nothing to fit: the plan is unanswered.
         assert drive.post({"kind": "select_models", "models": ["linear"]}).status_code == 409
         posted = _answer_from_truth(drive, card)
-        # One tap per group the pack guesses alike (demographics, other nutrients, body size);
-        # the unguessed seven by their declared answers, two distinct sets: 5 taps, 19 covariates.
+        # One tap per group the pack guesses alike (demographics, other nutrients); the fixture's
+        # author reads the clinical measurements and medications as mediators, not the block's
+        # guess, so that block is answered by its two declared sets, and the unguessed survey
+        # cycle by its own: 5 taps, 19 covariates.
         assert len(posted) == 5 and posted[0] == groups["demographic"]["decision"]
         # The estimand's contrast constrains the energy model (MODELING_SEQUENCE §2): a model that
         # lets total energy leave estimates no substitution (Tomova et al. 2022).

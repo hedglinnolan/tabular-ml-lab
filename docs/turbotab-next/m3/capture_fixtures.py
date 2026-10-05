@@ -363,7 +363,9 @@ def default_answer(j: Journey, d: Drive, spec: dict[str, Any], key: str, step: d
     if key == "split":
         holdout = 0.2 if state.get("purpose") == "prediction" else 0.0
         return {"kind": "set_split", "holdout": holdout, "seed": 0, "folds": 5}
-    if key == "time_varying":
+    if key in ("time_varying", "form"):
+        # FORM: each column the form card asks about takes the form it already had (a straight
+        # line), as the acceptance drives answer it (server_drive.answer_forms).
         answer_wp17(d, key, exposure=spec.get("exposure"))
         return None
     if key == "energy_adjustment":

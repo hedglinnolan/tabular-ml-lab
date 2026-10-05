@@ -154,6 +154,32 @@ def with_inner_cv(pipeline: Any, *, groups: Any = None, keys: Any = None, order:
     return pipeline
 
 
+def _steps_with_cv(pipeline: Any) -> list[tuple[str, Any]]:
+    """The steps before the model that split their own rows (EXPLORE's inner-CV form choice and
+    the selection step): those with a ``cv`` parameter."""
+    out = []
+    for name, step in getattr(pipeline, "steps", [])[:-1]:
+        try:
+            params = step.get_params(deep=False)
+        except Exception:  # noqa: BLE001 - a step without parameters splits nothing
+            continue
+        if "cv" in params:
+            out.append((name, step))
+    return out
+
+
+def with_step_cv(pipeline: Any, *, groups: Any = None, keys: Any = None, order: Any = None,
+                 y: Any = None, seed: int = 0) -> Any:
+    """Each earlier step's inner cross-validation drawn by :func:`inner_splits`, as the model's is
+    (Wave 2, EXPLORE): a step sees every row the pipeline is fit on, so the positions align. A step
+    whose splits cannot be drawn (too few units) keeps its own count of folds."""
+    for name, step in _steps_with_cv(pipeline):
+        current = step.get_params(deep=False)["cv"]
+        splits = inner_splits(groups, _n_splits(current), seed, keys=keys, order=order, y=y)
+        pipeline.set_params(**{f"{name}__cv": splits if splits is not None else _n_splits(current)})
+    return pipeline
+
+
 def with_grouped_inner_cv(pipeline: Any, groups: Any | None, seed: int = 0) -> Any:
     """The inner cross-validation grouped by ``groups`` (unchanged without groups).
 
@@ -236,9 +262,11 @@ def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: An
 
     y_arr = np.asarray(y)
     model = pipeline.steps[-1][1]
-    splits = "cv" in model.get_params(deep=False) or _stops_early(model, len(y_arr))
+    splits = ("cv" in model.get_params(deep=False) or _stops_early(model, len(y_arr))
+              or bool(_steps_with_cv(pipeline)))
     keys = row_keys(X, y_arr) if splits and groups is None and order is None else None
     with_inner_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
+    with_step_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
     if not _stops_early(model, len(y_arr)):
         # A time to event keeps the baseline hazard of the rows it was fit on (MS6), so it predicts
         # a risk by the horizon wherever it is scored.
