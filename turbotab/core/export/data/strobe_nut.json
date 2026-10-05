@@ -1,0 +1,481 @@
+{
+ "checklist": "STROBE-nut",
+ "title": "STROBE-nut: an extension of the STROBE statement for nutritional epidemiology",
+ "citation": "Lachat C, Hawwash D, Ocké MC, et al. Strengthening the Reporting of Observational Studies in Epidemiology—Nutritional Epidemiology (STROBE-nut): an extension of the STROBE statement. PLoS Med 2016;13(6):e1002036. doi:10.1371/journal.pmed.1002036",
+ "source": {
+  "table": "Table 1",
+  "pmcid": "PMC4896435",
+  "doi": "10.1371/journal.pmed.1002036",
+  "url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC4896435/fullTextXML",
+  "retrieved": "2026-10-05",
+  "sha256": "99eceb605590a16826657699b0456f33944f00059a1f0bdd0c1157ab976997b5",
+  "license": "CC BY"
+ },
+ "footnote": null,
+ "items": [
+  {
+   "id": "1a",
+   "section": "Title and Abstract",
+   "topic": "Title and Abstract",
+   "kind": "STROBE",
+   "strobe_item": "1",
+   "text": "Indicate the study’s design with a commonly used term in the title or the abstract."
+  },
+  {
+   "id": "nut-1",
+   "section": "Title and Abstract",
+   "topic": "Title and Abstract",
+   "kind": "STROBE-nut",
+   "strobe_item": "1",
+   "text": "State the dietary/nutritional assessment method(s) used in the title, abstract, or keywords."
+  },
+  {
+   "id": "1b",
+   "section": "Title and Abstract",
+   "topic": "Title and Abstract",
+   "kind": "STROBE",
+   "strobe_item": "1",
+   "text": "Provide in the abstract an informative and balanced summary of what was done and what was found."
+  },
+  {
+   "id": "2",
+   "section": "Introduction",
+   "topic": "Background Rationale",
+   "kind": "STROBE",
+   "strobe_item": "2",
+   "text": "Explain the scientific background and rationale for the investigation being reported."
+  },
+  {
+   "id": "3",
+   "section": "Introduction",
+   "topic": "Objectives",
+   "kind": "STROBE",
+   "strobe_item": "3",
+   "text": "State specific objectives, including any prespecified hypotheses."
+  },
+  {
+   "id": "4",
+   "section": "Methods",
+   "topic": "Study Design",
+   "kind": "STROBE",
+   "strobe_item": "4",
+   "text": "Present key elements of study design early in the paper."
+  },
+  {
+   "id": "5",
+   "section": "Methods",
+   "topic": "Settings",
+   "kind": "STROBE",
+   "strobe_item": "5",
+   "text": "Describe the setting, locations, and relevant dates, including periods of recruitment, exposure, follow-up, and data collection."
+  },
+  {
+   "id": "nut-5",
+   "section": "Methods",
+   "topic": "Settings",
+   "kind": "STROBE-nut",
+   "strobe_item": "5",
+   "text": "Describe any characteristics of the study settings that might affect the dietary intake or nutritional status of the participants, if applicable."
+  },
+  {
+   "id": "6a",
+   "section": "Methods",
+   "topic": "Participants",
+   "kind": "STROBE",
+   "strobe_item": "6",
+   "text": "Cohort study—give the eligibility criteria and the sources and methods of selection of participants. Describe methods of follow-up. Case-control study—give the eligibility criteria and the sources and methods of case ascertainment and control selection. Give the rationale for the choice of cases and controls. Cross-sectional study—give the eligibility criteria and the sources and methods of selection of participants."
+  },
+  {
+   "id": "nut-6",
+   "section": "Methods",
+   "topic": "Participants",
+   "kind": "STROBE-nut",
+   "strobe_item": "6",
+   "text": "Report particular dietary, physiological, or nutritional characteristics that were considered when selecting the target population."
+  },
+  {
+   "id": "6b",
+   "section": "Methods",
+   "topic": "Participants",
+   "kind": "STROBE",
+   "strobe_item": "6",
+   "text": "Cohort study—for matched studies, give matching criteria and number of exposed and unexposed. Case-control study—for matched studies, give matching criteria and the number of controls per case."
+  },
+  {
+   "id": "7",
+   "section": "Methods",
+   "topic": "Variables",
+   "kind": "STROBE",
+   "strobe_item": "7",
+   "text": "Clearly define all outcomes, exposures, predictors, potential confounders, and effect modifiers. Give diagnostic criteria, if applicable."
+  },
+  {
+   "id": "nut-7.1",
+   "section": "Methods",
+   "topic": "Variables",
+   "kind": "STROBE-nut",
+   "strobe_item": "7",
+   "text": "Clearly define foods, food groups, nutrients, or other food components."
+  },
+  {
+   "id": "nut-7.2",
+   "section": "Methods",
+   "topic": "Variables",
+   "kind": "STROBE-nut",
+   "strobe_item": "7",
+   "text": "When using dietary patterns or indices, describe the methods to obtain them and their nutritional properties."
+  },
+  {
+   "id": "8",
+   "section": "Methods",
+   "topic": "Data Sources—Measurements",
+   "kind": "STROBE",
+   "strobe_item": "8",
+   "text": "For each variable of interest, give sources of data and details of methods of assessment (measurement). Describe comparability of assessment methods if there is more than one group."
+  },
+  {
+   "id": "nut-8.1",
+   "section": "Methods",
+   "topic": "Data Sources—Measurements",
+   "kind": "STROBE-nut",
+   "strobe_item": "8",
+   "text": "Describe the dietary assessment method(s), e.g., portion size estimation, number of days and items recorded, how it was developed and administered, and how quality was assured. Report if and how supplement intake was assessed."
+  },
+  {
+   "id": "nut-8.2",
+   "section": "Methods",
+   "topic": "Data Sources—Measurements",
+   "kind": "STROBE-nut",
+   "strobe_item": "8",
+   "text": "Describe and justify food composition data used. Explain the procedure to match food composition with consumption data. Describe the use of conversion factors, if applicable."
+  },
+  {
+   "id": "nut-8.3",
+   "section": "Methods",
+   "topic": "Data Sources—Measurements",
+   "kind": "STROBE-nut",
+   "strobe_item": "8",
+   "text": "Describe the nutrient requirements, recommendations, or dietary guidelines and the evaluation approach used to compare intake with the dietary reference values, if applicable."
+  },
+  {
+   "id": "nut-8.4",
+   "section": "Methods",
+   "topic": "Data Sources—Measurements",
+   "kind": "STROBE-nut",
+   "strobe_item": "8",
+   "text": "When using nutritional biomarkers, additionally use the STROBE Extension for Molecular Epidemiology (STROBE-ME). Report the type of biomarkers used and their usefulness as dietary exposure markers."
+  },
+  {
+   "id": "nut-8.5",
+   "section": "Methods",
+   "topic": "Data Sources—Measurements",
+   "kind": "STROBE-nut",
+   "strobe_item": "8",
+   "text": "Describe the assessment of nondietary data (e.g., nutritional status and influencing factors) and timing of the assessment of these variables in relation to dietary assessment."
+  },
+  {
+   "id": "nut-8.6",
+   "section": "Methods",
+   "topic": "Data Sources—Measurements",
+   "kind": "STROBE-nut",
+   "strobe_item": "8",
+   "text": "Report on the validity of the dietary or nutritional assessment methods and any internal or external validation used in the study, if applicable."
+  },
+  {
+   "id": "9",
+   "section": "Methods",
+   "topic": "Bias",
+   "kind": "STROBE",
+   "strobe_item": "9",
+   "text": "Describe any efforts to address potential sources of bias."
+  },
+  {
+   "id": "nut-9",
+   "section": "Methods",
+   "topic": "Bias",
+   "kind": "STROBE-nut",
+   "strobe_item": "9",
+   "text": "Report how bias in dietary or nutritional assessment was addressed, e.g., misreporting, changes in habits as a result of being measured, or data imputation from other sources."
+  },
+  {
+   "id": "10",
+   "section": "Methods",
+   "topic": "Study Size",
+   "kind": "STROBE",
+   "strobe_item": "10",
+   "text": "Explain how the study size was arrived at."
+  },
+  {
+   "id": "11",
+   "section": "Methods",
+   "topic": "Quantitative Variables",
+   "kind": "STROBE",
+   "strobe_item": "11",
+   "text": "Explain how quantitative variables were handled in the analyses. If applicable, describe which groupings were chosen and why."
+  },
+  {
+   "id": "nut-11",
+   "section": "Methods",
+   "topic": "Quantitative Variables",
+   "kind": "STROBE-nut",
+   "strobe_item": "11",
+   "text": "Explain the categorization of dietary/nutritional data (e.g., use of N-tiles and handling of nonconsumers) and the choice of reference category, if applicable."
+  },
+  {
+   "id": "12a",
+   "section": "Methods",
+   "topic": "Statistical Methods",
+   "kind": "STROBE",
+   "strobe_item": "12",
+   "text": "Describe all statistical methods, including those used to control for confounding."
+  },
+  {
+   "id": "12b",
+   "section": "Methods",
+   "topic": "Statistical Methods",
+   "kind": "STROBE",
+   "strobe_item": "12",
+   "text": "Describe any methods used to examine subgroups and interactions."
+  },
+  {
+   "id": "12c",
+   "section": "Methods",
+   "topic": "Statistical Methods",
+   "kind": "STROBE",
+   "strobe_item": "12",
+   "text": "Explain how missing data were addressed."
+  },
+  {
+   "id": "12d",
+   "section": "Methods",
+   "topic": "Statistical Methods",
+   "kind": "STROBE",
+   "strobe_item": "12",
+   "text": "Cohort study—if applicable, explain how loss to follow-up was addressed. Case-control study—if applicable, explain how matching of cases and controls was addressed. Cross-sectional study—if applicable, describe analytical methods taking account of sampling strategy."
+  },
+  {
+   "id": "12e",
+   "section": "Methods",
+   "topic": "Statistical Methods",
+   "kind": "STROBE",
+   "strobe_item": "12",
+   "text": "Describe any sensitivity analyses."
+  },
+  {
+   "id": "nut-12.1",
+   "section": "Methods",
+   "topic": "Statistical Methods",
+   "kind": "STROBE-nut",
+   "strobe_item": "12",
+   "text": "Describe any statistical method used to combine dietary or nutritional data, if applicable."
+  },
+  {
+   "id": "nut-12.2",
+   "section": "Methods",
+   "topic": "Statistical Methods",
+   "kind": "STROBE-nut",
+   "strobe_item": "12",
+   "text": "Describe and justify the method for energy adjustments, intake modeling, and use of weighting factors, if applicable."
+  },
+  {
+   "id": "nut-12.3",
+   "section": "Methods",
+   "topic": "Statistical Methods",
+   "kind": "STROBE-nut",
+   "strobe_item": "12",
+   "text": "Report any adjustments for measurement error, i.e., from a validity or calibration study."
+  },
+  {
+   "id": "13a",
+   "section": "Results",
+   "topic": "Participants",
+   "kind": "STROBE",
+   "strobe_item": "13",
+   "text": "Report the numbers of individuals at each stage of the study—e.g., numbers potentially eligible, examined for eligibility, confirmed eligible, included in the study, completing follow-up, and analyzed."
+  },
+  {
+   "id": "13b",
+   "section": "Results",
+   "topic": "Participants",
+   "kind": "STROBE",
+   "strobe_item": "13",
+   "text": "Give reasons for nonparticipation at each stage."
+  },
+  {
+   "id": "13c",
+   "section": "Results",
+   "topic": "Participants",
+   "kind": "STROBE",
+   "strobe_item": "13",
+   "text": "Consider use of a flow diagram."
+  },
+  {
+   "id": "nut-13",
+   "section": "Results",
+   "topic": "Participants",
+   "kind": "STROBE-nut",
+   "strobe_item": "13",
+   "text": "Report the number of individuals excluded based on missing, incomplete, or implausible dietary/nutritional data."
+  },
+  {
+   "id": "14a",
+   "section": "Results",
+   "topic": "Descriptive Data",
+   "kind": "STROBE",
+   "strobe_item": "14",
+   "text": "Give characteristics of study participants (e.g., demographic, clinical, and social) and information on exposures and potential confounders."
+  },
+  {
+   "id": "14b",
+   "section": "Results",
+   "topic": "Descriptive Data",
+   "kind": "STROBE",
+   "strobe_item": "14",
+   "text": "Indicate the number of participants with missing data for each variable of interest."
+  },
+  {
+   "id": "14c",
+   "section": "Results",
+   "topic": "Descriptive Data",
+   "kind": "STROBE",
+   "strobe_item": "14",
+   "text": "Cohort study—summarize follow-up time (e.g., average and total amount)."
+  },
+  {
+   "id": "nut-14",
+   "section": "Results",
+   "topic": "Descriptive Data",
+   "kind": "STROBE-nut",
+   "strobe_item": "14",
+   "text": "Give the distribution of participant characteristics across the exposure variables if applicable. Specify if food consumption of total population or consumers only were used to obtain results."
+  },
+  {
+   "id": "15",
+   "section": "Results",
+   "topic": "Outcome Data",
+   "kind": "STROBE",
+   "strobe_item": "15",
+   "text": "Cohort study—report numbers of outcome events or summary measures over time. Case-control study—report numbers in each exposure category or summary measures of exposure. Cross-sectional study—report numbers of outcome events or summary measures."
+  },
+  {
+   "id": "16a",
+   "section": "Results",
+   "topic": "Main Results",
+   "kind": "STROBE",
+   "strobe_item": "16",
+   "text": "Give unadjusted estimates and, if applicable, confounder-adjusted estimates and their precision (e.g., 95% confidence interval). Make clear which confounders were adjusted for and why they were included."
+  },
+  {
+   "id": "16b",
+   "section": "Results",
+   "topic": "Main Results",
+   "kind": "STROBE",
+   "strobe_item": "16",
+   "text": "Report category boundaries when continuous variables were categorized."
+  },
+  {
+   "id": "16c",
+   "section": "Results",
+   "topic": "Main Results",
+   "kind": "STROBE",
+   "strobe_item": "16",
+   "text": "If relevant, consider translating estimates of relative risk into absolute risk for a meaningful time period."
+  },
+  {
+   "id": "nut-16",
+   "section": "Results",
+   "topic": "Main Results",
+   "kind": "STROBE-nut",
+   "strobe_item": "16",
+   "text": "Specify if nutrient intakes are reported with or without inclusion of dietary supplement intake, if applicable."
+  },
+  {
+   "id": "17",
+   "section": "Results",
+   "topic": "Other Analyses",
+   "kind": "STROBE",
+   "strobe_item": "17",
+   "text": "Report other analyses done—e.g., analyses of subgroups and interactions and sensitivity analyses."
+  },
+  {
+   "id": "nut-17",
+   "section": "Results",
+   "topic": "Other Analyses",
+   "kind": "STROBE-nut",
+   "strobe_item": "17",
+   "text": "Report any sensitivity analysis (e.g., exclusion of misreporters or outliers) and data imputation, if applicable."
+  },
+  {
+   "id": "18",
+   "section": "Discussion",
+   "topic": "Key Results",
+   "kind": "STROBE",
+   "strobe_item": "18",
+   "text": "Summarize key results with reference to study objectives."
+  },
+  {
+   "id": "19",
+   "section": "Discussion",
+   "topic": "Limitation",
+   "kind": "STROBE",
+   "strobe_item": "19",
+   "text": "Discuss limitations of the study, taking into account sources of potential bias or imprecision. Discuss both direction and magnitude of any potential bias."
+  },
+  {
+   "id": "nut-19",
+   "section": "Discussion",
+   "topic": "Limitation",
+   "kind": "STROBE-nut",
+   "strobe_item": "19",
+   "text": "Describe the main limitations of the data sources and assessment methods used and implications for the interpretation of the findings."
+  },
+  {
+   "id": "20",
+   "section": "Discussion",
+   "topic": "Interpretation",
+   "kind": "STROBE",
+   "strobe_item": "20",
+   "text": "Give a cautious overall interpretation of results considering objectives, limitations, multiplicity of analyses, results from similar studies, and other relevant evidence."
+  },
+  {
+   "id": "nut-20",
+   "section": "Discussion",
+   "topic": "Interpretation",
+   "kind": "STROBE-nut",
+   "strobe_item": "20",
+   "text": "Report the nutritional relevance of the findings, given the complexity of diet or nutrition as an exposure."
+  },
+  {
+   "id": "21",
+   "section": "Discussion",
+   "topic": "Generalizability",
+   "kind": "STROBE",
+   "strobe_item": "21",
+   "text": "Discuss the generalizability (external validity) of the study results."
+  },
+  {
+   "id": "22",
+   "section": "Other Information",
+   "topic": "Funding",
+   "kind": "STROBE",
+   "strobe_item": "22",
+   "text": "Give the source of funding and the role of the funders for the present study and, if applicable, for the original study on which the present article is based."
+  },
+  {
+   "id": "nut-22.1",
+   "section": "Other Information",
+   "topic": "Ethics",
+   "kind": "STROBE-nut",
+   "strobe_item": null,
+   "text": "Describe the procedure for consent and study approval from ethics committee(s)."
+  },
+  {
+   "id": "nut-22.2",
+   "section": "Other Information",
+   "topic": "Supplementary Material",
+   "kind": "STROBE-nut",
+   "strobe_item": null,
+   "text": "Provide data collection tools and data as online material or explain how they can be accessed."
+  }
+ ]
+}

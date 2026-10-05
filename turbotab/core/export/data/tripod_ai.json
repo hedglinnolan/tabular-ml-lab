@@ -1,0 +1,381 @@
+{
+ "checklist": "TRIPOD+AI",
+ "title": "TRIPOD+AI checklist for the reporting of prediction model studies",
+ "citation": "Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. BMJ 2024;385:e078378. doi:10.1136/bmj-2023-078378",
+ "source": {
+  "table": "Table 2",
+  "pmcid": "PMC11019967",
+  "doi": "10.1136/bmj-2023-078378",
+  "url": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC11019967/fullTextXML",
+  "retrieved": "2026-10-05",
+  "sha256": "48f1f82c4f9f74d9a72a580690634651e095161c9bf8a0a1078afc691d54705a",
+  "license": "CC BY 4.0"
+ },
+ "footnote": "TRIPOD=Transparent Reporting of a multivariable prediction model for Individual Prognosis Or Diagnosis; AI=artificial intelligence.*D=items relevant only to the development of a prediction model; E=items relating solely to the evaluation of a prediction model; D;E=items applicable to both the development and evaluation of a prediction model.†Separately for all model building approaches.‡TRIPOD-Cluster is a checklist of reporting recommendations for studies developing or validating models that explicitly account for clustering or explore heterogeneity in model performance (eg, at different hospitals or centres).19 20 §Relates to the analysis code, for example, any data cleaning, feature engineering, model building, and evaluation.¶Relates to the code to implement the model to get estimates of risk for a new individual.",
+ "items": [
+  {
+   "id": "1",
+   "section": "Title",
+   "topic": "Title",
+   "scope": "D;E",
+   "text": "Identify the study as developing or evaluating the performance of a multivariable prediction model, the target population, and the outcome to be predicted"
+  },
+  {
+   "id": "2",
+   "section": "Abstract",
+   "topic": "Abstract",
+   "scope": "D;E",
+   "text": "See TRIPOD+AI for Abstracts checklist"
+  },
+  {
+   "id": "3a",
+   "section": "Introduction",
+   "topic": "Background",
+   "scope": "D;E",
+   "text": "Explain the healthcare context (including whether diagnostic or prognostic) and rationale for developing or evaluating the prediction model, including references to existing models"
+  },
+  {
+   "id": "3b",
+   "section": "Introduction",
+   "topic": "Background",
+   "scope": "D;E",
+   "text": "Describe the target population and the intended purpose of the prediction model in the context of the care pathway, including its intended users (eg, healthcare professionals, patients, public)"
+  },
+  {
+   "id": "3c",
+   "section": "Introduction",
+   "topic": "Background",
+   "scope": "D;E",
+   "text": "Describe any known health inequalities between sociodemographic groups"
+  },
+  {
+   "id": "4",
+   "section": "Introduction",
+   "topic": "Objectives",
+   "scope": "D;E",
+   "text": "Specify the study objectives, including whether the study describes the development or validation of a prediction model (or both)"
+  },
+  {
+   "id": "5a",
+   "section": "Methods",
+   "topic": "Data",
+   "scope": "D;E",
+   "text": "Describe the sources of data separately for the development and evaluation datasets (eg, randomised trial, cohort, routine care or registry data), the rationale for using these data, and representativeness of the data"
+  },
+  {
+   "id": "5b",
+   "section": "Methods",
+   "topic": "Data",
+   "scope": "D;E",
+   "text": "Specify the dates of the collected participant data, including start and end of participant accrual; and, if applicable, end of follow-up"
+  },
+  {
+   "id": "6a",
+   "section": "Methods",
+   "topic": "Participants",
+   "scope": "D;E",
+   "text": "Specify key elements of the study setting (eg, primary care, secondary care, general population) including the number and location of centres"
+  },
+  {
+   "id": "6b",
+   "section": "Methods",
+   "topic": "Participants",
+   "scope": "D;E",
+   "text": "Describe the eligibility criteria for study participants"
+  },
+  {
+   "id": "6c",
+   "section": "Methods",
+   "topic": "Participants",
+   "scope": "D;E",
+   "text": "Give details of any treatments received, and how they were handled during model development or evaluation, if relevant"
+  },
+  {
+   "id": "7",
+   "section": "Methods",
+   "topic": "Data preparation",
+   "scope": "D;E",
+   "text": "Describe any data pre-processing and quality checking, including whether this was similar across relevant sociodemographic groups"
+  },
+  {
+   "id": "8a",
+   "section": "Methods",
+   "topic": "Outcome",
+   "scope": "D;E",
+   "text": "Clearly define the outcome that is being predicted and the time horizon, including how and when assessed, the rationale for choosing this outcome, and whether the method of outcome assessment is consistent across sociodemographic groups"
+  },
+  {
+   "id": "8b",
+   "section": "Methods",
+   "topic": "Outcome",
+   "scope": "D;E",
+   "text": "If outcome assessment requires subjective interpretation, describe the qualifications and demographic characteristics of the outcome assessors"
+  },
+  {
+   "id": "8c",
+   "section": "Methods",
+   "topic": "Outcome",
+   "scope": "D;E",
+   "text": "Report any actions to blind assessment of the outcome to be predicted"
+  },
+  {
+   "id": "9a",
+   "section": "Methods",
+   "topic": "Predictors",
+   "scope": "D",
+   "text": "Describe the choice of initial predictors (eg, literature, previous models, all available predictors) and any pre-selection of predictors before model building"
+  },
+  {
+   "id": "9b",
+   "section": "Methods",
+   "topic": "Predictors",
+   "scope": "D;E",
+   "text": "Clearly define all predictors, including how and when they were measured (and any actions to blind assessment of predictors for the outcome and other predictors)"
+  },
+  {
+   "id": "9c",
+   "section": "Methods",
+   "topic": "Predictors",
+   "scope": "D;E",
+   "text": "If predictor measurement requires subjective interpretation, describe the qualifications and demographic characteristics of the predictor assessors"
+  },
+  {
+   "id": "10",
+   "section": "Methods",
+   "topic": "Sample size",
+   "scope": "D;E",
+   "text": "Explain how the study size was arrived at (separately for development and evaluation), and justify that the study size was sufficient to answer the research question. Include details of any sample size calculation"
+  },
+  {
+   "id": "11",
+   "section": "Methods",
+   "topic": "Missing data",
+   "scope": "D;E",
+   "text": "Describe how missing data were handled. Provide reasons for omitting any data"
+  },
+  {
+   "id": "12a",
+   "section": "Methods",
+   "topic": "Analytical methods",
+   "scope": "D",
+   "text": "Describe how the data were used (eg, for development and evaluation of model performance) in the analysis, including whether the data were partitioned, considering any sample size requirements"
+  },
+  {
+   "id": "12b",
+   "section": "Methods",
+   "topic": "Analytical methods",
+   "scope": "D",
+   "text": "Depending on the type of model, describe how predictors were handled in the analyses (functional form, rescaling, transformation, or any standardisation)"
+  },
+  {
+   "id": "12c",
+   "section": "Methods",
+   "topic": "Analytical methods",
+   "scope": "D",
+   "text": "Specify the type of model, rationale†, all model building steps, including any hyperparameter tuning, and method for internal validation"
+  },
+  {
+   "id": "12d",
+   "section": "Methods",
+   "topic": "Analytical methods",
+   "scope": "D;E",
+   "text": "Describe if and how any heterogeneity in estimates of model parameter values and model performance was handled and quantified across clusters (eg, hospitals, countries). See TRIPOD-Cluster for additional considerations‡"
+  },
+  {
+   "id": "12e",
+   "section": "Methods",
+   "topic": "Analytical methods",
+   "scope": "D;E",
+   "text": "Specify all measures and plots used (and their rationale) to evaluate model performance (eg, discrimination, calibration, clinical utility) and, if relevant, to compare multiple models"
+  },
+  {
+   "id": "12f",
+   "section": "Methods",
+   "topic": "Analytical methods",
+   "scope": "E",
+   "text": "Describe any model updating (eg, recalibration) arising from the model evaluation, either overall or for particular sociodemographic groups or settings"
+  },
+  {
+   "id": "12g",
+   "section": "Methods",
+   "topic": "Analytical methods",
+   "scope": "E",
+   "text": "For model evaluation, describe how the model predictions were calculated (eg, formula, code, object, application programming interface)"
+  },
+  {
+   "id": "13",
+   "section": "Methods",
+   "topic": "Class imbalance",
+   "scope": "D;E",
+   "text": "If class imbalance methods were used, state why and how this was done, and any subsequent methods to recalibrate the model or the model predictions"
+  },
+  {
+   "id": "14",
+   "section": "Methods",
+   "topic": "Fairness",
+   "scope": "D;E",
+   "text": "Describe any approaches that were used to address model fairness and their rationale"
+  },
+  {
+   "id": "15",
+   "section": "Methods",
+   "topic": "Model output",
+   "scope": "D",
+   "text": "Specify the output of the prediction model (eg, probabilities, classification). Provide details and rationale for any classification and how the thresholds were identified"
+  },
+  {
+   "id": "16",
+   "section": "Methods",
+   "topic": "Training versus evaluation",
+   "scope": "D;E",
+   "text": "Identify any differences between the development and evaluation data in healthcare setting, eligibility criteria, outcome, and predictors"
+  },
+  {
+   "id": "17",
+   "section": "Methods",
+   "topic": "Ethical approval",
+   "scope": "D;E",
+   "text": "Name the institutional research board or ethics committee that approved the study and describe the participant informed consent or the ethics committee waiver of informed consent"
+  },
+  {
+   "id": "18a",
+   "section": "Open science",
+   "topic": "Funding",
+   "scope": "D;E",
+   "text": "Give the source of funding and the role of the funders for the present study"
+  },
+  {
+   "id": "18b",
+   "section": "Open science",
+   "topic": "Conflicts of interest",
+   "scope": "D;E",
+   "text": "Declare any conflicts of interest and financial disclosures for all authors"
+  },
+  {
+   "id": "18c",
+   "section": "Open science",
+   "topic": "Protocol",
+   "scope": "D;E",
+   "text": "Indicate where the study protocol can be accessed or state that a protocol was not prepared"
+  },
+  {
+   "id": "18d",
+   "section": "Open science",
+   "topic": "Registration",
+   "scope": "D;E",
+   "text": "Provide registration information for the study, including register name and registration number, or state that the study was not registered"
+  },
+  {
+   "id": "18e",
+   "section": "Open science",
+   "topic": "Data sharing",
+   "scope": "D;E",
+   "text": "Provide details of the availability of the study data"
+  },
+  {
+   "id": "18f",
+   "section": "Open science",
+   "topic": "Code sharing",
+   "scope": "D;E",
+   "text": "Provide details of the availability of the analytical code§"
+  },
+  {
+   "id": "19",
+   "section": "Patient and public involvement",
+   "topic": "Patient and public involvement",
+   "scope": "D;E",
+   "text": "Provide details of any patient and public involvement during the design, conduct, reporting, interpretation, or dissemination of the study or state no involvement"
+  },
+  {
+   "id": "20a",
+   "section": "Result",
+   "topic": "Participants",
+   "scope": "D;E",
+   "text": "Describe the flow of participants through the study, including the number of participants with and without the outcome and, if applicable, a summary of the follow-up time. A diagram may be helpful"
+  },
+  {
+   "id": "20b",
+   "section": "Result",
+   "topic": "Participants",
+   "scope": "D;E",
+   "text": "Report the characteristics overall and, where applicable, for each data source or setting, including the key dates, key predictors (including demographics), treatments received, sample size, number of outcome events, follow-up time, and amount of missing data. A table may be helpful. Report any differences across key demographic groups"
+  },
+  {
+   "id": "20c",
+   "section": "Result",
+   "topic": "Participants",
+   "scope": "E",
+   "text": "For model evaluation, show a comparison with the development data of the distribution of important predictors (demographics, predictors, and outcome)"
+  },
+  {
+   "id": "21",
+   "section": "Result",
+   "topic": "Model development",
+   "scope": "D;E",
+   "text": "Specify the number of participants and outcome events in each analysis (eg, for model development, hyperparameter tuning, model evaluation)"
+  },
+  {
+   "id": "22",
+   "section": "Result",
+   "topic": "Model specification",
+   "scope": "D",
+   "text": "Provide details of the full prediction model (eg, formula, code, object, application programming interface) to allow predictions in new individuals and to enable third party evaluation and implementation, including any restrictions to access or reuse (eg, freely available, proprietary)¶"
+  },
+  {
+   "id": "23a",
+   "section": "Result",
+   "topic": "Model performance",
+   "scope": "D;E",
+   "text": "Report model performance estimates with confidence intervals, including for any key subgroups (eg, sociodemographic). Consider plots to aid presentation"
+  },
+  {
+   "id": "23b",
+   "section": "Result",
+   "topic": "Model performance",
+   "scope": "D;E",
+   "text": "If examined, report results of any heterogeneity in model performance across clusters. See TRIPOD-Cluster for additional details‡"
+  },
+  {
+   "id": "24",
+   "section": "Result",
+   "topic": "Model updating",
+   "scope": "E",
+   "text": "Report the results from any model updating, including the updated model and subsequent performance"
+  },
+  {
+   "id": "25",
+   "section": "Discussion",
+   "topic": "Interpretation",
+   "scope": "D;E",
+   "text": "Give an overall interpretation of the main results, including issues of fairness in the context of the objectives and previous studies"
+  },
+  {
+   "id": "26",
+   "section": "Discussion",
+   "topic": "Limitations",
+   "scope": "D;E",
+   "text": "Discuss any limitations of the study (such as a non-representative sample, sample size, overfitting, missing data) and their effects on any biases, statistical uncertainty, and generalisability"
+  },
+  {
+   "id": "27a",
+   "section": "Discussion",
+   "topic": "Usability of the model in the context of current care",
+   "scope": "D",
+   "text": "Describe how poor quality or unavailable input data (eg, predictor values) should be assessed and handled when implementing the prediction model"
+  },
+  {
+   "id": "27b",
+   "section": "Discussion",
+   "topic": "Usability of the model in the context of current care",
+   "scope": "D",
+   "text": "Specify whether users will be required to interact in the handling of the input data or use of the model, and what level of expertise is required of users"
+  },
+  {
+   "id": "27c",
+   "section": "Discussion",
+   "topic": "Usability of the model in the context of current care",
+   "scope": "D;E",
+   "text": "Discuss any next steps for future research, with a specific view to applicability and generalisability of the model"
+  }
+ ]
+}

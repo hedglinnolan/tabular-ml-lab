@@ -23,7 +23,10 @@ decisions out, but only those superseded before anything was seen:
   population, each chosen family's estimator or block, the substitution band, the calibration;
   MS4) is restated on the answers as they stand (:func:`restated`; ``voice.restate``), so the
   sample-only exit, or a population answer given after the models were chosen, never leaves a
-  sentence that contradicts the analysis. The Record keeps each sentence as said.
+  sentence that contradicts the analysis. A sentence that counts rows (the exclusions', the
+  complete cases') is restated with the counts the participant flow has now, given in the context
+  (``counts``; EXPORT), so the adjustment set answered after the missing-values question never
+  leaves its count stale. The Record keeps each sentence as said.
 """
 from __future__ import annotations
 
