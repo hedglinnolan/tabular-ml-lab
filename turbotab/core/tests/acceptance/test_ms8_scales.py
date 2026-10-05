@@ -45,7 +45,8 @@ from turbotab.core.tests.acceptance.scales_fixtures import (DQ_ITEMS, DQ_RETEST,
                                                             linear_scale_table, needs_r,
                                                             omega_script, run_r,
                                                             survey_scale_table)
-from turbotab.core.tests.acceptance.server_drive import Truth, local_server, open_project
+from turbotab.core.tests.acceptance.server_drive import (Truth, answer_wp17, local_server,
+                                                         open_project)
 
 SAT = [f"sat_{j}" for j in range(1, 9)]
 SAT_REVERSE = ["sat_3", "sat_6"]
@@ -771,6 +772,11 @@ def chain4(tmp_path_factory) -> dict:
         out["fit"] = drive.artifact("fit")
         out["design"] = drive.artifact("design")
         drive.decide_roles({**CHAIN_ROLES, "age": "excluded"})
+        # WP17: the exposure the card led with (age) left, so the plan's questions reopen, and the
+        # corrected coefficient, an estimate, waits for them (served withheld until answered).
+        out["withheld"] = drive.artifact("scales")
+        for key in ("estimand", "adjustment"):
+            answer_wp17(drive, key)
         out["without_age"] = drive.artifact("scales")
     return out
 
@@ -911,7 +917,11 @@ def test_5_chain_4_runs_end_to_end_with_its_relations_and_methods_sentences(chai
     assert REVIEWERS.replace(" (or a calibration substudy)", "") in bare
     assert chain4["scales"]["methods"] == f"{pss['methods']} {dq['methods']}"
 
-    # §2: a change to the adjustment set recomputes the calibration with the new covariates.
+    # §2: a change to the adjustment set recomputes the calibration with the new covariates; WP17:
+    # while the questions it reopened were open, the corrections were withheld.
+    held = chain4["withheld"]
+    assert held["withheld"].startswith("No estimate is shown until")
+    assert all(s["correction"] is None for s in held["scales"])
     pss_b, dq_b = chain4["without_age"]["scales"]
     assert sorted(pss_b["correction"]["covariates"]) == ["dq_score", "sex_M"]
     Z = np.column_stack([male, ref["dq"]])
