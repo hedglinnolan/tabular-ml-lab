@@ -18,6 +18,11 @@ only when it is a Goldberg screen), and what the record cannot know, which the a
 rule reaches, or whose rule finds nothing in this record, is listed as "unanswered — the author must
 supply this". Nothing is answered by default, and the app never fills an item by guessing what a
 study did (a title, a setting, an ethics approval).
+
+**Read live** (GET …/checklist; ``bundle.live_checklist``), the checklist records nothing, so it
+quotes no score a client was not shown: under prediction the performance table's caption states
+the declared result, and until the fit's cross-validated scores have been shown it is quoted as
+``tables.UNSEEN_RESULT`` (MODELING_SEQUENCE §4). The bundle's own checklist quotes it whole.
 """
 from __future__ import annotations
 

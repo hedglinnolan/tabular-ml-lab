@@ -1422,13 +1422,14 @@ class ProjectService:
 
     def checklist(self, pid: str) -> Any:
         """The reporting checklist of the declared purpose, filled from the record and the results
-        as they stand, with what the export still waits for."""
-        from turbotab.core.export import gate
-        from turbotab.core.export.bundle import contents
+        as they stand, with what the export still waits for. It records nothing, so it quotes no
+        score that was not already shown for the outcome (``bundle.live_checklist``; MS6)."""
+        from turbotab.core.export.bundle import live_checklist
+        from turbotab.core.models.selection import read_seen
 
         source = self.export_source(pid)
-        report = contents(source, gated=False).checklist
-        return report.model_copy(update={"waiting": [m.message for m in gate.missing(source)]})
+        target = getattr(source.state, "target", None) or ""
+        return live_checklist(source, read_seen(self.workspace.project_dir(pid)).get(target, []))
 
     def run_stage(self, pid: str, stage: str) -> StageStatus:
         """Compute ``stage`` for the current answers, retrying a failure or a cancel upstream too."""

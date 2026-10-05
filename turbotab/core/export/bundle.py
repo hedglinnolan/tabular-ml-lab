@@ -26,7 +26,7 @@ import io
 import json
 import zipfile
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Sequence
 
 ROOT = "turbotab-export/"
 ZIP_DATE = (1980, 1, 1, 0, 0, 0)
@@ -90,9 +90,11 @@ def matrix_bytes(source: Any) -> bytes | None:
     return path.read_bytes() if path is not None and path.is_file() else None
 
 
-def contents(source: Any, *, gated: bool = True) -> ExportBundle:
+def contents(source: Any, *, gated: bool = True, scores_seen: bool = True) -> ExportBundle:
     """Everything the bundle holds (module docstring). ``gated=False`` assembles what exists now
-    without the refusal: the live checklist reads it (GET …/checklist)."""
+    without the refusal, and ``scores_seen=False`` keeps out of the checklist every caption that
+    states a score a client was not shown (``tables.UNSEEN_RESULT``): the live checklist reads it
+    that way (:func:`live_checklist`)."""
     from turbotab.core import plan_lock
     from turbotab.core.export import checklists, figures, gate, matrix, methods, record, tables
 
@@ -116,7 +118,9 @@ def contents(source: Any, *, gated: bool = True) -> ExportBundle:
         files[f"results/{table.name}.csv"] = tables.to_csv(table).encode("utf-8")
         files[f"results/{table.name}.md"] = tables.markdown(
             table, tables.headers_for(table)).encode("utf-8")
-        captions[f"results/{table.name}.md"] = f"{table.title}. {table.caption}"
+        said = (table.unseen_caption if not scores_seen and table.unseen_caption is not None
+                else table.caption)
+        captions[f"results/{table.name}.md"] = f"{table.title}. {said}"
     cohort = source.artifact("cohort")
     fit = source.artifact("fit")
     design = source.artifact("design")
@@ -155,6 +159,29 @@ def contents(source: Any, *, gated: bool = True) -> ExportBundle:
                                         for name, data in sorted(files.items())})
     return ExportBundle(files=files, provenance=prov, checklist=report, methods=doc,
                         tables=results)
+
+
+def live_checklist(source: Any, seen: Sequence[str]) -> Any:
+    """The checklist as GET …/checklist serves it: filled from what the record and the results hold
+    now, without the export's refusal, with what the export still waits for (``gate.missing``).
+
+    It records nothing, so it quotes no score a client was not shown (MODELING_SEQUENCE §4; MS6).
+    Under prediction the performance table's caption states the declared result: the
+    selection-corrected score, naming the family the comparison chose, or the only family's own
+    score. Read off a checklist and not recorded, that score would let the compared families be
+    dropped and the remaining family's own score declared "before any score was seen". So until
+    every family whose cross-validated score the fit holds is among ``seen`` (the families whose
+    scores were shown for the outcome: ``selection.read_seen``; the fit served, or a bundle handed
+    over, records them), the checklist quotes ``tables.UNSEEN_RESULT`` in its place, and reading
+    it leaves the choice of families as open as it was. Under inference the fit's scores are
+    withheld from the start, and no caption states an estimate."""
+    from turbotab.core.export import gate
+    from turbotab.core.models.selection import scored_in
+
+    fit = source.artifact("fit") if source.purpose != "inference" else None
+    shown = set(scored_in(fit)) <= set(seen)
+    report = contents(source, gated=False, scores_seen=shown).checklist
+    return report.model_copy(update={"waiting": [m.message for m in gate.missing(source)]})
 
 
 def readme(source: Any, prov: dict[str, Any], report: Any, files: dict[str, bytes]) -> str:
@@ -202,5 +229,5 @@ def readme(source: Any, prov: dict[str, Any], report: Any, files: dict[str, byte
     return "\n".join(lines)
 
 
-__all__ = ["ExportBundle", "ROOT", "canonical", "contents", "matrix_bytes", "read_zip", "readme",
-           "zip_bytes"]
+__all__ = ["ExportBundle", "ROOT", "canonical", "contents", "live_checklist", "matrix_bytes",
+           "read_zip", "readme", "zip_bytes"]
