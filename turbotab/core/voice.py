@@ -792,10 +792,31 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
     if d.strategy == "multiple_imputation":
         energy = _energy_column(state)
         with_energy = f" and total energy ({tick(energy)})" if energy else ""
-        text = (f"{first}{others} were imputed by multiple imputation by chained equations (m = "
-                f"{tick(getattr(d, 'm', 20))}), with the outcome{with_energy} in the imputation "
-                f"model, and the coefficients pooled over the imputations by Rubin's rules; no row "
+        m = tick(getattr(d, "m", 20))
+        if getattr(d, "imputation_model", "compatible") == "passive":
+            # MS1 (MODELING_SEQUENCE §4): the customary chained equations, terms derived per copy
+            how = ("by multiple imputation by chained equations, any nonlinear term derived in "
+                   "each completed copy (passive imputation)")
+        else:
+            how = ("by multiple imputation compatible with the analysis model (SMC-FCS where the "
+                   "model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained "
+                   "equations where it is linear in the imputed values)")
+        text = (f"{first}{others} were imputed {how}, m = {m} or the percentage of rows with an "
+                f"imputed value if that is larger, with the outcome{with_energy} in the imputation "
+                f"model, and every estimate pooled over the imputations by Rubin's rules; no row "
                 f"was dropped for a missing predictor")
+        single = getattr(d, "imputation_levels", "clustered") == "single_level"
+        passive = getattr(d, "imputation_model", "compatible") == "passive"
+        if single:
+            text += "; each row was imputed on its own, the clustering of its rows left out"
+        if (getattr(d, "acknowledged", False) and getattr(state, "purpose", None) == "inference"
+                and (passive or single)):
+            from turbotab.core.methods.missing import PASSIVE_CAUTION, SINGLE_LEVEL_CAUTION
+
+            text += _below_detection_clause(d, state)
+            text += (f"; it was kept under inference as a recorded limitation: "
+                     f"{PASSIVE_CAUTION if passive else SINGLE_LEVEL_CAUTION}")
+            return text[0].upper() + text[1:]
     else:
         fill = _energy_fill_words(state)
         text = (f"{first}{others} were imputed in each training fold without the outcome: the "
@@ -1502,6 +1523,10 @@ def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
         if getattr(d, "acknowledged", False):
             return (text + f"; recorded as a limitation: they were not pooled by Rubin's rules, "
                            f"and {COPIES_CONCERN}")
+        if getattr(state, "purpose", None) == "inference":  # MS3: the fit pools them
+            return (text + "; kept as records, each copy is analyzed as a completed dataset with "
+                           "its own outcome and the estimates pooled by Rubin's rules, which "
+                           "carries the imputation's uncertainty (NCHS's combining rules)")
         return text + f"; they were not pooled by Rubin's rules, and {COPIES_CONCERN}"
     text = f"{whose[:1].upper()}{whose[1:]} rows were taken as different time points"
     if d.time_column:

@@ -1184,6 +1184,24 @@ def _probe_substitution_stage_unit(value: str) -> Any:
     return tuple(out)
 
 
+def _probe_imputation_factors(value: str) -> Any:
+    """The kcal per unit the imputation's energy identity computes with (MS1): the ledger's settled
+    factor for `Protein` and `alcohol` confirmed in ``value``, and none where it is not settled."""
+    from types import SimpleNamespace
+
+    from turbotab.core.stages.modeling import _settled_factors
+
+    state = _confirm(d.SetTarget(column="y"),
+                     d.SetRoles(roles={"Protein": "exposure", "fat_g": "exposure",
+                                       "alcohol": "exposure", "kcal": "energy"}),
+                     d.ConfirmReading(reading="unit", column="alcohol", value=value),
+                     kind="unit", column="Protein", value=value)
+    spec = SimpleNamespace(energy_adjustment=lambda: d.EnergyAdjustment(
+        method="residual", energy_column="kcal", nutrients=["Protein", "alcohol"]))
+    found = _settled_factors(SimpleNamespace(state=state, paths={}), spec)
+    return tuple(round(found[c], 9) if c in found else None for c in ("Protein", "alcohol"))
+
+
 def _expected_stage_unit(value: str) -> Any:
     """Protein: 4 kcal/g, 4,000 per kg, 1 per kcal, 1/4.184 per kJ, no drinks; alcohol: 7 kcal/g
     (NUTRITION_PACK §01), 7,000 per kg, 1 per kcal, 1/4.184 per kJ, and 7 × the drink's grams per
@@ -1392,6 +1410,9 @@ PROBES: dict[tuple[str, str], tuple[Callable[[str], Any], Callable[[str], Any]]]
          lambda v: None if v in FACTORS else "reading_unsettled"),
     ("turbotab.core.stages.modeling:substitution_stage", "unit:factor"):
         (_probe_substitution_stage_unit, _expected_stage_unit),
+    # MS1: the imputation's energy identity reads the same settled factors, and only those.
+    ("turbotab.core.stages.modeling:_settled_factors", "unit:factor"):
+        (_probe_imputation_factors, _expected_stage_unit),
     ("turbotab.core.decisions:_substitution_reads_settled_readings", "nested_in"):
         (_probe_substitution_nested, lambda v: "part_of_the_other" if v == "carbohydrate_g"
          else None),

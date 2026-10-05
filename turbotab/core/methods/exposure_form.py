@@ -495,7 +495,7 @@ def _reference(info: Mapping[str, Any], rows: Sequence[Mapping[str, Any]],
         if not dfs:
             return None
         return "F", float(dfs[0]), "HC3 covariance"
-    if covariance in ("CR2", "CR1"):
+    if covariance in ("CR2", "CR1", "CR0"):  # CR0: the Cox model's Lin–Wei sandwich
         g = info.get("n_clusters")
         if not g or g < 2:
             return None
@@ -631,6 +631,19 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
                               "knots": [float(v) for v in step.knots_[column]], "medians": None,
                               "caption": caption})
             continue
+        # MS2: the global test that every quintile indicator is zero, a multi-df Wald test on the
+        # table's own covariance (pooled by D1 under multiple imputation).
+        idx = [where[o] for o in outputs]
+        result = wald_test(estimates, cov, idx, info, rows)
+        if result is not None:
+            tests.append({"column": column, "form": "quintiles", "test": "global",
+                          "statistic": result["statistic"], "df_num": result["df_num"],
+                          "df_den": result["df_den"], "distribution": result["distribution"],
+                          "p": result["p"], "estimate": None, "ci_low": None, "ci_high": None,
+                          "knots": None, "medians": [float(v) for v in step.medians_[column]],
+                          "caption": (f"Wald test that all {len(idx)} quintile indicators of "
+                                      f"`{column}` are zero ({result['basis']}): "
+                                      f"{_statistic_words(result)}.")})
         trend = _trend(family, pipeline, step, column, X, y, task=task, clusters=clusters,
                        outcome=outcome, survey=survey)
         if trend is None:

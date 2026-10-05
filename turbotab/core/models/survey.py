@@ -884,6 +884,19 @@ def curve_caption(design: SurveyDesign, var: DesignVariance, n_rows: int, level:
             f"the fit and which people were sampled (Graubard & Korn 1999).")
 
 
+def pooled_design_caption(design: SurveyDesign, var: DesignVariance, n_rows: int, m: int,
+                          supplied: bool = False, level: float = LEVEL) -> str:
+    """The saved figure's caption for a design-based band pooled over imputed copies (MS2-MS4)."""
+    weight = f"`{design.weight_column}`" if design.weight_column else "equal weights"
+    what = f"the data's {m} imputed copies" if supplied else f"{m} imputations"
+    return (f"Shaded bands: {level:.0%} intervals pooled over {what} by Rubin's rules, each copy's "
+            f"variance by Taylor linearization over the survey design (weights {weight}; "
+            f"{var.domain_psu:,} PSUs in {var.domain_strata:,} strata hold the {n_rows:,} analysis "
+            f"rows), on Barnard–Rubin degrees of freedom with the design's {var.df:,} as the "
+            f"complete-data degrees of freedom; each curve the population mean of the change in "
+            f"the survey-weighted fit's prediction (Graubard & Korn 1999).")
+
+
 # ── the methods sentences (BLUEPRINT §13: each contract's sentence) ──────────
 
 # Each design-based estimator in the words the methods section writes it, by (family, task).
@@ -1084,6 +1097,7 @@ __all__ = [
     "CONTRACTS", "DesignFit", "DesignVariance", "Domain", "FEW_DESIGN_DF", "LONELY_METHOD",
     "LONELY_PSU", "LONELY_RULE", "MethodContract", "Relation", "SAMPLE_EXIT", "SurveyDesign",
     "WeightedFit", "adjusted_wald", "blocked", "build_design", "curve_caption", "design_curve",
+    "pooled_design_caption",
     "design_df", "design_family", "design_fit", "design_table", "domain_of", "has_design_estimator",
     "no_design_estimator", "PopulationCurve", "population_curve", "population_shelf",
     "survey_info", "survey_table",

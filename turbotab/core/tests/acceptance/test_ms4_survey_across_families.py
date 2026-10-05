@@ -631,10 +631,16 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
                            exposure_forms={"protein_g": ExposureFormSpec(form="quintiles")})
     assert assert_design_based_or_blocked(binary["fit"].data) == {"linear": "design",
                                                                  "gee": "blocked"}
-    trend = next(m for m in binary["fit"].data["models"] if m["family"] == "linear")
-    trend = trend["exposure_tests"][0]
-    assert trend["test"] == "trend" and "the cut points and medians are the analyzed rows' own, " \
-                                         "unweighted" in trend["caption"].lower()
+    logistic = next(m for m in binary["fit"].data["models"] if m["family"] == "linear")
+    quintile = {t["test"]: t for t in logistic["exposure_tests"]}
+    trend = quintile["trend"]
+    assert "the cut points and medians are the analyzed rows' own, unweighted" in \
+        trend["caption"].lower()
+    # MS2's global test that every quintile indicator is zero (the MI package's) is the design's
+    # too: the adjusted Wald F on the design's degrees of freedom, as the spline's tests are.
+    d_bin = logistic["inference"]["survey"]["df"]
+    assert quintile["global"]["df_num"] == 4 and quintile["global"]["df_den"] == d_bin - 4 + 1
+    assert "taylor-linearized" in quintile["global"]["caption"].lower()
 
     mortality = nhanes_mortality(seed=5, n_per_psu=35)
     roles = {"SEQN": "identifier", "fiber": "exposure", "RIDAGEYR": "covariate",

@@ -7017,6 +7017,24 @@
               }
             ],
             "title": "Reason"
+          },
+          "imputation_model": {
+            "type": "string",
+            "enum": [
+              "compatible",
+              "passive"
+            ],
+            "title": "Imputation Model",
+            "default": "compatible"
+          },
+          "imputation_levels": {
+            "type": "string",
+            "enum": [
+              "clustered",
+              "single_level"
+            ],
+            "title": "Imputation Levels",
+            "default": "clustered"
           }
         },
         "additionalProperties": false,
@@ -7030,7 +7048,9 @@
           "below_detection",
           "censored_columns",
           "acknowledged",
-          "reason"
+          "reason",
+          "imputation_model",
+          "imputation_levels"
         ],
         "title": "MissingSpec",
         "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest.\n\n``m``: the imputations under multiple imputation. ``below_detection`` and ``censored_columns``:\nhow the blanks of columns whose values lie below a detection limit are filled. ``acknowledged``\nand ``reason``: the recorded attestation that keeps a blocked answer (a single fill or the\nmissing-indicator method under inference; a median fill of non-detections, with its reason)."
@@ -10858,6 +10878,24 @@
               }
             ],
             "title": "Reason"
+          },
+          "imputation_model": {
+            "type": "string",
+            "enum": [
+              "compatible",
+              "passive"
+            ],
+            "title": "Imputation Model",
+            "default": "compatible"
+          },
+          "imputation_levels": {
+            "type": "string",
+            "enum": [
+              "clustered",
+              "single_level"
+            ],
+            "title": "Imputation Levels",
+            "default": "clustered"
           }
         },
         "additionalProperties": false,
@@ -10953,6 +10991,24 @@
               }
             ],
             "title": "Reason"
+          },
+          "imputation_model": {
+            "type": "string",
+            "enum": [
+              "compatible",
+              "passive"
+            ],
+            "title": "Imputation Model",
+            "default": "compatible"
+          },
+          "imputation_levels": {
+            "type": "string",
+            "enum": [
+              "clustered",
+              "single_level"
+            ],
+            "title": "Imputation Levels",
+            "default": "clustered"
           }
         },
         "additionalProperties": false,
@@ -10967,7 +11023,9 @@
           "below_detection",
           "censored_columns",
           "acknowledged",
-          "reason"
+          "reason",
+          "imputation_model",
+          "imputation_levels"
         ],
         "title": "SetMissing",
         "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both."
@@ -14652,6 +14710,18 @@
             ],
             "default": null,
             "title": "Fmi"
+          },
+          "mc_se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mc Se"
           }
         },
         "required": [
@@ -14667,7 +14737,8 @@
           "ratio_low",
           "ratio_high",
           "q",
-          "fmi"
+          "fmi",
+          "mc_se"
         ],
         "title": "Coefficient",
         "type": "object"
@@ -15962,7 +16033,8 @@
             "enum": [
               "overall",
               "nonlinear",
-              "trend"
+              "trend",
+              "global"
             ],
             "title": "Test",
             "type": "string"
@@ -18404,6 +18476,280 @@
             ],
             "default": null,
             "title": "Note"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "enum": [
+                  "chained_equations",
+                  "smcfcs",
+                  "supplied"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model"
+          },
+          "compatible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Compatible"
+          },
+          "substantive": {
+            "anyOf": [
+              {
+                "enum": [
+                  "linear",
+                  "logistic",
+                  "cox"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Substantive"
+          },
+          "terms": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "logged": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Logged",
+            "type": "array"
+          },
+          "identity_energy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Identity Energy"
+          },
+          "identity_sources": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Identity Sources",
+            "type": "array"
+          },
+          "identity_infeasible": {
+            "default": 0,
+            "title": "Identity Infeasible",
+            "type": "integer"
+          },
+          "design_strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Design Strata"
+          },
+          "design_psu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Design Psu"
+          },
+          "design_weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Design Weight"
+          },
+          "df_com": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df Com"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
+          },
+          "unit_level": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Level",
+            "type": "array"
+          },
+          "knots": {
+            "additionalProperties": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "Knots",
+            "type": "object"
+          },
+          "cuts": {
+            "additionalProperties": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "Cuts",
+            "type": "object"
+          },
+          "m_asked": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "M Asked"
+          },
+          "percent_incomplete": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Percent Incomplete"
+          },
+          "rejection_failures": {
+            "default": 0,
+            "title": "Rejection Failures",
+            "type": "integer"
+          },
+          "mc_max_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mc Max Ratio"
+          },
+          "mc_feature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mc Feature"
+          },
+          "copies": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Copies"
+          },
+          "implicate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Implicate"
+          },
+          "tests_d1": {
+            "default": 0,
+            "title": "Tests D1",
+            "type": "integer"
+          },
+          "sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sentence"
           }
         },
         "required": [
@@ -18421,7 +18767,32 @@
           "below_detection",
           "n_dropped",
           "recorded",
-          "note"
+          "note",
+          "model",
+          "compatible",
+          "substantive",
+          "terms",
+          "logged",
+          "identity_energy",
+          "identity_sources",
+          "identity_infeasible",
+          "design_strata",
+          "design_psu",
+          "design_weight",
+          "df_com",
+          "unit",
+          "unit_level",
+          "knots",
+          "cuts",
+          "m_asked",
+          "percent_incomplete",
+          "rejection_failures",
+          "mc_max_ratio",
+          "mc_feature",
+          "copies",
+          "implicate",
+          "tests_d1",
+          "sentence"
         ],
         "title": "MissingData",
         "type": "object"
@@ -18508,13 +18879,22 @@
             },
             "title": "Below Detection",
             "type": "array"
+          },
+          "imputation_models": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MissingMethodOption"
+            },
+            "title": "Imputation Models",
+            "type": "array"
           }
         },
         "required": [
           "columns",
           "leave_out",
           "methods",
-          "below_detection"
+          "below_detection",
+          "imputation_models"
         ],
         "title": "MissingReading",
         "type": "object"
@@ -21676,6 +22056,24 @@
             ],
             "default": null,
             "title": "Reason"
+          },
+          "imputation_model": {
+            "default": "compatible",
+            "enum": [
+              "compatible",
+              "passive"
+            ],
+            "title": "Imputation Model",
+            "type": "string"
+          },
+          "imputation_levels": {
+            "default": "clustered",
+            "enum": [
+              "clustered",
+              "single_level"
+            ],
+            "title": "Imputation Levels",
+            "type": "string"
           }
         },
         "required": [
@@ -21688,7 +22086,9 @@
           "below_detection",
           "censored_columns",
           "acknowledged",
-          "reason"
+          "reason",
+          "imputation_model",
+          "imputation_levels"
         ],
         "title": "SetMissing",
         "type": "object"
@@ -23214,6 +23614,44 @@
             },
             "title": "Exits",
             "type": "array"
+          },
+          "pooled": {
+            "anyOf": [
+              {
+                "enum": [
+                  "contrast",
+                  "per_k"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pooled"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
           }
         },
         "required": [
@@ -23230,7 +23668,9 @@
           "fixed_ci_high",
           "band_ok",
           "refused",
-          "exits"
+          "exits",
+          "pooled",
+          "df"
         ],
         "title": "SubstitutionModel",
         "type": "object"

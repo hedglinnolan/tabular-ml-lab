@@ -367,9 +367,14 @@ def sensitivity_stage(ctx: StageContext) -> Bundle:
                     # Each analysis imputes its own rows (WP7), once for every family.
                     from turbotab.core.stages.modeling import _missing_for_table
 
+                    from turbotab.core.models.inference import resolve_clusters
+
+                    # MS2: the design and the clustering in each analysis's imputation model.
                     missing_by[a["label"]] = _missing_for_table(
                         ctx, spec, part[list(spec.inputs)], y_part, task,
-                        [f.key for f in families], loss={"n_dropped": None})
+                        [f.key for f in families], loss={"n_dropped": None}, survey=survey,
+                        clusters=(resolve_clusters(state, part[list(unit_columns)])
+                                  if unit_columns else None))
                 fitted, (coef, info), worries = fit_on_rows(
                     state, family, pipelines[family.key], part, spec.inputs,
                     y_part, task, unit_columns, outcome=outcome,

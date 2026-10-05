@@ -663,6 +663,8 @@ class MissingReading(Model):
     # WP7: the methods, soundest first for the declared purpose; and the below-detection fills.
     methods: list[MissingMethodOption] = []
     below_detection: list[MissingMethodOption] = []
+    # MS1–MS2: multiple imputation compatible with the analysis model, passive, or single-level
+    imputation_models: list[MissingMethodOption] = []
 
 
 class SurveyOption(Model):

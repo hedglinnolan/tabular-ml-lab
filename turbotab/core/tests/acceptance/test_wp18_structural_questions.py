@@ -16,6 +16,9 @@ Closes RO-09, RO-10, RO-11 and RO-13, and I18 (minor); and places the readings l
 4. "A Case/Control/QC export offers a QC exclusion before the seal and the task becomes binary; the
    served QC text is corrected."
 5. "NHANES DXA multiple-imputation copies have a route (Rubin's rules) or are blocked and recorded."
+   (MS3 builds the route: under inference copies kept as records are pooled by Rubin's rules, and
+   combining them per unit is what is blocked and recorded;
+   ``test_ms1_ms3_multiple_imputation.test_10_*`` checks the pooling against R.)
 
 Every project is driven through the real server (the FastAPI app over its job runner). Readings the
 server asks about are answered from each fixture's declared truth (``conftest.declare``), never a
@@ -845,11 +848,13 @@ def dxa_table(folder: Path) -> tuple[Path, pd.DataFrame]:
 def test_5_imputed_copies_are_read_asked_and_blocked_and_recorded(client, folder, purpose):
     """Reference (pandas): every SEQN holds ``_MULT_`` 1 to 5 once, and the outcome differs
     between copies for the imputed third. The repeats reading proposes imputed copies (asked, not
-    stated); under inference the answer is blocked and recorded (CDC: a single copy, or copies
-    analyzed as values, cannot carry the imputation's variability, and Rubin's rules over the
-    copies are not built here); the attested answer's methods sentence states it; the copies have
-    no time order, so the temporal question does not apply and first, last and change are refused.
-    Under prediction the answer is accepted and its sentence states the same concern."""
+    stated). Under inference the answer is accepted and its sentence says each copy is analyzed with
+    its own outcome and pooled by Rubin's rules (MS3); combining the copies per unit is blocked and
+    recorded (CDC: a single copy, or copies analyzed as values, cannot carry the imputation's
+    variability), its exits keeping the copies as records first, and the attested answer's methods
+    sentence states the limitation. The copies have no time order, so the temporal question does not
+    apply and first, last and change are refused. Under prediction the answer is accepted and its
+    sentence states the concern."""
     path, df = dxa_table(folder)
     per = df.groupby("SEQN")["_MULT_"].apply(lambda s: sorted(s.tolist()))
     assert all(v == [1, 2, 3, 4, 5] for v in per)
@@ -869,19 +874,19 @@ def test_5_imputed_copies_are_read_asked_and_blocked_and_recorded(client, folder
 
     answer = {"kind": "set_repeat_kind", "repeat_kind": "imputed_copies",
               "implicate_column": "_MULT_"}
-    if purpose == "inference":
-        error = refused(client, pid, answer, "imputed_copies_unpooled")
-        attested = next(e["decision"] for e in error["exits"]
-                        if e["decision"] and e["decision"].get("acknowledged"))
-        accepted(client, pid, attested)
-        said = last_sentence(client, pid)
-        assert "recorded as a limitation" in said
-    else:
-        accepted(client, pid, answer)
-        said = last_sentence(client, pid)
+    accepted(client, pid, answer)
+    said = last_sentence(client, pid)
     assert "imputed copies" in said and "Rubin's rules" in said
     assert "uncertainty" in said
     assert step(client, pid, "temporal")["status"] == "not_applicable"
+    if purpose == "inference":
+        assert "pooled by Rubin's rules" in said
+        error = refused(client, pid, {"kind": "set_unit", "unit": "unit"}, "imputed_copies_combined")
+        assert error["exits"][0]["decision"] == {"kind": "set_unit", "unit": "row"}
+        attested = next(e["decision"] for e in error["exits"]
+                        if e["decision"] and e["decision"].get("acknowledged"))
+        accepted(client, pid, attested)
+        assert "recorded as a limitation" in last_sentence(client, pid)
     accepted(client, pid, {"kind": "set_unit", "unit": "unit"})
     walk(client, pid, "aggregation")
     refused(client, pid, {"kind": "set_aggregation", "method": "first", "outcome": "first"},
