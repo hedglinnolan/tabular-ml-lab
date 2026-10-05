@@ -497,7 +497,7 @@ class ConfirmRole(_DecisionModel):
 # The readings ledger (BLUEPRINT §14.1): the kinds of reading ``confirm_reading`` records. The
 # others are answered by their own decisions (``set_outcome_unit``, ``set_repeat_kind``, …).
 ReadingKind = Literal["role", "cluster", "unit", "day_count", "code_or_count", "time_column",
-                      "nested_in", "sex_coding"]
+                      "nested_in", "sex_coding", "time_invariant"]
 
 
 class ConfirmReading(_DecisionModel):
@@ -4161,7 +4161,7 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
     level) are blocked and recorded: refused with their exits, multiple imputation first, and kept
     only with the attestation (``acknowledged``) the methods sentence carries.
     """
-    from turbotab.core.methods.missing import INDICATOR_CAUTION, SINGLE_FILL_CAUTION
+    from turbotab.core.methods.missing import INDICATOR_CAUTION, MI_EXIT_LABEL, SINGLE_FILL_CAUTION
 
     state = _state(ctx)
     purpose = getattr(state, "purpose", None)
@@ -4192,7 +4192,7 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
     if not (single or indicator):
         return
     exits: list[dict[str, Any]] = [
-        {"label": "Multiple imputation with the outcome and energy (m = 20)",
+        {"label": MI_EXIT_LABEL,
          "decision": _missing_base(decision, strategy="multiple_imputation", indicators=False,
                                    categorical="impute", acknowledged=False)},
         {"label": "Complete cases, with their assumption stated",
@@ -4251,9 +4251,12 @@ def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
                      f"`{c}`" for c, f in forms.items()]
             if logged:
                 named.append("the energy model's log or ratio")
+            # each phrase already ticks its column, so the phrases are joined as words (``_and``
+            # would tick them again: "`a restricted cubic spline of `fiber``")
+            said = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
             raise Refusal(
                 "passive_imputation_with_nonlinear_terms",
-                f"The analysis model holds {_and(named)}. Under inference {PASSIVE_CAUTION}.",
+                f"The analysis model holds {said}. Under inference {PASSIVE_CAUTION}.",
                 exits=[{"label": "Multiple imputation compatible with the analysis model (SMC-FCS)",
                         "decision": _missing_base(decision, imputation_model="compatible")},
                        cc, keep])

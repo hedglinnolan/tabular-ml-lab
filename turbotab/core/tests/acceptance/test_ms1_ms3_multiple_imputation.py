@@ -684,18 +684,31 @@ def icc(values: np.ndarray, groups: np.ndarray) -> float:
 
 
 def clustered_imputations(frame: pd.DataFrame, levels: str, seed: int = 6) -> Any:
+    """The copies of ``frame`` with income and sex confirmed as one value per person through the
+    readings ledger (MI repair: the values cannot settle it, BLUEPRINT §14.3), as the fit reads it
+    (``missing.time_invariant_columns``)."""
+    from turbotab.core import decisions as dd
+    from turbotab.core.methods.missing import time_invariant_columns
     from turbotab.core.models.inference import Clusters
 
     roles = {"x": "exposure", "income": "covariate", "sex": "covariate"}
+    confirmed = dd.fold([dd.DecisionRecord(id=f"r{i}", seq=i, at="2026-10-05T00:00:00Z",
+                                           decision=dd.ConfirmReading(reading="time_invariant",
+                                                                      column=c, value="yes"))
+                         for i, c in enumerate(("income", "sex"), start=1)])
     st = ProjectState(target="y", task="regression", purpose="inference", roles=roles,
                       missing=MissingSpec(strategy="multiple_imputation", m=20,
-                                          imputation_levels=levels))
+                                          imputation_levels=levels),
+                      reading_confirmations=confirmed.reading_confirmations)
     X = frame[list(roles)]
     spec = design_spec(st, X, list(roles))
     codes = pd.factorize(frame["id"])[0]
     clusters = Clusters(column="id", codes=codes, n_clusters=int(codes.max()) + 1)
+    once, ask = time_invariant_columns(st, X, codes, [c for c in roles if X[c].isna().any()])
+    assert ask == []
     return impute_for_inference(spec, X, frame["y"].to_numpy(), "regression", seed=seed,
-                                clusters=clusters if levels == "clustered" else None), spec
+                                clusters=clusters if levels == "clustered" else None,
+                                time_invariant=once), spec
 
 
 def test_6_time_invariant_variables_are_imputed_once_per_unit():
@@ -716,9 +729,16 @@ def test_6_time_invariant_variables_are_imputed_once_per_unit():
     from turbotab.core.methods.missing import multiple_imputation_info
 
     record = multiple_imputation_info(imputations, spec, len(frame))
-    assert ("; with rows clustered by `id`, `income` and `sex` were imputed once per `id` and each "
-            "row-level variable with the `id` means of the others and its own mean over the `id`'s "
-            "other rows") in record["sentence"]
+    carried = int(sum(imputations.plan["carried"].values()))
+    # pandas: the blank cells of a person who records the column on another visit
+    expected = sum(int((frame[c].isna() & frame.groupby("id")[c].transform("count").gt(0)).sum())
+                   for c in ("income", "sex"))
+    assert carried == expected > 0
+    assert (f"; with rows clustered by `id`, `income` and `sex` were confirmed as one value per "
+            f"`id`, carried from the rows that record them to the `id`'s blank rows ({carried:,} "
+            f"values) and imputed once per `id` where no row records them; each row-level variable "
+            f"was imputed with the `id` means of the others and its own mean over the `id`'s other "
+            f"rows") in record["sentence"]
 
 
 def test_6_clustered_imputation_keeps_the_intraclass_correlation_single_level_erases():
@@ -1136,9 +1156,9 @@ def test_9_the_single_fill_curve_is_gone(contrast_run):
     and never that it follows one fill."""
     note = contrast_run["sub"]["note"]
     m = len(contrast_run["copies"])
-    assert (f"The curve is pooled over the {m} imputations: for the linear all-components model the "
-            f"curve is the exact contrast of the pooled coefficients, with Rubin's total variance and "
-            f"Barnard–Rubin degrees of freedom.") in note
+    assert (f"The curve is pooled over the {m} imputations: the move changes every row's model "
+            f"terms by the same amount, so the curve is the exact contrast of the pooled "
+            f"coefficients, with Rubin's total variance and Barnard–Rubin degrees of freedom.") in note
     assert "not pooled over the multiple imputations" not in note
     assert "filled once" not in note
 
@@ -1581,10 +1601,26 @@ def test_chain_every_relation_the_contracts_declare_fires(chain_run, dxa_run):
         assert record["df_com"] == run["model"]["inference"]["survey"]["df"]
         rows = [r for r in run["model"]["coefficients"] if r.get("df") is not None]
         assert rows and all(r["df"] <= record["df_com"] + 1e-9 for r in rows)
+        # MI repair: under SMC-FCS the design is in the outcome model too, as the sentence says
+        assert ("were in the imputation model: in each covariate model and, beside the analysis "
+                "model's terms, in its outcome model") in record["sentence"]
 
     def clusters_imply_clustered_imputation() -> None:
-        imputations, _ = clustered_imputations(visits_frame(), "clustered")
+        frame = visits_frame()
+        imputations, _ = clustered_imputations(frame, "clustered")
         assert imputations.plan["unit"] == "id" and imputations.plan["unit_level"]
+        for copy in imputations.frames:  # one value per person, the recorded one where recorded
+            assert int(copy.assign(id=frame["id"]).groupby("id")["income"].nunique().max()) == 1
+
+    def clusters_ask_time_invariance() -> None:
+        from turbotab.core.methods.missing import time_invariant_columns
+
+        frame = visits_frame()
+        st = ProjectState(target="y", purpose="inference",
+                          roles={"x": "exposure", "income": "covariate", "sex": "covariate"})
+        once, ask = time_invariant_columns(st, frame, pd.factorize(frame["id"])[0],
+                                           ["x", "income", "sex"])
+        assert once == [] and [r.column for r in ask] == ["income", "sex"]  # x differs: row by row
 
     def items_before_the_score() -> None:
         from turbotab.core.decisions import ScaleSpec
@@ -1655,6 +1691,7 @@ def test_chain_every_relation_the_contracts_declare_fires(chain_run, dxa_run):
         "mi.form_change_invalidates_imputations": form_change_invalidates_imputations,
         "mi.survey_implies_design_variables_and_df": survey_implies_design_variables_and_df,
         "mi.clusters_imply_clustered_imputation": clusters_imply_clustered_imputation,
+        "mi.clusters_ask_time_invariance": clusters_ask_time_invariance,
         "mi.items_before_the_score": items_before_the_score,
         "mi.passive_conflicts_with_nonlinear_term": passive_conflicts_with_nonlinear_term,
         "mi.single_level_conflicts_with_clusters": single_level_conflicts_with_clusters,
@@ -1682,7 +1719,8 @@ def test_chain_the_methods_sentence_is_written_as_the_record_says(chain_run):
         f"`carb_g`) and the rest of energy were imputed and total energy (`kcal`) derived as their "
         f"sum, so the rest is never negative; the knots of `fiber_g_adj` ({knots}) were placed once "
         f"on its observed values and held in every copy; the survey strata (`SDMVSTRA`), PSU "
-        f"(`SDMVPSU`) and weight (`WTMEC2YR`) were in the imputation model; the estimates were "
+        f"(`SDMVPSU`) and weight (`WTMEC2YR`) were in the imputation model: in each covariate model "
+        f"and, beside the analysis model's terms, in its outcome model; the estimates were "
         f"pooled by Rubin's rules, multi-parameter tests by D1 (Li, Raghunathan & Rubin 1991), on "
         f"the design's 8 degrees of freedom; the largest Monte Carlo error, for "
         f"`{record['mc_feature']}`, was {100 * record['mc_max_ratio']:.1f}% of its standard error.")

@@ -369,17 +369,28 @@ def effects_stage(ctx: StageContext) -> Bundle:
     # MS2 (wave 1b): the declared models' imputation model is the fit's: it holds the survey design
     # under the population answer and the clustering by unit, and leaves parts of totals to their
     # own models in the energy identity, so the sequence's primary is the fit's primary.
+    # MI repair: under multiple imputation the crude model, Model 1 and the primary are fit in the
+    # copies the fit's own imputation draws (the primary's inputs, its seed), so the primary is the
+    # fit's primary copy for copy; Model 3, which adds the possible mediators, is fit in copies of
+    # its own whose imputation model holds them.
     from turbotab.core.readings import nesting
 
-    nested = nesting(state, dict((design.objects or {}).get("nested") or {}),
-                     columns=largest.inputs)
-    missing = _missing_for_table(ctx, largest, frame[list(largest.inputs)], y, task,
-                                 [f.key for f in families], loss={"n_dropped": None},
-                                 survey=survey, clusters=clusters, nested=nested)
+    imputing = strategy == "multiple_imputation"
+    main = spec if imputing else largest
+    found_nested = dict((design.objects or {}).get("nested") or {})
+    keys = [f.key for f in families]
+    missing = _missing_for_table(ctx, main, frame[list(main.inputs)], y, task, keys,
+                                 loss={"n_dropped": None}, survey=survey, clusters=clusters,
+                                 nested=nesting(state, found_nested, columns=main.inputs))
+    missing3 = (_missing_for_table(ctx, spec3, frame[list(spec3.inputs)], y, task, keys,
+                                   loss={"n_dropped": None}, survey=survey, clusters=clusters,
+                                   nested=nesting(state, found_nested, columns=spec3.inputs))
+                if imputing and spec3 is not None else None)
     facts = est.measure_facts(str(spec_e.measure))
     run = _Run(ctx=ctx, state=state, spec_e=spec_e, key=key, exposures=exposures, task=task,
                frame=frame, y=y, spec=spec, spec3=spec3, pipelines=pipelines, outcome=outcome,
                levels=levels, clusters=clusters, survey=survey, missing=missing,
+               missing3=missing3 if missing3 is not None else missing,
                model_one=model_one, further=further, unit_columns=list(unit_columns))
     out = []
     for i, family in enumerate(families):
@@ -407,16 +418,21 @@ class _Run:
         self.__dict__.update(kw)
 
     # the copies the models are fit in: the completed copies under multiple imputation
-    def copies(self) -> list[pd.DataFrame]:
-        imputations = getattr(self.missing, "imputations", None) if self.missing else None
+    def copies(self, missing: Any = None) -> list[pd.DataFrame]:
+        missing = self.missing if missing is None else missing
+        imputations = getattr(missing, "imputations", None) if missing else None
         if imputations is not None:
             return list(imputations.frames)
         return [self.frame]
 
-    def family_block(self, family: Any, build_pipeline: Any) -> dict[str, Any]:
-        from sklearn.base import clone
+    def missing_of(self, name: str) -> Any:
+        """The missing-values answer as the named model applies it: Model 3's own copies, else
+        the primary's."""
+        return self.missing3 if name == "model_3" else self.missing
 
+    def family_block(self, family: Any, build_pipeline: Any) -> dict[str, Any]:
         from turbotab.core import estimand as est
+        from turbotab.core.methods.missing import copy_pipeline
         from turbotab.core.models.effects import split_rows
         from turbotab.core.models.inner_cv import fit_pipeline
         from turbotab.core.models.linear import model_matrix
@@ -452,13 +468,18 @@ class _Run:
         features: list[str] = []
         first: dict[str, Any] = {}
         supported = family.key in SEQUENCE_FAMILIES
+        imputed = getattr(self.missing, "imputations", None) if self.missing else None
         for k, X_k in enumerate(self.copies()):
             if self.ctx.cancelled():
                 from turbotab.core.jobs import Cancelled
 
                 raise Cancelled()
             X = X_k[list(self.spec.inputs)]
-            fitted = fit_pipeline(with_units(clone(pipeline), units), X, self.y)
+            # Under multiple imputation each copy is fit as the fit stage fits it (MI repair):
+            # the knots placed once on the observed values, and an impute step that refuses a
+            # blank made inside the copy instead of median-filling it (``copy_pipeline``).
+            fitted = fit_pipeline(with_units(copy_pipeline(pipeline, imputed), units), X,
+                                  self.y)
             if self.levels is not None:
                 fitted[-1].level_names_ = list(self.levels)
             classes = list(getattr(fitted[-1], "classes_", [])) or None
@@ -494,20 +515,6 @@ class _Run:
                     lambda _c=cols: self._with_relative(
                         family, fitted, M[_c], matrix_table(family, M[_c], self.y, **kw), kw),
                     name, failures))
-            if pipeline3 is not None:
-                X3 = X_k[list(self.spec3.inputs)]
-                fitted3 = fit_pipeline(with_units(clone(pipeline3), units), X3, self.y)
-                if self.levels is not None:
-                    fitted3[-1].level_names_ = list(self.levels)
-                M3 = model_matrix(fitted3, X3)
-                feats3 = [c for c in M3.columns
-                          if c in {f for e in self.exposures
-                                   for f in est.primary_features(M3.columns, e, predictors)}]
-                kw3 = {**kw, "features": feats3}
-                per_copy.setdefault("model_3", []).append(self._table(
-                    lambda: self._with_relative(family, fitted3, M3,
-                                                matrix_table(family, M3, self.y, **kw3), kw3),
-                    "model_3", failures))
             if k == 0:
                 features = feats
                 first = {"fitted": fitted, "matrix": M, "sources": sources, "classes": classes}
@@ -518,6 +525,8 @@ class _Run:
                     adjusted_for["model_3"] = [*adjusted_for["model_2"],
                                                *[c for c in self.further
                                                  if c not in adjusted_for["model_2"]]]
+        if pipeline3 is not None and supported and first:
+            self._model_3(family, pipeline3, units, predictors, design, per_copy, failures)
         if not supported:
             concerns.append(f"{family.label} models the unit itself, so only the primary model is "
                             f"refit here: the unadjusted model and Model 1 are refit for least "
@@ -534,8 +543,8 @@ class _Run:
                     note=self._note(name), n_rows=len(self.frame), effects=None,
                     concerns=[f"It could not be fit: {failures.get(name, 'no table')}"]))
                 continue
-            if self.missing is not None:
-                self.missing.record(table)
+            if self.missing_of(name) is not None:
+                self.missing_of(name).record(table)
             if family.key == "featurewise" and not table.info.get("refused"):
                 # The family's one multiplicity method, as the fit's table carries it (MS7): with
                 # unadjusted p-values recorded, no q column; every member is shown either way.
@@ -588,6 +597,43 @@ class _Run:
             from turbotab.core.jobs import Cancelled
 
             raise Cancelled()
+
+    def _model_3(self, family: Any, pipeline3: Any, units: Any, predictors: Sequence[str],
+                 design: Any, per_copy: dict[str, list[Any]], failures: dict[str, str]) -> None:
+        """Model 3 (the primary further adjusted for the possible mediators) in each of its own
+        copies: under multiple imputation those whose imputation model holds the mediators
+        (``missing3``), each fit as the fit stage fits a copy (``copy_pipeline``); a held answer
+        (its imputation refused or asked) is the model's reason, the others stand."""
+        from turbotab.core import estimand as est
+        from turbotab.core.methods.missing import copy_pipeline
+        from turbotab.core.models.inner_cv import fit_pipeline
+        from turbotab.core.models.linear import model_matrix
+        from turbotab.core.stages.modeling import with_units
+
+        missing3 = self.missing_of("model_3")
+        if missing3 is not None and missing3.refusal:
+            per_copy["model_3"] = [None]
+            failures["model_3"] = missing3.refusal
+            return
+        imputed = getattr(missing3, "imputations", None) if missing3 else None
+        for X_k in self.copies(missing3):
+            self._unless_cancelled()
+            X3 = X_k[list(self.spec3.inputs)]
+            fitted3 = fit_pipeline(with_units(copy_pipeline(pipeline3, imputed), units), X3,
+                                   self.y)
+            if self.levels is not None:
+                fitted3[-1].level_names_ = list(self.levels)
+            M3 = model_matrix(fitted3, X3)
+            feats3 = [c for c in M3.columns
+                      if c in {f for e in self.exposures
+                               for f in est.primary_features(M3.columns, e, predictors)}]
+            kw3 = dict(task=self.task, classes=list(getattr(fitted3[-1], "classes_", [])) or None,
+                       clusters=self.clusters, outcome=self.outcome, survey=design,
+                       levels=self.levels, event=self.state.event, features=feats3)
+            per_copy.setdefault("model_3", []).append(self._table(
+                lambda: self._with_relative(family, fitted3, M3,
+                                            matrix_table(family, M3, self.y, **kw3), kw3),
+                "model_3", failures))
 
     def _table(self, fn: Any, name: str, failures: dict[str, str]) -> Any:
         """``fn()``, the table of one declared model in one copy; a model that cannot be fit is
@@ -657,7 +703,7 @@ class _Run:
         from turbotab.core.methods.imputation import pool_rows
         from turbotab.core.methods.missing import mi_concerns, multiple_imputation_info
 
-        imputations = self.missing.imputations
+        imputations = self.missing_of(name).imputations
         pooled = pool_rows([t.rows for t in tables])
         info = dict(tables[0].info)
         info["caption"] = (f"Multiple imputation, m = {len(tables)}: each completed copy analyzed "
@@ -667,8 +713,9 @@ class _Run:
         # largest Monte Carlo error among the pooled rows, as the fit's record does.
         from turbotab.core.stages.modeling import _design_df
 
-        info["missing"] = multiple_imputation_info(imputations, self.spec3 or self.spec, len(self.y),
-                                                   rows=pooled, df_com=_design_df(tables[0]))
+        spec = self.spec3 if name == "model_3" and self.spec3 is not None else self.spec
+        info["missing"] = multiple_imputation_info(imputations, spec, len(self.y), rows=pooled,
+                                                   df_com=_design_df(tables[0]))
         concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(self.y))
         return InferenceTable(pooled, info, concerns)
 

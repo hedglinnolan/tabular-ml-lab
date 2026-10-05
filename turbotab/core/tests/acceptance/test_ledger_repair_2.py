@@ -1388,6 +1388,26 @@ def _expected_text_amounts(value: str) -> Any:
 FACTORS = {"g": 9.0 / 9.0 * ATWATER["protein"], "kg": 1000 * ATWATER["protein"], "kcal": 1.0,
            "kj": round(1 / KJ_PER_KCAL, 9)}
 
+# MI repair (MODELING_SEQUENCE §0 ruling 12): the clustered imputation carries a column to a unit's
+# blank rows and imputes it once per unit only where the user confirmed it as one value per unit;
+# the other answer imputes it row by row, and while unanswered the fit asks. `edu` is recorded at
+# baseline only, so its values agree within every person whatever the truth.
+VISITS = pd.DataFrame({"pid": [1, 1, 1, 2, 2, 3, 3, 3],
+                       "edu": [12.0, np.nan, np.nan, 16.0, np.nan, np.nan, np.nan, np.nan],
+                       "x": [1.0, 2.0, np.nan, 0.5, 0.7, 1.1, np.nan, 0.9]})
+
+
+def _probe_time_invariance(value: str) -> Any:
+    """The clustered imputation's columns (``missing.time_invariant_columns``): (imputed once per
+    unit, still asked), with `edu`'s time-invariance confirmed as ``value``."""
+    from turbotab.core.methods.missing import time_invariant_columns
+
+    state = _confirm(d.SetTarget(column="y"),
+                     d.SetRoles(roles={"edu": "covariate", "x": "exposure"}),
+                     kind="time_invariant", column="edu", value=value)
+    once, ask = time_invariant_columns(state, VISITS, VISITS["pid"].to_numpy(), ["edu", "x"])
+    return once, [r.column for r in ask]
+
 # (consumer, kind) -> (probe, oracle: value -> the behavior that value must produce)
 PROBES: dict[tuple[str, str], tuple[Callable[[str], Any], Callable[[str], Any]]] = {
     ("turbotab.core.models.pipeline:model_predictors", "role"):
@@ -1460,6 +1480,10 @@ PROBES: dict[tuple[str, str], tuple[Callable[[str], Any], Callable[[str], Any]]]
          lambda v: None if v in FACTORS else "reading_unsettled"),
     ("turbotab.core.stages.modeling:substitution_stage", "unit:factor"):
         (_probe_substitution_stage_unit, _expected_stage_unit),
+    # MI repair: the clustered imputation reads `edu`'s time-invariance as confirmed (and `x`,
+    # whose records differ within a person, is imputed row by row, never asked).
+    ("turbotab.core.methods.missing:time_invariant_columns", "time_invariant"):
+        (_probe_time_invariance, lambda v: (["edu"], []) if v == "yes" else ([], [])),
     # MS1: the imputation's energy identity reads the same settled factors, and only those.
     ("turbotab.core.stages.modeling:_settled_factors", "unit:factor"):
         (_probe_imputation_factors, _expected_stage_unit),
