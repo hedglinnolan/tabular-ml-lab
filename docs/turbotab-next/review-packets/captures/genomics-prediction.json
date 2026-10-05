@@ -1,0 +1,962 @@
+{
+ "journey": {
+  "name": "genomics-prediction",
+  "lens": "genomics",
+  "purpose": "prediction",
+  "question": "How well does an expression count matrix predict case status?",
+  "fixture": "turbotab/sample_data/genomics_expression.csv",
+  "why": "MODELING_SEQUENCE §6 chain 5: p ≫ n raw counts in three batches (60 samples, 495 genes).",
+  "lenses": [
+   "genomics"
+  ],
+  "target": "condition",
+  "exposure": null
+ },
+ "captured": {
+  "commit": "4e5e82ba4c",
+  "date": "2026-10-05",
+  "seconds": 820,
+  "workers": 2
+ },
+ "answers": [
+  {
+   "kind": "set_lens",
+   "status": 200,
+   "summary": "{\"lenses\": [\"genomics\"]}",
+   "source": "the journey",
+   "seq": 1,
+   "sentence": "The table was read through the `genomics` lens."
+  },
+  {
+   "kind": "set_orientation",
+   "status": 200,
+   "summary": "{\"orientation\": \"sample_major\"}",
+   "source": "the fixture's layout",
+   "seq": 2,
+   "sentence": "The table was confirmed as one row per sample, as supplied, and was not transposed."
+  },
+  {
+   "kind": "apply_repair",
+   "status": 200,
+   "summary": "{\"finding_id\": \"omics_scale\", \"option\": \"log_cpm_tmm\"}",
+   "source": "the finding's first repair option",
+   "seq": 3,
+   "sentence": "Of the 486 count columns, those of them the models take as exposures were transformed to log2 counts per million (edgeR cpm, prior count 2) on library sizes scaled by TMM factors (Robinson and Oshlack 2010), fit within each training fold."
+  },
+  {
+   "kind": "set_target",
+   "status": 200,
+   "summary": "{\"column\": \"condition\"}",
+   "source": "the journey",
+   "seq": 4,
+   "sentence": "`condition` was chosen as the outcome; it is measured on all `60` rows."
+  },
+  {
+   "kind": "set_event",
+   "status": 200,
+   "summary": "{\"column\": \"condition\", \"level\": \"case\"}",
+   "source": "the journey",
+   "seq": 5,
+   "sentence": "`case` of `condition` was taken as the event and coded 1; `control` was coded 0."
+  },
+  {
+   "kind": "set_purpose",
+   "status": 200,
+   "summary": "{\"purpose\": \"prediction\"}",
+   "source": "the journey",
+   "seq": 6,
+   "sentence": "The analysis was declared for `prediction`: models are judged on rows they never saw."
+  },
+  {
+   "kind": "set_grain",
+   "status": 200,
+   "summary": "{\"grain\": \"one_row_per_unit\"}",
+   "source": "the fixture's layout",
+   "seq": 7,
+   "sentence": "Each row was declared a different participant: no one appears in more than one row."
+  },
+  {
+   "kind": "set_roles",
+   "status": 200,
+   "summary": "identifier: sample_id; excluded: batch; covariate: sex, age; exposure: gene_0001, gene_0002, gene_0003, gene_0004, gene_0005, gene_0006 and 489 more",
+   "source": "the app's proposed roles, confirmed",
+   "seq": 8,
+   "sentence": "Column roles were set for `499` columns: exposures `gene_0001`, `gene_0002`, `gene_0003` and 492 more; covariates `sex` and `age`; identifier `sample_id`; excluded `batch`; `batch`, `gene_0001` and 494 more were proposed below high confidence and wait for their own confirmation before any default reads them."
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "496 readings (role 496): role:batch=excluded, role:gene_0001=exposure, role:gene_0002=exposure, role:gene_0003=exposure and 492 more",
+   "source": "a reading the server asked about, answered from the fixture's truth",
+   "seq": 9,
+   "sentence": "Confirmed together, each as the question showed it: `batch` was confirmed as excluded; `495` columns (from `gene_0001`) were confirmed as an exposure."
+  },
+  {
+   "kind": "set_exclusions",
+   "status": 200,
+   "summary": "{\"rules\": []}",
+   "source": "the app's first-ranked option",
+   "seq": 10,
+   "sentence": "No rows were excluded: every row with `condition` measured stays in the analysis."
+  },
+  {
+   "kind": "set_missing",
+   "status": 200,
+   "summary": "{\"strategy\": \"impute\"}",
+   "source": "the app's first-ranked option",
+   "seq": 11,
+   "sentence": "Missing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor."
+  },
+  {
+   "kind": "set_split",
+   "status": 200,
+   "summary": "{\"holdout\": 0.0, \"seed\": 0, \"folds\": 5, \"validation\": \"bootstrap\"}",
+   "source": "the app's first-ranked option (the seal plan)",
+   "seq": 12,
+   "sentence": "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`, stratified by `condition`); the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)."
+  },
+  {
+   "kind": "set_batch",
+   "status": 200,
+   "summary": "{\"column\": \"batch\", \"method\": \"reference_combat\"}",
+   "source": "the batch contract's first-ranked option for the purpose (declared, not asked)",
+   "seq": 13,
+   "sentence": "Batch effects across `batch` are removed by ComBat with a reference batch, the largest batch of each training fold, fitted without the outcome; held-out rows are adjusted by the fold's estimates (Zhang et al. 2018), and a batch absent from the fold by add-on adjustment (Hornung et al. 2017)."
+  },
+  {
+   "kind": "select_models",
+   "status": 409,
+   "summary": "{\"models\": [\"elastic_net\", \"screened_elastic_net\"]}",
+   "source": "the shelf's first-ranked families",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "`age` holds whole numbers, which may be codes for categories (one indicator per level) or amounts (one slope); the fit waits for the answer for each. Tell me about this column: `age`: an amount? (`39` whole-number values from 31 to 79).",
+    "exits": [
+     "`age` is a count or an amount (a slope; a unit's rows averaged)",
+     "`age` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "Change the roles (the roles question)"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "1 reading (code_or_count 1): code_or_count:age=amount",
+   "source": "a reading the server asked about, answered from the fixture's truth",
+   "seq": 14,
+   "sentence": "Confirmed together, each as the question showed it: `age` was confirmed to hold amounts or counts."
+  },
+  {
+   "kind": "select_models",
+   "status": 200,
+   "summary": "{\"models\": [\"elastic_net\", \"screened_elastic_net\"]}",
+   "source": "the shelf's first-ranked families",
+   "seq": 15,
+   "sentence": "Two model families were chosen: elastic net and `screened_elastic_net`; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score. Read from the values, no question asked: `sample_id` is the unit's identifier (Named like an identifier; it names rows or samples: `60` labels, one per row); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `condition` is a binary outcome (Text with two values, `case` and `control` — read as a binary outcome); `sex` is coded F female, M male (the labels spell the sexes (`F` female))."
+  }
+ ],
+ "guessed": [],
+ "notes": [
+  "findings with repairs: omics_scale, binary_text__condition, binary_text__sex"
+ ],
+ "export": {
+  "status": 200,
+  "engine": "2.0.0.dev0",
+  "files": [
+   "README.md",
+   "analysis_plan.json",
+   "checklist/tripod_ai.json",
+   "checklist/tripod_ai.md",
+   "decisions.jsonl",
+   "figures/lineage.svg",
+   "figures/participant_flow.svg",
+   "manifest.json",
+   "methods.json",
+   "methods.md",
+   "methods.txt",
+   "provenance.json",
+   "results/performance.csv",
+   "results/performance.md"
+  ],
+  "methods_md": "# Methods: genomics_expression\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `genomics` lens. Each row was declared a different participant: no one appears in more than one row.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `condition` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\nThe table was confirmed as one row per sample, as supplied, and was not transposed. Of the 486 count columns, those of them the models take as exposures were transformed to log2 counts per million (edgeR cpm, prior count 2) on library sizes scaled by TMM factors (Robinson and Oshlack 2010), fit within each training fold. Batch effects across `batch` are removed by ComBat with a reference batch, the largest batch of each training fold, fitted without the outcome; held-out rows are adjusted by the fold's estimates (Zhang et al. 2018), and a batch absent from the fold by add-on adjustment (Hornung et al. 2017).\n\n## Outcome (TRIPOD+AI 8)\n\n`condition` was chosen as the outcome; it is measured on all `60` rows. `case` of `condition` was taken as the event and coded 1; `control` was coded 0.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `499` columns: exposures `gene_0001`, `gene_0002`, `gene_0003` and 492 more; covariates `sex` and `age`; identifier `sample_id`; excluded `batch`; `batch`, `gene_0001` and 494 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `batch` was confirmed as excluded; `495` columns (from `gene_0001`) were confirmed as an exposure. Confirmed together, each as the question showed it: `age` was confirmed to hold amounts or counts.\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`, stratified by `condition`); the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004). Two model families were chosen: elastic net and `screened_elastic_net`; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score. Read from the values, no question asked: `sample_id` is the unit's identifier (Named like an identifier; it names rows or samples: `60` labels, one per row); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `condition` is a binary outcome (Text with two values, `case` and `control` — read as a binary outcome); `sex` is coded F female, M male (the labels spell the sexes (`F` female)).\n\nWithin each training fold, log-CPM with TMM factors, reference-batch ComBat without the outcome and autoscaling were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.\n\nWithin each training fold, log-CPM with TMM factors, reference-batch ComBat without the outcome, sure independence screening and autoscaling were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `4e5e82ba4c7c`, with local changes). The supplementary provenance record holds the decision log (`15` records), the SHA-256 of the input file `genomics_expression.csv` (SHA-256 `8019dd6e6cf9`), the analysis plan (SHA-256 `c07fe5c6ade8`) and the model matrix (`60` rows by `497` columns; SHA-256 `fb791615d6cb` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "checklist": {
+   "checklist": "TRIPOD+AI",
+   "title": "TRIPOD+AI checklist for the reporting of prediction model studies",
+   "citation": "Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. BMJ 2024;385:e078378. doi:10.1136/bmj-2023-078378",
+   "counts": {
+    "items": 52,
+    "answered": 3,
+    "partly_answered": 12,
+    "unanswered": 37
+   },
+   "items": [
+    {
+     "id": "1",
+     "section": "Title",
+     "topic": "Title",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "2",
+     "section": "Abstract",
+     "topic": "Abstract",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3a",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3b",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3c",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "4",
+     "section": "Introduction",
+     "topic": "Objectives",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "seq": 6
+      }
+     ],
+     "owed": "the study's objectives, and whether it develops or validates a model (or both)"
+    },
+    {
+     "id": "5a",
+     "section": "Methods",
+     "topic": "Data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "5b",
+     "section": "Methods",
+     "topic": "Data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6a",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6b",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 10
+      }
+     ],
+     "owed": "the study's own eligibility criteria before the table was assembled"
+    },
+    {
+     "id": "6c",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "7",
+     "section": "Methods",
+     "topic": "Data preparation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_orientation",
+       "seq": 2
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "apply_repair",
+       "seq": 3
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_batch",
+       "seq": 13
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 9
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 14
+      }
+     ],
+     "owed": "whether the checks were similar across sociodemographic groups"
+    },
+    {
+     "id": "8a",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_target",
+       "seq": 4
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_event",
+       "seq": 5
+      }
+     ],
+     "owed": "how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups"
+    },
+    {
+     "id": "8b",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "8c",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "9a",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_roles",
+       "seq": 8
+      }
+     ],
+     "owed": "why these predictors, and any pre-selection of predictors before model building"
+    },
+    {
+     "id": "9b",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_roles",
+       "seq": 8
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 9
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 14
+      }
+     ],
+     "owed": "how and when each predictor was measured"
+    },
+    {
+     "id": "9c",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "10",
+     "section": "Methods",
+     "topic": "Sample size",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "11",
+     "section": "Methods",
+     "topic": "Missing data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 11
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12a",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "seq": 6
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_split",
+       "seq": 12
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12b",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/lineage.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12c",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_split",
+       "seq": 12
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "select_models",
+       "seq": 15
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      }
+     ],
+     "owed": "the rationale for each model family"
+    },
+    {
+     "id": "12d",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12e",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "file",
+       "file": "results/performance.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the rationale for each measure"
+    },
+    {
+     "id": "12f",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12g",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "13",
+     "section": "Methods",
+     "topic": "Class imbalance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "14",
+     "section": "Methods",
+     "topic": "Fairness",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "15",
+     "section": "Methods",
+     "topic": "Model output",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "16",
+     "section": "Methods",
+     "topic": "Training versus evaluation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "17",
+     "section": "Methods",
+     "topic": "Ethical approval",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18a",
+     "section": "Open science",
+     "topic": "Funding",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18b",
+     "section": "Open science",
+     "topic": "Conflicts of interest",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18c",
+     "section": "Open science",
+     "topic": "Protocol",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18d",
+     "section": "Open science",
+     "topic": "Registration",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18e",
+     "section": "Open science",
+     "topic": "Data sharing",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18f",
+     "section": "Open science",
+     "topic": "Code sharing",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "provenance.json",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "where the bundle, and the TurboTab version it names, can be obtained"
+    },
+    {
+     "id": "19",
+     "section": "Patient and public involvement",
+     "topic": "Patient and public involvement",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "20a",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the number of participants with and without the outcome, and any follow-up time"
+    },
+    {
+     "id": "20b",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "20c",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "21",
+     "section": "Result",
+     "topic": "Model development",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the number of participants (and outcome events) in each analysis: development, tuning and evaluation"
+    },
+    {
+     "id": "22",
+     "section": "Result",
+     "topic": "Model specification",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "23a",
+     "section": "Result",
+     "topic": "Model performance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "results/performance.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "performance in key subgroups, with intervals"
+    },
+    {
+     "id": "23b",
+     "section": "Result",
+     "topic": "Model performance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "24",
+     "section": "Result",
+     "topic": "Model updating",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "25",
+     "section": "Discussion",
+     "topic": "Interpretation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "26",
+     "section": "Discussion",
+     "topic": "Limitations",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27a",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27b",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27c",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    }
+   ],
+   "unanswered": [
+    "1",
+    "2",
+    "3a",
+    "3b",
+    "3c",
+    "5a",
+    "5b",
+    "6a",
+    "6c",
+    "8b",
+    "8c",
+    "9c",
+    "10",
+    "12d",
+    "12f",
+    "12g",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18a",
+    "18b",
+    "18c",
+    "18d",
+    "18e",
+    "19",
+    "20b",
+    "20c",
+    "22",
+    "23b",
+    "24",
+    "25",
+    "26",
+    "27a",
+    "27b",
+    "27c"
+   ]
+  }
+ }
+}

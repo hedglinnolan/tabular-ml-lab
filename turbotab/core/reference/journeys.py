@@ -453,6 +453,7 @@ def post_answer(run: Run, body: dict[str, Any], depth: int = 0) -> None:
             return
     run.note(f"{body.get('kind')} refused ({error.get('code')}), and each way forward was "
              f"refused in turn; following the first one's own")
+    run.source = f"the refusal's way forward “{exits[0]['label']}”"
     post_answer(run, exits[0]["decision"], depth + 1)
 
 
