@@ -104,7 +104,16 @@ def test_set_substitution_refusals():
     r = refused({"kind": "set_substitution", "donor": "fat_g", "recipient": "sodium_mg"})
     assert r.code == "not_energy_bearing" and r.exits[0]["decision"]["donor"] == "fat_g"
     assert refused({"kind": "set_substitution", "donor": "fat_g", "recipient": "age"}).code == "not_energy_bearing"
-    validate({"kind": "set_substitution", "donor": "fat_g", "recipient": "carb_g"}, ctx())
+    # BLUEPRINT §14.3 (amendment after the fifth gate): a name's ``_g`` never sets the kcal per
+    # unit; with no values to read, the units are asked, and once recorded the swap stands.
+    r = refused({"kind": "set_substitution", "donor": "fat_g", "recipient": "carb_g"})
+    assert r.code == "reading_unsettled"
+    from turbotab.core.decisions import ColumnUnitSpec
+
+    grams = ctx()["state"].model_copy(update={"column_units": {
+        c: ColumnUnitSpec(unit="g", days=None) for c in ("fat_g", "carb_g")}})
+    validate({"kind": "set_substitution", "donor": "fat_g", "recipient": "carb_g"},
+             ctx(state=grams))
 
 
 def test_set_split_is_never_refused_for_small_n():

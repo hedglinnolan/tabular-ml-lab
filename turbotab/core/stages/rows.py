@@ -470,8 +470,12 @@ def propose_roles(
             put("covariate", "low", f"Named like a flag, but {flag.why}, kept as a predictor.")
         elif is_flag:
             if flag is not None and flag.verdict == "flag" and base:
-                put("flag", "high", f"Marks `{base}`'s missing values: {flag.why}.",
-                    linked_to=base)
+                # BLUEPRINT §14.3 (amendment after the fifth gate): a survey's skip-pattern gate
+                # marks its follow-up's blanks exactly as a flag does (NHANES ALQ111 "No" skips
+                # ALQ130), and it is a characteristic the model needs; the user says which.
+                put("flag", "medium", f"Marks `{base}`'s missing values: {flag.why}. A survey's "
+                                      f"skip-pattern gate marks them the same way and stays in the "
+                                      f"model: say which it is.", linked_to=base)
             elif flag is not None and base:
                 put("flag", "medium", f"Named like a flag on `{base}`, but {flag.why}.",
                     linked_to=base)
@@ -622,8 +626,11 @@ def propose_roles(
                 f"(r = {r:.2f}).")
         elif dtype == "datetime":
             if timed and time_share is not None and time_share >= TIME_VARIES:
-                put("time", "high", f"Holds dates that change within each {unit_word}: when each "
-                                    f"row was recorded.")
+                # BLUEPRINT §14.3 (amendment after the fifth gate): an assay's run or batch date
+                # changes within units exactly as a visit date does; the user says which.
+                put("time", "medium", f"Holds dates that change within each {unit_word}: when each "
+                                      f"row was recorded, or a run or batch date (an assay's), "
+                                      f"which changes the same way; say which.")
             elif timed and time_share is not None and time_share <= TIME_CONSTANT:
                 # BLUEPRINT §14: a date constant within units (a birth or randomization date) is
                 # never the evidence of when a unit's rows were measured.

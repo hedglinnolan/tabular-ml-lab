@@ -320,6 +320,10 @@ def drive_unsettled(drive: Any, plan: dict[str, dict[str, Any]], *, roles: dict[
     for key in ORDER:
         if key == stop_before:
             return proposals
+        if key in ("event", "task") and drive.view()["state"].get("target"):
+            # The outcome's questions read the target's stage (the Router can show them open a
+            # moment before it is queued): wait for it, as a client does.
+            drive.artifact("target_info", timeout=300)
         step = drive.reach(key, timeout=300)
         if step["status"] not in ("open", "waiting"):
             continue
@@ -936,27 +940,6 @@ ALTERNATIVE_FIXTURES: dict[str, dict[str, tuple[Any, Any]]] = {
             (lambda: R.names_rows(pd.Series(np.random.default_rng(1).choice(
                 np.arange(2000, 20000), 50, replace=False))), "identifier"),
     },
-    "role:time": {
-        "a measurement in a time unit that changes within units (hours slept, days active)":
-            (lambda: R.dates_order_rows(sleep_diary()["hours"], sleep_diary()["participant_id"]),
-             "time"),
-        "a crossover's treatment, which changes within units":
-            (lambda: R.dates_order_rows(pd.Series(np.tile([0, 1, 1, 0], 50)),
-                                        pd.Series(np.repeat(np.arange(100), 2))), "time"),
-        "a date constant within units (a birth or randomization date)":
-            (lambda: R.dates_order_rows(pd.Series(pd.to_datetime(np.repeat(
-                pd.date_range("1960-01-01", periods=50, freq="7D"), 4))),
-                pd.Series(np.repeat(np.arange(50), 4))), "time"),
-    },
-    "role:flag": {
-        "a yes/no characteristic":
-            (lambda: R.flag_marks_blanks(pd.Series(np.tile([0, 1], 100)), pd.Series(
-                np.where(np.arange(200) % 7 == 0, np.nan, 1.0))), "flag"),
-        "an imputed copy of a measurement":
-            (lambda: R.flag_marks_blanks(pd.Series(np.random.default_rng(2).normal(120, 15, 200)),
-                                         pd.Series(np.where(np.arange(200) % 7 == 0, np.nan, 1.0))),
-             "flag"),
-    },
     "role:exposure": {
         "a lab count named like a nutrient (ALC: lymphocytes)":
             (lambda: R.intake_rises_with_energy("ALC", pd.Series(
@@ -997,6 +980,9 @@ ALTERNATIVE_FIXTURES: dict[str, dict[str, tuple[Any, Any]]] = {
         # 51 FIPS codes, whole: never settled as codes either
         "amounts (one slope; a unit's rows averaged)":
             (lambda: R.amounts_by_values(pd.Series(FIPS * 3)), "code"),
+        # the fifth gate's ICD-9-CM eating-disorder codes (gate5/p1 §8, rng 55001)
+        "codes written with a decimal point (ICD-9-CM 307.1 anorexia nervosa, 307.51 bulimia "
+        "nervosa, 250.02, 401.9)": (lambda: R.amounts_by_values(_gate5_p1()["dsm"]), "amount"),
     },
     "unit:height": {
         "inches": (lambda: R.height_in_band(pd.Series(np.random.default_rng(9).normal(66, 3, 200))),
@@ -1006,9 +992,35 @@ ALTERNATIVE_FIXTURES: dict[str, dict[str, tuple[Any, Any]]] = {
              "cm"),
     },
     "unit:energy": {
-        "kJ, against kcal": (lambda: R.atwater_unit(_energy_frame("kj"), "energy"), "kcal"),
+        "kJ, against kcal": (lambda: R.atwater_unit(_energy_frame("kj"), "energy"), None),
         "macronutrients in another unit than grams":
             (lambda: R.atwater_unit(_energy_frame("kcal", grams=False), "energy"), None),
+        # the fifth gate's 4-day record (gate5/p1 §10, rng 55001): a total beside daily means
+        "a 4-day kcal total beside daily-mean macronutrients (ratio 4.00, next to kJ's 4.184)":
+            (lambda: R.atwater_unit(_gate5_p1()["four_day"], "energy_kcal_total"), None),
+        "an N-day total beside daily-mean macronutrients (a ratio near a whole number N ≥ 2)":
+            (lambda: R.atwater_unit(_gate5_p1()["three_day"], "energy_kcal_total"), None),
+    },
+    "task": {
+        "an ordinal score (a summed scale, a PHQ-9 total 0–27)":
+            (lambda: R.outcome_task_by_values(pd.Series(np.clip(np.random.default_rng(55008)
+                                                                .poisson(6, 600), 0, 27))), None),
+        "codes for unordered classes":
+            (lambda: R.outcome_task_by_values(pd.Series(["A", "B", "C"] * 50)), None),
+        "a count": (lambda: R.outcome_task_by_values(pd.Series(
+            np.random.default_rng(16).poisson(3, 300))), None),
+        "whole numbers written with a decimal point after a blank (0.0–27.0)":
+            (lambda: R.outcome_task_by_values(pd.Series(np.where(
+                np.arange(600) == 0, np.nan,
+                np.clip(np.random.default_rng(55008).poisson(6, 600), 0, 27)))), None),
+    },
+    "unit:factor": {
+        "kilograms (an InBody export's body protein)":
+            (lambda: R.factor_in_grams(_factor_frame(1 / 1000), "energy", "protein_g"), None),
+        "kcal": (lambda: R.factor_in_grams(_factor_frame(4.0), "energy", "protein_g"), None),
+        "kJ": (lambda: R.factor_in_grams(_factor_frame(4 * 4.184), "energy", "protein_g"), None),
+        "percent of energy": (lambda: R.factor_in_grams(_percent_frame(), "energy", "protein_g"),
+                              None),
     },
     "sex_coding": {
         "1 male, 2 female (NHANES, the CDC growth charts)":
@@ -1020,13 +1032,6 @@ ALTERNATIVE_FIXTURES: dict[str, dict[str, tuple[Any, Any]]] = {
 # The reading itself, settled by its own test (the test can settle; it is no constant False).
 POSITIVE_FIXTURES: dict[str, tuple[Any, Any]] = {
     "role:identifier": (lambda: R.names_rows(pd.Series(np.arange(1, 501))), "identifier"),
-    "role:time": (lambda: R.dates_order_rows(
-        pd.Series(pd.to_datetime("2024-01-01") + pd.to_timedelta(np.tile([0, 30, 60, 90], 50), "D")
-                  + pd.to_timedelta(np.repeat(np.arange(50), 4), "D")),
-        pd.Series(np.repeat(np.arange(50), 4))), "time"),
-    "role:flag": (lambda: R.flag_marks_blanks(
-        pd.Series((np.arange(200) % 7 == 0).astype(int)),
-        pd.Series(np.where(np.arange(200) % 7 == 0, np.nan, 1.0))), "flag"),
     "role:excluded": (lambda: R.constant_values(pd.Series([3.0] * 40)), "excluded"),
     "role:energy": (lambda: R.energy_follows_macronutrients(_energy_frame("kcal"), "energy"),
                     "energy"),
@@ -1039,7 +1044,54 @@ POSITIVE_FIXTURES: dict[str, tuple[Any, Any]] = {
         np.random.default_rng(11).normal(168, 9, 200))), "cm"),
     "unit:energy": (lambda: R.atwater_unit(_energy_frame("kcal"), "energy"), "kcal"),
     "sex_coding": (lambda: R.labels_spell_sex(pd.Series(["F", "M"] * 50)), "female=F"),
+    "task": (lambda: R.outcome_task_by_values(pd.Series(
+        np.random.default_rng(17).normal(5.4, 0.6, 300).round(2))), "regression"),
+    "unit:factor": (lambda: R.factor_in_grams(_factor_frame(1.0), "energy", "protein_g"), "g"),
 }
+
+
+def _gate5_p1() -> dict[str, Any]:
+    """gate5/p1_value_tests.py (rng 55001), every draw in its order: the DSM codes (§8) and the
+    4-day and 3-day kcal totals beside daily-mean macronutrients (§10)."""
+    rng = np.random.default_rng(55001)
+    rng.integers(0, 4, 180)  # §2 assay dates
+    flag = rng.choice([0, 1], 400, p=[0.8, 0.2])
+    rng.integers(2, 40, 400)
+    drk = rng.choice([0, 1], 400, p=[0.35, 0.65])
+    rng.gamma(2, 7, 400)
+    rng.normal(78, 16, 500), rng.normal(0, 380, 500)
+    rng.gamma(1.5, 5, 600), rng.gamma(0.8, 8, 600), rng.gamma(1.2, 15, 600), rng.normal(1, 0.03, 600)
+    rng.integers(1, 7, 500)
+    dsm = pd.Series(rng.choice([307.1, 307.51, 307.5, 307.59], 300, p=[0.3, 0.3, 0.3, 0.1]))
+    rng.choice([250.0, 250.02, 401.9, 272.4, 414.01, 428.0], 300)
+    for _ in range(4):
+        rng.normal(0, 1, 300)  # §9 the four height samples
+    k = 400
+    P, C, F = rng.normal(80, 20, k).clip(20), rng.normal(250, 60, k).clip(50), \
+        rng.normal(75, 20, k).clip(15)
+    daily = 4 * P + 4 * C + 9 * F
+    four = pd.DataFrame({"energy_kcal_total": (4 * daily * rng.normal(1, 0.02, k)).round(0),
+                         "protein_g": P.round(1), "carbohydrate_g": C.round(1),
+                         "fat_g": F.round(1)})
+    del flag, drk
+    return {"dsm": dsm, "four_day": four,
+            "three_day": four.assign(energy_kcal_total=(3 * daily).round(0))}
+
+
+def _factor_frame(scale: float) -> pd.DataFrame:
+    """A day's macronutrients in grams with total energy in kcal, `protein_g` written ``scale``
+    times its grams (1/1000: kilograms; 4: kcal; 4 × 4.184: kJ)."""
+    frame = _energy_frame("kcal")
+    return frame.assign(protein_g=(frame["protein_g"] * scale).round(4))
+
+
+def _percent_frame() -> pd.DataFrame:
+    """The macronutrients as percentages of energy (they sum to 100), total energy in kcal."""
+    frame = _energy_frame("kcal")
+    kcal = 4 * frame["protein_g"] + 4 * frame["carbohydrate_g"] + 9 * frame["fat_g"]
+    return frame.assign(protein_g=(400 * frame["protein_g"] / kcal).round(2),
+                        carbohydrate_g=(400 * frame["carbohydrate_g"] / kcal).round(2),
+                        fat_g=(900 * frame["fat_g"] / kcal).round(2))
 
 
 def test_c1_every_value_settled_kind_declares_its_alternatives_and_a_fixture_for_each():
@@ -1095,96 +1147,11 @@ def test_c4_the_gates_six_fixtures_each_go_unsettled():
 # ═════════════════════════════════════════════════════════════════════════════
 
 
-def _confirmed(**slots: Any) -> ProjectState:
-    return ProjectState(target="y", **slots)
-
-
-def _probe_design_spec(value: str) -> bool:
-    from turbotab.core.models.pipeline import design_spec
-
-    X = pd.DataFrame({"smoking": [1.0, 2.0, 3.0, 1.0, 2.0, 3.0]})
-    spec = design_spec(_confirmed(roles={"smoking": "covariate"},
-                                  shape_confirmations={"code_or_count:smoking": value}),
-                       X, ["smoking"])
-    return "smoking" in spec.categorical
-
-
-def _probe_imputation(value: str) -> bool:
-    from turbotab.core.methods.missing import imputation_frame
-    from turbotab.core.models.pipeline import design_spec
-
-    X = pd.DataFrame({"smoking": [1.0, 2.0, 3.0, np.nan, 2.0, 3.0, 1.0, 2.0]})
-    state = _confirmed(roles={"smoking": "covariate"}, missing="multiple_imputation",
-                       shape_confirmations={"code_or_count:smoking": value})
-    spec = design_spec(state, X, ["smoking"])
-    return imputation_frame(spec, X, pd.Series(np.arange(8.0)), "regression")[2]["smoking"] == "categorical"
-
-
-def _probe_models_validator(value: str) -> bool:
-    state = _confirmed(roles={"smoking": "covariate"},
-                       shape_confirmations=({"code_or_count:smoking": value} if value else {}))
-    ctx = {"state": state, "column_info": {"smoking": {"dtype": "integer", "n_unique": 3}},
-           "columns": ["smoking", "y"], "target": "y", "task": "regression"}
-    try:
-        d.validate({"kind": "select_models", "models": ["linear"]}, ctx)
-    except d.Refusal as refused:
-        return refused.code == "reading_unsettled"
-    return False
-
-
-def _probe_model_predictors(value: str) -> bool:
-    from turbotab.core.models.pipeline import model_predictors
-
-    state = _confirmed(roles={"hours": value, "age": "covariate"}, roles_unconfirmed=["hours"],
-                       role_confirmations={"hours": value})
-    return "hours" in model_predictors(state)
-
-
-def _clusters_frame() -> pd.DataFrame:
-    """Households of 3 (40 of them) inside 12 sites of 10 rows: two groupings, each repeating."""
-    return pd.DataFrame({"hhid": np.repeat(np.arange(40), 3),
-                         "person_no": np.repeat(np.arange(12), 10)}, index=np.arange(120))
-
-
-def _probe_resolve_clusters(value: str) -> Any:
-    from turbotab.core.models.inference import resolve_clusters
-
-    state = _confirmed(grain=GrainSpec(grain="one_row_per_unit"),
-                       roles={"hhid": "identifier", "person_no": "identifier"},
-                       reading_confirmations={f"cluster:{c}": ("yes" if c == value else "no")
-                                              for c in ("hhid", "person_no")})
-    found = resolve_clusters(state, _clusters_frame())
-    return found.column, found.n_clusters
-
-
-def _probe_split_inputs(value: str) -> Any:
-    from turbotab.core.stages.rows import split_inputs
-
-    class Store:
-        def materialize(self, columns: Any, ids: Any) -> pd.DataFrame:
-            return _clusters_frame().loc[ids, list(columns)]
-
-    state = _confirmed(grain=GrainSpec(grain="one_row_per_unit"),
-                       roles={"hhid": "identifier", "person_no": "identifier"},
-                       reading_confirmations={f"cluster:{c}": ("yes" if c == value else "no")
-                                              for c in ("hhid", "person_no")})
-    return split_inputs(state, np.arange(120), Store(), "regression")["grouped_by"]
-
-
-def _probe_seal_inputs(value: str) -> Any:
-    from turbotab.core.seal import seal_inputs
-
-    class Store:
-        columns = ["hhid", "person_no"]
-
-        def materialize(self, columns: Any, ids: Any) -> pd.DataFrame:
-            return _clusters_frame().loc[ids, list(columns)]
-
-    state = _confirmed(grain=GrainSpec(grain="repeated"),
-                       roles={"hhid": "identifier", "person_no": "identifier"},
-                       reading_confirmations={f"cluster:{c}": ("yes" if c == value else "no")
-                                              for c in ("hhid", "person_no")})
-    return seal_inputs(state, np.arange(120), Store(), "regression", holdout=0.2, seed=0).grouped_by
+# The confirmable kinds (``readings.CONFIRMABLE``: roles, clusters, units, day counts, codes or
+# amounts, the time column, nesting, sex codings) are probed exhaustively, through the decision fold,
+# in ``test_ledger_repair_2.py`` section D (BLUEPRINT §14.3, amendment after the fifth gate: the
+# probes here set the slot the consumer read, so a confirmation the fold kept elsewhere passed).
+# What stays here is the one registry kind answered by its own decision, the outcome's unit.
 
 
 def _probe_outcome_unit(value: str) -> Any:
@@ -1200,107 +1167,25 @@ def _probe_voice_unit(value: str) -> str:
     return voice.sentence_for(d.SetTarget(column="ALT (IU)"), state, {})
 
 
-def _probe_coach_suffix(value: str) -> str:
-    from turbotab.core.coach import _unit_suffix
-
-    state = ProjectState(column_units={"energy": ColumnUnitSpec(unit=value)} if value else None)
-    return _unit_suffix("energy", state)
-
-
-def _probe_sex_codes(value: str) -> Any:
-    from turbotab.core.detectors.plausibility import sex_codes
-
-    coded_ = sex_codes(pd.DataFrame({"sex": [1, 2, 2]}), {"sex": value} if value else None)
-    return None if coded_ is None else tuple(coded_.tolist())
-
-
-def _probe_sex_column(value: str) -> Any:
-    from turbotab.core.stages.proposals import sex_column
-
-    frame = pd.DataFrame({"sex": [1, 2, 1, 2]})
-    state = ProjectState(sex_codings={"sex": value} if value else None)
-    return sex_column({"sex": {"dtype": "integer"}}, frame, {}, state=state)
-
-
-def _probe_goldberg(value: str) -> Any:
-    from turbotab.core.stages.proposals import goldberg_proposal
-
-    frame, _ = pounds()
-    frame = frame.rename(columns={"age_years": "age", "height_cm": "height"})
-    state = ProjectState(target="sbp", reading_confirmations={"unit:weight": value})
-    info = {c: {"dtype": "numeric"} for c in frame.columns}
-    offer = goldberg_proposal(frame, info, energy="energy_kcal", unit="kcal", sex="sex",
-                              sex_levels={"F": "female", "M": "male"}, roles={}, target="sbp",
-                              base=pd.Series(True, index=frame.index), state=state)
-    return offer["rule"]["weight_unit"], offer["affected"]
-
-
-def _probe_energy_days(value: str) -> Any:
-    from turbotab.core.stages.proposals import energy_unit_reading
-
-    frame = pd.DataFrame({"energy_kcal": np.random.default_rng(12).normal(2100, 400, 200)})
-    recorded = ColumnUnitSpec(unit="kcal", days=int(value)) if value else None
-    reading = energy_unit_reading(frame, "energy_kcal", recorded)
-    return reading["days"], reading["confirmed"]
-
-
-def _probe_time_column(value: str) -> Any:
-    state = _confirmed(shape_confirmations={"time_column:visit": value} if value else None)
-    r = R.time_column_reading(state, {"repeats": {"replicate_index": "visit"}})
-    return r.settled
-
-
 # (consumer, kind) -> (probe, {alternative or None for unanswered: the behavior it must produce})
 PROBES: dict[tuple[str, str], tuple[Any, dict[Any, Any]]] = {
-    ("turbotab.core.models.pipeline:design_spec", "code_or_count"):
-        (_probe_design_spec, {"code": True, "amount": False}),
-    ("turbotab.core.methods.missing:imputation_frame", "code_or_count"):
-        (_probe_imputation, {"code": True, "amount": False}),
-    ("turbotab.core.decisions:_models_read_settled_readings", "code_or_count"):
-        (_probe_models_validator, {"": True, "code": False, "amount": False}),
-    ("turbotab.core.models.pipeline:model_predictors", "role"):
-        (_probe_model_predictors, {"time": False, "exposure": True, "excluded": False,
-                                   "covariate": True}),
-    ("turbotab.core.models.inference:resolve_clusters", "cluster"):
-        (_probe_resolve_clusters, {"hhid": ("hhid", 40), "person_no": ("person_no", 12),
-                                   "neither": (None, 0)}),
-    ("turbotab.core.seal:seal_inputs", "cluster"):
-        (_probe_seal_inputs, {"hhid": "hhid", "person_no": "person_no", "neither": None}),
-    ("turbotab.core.stages.rows:split_inputs", "cluster"):
-        (_probe_split_inputs, {"hhid": "hhid", "person_no": "person_no", "neither": None}),
     ("turbotab.core.units:outcome_unit", "outcome_unit"):
         (_probe_outcome_unit, {"": (None, None), "1000 cells/uL": ("1000 cells/uL", "decision")}),
     ("turbotab.core.voice:_outcome_unit", "outcome_unit"):
         (_probe_voice_unit, {"": "`ALT (IU)` was chosen as the outcome.",
                              "U/L": "`ALT (IU)` was chosen as the outcome, in U/L."}),
-    ("turbotab.core.coach:_unit_suffix", "unit:energy"):
-        (_probe_coach_suffix, {"": "", "kcal": " kcal", "kj": " kJ"}),
-    ("turbotab.core.detectors.plausibility:sex_codes", "sex_coding"):
-        (_probe_sex_codes, {"": None, "female=2,male=1": (1.0, 2.0, 2.0),
-                            "female=1,male=2": (2.0, 1.0, 1.0)}),
-    ("turbotab.core.stages.proposals:sex_column", "sex_coding"):
-        (_probe_sex_column, {"": (None, {}),
-                             "female=2,male=1": ("sex", {"2": "female", "1": "male"}),
-                             "female=1,male=2": ("sex", {"1": "female", "2": "male"})}),
-    ("turbotab.core.stages.proposals:energy_unit_reading", "day_count"):
-        (_probe_energy_days, {"": (1, False), "1": (1, True), "2": (2, True)}),
-    ("turbotab.core.stages.working:time_column", "time_column"):
-        (_probe_time_column, {"": False, "orders": True}),
 }
 
 
 def test_d1_every_number_changing_consumer_of_a_registry_kind_has_a_probe():
     """The property ranges over :data:`readings.CONSUMERS`: each consumer that can change a number
-    names the registry kinds it reads, and each (consumer, kind) has a probe below that confirms
-    every alternative."""
-    declared = {(c.where, k) for c in R.CONSUMERS if c.changes for k in c.kinds}
-    assert declared, "no consumer declares the kinds it reads"
-    assert declared <= set(PROBES) | GOLDBERG_PROBED, declared - set(PROBES) - GOLDBERG_PROBED
+    names the registry kinds it reads; the kinds answered by their own decision are probed here,
+    the confirmable ones in ``test_ledger_repair_2.py`` (section D)."""
+    declared = {(c.where, k) for c in R.CONSUMERS if c.changes for k in c.kinds
+                if k.split(":", 1)[0] not in R.CONFIRMABLE}
+    assert declared == set(PROBES), declared ^ set(PROBES)
     for _, kind in declared:
-        assert kind in R.KINDS or kind.startswith("role") or kind in R.KIND_RULES, kind
-
-
-GOLDBERG_PROBED = {("turbotab.core.stages.proposals:goldberg_proposal", "unit:weight")}
+        assert kind in R.KINDS or kind in R.KIND_RULES, kind
 
 
 @pytest.mark.parametrize("key", list(PROBES), ids=lambda k: f"{k[0].split(':')[1]}-{k[1]}")
@@ -1312,14 +1197,6 @@ def test_d2_confirming_each_alternative_produces_its_behavior(key):
         assert got == want, (key, value, got, want)
         seen[value] = got
     assert len({json.dumps(v, default=str, sort_keys=True) for v in seen.values()}) > 1, key
-
-
-def test_d3_the_goldberg_offer_honors_the_recorded_weight_unit():
-    """(stages.proposals:goldberg_proposal, unit:weight): kg and lb give different rules and counts, each
-    the screen's own (the lb count reads the weights converted exactly)."""
-    kg_unit, kg_count = _probe_goldberg("kg")
-    lb_unit, lb_count = _probe_goldberg("lb")
-    assert (kg_unit, lb_unit) == ("kg", "lb") and kg_count != lb_count
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1346,10 +1223,12 @@ def test_e1_a_block_confirmation_settles_exactly_the_readings_it_lists():
     assert after.role_confirmations == {"a": "exposure"}
     assert after.shape_confirmations == {"code_or_count:b": "code"}
     assert after.sex_codings == {"sex": "female=2,male=1"}
-    assert after.reading_confirmations == {"unit:weight": "lb"}
+    # A unit is kept with the recorded units (one store, BLUEPRINT §14.3 amendment), its days
+    # unrecorded.
+    assert after.column_units == {"weight": ColumnUnitSpec(unit="lb", days=None)}
     changed = {k for k in ProjectState.model_fields if getattr(before, k) != getattr(after, k)}
     assert changed == {"role_confirmations", "shape_confirmations", "sex_codings",
-                       "reading_confirmations"}
+                       "column_units"}
     assert R.unsettled(after) == ["b", "c"]  # b's role and c were never listed
     undone = d.fold([_record(1, roles), _record(2, block), _record(3, d.Revert(decision_id="r2"))])
     assert undone == before
@@ -1400,6 +1279,8 @@ def test_e3_the_nhanes_reference_journey_asks_few_questions(purpose, tmp_path):
         drive = open_project(client, NHANES, truth)
         url = f"/api/projects/{drive.pid}/decisions"
         for key in ORDER:
+            if key in ("event", "task"):  # the outcome's stage first, as a client
+                drive.artifact("target_info", timeout=600)
             step = drive.reach(key, timeout=600)
             if step["status"] not in ("open", "waiting"):
                 continue

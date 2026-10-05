@@ -79,7 +79,8 @@ def _stage(frame: pd.DataFrame, folder: Path, roles: dict, donor: str, recipient
     st = mf.state(roles=roles, target="y", models=list(models), purpose="inference",
                   substitution=SubstitutionSpec(donor=donor, recipient=recipient,
                                                 scale="percent_energy", step_percent=5.0,
-                                                n_boot=n_boot))
+                                                n_boot=n_boot),
+                  column_units=mf.grams(*[c for c in frame.columns if c.endswith("_g")]))
     d.validate(d.SetSubstitution(donor=donor, recipient=recipient, scale="percent_energy",
                                  step_percent=5.0), {"state": st})
     split = mf.split_bundle(np.arange(len(frame)), holdout=holdout, seed=2)

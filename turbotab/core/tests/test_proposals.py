@@ -172,8 +172,19 @@ def test_the_recall_energy_reading_offers_grams_not_shares(recalls):
 
 
 def test_kilojoules_are_compared_in_kilojoules(tmp_path):
+    from turbotab.core.decisions import ColumnUnitSpec
+    from turbotab.core.tests.truths import fixture_truth
+
     table = Ingested(SAMPLES / "nhanes_kilojoules.csv", tmp_path)
-    artifact = table.run(proposals_stage, ProjectState(lens=["dietary"]))
+    # BLUEPRINT §14.3 (amendment after the fifth gate): the reconstruction's 4.18 fits kJ and a
+    # 4-day kcal total alike, so the unit is asked (both offered) and every screen waits for it.
+    asked = table.run(proposals_stage, ProjectState(lens=["dietary"]))
+    assert ["kj", 1] in asked["energy_unit"]["candidates"]
+    assert all(p["refused"] for p in asked["exclusions"])
+    truth = fixture_truth("nhanes_kilojoules.csv")
+    recorded = {"DR1TKCAL": ColumnUnitSpec(unit=truth.answer("unit", "DR1TKCAL"),
+                                           days=int(truth.answer("day_count", "DR1TKCAL")))}
+    artifact = table.run(proposals_stage, ProjectState(lens=["dietary"], column_units=recorded))
     neutral = next(p for p in artifact["exclusions"] if p["key"] == "sex_neutral_500_5000")
     assert (neutral["rule"]["low"], neutral["rule"]["high"]) == (2092.0, 20920.0)
     assert "kJ" in neutral["label"]

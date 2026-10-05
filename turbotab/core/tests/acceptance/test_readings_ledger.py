@@ -435,7 +435,11 @@ def _drive(drive, *, lens, target, grain, stop_before=None, answers=None,
 
 
 def _refused(drive, body: dict) -> dict:
-    r = drive.post(body)
+    """The refusal ``body`` meets, once the Router asks it (a recorded unit recomputes the findings
+    and the stages behind them; the question waits for them, ``not_yet``, as a client does)."""
+    from turbotab.core.tests.acceptance.server_drive import _post_when_reached
+
+    r = _post_when_reached(drive.c, f"/api/projects/{drive.pid}/decisions", body)
     assert r.status_code == 409, r.text
     return r.json()["error"]
 
@@ -966,7 +970,9 @@ def test_b2_one_confirmation_decision_one_reading_per_record_and_old_records_sta
     assert state.role_confirmations == {"weight": "covariate", "smoker": "covariate"}
     assert state.shape_confirmations == {"code_or_count:smoker": "code",
                                          "time_column:visit_date": "orders"}
-    assert state.reading_confirmations == {"unit:weight": "kg"}
+    # A unit is kept with the recorded units, where ``set_column_unit`` keeps them (one store,
+    # BLUEPRINT §14.3 amendment after the fifth gate), its days unrecorded.
+    assert state.column_units == {"weight": d.ColumnUnitSpec(unit="kg", days=None)}
     assert role_reading(state, "weight").settled and role_reading(state, "smoker").settled
     # Naming ``visit_date`` as the column that orders a unit's records is the user's own answer
     # that it is the time (BLUEPRINT §14.3: the time role is settled by the user, never by values).

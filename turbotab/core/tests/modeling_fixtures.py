@@ -8,7 +8,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from turbotab.core.decisions import EnergyAdjustment, ProjectState, SplitSpec, SubstitutionSpec
+from turbotab.core.decisions import (  # noqa: F401 - ColumnUnitSpec re-exported for tests
+    ColumnUnitSpec, EnergyAdjustment, ProjectState, SplitSpec, SubstitutionSpec,
+)
 from turbotab.core.graph import Bundle, StageContext
 
 NUTRIENTS = ["protein", "sugar", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly"]
@@ -127,6 +129,15 @@ def state(**slots: Any) -> ProjectState:
     }
     base.update(slots)
     return ProjectState(**base)
+
+
+def grams(*columns: str) -> dict[str, Any]:
+    """The recorded units of energy sources a fixture's generator writes in grams: its declared
+    truth, recorded as the user's answer (BLUEPRINT §14.3: a name's ``_g`` never settles the kcal
+    each unit carries; the user's recorded unit, or the Atwater identity, does)."""
+    from turbotab.core.decisions import ColumnUnitSpec
+
+    return {c: ColumnUnitSpec(unit="g", days=None) for c in columns}
 
 
 def energy(method: str = "residual", nutrients: list[str] | None = None, **kw: Any) -> EnergyAdjustment:

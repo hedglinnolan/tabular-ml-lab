@@ -1488,10 +1488,14 @@ def code_or_count_facts(frame: Any, unit: str, exclude: Sequence[str] = ()) -> d
     scope), over ``frame`` with pandas: every whole-valued number that changes within some unit,
     whatever its count of values or its type (codes written 1.0–5.0 after a blank are whole; 0/1 is
     too, a share under the mean and the majority under the mode), with what the values say
-    (``whole``, ``zero_one``, ``n_values``, ``min``, ``max``) for the question's best guess.
-    Fractional values are amounts by their values and are not asked."""
+    (``whole``, ``zero_one``, ``n_values``, ``min``, ``max``) for the question's best guess. Values
+    with decimals are asked too unless they settle "amount" by the one value test
+    (``readings.amounts_by_values``: ICD-9-CM 307.1 and 250.02 are codes written with a decimal
+    point, and averaging them makes no diagnosis)."""
     import numpy as np
     import pandas as pd
+
+    from turbotab.core.readings import amounts_by_values
 
     if unit not in frame.columns:
         return {}
@@ -1508,16 +1512,23 @@ def code_or_count_facts(frame: Any, unit: str, exclude: Sequence[str] = ()) -> d
             continue
         values = present.to_numpy(dtype=float)
         values = values[np.isfinite(values)]
-        if not len(values) or not np.all(values == np.floor(values)):
+        if not len(values):
             continue
         distinct = np.unique(values)
         if len(distinct) < 2:
             continue
+        whole = bool(np.all(values == np.floor(values)))
+        facts: dict[str, Any] = {"whole": whole, "zero_one": bool(set(distinct) <= {0.0, 1.0}),
+                                 "n_values": int(len(distinct)), "min": float(distinct.min()),
+                                 "max": float(distinct.max())}
+        if not whole:
+            verdict = amounts_by_values(pd.Series(values))
+            if verdict.settles:
+                continue
+            facts.update(amount_by_values=False, evidence=verdict.evidence)
         varied = frame.groupby(unit, dropna=True)[c].nunique(dropna=True)
         if len(varied) and int(varied.max()) > 1:
-            out[str(c)] = {"whole": True, "zero_one": bool(set(distinct) <= {0.0, 1.0}),
-                           "n_values": int(len(distinct)), "min": float(distinct.min()),
-                           "max": float(distinct.max())}
+            out[str(c)] = facts
     return out
 
 

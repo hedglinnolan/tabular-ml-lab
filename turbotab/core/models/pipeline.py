@@ -292,6 +292,8 @@ class DesignSpec:
     missing: dict[str, Any] | None = None
     energy_fill: dict[str, Any] | None = None
     censored: dict[str, Any] | None = None
+    # numbers with exactly two values: one indicator either way, filled by their most frequent value
+    two_valued: list[str] = field(default_factory=list)
 
     def multiple_imputation(self) -> bool:
         return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
@@ -336,9 +338,16 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
     # code-or-amount question (``confirm_reading`` / ``confirm_readings``), or a combining rule that
     # took the most frequent value. A later "amount" answer for the column stands over an earlier
     # declaration.
-    from turbotab.core.readings import confirmation
+    from turbotab.core.readings import confirmation, energy_plan
 
-    declared = {c for c in inputs if confirmation(state, "code_or_count", c) == "code"}
+    # Total energy the energy answer "none" leaves out, and the columns an energy method computes
+    # with (amounts by that answer), never reach the one-hot step as codes: the energy step has
+    # removed or replaced them by then (the fifth gate: a "codes" answer for `energy_kcal` under
+    # "none" crashed the design stage). A codes answer for one of them is asked about first
+    # (``readings.predictors_or_ask``), never ignored.
+    left, amounts = energy_plan(state, inputs)
+    declared = {c for c in inputs if confirmation(state, "code_or_count", c) == "code"} \
+        - left - amounts
     # WP17: a grouping's fixed effects are one indicator per group, whatever its values look like.
     from turbotab.core.estimand import fixed_effects_column
 
@@ -347,6 +356,9 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         declared.add(fe)
     categorical = [c for c in inputs if is_categorical(frame[c]) or c in declared]
     numeric = [c for c in inputs if c not in categorical]
+    # A number with exactly two values is one indicator either way (``readings.code_question``);
+    # its single fill is its most frequent value, as a code's is, never a median between the two.
+    two_valued = [c for c in numeric if int(frame[c].dropna().nunique()) == 2]
     present = [c for c in predictors if c in inputs]
     levels = (level_columns(state, present, column_info) if column_info is not None
               else frame_level_columns(state, frame, present))
@@ -385,6 +397,7 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         energy_fill=(energy_fill(adj.model_dump() if adj is not None else None, present, roles,
                                  [c for c in numeric if c not in levels]) if impute else None),
         censored=censored,
+        two_valued=two_valued,
     )
 
 
@@ -416,6 +429,7 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
         if step is not None:
             steps.append(("normalize", step))
     if spec.impute:
+        two = [c for c in getattr(spec, "two_valued", None) or [] if c not in levels]
         numeric = [c for c in spec.numeric if c not in levels]
         categorical = [c for c in spec.categorical if c not in levels]
         parts = []
@@ -425,8 +439,15 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
             from turbotab.core.methods.missing import EnergyAwareImputer
 
             parts.append(("numeric", EnergyAwareImputer(energy=str(fill["energy"]), nutrients=nutrients,
+                                                        two_valued=[c for c in two if c in numeric],
                                                         keep_empty_features=True,
                                                         add_indicator=spec.indicators), numeric))
+        elif numeric and any(c in numeric for c in two):
+            from turbotab.core.methods.missing import MedianFill
+
+            parts.append(("numeric", MedianFill(two_valued=[c for c in two if c in numeric],
+                                                keep_empty_features=True,
+                                                add_indicator=spec.indicators), numeric))
         elif numeric:
             parts.append(("numeric", SimpleImputer(strategy="median", keep_empty_features=True,
                                                    add_indicator=spec.indicators), numeric))
@@ -603,8 +624,11 @@ def impute_detail(spec: DesignSpec, step: Any = None) -> str:
     by_energy = (f"; {', '.join(nutrients[:4])}{' and others' if len(nutrients) > 4 else ''} from "
                  f"{'its' if len(nutrients) == 1 else 'their'} line on {fill.get('energy')}"
                  if energy_aware and nutrients else "")
-    text = (f"Median for numbers{by_energy}, most frequent value for categories, learned within "
-            f"each training fold without the outcome{marked}.")
+    two = list(getattr(spec, "two_valued", None) or [])
+    pairs = (f" and for numbers with two values ({', '.join(two[:3])}"
+             f"{' and others' if len(two) > 3 else ''})" if two else "")
+    text = (f"Median for numbers{by_energy}, most frequent value for categories{pairs}, learned "
+            f"within each training fold without the outcome{marked}.")
     if spec.multiple_imputation():
         m = int((spec.missing or {}).get("m") or 20)
         text += (f" It serves the cross-validated scores; the coefficients are pooled over {m} "

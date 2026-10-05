@@ -634,8 +634,11 @@ def test_a_linear_model_on_kcal_scale_inputs_gives_the_analytic_substitution_del
     roles = {"energy_kcal": "energy", "fat_kcal": "exposure", "carb_kcal": "exposure", "age": "covariate"}
     adj = None if method == "none" else mf.EnergyAdjustment(
         method=method, energy_column="energy_kcal", nutrients=["fat_kcal", "carb_kcal"])
+    # The generator writes both sources in kcal: the fixture's truth, recorded as the user's answer
+    # (BLUEPRINT §14.3: a name's `_kcal` never sets the kcal per unit).
+    kcal = {c: mf.ColumnUnitSpec(unit="kcal", days=None) for c in ("fat_kcal", "carb_kcal")}
     st = mf.state(roles=roles, energy_adjustment=adj, models=["linear"],
-                  substitution=mf.substitution("fat_kcal", "carb_kcal", 50.0))
+                  substitution=mf.substitution("fat_kcal", "carb_kcal", 50.0), column_units=kcal)
     split = mf.split_bundle(np.arange(n))
     design, fit = run(st, paths, split)
     sub = substitution_stage(mf.context(st, {"design": design, "fit": fit}, paths))
@@ -659,7 +662,10 @@ def test_substitution_names_its_assumptions_and_skips_nothing_it_can_draw(table)
     design, fit = run(st, paths, split)
     sub = substitution_stage(mf.context(st, {"design": design, "fit": fit}, paths))
     assert [m["family"] for m in sub["models"]] == FAMILIES
-    assert "fat_total is read as fat in grams at 9 kcal/g" in sub["note"]
+    # BLUEPRINT §14.3 (amendment after the fifth gate): no name sets the kcal per unit; here the
+    # Atwater identity reads the macronutrients in grams, and the note says so.
+    assert ("fat_total is read in grams by its values (the Atwater identity holds with total "
+            "energy), at 9 kcal per gram") in sub["note"]
     assert "Total energy was held fixed by assumption" in sub["note"]
     # No band unless one is asked for (M1_CONTRACT §12.7); its cost is measured and offered.
     assert all(m["ci_low"] is None and m["ci_high"] is None for m in sub["models"])

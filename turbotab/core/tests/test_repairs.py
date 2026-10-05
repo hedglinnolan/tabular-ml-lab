@@ -284,7 +284,10 @@ def test_in_fold_imputation_never_sees_held_out_rows_or_the_outcome(tmp_path, mo
         assert rows in allowed, f"{name} was fit on rows that are not one training fold"
         assert not rows & holdout, f"{name} saw held-out rows"
         assert "glucose" not in columns, f"the outcome reached the {name}"
-    # Known answer: each numeric imputer's medians are the medians of its own fitting rows.
+    # Known answer: each numeric imputer's medians are the medians of its own fitting rows, and a
+    # number with two values is filled by its most frequent value there (BLUEPRINT §14.3: one
+    # indicator either way, so a code and an amount fill it alike; the smallest of tied values,
+    # SimpleImputer's own rule), never by a median between the two.
     from turbotab.core.models.pipeline import normalize_frame
 
     stored = normalize_frame(pd.read_parquet(paths["data"]).set_index("__row_id"))
@@ -292,8 +295,10 @@ def test_in_fold_imputation_never_sees_held_out_rows_or_the_outcome(tmp_path, mo
     for name, rows, columns, imputer in fits:
         if name != "imputer" or imputer.strategy != "median":
             continue
-        medians = stored.loc[sorted(rows), columns].median().to_numpy()
-        np.testing.assert_allclose(imputer.statistics_, medians)
+        part = stored.loc[sorted(rows), columns]
+        want = [float(part[c].mode().iloc[0]) if stored[c].dropna().nunique() == 2
+                else float(part[c].median()) for c in columns]
+        np.testing.assert_allclose(imputer.statistics_, want)
         checked += 1
     assert checked >= 2 * (len(allowed))  # each family, each fold and the refit
     # Blank yes/no answers are a level; numbers are filled and marked.

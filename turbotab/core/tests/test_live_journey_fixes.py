@@ -306,18 +306,20 @@ def test_a_total_and_its_own_part_are_refused_as_a_substitution():
     with pytest.raises(Refusal) as refused:
         validate(swap, ctx)
     assert refused.value.code == "reading_unsettled"
+    # BLUEPRINT §14.3 (amendment after the fifth gate): each unit the column may be in is offered,
+    # each setting its own kcal per unit (g, kg, kcal, kJ).
     assert [e["decision"] for e in refused.value.exits if e["decision"]] == [
-        {"kind": "confirm_reading", "reading": "unit", "column": "fat_sat", "value": "g"},
-        {"kind": "confirm_reading", "reading": "unit", "column": "carb", "value": "g"}]
-    units = {"unit:fat_sat": "g", "unit:carb": "g"}
-    ctx["state"] = mf.state().model_copy(update={"reading_confirmations": units})
+        {"kind": "confirm_reading", "reading": "unit", "column": c, "value": u}
+        for c in ("fat_sat", "carb") for u in ("g", "kg", "kcal", "kj")]
+    units = mf.grams("fat_sat", "carb")
+    ctx["state"] = mf.state().model_copy(update={"column_units": units})
     with pytest.raises(Refusal) as refused:
         validate(swap, ctx)
     assert [e["decision"] for e in refused.value.exits if e["decision"]] == [
         {"kind": "confirm_reading", "reading": "nested_in", "column": "fat_sat",
          "value": "fat_total"}]
-    ctx["state"] = mf.state().model_copy(update={"reading_confirmations": {
-        **units, "nested_in:fat_sat": "fat_total"}})
+    ctx["state"] = mf.state().model_copy(update={
+        "column_units": units, "reading_confirmations": {"nested_in:fat_sat": "fat_total"}})
     validate(swap, ctx)
 
 

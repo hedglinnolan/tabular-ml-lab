@@ -773,13 +773,19 @@ class SetOutcomeUnit(_DecisionModel):
 ENERGY_UNITS = ("kcal", "kj")
 AGE_UNITS = ("years", "months", "weeks", "days")
 ColumnUnit = Literal["kcal", "kj", "years", "months", "weeks", "days"]
+# Every unit a reading of a column may be confirmed in (``confirm_reading`` unit; readings.UNIT_VALUES).
+RecordedUnit = Literal["kcal", "kj", "g", "kg", "lb", "cm", "m", "in", "years", "months", "weeks",
+                       "days", "pct_energy"]
 
 
 class ColumnUnitSpec(_Value):
-    """A column's recorded unit; for total energy, the number of days each value totals."""
+    """A column's recorded unit and, for total energy, the number of days each value totals: the
+    one place both readings are kept (BLUEPRINT §14.3, every confirmation is honored), written by
+    ``set_column_unit`` (both in one answer) and by ``confirm_reading`` / ``confirm_readings`` for a
+    unit or a day count (each merged into what was recorded before). ``None``: not recorded."""
 
-    unit: ColumnUnit
-    days: int = 1
+    unit: RecordedUnit | None = None
+    days: int | None = 1
 
 
 class SetColumnUnit(_DecisionModel):
@@ -1363,24 +1369,41 @@ register_kind(ConfirmRole, "role_confirmations", value=lambda d: d.role, key=lam
 # roles read it and the table-shaping stages, which read the other confirmations, never recompute.
 def reading_slot(reading: str, column: str) -> tuple[str, str]:
     """Where a reading's confirmation is kept, ``(slot, key)``: a role's beside ``confirm_role``'s
-    (by column), the two that shape the working table apart, every other in
-    ``reading_confirmations`` (``"<kind>:<column>"``)."""
+    (by column), a unit's and a day count's with ``set_column_unit``'s (by column: one store, so
+    the screens, the findings, the coach and the substitution read one answer, the latest), the
+    two that shape the working table apart, every other in ``reading_confirmations``
+    (``"<kind>:<column>"``)."""
     if reading == "role":
         return "role_confirmations", column
     if reading == "sex_coding":
         return "sex_codings", column
+    if reading in ("unit", "day_count"):
+        return "column_units", column
     if reading in ("code_or_count", "time_column"):
         return "shape_confirmations", f"{reading}:{column}"
     return "reading_confirmations", f"{reading}:{column}"
 
 
+def reading_entry(reading: str, column: str, value: str) -> tuple[str, str, Any]:
+    """One confirmation's write, ``(slot, key, value)``: a unit or a day count is merged into the
+    column's recorded spec (a callable the fold applies to the entry before it), every other
+    reading written as its value."""
+    slot, key = reading_slot(reading, column)
+    if reading == "unit":
+        return slot, key, lambda prev: ColumnUnitSpec(
+            unit=value, days=getattr(prev, "days", None) if prev is not None else None)
+    if reading == "day_count":
+        return slot, key, lambda prev: ColumnUnitSpec(
+            unit=getattr(prev, "unit", None) if prev is not None else None, days=int(value))
+    return slot, key, value
+
+
 register_kind(ConfirmReading, "reading_confirmations", value=lambda d: d.value,
-              key=lambda d: reading_slot(d.reading, d.column)[1],
-              slot_for=lambda d: reading_slot(d.reading, d.column)[0])
+              entries=lambda d: [reading_entry(d.reading, d.column, d.value)])
 # A block confirmation writes each listed reading exactly where its own confirmation would, and
 # nothing else (BLUEPRINT §14.2).
 register_kind(ConfirmReadings, "reading_confirmations", value=lambda d: None,
-              entries=lambda d: [(*reading_slot(i.reading, i.column), i.value) for i in d.items])
+              entries=lambda d: [reading_entry(i.reading, i.column, i.value) for i in d.items])
 register_kind(SetEnergyAdjustment, "energy_adjustment",
               value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
 register_kind(SetExclusions, "exclusions")
@@ -2211,6 +2234,34 @@ def _screens_wait_for_the_unit(decision: SetExclusions, ctx: Any) -> None:
         proposed = str(reading["unit"])
         other = "kcal" if proposed == "kj" else "kj"
         word = {"kj": "kJ", "kcal": "kcal"}
+        recorded_days = (recorded_energy_unit(state, column) or ColumnUnitSpec(days=None)).days
+        if reading.get("basis") == "atwater_ambiguous":
+            # BLUEPRINT §14.3 (amendment after the fifth gate): the reconstruction ratio fits more
+            # than one reading (4.00: kJ, or a 4-day kcal total beside daily-mean
+            # macronutrients); the unit and the days are asked in one answer, each fit offered.
+            pairs = [(str(u), int(d)) for u, d in reading.get("candidates") or []]
+            raise Refusal(
+                "energy_unit_unconfirmed",
+                f"The rule on `{column}` reads its bounds in its unit and over the days each value "
+                f"spans, and its values fit more than one reading: "
+                f"{_unit_reading_words(reading)}. Record which first; then the screen's bounds "
+                f"are read in it.",
+                exits=[*({"label": f"`{column}` is "
+                                   + (f"a total over {d} days, in {word[u]}" if d > 1
+                                      else f"one day's intake, in {word[u]}"),
+                          "decision": SetColumnUnit(column=column, unit=u, days=d)}
+                         for u, d in pairs),
+                       {"label": "Another unit or day count (record it with the column's unit)",
+                        "decision": None}])
+        if reading.get("basis") == "not_energy":
+            raise Refusal(
+                "energy_unit_unconfirmed",
+                f"`{column}` is recorded in {reading.get('recorded_unit')}, which is no unit of "
+                f"energy, so the rule's bounds cannot be read in it. Record kcal or kJ first.",
+                exits=[{"label": f"`{column}` is a day's energy in {word[u]}",
+                        "decision": SetColumnUnit(column=column, unit=u,
+                                                  days=int(recorded_days or 1))}
+                       for u in ("kcal", "kj")])
         spanned = reading.get("days_in_name")
         if reading.get("basis") == "days" and spanned:
             # BLUEPRINT §14 rule 3: a day count in the name is asked, never read as one day.
@@ -2226,7 +2277,8 @@ def _screens_wait_for_the_unit(decision: SetExclusions, ctx: Any) -> None:
                         "decision": SetColumnUnit(column=column, unit=proposed)},
                        {"label": f"`{column}` is a total over {spanned} days, in {word[other]}",
                         "decision": SetColumnUnit(column=column, unit=other, days=int(spanned))}])
-        if reading.get("days_unsettled") and reading.get("basis") in ("name", "atwater"):
+        if reading.get("days_unsettled") and reading.get("basis") in ("name", "atwater",
+                                                                       "decision"):
             # BLUEPRINT §14.1: the unit is settled, the days are not (the gate's
             # ``energy_kcal_day1_day2``: the Atwater identity held for 2-day totals).
             evidence = (reading.get("days_reading") or {}).get("evidence") or "nothing settles it"
@@ -2249,15 +2301,24 @@ def _screens_wait_for_the_unit(decision: SetExclusions, ctx: Any) -> None:
             + ("only the column's median says so" if reading.get("basis") == "magnitude"
                else "nothing says what unit the column is in")
             + ". Record the unit first; then the screen's bounds are read in it.",
-            exits=[{"label": f"`{column}` is a day's energy in {word[proposed]}",
-                    "decision": SetColumnUnit(column=column, unit=proposed)},
-                   {"label": f"`{column}` is a day's energy in {word[other]}",
-                    "decision": SetColumnUnit(column=column, unit=other)},
-                   *([{"label": f"`{column}` is a week's total, in {word[proposed]}",
-                       "decision": SetColumnUnit(column=column, unit=proposed, days=7)}]
-                     if _names_a_week(column) else []),
-                   {"label": f"`{column}` is a total over two days, in {word[proposed]}",
-                    "decision": SetColumnUnit(column=column, unit=proposed, days=2)}])
+            exits=([{"label": f"`{column}` is a total over {recorded_days} days (as recorded), "
+                              f"in {word[u]}",
+                     "decision": SetColumnUnit(column=column, unit=u, days=int(recorded_days))}
+                    for u in (proposed, other)] if recorded_days and int(recorded_days) > 1 else
+                   [{"label": f"`{column}` is a day's energy in {word[proposed]}",
+                     "decision": SetColumnUnit(column=column, unit=proposed)},
+                    {"label": f"`{column}` is a day's energy in {word[other]}",
+                     "decision": SetColumnUnit(column=column, unit=other)},
+                    *([{"label": f"`{column}` is a week's total, in {word[proposed]}",
+                        "decision": SetColumnUnit(column=column, unit=proposed, days=7)}]
+                      if _names_a_week(column) else []),
+                    {"label": f"`{column}` is a total over two days, in {word[proposed]}",
+                     "decision": SetColumnUnit(column=column, unit=proposed, days=2)}]))
+
+
+def _unit_reading_words(reading: Mapping[str, Any]) -> str:
+    """An ambiguous energy reading's evidence, as the proposals' sentence states it."""
+    return str(reading.get("sentence") or "").split("; record")[0].rstrip(".")
 
 
 def _names_a_week(column: str) -> bool:
@@ -2685,7 +2746,10 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
     agreed by the Atwater identity, or confirmed), and, on the share-of-energy scale, that its
     values are percentages of energy (0 to 100, not fractions)."""
     from turbotab.core.methods.percent_energy import check_percent_values, is_percent_of_energy
-    from turbotab.core.readings import confirm_exit, confirm_exits, unsettled, unsettled_factors
+    from turbotab.core.readings import (
+        _macros_in_grams_by_values, confirm_exit, confirm_exits, confirmation, factor_exits,
+        kcal_per_unit, unsettled,
+    )
 
     state = _state(ctx)
     if state is None or not state.roles:
@@ -2706,14 +2770,34 @@ def _substitution_reads_settled_readings(decision: SetSubstitution, ctx: Any) ->
         store = opener() if callable(opener) else None
     except Exception:  # noqa: BLE001 - no data: only stated or confirmed units settle
         store = None
-    factors = unsettled_factors(state, [c for c in moved if c not in shares], store)
+    # BLUEPRINT §14.3: each kcal per unit is derived from the recorded unit (g, kg, kcal, kJ), or
+    # from grams the Atwater identity reads; a recorded share of energy or another unit is refused
+    # with its route, and an unrecorded one is asked, every unit it may be in offered.
+    try:
+        grams = _macros_in_grams_by_values(state, store)
+    except Exception:  # noqa: BLE001 - no values to read: only a recorded unit settles
+        grams = set()
+    readings = [kcal_per_unit(state, c, macros_in_grams=grams)
+                for c in moved if c not in shares]
+    refused = [r for r in readings if not r.settled and confirmation(state, "unit", r.column)]
+    if refused:
+        r = refused[0]
+        exits = [*(confirm_exit("unit", r.column, u, f"`{r.column}` is in {u}")
+                   for u in ("g", "kg", "kcal", "kj"))]
+        if r.route:
+            exits.append({"label": r.route, "decision": None})
+        exits.append({"label": "Choose two nutrients whose units carry energy", "decision": None})
+        raise Refusal("reading_unsettled",
+                      f"{r.why}, so moving energy through it has no kcal per unit to read. "
+                      f"Record its unit as an amount, or move energy another way.", exits=exits)
+    factors = [r.column for r in readings if not r.settled]
     if factors:
         raise Refusal(
             "reading_unsettled",
             f"{_and(factors)} {'reads' if len(factors) == 1 else 'read'} as an energy-bearing "
-            f"nutrient, but {'its' if len(factors) == 1 else 'their'} unit is unstated, so the kcal "
-            f"each unit carries is a guess. Confirm the unit first.",
-            exits=[*(confirm_exit("unit", c, "g", f"`{c}` is in grams") for c in factors),
+            f"nutrient, but {'its' if len(factors) == 1 else 'their'} unit is not recorded, so the "
+            f"kcal each unit carries is a guess (a name never says it). Record the unit first.",
+            exits=[*(e for c in factors for e in factor_exits(c)),
                    {"label": "Choose two nutrients whose units are stated", "decision": None}])
     # A total moves with its parts (and a part with its total) by the nesting reading: the values
     # agree (a part never exceeds its total), which is necessary, not sufficient; confirmed once.
@@ -3448,6 +3532,20 @@ def reverted(records: Sequence[DecisionRecord]) -> dict[str, str]:
     return cancelled
 
 
+def _confirmed_role_is_the_role(slots: dict[str, Any], slot: str, column: str, role: Any) -> None:
+    """BLUEPRINT §14.3, every confirmation is honored: a role confirmed for a column the roles
+    answer recorded (``confirm_reading`` / ``confirm_readings`` / ``confirm_role``) is that column's
+    role from then on, whatever the answer recorded before; a confirmation of the same role only
+    settles it. A later roles answer is the user's newer word and stands over it (the column is
+    then settled only if it was recorded as the user's own, or confirmed as the same role)."""
+    if slot != "role_confirmations":
+        return
+    roles = slots.get("roles")
+    if not roles or column not in roles or roles[column] == role:
+        return
+    slots["roles"] = {**roles, column: role}
+
+
 def fold(records: Sequence[DecisionRecord]) -> ProjectState:
     """The project state: each slot holds its latest write that is not reverted.
 
@@ -3466,8 +3564,9 @@ def fold(records: Sequence[DecisionRecord]) -> ProjectState:
         if written is not None:
             for slot, entry, value in written(decision):
                 entries = dict(slots.get(slot) or {})
-                entries[entry] = value
+                entries[entry] = value(entries.get(entry)) if callable(value) else value
                 slots[slot] = entries
+                _confirmed_role_is_the_role(slots, slot, entry, entries[entry])
             continue
         keyed = _KEYS.get(decision.kind)
         if keyed is not None:
@@ -3476,6 +3575,7 @@ def fold(records: Sequence[DecisionRecord]) -> ProjectState:
             entries = dict(slots.get(slot) or {})
             entries[keyed(decision)] = _SLOT_VALUE[decision.kind](decision)
             slots[slot] = entries
+            _confirmed_role_is_the_role(slots, slot, keyed(decision), entries[keyed(decision)])
         else:
             slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
             for extra, fn in _ALSO.get(decision.kind, {}).items():

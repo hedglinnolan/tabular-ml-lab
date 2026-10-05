@@ -109,12 +109,17 @@ class ImputationRefused(ValueError):
 
 
 def column_kind(series: pd.Series, categorical: bool = False) -> Kind:
-    """How a column is imputed: categories (text, or declared), yes/no (two values 0/1), numbers."""
+    """How a column is imputed: categories (text, or declared), yes/no (two values 0/1, or any
+    number with exactly two values, declared a code or not: BLUEPRINT §14.3 reads such a column as
+    one indicator either way, so both readings must impute it alike, a draw of one of its two
+    values), numbers."""
+    present = series.dropna()
+    numeric = pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
+    if numeric and present.nunique() == 2:
+        return "binary"
     if categorical or not pd.api.types.is_numeric_dtype(series):
-        present = series.dropna()
         return "binary" if present.nunique() == 2 and set(present.astype(str)) <= {"0", "1", "0.0", "1.0"} \
             else "categorical"
-    present = series.dropna()
     if len(present) and set(np.unique(present.to_numpy(dtype=float))) <= {0.0, 1.0}:
         return "binary"
     return "numeric"
@@ -458,7 +463,7 @@ def chained_equations(data: pd.DataFrame, *, impute: Sequence[str] | None = None
                 if kind == "numeric":
                     new = _norm(X, design.values[c].astype(float), miss[c], rng)
                 elif kind == "binary":
-                    new = _binary(X, _as01(design.values[c]), miss[c], rng)
+                    new = _binary(X, _as01(design.values[c], data[c]), miss[c], rng)
                     new = _from01(new, data[c])
                 elif kind == "categorical":
                     new = _categorical(X, design.values[c], design.levels[c], miss[c], rng)
@@ -487,8 +492,23 @@ def chained_equations(data: pd.DataFrame, *, impute: Sequence[str] | None = None
                        censored=censored, seed=seed)
 
 
-def _as01(values: np.ndarray) -> np.ndarray:
-    """A yes/no column's current values as 0/1 floats (text levels: the second sorted is 1)."""
+def _two_levels(original: pd.Series | None) -> tuple[float, float] | None:
+    """A numeric yes/no column's two values, low then high, when they are not 0 and 1."""
+    if original is None or not pd.api.types.is_numeric_dtype(original) \
+            or pd.api.types.is_bool_dtype(original):
+        return None
+    levels = sorted(float(v) for v in pd.unique(original.dropna()))
+    if len(levels) != 2 or levels == [0.0, 1.0]:
+        return None
+    return levels[0], levels[1]
+
+
+def _as01(values: np.ndarray, original: pd.Series | None = None) -> np.ndarray:
+    """A yes/no column's current values as 0/1 floats (text levels: the second sorted is 1; two
+    other numbers, 1 and 2: the higher is 1)."""
+    two = _two_levels(original)
+    if two is not None:
+        return (np.asarray(values, dtype=float) == two[1]).astype(float)
     try:
         return np.asarray(values, dtype=float)
     except (TypeError, ValueError):
@@ -497,6 +517,9 @@ def _as01(values: np.ndarray) -> np.ndarray:
 
 
 def _from01(draws: np.ndarray, original: pd.Series) -> np.ndarray:
+    two = _two_levels(original)
+    if two is not None:
+        return np.where(draws > 0.5, two[1], two[0])
     if pd.api.types.is_numeric_dtype(original):
         return draws
     labels = sorted(pd.unique(original.dropna()), key=str)

@@ -88,13 +88,17 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         else:
             detected_task = "regression"
         confidence = _CONFIDENCE.get(str(detection.get("confidence")), "low")
-        # BLUEPRINT §14.1 (the readings ledger): the task is skipped only on a settled reading. Two
-        # levels or a continuous number leave no doubt; three or more labels may be ordered (none,
-        # mild, severe: an ordinal outcome) or not, which no dtype says, so it is asked.
+        # BLUEPRINT §14.1 (the readings ledger): the task is skipped only on a settled reading, and
+        # §14.3: settled only by the registry's value test (two values; values with decimals that
+        # fill their grid), never by the dtype (the fifth gate: a PHQ-9 total written as floats
+        # after one blank skipped the question its integers asked). Three or more labels may be
+        # ordered or not, and whole numbers may be an ordinal score, a count or a measurement.
         from turbotab.core.readings import task_reading
 
-        found = task_reading(target, detected_task, confidence)
-        unordered_doubt = found.confidence != confidence
+        found = task_reading(target, detected_task, confidence, values=series)
+        unordered_doubt = found.confidence != confidence and found.confidence != "high"
+        if found.settled and found.value != detected_task:
+            detected_task = str(found.value)
         confidence = found.confidence
         task = ctx.state.task or detected_task
 

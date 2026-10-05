@@ -10,6 +10,7 @@ from turbotab.server.schemas import (
     Decision,
     ProjectSummary,
     ProjectView,
+    ReadingsCard,
     StageResult,
     StageStatus,
 )
@@ -89,6 +90,17 @@ def get_project(request: Request, pid: str) -> dict:
 def decide(request: Request, pid: str, decision: Decision) -> dict:
     """Record a decision. Stages downstream of the slot it writes recompute."""
     return get_service(request).decide(pid, decision)
+
+
+@router.get(
+    "/projects/{pid}/readings",
+    response_model=ReadingsCard,
+    responses={404: refusal("No such project")},
+)
+def readings_card(request: Request, pid: str) -> dict:
+    """The readings the values settled with no question asked, each with its evidence and the
+    answers that change it ("read from your data"; BLUEPRINT §14.3). Nothing waits on them."""
+    return get_service(request).readings(pid)
 
 
 @router.get(

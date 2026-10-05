@@ -1785,7 +1785,33 @@ class DataStore:
                                "zero_one": bool(zero_one), "n_values": int(k or 0),
                                "min": None if lo is None else float(lo),
                                "max": None if hi is None else float(hi)}
+                if not cache[name]["whole"]:
+                    cache[name].update(self._fractional_facts(name, int(k or 0)))
         return {c: dict(cache[c]) for c in columns if c in cache}
+
+    def _fractional_facts(self, name: str, k: int) -> dict[str, Any]:
+        """For a column with decimals: whether its values settle "amount" (BLUEPRINT §14.3,
+        amendment after the fifth gate: ICD-9-CM 307.1, 307.51 and 250.02 are codes written with
+        a decimal point), by the one value test (``readings.grid_reading`` over each distinct
+        value's row count, read here without materializing the column)."""
+        from turbotab.core.readings import GRID_MAX_VALUES, fractional_verdict, grid_reading
+
+        if k >= GRID_MAX_VALUES:
+            grid = {"k": k, "fills": True}
+            first = None
+        else:
+            x = f"CAST({_ident(name)} AS DOUBLE)"
+            with self._cursor() as cur:
+                rows = cur.execute(
+                    f"SELECT {x} AS v, count(*) FROM {self._rel} WHERE {x} IS NOT NULL "
+                    f"AND isfinite({x}) GROUP BY v ORDER BY v").fetchall()
+            values = np.asarray([r[0] for r in rows], dtype=float)
+            counts = np.asarray([r[1] for r in rows], dtype=float)
+            grid = grid_reading(values, counts)
+            fractions = values[values != np.floor(values)]
+            first = float(fractions[0]) if len(fractions) else None
+        verdict = fractional_verdict(grid, first)
+        return {"amount_by_values": bool(verdict.settles), "evidence": verdict.evidence}
 
     # ── modeling reads ────────────────────────────────────────────────────────
     def estimate_bytes(self, columns: Sequence[str] | None = None,
