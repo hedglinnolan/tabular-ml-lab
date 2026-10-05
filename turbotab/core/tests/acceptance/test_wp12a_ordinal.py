@@ -139,7 +139,9 @@ def test_2_the_fit_stage_reproduces_polr_on_the_housing_table(tmp_path):
     design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
     fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
     artifact = FitArtifact.model_validate(fit.data)
-    assert artifact.levels == LEVELS["Sat"] and artifact.primary_metric == "c_index"
+    # MS6: the ranked probability score is the primary; C is the customary headline.
+    assert artifact.levels == LEVELS["Sat"] and artifact.primary_metric == "rps"
+    assert artifact.headline_metric == "c_index"
     rows = {r.feature: r for r in artifact.models[0].coefficients}
     polr = {**{f"{f}{lv}": POLR_COEF.get(f"{f}{lv}", 0.0) for f in ("Infl", "Type", "Cont")
                for lv in LEVELS[f]}}

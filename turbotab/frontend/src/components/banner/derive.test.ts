@@ -132,6 +132,10 @@ const wp9 = {
   internal_external: null,
   methods: null,
 };
+// The fields MS6 added (models/validation.py, selection.py): calibration by level or horizon, the
+// comparison substrate's score, the performance sentence and the nested cross-validation interval.
+const ms6 = { calibration_levels: null, calibration_horizon: null, calibration_note: null,
+              compared_on: null, performance: null, nested_cv: null };
 
 const fit: FitArtifact = {
   task: "regression",
@@ -161,6 +165,7 @@ const fit: FitArtifact = {
       coefficients_n: null,
       role: null,
       ...wp9,
+      ...ms6,
       exposure_tests: [],
       adjustment_terms: null,
     },
@@ -181,6 +186,7 @@ const fit: FitArtifact = {
       coefficients_n: null,
       role: null,
       ...wp9,
+      ...ms6,
       exposure_tests: [],
       adjustment_terms: null,
     },
@@ -201,6 +207,7 @@ const fit: FitArtifact = {
       coefficients_n: null,
       role: null,
       ...wp9,
+      ...ms6,
       exposure_tests: [],
       adjustment_terms: null,
     },
@@ -221,6 +228,17 @@ const fit: FitArtifact = {
   precision: null,
   imbalance: null,
   at_opening: null,
+  headline_metric: null,
+  headline_label: null,
+  tension: null,
+  comparison: null,
+  comparisons_note: null,
+  result: null,
+  horizon: null,
+  horizon_note: null,
+  wide: null,
+  nested_offer: null,
+  chain: [],
 };
 
 function input(over: Partial<BannerInput> = {}, viewOver: Partial<ProjectView> = {}): BannerInput {

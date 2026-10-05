@@ -224,6 +224,8 @@ export function sentenceFor(
           censored_columns: [],
           acknowledged: false,
           reason: null,
+          imputation_model: "compatible",
+          imputation_levels: "clustered",
         },
       };
       const c = cohort(ds, state, records, drop).artifact;

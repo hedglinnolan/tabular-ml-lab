@@ -190,12 +190,13 @@ RECHECK: dict[int, dict[str, Any]] = {
     12: dict(where=lambda: taught("event") + taught("models"),
              gone=["Rank models on calibration"],
              says=["Judge models on calibration as well as discrimination",
-                   "reports its calibration intercept and slope beside the AUC that ranks the "
-                   "families"],
+                   "reports its calibration beside the AUC, the customary headline, and ranks the "
+                   "families on log loss, a strictly proper score"],
              source="Van Calster et al. 2019, BMC Med 17:230 (PMC6912996): \"poor calibration may "
                     "make an algorithm less clinically useful than a competitor algorithm that has a "
-                    "lower AUC but is well calibrated\"; the app ranks binary fits by AUC "
-                    "(models/metrics.py PRIMARY) and reports calibration on every fit"),
+                    "lower AUC but is well calibrated\"; the app ranks binary fits by log loss "
+                    "(models/metrics.py PRIMARY, MS6), reports the AUC as the customary headline "
+                    "(HEADLINE) and calibration on every fit"),
     14: dict(where=lambda: option("task", "multiclass"),
              gone=["scored by accuracy"], says=["scored by log loss"],
              source="the code: models/metrics.py PRIMARY['multiclass'] == 'log_loss' (audit ME-10)"),
@@ -463,13 +464,14 @@ def test_1_the_multiclass_metric_is_the_one_the_code_ranks_by():
     assert LABELS[PRIMARY["multiclass"]].lower() in option("task", "multiclass")
 
 
-def test_1_calibration_is_reported_beside_the_auc_that_ranks():
-    """Ledger row 12: binary families are ranked by AUC (the drawer now says so), and every fit
-    carries its out-of-fold calibration (``FittedModel.calibration``; computed in WP9)."""
+def test_1_calibration_is_reported_beside_the_auc_and_log_loss_ranks():
+    """Ledger row 12: binary families are ranked by log loss, a strictly proper score (MS6; the
+    drawer says so), the AUC is reported as the customary headline, and every fit carries its
+    out-of-fold calibration (``FittedModel.calibration``; computed in WP9)."""
     from turbotab.core.models.artifacts import FittedModel
-    from turbotab.core.models.metrics import PRIMARY
+    from turbotab.core.models.metrics import HEADLINE, PRIMARY
 
-    assert PRIMARY["binary"] == "auc"
+    assert PRIMARY["binary"] == "log_loss" and HEADLINE["binary"] == "auc"
     assert "calibration" in FittedModel.model_fields
 
 

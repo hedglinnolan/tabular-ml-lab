@@ -169,10 +169,16 @@ def test_1c_the_stage_reports_the_pooled_r2_and_scores_the_holdout_against_the_t
 # ── 2 · better than the baseline ─────────────────────────────────────────────
 
 
-def _null_binary_rate(n: int, reps: int, seed: int, signal: float = 0.0):
+def _null_binary_rate(n: int, reps: int, seed: int, signal: float = 0.0, repeats: int = 1):
     """Share of datasets the app calls "better" than the class prior, and the same datasets under
-    today's rule (gain > max(0.01, SD/√K)), recomputed independently from the per-fold AUCs."""
+    today's rule (gain > max(0.01, SD/√K)), recomputed independently from the per-fold AUCs.
+
+    ``repeats`` > 1 pairs the folds of the app's comparison substrate (MS6: the split's folds and
+    the further draws ``folds.comparison_folds`` makes), as the fit stage's verdict does."""
     from scipy import stats
+
+    from turbotab.core.models.folds import comparison_folds
+    from turbotab.core.models.metrics import repeated_pairs
 
     p = 10
     rng = np.random.default_rng(seed)
@@ -183,23 +189,33 @@ def _null_binary_rate(n: int, reps: int, seed: int, signal: float = 0.0):
         X = pd.DataFrame(rng.normal(size=(n, p)), columns=cols)
         logit = -0.85 + signal * X["x0"].to_numpy()  # prevalence about 0.3
         y = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
-        folds = _random_folds(n, seed=r, y=y)
-        pairs = fold_pairs(folds)
+        columns = [_random_folds(n, seed=r, y=y)]
+        if repeats > 1:
+            columns, _, _ = comparison_folds(columns, validation="kfold", scheme="random", n=n,
+                                             strata=y, folds=5, seed=r, repeats=repeats)
+        pairs, repeat_of = repeated_pairs(columns)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = cross_validate("binary", lambda: clone(pipe), X, y, pairs,
-                                   fit=lambda m, Xf, yf, rows: fit_pipeline(m, Xf, yf))
-            base = _baseline_cv("binary", X, y, pairs)
+                                   fit=lambda m, Xf, yf, rows: fit_pipeline(m, Xf, yf),
+                                   repeat_of=repeat_of)
+            base = _baseline_cv("binary", X, y, pairs, repeat_of)
         _, versus = compare("binary", model, base)
         better += versus.verdict == "better"
-        gains = np.array([a["auc"] - b["auc"] for a, b in zip(model.per_fold, base.per_fold)])
-        old += gains.mean() > max(0.01, gains.std(ddof=1) / math.sqrt(len(gains)))
-        # The interval, recomputed: Nadeau & Bengio's corrected variance, t with K − 1 df.
-        sizes = [(int((folds != k).sum()), int((folds == k).sum())) for k in range(5)]
+        aucs = np.array([a["auc"] - b["auc"] for a, b in zip(model.per_fold, base.per_fold)])
+        old += aucs.mean() > max(0.01, aucs.std(ddof=1) / math.sqrt(len(aucs)))  # the AUC rule
+        # MS6: the verdict reads the strictly proper primary, log loss (better when lower): a gain
+        # is the prior's log loss less the model's, fold by fold.
+        assert versus.metric == "log_loss"
+        gains = np.array([b["log_loss"] - a["log_loss"] for a, b in zip(model.per_fold, base.per_fold)])
+        # The interval, recomputed: Nadeau & Bengio's corrected variance over the rK paired folds
+        # (Bouckaert & Frank's repeated form), t with rK − 1 df.
+        rk = len(gains)
+        sizes = [(int((c != k).sum()), int((c == k).sum())) for c in columns for k in range(5)]
         share = np.mean([s / f for f, s in sizes])
-        se = math.sqrt((1 / 5 + share) * gains.var(ddof=1))
-        half = stats.t.ppf(0.975, 4) * se
-        assert versus.gain == pytest.approx(gains.mean(), abs=1e-12)  # AUC: the fold mean
+        se = math.sqrt((1 / rk + share) * gains.var(ddof=1))
+        half = stats.t.ppf(0.975, rk - 1) * se
+        assert versus.gain == pytest.approx(gains.mean(), abs=1e-12)  # log loss: the fold mean
         assert (versus.ci_low, versus.ci_high) == pytest.approx((gains.mean() - half, gains.mean() + half), abs=1e-12)
     return better / reps, old / reps
 
@@ -221,12 +237,29 @@ def test_2_better_than_baseline_holds_its_size_on_null_binary_data(n):
     assert old >= 0.15, f"today's rule fired on {old:.3f}: the fixture no longer shows the defect"
 
 
+def test_2c_the_size_holds_on_the_comparison_substrate():
+    """MS6: the fit stage reads the verdict over the comparison substrate's 10 × 5 folds, so its
+    size is checked there too: 100 null binary datasets (as above, n = 150), "better" on at most
+    7% (Monte Carlo SE at 5%: 0.022). Every interval is recomputed with rK − 1 = 49 df."""
+    rate, _ = _null_binary_rate(150, 100, seed=7, repeats=10)
+    assert rate <= 0.07, f"'better' on {rate:.3f} of null datasets over the substrate"
+
+
 def test_2b_a_real_signal_is_still_called_better():
     """Power, so the size above is not bought by never saying "better": log-odds 1.0 per SD of
-    one predictor (population AUC 0.74) at n = 400 is called better in at least 90% of 60
-    datasets (measured 0.98; at log-odds 0.8, AUC 0.70, it is 0.93)."""
-    rate, _ = _null_binary_rate(400, 60, seed=11, signal=1.0)
-    assert rate >= 0.9, f"'better' on only {rate:.2f} of datasets with a real signal"
+    one predictor (population AUC 0.74) at n = 400 is called better in at least 80% of 60
+    datasets.
+
+    MS6: the verdict reads log loss, a strictly proper score, paired over the comparison
+    substrate's 10 × 5 folds as the fit stage pairs them (49 df). Measured: 0.88 (53 of 60; Monte
+    Carlo SE 0.04). The interval binds, not the 0.01 minimum gain: its half-width averages 0.048
+    nats against a mean gain of 0.066, because Nadeau & Bengio's n₂/n₁ term (0.25) dominates the
+    corrected variance, so more repeats barely narrow it. On AUC, against a prior whose AUC is 0.5
+    in every fold, the same datasets were called better in 98%; on one 5-fold partition (4 df) the
+    log-loss verdict calls only 27% better, which is why the substrate exists (Bouckaert & Frank
+    2004)."""
+    rate, _ = _null_binary_rate(400, 60, seed=11, signal=1.0, repeats=10)
+    assert rate >= 0.8, f"'better' on only {rate:.2f} of datasets with a real signal"
 
 
 # ── 3 · time-ordered folds ───────────────────────────────────────────────────
@@ -289,6 +322,11 @@ def test_3a_with_temporal_yes_the_folds_forward_chain_by_whole_unit(clinical, la
     _, _, split, fit = _stages(clinical, _clinical_state(models=["linear"]), fit=True)
     assert split.data["fold_scheme"] == "time_ordered" and split.data["time_ordered_folds"]
     assert fit.data["fold_scheme"] == "time_ordered"
+    # MS6: forward-chaining folds are the same in every repeat, so the comparisons rest on one run
+    # of them, and the fit says so.
+    from turbotab.core.models.folds import TIME_ORDERED_ONCE
+
+    assert fit.data["comparison"]["repeats"] == 1 and fit.data["comparison"]["note"] == TIME_ORDERED_ONCE
     a = split.frames["assignment"]
     subjects = clinical.frame(["subject_id"]).loc[a["row_id"].to_numpy(), "subject_id"].to_numpy()
     t = pd.DataFrame({"subject": subjects, "part": a["partition"].to_numpy(), "fold": a["fold"].to_numpy()})

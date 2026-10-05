@@ -392,7 +392,22 @@ def _stage_auc(frame: pd.DataFrame, lens: str, kind: str, option: str, folder: P
     return float(fit.data["models"][0]["cv"]["auc"]["estimate"])
 
 
-def test_1d_log_cpm_tmm_brings_the_depth_null_to_chance(tmp_path):
+def _headline_only(monkeypatch, frame: pd.DataFrame, lens: str, kind: str, option: str,
+                   folder: Path) -> None:
+    """These replicate loops read only each fit's headline CV AUC: the split's own 5-fold run. MS6
+    also fits the comparisons' 10 × 5-fold substrate under prediction, whose first repeat is that
+    same run, so the headline does not depend on it. This checks it on one replicate (the full fit
+    stage against the fit stage with the substrate stood down to the headline's folds, to 10⁻¹²),
+    then stands the substrate down for the loop, which would otherwise take ten times as long."""
+    from turbotab.core.models import folds
+
+    full = _stage_auc(frame, lens, kind, option, folder / "full")
+    monkeypatch.setattr(folds, "comparison_folds",
+                        lambda headline, **kw: ([np.asarray(c) for c in headline], len(headline), None))
+    assert _stage_auc(frame, lens, kind, option, folder / "headline") == pytest.approx(full, abs=1e-12)
+
+
+def test_1d_log_cpm_tmm_brings_the_depth_null_to_chance(tmp_path, monkeypatch):
     """Twenty replicates of the audit's depth null (F-skeptic/f2_sim.py: no gene differs, cases
     1.46× deeper), each through the app's design and fit stages with the elastic net.
 
@@ -403,6 +418,8 @@ def test_1d_log_cpm_tmm_brings_the_depth_null_to_chance(tmp_path):
     with the raw counts declared normalized score a mean CV AUC of 0.955 ± 0.007, asserted above
     0.85 (the audit reported 0.83–1.0). About 100 seconds.
     """
+    _headline_only(monkeypatch, depth_null(np.random.default_rng(1)), "genomics", "counts",
+                   "log_cpm_tmm", tmp_path / "check")
     rng = np.random.default_rng(2015)
     raw, normalized = [], []
     for rep in range(20):
@@ -438,7 +455,7 @@ def test_2a_pqn_matches_dieterle_fit_on_training_rows_only():
     assert np.isnan(step.transform(zeroed).to_numpy()[70, 3])
 
 
-def test_2b_pqn_log2_brings_the_dilution_null_to_chance(tmp_path):
+def test_2b_pqn_log2_brings_the_dilution_null_to_chance(tmp_path, monkeypatch):
     """Sixteen replicates of the audit's dilution null (F/sim_dilution.py, ``default_rng(9)``:
     no metabolite differs, cases' urine 25% more dilute), each through the app's design and fit
     stages with the elastic net.
@@ -448,6 +465,8 @@ def test_2b_pqn_log2_brings_the_dilution_null_to_chance(tmp_path):
     (declared normalized) score 0.619 ± 0.020, asserted above 0.55 (the audit reported
     0.59–0.71). About 100 seconds.
     """
+    _headline_only(monkeypatch, dilution_null(np.random.default_rng(1)), "metabolomics",
+                   "intensities", "pqn_log2", tmp_path / "check")
     rng = np.random.default_rng(9)
     raw, normalized = [], []
     for rep in range(16):

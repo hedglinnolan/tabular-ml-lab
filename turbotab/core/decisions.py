@@ -381,7 +381,9 @@ class EnergyAdjustment(_Value):
 Validation = Literal["kfold", "repeated_kfold", "bootstrap", "internal_external"]
 REPEATS = 10  # repeated k-fold's default: 10 × 5
 MAX_REPEATS = 50
-OPTIMISM_BOOT = 200  # bootstrap optimism correction's default resamples (audit WP9: B ≈ 200)
+# Bootstrap optimism correction's default resamples. MS6 (MODELING_SEQUENCE ruling 4): Collins et
+# al., BMJ 2024: "we generally recommend at least 500 bootstraps" (WP9's 200 is Steyerberg's floor).
+OPTIMISM_BOOT = 500
 
 
 def _validation_fields(validation: str, cluster: str | None) -> None:
@@ -400,6 +402,9 @@ class SplitSpec(_Value):
     repeats: int = Field(default=REPEATS, ge=2, le=MAX_REPEATS)  # repeated_kfold
     n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)  # bootstrap
     cluster: str | None = None  # internal_external: each level is a fold
+    # MS6: Bates, Hastie & Tibshirani's nested cross-validation interval for each family's primary
+    # (models/validation.py), offered with its compute estimate where predictors outnumber rows.
+    nested_cv: bool = False
 
     @field_validator("holdout")
     @classmethod
@@ -436,6 +441,11 @@ class SubstitutionSpec(_Value):
     step_percent: float = Field(default=5.0, gt=0, le=50)  # percentage points of energy per step
 
 
+# MS1–MS2: how multiple imputation relates to the analysis model and to clustered rows.
+ImputationModel = Literal["compatible", "passive"]
+ImputationLevels = Literal["clustered", "single_level"]
+
+
 class MissingSpec(_Value):
     """The missing-values answer: columns left out of the predictors, then a strategy for the rest.
 
@@ -454,6 +464,11 @@ class MissingSpec(_Value):
     censored_columns: list[str] = Field(default_factory=list)
     acknowledged: bool = False
     reason: str | None = None
+    # MS1–MS2 (MODELING_SEQUENCE §4): multiple imputation compatible with the analysis model, or
+    # the customary passive chained equations (block and record with a declared nonlinear term);
+    # clustered rows imputed by unit (ruling 12), or single-level (block and record).
+    imputation_model: ImputationModel = "compatible"
+    imputation_levels: ImputationLevels = "clustered"
 
 
 class SetRoles(_DecisionModel):
@@ -674,6 +689,11 @@ class SetMissing(_DecisionModel):
     censored_columns: list[str] = Field(default_factory=list)
     acknowledged: bool = False
     reason: str | None = None
+    # MS1–MS2: compatible with the analysis model (SMC-FCS where the model needs it) or passive;
+    # clustered rows by unit or single-level. The passive and single-level answers are blocked and
+    # recorded under inference (MODELING_SEQUENCE §4).
+    imputation_model: ImputationModel = "compatible"
+    imputation_levels: ImputationLevels = "clustered"
 
     @field_validator("drop_columns", "censored_columns")
     @classmethod
@@ -699,6 +719,7 @@ class SetSplit(_DecisionModel):
     repeats: int = Field(default=REPEATS, ge=2, le=MAX_REPEATS)
     n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)
     cluster: str | None = None
+    nested_cv: bool = False  # MS6: the nested cross-validation interval (SplitSpec)
 
     @model_validator(mode="after")
     def _scheme(self) -> "SetSplit":
@@ -832,6 +853,11 @@ class FollowUpSpec(_Value):
     # censored at it) are the outcome's own answers instead, on the follow-up's time scale.
     landmark: float | None = None
     horizon: float | None = None
+    # MS6: the prediction horizon, the time a time-to-event prediction's risk is scored and
+    # calibrated at, on the follow-up's time scale; None reads the median follow-up time of the rows
+    # the models learn from, stated. It changes no row (the horizon above ends follow-up; this one
+    # only says where predictions are judged), so it lies after the landmark and before the horizon.
+    prediction_horizon: float | None = None
 
 
 class SetFollowUp(_DecisionModel):
@@ -841,7 +867,9 @@ class SetFollowUp(_DecisionModel):
     years of follow-up excluded" for reverse causation): a row whose follow-up ended at or before
     it, by an event or not, was not at risk then and leaves, and every other row is at risk from
     it (left truncation; the estimate is among those event-free and followed at the landmark).
-    ``horizon``: follow-up ends at this time: an event after it counts as censored at it."""
+    ``horizon``: follow-up ends at this time: an event after it counts as censored at it.
+    ``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes
+    no row."""
 
     kind: Literal["set_follow_up"] = "set_follow_up"
     column: str = Field(min_length=1)
@@ -849,11 +877,20 @@ class SetFollowUp(_DecisionModel):
     entry_column: str | None = None
     landmark: float | None = Field(default=None, gt=0)
     horizon: float | None = Field(default=None, gt=0)
+    prediction_horizon: float | None = Field(default=None, gt=0)  # MS6: FollowUpSpec's
 
     @model_validator(mode="after")
     def _landmark_before_horizon(self) -> "SetFollowUp":
         if self.landmark is not None and self.horizon is not None and self.landmark >= self.horizon:
             raise ValueError("the landmark must come before the horizon")
+        if self.prediction_horizon is not None:
+            # No row is followed past the horizon, and none is at risk before the landmark, so a
+            # risk by a time outside them cannot be scored (the censoring weights would be zero).
+            if self.horizon is not None and self.prediction_horizon >= self.horizon:
+                raise ValueError("the prediction horizon must come before follow-up ends at the "
+                                 "horizon")
+            if self.landmark is not None and self.prediction_horizon <= self.landmark:
+                raise ValueError("the prediction horizon must come after the landmark")
         return self
 
 
@@ -2190,7 +2227,8 @@ register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetFollowUp, "follow_up",
               value=lambda d: FollowUpSpec(time_column=d.time_column, entry_column=d.entry_column,
-                                           landmark=d.landmark, horizon=d.horizon),
+                                           landmark=d.landmark, horizon=d.horizon,
+                                           prediction_horizon=d.prediction_horizon),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetOutcomeUnit, "outcome_unit", value=lambda d: d.unit,
               holds=lambda d, slots: slots.get("target") == d.column)
@@ -3348,8 +3386,20 @@ def _follow_up_rule_refusal(state: Any, rules: Sequence[Any], kept: SetExclusion
     highs = [float(r.high) for r in (as_rule(x) for x in rules)
              if getattr(r, "column", None) == time and getattr(r, "high", None) is not None]
     base = {"column": state.target, "time_column": time, "entry_column": spec.entry_column,
-            "landmark": spec.landmark, "horizon": spec.horizon}
+            "landmark": spec.landmark, "horizon": spec.horizon,
+            "prediction_horizon": spec.prediction_horizon}
     exits: list[dict[str, Any]] = [{"label": f"Drop the rule on `{time}`", "decision": kept}]
+
+    def follow_up(**change: float) -> SetFollowUp:
+        # A declared prediction horizon (MS6) outside the new follow-up cannot be scored at, so the
+        # answer leaves it out and the fit says the median follow-up time is used instead.
+        spec_ = {**base, **change}
+        ph, ends_, starts_ = spec_["prediction_horizon"], spec_["horizon"], spec_["landmark"]
+        if ph is not None and ((ends_ is not None and ph >= ends_)
+                               or (starts_ is not None and ph <= starts_)):
+            spec_["prediction_horizon"] = None
+        return SetFollowUp(**spec_)
+
     landmark = max(lows) if lows else None
     horizon = min(highs) if highs else None
     ends = horizon if horizon is not None else spec.horizon
@@ -3358,11 +3408,11 @@ def _follow_up_rule_refusal(state: Any, rules: Sequence[Any], kept: SetExclusion
         exits.append({"label": (f"Count follow-up from `{landmark:g}` on (a landmark): rows whose "
                                 f"follow-up ended by then leave, and the effect is among those "
                                 f"event-free and followed at `{landmark:g}`"),
-                      "decision": SetFollowUp(**{**base, "landmark": landmark})})
+                      "decision": follow_up(landmark=landmark)})
     if horizon is not None and horizon > 0 and (starts is None or starts < horizon):
         exits.append({"label": (f"End follow-up at `{horizon:g}`: events after it count as "
                                 f"censored there, and no row leaves"),
-                      "decision": SetFollowUp(**{**base, "horizon": horizon})})
+                      "decision": follow_up(horizon=horizon)})
     exits.append({"label": "Restrict by a variable measured before the outcome", "decision": None})
     return Refusal(
         "rule_on_outcome",
@@ -4172,6 +4222,53 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
         exits=exits)
 
 
+def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
+    """MODELING_SEQUENCE §4 (MS1, MS2): under inference, passive multiple imputation with a declared
+    nonlinear term, and single-level multiple imputation on rows a recorded unit repeats, are
+    blocked and recorded: refused with their exits (the compatible or clustered imputation first),
+    kept only with the attestation the methods sentence carries. The fit holds the table the same
+    way when the term or the clustering is declared after this answer
+    (``methods.missing.missing_block``)."""
+    from turbotab.core.methods.missing import PASSIVE_CAUTION, SINGLE_LEVEL_CAUTION
+
+    state = _state(ctx)
+    if (decision.strategy != "multiple_imputation" or decision.acknowledged
+            or getattr(state, "purpose", None) != "inference"):
+        return
+    keep = {"label": "Keep it, recorded as a limitation",
+            "decision": _missing_base(decision, acknowledged=True)}
+    cc = {"label": "Complete cases, with their assumption stated",
+          "decision": _missing_base(decision, strategy="complete_case", acknowledged=False)}
+    if decision.imputation_model == "passive":
+        forms = {c: f for c, f in (getattr(state, "exposure_forms", None) or {}).items()
+                 if getattr(f, "form", None) in ("spline", "quintiles")}
+        adj = getattr(state, "energy_adjustment", None)
+        logged = adj is not None and ((adj.method in ("residual", "residual_energy_dropped")
+                                       and adj.log_transform)
+                                      or adj.method in ("density", "density_multivariate"))
+        if forms or logged:
+            named = [f"a {'restricted cubic spline' if f.form == 'spline' else 'quintile form'} of "
+                     f"`{c}`" for c, f in forms.items()]
+            if logged:
+                named.append("the energy model's log or ratio")
+            raise Refusal(
+                "passive_imputation_with_nonlinear_terms",
+                f"The analysis model holds {_and(named)}. Under inference {PASSIVE_CAUTION}.",
+                exits=[{"label": "Multiple imputation compatible with the analysis model (SMC-FCS)",
+                        "decision": _missing_base(decision, imputation_model="compatible")},
+                       cc, keep])
+    if decision.imputation_levels == "single_level":
+        grain = getattr(state, "grain", None)
+        if getattr(grain, "grain", None) == "repeated" and getattr(state, "unit", None) != "unit":
+            raise Refusal(
+                "single_level_imputation_on_clustered_rows",
+                f"The rows repeat by `{getattr(grain, 'id_column', None) or 'unit'}`. Under "
+                f"inference {SINGLE_LEVEL_CAUTION}.",
+                exits=[{"label": "Clustered multiple imputation (time-invariant values once per unit)",
+                        "decision": _missing_base(decision, imputation_levels="clustered")},
+                       cc, keep])
+
+
 def _censored_named(ctx: Any) -> list[str]:
     """Left-censored columns the findings (and the zeros-as-non-detections repair) name."""
     from turbotab.core.methods.missing import censored_columns
@@ -4531,6 +4628,7 @@ register_validator("set_categorical", _categorical_names_predictors)
 register_validator("set_missing", _left_out_columns_are_predictors)
 register_validator("set_missing", _missing_fits_the_purpose)
 register_validator("set_missing", _non_detections_are_not_filled_by_the_median)
+register_validator("set_missing", _imputation_fits_the_analysis)
 register_validator("set_substitution", _substitution_moves_between_separate_nutrients)
 register_validator("set_exclusions", _exclusions_are_ranges_on_numbers)
 register_validator("set_exclusions", _screens_wait_for_the_unit)

@@ -104,15 +104,16 @@ P_OVER_N = section(
     "elastic net is the standard choice if one model must be named.",
     "SETTLED", GEN08)
 # Audit ledger #12 (SELF-CONTRADICTED): the drawer said "rank models on calibration", while the
-# families are ranked by AUC; each fit now reports calibration beside it (models/metrics.py).
+# families were ranked by AUC; each fit reports calibration beside it (models/metrics.py). MS6: the
+# families are now ranked on log loss, a strictly proper score, and the AUC is the customary headline.
 # Van Calster et al. 2019 (BMC Med 17:230): "poor calibration may make an algorithm less clinically
 # useful than a competitor algorithm that has a lower AUC but is well calibrated".
 CALIBRATION_TOO = section(
     "Probabilities, not just ranks",
     "Judge models on calibration as well as discrimination: a well-calibrated model with a lower "
     "AUC can be more useful than a miscalibrated one with a higher AUC (Van Calster et al. 2019). "
-    "Each fit here reports its calibration intercept and slope beside the AUC that ranks the "
-    "families.",
+    "Each fit here reports its calibration beside the AUC, the customary headline, and ranks the "
+    "families on log loss, a strictly proper score that rewards calibrated probabilities.",
     "SETTLED", CLIN_A51)
 
 LENS = {
@@ -352,10 +353,11 @@ TASK = {
     "consumer": "The model shelf, the split's stratification and every metric read it.",
     "options": [
         option("regression", "Regression",
-               "The outcome is a quantity; models predict its value, scored by R² and RMSE."),
+               "The outcome is a quantity; models predict its value, ranked by the MSE, R² "
+               "beside it."),
         option("binary", "Binary",
-               "Two classes; models predict the probability of one, scored by AUC and Brier "
-               "score."),
+               "Two classes; models predict the probability of one, ranked by log loss, AUC "
+               "beside it."),
         # Audit G16 (ledger #14): the primary metric is log loss (models/metrics.py PRIMARY).
         option("multiclass", "Multiclass",
                "Several unordered classes; models predict each class's probability, scored by log "
@@ -363,8 +365,8 @@ TASK = {
         option("ordinal", "Ordinal",
                "Ordered levels, such as a 1–5 rating; a proportional-odds model keeps their order."),
         option("time_to_event", "Time to event",
-               "An event with each row's follow-up; a Cox model gives hazard ratios, scored by "
-               "the C-index."),
+               "An event and each row's follow-up; Cox gives hazard ratios, ranked by a "
+               "horizon's Brier score."),
     ],
     "terms": [
         term("regression", "A model of a quantity: it predicts a number, and its errors are "

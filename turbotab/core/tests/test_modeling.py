@@ -270,6 +270,8 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, p
     train_ids, folds, hold_ids = train_arrays(split)
     allowed = {frozenset(train_ids[folds != k].tolist()) for k in np.unique(folds)}
     allowed.add(frozenset(train_ids.tolist()))
+    if purpose == "prediction":  # MS6: the comparisons' repeated folds, training rows only
+        allowed |= mf.comparison_train_sets(split)
     seen: dict[str, list[frozenset]] = {}
 
     def spy(cls, name):
@@ -330,7 +332,8 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, p
         # Every fold and the refit, each once per family that has the step (and, under inference,
         # the table's fit on every analyzed row).
         assert set(rows) == (allowed | {every} if table else allowed), name
-    assert len(seen["energy"]) == 3 * (n_folds + 1) + (2 if inference else 0)
+    repeats = 1 if inference else 10  # MS6: the prediction substrate is 10 × K folds
+    assert len(seen["energy"]) == 3 * (n_folds * repeats + 1) + (2 if inference else 0)
     assert ols_rows == ([every] if inference else [])
 
 
@@ -343,7 +346,8 @@ def test_the_fit_stops_between_folds_when_cancelled_and_reports_progress(table):
     progress: list = []
     fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths, progress))
     messages = [m for _, m in progress]
-    assert "Linear model: fold 1 of 5" in messages and "Boosted trees: fold 5 of 5" in messages
+    # MS6: under prediction every family is fit on the comparisons' 10 × 5 folds.
+    assert "Linear model: fold 1 of 50" in messages and "Boosted trees: fold 50 of 50" in messages
     assert [f for f, _ in progress] == sorted(f for f, _ in progress)
     calls = {"n": 0}
 

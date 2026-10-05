@@ -512,7 +512,9 @@ def test_3c_repeated_kfold_averages_its_repeats_each_scored_as_scikit_learn_scor
     assert cv["estimate"] == pytest.approx(np.mean(repeat_means), abs=1e-8)
     assert cv["repeat_sd"] == pytest.approx(np.std(repeat_means, ddof=1), abs=1e-8)
     assert cv["se"] == pytest.approx(math.sqrt(np.mean(repeat_vars)), rel=1e-5)
-    assert fit.data["models"][0]["versus_baseline"]["df"] == 14
+    # MS6: the verdict against the baseline reads the comparison substrate, at least 10 × 5
+    # folds, whose first three repeats are these: 50 paired folds, 49 df.
+    assert fit.data["models"][0]["versus_baseline"]["df"] == 49
     assert "drawn `3` times" in split.data["note"]
 
 
@@ -661,9 +663,10 @@ def test_4_the_ranking_is_named_and_multiclass_ranks_on_log_loss(tmp_path):
     CV log loss minus the model's (scikit-learn ``log_loss`` per fold)."""
     from sklearn.metrics import log_loss
 
-    # The ordered outcome WP12a added ranks on its concordance, C; these three are WP9's.
+    # MS6 (MODELING_SEQUENCE ruling 4) made every primary strictly proper; log loss was the
+    # multiclass one first (WP9).
     assert {k: PRIMARY[k] for k in ("regression", "binary", "multiclass")} == {
-        "regression": "r2", "binary": "auc", "multiclass": "log_loss"}
+        "regression": "mse", "binary": "log_loss", "multiclass": "log_loss"}
     rng = np.random.default_rng(31)
     n = 600
     X = pd.DataFrame(rng.normal(size=(n, 3)), columns=["a", "b", "c"])
@@ -689,13 +692,27 @@ def test_4_the_ranking_is_named_and_multiclass_ranks_on_log_loss(tmp_path):
         shares = [np.mean(train_y == c) for c in ["low", "mid", "top"]]
         prior.append(log_loss(test_y, np.tile(shares, (len(test_y), 1)), labels=["low", "mid", "top"]))
     assert model["baseline"]["value"] == pytest.approx(np.mean(prior), abs=1e-9)
-    gain = np.mean(prior) - model["cv"]["log_loss"]["estimate"]
+    # MS6: the verdict is read on the comparison substrate (10 × 5 folds, the split's first).
+    from turbotab.core.models.folds import comparison_folds
+
+    labels = y[a["row_id"].to_numpy()]
+    columns, _, _ = comparison_folds([a["fold"].to_numpy()], validation="kfold", scheme="random",
+                                     n=n, strata=labels, folds=5, seed=1)
+    prior_all = []
+    for column in columns:
+        for k in range(5):
+            shares = [np.mean(labels[column != k] == c) for c in ["low", "mid", "top"]]
+            test_y = labels[column == k]
+            prior_all.append(log_loss(test_y, np.tile(shares, (len(test_y), 1)),
+                                      labels=["low", "mid", "top"]))
+    gain = np.mean(prior_all) - model["compared_on"]["estimate"]
     assert model["versus_baseline"]["gain"] == pytest.approx(gain, abs=1e-9) and gain > 0
     assert model["versus_baseline"]["verdict"] == "better"
     assert model["cv"]["log_loss"]["se"] > 0
     from turbotab.core.stages.modeling import ranking_phrase
 
     assert ranking_phrase("auc") == "highest AUC" and ranking_phrase("r2") == "highest R²"
+    assert ranking_phrase("mse") == "lowest MSE" and ranking_phrase("log_loss") == "lowest log loss"
 
 
 # ── 5 · claims ───────────────────────────────────────────────────────────────
@@ -736,17 +753,19 @@ def test_5_the_spread_is_computed_on_the_users_rows_not_claimed(tmp_path):
                       split=SplitSpec(holdout=0.0, seed=3, folds=5), models=["linear", "boosted_trees"])
     _, _, _, fit = _stages(table, st)
     models = {m["family"]: m for m in fit.data["models"]}
-    for m in models.values():
-        assert f"{m['cv']['auc']['se']:.3f} for {m['label']}" in fit.data["precision"]
+    for m in models.values():  # MS6: the primary is log loss, strictly proper
+        assert f"{m['cv']['log_loss']['se']:.3f} for {m['label']}" in fit.data["precision"]
     (cmp,) = fit.data["comparisons"]
-    diffs = (np.array(models[cmp["a"]]["cv"]["auc"]["folds"])
-             - np.array(models[cmp["b"]]["cv"]["auc"]["folds"]))
-    se = math.sqrt((1 / 5 + 1 / 4) * diffs.var(ddof=1))  # test share 1/(K − 1) for 5 equal folds
-    half = stats.t.ppf(0.975, 4) * se
-    gain = models[cmp["a"]]["cv"]["auc"]["estimate"] - models[cmp["b"]]["cv"]["auc"]["estimate"]
-    assert cmp["difference"] == pytest.approx(gain, abs=1e-12)
-    assert (cmp["ci_low"], cmp["ci_high"]) == pytest.approx((gain - half, gain + half), rel=0.02)
-    assert "corrected for shared training rows" in cmp["sentence"]
+    # MS6: paired over the comparison substrate's 10 × 5 folds; log loss is better when lower, so
+    # a positive difference favors the first family.
+    diffs = (np.array(models[cmp["b"]]["compared_on"]["folds"])
+             - np.array(models[cmp["a"]]["compared_on"]["folds"]))
+    se = math.sqrt((1 / 50 + 1 / 4) * diffs.var(ddof=1))  # test share 1/(K − 1) for 5 equal folds
+    half = stats.t.ppf(0.975, 49) * se
+    assert cmp["difference"] == pytest.approx(diffs.mean(), abs=1e-12)
+    assert (cmp["ci_low"], cmp["ci_high"]) == pytest.approx(
+        (diffs.mean() - half, diffs.mean() + half), rel=0.02)
+    assert "corrected repeated k-fold t" in cmp["sentence"] and cmp["df"] == 49
 
 
 # ── 6 · internal–external validation ────────────────────────────────────────
@@ -757,9 +776,9 @@ def test_6_internal_external_validation_reports_each_cluster_and_the_spread(tmp_
     "assessment of heterogeneity in model performance across settings") through the real split
     and fit stages: 8 sites, each held out in turn and scored by a model fit on the other seven.
 
-    References: each site's R² (against the other sites' mean) from scikit-learn's
-    ``LinearRegression`` fit on the other sites, to 10⁻⁹; each site's SE from the delta method
-    written with ``numpy.cov``; the random-effects summary and τ² from statsmodels'
+    References: each site's MSE (MS6: the strictly proper primary) from scikit-learn's
+    ``LinearRegression`` fit on the other sites, to 10⁻⁹; each site's SE, the SD of its squared
+    errors over √n; the random-effects summary and τ² from statsmodels'
     ``combine_effects(method_re="dl")``; the prediction interval for a new site from Higgins,
     Thompson & Spiegelhalter (2009), written out (``references_validation``)."""
     from sklearn.linear_model import LinearRegression
@@ -787,20 +806,17 @@ def test_6_internal_external_validation_reports_each_cluster_and_the_spread(tmp_
     assert split.data["folds"] == 8 and split.data["fold_labels"] == [f"site_{i}" for i in range(8)]
     assert "one per level of `site`" in split.data["note"]
     iecv = fit.data["models"][0]["internal_external"]
-    assert iecv["cluster"] == "site" and iecv["metric"] == "r2" and len(iecv["clusters"]) == 8
+    assert iecv["cluster"] == "site" and iecv["metric"] == "mse" and len(iecv["clusters"]) == 8
     estimates, variances = [], []
     for row in iecv["clusters"]:
         held = sites == row["cluster"]
         model = LinearRegression().fit(X[~held], yv[~held])
         e2 = (yv[held] - model.predict(X[held])) ** 2
-        d2 = (yv[held] - yv[~held].mean()) ** 2
-        A, B = e2.mean(), d2.mean()
         assert row["n"] == 80
-        assert row["primary"]["estimate"] == pytest.approx(1 - A / B, abs=1e-9)
-        grad = np.array([-1 / B, A / B ** 2])
-        se = math.sqrt(grad @ np.cov(np.vstack([e2, d2]), ddof=1) @ grad / 80)
+        assert row["primary"]["estimate"] == pytest.approx(e2.mean(), abs=1e-9)
+        se = e2.std(ddof=1) / math.sqrt(80)
         assert row["primary"]["se"] == pytest.approx(se, rel=1e-6)
-        estimates.append(1 - A / B)
+        estimates.append(e2.mean())
         variances.append(se ** 2)
     meta = combine_effects(np.array(estimates), np.array(variances), method_re="dl")
     pooled = iecv["pooled"]

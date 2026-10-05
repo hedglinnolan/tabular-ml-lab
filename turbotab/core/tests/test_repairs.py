@@ -261,6 +261,7 @@ def test_in_fold_imputation_never_sees_held_out_rows_or_the_outcome(tmp_path, mo
     holdout = set(a.loc[a["partition"] != "train", "row_id"].tolist())
     allowed = {frozenset(train_ids[folds != k].tolist()) for k in np.unique(folds)}
     allowed.add(frozenset(train_ids.tolist()))
+    allowed |= mf.comparison_train_sets(split)  # MS6: the comparisons' repeated folds
     fits: list[tuple[str, frozenset, list[str], object]] = []
 
     def spy(cls, name):

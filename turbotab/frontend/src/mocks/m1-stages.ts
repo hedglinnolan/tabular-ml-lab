@@ -566,7 +566,8 @@ function missingReading(
   }
   columns.sort((a, b) => b.share - a.share);
   const notAsked = columns.filter((c) => c.likely_not_asked).map((c) => c.column);
-  if (!notAsked.length) return { columns, leave_out: null, methods: [], below_detection: [] };
+  if (!notAsked.length)
+    return { columns, leave_out: null, methods: [], below_detection: [], imputation_models: [] };
   const cols = notAsked.map((c) => findColumn(ds, c)).filter((c): c is MockColumn => !!c);
   let n = 0;
   for (let i = 0; i < ds.nRows; i++) if (cols.some((c) => missing(c.values[i]))) n += 1;
@@ -575,6 +576,7 @@ function missingReading(
     leave_out: { columns: notAsked, n_rows: n, share: n / ds.nRows },
     methods: [],
     below_detection: [],
+    imputation_models: [],
   };
 }
 
@@ -1248,6 +1250,7 @@ export function fit(
                 ratio_high: null,
                 q: null,
                 fmi: null,
+                mc_se: null,
               };
             });
     return {
@@ -1272,6 +1275,12 @@ export function fit(
       optimism: null,
       internal_external: null,
       exposure_tests: [],
+      calibration_levels: null,
+      calibration_horizon: null,
+      calibration_note: null,
+      compared_on: null,
+      performance: null,
+      nested_cv: null,
       adjustment_terms: null,
       methods: null,
     };
@@ -1309,6 +1318,17 @@ export function fit(
     withheld: null,
     estimand: null,
     batch_figure: null,
+    headline_metric: null,
+    headline_label: null,
+    tension: null,
+    comparison: null,
+    comparisons_note: null,
+    result: null,
+    horizon: null,
+    horizon_note: null,
+    wide: null,
+    nested_offer: null,
+    chain: [],
   };
 }
 
@@ -1374,6 +1394,8 @@ export function substitution(
         band_ok: banded ? spec.n_boot : null,
         refused: null,
         exits: [],
+        pooled: null,
+        df: null,
       };
     }),
   };

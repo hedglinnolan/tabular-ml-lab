@@ -247,6 +247,8 @@ export function MissingAsk({
     censored_columns: [],
     acknowledged: false,
     reason: null,
+    imputation_model: "compatible",
+    imputation_levels: "clustered",
     ...patch,
   });
 

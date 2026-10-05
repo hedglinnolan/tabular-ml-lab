@@ -870,10 +870,31 @@ def _set_missing(d: Any, state: Any, ctx: Any) -> str:
     if d.strategy == "multiple_imputation":
         energy = _energy_column(state)
         with_energy = f" and total energy ({tick(energy)})" if energy else ""
-        text = (f"{first}{others} were imputed by multiple imputation by chained equations (m = "
-                f"{tick(getattr(d, 'm', 20))}), with the outcome{with_energy} in the imputation "
-                f"model, and the coefficients pooled over the imputations by Rubin's rules; no row "
+        m = tick(getattr(d, "m", 20))
+        if getattr(d, "imputation_model", "compatible") == "passive":
+            # MS1 (MODELING_SEQUENCE §4): the customary chained equations, terms derived per copy
+            how = ("by multiple imputation by chained equations, any nonlinear term derived in "
+                   "each completed copy (passive imputation)")
+        else:
+            how = ("by multiple imputation compatible with the analysis model (SMC-FCS where the "
+                   "model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained "
+                   "equations where it is linear in the imputed values)")
+        text = (f"{first}{others} were imputed {how}, m = {m} or the percentage of rows with an "
+                f"imputed value if that is larger, with the outcome{with_energy} in the imputation "
+                f"model, and every estimate pooled over the imputations by Rubin's rules; no row "
                 f"was dropped for a missing predictor")
+        single = getattr(d, "imputation_levels", "clustered") == "single_level"
+        passive = getattr(d, "imputation_model", "compatible") == "passive"
+        if single:
+            text += "; each row was imputed on its own, the clustering of its rows left out"
+        if (getattr(d, "acknowledged", False) and getattr(state, "purpose", None) == "inference"
+                and (passive or single)):
+            from turbotab.core.methods.missing import PASSIVE_CAUTION, SINGLE_LEVEL_CAUTION
+
+            text += _below_detection_clause(d, state)
+            text += (f"; it was kept under inference as a recorded limitation: "
+                     f"{PASSIVE_CAUTION if passive else SINGLE_LEVEL_CAUTION}")
+            return text[0].upper() + text[1:]
     else:
         fill = _energy_fill_words(state)
         text = (f"{first}{others} were imputed in each training fold without the outcome: the "
@@ -983,6 +1004,23 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
                 f"bootstrap ({tick(d.n_boot)} resamples, the whole pipeline refit on each) and "
                 f"subtracted, except for a family that nearly memorizes its rows (boosted trees), "
                 f"whose cross-validated score stands because the bootstrap overstates it")
+    # MS6 (MODELING_SEQUENCE ruling 4): under prediction the comparisons run on repeated k-fold,
+    # at least 10 × K, whatever validation gives the score (models/folds.py).
+    time_ordered = plan is not None and bool(_attr(plan, "time_ordered_folds"))
+    if getattr(state, "purpose", None) != "inference" and not time_ordered:
+        from turbotab.core.models.folds import COMPARISON_REPEATS
+
+        r = max(int(d.repeats) if validation == "repeated_kfold" else 1, COMPARISON_REPEATS)
+        compared = f"performance was estimated on the rest by {folds}"
+        boot += (f"; models were compared with each other and with the no-predictor baseline on "
+                 f"{tick(d.folds)}-fold cross-validation repeated {tick(r)} times, by the corrected "
+                 f"repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)")
+        if getattr(d, "nested_cv", False):
+            from turbotab.core.models.validation import NESTED_REPS
+
+            boot += (f"; each interval is the nested cross-validation interval "
+                     f"({tick(NESTED_REPS)} repetitions of {tick(d.folds)} folds; Bates, Hastie & "
+                     f"Tibshirani 2023)")
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")
@@ -1162,6 +1200,14 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
     head = _NUMBER_WORD.get(n, tick(n))
     chosen = (f"{head} model {plural(n, 'family', 'families')} {plural(n, 'was', 'were')} "
               f"chosen: {listing(labels, limit=8, ticked=False)}")
+    # MS6 (MODELING_SEQUENCE §1 row 12 (b)): with no rows held out, what the result is.
+    split = getattr(state, "split", None)
+    if (n > 1 and split is not None and float(getattr(split, "holdout", 0) or 0) == 0
+            and getattr(state, "purpose", None) != "inference"):
+        chosen += ("; with no rows held out, the choice among them is corrected by bootstrap "
+                   "bias-corrected cross-validation (Tsamardinos et al. 2018), and that "
+                   "selection-corrected estimate is the reported result, not the best family's "
+                   "own score")
     # BLUEPRINT §14.3 (amendment): the readings the values settled, which the fit reads, are
     # stated in the record ("read from the values"), each with its evidence.
     read = _get(ctx, "read_from_values")
@@ -1476,6 +1522,9 @@ def _set_follow_up(d: Any, state: Any, ctx: Any) -> str:
     if getattr(d, "horizon", None) is not None:
         text += (f"; follow-up ended at {tick(f'{d.horizon:g}')}: events after it were censored "
                  f"there")
+    if getattr(d, "prediction_horizon", None) is not None:  # MS6: where predictions are judged
+        text += (f"; predicted risks were scored and calibrated by {tick(d.time_column)} = "
+                 f"{tick(f'{float(d.prediction_horizon):g}')}, the declared prediction horizon")
     return text
 
 
@@ -1685,6 +1734,10 @@ def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
         if getattr(d, "acknowledged", False):
             return (text + f"; recorded as a limitation: they were not pooled by Rubin's rules, "
                            f"and {COPIES_CONCERN}")
+        if getattr(state, "purpose", None) == "inference":  # MS3: the fit pools them
+            return (text + "; kept as records, each copy is analyzed as a completed dataset with "
+                           "its own outcome and the estimates pooled by Rubin's rules, which "
+                           "carries the imputation's uncertainty (NCHS's combining rules)")
         return text + f"; they were not pooled by Rubin's rules, and {COPIES_CONCERN}"
     text = f"{whose[:1].upper()}{whose[1:]} rows were taken as different time points"
     if d.time_column:
@@ -1791,16 +1844,24 @@ def _earlier_opening(d: Any, ctx: Any) -> Any | None:
 
 
 def _scored(d: Any) -> str:
-    """``: held-out AUC `0.801``` — the kept score of the declared family (WP16), or nothing."""
-    from turbotab.core.models.metrics import LABELS
+    """``: held-out log loss `0.512` (AUC `0.801`, the customary headline)`` — the kept score of
+    the declared family on the primary (WP16; MS6: a strictly proper score), with the customary
+    headline beside it when the record kept one, or nothing."""
+    from turbotab.core.models.metrics import HEADLINE_LABEL, LABELS
+    from turbotab.core.models.validation import score_words
 
     scores = getattr(d, "scores", None) or {}
     metric = getattr(d, "metric", None)
     family = getattr(d, "family", None)
-    value = (scores.get(family) or {}).get(metric) if family and metric else None
+    kept = (scores.get(family) or {}) if family else {}
+    value = kept.get(metric) if metric else None
     if value is None:
         return ""
-    return f": held-out {LABELS.get(metric, metric)} {tick(f'{value:.3f}')}"
+    text = f": held-out {score_words(metric)} {tick(f'{value:.3f}')}"
+    headline = next((h for h in ("auc", "c_index") if h != metric and kept.get(h) is not None), None)
+    if headline is not None:
+        text += f" ({LABELS[headline]} {tick(f'{kept[headline]:.3f}')}, the {HEADLINE_LABEL})"
+    return text
 
 
 @register_sentence("open_seal")

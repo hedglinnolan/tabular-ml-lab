@@ -52,6 +52,31 @@ interval for a new cluster (Higgins, Thompson & Spiegelhalter 2009, JRSS A 172:1
 The AUC is pooled on the logit scale (Snell et al., Stat Methods Med Res 2018;27:3505: "Normality was
 vastly improved when using the logit transformation for the C-statistic … and therefore we recommend
 these scales to be used for meta-analysis"), every other score on its own.
+
+**A time-to-event outcome at a horizon** (MODELING_SEQUENCE ruling 4, MS6; McLernon et al., Ann
+Intern Med 2023;176:105: predictions "can be evaluated … for the event occurring by the end of a
+fixed time horizon of interest"). A model's risk by the horizon h is ``1 − exp(−Λ̂₀(h)·exp(lp))``,
+with Breslow's cumulative baseline hazard ``Λ̂₀(t) = Σ_{event times s ≤ t} d_s / Σ_{j at risk at s}
+exp(lp_j)`` learned on the rows the model was fit on (a row is at risk at s when entry < s ≤ time).
+The **Brier score at the horizon** is Graf et al.'s (Stat Med 1999;18:2529) inverse-probability-of-
+censoring-weighted mean, ``(1/n) Σ_i [Ŝ_i² 1{T_i ≤ h, δ_i = 1}/Ĝ(T_i−) + F̂_i² 1{T_i > h}/Ĝ(h)]``,
+with Ĝ the Kaplan–Meier estimate of the censoring distribution on the scored rows (a row censored
+before h weighs nothing). It is a mean of per-row losses, so it is the time-to-event task's strictly
+proper primary score when the censoring weights are right (Gerds & Schumacher, Biom J 2006;48:1029).
+With delayed entry the censoring weights would need the truncation distribution as well, which is
+not built: the score is then not computed and the reason is stated.
+
+**Calibration at the horizon**: the observed risk is ``1 − KM(h)`` over the scored rows, with
+Greenwood's variance; the expected risk is the mean predicted risk; their ratio O/E carries the
+interval ``exp(log(O/E) ± z·SE(O)/O)``. The calibration slope is the coefficient of
+``log(−log(1 − F̂(h)))`` in a Cox model of the scored rows (for a Cox model this is its linear
+predictor up to a constant, van Houwelingen's calibration slope; target 1). The risk groups (up to
+ten, equal in size by predicted risk) set each group's Kaplan–Meier observed risk beside its mean
+predicted risk. **An ordinal outcome** is calibrated at each cut-point (the predicted probability of
+being at or above each level against whether the row is), **a multiclass outcome** class by class
+(the predicted probability of the class against whether the row is in it), each as a binary
+calibration intercept and slope above. Where calibration cannot be computed, the record says
+"calibration not assessed" and why; it never inherits the word.
 """
 from __future__ import annotations
 
@@ -250,16 +275,16 @@ def regression_parts(y: Any, pred: Any, reference: Any) -> tuple[np.ndarray, np.
 
 def regression_intervals(e2: np.ndarray, d2: np.ndarray, ae: np.ndarray,
                          codes: np.ndarray | None, method: str) -> dict[str, Interval]:
-    """R² = 1 − A/B (A = mean e², B = mean d²), RMSE = √A and MAE, by the delta method.
+    """R² = 1 − A/B (A = mean e², B = mean d²), MSE = A, RMSE = √A and MAE, by the delta method.
 
     IC(R²)_i = −(e²_i − A)/B + A·(d²_i − B)/B² (Hawinkel et al.'s gradient (−1/MST, MSE/MST²)
-    applied row by row); IC(RMSE)_i = (e²_i − A)/(2√A).
+    applied row by row); IC(MSE)_i = e²_i − A; IC(RMSE)_i = (e²_i − A)/(2√A).
     """
     n = len(e2)
     if n == 0:
-        return {m: Interval(estimate=None, method=method) for m in ("r2", "rmse", "mae")}
+        return {m: Interval(estimate=None, method=method) for m in ("r2", "mse", "rmse", "mae")}
     A, B = float(e2.mean()), float(d2.mean())
-    out: dict[str, Interval] = {}
+    out: dict[str, Interval] = {"mse": _mean_interval(e2, codes, method, (0.0, math.inf))}
     if B > 0:
         ic = -(e2 - A) / B + A * (d2 - B) / B ** 2
         var = variance_of_mean(ic, codes)
@@ -283,20 +308,26 @@ def _method(codes: np.ndarray | None, unit: str | None) -> str:
 
 
 def score_intervals(task: str, y: Any, prediction: Any, *, classes: Sequence[Any] | None = None,
-                    reference: Any = None, groups: Any = None, unit: str | None = None
-                    ) -> dict[str, Interval]:
+                    reference: Any = None, groups: Any = None, unit: str | None = None,
+                    horizon: float | None = None) -> dict[str, Interval]:
     """Every metric of ``task`` on these scored rows, each with its standard error and interval.
 
-    ``prediction``: ŷ for regression, the class-probability matrix otherwise (columns in
-    ``classes``' order). ``reference``: the training mean R² is measured against. Macro-F1 has no
-    influence-function SE here and gets none.
+    ``prediction``: ŷ for regression; for a time to event the two columns ``[risk score, risk by
+    the horizon]`` (:func:`turbotab.core.models.metrics.predict`); the class-probability matrix
+    otherwise (columns in ``classes``' order). ``reference``: the training mean R² is measured
+    against. Macro-F1 and the C-index have no influence-function SE here and get none.
     """
     y = np.asarray(y)
     n = len(y)
-    if task == "time_to_event":
-        return {}  # no interval for a held-out C-index is computed here (WP12b's outcome)
     codes = unit_codes(groups, n)
     method = _method(codes, unit)
+    if task == "time_to_event":
+        P = np.asarray(prediction, dtype=float)
+        losses = brier_rows(y, P[:, 1], horizon) if P.ndim == 2 and horizon is not None else None
+        if losses is None:
+            return {}
+        return {"brier_t": _mean_interval(losses, codes, method + " (censoring weights as known)",
+                                          (0.0, 1.0))}
     if task == "regression":
         ref = float(np.mean(y.astype(float))) if reference is None else reference
         return regression_intervals(*regression_parts(y, prediction, ref), codes, method)
@@ -310,10 +341,13 @@ def score_intervals(task: str, y: Any, prediction: Any, *, classes: Sequence[Any
         out["brier"] = _mean_interval((P[:, 1] - positive) ** 2, codes, method, (0.0, 1.0))
         out["log_loss"] = _mean_interval(log_loss_rows(y, P, classes), codes, method, (0.0, math.inf))
         return out
+    out["log_loss"] = _mean_interval(log_loss_rows(y, P, classes), codes, method, (0.0, math.inf))
+    if task == "ordinal":
+        out["rps"] = _mean_interval(rps_rows(y, P, classes), codes, method, (0.0, 1.0))
+        return out
     pred = np.asarray(classes, dtype=object)[P.argmax(axis=1)]
     out["accuracy"] = _mean_interval((pred == y.astype(object)).astype(float), codes, method,
                                      (0.0, 1.0))
-    out["log_loss"] = _mean_interval(log_loss_rows(y, P, classes), codes, method, (0.0, math.inf))
     return out
 
 
@@ -321,11 +355,17 @@ def score_intervals(task: str, y: Any, prediction: Any, *, classes: Sequence[Any
 
 
 def fold_variance(task: str, metric: str, y: Any, prediction: Any, *, classes: Sequence[Any],
-                  groups: Any = None) -> float | None:
+                  groups: Any = None, horizon: float | None = None) -> float | None:
     """The variance of one fold's score (a fold-mean metric) from its rows' influence values."""
     y = np.asarray(y)
     codes = unit_codes(groups, len(y))
     P = np.asarray(prediction, dtype=float)
+    if metric == "brier_t":
+        losses = brier_rows(y, P[:, 1], horizon) if P.ndim == 2 and horizon is not None else None
+        if losses is None:
+            return None
+        var = variance_of_mean(losses - losses.mean(), codes)
+        return var if math.isfinite(var) else None
     if metric == "auc":
         positive = y == classes[1]
         if positive.sum() < 2 or (~positive).sum() < 2:
@@ -343,9 +383,26 @@ def fold_variance(task: str, metric: str, y: Any, prediction: Any, *, classes: S
     elif metric == "accuracy":
         hit = (np.asarray(classes, dtype=object)[P.argmax(axis=1)] == y.astype(object)).astype(float)
         var = variance_of_mean(hit - hit.mean(), codes)
+    elif metric == "rps":
+        loss = rps_rows(y, P, classes)
+        var = variance_of_mean(loss - loss.mean(), codes)
     else:
         return None
     return var if math.isfinite(var) else None
+
+
+def rps_rows(y: Any, proba: Any, classes: Sequence[Any]) -> np.ndarray:
+    """Each row's ranked probability score, ``(1/(K − 1)) Σ_k (F̂_k − 1{y ≤ k})²`` over the K − 1
+    cut-points (``classes`` in the outcome's order; Epstein 1969)."""
+    P = np.asarray(proba, dtype=float)
+    index = {c: i for i, c in enumerate(classes)}
+    codes = np.asarray([index.get(v, -1) for v in np.asarray(y, dtype=object).tolist()])
+    if (codes < 0).any():
+        raise ValueError("an outcome level the model never saw")
+    K = P.shape[1]
+    cumulative = np.cumsum(P, axis=1)[:, :-1]
+    observed = (codes[:, None] <= np.arange(K - 1)[None, :]).astype(float)
+    return np.sum((cumulative - observed) ** 2, axis=1) / max(K - 1, 1)
 
 
 # ── calibration ──────────────────────────────────────────────────────────────
@@ -556,6 +613,254 @@ def calibration(task: str, y: Any, prediction: Any, *, classes: Sequence[Any] | 
     return cal
 
 
+# ── a time to event at a horizon (module docstring) ──────────────────────────
+
+NOT_ASSESSED = "Calibration not assessed"
+
+
+def _survival_parts(y: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    y = np.asarray(y)
+    time = np.asarray(y["time"], dtype=float)
+    event = np.asarray(y["event"], dtype=bool)
+    entry = (np.asarray(y["entry"], dtype=float) if "entry" in (y.dtype.names or ())
+             else np.zeros(len(time)))
+    return time, event, entry
+
+
+def delayed_entry(y: Any) -> bool:
+    """Whether any row came under observation after time zero (left truncation)."""
+    return bool(np.any(_survival_parts(y)[2] > 0))
+
+
+def kaplan_meier(time: Any, event: Any, at: Any, entry: Any = None) -> tuple[np.ndarray, np.ndarray]:
+    """Kaplan–Meier survival at each time of ``at`` and Greenwood's variance there.
+
+    A row is at risk at s when entry < s ≤ time; ``S(t) = Π_{s ≤ t} (1 − d_s/n_s)``,
+    ``Var S(t) = S(t)² Σ_{s ≤ t} d_s/(n_s(n_s − d_s))`` (right-continuous: S at an event time
+    includes that time's events).
+    """
+    time = np.asarray(time, dtype=float)
+    event = np.asarray(event, dtype=bool)
+    entry = np.zeros(len(time)) if entry is None else np.asarray(entry, dtype=float)
+    at = np.atleast_1d(np.asarray(at, dtype=float))
+    s_times, d = np.unique(time[event], return_counts=True)
+    if not len(s_times):
+        return np.ones(len(at)), np.zeros(len(at))
+    st, se = np.sort(time), np.sort(entry)
+    n_at = ((len(time) - np.searchsorted(st, s_times, side="left"))
+            - (len(entry) - np.searchsorted(se, s_times, side="left"))).astype(float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        surv = np.cumprod(1.0 - d / n_at)
+        green = np.cumsum(np.where(n_at > d, d / (n_at * (n_at - d)), np.inf))
+    k = np.searchsorted(s_times, at, side="right") - 1
+    S = np.where(k >= 0, surv[np.clip(k, 0, None)], 1.0)
+    with np.errstate(invalid="ignore"):
+        V = np.where((k >= 0) & (S > 0), S ** 2 * green[np.clip(k, 0, None)], 0.0)
+    return S, V
+
+
+def censoring_survival(time: Any, event: Any, at: Any, *, left: bool = False) -> np.ndarray:
+    """Ĝ: the Kaplan–Meier estimate of staying uncensored, at each time of ``at`` (``left``: its
+    left limit Ĝ(t−)). Censoring is the "event"; every row whose time is ≥ s is at risk at s."""
+    time = np.asarray(time, dtype=float)
+    censored = ~np.asarray(event, dtype=bool)
+    at = np.atleast_1d(np.asarray(at, dtype=float))
+    c_times, c = np.unique(time[censored], return_counts=True)
+    if not len(c_times):
+        return np.ones(len(at))
+    st = np.sort(time)
+    n_at = (len(time) - np.searchsorted(st, c_times, side="left")).astype(float)
+    G = np.cumprod(1.0 - c / n_at)
+    k = np.searchsorted(c_times, at, side="left" if left else "right") - 1
+    return np.where(k >= 0, G[np.clip(k, 0, None)], 1.0)
+
+
+def brier_rows(y: Any, risk: Any, horizon: float | None) -> np.ndarray | None:
+    """Each row's inverse-probability-of-censoring-weighted Brier loss at ``horizon`` (Graf et
+    al. 1999; the module docstring); their mean is the Brier score at the horizon. None when it
+    cannot be computed: no horizon, delayed entry, a risk not predicted, or no row left
+    uncensored at the horizon."""
+    if horizon is None or not math.isfinite(float(horizon)):
+        return None
+    time, event, entry = _survival_parts(y)
+    risk = np.asarray(risk, dtype=float)
+    if not len(time) or np.any(entry > 0) or not np.all(np.isfinite(risk)):
+        return None
+    h = float(horizon)
+    G_h = float(censoring_survival(time, event, [h])[0])
+    if G_h <= 0:
+        return None
+    died = event & (time <= h)
+    alive = time > h
+    G_T = censoring_survival(time, event, time, left=True)
+    loss = np.zeros(len(time))
+    surv = 1.0 - risk
+    loss[died] = surv[died] ** 2 / G_T[died]
+    loss[alive] = risk[alive] ** 2 / G_h
+    return loss
+
+
+def brier_at(y: Any, risk: Any, horizon: float | None) -> float:
+    """The Brier score at ``horizon`` (NaN when :func:`brier_rows` cannot compute it)."""
+    losses = brier_rows(y, risk, horizon)
+    return float(losses.mean()) if losses is not None else float("nan")
+
+
+def breslow(y: Any, lp: Any) -> tuple[np.ndarray, np.ndarray, float]:
+    """Breslow's cumulative baseline hazard on these rows, for the linear predictor ``lp``:
+    ``(event times, Λ̂_c at each, c)``, with ``Λ̂₀ = Λ̂_c·exp(−c)`` (``c``: the largest lp, held out
+    of the exponent so it never overflows)."""
+    time, event, entry = _survival_parts(y)
+    lp = np.asarray(lp, dtype=float)
+    c = float(np.max(lp)) if len(lp) else 0.0
+    w = np.exp(lp - c)
+    s_times, d = np.unique(time[event], return_counts=True)
+    if not len(s_times):
+        return s_times, np.zeros(0), c
+    by_time, by_entry = np.argsort(time, kind="stable"), np.argsort(entry, kind="stable")
+    tail_time = np.concatenate([np.cumsum(w[by_time][::-1])[::-1], [0.0]])
+    tail_entry = np.concatenate([np.cumsum(w[by_entry][::-1])[::-1], [0.0]])
+    # Σ w over rows with time ≥ s, less those with entry ≥ s: the rows at risk at s.
+    at_risk = (tail_time[np.searchsorted(time[by_time], s_times, side="left")]
+               - tail_entry[np.searchsorted(entry[by_entry], s_times, side="left")])
+    return s_times, np.cumsum(d / at_risk), c
+
+
+def risk_by(baseline: tuple[np.ndarray, np.ndarray, float], lp: Any, horizon: float) -> np.ndarray:
+    """``1 − exp(−Λ̂₀(h)·exp(lp))`` for each linear predictor, from :func:`breslow`'s baseline."""
+    times, cumhaz, c = baseline
+    lp = np.asarray(lp, dtype=float)
+    k = int(np.searchsorted(times, float(horizon), side="right")) - 1
+    H = float(cumhaz[k]) if k >= 0 else 0.0
+    return -np.expm1(-H * np.exp(lp - c))
+
+
+class RiskGroup(_Model):
+    n: int
+    predicted: float  # the group's mean predicted risk by the horizon
+    observed: float | None  # 1 − its Kaplan–Meier survival at the horizon
+
+
+class HorizonCalibration(_Model):
+    """Calibration of a time-to-event model's risks by a horizon (module docstring)."""
+
+    horizon: float
+    n: int
+    observed: float  # 1 − KM(horizon) over the scored rows
+    expected: float  # mean predicted risk by the horizon
+    ratio: Interval  # O/E, target 1
+    slope: Interval  # target 1
+    groups: list[RiskGroup] = []
+    flagged: bool = False
+    concern: str | None = None
+
+
+def _cloglog(p: np.ndarray) -> np.ndarray:
+    p = np.clip(np.asarray(p, dtype=float), EPS, 1 - EPS)
+    return np.log(-np.log1p(-p))
+
+
+def horizon_calibration(y: Any, risk: Any, horizon: float, *, groups: int | None = None,
+                        where: str = "out of fold") -> HorizonCalibration | None:
+    """Observed against predicted risk by ``horizon`` (module docstring); None with fewer than ten
+    rows or no event by the horizon."""
+    from turbotab.core.models.survival import cox_fit
+
+    time, event, entry = _survival_parts(y)
+    risk = np.asarray(risk, dtype=float)
+    n = len(time)
+    if n < 10 or not np.all(np.isfinite(risk)) or not np.any(event & (time <= horizon)):
+        return None
+    S, V = kaplan_meier(time, event, [horizon], entry)
+    observed, expected = float(1.0 - S[0]), float(risk.mean())
+    se_o = math.sqrt(float(V[0])) if V[0] > 0 else None
+    ratio = Interval(estimate=observed / expected if expected > 0 else None, method="Greenwood")
+    if ratio.estimate and observed > 0 and se_o is not None:
+        z = z_value()
+        half = z * se_o / observed
+        ratio = Interval(estimate=ratio.estimate, se=se_o / observed,
+                         ci_low=ratio.estimate * math.exp(-half),
+                         ci_high=ratio.estimate * math.exp(half), method="Greenwood, log scale")
+    slope = Interval(estimate=None, method="Wald, Cox partial likelihood")
+    x = _cloglog(risk)
+    if float(np.std(x)) > FLAT:
+        try:
+            fit = cox_fit(x[:, None], np.asarray(y))
+            if fit.converged:
+                slope = interval(float(fit.beta[0]), _root(fit.cov[0, 0]),
+                                 "Wald, Cox partial likelihood")
+        except (ValueError, np.linalg.LinAlgError):
+            pass
+    k = groups if groups is not None else (10 if n >= 500 else 5 if n >= 50 else 0)
+    out_groups: list[RiskGroup] = []
+    if k >= 2:
+        order = np.argsort(risk, kind="stable")
+        for part in np.array_split(order, k):
+            s, _ = kaplan_meier(time[part], event[part], [horizon], entry[part])
+            out_groups.append(RiskGroup(n=int(len(part)), predicted=float(risk[part].mean()),
+                                        observed=float(1.0 - s[0])))
+    cal = HorizonCalibration(horizon=float(horizon), n=n, observed=observed, expected=expected,
+                             ratio=ratio, slope=slope, groups=out_groups)
+    parts: list[str] = []
+    if slope.ci_low is not None and slope.ci_high is not None and slope.estimate is not None \
+            and (slope.ci_high < 1.0 - SLOPE_TOLERANCE or slope.ci_low > 1.0 + SLOPE_TOLERANCE):
+        what = "too extreme" if slope.estimate < 1 else "too timid"
+        parts.append(f"risks by {_num_t(horizon)} are {what} {where}: calibration slope "
+                     f"{_signed(slope.estimate)} (95% interval {_signed(slope.ci_low)} to "
+                     f"{_signed(slope.ci_high)})")
+    if ratio.ci_low is not None and ratio.ci_high is not None and ratio.estimate is not None \
+            and (ratio.ci_high < 1.0 - INTERCEPT_TOLERANCE or ratio.ci_low > 1.0 + INTERCEPT_TOLERANCE):
+        high = ratio.estimate < 1
+        parts.append(f"predicted risks by {_num_t(horizon)} run too {'high' if high else 'low'} "
+                     f"{where}: {expected:.1%} predicted against {observed:.1%} observed "
+                     f"(O/E {_signed(ratio.estimate)})")
+    if parts:
+        text = "; ".join(parts)
+        cal.flagged, cal.concern = True, text[0].upper() + text[1:] + "."
+    return cal
+
+
+def _num_t(value: float) -> str:
+    return f"{value:g}"
+
+
+class LevelCalibration(_Model):
+    """One level's calibration: an ordinal cut-point ("at or above") or a multiclass class."""
+
+    level: str
+    kind: Literal["at_or_above", "is"]
+    calibration: Calibration | None
+
+
+def level_calibration(task: str, y: Any, proba: Any, classes: Sequence[Any], *,
+                      names: Sequence[str] | None = None, groups: Any = None,
+                      where: str = "out of fold") -> list[LevelCalibration]:
+    """Calibration by level (module docstring): at each ordinal cut-point, or for each class of a
+    multiclass outcome, as a binary calibration of that probability."""
+    y = np.asarray(y, dtype=object)
+    P = np.asarray(proba, dtype=float)
+    classes = list(classes)
+    label = [str(names[i]) if names is not None and i < len(names) else str(c)
+             for i, c in enumerate(classes)]
+    index = {c: i for i, c in enumerate(classes)}
+    codes = np.asarray([index.get(v, -1) for v in y.tolist()])
+    out: list[LevelCalibration] = []
+    if task == "ordinal":
+        for k in range(1, len(classes)):
+            hit = (codes >= k).astype(float)
+            p = P[:, k:].sum(axis=1)
+            out.append(LevelCalibration(level=label[k], kind="at_or_above",
+                                        calibration=calibration("binary", hit, p, groups=groups,
+                                                                where=where)))
+        return out
+    for j, c in enumerate(classes):
+        hit = (codes == j).astype(float)
+        out.append(LevelCalibration(level=label[j], kind="is",
+                                    calibration=calibration("binary", hit, P[:, j], groups=groups,
+                                                            where=where)))
+    return out
+
+
 # ── across clusters: random-effects summary ─────────────────────────────────
 
 
@@ -617,9 +922,11 @@ def random_effects(metric: str, estimates: Sequence[float], ses: Sequence[float]
 
 
 __all__ = [
-    "Calibration", "CurvePoint", "INTERCEPT_TOLERANCE", "Interval", "LEVEL", "Pooled",
-    "SLOPE_TOLERANCE", "auc_components", "auc_influence", "auc_interval", "calibration", "delong",
-    "fold_variance", "interval", "log_loss_rows", "logistic_fit", "random_effects",
-    "regression_intervals", "regression_parts", "score_intervals", "unit_codes",
-    "variance_of_mean", "z_value",
+    "Calibration", "CurvePoint", "HorizonCalibration", "INTERCEPT_TOLERANCE", "Interval", "LEVEL",
+    "LevelCalibration", "NOT_ASSESSED", "Pooled", "RiskGroup", "SLOPE_TOLERANCE",
+    "auc_components", "auc_influence", "auc_interval", "breslow", "brier_at", "brier_rows",
+    "calibration", "censoring_survival", "delayed_entry", "delong", "fold_variance",
+    "horizon_calibration", "interval", "kaplan_meier", "level_calibration", "log_loss_rows",
+    "logistic_fit", "random_effects", "regression_intervals", "regression_parts", "risk_by",
+    "rps_rows", "score_intervals", "unit_codes", "variance_of_mean", "z_value",
 ]

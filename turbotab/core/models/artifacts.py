@@ -13,8 +13,11 @@ from turbotab.core.consequences import Lineage
 from turbotab.core.decisions import Task
 from turbotab.core.models.base import Fit
 from turbotab.core.models.baseline import VersusBaseline
-from turbotab.core.models.performance import Calibration, Interval
-from turbotab.core.models.validation import FamilyDifference, InternalExternal, Optimism
+from turbotab.core.models.performance import (Calibration, HorizonCalibration, Interval,
+                                               LevelCalibration)
+from turbotab.core.models.selection import DeclaredResult
+from turbotab.core.models.validation import (ChainLink, FamilyDifference, InternalExternal, NestedCV,
+                                             Optimism)
 
 
 class _Model(BaseModel):
@@ -137,6 +140,8 @@ class Coefficient(_Model):
     q: float | None = None
     # Under multiple imputation (WP7): the fraction of missing information, Rubin's γ.
     fmi: float | None = None
+    # Under multiple imputation (MS2): the Monte Carlo error of the pooled estimate, √(B/m).
+    mc_se: float | None = None
 
 
 class AdjustmentTerm(Coefficient):
@@ -195,6 +200,33 @@ class MissingData(_Model):
     n_dropped: int | None = None  # complete cases: rows dropped for a missing predictor
     recorded: bool = False  # a blocked answer kept with its attestation
     note: str | None = None
+    # MS1–MS3 (methods/smcfcs.py, methods/missing.py): how the copies were drawn and what the
+    # imputation model held, the m rule, the Monte Carlo error, and the methods sentence.
+    model: Literal["chained_equations", "smcfcs", "supplied"] | None = None
+    compatible: bool | None = None  # compatible with the analysis model (False: passive, recorded)
+    substantive: Literal["linear", "logistic", "cox"] | None = None  # SMC-FCS's analysis model
+    terms: list[str] = []  # the declared nonlinear or derived terms the imputation respects
+    logged: list[str] = []  # imputed on the log scale, as the analysis logs them
+    identity_energy: str | None = None  # total energy, derived as its sources plus the rest
+    identity_sources: list[str] = []
+    identity_infeasible: int = 0  # rows whose recorded sources already reach their recorded total
+    design_strata: str | None = None  # the survey design's columns in the imputation model
+    design_psu: str | None = None
+    design_weight: str | None = None
+    df_com: float | None = None  # the complete-data df Rubin's rules used (the design's)
+    unit: str | None = None  # clustered imputation: the unit column
+    unit_level: list[str] = []  # imputed once per unit
+    knots: dict[str, list[float]] = {}  # placed once on the observed values, held in every copy
+    cuts: dict[str, list[float]] = {}
+    m_asked: int | None = None
+    percent_incomplete: float | None = None  # rows with any imputed value, as a percentage
+    rejection_failures: int = 0
+    mc_max_ratio: float | None = None  # the largest Monte Carlo error, as a share of its SE
+    mc_feature: str | None = None
+    copies: list[str] | None = None  # imputed copies the data carried, by their numbers
+    implicate: str | None = None
+    tests_d1: int = 0  # multi-parameter tests pooled by D1
+    sentence: str | None = None  # the methods sentence
 
 
 class BrantColumn(_Model):
@@ -256,7 +288,8 @@ class ExposureTest(_Model):
 
     column: str
     form: Literal["spline", "quintiles"]
-    test: Literal["overall", "nonlinear", "trend"]
+    # global: every quintile indicator at once (a multi-df Wald test, D1 under multiple imputation)
+    test: Literal["overall", "nonlinear", "trend", "global"]
     statistic: float | None
     df_num: int | None
     df_den: float | None  # the F or t reference's degrees of freedom; null for χ² and z
@@ -288,6 +321,10 @@ class HoldoutDetail(_Model):
 
     intervals: dict[str, Interval]
     calibration: Calibration | None = None
+    # MS6: by level (ordinal, multiclass), at the horizon (time to event), or "not assessed".
+    calibration_levels: list[LevelCalibration] | None = None
+    calibration_horizon: HorizonCalibration | None = None
+    calibration_note: str | None = None
 
 
 class FittedModel(_Model):
@@ -324,6 +361,20 @@ class FittedModel(_Model):
     internal_external: InternalExternal | None = None
     # Under inference, the tests each spline or quintile exposure carries (WP12a).
     exposure_tests: list[ExposureTest] = []
+    # MS6: an ordinal outcome's calibration at each cut-point, or a multiclass outcome's class by
+    # class; a time to event's at the horizon; and, where none could be computed, the record's
+    # "Calibration not assessed: …" (never the word alone).
+    calibration_levels: list[LevelCalibration] | None = None
+    calibration_horizon: HorizonCalibration | None = None
+    calibration_note: str | None = None
+    # MS6: the primary on the comparison substrate (every repeat of the repeated k-fold the
+    # families and the baseline are compared on, under prediction); null under inference.
+    compared_on: MetricSummary | None = None
+    # MS6: the headline performance in one sentence, worded as the expected performance of this
+    # modeling procedure at this sample size (Bates, Hastie & Tibshirani 2023).
+    performance: str | None = None
+    # MS6: Bates et al.'s nested cross-validation interval for the primary, when the split asked.
+    nested_cv: NestedCV | None = None
     # ESTIMAND: under inference with a declared exposure, set by the server: ``coefficients`` holds
     # the exposure's rows only, and every other row is here, in the appendix titled
     # "adjustment terms, not effect estimates" (the Table 2 fallacy; Westreich & Greenland 2013).
@@ -376,6 +427,30 @@ class Selection(_Model):
     wins: dict[str, int]  # how often each family was the one chosen on a resample
     method: str
     text: str
+    by_unit: bool = False  # MS6: each resample took or left a unit's rows together
+    # MS6: other scores of the chosen family on the same left-out rows (the customary headline,
+    # R²), so they are corrected for the same choice: {metric: {corrected, corrected_low, …}}.
+    extras: dict[str, dict[str, float | None]] = {}
+
+
+class Comparison(_Model):
+    """MS6: the repeated k-fold the families and the baseline are compared on (models/folds.py)."""
+
+    folds: int
+    repeats: int
+    shared: int  # how many of the repeats are the headline's own folds (they come first)
+    method: str  # the test, in words
+    note: str | None = None  # time-ordered folds run once
+
+
+class NestedOffer(_Model):
+    """MS6: the nested cross-validation interval, offered where predictors outnumber rows."""
+
+    label: str
+    fits: int  # refits of each family
+    seconds: float | None  # measured from this fit's own folds
+    estimate: str  # "about 4 minutes"
+    decision: dict[str, Any]  # the split answer that runs it
 
 
 class AtOpening(_Model):
@@ -460,6 +535,24 @@ class FitArtifact(_Model):
     # unanswered; else, under inference, the declared estimand the table is captioned from.
     withheld: str | None = None
     estimand: EstimandAnnotation | None = None
+    # MS6 (MODELING_SEQUENCE ruling 4): the customary headline reported beside the strictly proper
+    # primary, and the tension in one line (north star 5).
+    headline_metric: str | None = None
+    headline_label: str | None = None
+    tension: str | None = None
+    # MS6: what the comparisons rest on, and that their pairwise intervals are descriptive.
+    comparison: Comparison | None = None
+    comparisons_note: str | None = None
+    # MS6: what is reported as the result, and on what basis (models/selection.py).
+    result: DeclaredResult | None = None
+    # MS6: a time to event's horizon, and how it was set (declared, or the median follow-up).
+    horizon: float | None = None
+    horizon_note: str | None = None
+    # MS6: p ≫ n: why the intervals are labeled likely too narrow, and the remedy offered.
+    wide: str | None = None
+    nested_offer: NestedOffer | None = None
+    # BLUEPRINT §13: the relations that fired on this fit ("because X, Y").
+    chain: list[ChainLink] = []
 
 
 class SubstitutionModel(_Model):
@@ -480,6 +573,12 @@ class SubstitutionModel(_Model):
     # blocked and recorded, with why and the ways forward.
     refused: str | None = None
     exits: list[InferenceExit] = []
+    # Under multiple imputation (MS3): how the curve was pooled over the copies — "contrast" (a
+    # linear all-components model: the exact contrast of the pooled coefficients with their pooled
+    # covariance) or "per_k" (each copy's curve, pooled at each k by Rubin's rules) — and the
+    # Barnard–Rubin degrees of freedom of each k's interval.
+    pooled: Literal["contrast", "per_k"] | None = None
+    df: list[float | None] | None = None
 
 
 class SubstitutionSupport(_Model):

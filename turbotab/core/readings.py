@@ -3304,6 +3304,9 @@ CONSUMERS: tuple[Consumer, ...] = (
              ASK, kinds=("unit:factor", "nested_in")),
     Consumer(_C + "stages.modeling:substitution_stage", ("energy_factor",), True, ASK,
              kinds=("unit:factor",)),
+    # MS1: the imputation's energy identity computes with each source's kcal per unit, settled only.
+    Consumer(_C + "stages.modeling:_settled_factors", ("energy_factor",), True, SETTLED_ONLY,
+             kinds=("unit:factor",)),
     # The routing gate's ledger residue: the partition methods split each source into kcal by its
     # settled kcal per unit, asked at the energy question and read by the design, never the name.
     Consumer(_C + "decisions:_energy_adjustment_fits_the_roles", ("energy_factor",), True, ASK,

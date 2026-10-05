@@ -366,8 +366,16 @@ def effects_stage(ctx: StageContext) -> Bundle:
     clusters = resolve_clusters(state, frame[list(unit_columns)]) if unit_columns else None
     survey, _ = _survey(ctx, clusters)
     largest = spec3 or spec
+    # MS2 (wave 1b): the declared models' imputation model is the fit's: it holds the survey design
+    # under the population answer and the clustering by unit, and leaves parts of totals to their
+    # own models in the energy identity, so the sequence's primary is the fit's primary.
+    from turbotab.core.readings import nesting
+
+    nested = nesting(state, dict((design.objects or {}).get("nested") or {}),
+                     columns=largest.inputs)
     missing = _missing_for_table(ctx, largest, frame[list(largest.inputs)], y, task,
-                                 [f.key for f in families], loss={"n_dropped": None})
+                                 [f.key for f in families], loss={"n_dropped": None},
+                                 survey=survey, clusters=clusters, nested=nested)
     facts = est.measure_facts(str(spec_e.measure))
     run = _Run(ctx=ctx, state=state, spec_e=spec_e, key=key, exposures=exposures, task=task,
                frame=frame, y=y, spec=spec, spec3=spec3, pipelines=pipelines, outcome=outcome,
@@ -655,7 +663,12 @@ class _Run:
         info["caption"] = (f"Multiple imputation, m = {len(tables)}: each completed copy analyzed "
                            f"as follows, then pooled by Rubin's rules. {info.get('caption', '')}"
                            ).strip()
-        info["missing"] = multiple_imputation_info(imputations, self.spec3 or self.spec, len(self.y))
+        # MS2 (wave 1b): the record names the design's df as Rubin's complete-data df and the
+        # largest Monte Carlo error among the pooled rows, as the fit's record does.
+        from turbotab.core.stages.modeling import _design_df
+
+        info["missing"] = multiple_imputation_info(imputations, self.spec3 or self.spec, len(self.y),
+                                                   rows=pooled, df_com=_design_df(tables[0]))
         concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(self.y))
         return InferenceTable(pooled, info, concerns)
 

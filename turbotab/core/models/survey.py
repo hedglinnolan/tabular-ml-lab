@@ -884,6 +884,19 @@ def curve_caption(design: SurveyDesign, var: DesignVariance, n_rows: int, level:
             f"the fit and which people were sampled (Graubard & Korn 1999).")
 
 
+def pooled_design_caption(design: SurveyDesign, var: DesignVariance, n_rows: int, m: int,
+                          supplied: bool = False, level: float = LEVEL) -> str:
+    """The saved figure's caption for a design-based band pooled over imputed copies (MS2-MS4)."""
+    weight = f"`{design.weight_column}`" if design.weight_column else "equal weights"
+    what = f"the data's {m} imputed copies" if supplied else f"{m} imputations"
+    return (f"Shaded bands: {level:.0%} intervals pooled over {what} by Rubin's rules, each copy's "
+            f"variance by Taylor linearization over the survey design (weights {weight}; "
+            f"{var.domain_psu:,} PSUs in {var.domain_strata:,} strata hold the {n_rows:,} analysis "
+            f"rows), on Barnard–Rubin degrees of freedom with the design's {var.df:,} as the "
+            f"complete-data degrees of freedom; each curve the population mean of the change in "
+            f"the survey-weighted fit's prediction (Graubard & Korn 1999).")
+
+
 # ── the methods sentences (BLUEPRINT §13: each contract's sentence) ──────────
 
 # Each design-based estimator in the words the methods section writes it, by (family, task).
@@ -1023,6 +1036,7 @@ def _register_contracts() -> None:
             relations.append(diagnostic)
         return MethodContract(
             key=key, label=label, slot="model", scope="model", scope_note=model_scope,
+            package="SURVEY",
             needs=(population_need, tasks, f"the {family} family chosen"),
             question=("Do the estimates describe the surveyed population or these participants? "
                       "(the survey question; this estimator answers \"the surveyed population\")"),
@@ -1057,7 +1071,7 @@ def _register_contracts() -> None:
     for c in (
         MethodContract(
             key="survey_population", label="The population estimand under a survey design",
-            slot="model", scope="model", run_order=0.0,
+            slot="model", scope="model", run_order=0.0, package="SURVEY",
             scope_note=("The answer chooses the outcome model's estimator. Each row's weight is its "
                         "own, but every design-based estimate and its variance read the outcome and "
                         "every PSU's rows."),
@@ -1190,7 +1204,7 @@ def _register_contracts() -> None:
                            id="proportional_odds")),
         MethodContract(
             key="survey_substitution", label="The substitution curve over the surveyed population",
-            slot="evaluation", scope="model", scope_note=model_scope,
+            slot="evaluation", scope="model", scope_note=model_scope, package="SURVEY",
             needs=(population_need, "a substitution answer", "the linear family chosen"),
             question="Which energy substitution, in what steps? (the substitution question)",
             place="MODELING_SEQUENCE §1 step 11's displays, beside the coefficient table",
@@ -1266,6 +1280,7 @@ __all__ = [
     "DesignFit", "DesignVariance", "Domain", "FEW_DESIGN_DF", "LONELY_METHOD",
     "LONELY_PSU", "LONELY_RULE", "SAMPLE_EXIT", "SURVEY_CONTRACTS", "SurveyDesign",
     "WeightedFit", "adjusted_wald", "blocked", "build_design", "curve_caption", "design_curve",
+    "pooled_design_caption",
     "design_df", "design_family", "design_fit", "design_table", "domain_of", "has_design_estimator",
     "models_sentence", "no_design_estimator", "PopulationCurve", "population_answer",
     "population_curve", "population_shelf", "substitution_clause", "survey_info", "survey_table",

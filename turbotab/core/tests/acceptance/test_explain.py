@@ -576,12 +576,16 @@ def test_3d_a_family_below_the_floor_draws_no_curve_and_says_why(noise):
             assert family["floor"]["passed"] is False
     linear = noise.family("linear")["floor"]
     how = "is worse than" if linear["verdict"] == "worse" else "is not shown to beat"
+    # MS6 (wave 1b): a regression's primary is the MSE, a strictly proper score, lower better.
+    assert linear["metric"] == "MSE"
+    if linear["verdict"] == "worse":
+        assert linear["model"] > linear["baseline"]
     assert linear["reason"] == (
-        f"Linear model draws no curve: its cross-validated R² of "
-        f"{E._fmt(linear['model'])} {how} the R² of the outcome's average, "
+        f"Linear model draws no curve: its cross-validated MSE of "
+        f"{E._fmt(linear['model'])} {how} the MSE of the outcome's average, "
         f"{E._fmt(linear['baseline'])}, so a curve would describe noise.")
     assert ("No curve was drawn for the linear model, the elastic net and the boosted trees, whose "
-            "cross-validated R² did not beat the outcome's average.") in noise.art["methods"]
+            "cross-validated MSE did not beat the outcome's average.") in noise.art["methods"]
     assert all(f["interactions"] is None for f in noise.art["families"])
 
 

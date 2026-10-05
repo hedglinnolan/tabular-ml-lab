@@ -232,13 +232,17 @@ def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: An
     """
     from sklearn.base import is_classifier
 
+    from turbotab.core.models.metrics import survival_baseline
+
     y_arr = np.asarray(y)
     model = pipeline.steps[-1][1]
     splits = "cv" in model.get_params(deep=False) or _stops_early(model, len(y_arr))
     keys = row_keys(X, y_arr) if splits and groups is None and order is None else None
     with_inner_cv(pipeline, groups=groups, keys=keys, order=order, y=y_arr, seed=seed)
     if not _stops_early(model, len(y_arr)):
-        return pipeline.fit(X, y)
+        # A time to event keeps the baseline hazard of the rows it was fit on (MS6), so it predicts
+        # a risk by the horizon wherever it is scored.
+        return survival_baseline(pipeline.fit(X, y), X, y_arr)
     share = float(model.get_params(deep=False)["validation_fraction"])
     held = validation_rows(share, groups=groups, keys=keys, order=order,
                            y=y_arr if is_classifier(model) else None, seed=seed)
@@ -246,7 +250,7 @@ def fit_pipeline(pipeline: Any, X: Any, y: Any, *, groups: Any = None, order: An
     Xt = head.fit_transform(X, y) if head is not None else X
     model.set_params(early_stopping=True)
     model.fit(_take(Xt, ~held), y_arr[~held], X_val=_take(Xt, held), y_val=y_arr[held])
-    return pipeline
+    return survival_baseline(pipeline, X, y_arr)
 
 
 __all__ = ["EARLY_STOPPING_ROWS", "HASH_COLUMNS", "fit_pipeline", "inner_splits", "row_keys",

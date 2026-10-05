@@ -78,7 +78,9 @@ def explain_stage(ctx: StageContext) -> Bundle:
         units, grouped_by = None, None
     pipelines = design.objects["pipelines"]
     by_key = {m["family"]: m for m in fit.data["models"]}
-    primary = PRIMARY[task]
+    # The fit's own primary (MS6: a strictly proper score; Harrell's C when delayed entry leaves
+    # the Brier score at the horizon uncomputed), so the floor quotes the score the fit compared.
+    primary = fit.data.get("primary_metric") or PRIMARY[task]
 
     def refit(model: Any, X_b: pd.DataFrame, y_b: Any, units_b: Any) -> Any:
         # Every copy of a resampled row (every row of a resampled unit) keeps to one side of the
