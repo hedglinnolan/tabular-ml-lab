@@ -258,13 +258,15 @@ def test_2_six_units_refuse_intervals_with_exits(tmp_path):
                                                  "sodium_mg": "exposure", "age": "covariate"}})
         from turbotab.core.tests.acceptance.server_drive import answer_plan
 
-        answer_plan(d, "sodium_mg")  # WP17: the exposure, its effect and the adjustment set
         d.reach("exclusions")
         d.decide({"kind": "set_exclusions", "rules": []})
         d.reach("missing")
         d.decide({"kind": "set_missing", "strategy": "complete_case"})
         d.reach("split")
         d.decide({"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        # WP17, after the split (MODELING_SEQUENCE §1 steps 2–3): the exposure, its effect and the
+        # adjustment set
+        answer_plan(d, "sodium_mg")
         if d.reach("energy_adjustment")["status"] in ("open", "waiting"):
             d.decide({"kind": "set_energy_adjustment", "method": "none"})
         d.reach("models")

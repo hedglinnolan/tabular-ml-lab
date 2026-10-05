@@ -177,7 +177,7 @@ export function route(
     const value = key === "open_seal" ? state.seal_opened : state[key];
     const decision_id = writers.get(key) ?? null;
     if (key === "orientation" && value !== null) {
-      steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [] });
+      steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [], followup: null, ask: null });
       continue;
     }
     let na: string | null = sequenceGate(key, state, targetInfo, opts.featureMajor);
@@ -203,11 +203,13 @@ export function route(
         reason: na,
         decision_id: value !== null ? decision_id : null,
         waiting_on: [],
+        followup: null,
+        ask: null,
       });
       continue;
     }
     if (value !== null && value !== undefined) {
-      steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [] });
+      steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [], followup: null, ask: null });
       continue;
     }
     if (
@@ -223,6 +225,8 @@ export function route(
         reason: targetInfo.reason,
         decision_id: null,
         waiting_on: [],
+        followup: null,
+        ask: null,
       });
       continue;
     }
@@ -237,6 +241,8 @@ export function route(
         decision_id: null,
         reason: null,
         waiting_on: own,
+        followup: null,
+        ask: null,
       });
     } else {
       steps.push({
@@ -245,6 +251,8 @@ export function route(
         decision_id: null,
         reason: null,
         waiting_on: [first, ...own],
+        followup: null,
+        ask: null,
       });
     }
   }

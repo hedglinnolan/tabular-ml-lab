@@ -1123,6 +1123,16 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
             p["proposed"], p["confidence"] = "excluded", "medium"
             p["reason"] = (f"{reference[1]} shares sum to 100%, so one must leave; this one is "
                            f"the reference.")
+    # WP18 (audit RO-10): with the outcome on its log scale, the column it is the log of is the
+    # outcome itself, never a predictor; the user's own scale answer settles it.
+    from turbotab.core.structural import log_outcome
+
+    source = log_outcome(ctx.state)
+    for p in proposals:
+        if source is not None and p["column"] == source:
+            p["proposed"], p["confidence"] = "excluded", "high"
+            p["reason"] = (f"The outcome on its original scale; the analysis reads "
+                           f"`{ctx.state.target}`, its natural log.")
     if repeats is not None:
         for p in proposals:
             if p["column"] == repeats["column"]:
@@ -1293,6 +1303,7 @@ def cohort_flow(
     n_loaded: int | None = None,
     missing_frame: Any | None = None,
     repairs: Sequence[Any] | None = None,
+    reference: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], Any]:
     """The participant flow over ``frame`` (indexed by row id): its steps and the kept row ids.
 
@@ -1305,8 +1316,19 @@ def cohort_flow(
     """
     steps: list[dict[str, Any]] = []
     n = len(frame) if n_loaded is None else int(n_loaded)
-    steps.append({"key": "loaded", "label": "Rows in the table", "n": n, "dropped": 0,
+    # WP18 (audit RO-13): reference rows (pooled QC injections) left the working table before
+    # anything was read from it; the flow counts them first, each on a line of its own.
+    gone = [r for r in (reference or []) if int(r.get("n") or 0)]
+    total = n + sum(int(r["n"]) for r in gone)
+    steps.append({"key": "loaded", "label": "Rows in the table", "n": total, "dropped": 0,
                   "reason": None, "decision_id": None})
+    for i, r in enumerate(gone):
+        total -= int(r["n"])
+        levels = " or ".join(f"`{v}`" for v in r.get("levels") or [])
+        steps.append({"key": f"reference:{i}", "label": f"`{r['column']}` is not {levels}",
+                      "n": total, "dropped": int(r["n"]),
+                      "reason": "an instrument run (a reference row), not a participant",
+                      "decision_id": None})
     import pandas as pd
 
     if target is not None:
@@ -1436,6 +1458,7 @@ def compute_cohort(
         predictor_columns=gappy,
         missing_frame=missing_frame,
         repairs=repair_rules(state),
+        reference=ingest.get("reference_rows"),
     )
     return steps, kept, preds
 

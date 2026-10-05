@@ -351,6 +351,7 @@ function structureArtifact(p: MockProject, state: ProjectState): StructureArtifa
       : "Whether these are repeats or time points cannot be read from the data.",
     spacing,
     replicate_index: index,
+    implicate_column: null,
     n_units_read: units.of.size,
   };
   const t = state.target ? findColumn(ds, state.target) : undefined;
@@ -837,6 +838,8 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
             time_column:
               reading.reading === "time_points" ? (reading.spacing?.column ?? null) : null,
             levels: null,
+            implicate_column: null,
+            acknowledged: false,
           };
       }
       return { ...state, grain, repeat_kind: repeatKind };
@@ -883,6 +886,8 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
             reason: null,
             waiting_on: [],
             deferred_findings: [],
+            followup: null,
+            ask: null,
           };
         if (state.split && state.split.holdout === 0)
           return {
@@ -892,6 +897,8 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
             reason: "No rows were sealed: every score comes from cross-validation.",
             waiting_on: [],
             deferred_findings: [],
+            followup: null,
+            ask: null,
           };
         if (firstUnanswered)
           return {
@@ -901,6 +908,8 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
             reason: null,
             waiting_on: [firstUnanswered.key, "fit"],
             deferred_findings: [],
+            followup: null,
+            ask: null,
           };
         if (stages.fit?.status !== "fresh")
           return {
@@ -910,6 +919,8 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
             reason: null,
             waiting_on: ["fit"],
             deferred_findings: [],
+            followup: null,
+            ask: null,
           };
         return {
           key,
@@ -918,6 +929,8 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
           reason: null,
           waiting_on: [],
           deferred_findings: [],
+          followup: null,
+          ask: null,
         };
       })();
       // The M1 Router lists open_seal too (QUESTION_KEYS): this reading replaces it, never doubles it.
@@ -980,6 +993,7 @@ export function m2Mock(foldOf: (records: DecisionRecord[]) => ProjectState): M2M
                   method: d.method,
                   outcome: o,
                   columns: {},
+                  acknowledged: false,
                 },
               })),
             );

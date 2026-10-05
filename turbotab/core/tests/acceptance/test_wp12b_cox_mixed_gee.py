@@ -249,13 +249,15 @@ def test_3_the_cox_model_is_reached_through_the_server(tmp_path):
         d.decide({"kind": "set_roles", "roles": {"participant_id": "identifier",
                                                  "fiber_g": "exposure", "age": "covariate",
                                                  "followup_years": "time"}})
-        answer_plan(d, "fiber_g")  # WP17: the exposure, its effect and the adjustment set
         d.reach("exclusions")
         d.decide({"kind": "set_exclusions", "rules": []})
         d.reach("missing")
         d.decide({"kind": "set_missing", "strategy": "complete_case"})
         d.reach("split")
         d.decide({"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        # WP17, after the split (MODELING_SEQUENCE §1 steps 2–3): the exposure, its effect and the
+        # adjustment set
+        answer_plan(d, "fiber_g")
         d.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "none"})
         d.reach("models")
         refused = client.post(f"/api/projects/{d.pid}/decisions",
@@ -565,13 +567,15 @@ def test_4_the_six_unit_exit_is_a_mixed_model_with_sodium_p_085(tmp_path):
         d.reach("roles")
         d.decide({"kind": "set_roles", "roles": {"participant_id": "identifier",
                                                  "sodium_mg": "exposure", "age": "covariate"}})
-        answer_plan(d, "sodium_mg")  # WP17: the exposure, its effect and the adjustment set
         d.reach("exclusions")
         d.decide({"kind": "set_exclusions", "rules": []})
         d.reach("missing")
         d.decide({"kind": "set_missing", "strategy": "complete_case"})
         d.reach("split")
         d.decide({"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        # WP17, after the split (MODELING_SEQUENCE §1 steps 2–3): the exposure, its effect and the
+        # adjustment set
+        answer_plan(d, "sodium_mg")
         d.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "none"})
         d.reach("models")
         shelf = d.artifact("shelf")

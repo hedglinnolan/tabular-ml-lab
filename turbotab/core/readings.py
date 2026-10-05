@@ -2656,7 +2656,10 @@ def families(readings: Iterable[Reading]) -> list[list[Reading]]:
 
 
 _GUESS_WORDS = {"code": "codes for categories", "amount": "an amount", "yes": "rows belong together",
-                "no": "groups nothing", "orders": "orders the records"}
+                "no": "groups nothing", "orders": "orders the records",
+                # a value below a detection limit, read as numbers (``detection_exits``)
+                "half_limit": "below its detection limit, read at half the limit",
+                "limit_root2": "below its detection limit, read at the limit over √2"}
 
 
 def guess_words(r: Reading) -> str:
@@ -2893,6 +2896,11 @@ CONSUMERS: tuple[Consumer, ...] = (
     Consumer(_C + "coach:_unit_suffix", ("coach_names",), True, NO_UNIT,
              kinds=("unit:energy",)),
     Consumer(_C + "coach:exclusions_coach", ("coach_names",), False, WORDS_ONLY),
+    # BLUEPRINT §14.2 (audit WP18): the one ask card, on the question whose consumer reads these
+    # readings. It lists the unsettled ones its consumer's refusal would ask, with that refusal's
+    # ways forward, and the ones the values settled ("read from your data"); it only asks.
+    Consumer(_C + "ask:card", ("roles", "predictor_codes", "combine_codes", "energy_column",
+                               "energy_unit_days", "survey_design"), False, WORDS_ONLY),
     # ── the survey design ──
     Consumer(_C + "survey:reading_of", ("survey_design", "design_role"), True, SETTLED_ONLY),
     Consumer(_C + "survey:not_applicable_reason", ("survey_design",), True, ASK,

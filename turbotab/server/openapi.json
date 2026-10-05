@@ -432,6 +432,9 @@
                     "$ref": "#/components/schemas/ConfirmReadings"
                   },
                   {
+                    "$ref": "#/components/schemas/SetOutcomeScale"
+                  },
+                  {
                     "$ref": "#/components/schemas/Reseal-Input"
                   },
                   {
@@ -489,6 +492,7 @@
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "confirm_reading": "#/components/schemas/ConfirmReading",
                     "confirm_readings": "#/components/schemas/ConfirmReadings",
+                    "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
                     "reseal": "#/components/schemas/Reseal-Input",
                     "lock_plan": "#/components/schemas/LockPlan-Input",
                     "set_censoring": "#/components/schemas/SetCensoring-Input",
@@ -910,6 +914,9 @@
                     "$ref": "#/components/schemas/ConfirmReadings"
                   },
                   {
+                    "$ref": "#/components/schemas/SetOutcomeScale"
+                  },
+                  {
                     "$ref": "#/components/schemas/Reseal-Input"
                   },
                   {
@@ -967,6 +974,7 @@
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "confirm_reading": "#/components/schemas/ConfirmReading",
                     "confirm_readings": "#/components/schemas/ConfirmReadings",
+                    "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
                     "reseal": "#/components/schemas/Reseal-Input",
                     "lock_plan": "#/components/schemas/LockPlan-Input",
                     "set_censoring": "#/components/schemas/SetCensoring-Input",
@@ -1771,6 +1779,11 @@
             },
             "type": "object",
             "title": "Columns"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -1778,7 +1791,8 @@
         "required": [
           "method",
           "outcome",
-          "columns"
+          "columns",
+          "acknowledged"
         ],
         "title": "AggregationSpec"
       },
@@ -1850,6 +1864,166 @@
         ],
         "title": "ApplyRepair",
         "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06)."
+      },
+      "AskCard": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "consumer": {
+            "type": "string",
+            "title": "Consumer"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AskGroup"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/AskExit"
+            },
+            "type": "array",
+            "title": "Exits"
+          },
+          "read_from_data": {
+            "items": {
+              "$ref": "#/components/schemas/AskSettled"
+            },
+            "type": "array",
+            "title": "Read From Data",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "consumer",
+          "text",
+          "groups",
+          "exits",
+          "read_from_data"
+        ],
+        "title": "AskCard",
+        "description": "\"Tell me about these columns\", in the question whose answer feeds the consumer."
+      },
+      "AskExit": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "AskExit"
+      },
+      "AskGroup": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "guess": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guess"
+          },
+          "guess_words": {
+            "type": "string",
+            "title": "Guess Words"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "columns",
+          "guess",
+          "guess_words",
+          "evidence"
+        ],
+        "title": "AskGroup",
+        "description": "One line of the card: a reading, or a homogeneous family of them confirmed as one block."
+      },
+      "AskSettled": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "words": {
+            "type": "string",
+            "title": "Words"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          },
+          "change": {
+            "items": {
+              "$ref": "#/components/schemas/AskExit"
+            },
+            "type": "array",
+            "title": "Change"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "value",
+          "words",
+          "evidence",
+          "change"
+        ],
+        "title": "AskSettled",
+        "description": "One reading the values settled for this consumer, no question asked\n(``readings.read_from_data``, the readings endpoint's own item)."
       },
       "Caution": {
         "properties": {
@@ -2621,6 +2795,9 @@
                 "$ref": "#/components/schemas/ConfirmReadings"
               },
               {
+                "$ref": "#/components/schemas/SetOutcomeScale"
+              },
+              {
                 "$ref": "#/components/schemas/Reseal-Output"
               },
               {
@@ -2673,6 +2850,7 @@
                 "set_missing": "#/components/schemas/SetMissing-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
                 "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
+                "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
                 "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                 "set_purpose": "#/components/schemas/SetPurpose",
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
@@ -3374,6 +3552,9 @@
                     "$ref": "#/components/schemas/ConfirmReadings"
                   },
                   {
+                    "$ref": "#/components/schemas/SetOutcomeScale"
+                  },
+                  {
                     "$ref": "#/components/schemas/Reseal-Output"
                   },
                   {
@@ -3425,6 +3606,7 @@
                     "set_missing": "#/components/schemas/SetMissing-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
+                    "set_outcome_scale": "#/components/schemas/SetOutcomeScale",
                     "set_outcome_unit": "#/components/schemas/SetOutcomeUnit",
                     "set_purpose": "#/components/schemas/SetPurpose",
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
@@ -4390,11 +4572,11 @@
               "roles",
               "clusters",
               "survey",
-              "estimand",
-              "adjustment",
               "exclusions",
               "missing",
               "split",
+              "estimand",
+              "adjustment",
               "energy_adjustment",
               "models",
               "substitution",
@@ -4450,6 +4632,31 @@
             "type": "array",
             "title": "Deferred Findings",
             "default": []
+          },
+          "followup": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "scale",
+                  "order"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followup"
+          },
+          "ask": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AskCard"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4459,7 +4666,9 @@
           "decision_id",
           "reason",
           "waiting_on",
-          "deferred_findings"
+          "deferred_findings",
+          "followup",
+          "ask"
         ],
         "title": "InterviewStep"
       },
@@ -5297,6 +5506,29 @@
         "title": "OpenSeal",
         "description": "Open the held-out rows: once, at the end. Held-out scores are withheld until then.\n\n``family`` is the final model, declared on cross-validation before any held-out score is seen\n(AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the\nreported result. Required when several families are fitted; with one, the opening declares it.\nNull only in records from before the rule."
       },
+      "OutcomeScaleSpec": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "scale": {
+            "type": "string",
+            "enum": [
+              "original",
+              "log"
+            ],
+            "title": "Scale"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "scale"
+        ],
+        "title": "OutcomeScaleSpec"
+      },
       "PreviewResult": {
         "properties": {
           "kind": {
@@ -5385,7 +5617,8 @@
                     "genomics",
                     "dietary",
                     "clinical",
-                    "survey"
+                    "survey",
+                    "other"
                   ]
                 },
                 "type": "array"
@@ -5907,6 +6140,16 @@
               }
             ],
             "title": "Adjustment"
+          },
+          "outcome_scale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutcomeScaleSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -5950,7 +6193,8 @@
           "censoring",
           "clusters",
           "estimand",
-          "adjustment"
+          "adjustment",
+          "outcome_scale"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -6457,7 +6701,8 @@
             "type": "string",
             "enum": [
               "repeats",
-              "time_points"
+              "time_points",
+              "imputed_copies"
             ],
             "title": "Repeat Kind"
           },
@@ -6485,6 +6730,22 @@
               }
             ],
             "title": "Levels"
+          },
+          "implicate_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implicate Column"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -6492,7 +6753,9 @@
         "required": [
           "repeat_kind",
           "time_column",
-          "levels"
+          "levels",
+          "implicate_column",
+          "acknowledged"
         ],
         "title": "RepeatSpec"
       },
@@ -7142,6 +7405,11 @@
             },
             "type": "object",
             "title": "Columns"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -7199,6 +7467,11 @@
             },
             "type": "object",
             "title": "Columns"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -7207,7 +7480,8 @@
           "kind",
           "method",
           "outcome",
-          "columns"
+          "columns",
+          "acknowledged"
         ],
         "title": "SetAggregation"
       },
@@ -8198,7 +8472,8 @@
                 "genomics",
                 "dietary",
                 "clinical",
-                "survey"
+                "survey",
+                "other"
               ]
             },
             "type": "array",
@@ -8550,6 +8825,38 @@
         "title": "SetOutcomeOrder",
         "description": "The order of an ordinal outcome's levels, lowest first. Stands only while ``column`` is the\ntarget. Numbers are ordered by value without it; text levels need it (asked, never inferred)."
       },
+      "SetOutcomeScale": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_outcome_scale",
+            "title": "Kind",
+            "default": "set_outcome_scale"
+          },
+          "column": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Column"
+          },
+          "scale": {
+            "type": "string",
+            "enum": [
+              "original",
+              "log"
+            ],
+            "title": "Scale"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "column",
+          "scale"
+        ],
+        "title": "SetOutcomeScale",
+        "description": "The scale the outcome ``column`` is analyzed on. \"log\" makes ``ln_<column>`` the outcome\n(the target slot), so every stage, score and sentence reads the column it names; \"original\"\nkeeps ``column``, its estimand a difference in means."
+      },
       "SetOutcomeUnit": {
         "properties": {
           "kind": {
@@ -8618,7 +8925,8 @@
             "type": "string",
             "enum": [
               "repeats",
-              "time_points"
+              "time_points",
+              "imputed_copies"
             ],
             "title": "Repeat Kind"
           },
@@ -8646,6 +8954,22 @@
               }
             ],
             "title": "Levels"
+          },
+          "implicate_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implicate Column"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -8668,7 +8992,8 @@
             "type": "string",
             "enum": [
               "repeats",
-              "time_points"
+              "time_points",
+              "imputed_copies"
             ],
             "title": "Repeat Kind"
           },
@@ -8696,6 +9021,22 @@
               }
             ],
             "title": "Levels"
+          },
+          "implicate_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implicate Column"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -8704,7 +9045,9 @@
           "kind",
           "repeat_kind",
           "time_column",
-          "levels"
+          "levels",
+          "implicate_column",
+          "acknowledged"
         ],
         "title": "SetRepeatKind"
       },
@@ -10044,11 +10387,11 @@
               "roles",
               "clusters",
               "survey",
-              "estimand",
-              "adjustment",
               "exclusions",
               "missing",
               "split",
+              "estimand",
+              "adjustment",
               "energy_adjustment",
               "models",
               "substitution",
@@ -11822,6 +12165,76 @@
         "title": "CompleteCaseLoss",
         "type": "object"
       },
+      "CovariateAnswers": {
+        "additionalProperties": false,
+        "description": "The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_\nSEQUENCE §1 step 3). The covariate's role is derived from these, never chosen directly.",
+        "properties": {
+          "causes_exposure": {
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "Causes Exposure",
+            "type": "string"
+          },
+          "causes_outcome": {
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "Causes Outcome",
+            "type": "string"
+          },
+          "after_exposure": {
+            "enum": [
+              "yes",
+              "no",
+              "unknown"
+            ],
+            "title": "After Exposure",
+            "type": "string"
+          },
+          "instrument": {
+            "default": false,
+            "title": "Instrument",
+            "type": "boolean"
+          },
+          "proxy": {
+            "default": false,
+            "title": "Proxy",
+            "type": "boolean"
+          },
+          "keep": {
+            "default": false,
+            "title": "Keep",
+            "type": "boolean"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "further": {
+            "default": false,
+            "title": "Further",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "causes_exposure",
+          "causes_outcome",
+          "after_exposure",
+          "instrument",
+          "proxy",
+          "keep",
+          "acknowledged",
+          "further"
+        ],
+        "title": "CovariateAnswers",
+        "type": "object"
+      },
       "CurvePoint": {
         "additionalProperties": false,
         "properties": {
@@ -11942,6 +12355,31 @@
           "day_first"
         ],
         "title": "DateExample",
+        "type": "object"
+      },
+      "DerivedColumn": {
+        "description": "A column the working table derives row by row (the log-scale outcome; audit RO-10).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "expression": {
+            "const": "ln",
+            "title": "Expression",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "expression",
+          "source"
+        ],
+        "title": "DerivedColumn",
         "type": "object"
       },
       "DerivedRole": {
@@ -12120,6 +12558,41 @@
           "detail"
         ],
         "title": "DesignStep",
+        "type": "object"
+      },
+      "DismissFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "dismiss_finding",
+            "default": "dismiss_finding",
+            "title": "Kind",
+            "type": "string"
+          },
+          "finding_id": {
+            "minLength": 1,
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "kind",
+          "finding_id",
+          "reason"
+        ],
+        "title": "DismissFinding",
         "type": "object"
       },
       "EarlierRows": {
@@ -13082,7 +13555,8 @@
                   "genomics",
                   "dietary",
                   "clinical",
-                  "survey"
+                  "survey",
+                  "other"
                 ],
                 "type": "string"
               },
@@ -13125,11 +13599,11 @@
                   "roles",
                   "clusters",
                   "survey",
-                  "estimand",
-                  "adjustment",
                   "exclusions",
                   "missing",
                   "split",
+                  "estimand",
+                  "adjustment",
                   "energy_adjustment",
                   "models",
                   "substitution",
@@ -14576,7 +15050,8 @@
               "genomics",
               "dietary",
               "clinical",
-              "survey"
+              "survey",
+              "other"
             ],
             "title": "Lens",
             "type": "string"
@@ -14591,6 +15066,50 @@
           "because"
         ],
         "title": "LensHint",
+        "type": "object"
+      },
+      "LockPlan": {
+        "additionalProperties": false,
+        "description": "The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).\n\nRecorded by the server when inference estimates are first displayed (or by the user, before\nthat): the plan in force then is what was declared in the software before any estimate was\ndisplayed, and every later decision is marked as made after the estimates were seen. ``plan``\n(every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the\nserver. The lock is never undone.",
+        "properties": {
+          "kind": {
+            "const": "lock_plan",
+            "default": "lock_plan",
+            "title": "Kind",
+            "type": "string"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Plan"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Digest"
+          }
+        },
+        "required": [
+          "kind",
+          "plan",
+          "digest"
+        ],
+        "title": "LockPlan",
         "type": "object"
       },
       "MatrixShape": {
@@ -15155,6 +15674,101 @@
         "title": "OmittedEnergy",
         "type": "object"
       },
+      "OpenSeal": {
+        "additionalProperties": false,
+        "description": "Open the held-out rows: once, at the end. Held-out scores are withheld until then.\n\n``family`` is the final model, declared on cross-validation before any held-out score is seen\n(AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the\nreported result. Required when several families are fitted; with one, the opening declares it.\nNull only in records from before the rule.",
+        "properties": {
+          "kind": {
+            "const": "open_seal",
+            "default": "open_seal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Family"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target"
+          },
+          "n_holdout": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Holdout"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Metric"
+          },
+          "scores": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scores"
+          }
+        },
+        "required": [
+          "kind",
+          "family",
+          "target",
+          "n_holdout",
+          "metric",
+          "scores"
+        ],
+        "title": "OpenSeal",
+        "type": "object"
+      },
       "Optimism": {
         "additionalProperties": false,
         "description": "Harrell's bootstrap optimism correction of one family (module docstring).",
@@ -15267,6 +15881,69 @@
           "optimism_sd"
         ],
         "title": "OptimismEstimate",
+        "type": "object"
+      },
+      "OrderQuestion": {
+        "description": "\"Are these levels ordered?\" (``turbotab.core.structural.order_question``).",
+        "properties": {
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "levels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "numeric": {
+            "title": "Numeric",
+            "type": "boolean"
+          },
+          "proposed_order": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Order"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "order_options": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "title": "Order Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "levels",
+          "numeric",
+          "proposed_order",
+          "evidence",
+          "options",
+          "order_options"
+        ],
+        "title": "OrderQuestion",
         "type": "object"
       },
       "OrientationReading": {
@@ -15838,6 +16515,38 @@
         "title": "QuestionLabels",
         "type": "object"
       },
+      "ReferenceRowsLeft": {
+        "description": "Rows a recorded repair excluded as reference rows (pooled QC injections; audit RO-13).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "levels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "finding": {
+            "title": "Finding",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "column",
+          "levels",
+          "finding",
+          "n"
+        ],
+        "title": "ReferenceRowsLeft",
+        "type": "object"
+      },
       "Repair": {
         "properties": {
           "column": {
@@ -15937,7 +16646,8 @@
               {
                 "enum": [
                   "repeats",
-                  "time_points"
+                  "time_points",
+                  "imputed_copies"
                 ],
                 "type": "string"
               },
@@ -15998,6 +16708,18 @@
             ],
             "title": "Replicate Index"
           },
+          "implicate_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Implicate Column"
+          },
           "n_units_read": {
             "title": "N Units Read",
             "type": "integer"
@@ -16011,6 +16733,7 @@
           "sentence",
           "spacing",
           "replicate_index",
+          "implicate_column",
           "n_units_read"
         ],
         "title": "RepeatsReading",
@@ -16052,6 +16775,49 @@
           "regular_share"
         ],
         "title": "RepetitionEvidence",
+        "type": "object"
+      },
+      "Reseal": {
+        "additionalProperties": false,
+        "description": "Draw the held-out rows again after they were opened (audit WP16, RO-05).\n\nOnce opened, the held-out rows hold still: a new seed or holdout, or anything else that would\ndraw them again, waits for this recorded re-seal. It withdraws the opening of the current\noutcome's seal, so the rows drawn next are withheld until they are opened in turn; the scores\nat the first opening stay the reported result, and later held-out scores are not an\nindependent test. ``target`` is filled by the server. It stands while its outcome is the\ntarget, as the opening does.",
+        "properties": {
+          "kind": {
+            "const": "reseal",
+            "default": "reseal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target"
+          }
+        },
+        "required": [
+          "kind",
+          "reason",
+          "target"
+        ],
+        "title": "Reseal",
         "type": "object"
       },
       "RoleProposal": {
@@ -16221,6 +16987,68 @@
           "n_dropped_observed"
         ],
         "title": "RowComparison",
+        "type": "object"
+      },
+      "ScaleQuestion": {
+        "description": "The scale a positive, markedly skewed outcome is analyzed on\n(``turbotab.core.structural.scale_question``).",
+        "properties": {
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "skewness": {
+            "title": "Skewness",
+            "type": "number"
+          },
+          "log_skewness": {
+            "title": "Log Skewness",
+            "type": "number"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          },
+          "median": {
+            "title": "Median",
+            "type": "number"
+          },
+          "max": {
+            "title": "Max",
+            "type": "number"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "log_column": {
+            "title": "Log Column",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "skewness",
+          "log_skewness",
+          "n",
+          "min",
+          "median",
+          "max",
+          "evidence",
+          "log_column",
+          "options"
+        ],
+        "title": "ScaleQuestion",
         "type": "object"
       },
       "SealBasis": {
@@ -16681,6 +17509,37 @@
         "title": "Selection",
         "type": "object"
       },
+      "SensitivityAnalysis": {
+        "additionalProperties": false,
+        "description": "One analysis beside the primary: the same model on the rows these rules keep instead.",
+        "properties": {
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExclusionRule"
+                },
+                {
+                  "$ref": "#/components/schemas/GoldbergRule"
+                }
+              ]
+            },
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label",
+          "rules"
+        ],
+        "title": "SensitivityAnalysis",
+        "type": "object"
+      },
       "SensitivityArtifact": {
         "additionalProperties": false,
         "properties": {
@@ -16958,6 +17817,1149 @@
           "refused"
         ],
         "title": "SensitivityRow",
+        "type": "object"
+      },
+      "SetAdjustment": {
+        "additionalProperties": false,
+        "description": "Answers for some covariates, against one exposure: one tap per group of covariates that\nshare their answers (BLUEPRINT §14.2). Each covariate's answer is kept under its column, so a\nlater group's answers never undo an earlier group's.",
+        "properties": {
+          "kind": {
+            "const": "set_adjustment",
+            "default": "set_adjustment",
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "minLength": 1,
+            "title": "Exposure",
+            "type": "string"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers"
+            },
+            "minProperties": 1,
+            "title": "Answers",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "exposure",
+          "answers"
+        ],
+        "title": "SetAdjustment",
+        "type": "object"
+      },
+      "SetAggregation": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_aggregation",
+            "default": "set_aggregation",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "mean",
+              "first",
+              "last",
+              "change"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mean",
+                  "first",
+                  "last"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome"
+          },
+          "columns": {
+            "additionalProperties": {
+              "enum": [
+                "mean",
+                "first",
+                "last",
+                "change",
+                "mode"
+              ],
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "object"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "method",
+          "outcome",
+          "columns",
+          "acknowledged"
+        ],
+        "title": "SetAggregation",
+        "type": "object"
+      },
+      "SetCensoring": {
+        "additionalProperties": false,
+        "description": "The follow-up question's \"no\" (audit RO-03): nobody's follow-up ended before the event could\nbe seen, so the yes/no outcome counts events over one period for everyone. Stands only while\n``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then\n``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that\nvaries (block and record).",
+        "properties": {
+          "kind": {
+            "const": "set_censoring",
+            "default": "set_censoring",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "acknowledged"
+        ],
+        "title": "SetCensoring",
+        "type": "object"
+      },
+      "SetClusters": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_clusters",
+            "default": "set_clusters",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Column"
+          },
+          "adjust": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fixed_effects",
+                  "cluster_only"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Adjust"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "adjust",
+          "acknowledged"
+        ],
+        "title": "SetClusters",
+        "type": "object"
+      },
+      "SetColumnUnit": {
+        "additionalProperties": false,
+        "description": "A column's unit, as the user reads it from the source's data dictionary, where TurboTab\ncould only propose one: total energy in kcal or kJ (a day's, or a total over ``days`` days),\nor an age in years, months, weeks or days. Leash (BLUEPRINT §11.3): a unit not read from a\nstated suffix, a codebook or the values' own agreement is a proposal, and no screen, band or\ncount is applied in it until it is recorded here.",
+        "properties": {
+          "kind": {
+            "const": "set_column_unit",
+            "default": "set_column_unit",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "kcal",
+              "kj",
+              "years",
+              "months",
+              "weeks",
+              "days"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "days": {
+            "default": 1,
+            "maximum": 366,
+            "minimum": 1,
+            "title": "Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "unit",
+          "days"
+        ],
+        "title": "SetColumnUnit",
+        "type": "object"
+      },
+      "SetEnergyAdjustment": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_energy_adjustment",
+            "default": "set_energy_adjustment",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "none",
+              "standard",
+              "residual",
+              "residual_energy_dropped",
+              "density_multivariate",
+              "density",
+              "partition",
+              "all_components"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "energy_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Energy Column"
+          },
+          "nutrients": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Nutrients",
+            "type": "array"
+          },
+          "log_transform": {
+            "default": false,
+            "title": "Log Transform",
+            "type": "boolean"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Strata"
+          }
+        },
+        "required": [
+          "kind",
+          "method",
+          "energy_column",
+          "nutrients",
+          "log_transform",
+          "strata"
+        ],
+        "title": "SetEnergyAdjustment",
+        "type": "object"
+      },
+      "SetEstimand": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_estimand",
+            "default": "set_estimand",
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exposure"
+          },
+          "family": {
+            "default": false,
+            "title": "Family",
+            "type": "boolean"
+          },
+          "effect": {
+            "default": "total",
+            "enum": [
+              "total",
+              "direct"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "enum": [
+                  "substitution",
+                  "addition"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Contrast"
+          },
+          "measure": {
+            "enum": [
+              "mean_difference",
+              "odds_ratio",
+              "hazard_ratio",
+              "cumulative_odds_ratio",
+              "relative_risk_ratio",
+              "risk_difference",
+              "risk_ratio",
+              "exposure_mean_difference"
+            ],
+            "title": "Measure",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "exposure",
+          "family",
+          "effect",
+          "contrast",
+          "measure"
+        ],
+        "title": "SetEstimand",
+        "type": "object"
+      },
+      "SetExclusions": {
+        "additionalProperties": false,
+        "description": "Row exclusions; an empty list is the answer \"keep every row\".",
+        "properties": {
+          "kind": {
+            "const": "set_exclusions",
+            "default": "set_exclusions",
+            "title": "Kind",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExclusionRule"
+                },
+                {
+                  "$ref": "#/components/schemas/GoldbergRule"
+                }
+              ]
+            },
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "rules"
+        ],
+        "title": "SetExclusions",
+        "type": "object"
+      },
+      "SetExposureForm": {
+        "additionalProperties": false,
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.",
+        "properties": {
+          "kind": {
+            "const": "set_exposure_form",
+            "default": "set_exposure_form",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "form": {
+            "enum": [
+              "linear",
+              "spline",
+              "quintiles"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "maximum": 5,
+                "minimum": 3,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Knots"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "form",
+          "knots"
+        ],
+        "title": "SetExposureForm",
+        "type": "object"
+      },
+      "SetFeatureTable": {
+        "additionalProperties": false,
+        "description": "How a features-in-rows table reads: the column naming the features, and the columns that\ndescribe them (m/z, retention time, IDs). Turning it makes every other column a sample.",
+        "properties": {
+          "kind": {
+            "const": "set_feature_table",
+            "default": "set_feature_table",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "annotations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Annotations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "annotations"
+        ],
+        "title": "SetFeatureTable",
+        "type": "object"
+      },
+      "SetFollowUp": {
+        "additionalProperties": false,
+        "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.",
+        "properties": {
+          "kind": {
+            "const": "set_follow_up",
+            "default": "set_follow_up",
+            "title": "Kind",
+            "type": "string"
+          },
+          "column": {
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "time_column": {
+            "minLength": 1,
+            "title": "Time Column",
+            "type": "string"
+          },
+          "entry_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entry Column"
+          }
+        },
+        "required": [
+          "kind",
+          "column",
+          "time_column",
+          "entry_column"
+        ],
+        "title": "SetFollowUp",
+        "type": "object"
+      },
+      "SetGrain": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_grain",
+            "default": "set_grain",
+            "title": "Kind",
+            "type": "string"
+          },
+          "grain": {
+            "enum": [
+              "one_row_per_unit",
+              "repeated",
+              "unknown"
+            ],
+            "title": "Grain",
+            "type": "string"
+          },
+          "id_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Id Column"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "grain",
+          "id_column",
+          "acknowledged"
+        ],
+        "title": "SetGrain",
+        "type": "object"
+      },
+      "SetMeasurementError": {
+        "additionalProperties": false,
+        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011).",
+        "properties": {
+          "kind": {
+            "const": "set_measurement_error",
+            "default": "set_measurement_error",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "none",
+              "regression_calibration"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exposures",
+            "type": "array"
+          },
+          "n_boot": {
+            "default": 200,
+            "maximum": 2000,
+            "minimum": 50,
+            "title": "N Boot",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "method",
+          "exposures",
+          "n_boot"
+        ],
+        "title": "SetMeasurementError",
+        "type": "object"
+      },
+      "SetMissing": {
+        "additionalProperties": false,
+        "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both.",
+        "properties": {
+          "kind": {
+            "const": "set_missing",
+            "default": "set_missing",
+            "title": "Kind",
+            "type": "string"
+          },
+          "strategy": {
+            "enum": [
+              "complete_case",
+              "impute",
+              "multiple_imputation"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "drop_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drop Columns",
+            "type": "array"
+          },
+          "categorical": {
+            "default": "impute",
+            "enum": [
+              "missing_category",
+              "impute"
+            ],
+            "title": "Categorical",
+            "type": "string"
+          },
+          "indicators": {
+            "default": false,
+            "title": "Indicators",
+            "type": "boolean"
+          },
+          "m": {
+            "default": 20,
+            "maximum": 200,
+            "minimum": 20,
+            "title": "M",
+            "type": "integer"
+          },
+          "below_detection": {
+            "anyOf": [
+              {
+                "enum": [
+                  "half_minimum",
+                  "censoring_aware",
+                  "as_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Below Detection"
+          },
+          "censored_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Censored Columns",
+            "type": "array"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "kind",
+          "strategy",
+          "drop_columns",
+          "categorical",
+          "indicators",
+          "m",
+          "below_detection",
+          "censored_columns",
+          "acknowledged",
+          "reason"
+        ],
+        "title": "SetMissing",
+        "type": "object"
+      },
+      "SetRepeatKind": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_repeat_kind",
+            "default": "set_repeat_kind",
+            "title": "Kind",
+            "type": "string"
+          },
+          "repeat_kind": {
+            "enum": [
+              "repeats",
+              "time_points",
+              "imputed_copies"
+            ],
+            "title": "Repeat Kind",
+            "type": "string"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time Column"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Levels"
+          },
+          "implicate_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Implicate Column"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "repeat_kind",
+          "time_column",
+          "levels",
+          "implicate_column",
+          "acknowledged"
+        ],
+        "title": "SetRepeatKind",
+        "type": "object"
+      },
+      "SetRoles": {
+        "additionalProperties": false,
+        "description": "The confirmed reading of every column except the outcome.\n\n``unconfirmed`` is the server's, never the client's (BLUEPRINT §14 rule 2): the proposals below\nhigh confidence this answer records exactly as proposed, read from the roles the server showed.\nA bulk confirm records them, and no number-changing default reads them until each has its own\n``confirm_role``.",
+        "properties": {
+          "kind": {
+            "const": "set_roles",
+            "default": "set_roles",
+            "title": "Kind",
+            "type": "string"
+          },
+          "roles": {
+            "additionalProperties": {
+              "enum": [
+                "identifier",
+                "exposure",
+                "energy",
+                "covariate",
+                "design",
+                "flag",
+                "time",
+                "excluded",
+                "cluster"
+              ],
+              "type": "string"
+            },
+            "minProperties": 1,
+            "title": "Roles",
+            "type": "object"
+          },
+          "unconfirmed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unconfirmed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "roles",
+          "unconfirmed"
+        ],
+        "title": "SetRoles",
+        "type": "object"
+      },
+      "SetSensitivity": {
+        "additionalProperties": false,
+        "description": "Analyses beside the primary, each on the rows its own exclusion rules keep (audit ME-16).\n\nBanna et al. 2017: \"analyses in the total sample without exclusion of participants should\nalso be conducted and reported\". An empty list is the answer \"no sensitivity analysis\".",
+        "properties": {
+          "kind": {
+            "const": "set_sensitivity",
+            "default": "set_sensitivity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "analyses": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityAnalysis"
+            },
+            "title": "Analyses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "analyses"
+        ],
+        "title": "SetSensitivity",
+        "type": "object"
+      },
+      "SetSplit": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_split",
+            "default": "set_split",
+            "title": "Kind",
+            "type": "string"
+          },
+          "holdout": {
+            "maximum": 0.4,
+            "minimum": 0.0,
+            "title": "Holdout",
+            "type": "number"
+          },
+          "seed": {
+            "default": 0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "folds": {
+            "default": 5,
+            "maximum": 10,
+            "minimum": 2,
+            "title": "Folds",
+            "type": "integer"
+          },
+          "validation": {
+            "default": "kfold",
+            "enum": [
+              "kfold",
+              "repeated_kfold",
+              "bootstrap",
+              "internal_external"
+            ],
+            "title": "Validation",
+            "type": "string"
+          },
+          "repeats": {
+            "default": 10,
+            "maximum": 50,
+            "minimum": 2,
+            "title": "Repeats",
+            "type": "integer"
+          },
+          "n_boot": {
+            "default": 200,
+            "maximum": 2000,
+            "minimum": 20,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cluster"
+          }
+        },
+        "required": [
+          "kind",
+          "holdout",
+          "seed",
+          "folds",
+          "validation",
+          "repeats",
+          "n_boot",
+          "cluster"
+        ],
+        "title": "SetSplit",
+        "type": "object"
+      },
+      "SetSubstitution": {
+        "additionalProperties": false,
+        "description": "The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits.",
+        "properties": {
+          "kind": {
+            "const": "set_substitution",
+            "default": "set_substitution",
+            "title": "Kind",
+            "type": "string"
+          },
+          "donor": {
+            "minLength": 1,
+            "title": "Donor",
+            "type": "string"
+          },
+          "recipient": {
+            "minLength": 1,
+            "title": "Recipient",
+            "type": "string"
+          },
+          "step_kcal": {
+            "default": 100.0,
+            "exclusiveMinimum": 0,
+            "title": "Step Kcal",
+            "type": "number"
+          },
+          "n_boot": {
+            "default": 0,
+            "maximum": 2000,
+            "minimum": 0,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "scale": {
+            "default": "kcal",
+            "enum": [
+              "kcal",
+              "percent_energy"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "step_percent": {
+            "default": 5.0,
+            "exclusiveMinimum": 0,
+            "maximum": 50,
+            "title": "Step Percent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "donor",
+          "recipient",
+          "step_kcal",
+          "n_boot",
+          "acknowledged",
+          "scale",
+          "step_percent"
+        ],
+        "title": "SetSubstitution",
+        "type": "object"
+      },
+      "SetSurvey": {
+        "additionalProperties": false,
+        "description": "Whose estimate it is under a survey design (``SurveySpec``).",
+        "properties": {
+          "kind": {
+            "const": "set_survey",
+            "default": "set_survey",
+            "title": "Kind",
+            "type": "string"
+          },
+          "estimand": {
+            "enum": [
+              "population",
+              "sample"
+            ],
+            "title": "Estimand",
+            "type": "string"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Weight"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Strata"
+          },
+          "psu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Psu"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cycle"
+          },
+          "four_year_weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Four Year Weight"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "estimand",
+          "weight",
+          "strata",
+          "psu",
+          "cycle",
+          "four_year_weight",
+          "acknowledged"
+        ],
+        "title": "SetSurvey",
+        "type": "object"
+      },
+      "SetTemporal": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_temporal",
+            "default": "set_temporal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "temporal": {
+            "title": "Temporal",
+            "type": "boolean"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time Column"
+          }
+        },
+        "required": [
+          "kind",
+          "temporal",
+          "time_column"
+        ],
+        "title": "SetTemporal",
         "type": "object"
       },
       "ShelfArtifact": {
@@ -18292,6 +20294,43 @@
             },
             "title": "Follow Up",
             "type": "array"
+          },
+          "fits": {
+            "default": [],
+            "items": {
+              "enum": [
+                "regression",
+                "binary",
+                "multiclass",
+                "ordinal",
+                "time_to_event"
+              ],
+              "type": "string"
+            },
+            "title": "Fits",
+            "type": "array"
+          },
+          "order_question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "scale_question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScaleQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -18306,7 +20345,10 @@
           "unit_source",
           "proposed_unit",
           "unit_candidates",
-          "follow_up"
+          "follow_up",
+          "fits",
+          "order_question",
+          "scale_question"
         ],
         "title": "TargetInfo",
         "type": "object"
@@ -18830,6 +20872,22 @@
             ],
             "title": "Row Map",
             "type": "string"
+          },
+          "reference_rows": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReferenceRowsLeft"
+            },
+            "title": "Reference Rows",
+            "type": "array"
+          },
+          "derived": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DerivedColumn"
+            },
+            "title": "Derived",
+            "type": "array"
           }
         },
         "required": [
@@ -18846,7 +20904,9 @@
           "n_source_rows",
           "repairs",
           "aggregation",
-          "row_map"
+          "row_map",
+          "reference_rows",
+          "derived"
         ],
         "title": "WorkingArtifact",
         "type": "object"

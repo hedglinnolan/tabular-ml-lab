@@ -203,9 +203,10 @@ def _residual_fixture() -> pd.DataFrame:
 
 RESIDUAL_ROLES = {"pid": "identifier", "fat_g": "exposure", "energy_kcal": "energy",
                   "male": "covariate", "age": "covariate", "pa": "covariate"}
-# WP17: the generator's causal truth (``_residual_fixture``): sex, age and activity set energy, and
-# so fat, and each sets the outcome; total energy is decided by the energy question.
-RESIDUAL_TRUTH = {f"adjust:{c}": "yes,yes,no" for c in ("male", "age", "pa")}
+# WP17: the generator's causal truth (``_residual_fixture``): the question is fat's effect on y; sex,
+# age and activity set energy, and so fat, and each sets the outcome; total energy is decided by
+# the energy question.
+RESIDUAL_TRUTH = {"exposure:y": "fat_g", **{f"adjust:{c}": "yes,yes,no" for c in ("male", "age", "pa")}}
 
 
 def _ols(y: Any, exog: pd.DataFrame) -> Any:
@@ -344,6 +345,10 @@ def test_b_previews_under_inference_read_every_analyzed_row(tmp_path):
             _answer_until(drive, "split", answers)
             sealed = drive.sealed()
             assert len(sealed) == 600
+            # Under inference the exposure and the adjustment set come after the seal and before
+            # the energy model (MODELING_SEQUENCE §1 steps 2–4), answered from the truth.
+            drive.answer_wp17_before(preview)
+            drive.reach("energy_adjustment")  # its card's stages read for the answers above
             r = client.post(f"/api/projects/{drive.pid}/preview", json=preview)
             assert r.status_code == 200, r.text
             result = r.json()

@@ -89,6 +89,18 @@ def usual_answer(client: TestClient, pid: str, key: str, view: dict) -> dict:
     if key in ("event", "task"):
         info = _artifact(client, pid, "target_info")
         if key == "task":
+            # WP18 (audit RO-10): an open task question may wait for the outcome's scale (as the
+            # fixture declares it, ``outcome_scale:<column>``; else the usual answer, the original
+            # scale) or an ordinal text outcome's order (the order its levels' words propose, else
+            # as listed).
+            step = next((s for s in view["interview"] if s["key"] == "task"), {})
+            if step.get("followup") == "scale":
+                scale = truth_of(pid).get(f"outcome_scale:{state['target']}", "original")
+                return {"kind": "set_outcome_scale", "column": state["target"], "scale": scale}
+            if step.get("followup") == "order":
+                question = info.get("order_question") or {}
+                return {"kind": "set_outcome_order", "column": state["target"],
+                        "levels": question.get("proposed_order") or question.get("levels")}
             return {"kind": "set_task", "column": state["target"], "task": info["task"]}
         levels = [str(c["value"]) for c in info.get("classes") or []]
         level = "1" if "1" in levels else ("1.0" if "1.0" in levels else levels[-1])

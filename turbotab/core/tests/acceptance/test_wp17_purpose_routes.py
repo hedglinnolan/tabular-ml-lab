@@ -297,10 +297,10 @@ def test_2_censoring_routes_to_the_cox_family_through_the_server(tmp_path):
         drive.reach("roles")
         drive.decide_roles({"participant_id": "identifier", "fiber_g": "exposure",
                             "age": "covariate", "followup_years": "time"})
-        drive.answer_plan("fiber_g")
         drive.answer("exclusions", {"kind": "set_exclusions", "rules": []})
         drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
         drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        drive.answer_plan("fiber_g")  # after the split (MODELING_SEQUENCE §1 steps 2–3)
         drive.reach("models")
         assert [f["key"] for f in drive.artifact("shelf")["families"]] == ["cox"]
         drive.decide({"kind": "select_models", "models": ["cox"]})
@@ -379,6 +379,11 @@ def test_3_no_coefficient_before_the_plan_and_the_roles_come_from_the_answers(tm
         drive.reach("roles")
         drive.decide_roles(NHANES_ROLES)
         assert drive.reach("clusters")["status"] == "skipped"  # nothing reads as a site
+        # The opening sequence ends at the seal; the exposure and the adjustment set are the
+        # modeling sequence's steps 2–3, asked after it (MODELING_SEQUENCE §1).
+        drive.answer("exclusions", {"kind": "set_exclusions", "rules": []})
+        drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
+        drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
         assert drive.reach("estimand")["status"] == "open"
         # No estimate before the plan: the models are held behind the exposure question.
         held = drive.post({"kind": "select_models", "models": ["linear"]})
@@ -425,9 +430,6 @@ def test_3_no_coefficient_before_the_plan_and_the_roles_come_from_the_answers(tm
         # One tap per group the pack guesses alike (demographics, other nutrients, body size);
         # the unguessed seven by their declared answers, two distinct sets: 5 taps, 19 covariates.
         assert len(posted) == 5 and posted[0] == groups["demographic"]["decision"]
-        drive.answer("exclusions", {"kind": "set_exclusions", "rules": []})
-        drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
-        drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
         # The estimand's contrast constrains the energy model (MODELING_SEQUENCE §2): a model that
         # lets total energy leave estimates no substitution (Tomova et al. 2022).
         crude = drive.post({"kind": "set_energy_adjustment", "method": "none",
@@ -702,11 +704,11 @@ def test_4_a_cluster_question_fires_and_site_fixed_effects_reproduce_the_audit(s
         how = drive.post({"kind": "set_clusters", "column": "site"})
         assert how.status_code == 409 and how.json()["error"]["code"] == "how_adjusted"
         drive.decide(how.json()["error"]["exits"][0]["decision"])  # adjust and cluster
-        drive.answer_plan("sodium_g")
-        assert drive.reach("adjustment")["status"] == "not_applicable"  # site is the fixed effect
         drive.answer("exclusions", {"kind": "set_exclusions", "rules": []})
         drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
         drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        drive.answer_plan("sodium_g")  # after the split (MODELING_SEQUENCE §1 steps 2–3)
+        assert drive.reach("adjustment")["status"] == "not_applicable"  # site is the fixed effect
         drive.reach("models")
         drive.decide({"kind": "select_models", "models": ["linear"]})
         fit = drive.artifact("fit")
@@ -807,3 +809,32 @@ def test_5_under_prediction_the_methods_that_keep_energy_lead(tmp_path):
                            scoring="r2").mean()
     print(f"\nCV R²: energy kept {keep:.3f}, energy dropped (residual) {drop:.3f}")
     assert keep > drop + 0.3
+
+
+# ── the question order: the opening sequence, then the modeling sequence's steps 2–3 ──
+
+
+def test_the_exposure_and_the_adjustment_set_are_asked_after_the_seal_and_before_the_energy_model():
+    """MODELING_SEQUENCE §1 is "everything after the seal", in "the order in which the Router
+    asks": step 2 the exposure and estimand, step 3 the adjustment set, step 4 the domain
+    transforms (the energy model), step 9 the shelf; missing values are "asked before the seal".
+    OPENING_SEQUENCE §01 ends the opening at eligibility, then the SEAL, and "Nothing may be
+    resequenced." So under the integrated Router (WP16–WP18) the estimand and the adjustment come
+    after the exclusions, the missing values and the split, and before the energy model and the
+    models; the teaching cards follow the same order. Reference: the repository's own documents,
+    quoted."""
+    from turbotab.core import teaching
+    from turbotab.core.interview import QUESTION_KEYS
+
+    root = Path(__file__).resolve().parents[4] / "docs"
+    modeling = (root / "turbotab-next/MODELING_SEQUENCE.md").read_text("utf-8")
+    opening = (root / "turbotab/OPENING_SEQUENCE.md").read_text("utf-8")
+    assert "# The modeling sequence — everything after the seal" in modeling
+    assert "This is the order in which the Router asks." in modeling
+    assert "| 6 | **Missing data** (asked before the seal, executed here)" in modeling
+    assert "| — | **SEAL** | | |" in opening and "Nothing may be resequenced." in opening
+
+    at = QUESTION_KEYS.index
+    assert at("exclusions") < at("missing") < at("split") < at("estimand") < at("adjustment") \
+        < at("energy_adjustment") < at("models")
+    assert [k for k in teaching.QUESTION_KEYS] == list(QUESTION_KEYS)

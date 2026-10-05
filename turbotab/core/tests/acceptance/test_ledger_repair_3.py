@@ -272,6 +272,12 @@ def test_a1_a_censored_crp_is_routed_to_the_detection_limit_question(tmp_path):
         limits = {e["decision"]["option"]: e["decision"] for e in error["exits"]
                   if (e.get("decision") or {}).get("kind") == "apply_repair"}
         assert set(limits) == {"half_limit", "limit_root2"}, error["exits"]
+        # The ask card on the models question (BLUEPRINT §14.2, WP18) asks what the refusal asks,
+        # with the refusal's own ways forward: no reading confirmation a detection limit cannot take.
+        card = drive.reach("models")["ask"]
+        assert card is not None and card["consumer"] == "the fit", card
+        assert [e["decision"] for e in card["exits"]] == [
+            e["decision"] for e in error["exits"] if e["decision"] is not None]  # not "change roles"
         assert all(dd["finding_id"] == "below_detection__crp" for dd in limits.values())
         drive.decide(plan["models"])  # the truth's answer: half the limit
         coef = coefficients(drive.artifact("fit", timeout=600))

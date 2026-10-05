@@ -13,6 +13,7 @@ export const LENS_LABEL: Record<Lens, string> = {
   dietary: "Dietary intake",
   clinical: "Clinical measurements and labs",
   survey: "Survey or questionnaire instruments",
+  other: "Something else, or not sure",
 };
 
 export const TASK_TEXT: Record<Task, { label: string; body: string }> = {
@@ -126,6 +127,8 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "sensitivity";
     case "set_measurement_error":
       return "measurement_error";
+    case "set_outcome_scale":
+      return "target";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

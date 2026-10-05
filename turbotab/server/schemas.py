@@ -249,6 +249,34 @@ class FollowUpCandidate(Model):
     varies: bool  # its values span more than 5% of its largest: follow-up ended at different times
 
 
+class OrderQuestion(Model):
+    """"Are these levels ordered?" (``turbotab.core.structural.order_question``)."""
+
+    question: str
+    levels: list[str]
+    numeric: bool
+    proposed_order: list[str] | None
+    evidence: str
+    options: list[Exit]  # ordered (ordinal) or unordered (multiclass)
+    order_options: list[Exit]  # the proposed order, lowest first (``set_outcome_order``)
+
+
+class ScaleQuestion(Model):
+    """The scale a positive, markedly skewed outcome is analyzed on
+    (``turbotab.core.structural.scale_question``)."""
+
+    question: str
+    skewness: float  # the outcome's (adjusted Fisher–Pearson); above 2 (West et al.)
+    log_skewness: float  # its natural log's; within ±2, or a log would not answer it
+    n: int
+    min: float
+    median: float
+    max: float
+    evidence: str
+    log_column: str
+    options: list[Exit]  # the original scale, or the log scale (``set_outcome_scale``)
+
+
 class TargetInfo(Model):
     """The ``target_info`` artifact."""
 
@@ -269,6 +297,12 @@ class TargetInfo(Model):
     unit_candidates: list[str] = []
     # WP17 (audit RO-03): columns that read as a follow-up time, the follow-up question's options.
     follow_up: list[FollowUpCandidate] = []
+    # WP18 (audit RO-10): the tasks the explicit answer accepts (one rule for the answer and the
+    # skip); "are these levels ordered?" for 3–10 levels; the scale of a positive, markedly skewed
+    # outcome. The Router keeps the task question open while either waits (InterviewStep.followup).
+    fits: list[Task] = []
+    order_question: OrderQuestion | None = None
+    scale_question: ScaleQuestion | None = None
 
 
 class FindingEvidence(Model):
@@ -749,13 +783,15 @@ class Spacing(Model):
 class RepeatsReading(Model):
     """Repeats or time points, read from date spacing or a record index (turbotab/repeats.py)."""
 
-    reading: Literal["repeats", "time_points"] | None
+    reading: Literal["repeats", "time_points", "imputed_copies"] | None
     stated: bool  # strong enough to state as a skip ("Ask me anyway" reopens it)
     confidence: Literal["high", "medium"] | None
     evidence: list[str]
     sentence: str
     spacing: Spacing | None
     replicate_index: str | None
+    # WP18 (audit I18): the column numbering imputed copies (``_MULT_``), when read as such
+    implicate_column: str | None = None
     n_units_read: int  # the reading walks at most 5,000 units, a fixed sample of a longer table
 
 
@@ -852,6 +888,23 @@ class AggregationReceipt(Model):
     columns: list[CombinedColumn]  # every column that varied within a unit, with its rule
 
 
+class ReferenceRowsLeft(Model):
+    """Rows a recorded repair excluded as reference rows (pooled QC injections; audit RO-13)."""
+
+    column: str
+    levels: list[str]
+    finding: str
+    n: int
+
+
+class DerivedColumn(Model):
+    """A column the working table derives row by row (the log-scale outcome; audit RO-10)."""
+
+    column: str
+    expression: Literal["ln"]
+    source: str  # the column it is derived from
+
+
 class WorkingArtifact(DatasetInfo):
     """The ``working`` artifact: DatasetInfo of the table every later stage reads."""
 
@@ -861,6 +914,9 @@ class WorkingArtifact(DatasetInfo):
     repairs: list[Repair]
     aggregation: AggregationReceipt | None
     row_map: Literal["identity", "row_map.parquet"]
+    # WP18: the reference rows that left before anything read the table, and the derived columns
+    reference_rows: list[ReferenceRowsLeft] = []
+    derived: list[DerivedColumn] = []
 
 
 ARTIFACT_MODELS: dict[str, type[BaseModel]] = {

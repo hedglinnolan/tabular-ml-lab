@@ -308,6 +308,8 @@ export function RepeatKindAsk({
       repeat_kind: value,
       time_column: value === "time_points" ? timeColumn : null,
       levels: null,
+      implicate_column: null,
+      acknowledged: false,
     },
     tags:
       reading?.reading === value
@@ -425,7 +427,13 @@ export function AggregationAsk({
     key: m,
     label: optionLabel(p, m, m),
     line: optionLine(p, m),
-    decision: { kind: "set_aggregation", method: m, outcome: varies ? rule : null, columns: {} },
+    decision: {
+      kind: "set_aggregation",
+      method: m,
+      outcome: varies ? rule : null,
+      columns: {},
+      acknowledged: false,
+    },
     previewLabel: `${optionLabel(p, m, m)}${varies && rule ? `, the ${rule} outcome` : ""}`,
     tags: m === menu?.recommended ? [{ text: "recommended", tone: "usual" }] : undefined,
     note:

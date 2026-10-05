@@ -88,6 +88,7 @@ function view(): ProjectView {
       clusters: null,
       estimand: null,
       adjustment: null,
+      outcome_scale: null,
     },
     decisions: [record(1)],
     stages: {

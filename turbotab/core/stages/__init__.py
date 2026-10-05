@@ -169,9 +169,12 @@ def build_graph() -> Graph:
             # findings 15 (ledger repair 3): text holds numbers when they are most of its values once
             # the missing and censoring marks are set aside (one definition with the code-or-amount
             # reading), so a BMI with many SAS "." is offered "Read as numbers".
+            # findings 16 (audit WP18, RO-13): the pooled-QC level of a Case/Control/QC label is read by
+            # variance, with a lever (exclude the reference rows) and text that is true; "something
+            # else, or not sure" runs the generic checks alone (RO-11).
             Stage(
                 "findings",
-                15,
+                16,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
@@ -198,9 +201,11 @@ def build_graph() -> Graph:
             # written with a decimal point) are asked as codes or amounts too.
             # structure 13 (ledger repair 3): numbers written as text that change within units are
             # asked too.
-            Stage("structure", 13, ("oriented",),
+            # structure 14 (audit WP18): imputed copies read by their copy number (I18); a log-scale
+            # outcome read within units through the column it is the log of (RO-10).
+            Stage("structure", 14, ("oriented",),
                   ("grain", "target", "lens", "repeat_kind", "findings", "temporal",
-                   "shape_confirmations"),
+                   "shape_confirmations", "outcome_scale"),
                   structure_stage, heavy=True, label="Reading how the rows repeat"),
             # working 3 (the readings ledger): a code or a count is combined only as the user said,
             # and first, last and change only by a settled time column.
@@ -209,9 +214,11 @@ def build_graph() -> Graph:
             # working 6 (ledger repair 3): a text column the user said holds amounts is read as numbers
             # (marks blank; values below a detection limit at the user's answer), and an asked one
             # is combined only as the user says.
-            Stage("working", 6, ("oriented", "findings", "structure"),
+            # working 7 (audit WP18): reference rows a recorded repair excludes leave here, before
+            # the outcome is read and the seal drawn (RO-13); a log-scale outcome is derived (RO-10).
+            Stage("working", 7, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
-                   "shape_confirmations", "categorical"),
+                   "shape_confirmations", "categorical", "outcome_scale"),
                   working_stage, heavy=True, label="Building the working table"),
             # target_info 3 (WP13, audit IN-05): the unit is stated only as recorded or spelled out
             # by the name; the clinical pack's reading is a proposal.
@@ -224,11 +231,14 @@ def build_graph() -> Graph:
             # target_info 7 (ledger repair 2): the task is settled only by its registry value test (two
             # values; decimals filling their grid), never by the dtype.
             # target_info 8 (WP17, audit RO-03): the columns that read as a follow-up time.
+            # target_info 9 (audit WP18, RO-10): the tasks the answer accepts (one 20-class rule), "are
+            # these levels ordered?" for 3–10 levels, and the scale of a positive, markedly skewed
+            # outcome; the reference rows have left the table it reads (RO-13).
             Stage(
                 "target_info",
-                8,
+                9,
                 ("working",),
-                ("target", "task", "outcome_unit"),
+                ("target", "task", "outcome_unit", "outcome_scale"),
                 target_info_stage,
                 requires=("target",),
                 label="Reading the outcome column",
@@ -254,7 +264,10 @@ def build_graph() -> Graph:
             # date that changes within units (an assay's run date does too) are proposed medium.
             # roles 9 (ledger repair 3): every reading settled by values through the registry's one
             # test per kind (``readings.by_values``).
-            Stage("roles", 9, ("working",), ("lens", "target", "purpose", "grain"), roles_stage,
+            # roles 10 (audit WP18): the column a log-scale outcome is the log of is the outcome, so
+            # it is proposed excluded (RO-10).
+            Stage("roles", 10, ("working",), ("lens", "target", "purpose", "grain", "outcome_scale"),
+                  roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
             # the survey question (WP10) and the Goldberg screen's recall days (WP12c).
@@ -298,7 +311,8 @@ def build_graph() -> Graph:
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
             # cohort 4 (WP17): complete cases read the predictors the adjustment answers keep.
-            Stage("cohort", 4, ("working", "target_info"),
+            # cohort 5 (audit WP18, RO-13): reference rows the working table excluded are counted first.
+            Stage("cohort", 5, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
                    *WP17_READS), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),

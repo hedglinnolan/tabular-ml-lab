@@ -470,6 +470,11 @@ export interface components {
             columns: {
                 [key: string]: "mean" | "first" | "last" | "change" | "mode";
             };
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * ApplyRepair
@@ -510,6 +515,71 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * AskCard
+         * @description "Tell me about these columns", in the question whose answer feeds the consumer.
+         */
+        AskCard: {
+            /** Question */
+            question: string;
+            /** Consumer */
+            consumer: string;
+            /** Text */
+            text: string;
+            /** Groups */
+            groups: components["schemas"]["AskGroup"][];
+            /** Exits */
+            exits: components["schemas"]["AskExit"][];
+            /**
+             * Read From Data
+             * @default []
+             */
+            read_from_data: components["schemas"]["AskSettled"][];
+        };
+        /** AskExit */
+        AskExit: {
+            /** Label */
+            label: string;
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * AskGroup
+         * @description One line of the card: a reading, or a homogeneous family of them confirmed as one block.
+         */
+        AskGroup: {
+            /** Kind */
+            kind: string;
+            /** Columns */
+            columns: string[];
+            /** Guess */
+            guess: string | null;
+            /** Guess Words */
+            guess_words: string;
+            /** Evidence */
+            evidence: string;
+        };
+        /**
+         * AskSettled
+         * @description One reading the values settled for this consumer, no question asked
+         *     (``readings.read_from_data``, the readings endpoint's own item).
+         */
+        AskSettled: {
+            /** Kind */
+            kind: string;
+            /** Column */
+            column: string;
+            /** Value */
+            value: unknown;
+            /** Words */
+            words: string;
+            /** Evidence */
+            evidence: string;
+            /** Change */
+            change: components["schemas"]["AskExit"][];
         };
         /**
          * Caution
@@ -809,7 +879,7 @@ export interface components {
              */
             after_estimates: boolean;
             /** Decision */
-            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"];
+            decision: components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"];
         };
         /**
          * DeferFinding
@@ -1012,7 +1082,7 @@ export interface components {
             /** Label */
             label: string;
             /** Decision */
-            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"]) | null;
+            decision: (components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Output"] | components["schemas"]["SetEnergyAdjustment-Output"] | components["schemas"]["SetExclusions-Output"] | components["schemas"]["SetMissing-Output"] | components["schemas"]["SetSplit-Output"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Output"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Output"] | components["schemas"]["SetRepeatKind-Output"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Output"] | components["schemas"]["SetTemporal-Output"] | components["schemas"]["OpenSeal-Output"] | components["schemas"]["ApplyRepair-Output"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Output"] | components["schemas"]["SetFeatureTable-Output"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Output"] | components["schemas"]["SetExposureForm-Output"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Output"] | components["schemas"]["SetSensitivity-Output"] | components["schemas"]["SetMeasurementError-Output"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Output"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Output"] | components["schemas"]["LockPlan-Output"] | components["schemas"]["SetCensoring-Output"] | components["schemas"]["SetClusters-Output"] | components["schemas"]["SetEstimand-Output"] | components["schemas"]["SetAdjustment-Output"]) | null;
         };
         /**
          * ExposureFormSpec
@@ -1380,7 +1450,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "estimand" | "adjustment" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "energy_adjustment" | "models" | "substitution" | "open_seal";
             /**
              * Status
              * @enum {string}
@@ -1400,6 +1470,9 @@ export interface components {
              * @default []
              */
             deferred_findings: string[];
+            /** Followup */
+            followup: ("scale" | "order") | null;
+            ask: components["schemas"]["AskCard"] | null;
         };
         /** JobView */
         JobView: {
@@ -1715,6 +1788,16 @@ export interface components {
                 };
             } | null;
         };
+        /** OutcomeScaleSpec */
+        OutcomeScaleSpec: {
+            /** Column */
+            column: string;
+            /**
+             * Scale
+             * @enum {string}
+             */
+            scale: "original" | "log";
+        };
         /** PreviewResult */
         PreviewResult: {
             /** Kind */
@@ -1733,7 +1816,7 @@ export interface components {
          */
         ProjectState: {
             /** Lens */
-            lens: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey")[] | null;
+            lens: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey" | "other")[] | null;
             /** Target */
             target: string | null;
             /** Task */
@@ -1816,6 +1899,7 @@ export interface components {
             adjustment: {
                 [key: string]: components["schemas"]["AdjustmentAnswer"];
             } | null;
+            outcome_scale: components["schemas"]["OutcomeScaleSpec"] | null;
         };
         /** ProjectSummary */
         ProjectSummary: {
@@ -1992,11 +2076,18 @@ export interface components {
              * Repeat Kind
              * @enum {string}
              */
-            repeat_kind: "repeats" | "time_points";
+            repeat_kind: "repeats" | "time_points" | "imputed_copies";
             /** Time Column */
             time_column: string | null;
             /** Levels */
             levels: string[] | null;
+            /** Implicate Column */
+            implicate_column: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * Reseal
@@ -2237,6 +2328,11 @@ export interface components {
             columns?: {
                 [key: string]: "mean" | "first" | "last" | "change" | "mode";
             };
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** SetAggregation */
         "SetAggregation-Output": {
@@ -2256,6 +2352,11 @@ export interface components {
             columns: {
                 [key: string]: "mean" | "first" | "last" | "change" | "mode";
             };
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * SetCategorical
@@ -2702,7 +2803,7 @@ export interface components {
              */
             kind: "set_lens";
             /** Lenses */
-            lenses: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey")[];
+            lenses: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey" | "other")[];
         };
         /**
          * SetMeasurementError
@@ -2881,6 +2982,26 @@ export interface components {
             levels: string[];
         };
         /**
+         * SetOutcomeScale
+         * @description The scale the outcome ``column`` is analyzed on. "log" makes ``ln_<column>`` the outcome
+         *     (the target slot), so every stage, score and sentence reads the column it names; "original"
+         *     keeps ``column``, its estimand a difference in means.
+         */
+        SetOutcomeScale: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_outcome_scale";
+            /** Column */
+            column: string;
+            /**
+             * Scale
+             * @enum {string}
+             */
+            scale: "original" | "log";
+        };
+        /**
          * SetOutcomeUnit
          * @description The outcome's unit, as the user reads it from the source's data dictionary. Stands only
          *     while ``column`` is the target. A unit the name does not spell out is never guessed into a
@@ -2921,11 +3042,18 @@ export interface components {
              * Repeat Kind
              * @enum {string}
              */
-            repeat_kind: "repeats" | "time_points";
+            repeat_kind: "repeats" | "time_points" | "imputed_copies";
             /** Time Column */
             time_column?: string | null;
             /** Levels */
             levels?: string[] | null;
+            /** Implicate Column */
+            implicate_column?: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /** SetRepeatKind */
         "SetRepeatKind-Output": {
@@ -2938,11 +3066,18 @@ export interface components {
              * Repeat Kind
              * @enum {string}
              */
-            repeat_kind: "repeats" | "time_points";
+            repeat_kind: "repeats" | "time_points" | "imputed_copies";
             /** Time Column */
             time_column: string | null;
             /** Levels */
             levels: string[] | null;
+            /** Implicate Column */
+            implicate_column: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
         };
         /**
          * SetRoles
@@ -3529,7 +3664,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "estimand" | "adjustment" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal";
+            key: "lens" | "orientation" | "repairs" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "energy_adjustment" | "models" | "substitution" | "open_seal";
             /** Title */
             title: string;
             /** Question */
@@ -4217,6 +4352,53 @@ export interface components {
             /** Columns */
             columns: components["schemas"]["RowComparison"][];
         };
+        /**
+         * CovariateAnswers
+         * @description The modified disjunctive cause criterion, asked as questions (VanderWeele 2019; MODELING_
+         *     SEQUENCE §1 step 3). The covariate's role is derived from these, never chosen directly.
+         */
+        CovariateAnswers: {
+            /**
+             * Causes Exposure
+             * @enum {string}
+             */
+            causes_exposure: "yes" | "no" | "unknown";
+            /**
+             * Causes Outcome
+             * @enum {string}
+             */
+            causes_outcome: "yes" | "no" | "unknown";
+            /**
+             * After Exposure
+             * @enum {string}
+             */
+            after_exposure: "yes" | "no" | "unknown";
+            /**
+             * Instrument
+             * @default false
+             */
+            instrument: boolean;
+            /**
+             * Proxy
+             * @default false
+             */
+            proxy: boolean;
+            /**
+             * Keep
+             * @default false
+             */
+            keep: boolean;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /**
+             * Further
+             * @default false
+             */
+            further: boolean;
+        };
         /** CurvePoint */
         CurvePoint: {
             /** X */
@@ -4267,6 +4449,21 @@ export interface components {
             month_first: string;
             /** Day First */
             day_first: string;
+        };
+        /**
+         * DerivedColumn
+         * @description A column the working table derives row by row (the log-scale outcome; audit RO-10).
+         */
+        DerivedColumn: {
+            /** Column */
+            column: string;
+            /**
+             * Expression
+             * @constant
+             */
+            expression: "ln";
+            /** Source */
+            source: string;
         };
         /** DerivedRole */
         DerivedRole: {
@@ -4336,6 +4533,22 @@ export interface components {
             label: string;
             /** Detail */
             detail: string;
+        };
+        /** DismissFinding */
+        DismissFinding: {
+            /**
+             * Kind
+             * @default dismiss_finding
+             * @constant
+             */
+            kind: "dismiss_finding";
+            /** Finding Id */
+            finding_id: string;
+            /**
+             * Reason
+             * @default null
+             */
+            reason: string | null;
         };
         /**
          * EarlierRows
@@ -4682,12 +4895,12 @@ export interface components {
              */
             source: "profile" | "pack" | "structural";
             /** Lens */
-            lens: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey") | null;
+            lens: ("metabolomics" | "genomics" | "dietary" | "clinical" | "survey" | "other") | null;
             evidence: components["schemas"]["FindingEvidence"] | null;
             /** Summary */
             summary: string;
             /** Routes To */
-            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "estimand" | "adjustment" | "exclusions" | "missing" | "split" | "energy_adjustment" | "models" | "substitution" | "open_seal") | null;
+            routes_to: ("lens" | "orientation" | "target" | "event" | "task" | "follow_up" | "purpose" | "grain" | "repeat_kind" | "unit" | "aggregation" | "temporal" | "roles" | "clusters" | "survey" | "exclusions" | "missing" | "split" | "estimand" | "adjustment" | "energy_adjustment" | "models" | "substitution" | "open_seal") | null;
             /** Lever Label */
             lever_label: string | null;
             /** Group */
@@ -5241,9 +5454,39 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "metabolomics" | "genomics" | "dietary" | "clinical" | "survey";
+            lens: "metabolomics" | "genomics" | "dietary" | "clinical" | "survey" | "other";
             /** Because */
             because: string;
+        };
+        /**
+         * LockPlan
+         * @description The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
+         *
+         *     Recorded by the server when inference estimates are first displayed (or by the user, before
+         *     that): the plan in force then is what was declared in the software before any estimate was
+         *     displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+         *     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
+         *     server. The lock is never undone.
+         */
+        LockPlan: {
+            /**
+             * Kind
+             * @default lock_plan
+             * @constant
+             */
+            kind: "lock_plan";
+            /**
+             * Plan
+             * @default null
+             */
+            plan: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Digest
+             * @default null
+             */
+            digest: string | null;
         };
         /** MatrixShape */
         MatrixShape: {
@@ -5497,6 +5740,52 @@ export interface components {
             n_rows: number;
         };
         /**
+         * OpenSeal
+         * @description Open the held-out rows: once, at the end. Held-out scores are withheld until then.
+         *
+         *     ``family`` is the final model, declared on cross-validation before any held-out score is seen
+         *     (AUDIT_REPORT §5 WP8, ME-13; ``turbotab/core/models/selection.py``): its held-out score is the
+         *     reported result. Required when several families are fitted; with one, the opening declares it.
+         *     Null only in records from before the rule.
+         */
+        OpenSeal: {
+            /**
+             * Kind
+             * @default open_seal
+             * @constant
+             */
+            kind: "open_seal";
+            /**
+             * Family
+             * @default null
+             */
+            family: string | null;
+            /**
+             * Target
+             * @default null
+             */
+            target: string | null;
+            /**
+             * N Holdout
+             * @default null
+             */
+            n_holdout: number | null;
+            /**
+             * Metric
+             * @default null
+             */
+            metric: string | null;
+            /**
+             * Scores
+             * @default null
+             */
+            scores: {
+                [key: string]: {
+                    [key: string]: number | null;
+                };
+            } | null;
+        };
+        /**
          * Optimism
          * @description Harrell's bootstrap optimism correction of one family (module docstring).
          */
@@ -5534,6 +5823,26 @@ export interface components {
              * @default null
              */
             optimism_sd: number | null;
+        };
+        /**
+         * OrderQuestion
+         * @description "Are these levels ordered?" (``turbotab.core.structural.order_question``).
+         */
+        OrderQuestion: {
+            /** Question */
+            question: string;
+            /** Levels */
+            levels: string[];
+            /** Numeric */
+            numeric: boolean;
+            /** Proposed Order */
+            proposed_order: string[] | null;
+            /** Evidence */
+            evidence: string;
+            /** Options */
+            options: components["schemas"]["Exit"][];
+            /** Order Options */
+            order_options: components["schemas"]["Exit"][];
         };
         /**
          * OrientationReading
@@ -5743,6 +6052,20 @@ export interface components {
             /** @default null */
             energy_adjustment: components["schemas"]["LabeledQuestion"] | null;
         };
+        /**
+         * ReferenceRowsLeft
+         * @description Rows a recorded repair excluded as reference rows (pooled QC injections; audit RO-13).
+         */
+        ReferenceRowsLeft: {
+            /** Column */
+            column: string;
+            /** Levels */
+            levels: string[];
+            /** Finding */
+            finding: string;
+            /** N */
+            n: number;
+        };
         /** Repair */
         Repair: {
             /** Column */
@@ -5790,7 +6113,7 @@ export interface components {
          */
         RepeatsReading: {
             /** Reading */
-            reading: ("repeats" | "time_points") | null;
+            reading: ("repeats" | "time_points" | "imputed_copies") | null;
             /** Stated */
             stated: boolean;
             /** Confidence */
@@ -5802,6 +6125,11 @@ export interface components {
             spacing: components["schemas"]["Spacing"] | null;
             /** Replicate Index */
             replicate_index: string | null;
+            /**
+             * Implicate Column
+             * @default null
+             */
+            implicate_column: string | null;
             /** N Units Read */
             n_units_read: number;
         };
@@ -5819,6 +6147,35 @@ export interface components {
             modal_rows_per: number;
             /** Regular Share */
             regular_share: number;
+        };
+        /**
+         * Reseal
+         * @description Draw the held-out rows again after they were opened (audit WP16, RO-05).
+         *
+         *     Once opened, the held-out rows hold still: a new seed or holdout, or anything else that would
+         *     draw them again, waits for this recorded re-seal. It withdraws the opening of the current
+         *     outcome's seal, so the rows drawn next are withheld until they are opened in turn; the scores
+         *     at the first opening stay the reported result, and later held-out scores are not an
+         *     independent test. ``target`` is filled by the server. It stands while its outcome is the
+         *     target, as the opening does.
+         */
+        Reseal: {
+            /**
+             * Kind
+             * @default reseal
+             * @constant
+             */
+            kind: "reseal";
+            /**
+             * Reason
+             * @default null
+             */
+            reason: string | null;
+            /**
+             * Target
+             * @default null
+             */
+            target: string | null;
         };
         /** RoleProposal */
         RoleProposal: {
@@ -5876,6 +6233,33 @@ export interface components {
             kind: string;
             /** N Dropped Observed */
             n_dropped_observed: number;
+        };
+        /**
+         * ScaleQuestion
+         * @description The scale a positive, markedly skewed outcome is analyzed on
+         *     (``turbotab.core.structural.scale_question``).
+         */
+        ScaleQuestion: {
+            /** Question */
+            question: string;
+            /** Skewness */
+            skewness: number;
+            /** Log Skewness */
+            log_skewness: number;
+            /** N */
+            n: number;
+            /** Min */
+            min: number;
+            /** Median */
+            median: number;
+            /** Max */
+            max: number;
+            /** Evidence */
+            evidence: string;
+            /** Log Column */
+            log_column: string;
+            /** Options */
+            options: components["schemas"]["Exit"][];
         };
         /**
          * SealBasis
@@ -6034,6 +6418,16 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * SensitivityAnalysis
+         * @description One analysis beside the primary: the same model on the rows these rules keep instead.
+         */
+        SensitivityAnalysis: {
+            /** Label */
+            label: string;
+            /** Rules */
+            rules: (components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"])[];
+        };
         /** SensitivityArtifact */
         SensitivityArtifact: {
             /**
@@ -6124,6 +6518,599 @@ export interface components {
              * @default null
              */
             refused: string | null;
+        };
+        /**
+         * SetAdjustment
+         * @description Answers for some covariates, against one exposure: one tap per group of covariates that
+         *     share their answers (BLUEPRINT §14.2). Each covariate's answer is kept under its column, so a
+         *     later group's answers never undo an earlier group's.
+         */
+        SetAdjustment: {
+            /**
+             * Kind
+             * @default set_adjustment
+             * @constant
+             */
+            kind: "set_adjustment";
+            /** Exposure */
+            exposure: string;
+            /** Answers */
+            answers: {
+                [key: string]: components["schemas"]["CovariateAnswers"];
+            };
+        };
+        /** SetAggregation */
+        SetAggregation: {
+            /**
+             * Kind
+             * @default set_aggregation
+             * @constant
+             */
+            kind: "set_aggregation";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "mean" | "first" | "last" | "change";
+            /**
+             * Outcome
+             * @default null
+             */
+            outcome: ("mean" | "first" | "last") | null;
+            /** Columns */
+            columns: {
+                [key: string]: "mean" | "first" | "last" | "change" | "mode";
+            };
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetCensoring
+         * @description The follow-up question's "no" (audit RO-03): nobody's follow-up ended before the event could
+         *     be seen, so the yes/no outcome counts events over one period for everyone. Stands only while
+         *     ``column`` is the target. Follow-up that varies is a time to event instead (``set_task``, then
+         *     ``set_follow_up``). ``acknowledged``: kept although a column reads as a follow-up time that
+         *     varies (block and record).
+         */
+        SetCensoring: {
+            /**
+             * Kind
+             * @default set_censoring
+             * @constant
+             */
+            kind: "set_censoring";
+            /** Column */
+            column: string;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /** SetClusters */
+        SetClusters: {
+            /**
+             * Kind
+             * @default set_clusters
+             * @constant
+             */
+            kind: "set_clusters";
+            /**
+             * Column
+             * @default null
+             */
+            column: string | null;
+            /**
+             * Adjust
+             * @default null
+             */
+            adjust: ("fixed_effects" | "cluster_only") | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetColumnUnit
+         * @description A column's unit, as the user reads it from the source's data dictionary, where TurboTab
+         *     could only propose one: total energy in kcal or kJ (a day's, or a total over ``days`` days),
+         *     or an age in years, months, weeks or days. Leash (BLUEPRINT §11.3): a unit not read from a
+         *     stated suffix, a codebook or the values' own agreement is a proposal, and no screen, band or
+         *     count is applied in it until it is recorded here.
+         */
+        SetColumnUnit: {
+            /**
+             * Kind
+             * @default set_column_unit
+             * @constant
+             */
+            kind: "set_column_unit";
+            /** Column */
+            column: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "kcal" | "kj" | "years" | "months" | "weeks" | "days";
+            /**
+             * Days
+             * @default 1
+             */
+            days: number;
+        };
+        /** SetEnergyAdjustment */
+        SetEnergyAdjustment: {
+            /**
+             * Kind
+             * @default set_energy_adjustment
+             * @constant
+             */
+            kind: "set_energy_adjustment";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "standard" | "residual" | "residual_energy_dropped" | "density_multivariate" | "density" | "partition" | "all_components";
+            /**
+             * Energy Column
+             * @default null
+             */
+            energy_column: string | null;
+            /** Nutrients */
+            nutrients: string[];
+            /**
+             * Log Transform
+             * @default false
+             */
+            log_transform: boolean;
+            /**
+             * Strata
+             * @default null
+             */
+            strata: string | null;
+        };
+        /** SetEstimand */
+        SetEstimand: {
+            /**
+             * Kind
+             * @default set_estimand
+             * @constant
+             */
+            kind: "set_estimand";
+            /**
+             * Exposure
+             * @default null
+             */
+            exposure: string | null;
+            /**
+             * Family
+             * @default false
+             */
+            family: boolean;
+            /**
+             * Effect
+             * @default total
+             * @enum {string}
+             */
+            effect: "total" | "direct";
+            /**
+             * Contrast
+             * @default null
+             */
+            contrast: ("substitution" | "addition") | null;
+            /**
+             * Measure
+             * @enum {string}
+             */
+            measure: "mean_difference" | "odds_ratio" | "hazard_ratio" | "cumulative_odds_ratio" | "relative_risk_ratio" | "risk_difference" | "risk_ratio" | "exposure_mean_difference";
+        };
+        /**
+         * SetExclusions
+         * @description Row exclusions; an empty list is the answer "keep every row".
+         */
+        SetExclusions: {
+            /**
+             * Kind
+             * @default set_exclusions
+             * @constant
+             */
+            kind: "set_exclusions";
+            /** Rules */
+            rules: (components["schemas"]["ExclusionRule"] | components["schemas"]["GoldbergRule"])[];
+        };
+        /**
+         * SetExposureForm
+         * @description The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.
+         */
+        SetExposureForm: {
+            /**
+             * Kind
+             * @default set_exposure_form
+             * @constant
+             */
+            kind: "set_exposure_form";
+            /** Column */
+            column: string;
+            /**
+             * Form
+             * @enum {string}
+             */
+            form: "linear" | "spline" | "quintiles";
+            /**
+             * Knots
+             * @default null
+             */
+            knots: number | null;
+        };
+        /**
+         * SetFeatureTable
+         * @description How a features-in-rows table reads: the column naming the features, and the columns that
+         *     describe them (m/z, retention time, IDs). Turning it makes every other column a sample.
+         */
+        SetFeatureTable: {
+            /**
+             * Kind
+             * @default set_feature_table
+             * @constant
+             */
+            kind: "set_feature_table";
+            /**
+             * Label
+             * @default null
+             */
+            label: string | null;
+            /** Annotations */
+            annotations: string[];
+        };
+        /**
+         * SetFollowUp
+         * @description The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.
+         */
+        SetFollowUp: {
+            /**
+             * Kind
+             * @default set_follow_up
+             * @constant
+             */
+            kind: "set_follow_up";
+            /** Column */
+            column: string;
+            /** Time Column */
+            time_column: string;
+            /**
+             * Entry Column
+             * @default null
+             */
+            entry_column: string | null;
+        };
+        /** SetGrain */
+        SetGrain: {
+            /**
+             * Kind
+             * @default set_grain
+             * @constant
+             */
+            kind: "set_grain";
+            /**
+             * Grain
+             * @enum {string}
+             */
+            grain: "one_row_per_unit" | "repeated" | "unknown";
+            /**
+             * Id Column
+             * @default null
+             */
+            id_column: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetMeasurementError
+         * @description Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
+         *     (univariate regression calibration; audit IN-22, Freedman et al. 2011).
+         */
+        SetMeasurementError: {
+            /**
+             * Kind
+             * @default set_measurement_error
+             * @constant
+             */
+            kind: "set_measurement_error";
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "none" | "regression_calibration";
+            /** Exposures */
+            exposures: string[];
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+        };
+        /**
+         * SetMissing
+         * @description How missing predictor values are handled.
+         *
+         *     ``drop_columns`` leave the predictors first (a mostly blank column that means "not asked"),
+         *     and the strategy applies to the predictors that remain; the cohort and the design read both.
+         */
+        SetMissing: {
+            /**
+             * Kind
+             * @default set_missing
+             * @constant
+             */
+            kind: "set_missing";
+            /**
+             * Strategy
+             * @enum {string}
+             */
+            strategy: "complete_case" | "impute" | "multiple_imputation";
+            /** Drop Columns */
+            drop_columns: string[];
+            /**
+             * Categorical
+             * @default impute
+             * @enum {string}
+             */
+            categorical: "missing_category" | "impute";
+            /**
+             * Indicators
+             * @default false
+             */
+            indicators: boolean;
+            /**
+             * M
+             * @default 20
+             */
+            m: number;
+            /**
+             * Below Detection
+             * @default null
+             */
+            below_detection: ("half_minimum" | "censoring_aware" | "as_missing") | null;
+            /** Censored Columns */
+            censored_columns: string[];
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /**
+             * Reason
+             * @default null
+             */
+            reason: string | null;
+        };
+        /** SetRepeatKind */
+        SetRepeatKind: {
+            /**
+             * Kind
+             * @default set_repeat_kind
+             * @constant
+             */
+            kind: "set_repeat_kind";
+            /**
+             * Repeat Kind
+             * @enum {string}
+             */
+            repeat_kind: "repeats" | "time_points" | "imputed_copies";
+            /**
+             * Time Column
+             * @default null
+             */
+            time_column: string | null;
+            /**
+             * Levels
+             * @default null
+             */
+            levels: string[] | null;
+            /**
+             * Implicate Column
+             * @default null
+             */
+            implicate_column: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * SetRoles
+         * @description The confirmed reading of every column except the outcome.
+         *
+         *     ``unconfirmed`` is the server's, never the client's (BLUEPRINT §14 rule 2): the proposals below
+         *     high confidence this answer records exactly as proposed, read from the roles the server showed.
+         *     A bulk confirm records them, and no number-changing default reads them until each has its own
+         *     ``confirm_role``.
+         */
+        SetRoles: {
+            /**
+             * Kind
+             * @default set_roles
+             * @constant
+             */
+            kind: "set_roles";
+            /** Roles */
+            roles: {
+                [key: string]: "identifier" | "exposure" | "energy" | "covariate" | "design" | "flag" | "time" | "excluded" | "cluster";
+            };
+            /** Unconfirmed */
+            unconfirmed: string[];
+        };
+        /**
+         * SetSensitivity
+         * @description Analyses beside the primary, each on the rows its own exclusion rules keep (audit ME-16).
+         *
+         *     Banna et al. 2017: "analyses in the total sample without exclusion of participants should
+         *     also be conducted and reported". An empty list is the answer "no sensitivity analysis".
+         */
+        SetSensitivity: {
+            /**
+             * Kind
+             * @default set_sensitivity
+             * @constant
+             */
+            kind: "set_sensitivity";
+            /** Analyses */
+            analyses: components["schemas"]["SensitivityAnalysis"][];
+        };
+        /** SetSplit */
+        SetSplit: {
+            /**
+             * Kind
+             * @default set_split
+             * @constant
+             */
+            kind: "set_split";
+            /** Holdout */
+            holdout: number;
+            /**
+             * Seed
+             * @default 0
+             */
+            seed: number;
+            /**
+             * Folds
+             * @default 5
+             */
+            folds: number;
+            /**
+             * Validation
+             * @default kfold
+             * @enum {string}
+             */
+            validation: "kfold" | "repeated_kfold" | "bootstrap" | "internal_external";
+            /**
+             * Repeats
+             * @default 10
+             */
+            repeats: number;
+            /**
+             * N Boot
+             * @default 200
+             */
+            n_boot: number;
+            /**
+             * Cluster
+             * @default null
+             */
+            cluster: string | null;
+        };
+        /**
+         * SetSubstitution
+         * @description The substitution to draw; ``n_boot > 0`` adds a band from that many bootstrap refits.
+         */
+        SetSubstitution: {
+            /**
+             * Kind
+             * @default set_substitution
+             * @constant
+             */
+            kind: "set_substitution";
+            /** Donor */
+            donor: string;
+            /** Recipient */
+            recipient: string;
+            /**
+             * Step Kcal
+             * @default 100
+             */
+            step_kcal: number;
+            /**
+             * N Boot
+             * @default 0
+             */
+            n_boot: number;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+            /**
+             * Scale
+             * @default kcal
+             * @enum {string}
+             */
+            scale: "kcal" | "percent_energy";
+            /**
+             * Step Percent
+             * @default 5
+             */
+            step_percent: number;
+        };
+        /**
+         * SetSurvey
+         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         */
+        SetSurvey: {
+            /**
+             * Kind
+             * @default set_survey
+             * @constant
+             */
+            kind: "set_survey";
+            /**
+             * Estimand
+             * @enum {string}
+             */
+            estimand: "population" | "sample";
+            /**
+             * Weight
+             * @default null
+             */
+            weight: string | null;
+            /**
+             * Strata
+             * @default null
+             */
+            strata: string | null;
+            /**
+             * Psu
+             * @default null
+             */
+            psu: string | null;
+            /**
+             * Cycle
+             * @default null
+             */
+            cycle: string | null;
+            /**
+             * Four Year Weight
+             * @default null
+             */
+            four_year_weight: string | null;
+            /**
+             * Acknowledged
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /** SetTemporal */
+        SetTemporal: {
+            /**
+             * Kind
+             * @default set_temporal
+             * @constant
+             */
+            kind: "set_temporal";
+            /** Temporal */
+            temporal: boolean;
+            /**
+             * Time Column
+             * @default null
+             */
+            time_column: string | null;
         };
         /**
          * ShelfArtifact
@@ -6590,6 +7577,15 @@ export interface components {
              * @default []
              */
             follow_up: components["schemas"]["FollowUpCandidate"][];
+            /**
+             * Fits
+             * @default []
+             */
+            fits: ("regression" | "binary" | "multiclass" | "ordinal" | "time_to_event")[];
+            /** @default null */
+            order_question: components["schemas"]["OrderQuestion"] | null;
+            /** @default null */
+            scale_question: components["schemas"]["ScaleQuestion"] | null;
         };
         /**
          * TimeOrder
@@ -6798,6 +7794,16 @@ export interface components {
              * @enum {string}
              */
             row_map: "identity" | "row_map.parquet";
+            /**
+             * Reference Rows
+             * @default []
+             */
+            reference_rows: components["schemas"]["ReferenceRowsLeft"][];
+            /**
+             * Derived
+             * @default []
+             */
+            derived: components["schemas"]["DerivedColumn"][];
         };
     };
     responses: never;
@@ -7045,7 +8051,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"];
             };
         };
         responses: {
@@ -7260,7 +8266,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"];
+                "application/json": components["schemas"]["SetLens"] | components["schemas"]["SetTarget"] | components["schemas"]["SetTask"] | components["schemas"]["SetPurpose"] | components["schemas"]["Revert"] | components["schemas"]["SetRoles-Input"] | components["schemas"]["SetEnergyAdjustment-Input"] | components["schemas"]["SetExclusions-Input"] | components["schemas"]["SetMissing-Input"] | components["schemas"]["SetSplit-Input"] | components["schemas"]["SelectModels"] | components["schemas"]["SetSubstitution-Input"] | components["schemas"]["SetOrientation"] | components["schemas"]["SetEvent"] | components["schemas"]["SetGrain-Input"] | components["schemas"]["SetRepeatKind-Input"] | components["schemas"]["SetUnit"] | components["schemas"]["SetAggregation-Input"] | components["schemas"]["SetTemporal-Input"] | components["schemas"]["OpenSeal-Input"] | components["schemas"]["ApplyRepair-Input"] | components["schemas"]["DeferFinding"] | components["schemas"]["DismissFinding-Input"] | components["schemas"]["SetFeatureTable-Input"] | components["schemas"]["SetCategorical"] | components["schemas"]["SetSurvey-Input"] | components["schemas"]["SetExposureForm-Input"] | components["schemas"]["SetOutcomeOrder"] | components["schemas"]["SetFollowUp-Input"] | components["schemas"]["SetSensitivity-Input"] | components["schemas"]["SetMeasurementError-Input"] | components["schemas"]["SetOutcomeUnit"] | components["schemas"]["SetColumnUnit-Input"] | components["schemas"]["ConfirmRole"] | components["schemas"]["ConfirmReading"] | components["schemas"]["ConfirmReadings"] | components["schemas"]["SetOutcomeScale"] | components["schemas"]["Reseal-Input"] | components["schemas"]["LockPlan-Input"] | components["schemas"]["SetCensoring-Input"] | components["schemas"]["SetClusters-Input"] | components["schemas"]["SetEstimand-Input"] | components["schemas"]["SetAdjustment-Input"];
             };
         };
         responses: {
