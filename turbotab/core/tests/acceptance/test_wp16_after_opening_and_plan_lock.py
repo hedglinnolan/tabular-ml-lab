@@ -196,8 +196,12 @@ def test_3_the_scores_at_the_opening_are_kept_in_the_record_and_reported(client)
     opening = view["decisions"][-1]
     assert opening["decision"]["kind"] == "open_seal" and opening["decision"]["target"] == "readmit_30d"
     assert opening["decision"]["scores"] == at_disk  # kept in the append-only record
-    assert opening["decision"]["metric"] == "auc" and opening["decision"]["n_holdout"] == 96
-    assert f"held-out AUC `{reference:.3f}`" in opening["sentence"]
+    # MS6: the declared family's held-out score on the strictly proper primary, with the AUC
+    # beside it as the customary headline.
+    assert opening["decision"]["metric"] == "log_loss" and opening["decision"]["n_holdout"] == 96
+    said = (f"held-out log loss `{at_disk['linear']['log_loss']:.3f}` (AUC `{reference:.3f}`, the "
+            f"customary headline)")
+    assert said in opening["sentence"]
     fit = served_fit(client, pid)
     assert fit["at_opening"]["scores"] == at_disk and fit["at_opening"]["current"] is True
     assert fit["at_opening"]["seq"] == opening["seq"]
@@ -219,7 +223,7 @@ def test_3_the_scores_at_the_opening_are_kept_in_the_record_and_reported(client)
     assert fit["final_note"] == at["note"]  # the reported result is the opening's, not the shown
     # ...and the opening's sentence, in the methods text, carries the score.
     text = client.get(f"/api/projects/{pid}/methods").json()["text"]
-    assert f"held-out AUC `{reference:.3f}`" in text
+    assert said in text
     # Under prediction, displaying the fit locks no inference plan.
     assert "lock_plan" not in [r["decision"]["kind"] for r in records(client, pid)]
 

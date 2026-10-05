@@ -190,17 +190,22 @@ def test_selection_optimism_under_repeated_kfold_bootstraps_one_repeats_predicti
                 wrapped = oof.wrap(key, lambda m, Xf, yf, r: fit_pipeline(m, Xf, yf))
                 results[key] = cross_validate("binary", lambda _k=key: clone(pipelines[_k]), Xs, ys,
                                               pairs, fit=wrapped)
-        # The best family and its CV score are the fit's own (the mean over every repeat).
-        cv = {m["family"]: m["cv"]["auc"]["estimate"] for m in fit.data["models"]}
+        # The best family and its CV score are the fit's own: MS6 chooses on the strictly proper
+        # primary (log loss), its estimate the mean over every repeat of the comparison substrate,
+        # whose first repeats are the split's own.
+        cv = {m["family"]: m["compared_on"]["estimate"] for m in fit.data["models"]}
         results = {k: _Fixed(cv[k]) for k in results}
-        return selection_optimism("binary", "auc", results, oof,
-                                  {m["family"]: m["label"] for m in fit.data["models"]}, LABELS["auc"])
+        return selection_optimism("binary", "log_loss", results, oof,
+                                  {m["family"]: m["label"] for m in fit.data["models"]},
+                                  LABELS["log_loss"], extras=["auc"])
 
     first = rebuilt("fold")
     assert selection["best"] == first["best"]
     assert selection["corrected"] == pytest.approx(first["corrected"], abs=1e-9)
     assert selection["optimism"] == pytest.approx(first["optimism"], abs=1e-9)
     assert selection["wins"] == first["wins"]
+    assert selection["extras"]["auc"]["corrected"] == pytest.approx(
+        first["extras"]["auc"]["corrected"], abs=1e-9)
     last = rebuilt("fold_r2")
     assert abs(last["corrected"] - selection["corrected"]) > 1e-6
 
@@ -212,7 +217,7 @@ class _Fixed:
         self.estimate = estimate
 
     def summary(self, task: str) -> dict[str, Any]:
-        return {"auc": {"estimate": self.estimate}}
+        return {"auc": {"estimate": self.estimate}, "log_loss": {"estimate": self.estimate}}
 
 
 # ── WP10 × WP6 × WP8: a surveyed population ──────────────────────────────────────────────────
@@ -430,9 +435,10 @@ def test_an_ordinal_table_is_on_the_cumulative_odds_ratio_scale_from_every_analy
 
 def test_choosing_among_families_on_an_ordinal_outcome_bootstraps_its_concordance(tmp_path):
     """WP8's selection optimism with WP12a's ordered outcome and WP9's repeated k-fold: the
-    families are ranked on C (Harrell's concordance, WP12a's primary), and the bootstrap scores the
-    pooled out-of-fold predictions on C. Before the merge fix the pooled score had no ordinal
-    branch, so fitting two families on an ordered outcome raised.
+    families are chosen on the ranked probability score (MS6: the strictly proper primary; C,
+    WP12a's earlier primary, is the customary headline, corrected for the same choice), and the
+    bootstrap scores the pooled out-of-fold predictions. Before the merge fix the pooled score had
+    no ordinal branch, so fitting two families on an ordered outcome raised.
 
     Reference: the pooled score the bootstrap uses, checked against lifelines'
     ``concordance_index`` (an independent implementation of Harrell's C) on the predicted mean
@@ -461,12 +467,14 @@ def test_choosing_among_families_on_an_ordinal_outcome_bootstraps_its_concordanc
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
-    assert fit.data["primary_metric"] == "c_index" and fit.data["repeats"] == 2
+    assert fit.data["primary_metric"] == "rps" and fit.data["repeats"] == 2
+    assert fit.data["headline_metric"] == "c_index"
     selection = fit.data["selection"]
-    assert selection is not None and selection["metric"] == "c_index"
-    cv = {m["family"]: m["cv"]["c_index"]["estimate"] for m in fit.data["models"]}
-    assert selection["best"] == max(cv, key=cv.get) and selection["cv"] == max(cv.values())
-    assert selection["optimism"] == pytest.approx(selection["cv"] - selection["corrected"], abs=1e-12)
+    assert selection is not None and selection["metric"] == "rps"
+    assert selection["extras"]["c_index"]["corrected"] is not None
+    cv = {m["family"]: m["compared_on"]["estimate"] for m in fit.data["models"]}
+    assert selection["best"] == min(cv, key=cv.get) and selection["cv"] == min(cv.values())
+    assert selection["optimism"] == pytest.approx(selection["corrected"] - selection["cv"], abs=1e-12)
     assert sum(selection["wins"].values()) == selection["replicates"]
 
     rng = np.random.default_rng(3)
@@ -625,7 +633,10 @@ def test_a_cox_table_with_a_holdout_is_estimated_from_every_analyzed_row(tmp_pat
         assert rows[name]["estimate"] == pytest.approx(reference.params_[name], rel=1e-6)
         assert rows[name]["se"] == pytest.approx(reference.standard_errors_[name], rel=1e-6)
     detail = details_by_family(fit.frames[SEALED_DETAIL])["cox"]
-    assert detail["intervals"] == {} and detail["calibration"] is None
+    # MS6: the held-out rows carry the Brier score at the horizon with its interval, and its
+    # calibration by the horizon; the binary-and-numeric calibration does not apply.
+    assert set(detail["intervals"]) == {"brier_t"} and detail["calibration"] is None
+    assert detail["calibration_horizon"] is not None or detail["calibration_note"]
 
 
 def test_a_mixed_model_table_with_a_holdout_uses_every_analyzed_row_and_its_units(tmp_path):

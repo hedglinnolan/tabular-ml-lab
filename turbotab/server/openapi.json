@@ -3883,13 +3883,25 @@
               }
             ],
             "title": "Entry Column"
+          },
+          "horizon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "time_column",
-          "entry_column"
+          "entry_column",
+          "horizon"
         ],
         "title": "FollowUpSpec",
         "description": "How long each row of a time-to-event outcome was observed (WP12,\n``turbotab/core/models/survival.py``): at risk from ``entry`` (0 when not named) to ``time``,\nwhen the event happened or follow-up ended without it, both on one time scale."
@@ -8317,6 +8329,18 @@
               }
             ],
             "title": "Entry Column"
+          },
+          "horizon": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon"
           }
         },
         "additionalProperties": false,
@@ -8357,6 +8381,18 @@
               }
             ],
             "title": "Entry Column"
+          },
+          "horizon": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon"
           }
         },
         "additionalProperties": false,
@@ -8365,7 +8401,8 @@
           "kind",
           "column",
           "time_column",
-          "entry_column"
+          "entry_column",
+          "horizon"
         ],
         "title": "SetFollowUp",
         "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target."
@@ -9239,7 +9276,7 @@
             "maximum": 2000.0,
             "minimum": 20.0,
             "title": "N Boot",
-            "default": 200
+            "default": 500
           },
           "cluster": {
             "anyOf": [
@@ -9251,6 +9288,11 @@
               }
             ],
             "title": "Cluster"
+          },
+          "nested_cv": {
+            "type": "boolean",
+            "title": "Nested Cv",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -9310,7 +9352,7 @@
             "maximum": 2000.0,
             "minimum": 20.0,
             "title": "N Boot",
-            "default": 200
+            "default": 500
           },
           "cluster": {
             "anyOf": [
@@ -9322,6 +9364,11 @@
               }
             ],
             "title": "Cluster"
+          },
+          "nested_cv": {
+            "type": "boolean",
+            "title": "Nested Cv",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -9334,7 +9381,8 @@
           "validation",
           "repeats",
           "n_boot",
-          "cluster"
+          "cluster",
+          "nested_cv"
         ],
         "title": "SetSplit"
       },
@@ -9838,7 +9886,7 @@
             "maximum": 2000.0,
             "minimum": 20.0,
             "title": "N Boot",
-            "default": 200
+            "default": 500
           },
           "cluster": {
             "anyOf": [
@@ -9850,6 +9898,11 @@
               }
             ],
             "title": "Cluster"
+          },
+          "nested_cv": {
+            "type": "boolean",
+            "title": "Nested Cv",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -9861,7 +9914,8 @@
           "validation",
           "repeats",
           "n_boot",
-          "cluster"
+          "cluster",
+          "nested_cv"
         ],
         "title": "SplitSpec"
       },
@@ -11653,6 +11707,31 @@
         "title": "CategoricalProposal",
         "type": "object"
       },
+      "ChainLink": {
+        "additionalProperties": false,
+        "description": "A relation that fired on this fit: because ``because``, ``then`` (BLUEPRINT §13).",
+        "properties": {
+          "relation": {
+            "title": "Relation",
+            "type": "string"
+          },
+          "because": {
+            "title": "Because",
+            "type": "string"
+          },
+          "then": {
+            "title": "Then",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation",
+          "because",
+          "then"
+        ],
+        "title": "ChainLink",
+        "type": "object"
+      },
       "Chronology": {
         "additionalProperties": false,
         "description": "The chronological draw the temporal answer asked for, and whether it was drawn.\n\nWhole units are held out by their last observation, so with repeated rows a held-out unit's\nearlier rows can predate training rows (audit IN-24: 56–71% of held-out rows on visit data).\n``n_held_rows``/``n_held_earlier`` count that for this draw; ``earlier`` for each share the\nsplit question offers, at this draw's seed, so the split's sentence can state it.",
@@ -12117,6 +12196,49 @@
         "title": "CombinedColumn",
         "type": "object"
       },
+      "Comparison": {
+        "additionalProperties": false,
+        "description": "MS6: the repeated k-fold the families and the baseline are compared on (models/folds.py).",
+        "properties": {
+          "folds": {
+            "title": "Folds",
+            "type": "integer"
+          },
+          "repeats": {
+            "title": "Repeats",
+            "type": "integer"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "integer"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          }
+        },
+        "required": [
+          "folds",
+          "repeats",
+          "shared",
+          "method",
+          "note"
+        ],
+        "title": "Comparison",
+        "type": "object"
+      },
       "CompleteCaseLoss": {
         "description": "What complete cases cost: the rows dropped beside the rows kept (audit WP7, E14).",
         "properties": {
@@ -12355,6 +12477,113 @@
           "day_first"
         ],
         "title": "DateExample",
+        "type": "object"
+      },
+      "DeclaredResult": {
+        "additionalProperties": false,
+        "description": "What the fit reports as the result, and on what basis (module docstring).",
+        "properties": {
+          "basis": {
+            "enum": [
+              "holdout",
+              "own_score",
+              "selection_corrected",
+              "not_declared"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "how": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "How"
+          },
+          "narrow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Narrow"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "basis",
+          "family",
+          "metric",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "how",
+          "narrow",
+          "sentence"
+        ],
+        "title": "DeclaredResult",
         "type": "object"
       },
       "DerivedColumn": {
@@ -13421,7 +13650,7 @@
       },
       "FamilyDifference": {
         "additionalProperties": false,
-        "description": "Two families' primary metric, paired over the same folds, with a corrected interval.",
+        "description": "Two families' primary metric, paired over the same folds of the comparison substrate, with\nthe corrected repeated k-fold t (module docstring).",
         "properties": {
           "a": {
             "title": "A",
@@ -13482,6 +13711,66 @@
           "sentence": {
             "title": "Sentence",
             "type": "string"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "T"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "P"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "folds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Folds"
+          },
+          "repeats": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Repeats"
           }
         },
         "required": [
@@ -13492,7 +13781,12 @@
           "ci_low",
           "ci_high",
           "df",
-          "sentence"
+          "sentence",
+          "t",
+          "p",
+          "se",
+          "folds",
+          "repeats"
         ],
         "title": "FamilyDifference",
         "type": "object"
@@ -13967,6 +14261,131 @@
               }
             ],
             "default": null
+          },
+          "headline_metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Headline Metric"
+          },
+          "headline_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Headline Label"
+          },
+          "tension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tension"
+          },
+          "comparison": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Comparison"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "comparisons_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Comparisons Note"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeclaredResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "horizon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Horizon"
+          },
+          "horizon_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Horizon Note"
+          },
+          "wide": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Wide"
+          },
+          "nested_offer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NestedOffer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "chain": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ChainLink"
+            },
+            "title": "Chain",
+            "type": "array"
           }
         },
         "required": [
@@ -13994,7 +14413,18 @@
           "imbalance",
           "levels",
           "withheld",
-          "estimand"
+          "estimand",
+          "headline_metric",
+          "headline_label",
+          "tension",
+          "comparison",
+          "comparisons_note",
+          "result",
+          "horizon",
+          "horizon_note",
+          "wide",
+          "nested_offer",
+          "chain"
         ],
         "title": "FitArtifact",
         "type": "object"
@@ -14167,6 +14597,78 @@
             },
             "title": "Exposure Tests",
             "type": "array"
+          },
+          "calibration_levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LevelCalibration"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Calibration Levels"
+          },
+          "calibration_horizon": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HorizonCalibration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "calibration_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Calibration Note"
+          },
+          "compared_on": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetricSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "performance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Performance"
+          },
+          "nested_cv": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NestedCV"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -14186,7 +14688,13 @@
           "holdout_detail",
           "optimism",
           "internal_external",
-          "exposure_tests"
+          "exposure_tests",
+          "calibration_levels",
+          "calibration_horizon",
+          "calibration_note",
+          "compared_on",
+          "performance",
+          "nested_cv"
         ],
         "title": "FittedModel",
         "type": "object"
@@ -14526,11 +15034,52 @@
               }
             ],
             "default": null
+          },
+          "calibration_levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LevelCalibration"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Calibration Levels"
+          },
+          "calibration_horizon": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HorizonCalibration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "calibration_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Calibration Note"
           }
         },
         "required": [
           "intervals",
-          "calibration"
+          "calibration",
+          "calibration_levels",
+          "calibration_horizon",
+          "calibration_note"
         ],
         "title": "HoldoutDetail",
         "type": "object"
@@ -14567,6 +15116,72 @@
           "below_floor"
         ],
         "title": "HoldoutOption",
+        "type": "object"
+      },
+      "HorizonCalibration": {
+        "additionalProperties": false,
+        "description": "Calibration of a time-to-event model's risks by a horizon (module docstring).",
+        "properties": {
+          "horizon": {
+            "title": "Horizon",
+            "type": "number"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "observed": {
+            "title": "Observed",
+            "type": "number"
+          },
+          "expected": {
+            "title": "Expected",
+            "type": "number"
+          },
+          "ratio": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "slope": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RiskGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "flagged": {
+            "default": false,
+            "title": "Flagged",
+            "type": "boolean"
+          },
+          "concern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Concern"
+          }
+        },
+        "required": [
+          "horizon",
+          "n",
+          "observed",
+          "expected",
+          "ratio",
+          "slope",
+          "groups",
+          "flagged",
+          "concern"
+        ],
+        "title": "HorizonCalibration",
         "type": "object"
       },
       "Inference": {
@@ -15066,6 +15681,41 @@
           "because"
         ],
         "title": "LensHint",
+        "type": "object"
+      },
+      "LevelCalibration": {
+        "additionalProperties": false,
+        "description": "One level's calibration: an ordinal cut-point (\"at or above\") or a multiclass class.",
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "at_or_above",
+              "is"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Calibration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "level",
+          "kind",
+          "calibration"
+        ],
+        "title": "LevelCalibration",
         "type": "object"
       },
       "LockPlan": {
@@ -15574,6 +16224,149 @@
         "title": "MissingReading",
         "type": "object"
       },
+      "NestedCV": {
+        "additionalProperties": false,
+        "description": "Bates, Hastie & Tibshirani's nested cross-validation interval for one family's primary.",
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "raw_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Mean"
+          },
+          "bias": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bias"
+          },
+          "inflation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inflation"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sd"
+          },
+          "reps": {
+            "title": "Reps",
+            "type": "integer"
+          },
+          "bias_reps": {
+            "title": "Bias Reps",
+            "type": "integer"
+          },
+          "folds": {
+            "title": "Folds",
+            "type": "integer"
+          },
+          "fits": {
+            "title": "Fits",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "method": {
+            "default": "nested cross-validation (Bates, Hastie & Tibshirani 2023)",
+            "title": "Method",
+            "type": "string"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          }
+        },
+        "required": [
+          "metric",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "raw_mean",
+          "bias",
+          "inflation",
+          "sd",
+          "reps",
+          "bias_reps",
+          "folds",
+          "fits",
+          "seconds",
+          "method",
+          "refused"
+        ],
+        "title": "NestedCV",
+        "type": "object"
+      },
       "NestedColumn": {
         "additionalProperties": false,
         "description": "A predictor that is part of another (``fat_sat`` of ``fat_total``), confirmed on training rows.",
@@ -15592,6 +16385,49 @@
           "parent"
         ],
         "title": "NestedColumn",
+        "type": "object"
+      },
+      "NestedOffer": {
+        "additionalProperties": false,
+        "description": "MS6: the nested cross-validation interval, offered where predictors outnumber rows.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "fits": {
+            "title": "Fits",
+            "type": "integer"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          },
+          "estimate": {
+            "title": "Estimate",
+            "type": "string"
+          },
+          "decision": {
+            "additionalProperties": true,
+            "title": "Decision",
+            "type": "object"
+          }
+        },
+        "required": [
+          "label",
+          "fits",
+          "seconds",
+          "estimate",
+          "decision"
+        ],
+        "title": "NestedOffer",
         "type": "object"
       },
       "NotAdjusted": {
@@ -16820,6 +17656,37 @@
         "title": "Reseal",
         "type": "object"
       },
+      "RiskGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "predicted": {
+            "title": "Predicted",
+            "type": "number"
+          },
+          "observed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed"
+          }
+        },
+        "required": [
+          "n",
+          "predicted",
+          "observed"
+        ],
+        "title": "RiskGroup",
+        "type": "object"
+      },
       "RoleProposal": {
         "properties": {
           "column": {
@@ -17490,6 +18357,29 @@
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "by_unit": {
+            "default": false,
+            "title": "By Unit",
+            "type": "boolean"
+          },
+          "extras": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Extras",
+            "type": "object"
           }
         },
         "required": [
@@ -17504,7 +18394,9 @@
           "replicates",
           "wins",
           "method",
-          "text"
+          "text",
+          "by_unit",
+          "extras"
         ],
         "title": "Selection",
         "type": "object"
@@ -18339,13 +19231,27 @@
             ],
             "default": null,
             "title": "Entry Column"
+          },
+          "horizon": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Horizon"
           }
         },
         "required": [
           "kind",
           "column",
           "time_column",
-          "entry_column"
+          "entry_column",
+          "horizon"
         ],
         "title": "SetFollowUp",
         "type": "object"
@@ -18731,7 +19637,7 @@
             "type": "integer"
           },
           "n_boot": {
-            "default": 200,
+            "default": 500,
             "maximum": 2000,
             "minimum": 20,
             "title": "N Boot",
@@ -18748,6 +19654,11 @@
             ],
             "default": null,
             "title": "Cluster"
+          },
+          "nested_cv": {
+            "default": false,
+            "title": "Nested Cv",
+            "type": "boolean"
           }
         },
         "required": [
@@ -18758,7 +19669,8 @@
           "validation",
           "repeats",
           "n_boot",
-          "cluster"
+          "cluster",
+          "nested_cv"
         ],
         "title": "SetSplit",
         "type": "object"

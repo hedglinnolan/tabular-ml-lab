@@ -33,8 +33,9 @@ const splitDecision = (holdout: number): Decision => ({
   // The server's defaults (decisions.py SplitSpec); the validation choice is not drawn yet (WP9).
   validation: "kfold",
   repeats: 10,
-  n_boot: 200,
+  n_boot: 500,
   cluster: null,
+  nested_cv: false,
 });
 
 /** The seal's basis, said once: the glyph, its label, and the sentence that says how it was drawn. */

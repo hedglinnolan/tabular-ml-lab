@@ -329,7 +329,8 @@ def build_graph() -> Graph:
             # shelf 8 (the readings ledger): its predictors are the settled roles'.
             # shelf 9 (BLUEPRINT §14.3): a predictor's codes counted as the user answered, wherever kept.
             # shelf 10 (WP17): its predictors are the adjustment set's and the grouping's.
-            Stage("shelf", 10, ("working", "cohort", "target_info", "split"),
+            # shelf 11 (MS6): the measured estimate counts the comparisons' repeated k-fold.
+            Stage("shelf", 11, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms", *WP17_READS),
@@ -390,7 +391,10 @@ def build_graph() -> Graph:
             # user confirmed, never by a reader's identifier over the grain answer.
             # fit 15 (ledger repair 2): multiple imputation fills a number with two values as a yes/no.
             # fit 16 (WP17): the intervals cluster by the grouping the cluster question named.
-            Stage("fit", 16, ("working", "design", "split", "target_info", "cohort"),
+            # fit 17 (MS6): a strictly proper primary with AUC/C the customary headline; the
+            # comparisons, the baseline verdict and BBC-CV on repeated k-fold (≥ 10 × K) by unit;
+            # the declared result; calibration by level and by a horizon; the nested-CV interval.
+            Stage("fit", 17, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),

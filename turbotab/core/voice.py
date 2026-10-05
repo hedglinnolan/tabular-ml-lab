@@ -905,6 +905,23 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
                 f"bootstrap ({tick(d.n_boot)} resamples, the whole pipeline refit on each) and "
                 f"subtracted, except for a family that nearly memorizes its rows (boosted trees), "
                 f"whose cross-validated score stands because the bootstrap overstates it")
+    # MS6 (MODELING_SEQUENCE ruling 4): under prediction the comparisons run on repeated k-fold,
+    # at least 10 × K, whatever validation gives the score (models/folds.py).
+    time_ordered = plan is not None and bool(_attr(plan, "time_ordered_folds"))
+    if getattr(state, "purpose", None) != "inference" and not time_ordered:
+        from turbotab.core.models.folds import COMPARISON_REPEATS
+
+        r = max(int(d.repeats) if validation == "repeated_kfold" else 1, COMPARISON_REPEATS)
+        compared = f"performance was estimated on the rest by {folds}"
+        boot += (f"; models were compared with each other and with the no-predictor baseline on "
+                 f"{tick(d.folds)}-fold cross-validation repeated {tick(r)} times, by the corrected "
+                 f"repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)")
+        if getattr(d, "nested_cv", False):
+            from turbotab.core.models.validation import NESTED_REPS
+
+            boot += (f"; each interval is the nested cross-validation interval "
+                     f"({tick(NESTED_REPS)} repetitions of {tick(d.folds)} folds; Bates, Hastie & "
+                     f"Tibshirani 2023)")
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")
@@ -1084,6 +1101,14 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
     head = _NUMBER_WORD.get(n, tick(n))
     chosen = (f"{head} model {plural(n, 'family', 'families')} {plural(n, 'was', 'were')} "
               f"chosen: {listing(labels, limit=8, ticked=False)}")
+    # MS6 (MODELING_SEQUENCE §1 row 12 (b)): with no rows held out, what the result is.
+    split = getattr(state, "split", None)
+    if (n > 1 and split is not None and float(getattr(split, "holdout", 0) or 0) == 0
+            and getattr(state, "purpose", None) != "inference"):
+        chosen += ("; with no rows held out, the choice among them is corrected by bootstrap "
+                   "bias-corrected cross-validation (Tsamardinos et al. 2018), and that "
+                   "selection-corrected estimate is the reported result, not the best family's "
+                   "own score")
     # BLUEPRINT §14.3 (amendment): the readings the values settled, which the fit reads, are
     # stated in the record ("read from the values"), each with its evidence.
     read = _get(ctx, "read_from_values")
@@ -1353,6 +1378,9 @@ def _set_follow_up(d: Any, state: Any, ctx: Any) -> str:
     if d.entry_column:
         text += (f"; a row was at risk only after its {tick(d.entry_column)}, on the same time "
                  f"scale")
+    if getattr(d, "horizon", None) is not None:  # MS6: the horizon predictions are judged at
+        text += (f"; predicted risks were scored and calibrated by {tick(d.time_column)} = "
+                 f"{tick(f'{float(d.horizon):g}')}, the declared horizon")
     return text
 
 
@@ -1597,16 +1625,24 @@ def _earlier_opening(d: Any, ctx: Any) -> Any | None:
 
 
 def _scored(d: Any) -> str:
-    """``: held-out AUC `0.801``` — the kept score of the declared family (WP16), or nothing."""
-    from turbotab.core.models.metrics import LABELS
+    """``: held-out log loss `0.512` (AUC `0.801`, the customary headline)`` — the kept score of
+    the declared family on the primary (WP16; MS6: a strictly proper score), with the customary
+    headline beside it when the record kept one, or nothing."""
+    from turbotab.core.models.metrics import HEADLINE_LABEL, LABELS
+    from turbotab.core.models.validation import score_words
 
     scores = getattr(d, "scores", None) or {}
     metric = getattr(d, "metric", None)
     family = getattr(d, "family", None)
-    value = (scores.get(family) or {}).get(metric) if family and metric else None
+    kept = (scores.get(family) or {}) if family else {}
+    value = kept.get(metric) if metric else None
     if value is None:
         return ""
-    return f": held-out {LABELS.get(metric, metric)} {tick(f'{value:.3f}')}"
+    text = f": held-out {score_words(metric)} {tick(f'{value:.3f}')}"
+    headline = next((h for h in ("auc", "c_index") if h != metric and kept.get(h) is not None), None)
+    if headline is not None:
+        text += f" ({LABELS[headline]} {tick(f'{kept[headline]:.3f}')}, the {HEADLINE_LABEL})"
+    return text
 
 
 @register_sentence("open_seal")

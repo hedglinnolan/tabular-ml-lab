@@ -1270,6 +1270,12 @@ export function fit(
       optimism: null,
       internal_external: null,
       exposure_tests: [],
+      calibration_levels: null,
+      calibration_horizon: null,
+      calibration_note: null,
+      compared_on: null,
+      performance: null,
+      nested_cv: null,
     };
   });
   // The fit computes the held-out scores; as on the server (turbotab/core/seal.py), the route
@@ -1304,6 +1310,17 @@ export function fit(
     levels: null,
     withheld: null,
     estimand: null,
+    headline_metric: null,
+    headline_label: null,
+    tension: null,
+    comparison: null,
+    comparisons_note: null,
+    result: null,
+    horizon: null,
+    horizon_note: null,
+    wide: null,
+    nested_offer: null,
+    chain: [],
   };
 }
 
