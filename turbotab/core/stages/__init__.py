@@ -600,7 +600,11 @@ def build_graph() -> Graph:
             # beside the uncorrected one; items imputed before scoring under multiple imputation.
             # scales 2 (wave 1, MS4): under the population answer the correction is blocked and
             # recorded, its exit the sample-only attestation.
-            Stage("scales", 2, ("working", "design", "split", "target_info", "cohort"),
+            # scales 3 (SCALES repair): grouped rows keep their clusters in both intervals (the
+            # table's CR2 beside a bootstrap of whole clusters); several corrected scores are
+            # calibrated jointly (Rosner); a code reaching a repeat administration or a reference
+            # blocks what it would move.
+            Stage("scales", 3, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
                   label="Estimating each scale's reliability"),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
