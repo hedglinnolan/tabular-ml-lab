@@ -13,6 +13,10 @@ export type Route =
   | { name: "stage-lab-m2" }
   | { name: "m2-lab" }
   | { name: "m3-lab" }
+  | { name: "methods-protos" }
+  | { name: "methods-document" }
+  | { name: "methods-questlog" }
+  | { name: "methods-map" }
   | { name: "missing"; path: string };
 
 /**
@@ -43,6 +47,10 @@ export function parseRoute(path: string, lab = LAB): Route {
     if (/^\/lab\/stage\/m2\/?$/.test(path)) return { name: "stage-lab-m2" };
     if (/^\/lab\/m2\/?$/.test(path)) return { name: "m2-lab" };
     if (/^\/lab\/m3\/?$/.test(path)) return { name: "m3-lab" };
+    if (/^\/lab\/methods\/?$/.test(path)) return { name: "methods-protos" };
+    if (/^\/lab\/methods-document\/?$/.test(path)) return { name: "methods-document" };
+    if (/^\/lab\/methods-questlog\/?$/.test(path)) return { name: "methods-questlog" };
+    if (/^\/lab\/methods-map\/?$/.test(path)) return { name: "methods-map" };
   }
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };

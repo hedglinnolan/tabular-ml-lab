@@ -30,6 +30,22 @@ const LAB_SCREENS: Partial<Record<LabRoute, LazyExoticComponent<ComponentType>>>
         "m3-lab": lazy(() =>
           import("./screens/M3LabScreen").then((m) => ({ default: m.M3LabScreen })),
         ),
+        "methods-protos": lazy(() =>
+          import("./explore/methods-shared/Chooser").then((m) => ({ default: m.MethodsChooser })),
+        ),
+        "methods-document": lazy(() =>
+          import("./explore/methods-document/MethodsDocScreen").then((m) => ({
+            default: m.MethodsDocScreen,
+          })),
+        ),
+        "methods-questlog": lazy(() =>
+          import("./explore/methods-questlog/QuestScreen").then((m) => ({ default: m.QuestScreen })),
+        ),
+        "methods-map": lazy(() =>
+          import("./explore/methods-map/MethodsMapScreen").then((m) => ({
+            default: m.MethodsMapScreen,
+          })),
+        ),
       }
     : {};
 
