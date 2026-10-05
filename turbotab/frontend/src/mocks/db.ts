@@ -668,6 +668,8 @@ function slotOf(d: Decision): Slot | null {
       return "measurement_error";
     case "set_outcome_scale":
       return "target";
+    case "set_explain":
+      return "explain";
     case "revert":
       return null;
   }
@@ -795,6 +797,10 @@ function valueOf(d: Decision): ProjectState[Slot] {
                effect: d.effect ?? "total", contrast: d.contrast ?? null, measure: d.measure };
     case "set_adjustment":
       return null;
+    case "set_explain": {
+      const { kind: _k, ...value } = d;
+      return value as ProjectState[Slot];
+    }
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -889,6 +895,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     estimand: null,
     adjustment: null,
     outcome_scale: null,
+    explain: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

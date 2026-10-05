@@ -98,6 +98,9 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "calibration":
         return any(e.get("estimate") is not None or e.get("naive") is not None
                    for e in artifact.get("exposures") or [] if isinstance(e, Mapping))
+    if stage == "explain":  # wave 2: an explanation shows what a model learned from the outcome
+        return any(f.get("explained") for f in artifact.get("families") or []
+                   if isinstance(f, Mapping))
     return False
 
 

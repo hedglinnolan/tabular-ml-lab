@@ -773,7 +773,9 @@ HOLDS: dict[str, tuple[str, ...]] = {
     "estimand": ("inference",),
     "adjustment": ("inference",),
 }
-ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary")
+# "explain" (wave 2): explanations of the outcome models are not estimates, but they show what
+# each model learned from the outcome, so under inference they wait and lock as estimates do.
+ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "explain")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:

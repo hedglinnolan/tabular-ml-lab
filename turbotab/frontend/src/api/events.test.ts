@@ -89,6 +89,7 @@ function view(): ProjectView {
       estimand: null,
       adjustment: null,
       outcome_scale: null,
+      explain: null,
     },
     decisions: [record(1)],
     stages: {

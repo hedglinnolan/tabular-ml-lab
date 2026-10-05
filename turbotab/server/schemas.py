@@ -951,3 +951,8 @@ ARTIFACT_MODELS.update({"sensitivity": SensitivityArtifact, "calibration": Calib
 from turbotab.core.stages.secondary import SecondaryArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"secondary": SecondaryArtifact})
+
+# Wave 2, EXPLAIN: each fitted family described (turbotab/core/models/explain.py).
+from turbotab.core.models.explain import ExplainArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"explain": ExplainArtifact})

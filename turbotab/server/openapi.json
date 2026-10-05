@@ -451,6 +451,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetAdjustment-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExplain-Input"
                   }
                 ],
                 "discriminator": {
@@ -498,7 +501,8 @@
                     "set_censoring": "#/components/schemas/SetCensoring-Input",
                     "set_clusters": "#/components/schemas/SetClusters-Input",
                     "set_estimand": "#/components/schemas/SetEstimand-Input",
-                    "set_adjustment": "#/components/schemas/SetAdjustment-Input"
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Input",
+                    "set_explain": "#/components/schemas/SetExplain-Input"
                   }
                 },
                 "title": "Decision"
@@ -933,6 +937,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetAdjustment-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExplain-Input"
                   }
                 ],
                 "discriminator": {
@@ -980,7 +987,8 @@
                     "set_censoring": "#/components/schemas/SetCensoring-Input",
                     "set_clusters": "#/components/schemas/SetClusters-Input",
                     "set_estimand": "#/components/schemas/SetEstimand-Input",
-                    "set_adjustment": "#/components/schemas/SetAdjustment-Input"
+                    "set_adjustment": "#/components/schemas/SetAdjustment-Input",
+                    "set_explain": "#/components/schemas/SetExplain-Input"
                   }
                 },
                 "title": "Decision"
@@ -2814,6 +2822,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetAdjustment-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetExplain-Output"
               }
             ],
             "title": "Decision",
@@ -2841,6 +2852,7 @@
                 "set_estimand": "#/components/schemas/SetEstimand-Output",
                 "set_event": "#/components/schemas/SetEvent",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                "set_explain": "#/components/schemas/SetExplain-Output",
                 "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                 "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                 "set_follow_up": "#/components/schemas/SetFollowUp-Output",
@@ -3571,6 +3583,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetAdjustment-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExplain-Output"
                   }
                 ],
                 "discriminator": {
@@ -3597,6 +3612,7 @@
                     "set_estimand": "#/components/schemas/SetEstimand-Output",
                     "set_event": "#/components/schemas/SetEvent",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                    "set_explain": "#/components/schemas/SetExplain-Output",
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                     "set_follow_up": "#/components/schemas/SetFollowUp-Output",
@@ -3635,6 +3651,47 @@
           "decision"
         ],
         "title": "Exit"
+      },
+      "ExplainSpec": {
+        "properties": {
+          "curves": {
+            "type": "string",
+            "enum": [
+              "ale",
+              "partial_dependence"
+            ],
+            "title": "Curves",
+            "default": "ale"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "reseeds": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Reseeds",
+            "default": 5
+          },
+          "as_effect": {
+            "type": "boolean",
+            "title": "As Effect",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "curves",
+          "exposures",
+          "reseeds",
+          "as_effect"
+        ],
+        "title": "ExplainSpec"
       },
       "ExposureFormSpec": {
         "properties": {
@@ -6150,6 +6207,16 @@
                 "type": "null"
               }
             ]
+          },
+          "explain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExplainSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6194,7 +6261,8 @@
           "clusters",
           "estimand",
           "adjustment",
-          "outcome_scale"
+          "outcome_scale",
+          "explain"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -8123,6 +8191,98 @@
         ],
         "title": "SetExclusions",
         "description": "Row exclusions; an empty list is the answer \"keep every row\"."
+      },
+      "SetExplain-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_explain",
+            "title": "Kind",
+            "default": "set_explain"
+          },
+          "curves": {
+            "type": "string",
+            "enum": [
+              "ale",
+              "partial_dependence"
+            ],
+            "title": "Curves",
+            "default": "ale"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "reseeds": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Reseeds",
+            "default": 5
+          },
+          "as_effect": {
+            "type": "boolean",
+            "title": "As Effect",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetExplain"
+      },
+      "SetExplain-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_explain",
+            "title": "Kind",
+            "default": "set_explain"
+          },
+          "curves": {
+            "type": "string",
+            "enum": [
+              "ale",
+              "partial_dependence"
+            ],
+            "title": "Curves",
+            "default": "ale"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "reseeds": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Reseeds",
+            "default": 5
+          },
+          "as_effect": {
+            "type": "boolean",
+            "title": "As Effect",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "curves",
+          "exposures",
+          "reseeds",
+          "as_effect"
+        ],
+        "title": "SetExplain"
       },
       "SetExposureForm-Input": {
         "properties": {
@@ -10988,6 +11148,56 @@
         "title": "ApplyRepair",
         "type": "object"
       },
+      "Architecture": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "equation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Equation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "trees": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TreeStructure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "path": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShrinkagePath"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "kind",
+          "equation",
+          "trees",
+          "path"
+        ],
+        "title": "Architecture",
+        "type": "object"
+      },
       "AtOpening": {
         "additionalProperties": false,
         "description": "The held-out scores recorded when the current outcome's seal was first opened: the reported\nresult, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.",
@@ -11117,6 +11327,87 @@
           "label"
         ],
         "title": "Baseline",
+        "type": "object"
+      },
+      "BeeswarmInput": {
+        "additionalProperties": false,
+        "description": "One input's points: its SHAP value, its value (None for a category or a blank), and its\nvalue's percentile among the explained rows for the color (a category: its level's place).",
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "phi": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Phi",
+            "type": "array"
+          },
+          "value": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Value",
+            "type": "array"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
+          },
+          "color": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Color",
+            "type": "array"
+          }
+        },
+        "required": [
+          "input",
+          "role",
+          "phi",
+          "value",
+          "level",
+          "color"
+        ],
+        "title": "BeeswarmInput",
         "type": "object"
       },
       "BrantCheck": {
@@ -12235,6 +12526,58 @@
         "title": "CovariateAnswers",
         "type": "object"
       },
+      "Curve": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "drawn": {
+            "title": "Drawn",
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "drawn",
+          "values",
+          "reason"
+        ],
+        "title": "Curve",
+        "type": "object"
+      },
       "CurvePoint": {
         "additionalProperties": false,
         "properties": {
@@ -12853,6 +13196,66 @@
         "title": "EnergyUnitReading",
         "type": "object"
       },
+      "Equation": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "scale": {
+            "title": "Scale",
+            "type": "string"
+          },
+          "outcome_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Unit"
+          },
+          "intercept": {
+            "title": "Intercept",
+            "type": "number"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/Term"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "n_terms": {
+            "title": "N Terms",
+            "type": "integer"
+          },
+          "zeros": {
+            "default": 0,
+            "title": "Zeros",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "scale",
+          "outcome_unit",
+          "intercept",
+          "terms",
+          "n_terms",
+          "zeros",
+          "text"
+        ],
+        "title": "Equation",
+        "type": "object"
+      },
       "EstimandAnnotation": {
         "additionalProperties": false,
         "description": "WP17: the served fit under a declared estimand (``turbotab/core/estimand.py``): the caption\nworded from it, and which table rows are the exposure's effect; the rest are adjustment terms.",
@@ -13211,6 +13614,154 @@
         "title": "ExclusionRule",
         "type": "object"
       },
+      "ExplainArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "describes": {
+            "title": "Describes",
+            "type": "string"
+          },
+          "under_inference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Under Inference"
+          },
+          "single_fill": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Single Fill"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "rows_of": {
+            "title": "Rows Of",
+            "type": "integer"
+          },
+          "rows_basis": {
+            "title": "Rows Basis",
+            "type": "string"
+          },
+          "row_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Row Ids",
+            "type": "array"
+          },
+          "curve_method": {
+            "title": "Curve Method",
+            "type": "string"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyExplanation"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "curves": {
+            "items": {
+              "$ref": "#/components/schemas/InputCurves"
+            },
+            "title": "Curves",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          },
+          "adjustment_terms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Adjustment Terms"
+          },
+          "relations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relations",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld"
+          }
+        },
+        "required": [
+          "purpose",
+          "task",
+          "describes",
+          "under_inference",
+          "single_fill",
+          "rows",
+          "rows_of",
+          "rows_basis",
+          "row_ids",
+          "curve_method",
+          "families",
+          "curves",
+          "methods",
+          "adjustment_terms",
+          "relations",
+          "notes",
+          "withheld"
+        ],
+        "title": "ExplainArtifact",
+        "type": "object"
+      },
       "ExposureFormOption": {
         "description": "One form an exposure can enter the model in (WP12a; ``turbotab/core/methods/exposure_form.py``\n``options``), with north star 5's two labels, in the order of soundness for the purpose.",
         "properties": {
@@ -13495,6 +14046,158 @@
           "sentence"
         ],
         "title": "FamilyDifference",
+        "type": "object"
+      },
+      "FamilyExplanation": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "explained": {
+            "title": "Explained",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Method"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "base": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base"
+          },
+          "floor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Floor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "importance": {
+            "items": {
+              "$ref": "#/components/schemas/InputImportance"
+            },
+            "title": "Importance",
+            "type": "array"
+          },
+          "beeswarm": {
+            "items": {
+              "$ref": "#/components/schemas/BeeswarmInput"
+            },
+            "title": "Beeswarm",
+            "type": "array"
+          },
+          "observations": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observations"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "stability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stability"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "interactions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interactions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "architecture": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Architecture"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "explained",
+          "reason",
+          "method",
+          "scale",
+          "base",
+          "floor",
+          "importance",
+          "beeswarm",
+          "observations",
+          "stability",
+          "interactions",
+          "architecture"
+        ],
+        "title": "FamilyExplanation",
         "type": "object"
       },
       "Finding": {
@@ -14191,6 +14894,67 @@
         "title": "FittedModel",
         "type": "object"
       },
+      "Floor": {
+        "additionalProperties": false,
+        "description": "The held-out performance floor: the family's cross-validated score against the\nno-predictor baseline's on the same folds (``models/baseline.py``).",
+        "properties": {
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "passed",
+          "verdict",
+          "metric",
+          "model",
+          "baseline",
+          "reason"
+        ],
+        "title": "Floor",
+        "type": "object"
+      },
       "FollowUpCandidate": {
         "description": "A column that reads as how long each row was followed (``turbotab/core/estimand.py``).",
         "properties": {
@@ -14821,6 +15585,263 @@
           "decision"
         ],
         "title": "InferenceExit",
+        "type": "object"
+      },
+      "InputCurves": {
+        "additionalProperties": false,
+        "description": "One input's curve for every family, on one grid (shared axes).",
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "grid": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Grid",
+            "type": "array"
+          },
+          "counts": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "supported": {
+            "items": {
+              "type": "boolean"
+            },
+            "title": "Supported",
+            "type": "array"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "curves": {
+            "items": {
+              "$ref": "#/components/schemas/Curve"
+            },
+            "title": "Curves",
+            "type": "array"
+          }
+        },
+        "required": [
+          "input",
+          "sources",
+          "role",
+          "method",
+          "grid",
+          "counts",
+          "supported",
+          "unit",
+          "curves"
+        ],
+        "title": "InputCurves",
+        "type": "object"
+      },
+      "InputImportance": {
+        "additionalProperties": false,
+        "description": "One input's mean |SHAP|, its rank, and its rank in each reseeded refit.",
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "mean_abs": {
+            "title": "Mean Abs",
+            "type": "number"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "reseed_ranks": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Reseed Ranks",
+            "type": "array"
+          },
+          "in_top": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "In Top"
+          }
+        },
+        "required": [
+          "input",
+          "mean_abs",
+          "rank",
+          "role",
+          "reseed_ranks",
+          "in_top"
+        ],
+        "title": "InputImportance",
+        "type": "object"
+      },
+      "Interaction": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "string"
+          },
+          "b": {
+            "title": "B",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "strength": {
+            "title": "Strength",
+            "type": "number"
+          },
+          "h2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "H2"
+          },
+          "reseed_strength": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Reseed Strength",
+            "type": "array"
+          },
+          "reseed_h2": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Reseed H2",
+            "type": "array"
+          },
+          "in_top": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "In Top"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "rank",
+          "strength",
+          "h2",
+          "reseed_strength",
+          "reseed_h2",
+          "in_top"
+        ],
+        "title": "Interaction",
+        "type": "object"
+      },
+      "Interactions": {
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/Interaction"
+            },
+            "title": "Pairs",
+            "type": "array"
+          },
+          "rho_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho Mean"
+          },
+          "additive": {
+            "title": "Additive",
+            "type": "boolean"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "inputs",
+          "rows",
+          "pairs",
+          "rho_mean",
+          "additive",
+          "method"
+        ],
+        "title": "Interactions",
         "type": "object"
       },
       "InternalExternal": {
@@ -15613,6 +16634,64 @@
         "title": "NotAdjusted",
         "type": "object"
       },
+      "Observations": {
+        "additionalProperties": false,
+        "description": "Per-row attributions: ``base + Σ phi + rest == prediction`` on the model's scale.",
+        "properties": {
+          "row_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Row Ids",
+            "type": "array"
+          },
+          "base": {
+            "title": "Base",
+            "type": "number"
+          },
+          "prediction": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Prediction",
+            "type": "array"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "phi": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Phi",
+            "type": "array"
+          },
+          "rest": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Rest",
+            "type": "array"
+          }
+        },
+        "required": [
+          "row_ids",
+          "base",
+          "prediction",
+          "inputs",
+          "phi",
+          "rest"
+        ],
+        "title": "Observations",
+        "type": "object"
+      },
       "OmittedEnergy": {
         "additionalProperties": false,
         "description": "How much of total energy a model's energy-bearing columns leave out (audit ME-05).",
@@ -16199,6 +17278,33 @@
           "numeric"
         ],
         "title": "OutcomeWithinUnit",
+        "type": "object"
+      },
+      "PathLine": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "coefficients": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Coefficients",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column",
+          "input",
+          "coefficients"
+        ],
+        "title": "PathLine",
         "type": "object"
       },
       "Pooled": {
@@ -18222,6 +19328,54 @@
         "title": "SetExclusions",
         "type": "object"
       },
+      "SetExplain": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_explain",
+            "default": "set_explain",
+            "title": "Kind",
+            "type": "string"
+          },
+          "curves": {
+            "default": "ale",
+            "enum": [
+              "ale",
+              "partial_dependence"
+            ],
+            "title": "Curves",
+            "type": "string"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exposures",
+            "type": "array"
+          },
+          "reseeds": {
+            "default": 5,
+            "maximum": 20,
+            "minimum": 0,
+            "title": "Reseeds",
+            "type": "integer"
+          },
+          "as_effect": {
+            "default": false,
+            "title": "As Effect",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "curves",
+          "exposures",
+          "reseeds",
+          "as_effect"
+        ],
+        "title": "SetExplain",
+        "type": "object"
+      },
       "SetExposureForm": {
         "additionalProperties": false,
         "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.",
@@ -19058,6 +20212,69 @@
         "title": "ShelfFamily",
         "type": "object"
       },
+      "ShrinkagePath": {
+        "additionalProperties": false,
+        "properties": {
+          "penalty_name": {
+            "title": "Penalty Name",
+            "type": "string"
+          },
+          "penalties": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Penalties",
+            "type": "array"
+          },
+          "chosen": {
+            "title": "Chosen",
+            "type": "number"
+          },
+          "chosen_index": {
+            "title": "Chosen Index",
+            "type": "integer"
+          },
+          "l1_ratio": {
+            "title": "L1 Ratio",
+            "type": "number"
+          },
+          "scale": {
+            "title": "Scale",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PathLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "nonzero": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Nonzero",
+            "type": "array"
+          },
+          "n_columns": {
+            "title": "N Columns",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "penalty_name",
+          "penalties",
+          "chosen",
+          "chosen_index",
+          "l1_ratio",
+          "scale",
+          "lines",
+          "nonzero",
+          "n_columns"
+        ],
+        "title": "ShrinkagePath",
+        "type": "object"
+      },
       "Sound": {
         "additionalProperties": false,
         "description": "Whether the option is sound for ``purpose``, and why.",
@@ -19248,6 +20465,140 @@
           "time_ordered_folds"
         ],
         "title": "SplitArtifact",
+        "type": "object"
+      },
+      "SplitCount": {
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "root": {
+            "title": "Root",
+            "type": "integer"
+          },
+          "splits": {
+            "title": "Splits",
+            "type": "integer"
+          },
+          "median_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Threshold"
+          }
+        },
+        "required": [
+          "input",
+          "root",
+          "splits",
+          "median_threshold"
+        ],
+        "title": "SplitCount",
+        "type": "object"
+      },
+      "Stability": {
+        "additionalProperties": false,
+        "description": "Mean |SHAP| over the same rows, refit on bootstrap resamples each with its own seed.",
+        "properties": {
+          "reseeds": {
+            "title": "Reseeds",
+            "type": "integer"
+          },
+          "resampled_by": {
+            "title": "Resampled By",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "importance": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Importance",
+            "type": "array"
+          },
+          "pairwise": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Pairwise",
+            "type": "array"
+          },
+          "versus_fit": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Versus Fit",
+            "type": "array"
+          },
+          "rho_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho Mean"
+          },
+          "rho_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho Min"
+          },
+          "top": {
+            "title": "Top",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reseeds",
+          "resampled_by",
+          "inputs",
+          "importance",
+          "pairwise",
+          "versus_fit",
+          "rho_mean",
+          "rho_min",
+          "top"
+        ],
+        "title": "Stability",
         "type": "object"
       },
       "StatedGrain": {
@@ -20353,6 +21704,78 @@
         "title": "TargetInfo",
         "type": "object"
       },
+      "Term": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "coefficient": {
+            "title": "Coefficient",
+            "type": "number"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "coefficient_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coefficient Unit"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
+          },
+          "role": {
+            "default": "predictor",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "input",
+          "kind",
+          "coefficient",
+          "unit",
+          "coefficient_unit",
+          "level",
+          "role"
+        ],
+        "title": "Term",
+        "type": "object"
+      },
       "TimeOrder": {
         "description": "Whether the time column can put a unit's records in order (stages.working.time_order).",
         "properties": {
@@ -20417,6 +21840,149 @@
           "examples"
         ],
         "title": "TimeOrder",
+        "type": "object"
+      },
+      "TreeNode": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "blanks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blanks"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right"
+          }
+        },
+        "required": [
+          "id",
+          "depth",
+          "column",
+          "input",
+          "threshold",
+          "blanks",
+          "n",
+          "value",
+          "left",
+          "right"
+        ],
+        "title": "TreeNode",
+        "type": "object"
+      },
+      "TreeStructure": {
+        "additionalProperties": false,
+        "properties": {
+          "n_trees": {
+            "title": "N Trees",
+            "type": "integer"
+          },
+          "levels": {
+            "title": "Levels",
+            "type": "integer"
+          },
+          "first_tree": {
+            "items": {
+              "$ref": "#/components/schemas/TreeNode"
+            },
+            "title": "First Tree",
+            "type": "array"
+          },
+          "splits": {
+            "items": {
+              "$ref": "#/components/schemas/SplitCount"
+            },
+            "title": "Splits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "n_trees",
+          "levels",
+          "first_tree",
+          "splits"
+        ],
+        "title": "TreeStructure",
         "type": "object"
       },
       "TurnCheck": {

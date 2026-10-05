@@ -32,6 +32,8 @@ from turbotab.core.models import survival  # noqa: F401,E402 - registers cox (WP
 from turbotab.core.models import previews  # noqa: F401,E402 - registers the consequence builders
 # The final model declared at the seal's opening (AUDIT_REPORT §5 WP8): its validator and completion.
 from turbotab.core.models import selection  # noqa: F401,E402 - registers
+# Wave 2, EXPLAIN: the explanations' method contract and the set_explain validators.
+from turbotab.core.models import explain  # noqa: F401,E402 - registers
 
 __all__ = [
     "Assessment", "FamilyInfo", "ModelFamily", "Situation", "families", "get_family", "info",

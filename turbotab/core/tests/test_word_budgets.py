@@ -315,6 +315,9 @@ def representative_decisions():
                                       after_exposure="unknown"),
             "ldl": d.CovariateAnswers(causes_exposure="no", causes_outcome="yes",
                                       after_exposure="yes", keep=True, acknowledged=True)}),
+        # Wave 2, EXPLAIN: the fitted models described (models/explain.py)
+        d.SetExplain(),
+        d.SetExplain(curves="partial_dependence", exposures=["protein_g", "fiber_g"], reseeds=0),
     ]
 
 

@@ -1227,6 +1227,14 @@ def _probe_voice_unit(value: str) -> str:
     return voice.sentence_for(d.SetTarget(column="ALT (IU)"), state, {})
 
 
+def _probe_equation_unit(value: str) -> Any:
+    """Wave 2, EXPLAIN: the fitted equation's outcome unit, as recorded or none."""
+    from turbotab.core.models.explain import equation_units
+
+    state = ProjectState(target="ALT (IU)", outcome_unit=value or None)
+    return equation_units(state, "ALT (IU)", [])[0]
+
+
 # (consumer, kind) -> (probe, {alternative or None for unanswered: the behavior it must produce})
 PROBES: dict[tuple[str, str], tuple[Any, dict[Any, Any]]] = {
     ("turbotab.core.units:outcome_unit", "outcome_unit"):
@@ -1234,6 +1242,9 @@ PROBES: dict[tuple[str, str], tuple[Any, dict[Any, Any]]] = {
     ("turbotab.core.voice:_outcome_unit", "outcome_unit"):
         (_probe_voice_unit, {"": "`ALT (IU)` was chosen as the outcome.",
                              "U/L": "`ALT (IU)` was chosen as the outcome, in U/L."}),
+    # Wave 2, EXPLAIN: the equation states the recorded outcome unit, and none while unrecorded.
+    ("turbotab.core.models.explain:equation_units", "outcome_unit"):
+        (_probe_equation_unit, {"": None, "U/L": "U/L"}),
 }
 
 
