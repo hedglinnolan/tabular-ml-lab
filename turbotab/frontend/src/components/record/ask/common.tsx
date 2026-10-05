@@ -26,6 +26,8 @@ export interface AskProps {
     coach?: ReactNode;
     /** Findings held for this question, resurfacing inside it (M2_CONTRACT §4). */
     resurfaced?: ReactNode;
+    /** The ledger's ask card (BLUEPRINT §14.2): the readings this answer's consumer reads. */
+    ask?: ReactNode;
   };
 }
 

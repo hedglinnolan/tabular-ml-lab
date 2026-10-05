@@ -19,6 +19,17 @@ import type {
 } from "./schema";
 import type { AnyStageArtifacts, AnyStageName, TeachingEntry } from "./m1-types";
 import type { PreviewResult } from "./m1-stage-types";
+import type {
+  AddedFile,
+  CodebookPreview,
+  CodebookRequest,
+  FamilyInfo,
+  JoinPreview,
+  JoinPreviewRequest,
+  MethodsText,
+  PlanExport,
+  ReadingsCard,
+} from "./m3-types";
 
 export const API_BASE = "/api";
 
@@ -210,6 +221,56 @@ export const api = {
     request<PreviewResult>(`/projects/${enc(pid)}/findings/${enc(findingId)}/evidence`, {
       signal,
     }),
+
+  // ── M3: the readings ledger, the record's outputs, assembly ──────────────
+
+  /** The readings the values settled with no question asked ("read from your data", §14.3). */
+  readings: (pid: string, signal?: AbortSignal) =>
+    request<ReadingsCard>(`/projects/${enc(pid)}/readings`, { signal }),
+
+  /** The methods text built from the decision log (audit WP16). */
+  methods: (pid: string, signal?: AbortSignal) =>
+    request<MethodsText>(`/projects/${enc(pid)}/methods`, { signal }),
+
+  /** The analysis plan for registration: canonical JSON with its SHA-256 (MODELING_SEQUENCE §1). */
+  plan: (pid: string, signal?: AbortSignal) =>
+    request<PlanExport>(`/projects/${enc(pid)}/plan`, { signal }),
+
+  /** Every model family the engine can fit, with what it needs and assumes. */
+  models: (signal?: AbortSignal) => request<FamilyInfo[]>("/models", { signal }),
+
+  /** The files added to the project to join to its table. */
+  files: (pid: string, signal?: AbortSignal) =>
+    request<AddedFile[]>(`/projects/${enc(pid)}/files`, { signal }),
+
+  /** Add a file on this machine to join (local mode only). */
+  addFile: (pid: string, path: string) =>
+    request<AddedFile>(`/projects/${enc(pid)}/files`, { method: "POST", json: { path } }),
+
+  /** Upload a file to join to the project's table. */
+  uploadFile: (pid: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    return request<AddedFile>(`/projects/${enc(pid)}/files/upload`, { method: "POST", form });
+  },
+
+  /** The row counts a join would give, before `join_files` records it. */
+  joinPreview: (pid: string, body: JoinPreviewRequest) =>
+    request<JoinPreview>(`/projects/${enc(pid)}/join-preview`, { method: "POST", json: body }),
+
+  /** Read a codebook by its path (local mode), or the table's own XPT labels (`labels`). */
+  codebook: (pid: string, body: CodebookRequest) =>
+    request<CodebookPreview>(`/projects/${enc(pid)}/codebooks`, { method: "POST", json: body }),
+
+  /** Upload a codebook: a variable table, an NHANES codebook page or an XPT file. */
+  uploadCodebook: (pid: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    return request<CodebookPreview>(`/projects/${enc(pid)}/codebooks/upload`, {
+      method: "POST",
+      form,
+    });
+  },
 };
 
 /** The SSE endpoint's URL. The EventSource itself is opened in events.ts. */

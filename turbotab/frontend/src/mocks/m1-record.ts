@@ -30,6 +30,7 @@ import type {
 } from "../api/schema";
 import { fold, type MockProject, type MockServer } from "./db";
 import teachingJson from "./m2-teaching.json";
+import shared from "./fixtures/m3-shared.json";
 import { nhanesLike } from "./m1-nhanes";
 import { route } from "./m1-router";
 import {
@@ -136,7 +137,15 @@ const DEPS: Record<string, string[]> = {
 };
 
 const STALE_PAUSE_MS = 450;
-const TEACHING = teachingJson as TeachingEntry[];
+// The M2 entries as the M1/M2 journeys were written against, then every question the server has
+// added since (the follow-up, the grouping, the survey, the estimand, the adjustment set, the
+// time-varying and causal lanes), as the real server serves them (m3-shared.json), in its order.
+const TEACHING: TeachingEntry[] = (() => {
+  const m2 = teachingJson as TeachingEntry[];
+  const real = (shared as unknown as { teaching: TeachingEntry[] }).teaching;
+  const have = new Map(m2.map((e) => [e.key, e]));
+  return real.map((e) => have.get(e.key) ?? e);
+})();
 
 interface M1Job {
   view: JobView;

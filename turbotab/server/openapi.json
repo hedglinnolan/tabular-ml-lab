@@ -27250,6 +27250,270 @@
         "title": "RowComparison",
         "type": "object"
       },
+      "ScaleCorrection": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "naive": {
+            "title": "Naive",
+            "type": "number"
+          },
+          "naive_ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Naive Ci Low"
+          },
+          "naive_ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Naive Ci High"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "P"
+          },
+          "estimate": {
+            "title": "Estimate",
+            "type": "number"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "scale": {
+            "default": "difference",
+            "enum": [
+              "difference",
+              "odds_ratio"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio"
+          },
+          "ratio_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio Low"
+          },
+          "ratio_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio High"
+          },
+          "naive_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Naive Ratio"
+          },
+          "attenuation": {
+            "title": "Attenuation",
+            "type": "number"
+          },
+          "error_variance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error Variance"
+          },
+          "covariates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Covariates",
+            "type": "array"
+          },
+          "jointly": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Jointly",
+            "type": "array"
+          },
+          "clustered_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Clustered By"
+          },
+          "n_clusters": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Clusters"
+          },
+          "n": {
+            "default": 0,
+            "title": "N",
+            "type": "integer"
+          },
+          "n_boot": {
+            "default": 0,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "n_boot_ok": {
+            "default": 0,
+            "title": "N Boot Ok",
+            "type": "integer"
+          },
+          "copies": {
+            "default": 1,
+            "title": "Copies",
+            "type": "integer"
+          },
+          "labels": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "family",
+          "feature",
+          "naive",
+          "naive_ci_low",
+          "naive_ci_high",
+          "p",
+          "estimate",
+          "se",
+          "ci_low",
+          "ci_high",
+          "scale",
+          "ratio",
+          "ratio_low",
+          "ratio_high",
+          "naive_ratio",
+          "attenuation",
+          "error_variance",
+          "covariates",
+          "jointly",
+          "clustered_by",
+          "n_clusters",
+          "n",
+          "n_boot",
+          "n_boot_ok",
+          "copies",
+          "labels"
+        ],
+        "title": "ScaleCorrection",
+        "type": "object"
+      },
       "ScaleQuestion": {
         "description": "The scale a positive, markedly skewed outcome is analyzed on\n(``turbotab.core.structural.scale_question``).",
         "properties": {
@@ -27310,6 +27574,306 @@
           "options"
         ],
         "title": "ScaleQuestion",
+        "type": "object"
+      },
+      "ScaleReliability": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "internal_consistency",
+                  "test_retest",
+                  "calibration_substudy"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
+          },
+          "coefficient": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Coefficient"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Value"
+          },
+          "omega_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Omega Total"
+          },
+          "omega_hierarchical": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Omega Hierarchical"
+          },
+          "omega_total_standardized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Omega Total Standardized"
+          },
+          "omega_hierarchical_standardized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Omega Hierarchical Standardized"
+          },
+          "alpha": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Alpha"
+          },
+          "alpha_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Alpha Label"
+          },
+          "factors": {
+            "default": 1,
+            "title": "Factors",
+            "type": "integer"
+          },
+          "n": {
+            "default": 0,
+            "title": "N",
+            "type": "integer"
+          },
+          "across_copies": {
+            "default": [],
+            "items": {
+              "type": "number"
+            },
+            "title": "Across Copies",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "source",
+          "coefficient",
+          "label",
+          "value",
+          "omega_total",
+          "omega_hierarchical",
+          "omega_total_standardized",
+          "omega_hierarchical_standardized",
+          "alpha",
+          "alpha_label",
+          "factors",
+          "n",
+          "across_copies",
+          "reason"
+        ],
+        "title": "ScaleReliability",
+        "type": "object"
+      },
+      "ScaleResult": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "reverse": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reverse",
+            "type": "array"
+          },
+          "scoring": {
+            "title": "Scoring",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "structure": {
+            "title": "Structure",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "reliability": {
+            "$ref": "#/components/schemas/ScaleReliability"
+          },
+          "correction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScaleCorrection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "not_corrected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Not Corrected"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
+          "imputation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Imputation"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "items",
+          "reverse",
+          "scoring",
+          "kind",
+          "structure",
+          "role",
+          "n_rows",
+          "reliability",
+          "correction",
+          "not_corrected",
+          "exits",
+          "imputation",
+          "concerns",
+          "methods"
+        ],
+        "title": "ScaleResult",
         "type": "object"
       },
       "ScaleSpec": {
@@ -27474,6 +28038,47 @@
           "instrument"
         ],
         "title": "ScaleSpec",
+        "type": "object"
+      },
+      "ScalesArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "enum": [
+              "inference",
+              "prediction"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "rows": {
+            "enum": [
+              "all analyzed rows",
+              "training rows"
+            ],
+            "title": "Rows",
+            "type": "string"
+          },
+          "scales": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ScaleResult"
+            },
+            "title": "Scales",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "rows",
+          "scales",
+          "methods"
+        ],
+        "title": "ScalesArtifact",
         "type": "object"
       },
       "SealBasis": {

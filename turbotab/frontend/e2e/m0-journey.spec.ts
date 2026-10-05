@@ -41,9 +41,14 @@ async function shoot(page: Page, name: string) {
 
 test("the motion lab", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  // The app renders once the mock API (if any) has started: ask the backend after that.
+  await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();
+  await backend(page);
+  // /lab is a review surface of npm run dev:mock only: a production build has no /lab route.
+  test.skip(prefix === "real", "the motion lab exists only under npm run dev:mock");
   await page.goto("/lab");
   await expect(page.getByRole("heading", { name: "Motion lab" })).toBeVisible();
-  await backend(page);
   await page.getByRole("button", { name: "Change an upstream answer" }).click();
   await expect(page.getByTestId("lab-veil-0")).toHaveAttribute("data-veil", "stale");
   await expect(page.getByTestId("lab-veil-3")).toHaveAttribute("data-veil", "fresh", {
