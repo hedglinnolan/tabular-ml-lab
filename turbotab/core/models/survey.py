@@ -974,16 +974,21 @@ def models_sentence(state: Any, models: Sequence[str], task: str | None) -> str 
     return text[0].upper() + text[1:]
 
 
-def substitution_clause(state: Any, n_boot: int = 0) -> str | None:
+def substitution_clause(state: Any, n_boot: int = 0, per_class: bool = False) -> str | None:
     """The ``set_substitution`` sentence's clause under the population answer (the curve's
     contract sentence), or None. ``n_boot``: the bootstrap refits the answer asked for, which the
-    design's band replaces and the clause says are not drawn."""
+    design's band replaces and the clause says are not drawn. ``per_class``: a multiclass outcome's
+    curves, one per class (``methods.substitution.class_clause``)."""
     if not population_answer(state):
         return None
     from turbotab.core.voice import count
 
     undrawn = (f" (the {count(n_boot)} bootstrap refits asked for are not drawn: a row bootstrap "
                f"ignores the strata and PSUs)" if n_boot else "")
+    if per_class:
+        return ("over the surveyed population each class's curve is the weighted mean of each "
+                "participant's change in that class's probability under the survey-weighted fit, "
+                f"and its band comes from Taylor linearization over the survey design{undrawn}")
     return ("over the surveyed population its curve is the weighted mean of each participant's "
             "change in the survey-weighted fit, and its band comes from Taylor linearization over "
             f"the survey design{undrawn}")

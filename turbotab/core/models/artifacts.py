@@ -579,6 +579,9 @@ class SubstitutionModel(_Model):
     # Barnard–Rubin degrees of freedom of each k's interval.
     pooled: Literal["contrast", "per_k"] | None = None
     df: list[float | None] | None = None
+    # A multiclass outcome draws one curve per class (``stages.class_substitution``): the class this
+    # entry's curve follows (the change in its predicted probability). None for a single curve.
+    level: str | None = None
 
 
 class SubstitutionSupport(_Model):
