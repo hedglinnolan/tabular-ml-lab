@@ -2345,8 +2345,11 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     # Every chosen family, those with no curve too (feature-wise tests predict nothing): a blocked
     # curve's exit swaps its own family and keeps every other one chosen (MS4).
     chosen = [m["family"] for m in fit.data["models"]]
-    undrawn = ("multiclass", "ordinal", "time_to_event")  # a curve per class or level; a hazard
+    # An ordinal outcome's curve per level and a hazard are not drawn yet; a multiclass outcome
+    # draws one curve per class (``stages.class_substitution``).
+    undrawn = ("ordinal", "time_to_event")
     drawable = [k for k in keys if task not in undrawn]
+    class_draws: list[Any] = []
     slot = 0.93 / max(1, len(keys))  # each family's share of the progress bar, in order
     y_fit = (coded_outcome(task, fit_frame[target].to_numpy(), ctx.state.event,
                            order=ctx.state.outcome_order) if drawable else None)
@@ -2368,6 +2371,43 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         ctx.progress(start, f"{family.label}: moving energy")
         if task in undrawn:
             skipped.append(family.label)
+            continue
+        if task == "multiclass":
+            from turbotab.core.stages.class_substitution import class_family_entries
+
+            def say(fraction: float, message: str, _lo: float = start, _w: float = slot) -> None:
+                ctx.progress(_lo + _w * fraction, message)
+
+            drawn = class_family_entries(
+                key, family, task=task, pipeline=fitted.get(key), template=pipelines.get(key),
+                X_fit=X_fit, y_fit=y_fit, X=X, curve_rows=curve_rows, shift=shift, ks=ks,
+                sub=sub, state=ctx.state, kcal_per_unit=kcal_per_unit, nested=nested,
+                total_energy=total_energy, scale=scale, percent=percent, n_boot=n_boot,
+                groups=groups, group_of=group_of, interval=interval, imputed=imputed,
+                train_ids=train_ids, survey_design=survey_design, domain=domain, models=chosen,
+                progress=say)
+            class_draws.append(drawn)
+            models.extend(drawn.entries)
+            first_curve = drawn.curve
+            note = note or first_curve["note"]
+            if support is None:
+                fixed = first_curve["fixed_population"]
+                support = {"total": first_curve["total"], "n_rows": first_curve["n_rows"],
+                           "not_recorded": first_curve["n_not_recorded"],
+                           "off_amount": first_curve["n_off_amount"],
+                           "off_share": first_curve["n_off_share"], "fixed_rows": fixed["n_rows"],
+                           "fixed_through": fixed["through"]}
+            if any(e.get("pooled") for e in drawn.entries):
+                pooled_entries.extend(drawn.entries)
+                if drawn.design is not None:
+                    pooled_design.append((family.label, drawn.design))
+            elif drawn.design is not None:
+                bands.append((family.label, drawn.design))
+            elif drawn.band is not None:
+                bands.append((family.label, drawn.band))
+            band_seconds += drawn.seconds
+            band_failed += drawn.failed
+            estimate += drawn.estimate
             continue
         if imputed is not None and (imputed.get("fits") or {}).get(key):
             ctx.progress(start, f"{family.label}: each copy's curve")
@@ -2524,7 +2564,15 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             # The user's unit, and the kcal per unit it sets (the sixth gate: no record said what a
             # unit of alcohol moved).
             notes.append(f"{c} moves at {reading.factor:g} kcal per unit, {reading.why}.")
-    if pooled_entries:
+    if pooled_entries and task == "multiclass":
+        from turbotab.core.stages.class_substitution import pooled_note as class_pooled_note
+
+        notes.append(class_pooled_note(len(imputed.get("frames") or []), n_boot,
+                                       imputed.get("outcomes") is not None,
+                                       design=bool(pooled_design)))
+        notes.append("Support counts are the first copy's; the share of rows on support at each "
+                     "k is the mean over the copies.")
+    elif pooled_entries:
         notes.append(_pooled_note(len(imputed.get("frames") or []), pooled_entries, n_boot,
                                   imputed.get("outcomes") is not None, design=bool(pooled_design)))
         if any(e.get("pooled") == "per_k" for e in pooled_entries):
@@ -2537,9 +2585,8 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                                       "fold without the outcome")
         notes.append(f"The curve follows {which}; it is not pooled over the multiple imputations "
                      f"the coefficient table uses, so its band leaves out their uncertainty.")
-    if skipped and task in ("multiclass", "ordinal"):
-        kind = "An ordinal" if task == "ordinal" else "A multiclass"
-        notes.append(f"{kind} outcome has one curve per level, which is not drawn yet.")
+    if skipped and task == "ordinal":
+        notes.append("An ordinal outcome has one curve per level, which is not drawn yet.")
     elif skipped:
         notes.append("A time-to-event outcome's substitution is a hazard ratio, which is not drawn "
                      "yet; the Cox coefficients are log hazard ratios per unit of each column.")
@@ -2568,10 +2615,16 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                     "min_ok_share": None, "caption": caption, "method": "design",
                     "df": int(first["df"])}
     elif n_boot and pooled_entries and not bands:
-        caption = _pooled_note(len(imputed.get("frames") or []), pooled_entries, n_boot,
-                               imputed.get("outcomes") is not None)
+        if task == "multiclass":
+            from turbotab.core.stages.class_substitution import pooled_note as class_pooled_note
+
+            caption = class_pooled_note(len(imputed.get("frames") or []), n_boot,
+                                        imputed.get("outcomes") is not None)
+        else:
+            caption = _pooled_note(len(imputed.get("frames") or []), pooled_entries, n_boot,
+                                   imputed.get("outcomes") is not None)
         band = {"n_boot": n_boot, "n_rows": int(len(X_fit)), "grouped_by": grouped_by,
-                "seconds": round(band_seconds, 3), "failed": 0, "interval": "normal",
+                "seconds": round(band_seconds, 3), "failed": band_failed, "interval": "normal",
                 "level": 0.95, "min_ok_share": MIN_REFIT_SHARE, "caption": caption}
     elif n_boot and bands:
         first = bands[0][1]
@@ -2610,6 +2663,26 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         weight = survey_design.weight_column
         basis = (f"Averaged over the {len(X):,} analyzed rows in the survey design, each counted as "
                  f"the people its weight{f' `{weight}`' if weight else ''} stands for.")
+    if task == "multiclass":
+        # One curve per class, on the probability scale, isocaloric, over a stated population.
+        from turbotab.core.methods.substitution import class_estimand
+
+        drawn_classes = next((d.curve["classes"] for d in class_draws
+                              if d.curve is not None and d.curve.get("classes")), None)
+        levels = ([c["level"] for c in drawn_classes] if drawn_classes is not None
+                  else list(np.unique(np.asarray(y_fit))))
+        if survey_design is not None:
+            weight = survey_design.weight_column
+            population = (f"the surveyed population (the {len(X):,} analyzed rows in the survey "
+                          f"design, each counted as the people its weight"
+                          f"{f' `{weight}`' if weight else ''} stands for)")
+        elif on_every_row:
+            population = (f"the {len(X):,} analyzed rows, each counted once (an average over these "
+                          f"participants, not over a population they were sampled from)")
+        else:
+            population = f"the {len(X):,} training rows, each counted once"
+        estimand = class_estimand(target, levels, sub.donor, sub.recipient, population=population,
+                                  scale=scale, energy_out=energy_out, carried=bool(shift.carried))
     artifact = SubstitutionArtifact(
         donor=sub.donor, recipient=sub.recipient, step_kcal=float(sub.step_kcal),
         ks=[float(k) for k in ks], total_kind="variable", estimand=estimand, note=" ".join(notes),

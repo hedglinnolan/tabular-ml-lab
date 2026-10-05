@@ -36303,6 +36303,18 @@
             ],
             "default": null,
             "title": "Df"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
           }
         },
         "required": [
@@ -36321,7 +36333,8 @@
           "refused",
           "exits",
           "pooled",
-          "df"
+          "df",
+          "level"
         ],
         "title": "SubstitutionModel",
         "type": "object"

@@ -252,6 +252,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.stages.explore", "turbotab.core.methods.levers",
     "turbotab.core.models.variable_selection", "turbotab.core.models.decision_curve",
     "turbotab.core.models.design_cv",
+    # Wave 2, MULTISUB: a multiclass outcome's substitution curves
+    "turbotab.core.methods.substitution",
 )
 
 

@@ -1399,6 +1399,7 @@ export function substitution(
         exits: [],
         pooled: null,
         df: null,
+        level: null,
       };
     }),
   };

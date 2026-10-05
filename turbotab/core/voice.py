@@ -1259,18 +1259,24 @@ def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
         text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in "
                 f"steps of {tick(number(d.step_kcal))} kcal {fixed}")
     n_boot = int(getattr(d, "n_boot", 0) or 0)
+    from turbotab.core.methods.substitution import class_clause
     from turbotab.core.models.survey import substitution_clause
 
+    # A multiclass outcome: one curve per class (its contract's clause), so each band is a class's.
+    per_class = class_clause(state)
+    if per_class:
+        text += f"; {per_class}"
     # MS4: the design's band replaces the refits. The sentence reads the decision and the state
     # only, so the methods text restates it whole when the survey answer changes (:func:`restate`).
-    population = substitution_clause(state, n_boot)
+    population = substitution_clause(state, n_boot, per_class=bool(per_class))
     if population:
         text += f"; {population}"
     elif n_boot:
         # Under inference the curve and its refits read every analyzed row (BLUEPRINT §12 ruling 3).
         rows = ("every analyzed row" if getattr(state, "purpose", None) == "inference"
                 else "training rows")
-        text += (f"; its band comes from {count(n_boot)} refits of each model on bootstrap "
+        whose = "each class's band comes" if per_class else "its band comes"
+        text += (f"; {whose} from {count(n_boot)} refits of each model on bootstrap "
                  f"resamples of {rows}")
     if getattr(d, "acknowledged", False):
         # The recorded attestation of the omitted-sources block under inference (audit ME-05).

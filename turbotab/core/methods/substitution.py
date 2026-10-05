@@ -46,11 +46,32 @@ The marks this computes, and why each exists (§06c "The five marks"):
 What it does not do: remedy composite variable bias. Naming the donor and the
 recipient makes the estimand explicit and chosen; the total is in the model either
 way (§06c, "What the curve does not remedy").
+
+**A multiclass outcome** (V2 definition of done §2, "Dietary, extended": multiclass substitution
+curves, one per class). A model of an outcome in K unordered classes predicts K probabilities that
+sum to one on every row. :func:`class_curves` follows all K: at each k, class c's curve is the
+average change in its predicted probability, over the same on-support rows (and, under a surveyed
+population, the same weights) for every class. Because each row's probabilities sum to one before
+and after the move, the K changes sum to zero on every row, so the K curves sum to zero at every k:
+energy moved between nutrients moves probability between classes and creates none. That identity
+is checked on every curve the app draws (:func:`check_sums_to_zero`): a set of curves that does
+not sum to zero is a defect, raised, never drawn. It is the average marginal effect of a multinomial
+model on the probability scale (the "average discrete change" of each outcome's probability, whose
+values sum to zero across the outcomes: Long & Freese 2014, *Regression Models for Categorical
+Dependent Variables Using Stata*, 3rd ed., ch. 8, nominal outcomes; Stata's ``margins`` and R's
+``marginaleffects`` compute it per outcome level), here for the isocaloric move of k kcal. Its
+band, by refits (:func:`class_refit_band`), is drawn class by class; the bands need not sum to
+anything. Under multiple imputation each copy's class curves are pooled at each k by Rubin's rules
+(:func:`pool_class_curves`; MODELING_SEQUENCE §2: "pooling of every estimate shown under inference,
+including substitution curves (per copy, pooled per k)"). Under a surveyed population the curves
+come from the survey-weighted multinomial fit, averaged with the weights, and their band is the
+design's linearization (:func:`design_class_curves`; Graubard & Korn 1999).
 """
 from __future__ import annotations
 
 import math
 import time
+from dataclasses import dataclass
 from statistics import NormalDist
 from typing import Any, Callable, Dict, List, Literal, Mapping, Optional, Sequence
 
@@ -58,7 +79,9 @@ import numpy as np
 import pandas as pd
 
 __all__ = ["Shift", "refit_band", "substitution_curve", "PERCENTILE_MIN_REFITS",
-           "MIN_REFIT_SHARE"]
+           "MIN_REFIT_SHARE", "CLASS_SUM_TOLERANCE", "check_sums_to_zero", "class_curves",
+           "class_estimand", "class_refit_band", "design_class_curves", "level_name",
+           "pool_class_curves", "class_clause", "CLASS_CONTRACT"]
 
 TotalKind = Literal["fixed", "variable"]
 Scale = Literal["kcal", "percent_energy"]
@@ -346,48 +369,13 @@ def substitution_curve(predict: Callable[[pd.DataFrame], Any], X: pd.DataFrame, 
         raise ValueError(f"min_support is a fraction of rows and must lie in [0, 1], not {min_support!r}.")
     k_values = _ks(ks)
 
-    n_rows = int(len(X))
-    rows = np.flatnonzero(shift.valid(X))  # a row that cannot be shifted is off-support at every k
-    base_frame = X.iloc[rows]
-    base = _predictions(predict, base_frame)
-
-    n_valid = rows.size
-    diffs = np.full((k_values.size, n_valid), np.nan)
-    masks = np.zeros((k_values.size, n_valid), dtype=bool)
-    fractions: List[float] = []
-    n_on: List[int] = []
-    off_amount: List[int] = []
-    off_share: List[int] = []
-    stopped_at: Optional[float] = None
-    for i, k in enumerate(k_values):
-        shifted, amount, composition = shift.checks(base_frame, float(k))
-        mask = amount & composition
-        off_amount.append(int((~amount).sum()))
-        off_share.append(int((amount & ~composition).sum()))
-        count = int(mask.sum())
-        fractions.append(count / n_rows if n_rows else 0.0)
-        n_on.append(count)
-        if stopped_at is None and fractions[-1] < min_support:
-            stopped_at = float(k)
-        if stopped_at is not None or count == 0:
-            continue
-        diffs[i, mask] = _predictions(predict, shifted.iloc[np.flatnonzero(mask)]) - base[mask]
-        masks[i] = mask
-
-    live = np.array([stopped_at is None or k < stopped_at for k in k_values]) & masks.any(axis=1)
-    # Under a surveyed population (MS4) each row counts as the people its survey weight stands for.
-    w = None if weights is None else np.asarray(weights, dtype=float)[rows]
-
-    def mean(values: np.ndarray, where: np.ndarray) -> float:
-        return float(np.mean(values[where])) if w is None else float(np.average(values[where],
-                                                                                weights=w[where]))
-
-    delta: List[Optional[float]] = [
-        mean(diffs[i], masks[i]) if live[i] else None for i in range(k_values.size)]
-    fixed = _fixed_population(masks, live)
-    fixed_delta: List[Optional[float]] = [
-        mean(diffs[i], fixed) if live[i] and fixed.any() else None
-        for i in range(k_values.size)]
+    walk = _walk(lambda frame: _predictions(predict, frame)[:, None], X, shift, k_values,
+                 float(min_support), 1)
+    n_rows, rows, n_valid = walk.n_rows, walk.rows, walk.n_valid
+    masks, live, stopped_at = walk.masks, walk.live, walk.stopped_at
+    fractions, n_on = walk.fractions, walk.n_on
+    off_amount, off_share = walk.off_amount, walk.off_share
+    delta, fixed_delta, fixed = _averages(walk, 0, weights)
     through = float(k_values[np.flatnonzero(live)[-1]]) if live.any() else None
 
     per = PER_UNIT[scale]
@@ -441,6 +429,87 @@ def _fixed_population(masks: np.ndarray, live: np.ndarray) -> np.ndarray:
     if not live.any():
         return np.zeros(masks.shape[1], dtype=bool)
     return masks[np.flatnonzero(live)].all(axis=0)
+
+
+@dataclass
+class _Walk:
+    """Every row's change at every k, for each of a prediction's ``n_out`` outputs (one for a
+    number or a probability; one per class for a multiclass model), and the support's accounting.
+
+    ``rows`` are the positions in ``X`` of the rows that can be shifted at all; ``diffs`` is
+    k × those rows × outputs (NaN off support); ``masks`` is k × those rows."""
+
+    n_rows: int
+    rows: np.ndarray
+    n_valid: int
+    diffs: np.ndarray
+    masks: np.ndarray
+    fractions: List[float]
+    n_on: List[int]
+    off_amount: List[int]
+    off_share: List[int]
+    stopped_at: Optional[float]
+    live: np.ndarray
+
+
+def _walk(predict_matrix: Callable[[pd.DataFrame], np.ndarray], X: pd.DataFrame, shift: "Shift",
+          k_values: np.ndarray, min_support: float, n_out: int) -> _Walk:
+    """Move every row k at a time and record each output's change where the row is on support.
+
+    ``predict_matrix(frame)`` returns len(frame) × ``n_out`` predictions. The curve stops at the
+    first k where fewer than ``min_support`` of the rows of ``X`` are on support."""
+    n_rows = int(len(X))
+    rows = np.flatnonzero(shift.valid(X))  # a row that cannot be shifted is off-support at every k
+    base_frame = X.iloc[rows]
+    base = predict_matrix(base_frame)
+
+    n_valid = rows.size
+    diffs = np.full((k_values.size, n_valid, n_out), np.nan)
+    masks = np.zeros((k_values.size, n_valid), dtype=bool)
+    fractions: List[float] = []
+    n_on: List[int] = []
+    off_amount: List[int] = []
+    off_share: List[int] = []
+    stopped_at: Optional[float] = None
+    for i, k in enumerate(k_values):
+        shifted, amount, composition = shift.checks(base_frame, float(k))
+        mask = amount & composition
+        off_amount.append(int((~amount).sum()))
+        off_share.append(int((amount & ~composition).sum()))
+        count = int(mask.sum())
+        fractions.append(count / n_rows if n_rows else 0.0)
+        n_on.append(count)
+        if stopped_at is None and fractions[-1] < min_support:
+            stopped_at = float(k)
+        if stopped_at is not None or count == 0:
+            continue
+        diffs[i, mask] = predict_matrix(shifted.iloc[np.flatnonzero(mask)]) - base[mask]
+        masks[i] = mask
+
+    live = np.array([stopped_at is None or k < stopped_at for k in k_values]) & masks.any(axis=1)
+    return _Walk(n_rows, rows, n_valid, diffs, masks, fractions, n_on, off_amount, off_share,
+                 stopped_at, live)
+
+
+def _averages(walk: _Walk, output: int, weights: Optional[Sequence[float]]) -> tuple:
+    """(the curve, the fixed-population curve, the fixed population's mask) of one output.
+
+    Each k averages over its own on-support rows; under a surveyed population (MS4) each row counts
+    as the people its survey weight stands for."""
+    w = None if weights is None else np.asarray(weights, dtype=float)[walk.rows]
+    diffs = walk.diffs[:, :, output]
+
+    def mean(values: np.ndarray, where: np.ndarray) -> float:
+        return float(np.mean(values[where])) if w is None else float(np.average(values[where],
+                                                                                weights=w[where]))
+
+    K = diffs.shape[0]
+    delta: List[Optional[float]] = [
+        mean(diffs[i], walk.masks[i]) if walk.live[i] else None for i in range(K)]
+    fixed = _fixed_population(walk.masks, walk.live)
+    fixed_delta: List[Optional[float]] = [
+        mean(diffs[i], fixed) if walk.live[i] and fixed.any() else None for i in range(K)]
+    return delta, fixed_delta, fixed
 
 
 def _ks(ks: Sequence[float]) -> np.ndarray:
@@ -517,6 +586,30 @@ def refit_band(fit: Callable[[pd.DataFrame, np.ndarray], Callable[[pd.DataFrame]
     Returns ``{ci_low, ci_high, fixed_ci_low, fixed_ci_high, n_boot, n_ok, failed, seconds,
     interval, level, n_units, resample_size, scale, min_ok_share, refused}``.
     """
+    started = time.perf_counter()
+    n_boot, k_values, live = _band_arguments(n_boot, interval, level, min_ok_share, ks, live)
+    drawn = _refit_draws(fit, X, y, lambda predict, frame: _predictions(predict, frame)[:, None], 1,
+                         shift=shift, k_values=k_values, live=live, n_boot=n_boot, groups=groups,
+                         random_state=random_state, center=center, progress=progress,
+                         curve_rows=curve_rows, resample_size=resample_size, max_rows=max_rows)
+    n_units, m, scale = drawn.n_units, drawn.m, drawn.scale
+    n_ok, needed, method, refused = _band_verdict(n_boot, drawn.failed, interval, min_ok_share)
+    low, high = _interval(drawn.draws[:, :, 0], live, center, needed, method, float(level), scale)
+    if m < n_units and fixed_center is None:  # a rescaled band has no center of its own
+        fixed_low = fixed_high = [None] * k_values.size
+    else:
+        fixed_low, fixed_high = _interval(drawn.fixed_draws[:, :, 0], live, fixed_center, needed,
+                                          method, float(level), scale)
+    return {"ci_low": low, "ci_high": high, "fixed_ci_low": fixed_low, "fixed_ci_high": fixed_high,
+            "n_boot": n_boot, "n_ok": n_ok, "failed": drawn.failed,
+            "seconds": round(time.perf_counter() - started, 3), "interval": method,
+            "level": float(level), "n_units": n_units, "resample_size": m, "scale": scale,
+            "min_ok_share": float(min_ok_share), "refused": refused}
+
+
+def _band_arguments(n_boot: int, interval: str, level: float, min_ok_share: float,
+                    ks: Sequence[float], live: Sequence[bool]) -> tuple:
+    """(n_boot, the ks, live) checked: what every band of refits needs."""
     n_boot = int(n_boot)
     if n_boot <= 0:
         raise ValueError("n_boot must be a positive number of refits.")
@@ -530,10 +623,48 @@ def refit_band(fit: Callable[[pd.DataFrame, np.ndarray], Callable[[pd.DataFrame]
     live = np.asarray(list(live), dtype=bool)
     if live.size != k_values.size:
         raise ValueError("live must say, for every k, whether the point curve reached it.")
+    return n_boot, k_values, live
+
+
+def _band_verdict(n_boot: int, failed: int, interval: str, min_ok_share: float) -> tuple:
+    """(refits that succeeded, the count a band needs, the interval drawn, why none is drawn)."""
+    n_ok = n_boot - failed
+    needed = max(2, math.ceil(float(min_ok_share) * n_boot))
+    method = interval
+    if method == "auto":
+        method = "percentile" if n_ok >= PERCENTILE_MIN_REFITS else "normal"
+    refused = None
+    if n_ok < needed:
+        refused = (f"{n_ok} of {n_boot} refits succeeded; a band needs at least "
+                   f"{float(min_ok_share):.0%} of them")
+    return n_ok, needed, method, refused
+
+
+@dataclass
+class _Draws:
+    """Each refit's curve at each k, for each output (refits × k × outputs; NaN where a refit
+    failed or a k is not live), its fixed-population twin, and how the resamples were drawn."""
+
+    draws: np.ndarray
+    fixed_draws: np.ndarray
+    failed: int
+    n_units: int
+    m: int
+    scale: float
+
+
+def _refit_draws(fit: Callable[[pd.DataFrame, np.ndarray], Any], X: pd.DataFrame, y: Any,
+                 values: Callable[[Any, pd.DataFrame], np.ndarray], n_out: int, *, shift: Shift,
+                 k_values: np.ndarray, live: np.ndarray, n_boot: int, groups: Any,
+                 random_state: int, center: Optional[Sequence[Any]],
+                 progress: Optional[Callable[[int, int], None]],
+                 curve_rows: Optional[Sequence[int]], resample_size: Optional[int],
+                 max_rows: Optional[int]) -> _Draws:
+    """The refits behind a band (:func:`refit_band`; :func:`class_refit_band`): ``values(predict,
+    frame)`` turns a refit's prediction function into len(frame) × ``n_out`` predictions."""
     y = np.asarray(y)
     if len(y) != len(X):
         raise ValueError("X and y must have the same rows.")
-    started = time.perf_counter()
     n = len(X)
     curve = np.arange(n) if curve_rows is None else np.asarray(curve_rows, dtype=np.int64)
     if curve.size and (curve.min() < 0 or curve.max() >= n or np.unique(curve).size != curve.size):
@@ -575,53 +706,34 @@ def refit_band(fit: Callable[[pd.DataFrame, np.ndarray], Callable[[pd.DataFrame]
     rng = np.random.default_rng(random_state)
     position = np.full(n, -1)
     position[rows] = np.arange(rows.size)
-    draws = np.full((n_boot, k_values.size), np.nan)
-    fixed_draws = np.full((n_boot, k_values.size), np.nan)
+    draws = np.full((n_boot, k_values.size, n_out), np.nan)
+    fixed_draws = np.full((n_boot, k_values.size, n_out), np.nan)
     failed = 0
     for b in range(n_boot):
         picked = rng.integers(0, n_units, size=m)
         idx = picked if units is None else np.concatenate([units[j] for j in picked])
         try:
             predict = fit(X.iloc[idx], y[idx])
-            base = _predictions(predict, frame)
+            base = values(predict, frame)
             at = position[idx]
             weight = np.bincount(at[at >= 0], minlength=rows.size).astype(float)
             for i, (on, moved_on) in prepared.items():
                 w = weight[on]
                 if w.sum() <= 0:
                     continue
-                diff = _predictions(predict, moved_on) - base[on]
-                draws[b, i] = float(np.average(diff, weights=w))
+                diff = values(predict, moved_on) - base[on]
                 wf = w * fixed[on]
-                if wf.sum() > 0:
-                    fixed_draws[b, i] = float(np.average(diff, weights=wf))
+                for c in range(n_out):
+                    draws[b, i, c] = float(np.average(diff[:, c], weights=w))
+                    if wf.sum() > 0:
+                        fixed_draws[b, i, c] = float(np.average(diff[:, c], weights=wf))
         except (ValueError, IndexError):
             failed += 1
             draws[b] = np.nan
             fixed_draws[b] = np.nan
         if progress is not None:
             progress(b + 1, n_boot)
-
-    n_ok = n_boot - failed
-    needed = max(2, math.ceil(float(min_ok_share) * n_boot))
-    method = interval
-    if method == "auto":
-        method = "percentile" if n_ok >= PERCENTILE_MIN_REFITS else "normal"
-    refused = None
-    if n_ok < needed:
-        refused = (f"{n_ok} of {n_boot} refits succeeded; a band needs at least "
-                   f"{float(min_ok_share):.0%} of them")
-    low, high = _interval(draws, live, center, needed, method, float(level), scale)
-    if m < n_units and fixed_center is None:  # a rescaled band has no center of its own
-        fixed_low = fixed_high = [None] * k_values.size
-    else:
-        fixed_low, fixed_high = _interval(fixed_draws, live, fixed_center, needed, method,
-                                          float(level), scale)
-    return {"ci_low": low, "ci_high": high, "fixed_ci_low": fixed_low, "fixed_ci_high": fixed_high,
-            "n_boot": n_boot, "n_ok": n_ok, "failed": failed,
-            "seconds": round(time.perf_counter() - started, 3), "interval": method,
-            "level": float(level), "n_units": n_units, "resample_size": m, "scale": scale,
-            "min_ok_share": float(min_ok_share), "refused": refused}
+    return _Draws(draws, fixed_draws, failed, n_units, m, scale)
 
 
 def _interval(draws: np.ndarray, live: np.ndarray, center: Optional[Sequence[Optional[float]]],
@@ -718,3 +830,639 @@ def _note(donor: str, recipient: str, total_kind: str, min_support: float,
     if carried:
         parts.append(carried)
     return " ".join(parts)
+
+
+# ── a multiclass outcome: one curve per class ─────────────────────────────────
+
+# Each row's predicted probabilities sum to one to within a few units in the last place, and an
+# average adds no more, so the class curves sum to zero to within this (relative to the size of the
+# changes). A rounding tolerance, not a threshold of judgment.
+CLASS_SUM_TOLERANCE = 1e-9
+
+
+def level_name(value: Any) -> str:
+    """A class as a sentence names it: ``high``, ``2`` (never ``2.0``), ``True``."""
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    if isinstance(value, (float, np.floating)):
+        return _plain(float(value))
+    return str(value)
+
+
+def check_sums_to_zero(curves: Sequence[Sequence[Optional[float]]], what: str = "the class curves"
+                       ) -> float:
+    """Raise unless ``curves`` (one per class, each a value or None at every k) sum to zero at
+    every k where any is drawn; return the largest absolute sum.
+
+    Every class's probability changes on the same rows, and each row's changes sum to zero, so the
+    curves do too. A set that does not (a class drawn where another is not, or a sum off zero) is a
+    defect in what predicted the probabilities, raised rather than drawn."""
+    curves = [list(c) for c in curves]
+    if not curves:
+        return 0.0
+    largest = 0.0
+    for i in range(len(curves[0])):
+        values = [c[i] for c in curves]
+        drawn = [v for v in values if v is not None]
+        if not drawn:
+            continue
+        if len(drawn) != len(values):
+            raise ArithmeticError(f"{what[0].upper()}{what[1:]} are drawn for some classes and not "
+                                  f"others at the k numbered {i}; every class's curve averages over "
+                                  f"the same rows.")
+        total = float(math.fsum(drawn))
+        size = max(1.0, float(math.fsum(abs(v) for v in drawn)))
+        if not math.isfinite(total) or abs(total) > CLASS_SUM_TOLERANCE * size:
+            raise ArithmeticError(f"{what[0].upper()}{what[1:]} sum to {total:.3g} at the k "
+                                  f"numbered {i}, not to zero: the class probabilities they follow "
+                                  f"do not sum to one.")
+        largest = max(largest, abs(total))
+    return largest
+
+
+def _class_predictions(predict: Callable[[pd.DataFrame], Any], frame: pd.DataFrame,
+                       n_classes: int) -> np.ndarray:
+    if len(frame) == 0:
+        return np.empty((0, n_classes))
+    values = np.asarray(predict(frame), dtype=float)
+    if values.shape != (len(frame), n_classes):
+        raise ValueError(f"predict must return the probability of each of the {n_classes} classes "
+                         f"for every row, not an array of shape {values.shape}.")
+    return values
+
+
+def class_curves(predict_proba: Callable[[pd.DataFrame], Any], X: pd.DataFrame, *,
+                 classes: Sequence[Any], donor: str, recipient: str,
+                 kcal_per_unit: Mapping[str, float], ks: Sequence[float],
+                 total_kind: TotalKind = "variable", min_support: float = 0.5,
+                 nested: Optional[Mapping[str, str]] = None, label_k: Optional[float] = None,
+                 total: Optional[str] = None, scale: Scale = "kcal", shift: Optional[Shift] = None,
+                 weights: Optional[Sequence[float]] = None) -> Dict[str, Any]:
+    """One substitution curve per class of a multiclass outcome (module docstring).
+
+    ``predict_proba(frame)`` returns len(frame) × len(``classes``) probabilities, in the order of
+    ``classes``. Every other argument is :func:`substitution_curve`'s: the support, the stopping
+    rule and the weights are the same for every class, so every class's curve averages over the
+    same rows at each k, and the curves sum to zero there (checked: :func:`check_sums_to_zero`).
+
+    Returns :func:`substitution_curve`'s support accounting (``ks, live, on_support_fraction,
+    n_on_support, n_rows, stopped_at, total_kind, label_k, min_support, units_moved, carried,
+    total, n_not_recorded, n_off_amount, n_off_share, note, scale``; ``fixed_population`` holds
+    ``n_rows`` and ``through``) and ``classes``: per class, in order, ``{level, name, delta,
+    fixed_delta, effect_label, effect_sentence}``, each label the change in that class's
+    probability per 100 kcal (or 5% of energy) at the stated k; ``class_sum`` is the largest
+    absolute sum of the curves over k (zero up to rounding).
+    """
+    classes = list(classes)
+    if len(classes) < 3:
+        raise ValueError("A multiclass curve follows three or more classes; a yes/no outcome's "
+                         "single curve follows the probability of its event.")
+    if scale not in ("kcal", "percent_energy"):
+        raise ValueError(f"scale must be 'kcal' or 'percent_energy', not {scale!r}.")
+    if shift is None:
+        shift = Shift(X, donor=donor, recipient=recipient, kcal_per_unit=kcal_per_unit,
+                      nested=nested, total=total)
+    if total_kind not in ("fixed", "variable"):
+        raise ValueError(f"total_kind must be 'fixed' or 'variable', not {total_kind!r}.")
+    if not 0.0 <= float(min_support) <= 1.0:
+        raise ValueError(f"min_support is a fraction of rows and must lie in [0, 1], not {min_support!r}.")
+    k_values = _ks(ks)
+    C = len(classes)
+    walk = _walk(lambda frame: _class_predictions(predict_proba, frame, C), X, shift, k_values,
+                 float(min_support), C)
+    per_class = []
+    fixed = np.zeros(walk.n_valid, dtype=bool)
+    for c in range(C):
+        delta, fixed_delta, fixed = _averages(walk, c, weights)
+        per_class.append((delta, fixed_delta))
+    largest = check_sums_to_zero([d for d, _ in per_class], "the class curves")
+    check_sums_to_zero([f for _, f in per_class], "the fixed-population class curves")
+    live = walk.live
+    through = float(k_values[np.flatnonzero(live)[-1]]) if live.any() else None
+    per = PER_UNIT[scale]
+    chosen = _label_k(k_values, per_class[0][0], label_k, per)
+    ks_out = [float(k) for k in k_values]
+    within = ("whose shifted intakes and shares of energy stay within the observed range"
+              if shift.total is not None else "whose shifted intakes stay within the observed range")
+    out = []
+    for level, (delta, fixed_delta) in zip(classes, per_class):
+        name = level_name(level)
+        if chosen is None:
+            label = None
+            sentence = (f"No k > 0 kept enough rows on support to report an effect of moving "
+                        f"energy from {donor} to {recipient}.")
+        else:
+            value = delta[ks_out.index(chosen)]
+            label = (f"{_signed(value * per / chosen)} in the probability of {name} per "
+                     f"{_amount(per, scale)} at k = {_plain(chosen)}")
+            share = walk.fractions[ks_out.index(chosen)]
+            sentence = (f"Moving {_amount(chosen, scale)} from {donor} to {recipient} changes the "
+                        f"average predicted probability of {name} by {_signed(value)}, over the "
+                        f"{share:.0%} of rows {within}.")
+        out.append({"level": level, "name": name, "delta": delta, "fixed_delta": fixed_delta,
+                    "effect_label": label, "effect_sentence": sentence})
+    return {
+        "donor": donor,
+        "recipient": recipient,
+        "ks": ks_out,
+        "live": [bool(v) for v in live],
+        "on_support_fraction": walk.fractions,
+        "n_on_support": walk.n_on,
+        "n_rows": walk.n_rows,
+        "stopped_at": walk.stopped_at,
+        "total_kind": total_kind,
+        "label_k": chosen,
+        "min_support": float(min_support),
+        "units_moved": {donor: -shift.per_donor, recipient: shift.per_recipient},
+        "carried": list(shift.carried),
+        "total": shift.total,
+        "n_not_recorded": int(walk.n_rows - walk.n_valid),
+        "n_off_amount": walk.off_amount,
+        "n_off_share": walk.off_share,
+        "fixed_population": {"n_rows": int(fixed.sum()), "through": through},
+        "note": _note(donor, recipient, total_kind, float(min_support), walk.stopped_at,
+                      walk.fractions, ks_out, shift.note(), shift.total, int(fixed.sum()), through,
+                      scale),
+        "scale": scale,
+        "classes": out,
+        "class_sum": largest,
+    }
+
+
+def class_refit_band(fit: Callable[[pd.DataFrame, np.ndarray], Callable[[pd.DataFrame], Any]],
+                     X: pd.DataFrame, y: Any, *, classes: Sequence[Any], shift: Shift,
+                     ks: Sequence[float], live: Sequence[bool], n_boot: int, groups: Any = None,
+                     random_state: int = 0, level: float = 0.95,
+                     centers: Optional[Sequence[Sequence[Optional[float]]]] = None,
+                     fixed_centers: Optional[Sequence[Sequence[Optional[float]]]] = None,
+                     progress: Optional[Callable[[int, int], None]] = None,
+                     curve_rows: Optional[Sequence[int]] = None,
+                     resample_size: Optional[int] = None, max_rows: Optional[int] = None,
+                     interval: Interval = "auto",
+                     min_ok_share: float = MIN_REFIT_SHARE) -> Dict[str, Any]:
+    """Each class's band from ``n_boot`` refits on bootstrap resamples of ``X``.
+
+    :func:`refit_band`, class by class: every refit's prediction function (``fit(X_b, y_b)``)
+    returns each class's probability in the order of ``classes`` (a resample missing a class
+    cannot, so its refit fails and is counted), each refit's curve is taken for every class over
+    the same on-support rows, and each class's interval is read from its own refits. ``centers``
+    and ``fixed_centers`` are the class curves' own deltas (one list per class). Every resample,
+    the interval rule, the rescaling of an m-out-of-n bootstrap and the share of refits a band
+    needs are :func:`refit_band`'s.
+
+    Returns ``{classes, n_boot, n_ok, failed, seconds, interval, level, n_units, resample_size,
+    scale, min_ok_share, refused}``; ``classes`` holds per class ``{level, ci_low, ci_high,
+    fixed_ci_low, fixed_ci_high, se, fixed_se}``, ``se`` each k's bootstrap standard error (the
+    refits' spread, rescaled), None where no band is drawn.
+    """
+    started = time.perf_counter()
+    classes = list(classes)
+    C = len(classes)
+    n_boot, k_values, live = _band_arguments(n_boot, interval, level, min_ok_share, ks, live)
+    if centers is not None and len(centers) != C:
+        raise ValueError("centers must hold one curve per class.")
+    drawn = _refit_draws(fit, X, y, lambda predict, frame: _class_predictions(predict, frame, C),
+                         C, shift=shift, k_values=k_values, live=live, n_boot=n_boot,
+                         groups=groups, random_state=random_state, center=centers,
+                         progress=progress, curve_rows=curve_rows, resample_size=resample_size,
+                         max_rows=max_rows)
+    n_units, m, scale = drawn.n_units, drawn.m, drawn.scale
+    n_ok, needed, method, refused = _band_verdict(n_boot, drawn.failed, interval, min_ok_share)
+    out = []
+    for c, name in enumerate(classes):
+        center = centers[c] if centers is not None else None
+        low, high = _interval(drawn.draws[:, :, c], live, center, needed, method, float(level),
+                              scale)
+        if m < n_units and fixed_centers is None:
+            fixed_low = fixed_high = [None] * k_values.size
+        else:
+            fixed_low, fixed_high = _interval(drawn.fixed_draws[:, :, c], live,
+                                              fixed_centers[c] if fixed_centers is not None
+                                              else None, needed, method, float(level), scale)
+        out.append({"level": name, "ci_low": low, "ci_high": high, "fixed_ci_low": fixed_low,
+                    "fixed_ci_high": fixed_high,
+                    "se": _spread(drawn.draws[:, :, c], live, needed, scale, low),
+                    "fixed_se": _spread(drawn.fixed_draws[:, :, c], live, needed, scale,
+                                        fixed_low)})
+    return {"classes": out, "n_boot": n_boot, "n_ok": n_ok, "failed": drawn.failed,
+            "seconds": round(time.perf_counter() - started, 3), "interval": method,
+            "level": float(level), "n_units": n_units, "resample_size": m, "scale": scale,
+            "min_ok_share": float(min_ok_share), "refused": refused}
+
+
+def _spread(draws: np.ndarray, live: np.ndarray, needed: int, scale: float,
+            drawn: Sequence[Optional[float]]) -> List[Optional[float]]:
+    """Per k: the refits' standard deviation times ``scale`` where a band is drawn, else None."""
+    out: List[Optional[float]] = []
+    for i in range(draws.shape[1]):
+        column = draws[:, i][np.isfinite(draws[:, i])]
+        if not live[i] or column.size < needed or drawn[i] is None:
+            out.append(None)
+            continue
+        out.append(scale * float(np.std(column, ddof=1)))
+    return out
+
+
+def pool_class_curves(copies: Sequence[Mapping[str, Any]],
+                      se: Optional[Sequence[Sequence[Sequence[Optional[float]]]]] = None,
+                      fixed_se: Optional[Sequence[Sequence[Sequence[Optional[float]]]]] = None,
+                      df_com: Optional[float] = None, level: float = 0.95) -> Dict[str, Any]:
+    """Each class's curve pooled over imputed copies at each k (MS3; Rubin 1987).
+
+    ``copies`` are each completed copy's :func:`class_curves` (the same classes and ks). At each k
+    where every copy's curve is drawn, the pooled curve is the mean of the copies' (Q̄). With
+    ``se`` (``se[j][c][i]``: copy j's within-copy standard error for class c at the k numbered i, a
+    bootstrap's or the design's), the interval is Rubin's: total variance T = Ū + (1 + 1/m)B on
+    Barnard & Rubin's (1999) degrees of freedom, ``df_com`` the complete-data df (the design's
+    under a survey; None: large-sample). ``fixed_se`` does the same for the fixed-population curves.
+    The pooled curves are means of curves that sum to zero, so they sum to zero (checked).
+
+    Returns ``{classes, class_sum}``; ``classes`` per class ``{level, delta, ci_low, ci_high, df,
+    fixed_delta, fixed_ci_low, fixed_ci_high}``.
+    """
+    from turbotab.core.methods.imputation import pool_scalar
+
+    copies = list(copies)
+    if not copies:
+        raise ValueError("Pooling needs at least one imputed copy's curves.")
+    m = len(copies)
+    C = len(copies[0]["classes"])
+    n_k = len(copies[0]["ks"])
+    if any(len(c["classes"]) != C or len(c["ks"]) != n_k for c in copies):
+        raise ValueError("Every copy's curves must follow the same classes at the same ks.")
+
+    def pooled(values: List[Optional[float]], errors: Optional[List[Optional[float]]]) -> tuple:
+        if any(v is None for v in values):
+            return None, None, None, None
+        q = [float(v) for v in values]
+        if errors is None or any(e is None for e in errors):
+            return float(np.mean(q)), None, None, None
+        p = pool_scalar(q, [float(e) ** 2 for e in errors], df_com, level)
+        return p.estimate, p.ci_low, p.ci_high, p.df
+
+    out = []
+    for c in range(C):
+        delta, low, high, dfs = [], [], [], []
+        fixed, fixed_low, fixed_high = [], [], []
+        for i in range(n_k):
+            d = pooled([copy["classes"][c]["delta"][i] for copy in copies],
+                       [se[j][c][i] for j in range(m)] if se is not None else None)
+            f = pooled([copy["classes"][c]["fixed_delta"][i] for copy in copies],
+                       [fixed_se[j][c][i] for j in range(m)] if fixed_se is not None else None)
+            delta.append(d[0])
+            low.append(d[1])
+            high.append(d[2])
+            dfs.append(d[3])
+            fixed.append(f[0])
+            fixed_low.append(f[1])
+            fixed_high.append(f[2])
+        out.append({"level": copies[0]["classes"][c]["level"], "delta": delta, "ci_low": low,
+                    "ci_high": high, "df": dfs, "fixed_delta": fixed, "fixed_ci_low": fixed_low,
+                    "fixed_ci_high": fixed_high})
+    largest = check_sums_to_zero([c["delta"] for c in out], "the pooled class curves")
+    check_sums_to_zero([c["fixed_delta"] for c in out], "the pooled fixed-population class curves")
+    return {"classes": out, "class_sum": largest}
+
+
+def _class_jacobian(X: np.ndarray, P: np.ndarray, c: int) -> np.ndarray:
+    """∂π_c/∂β for each row: ``π_c (1[c = a] − π_a) x`` for each non-reference class a = 1…K − 1,
+    class by class (the order of :func:`~turbotab.core.models.survey.weighted_multinomial`)."""
+    q = P.shape[1] - 1
+    blocks = [(P[:, c] * ((c == a) - P[:, a]))[:, None] * X for a in range(1, q + 1)]
+    return np.concatenate(blocks, axis=1)
+
+
+def design_class_curves(matrix_of: Callable[[pd.DataFrame], pd.DataFrame], X: pd.DataFrame,
+                        y: Any, classes: Sequence[Any], design: Any, domain: Any, *,
+                        level: float = 0.95, **curve_args: Any) -> Dict[str, Any]:
+    """Each class's curve over the surveyed population, and its band by linearization (MS4).
+
+    ``X`` holds the domain's kept rows (every analyzed row placed in the design with a positive
+    weight, in the order of ``domain``; :func:`~turbotab.core.models.survey.domain_of`), ``y``
+    their classes, and ``matrix_of`` the fitted pipeline up to its model step. The multinomial
+    logit is refit on that matrix with each row's survey weight (pseudo-maximum likelihood,
+    :func:`~turbotab.core.models.survey.weighted_multinomial`); each class's curve is the weighted
+    mean of each row's change in that class's probability (:func:`class_curves` with the weights).
+
+    The band at each k is Graubard & Korn's (1999, *Biometrics* 55:652) linearization of each
+    class's predictive margin, as :func:`~turbotab.core.models.survey.design_curve` takes it for a
+    yes/no outcome: ``z_i = w_i m_i (Δ_ic − θ_ck)/Σ w m + ψ_iᵀ g_ck``, ``ψ_i`` row i's influence on
+    the coefficients (the bread times its weighted score) and ``g_ck`` the weighted mean of
+    ``∂Δ_ic/∂β``; its variance is the design's variance of a total
+    (:func:`~turbotab.core.models.survey.total_variance`: PSUs within strata, the domain's rows
+    scored and every other row zero), and the interval is on t with the design's degrees of
+    freedom. ``curve_args`` are :func:`class_curves`'s (``shift`` among them).
+
+    Raises ValueError, saying why, where no design-based fit exists: a class with no weighted row,
+    too few rows for the coefficients, or a fit that does not converge (a column separating the
+    classes). Returns ``{curves, band}``: the :func:`class_curves` dict, and ``band`` with per class
+    ``{level, ci_low, ci_high, se, fixed_ci_low, fixed_ci_high, fixed_se}``, the ``df`` and the
+    ``variance`` (:class:`~turbotab.core.models.survey.DesignVariance`).
+    """
+    from scipy import stats
+
+    from turbotab.core.models.survey import _softmax, total_variance, weighted_multinomial
+
+    classes = list(classes)
+    K = len(classes)
+    if len(X) != domain.n:
+        raise ValueError("The curve's rows are the domain's kept rows.")
+    labels = pd.Series(np.asarray(y, dtype=object))
+    codes = pd.Categorical(labels, categories=classes).codes.astype(np.int64)
+    if (codes < 0).any():
+        raise ValueError("Some analyzed rows hold a class the model was not fit on, or none.")
+    empty = [level_name(classes[c]) for c in range(K) if not (codes == c).any()]
+    if empty:
+        raise ValueError(f"No analyzed row in the survey design is in the class {empty[0]}, so its "
+                         f"probability has no weighted fit.")
+    matrix = matrix_of(X)
+    Xd = np.column_stack([np.ones(len(matrix)), matrix.to_numpy(dtype=float)])
+    P_cols = Xd.shape[1]
+    if domain.n <= (K - 1) * P_cols:
+        raise ValueError(f"Only {domain.n:,} analysis rows carry a positive weight and a place in "
+                         f"the design, too few for {(K - 1) * P_cols} coefficients.")
+    fit = weighted_multinomial(Xd, codes, K, domain.weight)
+    if not fit.converged:
+        raise ValueError("The survey-weighted multinomial fit did not converge: a column may "
+                         "separate the classes among the weighted rows, so a log-odds is "
+                         "infinite.")
+    B = fit.estimate.reshape(K - 1, P_cols).T
+    influence = fit.scores @ np.linalg.pinv(fit.information)
+
+    def design_of(frame: pd.DataFrame) -> np.ndarray:
+        values = matrix_of(frame).to_numpy(dtype=float)
+        return np.column_stack([np.ones(len(values)), values])
+
+    def proba(frame: pd.DataFrame) -> np.ndarray:
+        return _softmax(design_of(frame) @ B)
+
+    shift = curve_args["shift"]
+    curves = class_curves(proba, X, classes=classes, weights=domain.raw, **curve_args)
+    k_values = np.asarray(curves["ks"], dtype=float)
+    live = np.asarray(curves["live"], dtype=bool)
+    valid = np.flatnonzero(shift.valid(X))
+    base_frame = X.iloc[valid]
+    X0 = design_of(base_frame)
+    P0 = _softmax(X0 @ B)
+    w = domain.raw[valid]
+    n_k = len(k_values)
+    checked: Dict[int, tuple] = {}
+    for i, k in enumerate(k_values):
+        if live[i]:
+            shifted, amount, composition = shift.checks(base_frame, float(k))
+            checked[i] = (shifted, amount & composition)
+    fixed = (np.logical_and.reduce([on for _, on in checked.values()]) if checked
+             else np.zeros(len(valid), dtype=bool))
+
+    def slot(half: int, c: int, i: int) -> int:  # the curve's, then the fixed population's
+        return (half * K + c) * n_k + i
+
+    z = np.zeros((domain.n, 2 * K * n_k))
+    theta = np.full(2 * K * n_k, np.nan)
+    for i, (shifted, on) in checked.items():
+        rows = np.flatnonzero(on)
+        if not len(rows):
+            continue
+        X1 = design_of(shifted.iloc[rows])
+        P1 = _softmax(X1 @ B)
+        diff = P1 - P0[rows]
+        for c in range(K):
+            grad = _class_jacobian(X1, P1, c) - _class_jacobian(X0[rows], P0[rows], c)
+            for half, chosen in ((0, np.ones(len(rows), dtype=bool)), (1, fixed[rows])):
+                if not chosen.any():
+                    continue
+                wk = w[rows] * chosen
+                total = float(wk.sum())
+                value = float(wk @ diff[:, c]) / total
+                s = slot(half, c, i)
+                theta[s] = value
+                z[valid[rows], s] += wk * (diff[:, c] - value) / total
+                z[:, s] += influence @ ((wk @ grad) / total)
+    u = np.zeros((design.n_rows, 2 * K * n_k))
+    u[domain.at] = z
+    var = total_variance(u, design, domain.mask(design))
+    se = np.sqrt(np.clip(np.diag(var.meat), 0, None))
+    t = float(stats.t.ppf(0.5 + level / 2, var.df)) if var.df >= 1 else float("nan")
+
+    def band(half: int, c: int) -> tuple:
+        low, high, errors = [], [], []
+        for i in range(n_k):
+            s = slot(half, c, i)
+            if not np.isfinite(theta[s]) or not np.isfinite(t):
+                low.append(None)
+                high.append(None)
+                errors.append(None)
+                continue
+            low.append(float(theta[s] - t * se[s]))
+            high.append(float(theta[s] + t * se[s]))
+            errors.append(float(se[s]))
+        return low, high, errors
+
+    out = []
+    for c in range(K):
+        low, high, errors = band(0, c)
+        fixed_low, fixed_high, fixed_errors = band(1, c)
+        out.append({"level": classes[c], "ci_low": low, "ci_high": high, "se": errors,
+                    "fixed_ci_low": fixed_low, "fixed_ci_high": fixed_high,
+                    "fixed_se": fixed_errors})
+    return {"curves": curves, "band": {"classes": out, "df": int(var.df), "variance": var,
+                                       "level": float(level)}}
+
+
+# ── what the curves estimate, in words ───────────────────────────────────────
+
+
+def class_estimand(target: str, classes: Sequence[Any], donor: str, recipient: str, *,
+                   population: str, scale: str = "kcal", energy_out: bool = False,
+                   carried: bool = False) -> str:
+    """The estimand of a multiclass outcome's curves, as the artifact states it: the probability
+    scale, the isocaloric move, and the population the curves average over (``population``: the
+    surveyed population, these analyzed rows, or the training rows)."""
+    names = [level_name(c) for c in classes]
+    listed = ", ".join(names[:-1]) + " and " + names[-1]
+    moved = ("k percent of each row's own total energy moves" if scale == "percent_energy"
+             else "k kcal move")
+    others = ("every other input left as it was (total energy is not in this model; only the swap "
+              "itself keeps it fixed)" if energy_out else
+              "every other input, total energy included, left as it was")
+    parts = ", their parts or totals moving with them," if carried else ""
+    return (f"For each class of {target} ({listed}), the average change in its predicted "
+            f"probability, on the probability scale, when {moved} from {donor} to "
+            f"{recipient}{parts} at the same total energy (isocaloric), with {others}, over "
+            f"{population}. The class curves sum to zero at every k, because each row's class "
+            f"probabilities sum to one.")
+
+
+def class_clause(state: Any) -> Optional[str]:
+    """The ``set_substitution`` sentence's clause for a multiclass outcome (its contract's
+    sentence), or None. It reads the recorded task only, so the methods text restates it whole."""
+    if getattr(state, "task", None) != "multiclass":
+        return None
+    from turbotab.core.voice import tick
+
+    target = getattr(state, "target", None)
+    outcome = f"the outcome {tick(target)}" if target else "the outcome"
+    return (f"{outcome} has unordered classes, so there is one curve per class, each the average "
+            f"change in that class's predicted probability, and the curves sum to zero at every k")
+
+
+# ── the method contract (BLUEPRINT §13) ──────────────────────────────────────
+
+CLASS_CONTRACT = "multiclass_substitution"
+
+
+def _contract_clause(run: Mapping[str, Any]) -> Optional[str]:
+    """The contract's clause of the methods paragraph, from ``donor``, ``recipient``,
+    ``step_kcal`` and how the bands were made (``estimand`` "population", ``m`` imputations,
+    ``n_boot`` refits)."""
+    donor, recipient = run.get("donor"), run.get("recipient")
+    if not donor or not recipient:
+        return None
+    step = run.get("step_kcal")
+    steps = f" in steps of {_plain(float(step))} kcal" if step else ""
+    text = (f"for the multiclass outcome, one substitution curve per class was drawn, the average "
+            f"change in that class's predicted probability as energy moved from `{donor}` to "
+            f"`{recipient}`{steps} at the same total energy, the curves summing to zero at every k")
+    m = run.get("m")
+    if run.get("estimand") == "population":
+        text += ("; each class's curve came from the survey-weighted multinomial fit, averaged "
+                 "with the weights, with its band by Taylor linearization over the survey design "
+                 "(Graubard & Korn 1999)")
+        if m:
+            text += f", pooled over {int(m)} imputations by Rubin's rules at each k"
+    elif m:
+        text += f"; each copy's curves were pooled over {int(m)} imputations by Rubin's rules at each k"
+    elif run.get("n_boot"):
+        text += (f"; each class's band came from {int(run['n_boot']):,} refits on bootstrap "
+                 f"resamples")
+    return text
+
+
+def _register_contract() -> None:
+    from turbotab.core.contracts import ContractOption as Option
+    from turbotab.core.contracts import MethodContract, Relation, register_contract
+
+    register_contract(MethodContract(
+        key=CLASS_CONTRACT, label="Substitution curves for a multiclass outcome, one per class",
+        slot="evaluation", scope="model", package="MULTISUB", run_order=2.0,
+        scope_note=("Each curve follows the fitted outcome model, so a row's predicted change moves "
+                    "with the outcome and with every row the model was fit on. Lockbox §06's test: "
+                    "row i's change in each class's probability moves when the outcome does."),
+        needs=("a multiclass outcome (three or more unordered classes)",
+               "two energy-bearing exposures whose kcal per unit is settled",
+               "a fitted family that predicts each class's probability",
+               "the substitution answer (donor, recipient and step)"),
+        question=("Which energy substitution, in what steps? (the substitution question; a "
+                  "multiclass outcome draws one curve per class)"),
+        place=("MODELING_SEQUENCE §1 step 11's displays: beside the coefficient table under "
+               "inference, beside the comparison under prediction"),
+        decision="set_substitution", stage="substitution",
+        options=(
+            Option("class_curves",
+                   "One curve per class: the average change in each class's predicted probability",
+                   "Average discrete changes of a multinomial model on each outcome's probability "
+                   "(Long & Freese 2014, ch. 8; Stata margins and R marginaleffects per outcome)",
+                   {"inference": "Sound: a marginal, isocaloric contrast on the probability scale "
+                                 "over the stated population; the curves sum to zero at every k, "
+                                 "as each person's probabilities sum to one.",
+                    "prediction": "Sound as a model contrast: what the fitted model predicts for "
+                                  "each class when k kcal move."},
+                   {"inference": "recommended", "prediction": "recommended"}),
+            Option("reference_ratios",
+                   "Relative-risk ratios against the reference class per kcal swapped",
+                   "The multinomial coefficients' contrast, as categorical-outcome analyses "
+                   "report them",
+                   {"inference": "Conditional on every covariate and against one reference class: "
+                                 "it says how the odds of a class against the reference move, not "
+                                 "how any class's probability does, and it is one number only when "
+                                 "every energy source is a linear term. The coefficient table "
+                                 "reports each class's ratios per unit.",
+                    "prediction": "Not a prediction: the class curves say what the model "
+                                  "predicts."},
+                   {"inference": "not_offered", "prediction": "not_offered"}),
+        ),
+        leash={"inference": "recommended", "prediction": "recommended"},
+        storyboard=("Predict every class's probability on every row",
+                    "Move k kcal from the donor to the recipient on every row on support",
+                    "Predict again, and take each class's change",
+                    "Average each class's change over the same rows (weighted under a surveyed "
+                    "population)",
+                    "Check that the class curves sum to zero at every k",
+                    "Band each class: refits on bootstrap resamples, Rubin's rules over the "
+                    "imputations, or the survey design's linearization"),
+        relations=(
+            Relation("implies", "class_probabilities_sum_to_one",
+                     "The class curves sum to zero at every k, because each row's class "
+                     "probabilities sum to one before and after the move; a set that does not is a "
+                     "defect, raised and never drawn.",
+                     enforced_by="turbotab.core.methods.substitution:check_sums_to_zero",
+                     id="curves_sum_to_zero"),
+            Relation("implies", "refit_band",
+                     "Each class's band comes from refits of the model on bootstrap resamples of "
+                     "the rows it was fit on (whole units when rows repeat), its interval read "
+                     "from that class's refits.",
+                     enforced_by="turbotab.core.methods.substitution:class_refit_band",
+                     condition="a band asked for (n_boot > 0) with no surveyed population",
+                     id="refit_band"),
+            Relation("implies", "multiple_imputation_compatible",
+                     "Each completed copy's class curves are drawn on that copy's rows and fit, "
+                     "and pooled at each k by Rubin's rules; a curve from one fill is never shown.",
+                     purposes=("inference",),
+                     enforced_by="turbotab.core.methods.substitution:pool_class_curves",
+                     condition="multiple imputation under inference", id="pooled_per_k"),
+            Relation("implies", "survey_population",
+                     "Each class's curve comes from the survey-weighted multinomial fit, averaged "
+                     "with the weights, and its band is Taylor linearization over the survey "
+                     "design; refits on bootstrap resamples of rows are not drawn.",
+                     purposes=("inference",),
+                     enforced_by="turbotab.core.methods.substitution:design_class_curves",
+                     condition="the survey answer \"the surveyed population\"",
+                     id="design_based"),
+            Relation("conflicts", "survey_population",
+                     "A family with no design-based estimator draws no class curves under the "
+                     "surveyed population: blocked and recorded.",
+                     purposes=("inference",), rung="block_and_record",
+                     exits=("the design-based family in its place, every other chosen family kept",
+                            "the sample-only attestation"),
+                     enforced_by="turbotab.core.stages.class_substitution:population_blocked",
+                     condition="the survey answer \"the surveyed population\" and a family with "
+                               "no design-based estimator",
+                     id="blocked_family"),
+            Relation("conflicts", "omitted_energy_sources",
+                     "Energy sources left out of the model, above the stated share of total "
+                     "energy, block the swap under inference until it is recorded: the curves "
+                     "carry the confounding of the sources total energy holds as one composite.",
+                     purposes=("inference",), rung="block_and_record",
+                     exits=("add each missing energy source to the model as an exposure",
+                            "Keep this swap; the curve carries their confounding",
+                            "Choose another swap"),
+                     enforced_by="turbotab.core.decisions:_substitution_has_every_energy_source",
+                     condition="energy sources left out above MAX_OMITTED_SHARE of total energy",
+                     id="omitted_sources"),
+            Relation("implies", "omitted_energy_sources",
+                     "Under prediction the curves are model contrasts: the sources the model "
+                     "leaves out are named as a concern, never blocked.",
+                     purposes=("prediction",),
+                     enforced_by="turbotab.core.methods.energy:omitted_sentence",
+                     condition="energy sources left out of the model", id="omitted_stated"),
+            Relation("implies", "estimand_label",
+                     "The estimand names the probability scale, the isocaloric move and the "
+                     "population the curves average over; each class's label is the change in "
+                     "its probability at the stated k, an average over that population, since a "
+                     "multinomial model's change depends on k and on each person's intake "
+                     "(MODELING_SEQUENCE §2).",
+                     enforced_by="turbotab.core.methods.substitution:class_estimand",
+                     id="estimand_label"),
+        ),
+        sources=("Long & Freese 2014, Regression Models for Categorical Dependent Variables Using "
+                 "Stata, 3rd ed., ch. 8",
+                 "Graubard & Korn 1999, Biometrics 55:652",
+                 "Rubin 1987, Multiple Imputation for Nonresponse in Surveys",
+                 "Tomova, Gilthorpe & Tennant 2022 (substitution models; PMC9630885)",
+                 "MODELING_SEQUENCE §2, §4"),
+        clause=_contract_clause, sentence="turbotab.core.methods.substitution:class_clause"))
+
+
+_register_contract()

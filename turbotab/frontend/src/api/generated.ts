@@ -13833,6 +13833,11 @@ export interface components {
              * @default null
              */
             df: (number | null)[] | null;
+            /**
+             * Level
+             * @default null
+             */
+            level: string | null;
         };
         /** SubstitutionPair */
         SubstitutionPair: {
