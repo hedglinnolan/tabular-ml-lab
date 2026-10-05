@@ -3613,7 +3613,8 @@
               "code_or_count",
               "time_column",
               "nested_in",
-              "sex_coding"
+              "sex_coding",
+              "time_invariant"
             ],
             "title": "Reading"
           },
@@ -9050,7 +9051,8 @@
               "code_or_count",
               "time_column",
               "nested_in",
-              "sex_coding"
+              "sex_coding",
+              "time_invariant"
             ],
             "title": "Reading"
           },
@@ -18527,6 +18529,55 @@
           "sentence": {
             "title": "Sentence",
             "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "said": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Said"
+          },
+          "vouched": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Vouched"
+          },
+          "exit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exit"
           }
         },
         "required": [
@@ -18538,7 +18589,11 @@
           "ci_high",
           "how",
           "narrow",
-          "sentence"
+          "sentence",
+          "name",
+          "said",
+          "vouched",
+          "exit"
         ],
         "title": "DeclaredResult",
         "type": "object"
@@ -24608,6 +24663,43 @@
             "title": "Unit Level",
             "type": "array"
           },
+          "unit_carried": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Unit Carried",
+            "type": "object"
+          },
+          "unit_imputed": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Imputed",
+            "type": "array"
+          },
+          "unit_differ": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Unit Differ",
+            "type": "object"
+          },
+          "row_level": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Row Level",
+            "type": "array"
+          },
+          "approximate": {
+            "default": false,
+            "title": "Approximate",
+            "type": "boolean"
+          },
           "knots": {
             "additionalProperties": {
               "items": {
@@ -24758,6 +24850,11 @@
           "df_com",
           "unit",
           "unit_level",
+          "unit_carried",
+          "unit_imputed",
+          "unit_differ",
+          "row_level",
+          "approximate",
           "knots",
           "cuts",
           "m_asked",

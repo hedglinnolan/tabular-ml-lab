@@ -424,7 +424,9 @@ def build_graph() -> Graph:
             # split 5 (WP13 + WP15 merged): both of the above in one stage.
             # split 6 (recognition's leash): the draw groups by a settled identifier only.
             # split 7 (BLUEPRINT §14.3): as fit 14.
-            Stage("split", 7, ("working", "cohort", "target_info", "structure"),
+            # split 8 (REPAIR-VALID, MS6): when the seal cannot keep a unit's rows together, the
+            # note says the folds are drawn by row and every score is within-unit performance.
+            Stage("split", 8, ("working", "cohort", "target_info", "structure"),
                   ("split", *ROLE_READS, "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
             # shelf 7 (methods gate): under inference it ranks for every analyzed row and its basis
@@ -435,7 +437,9 @@ def build_graph() -> Graph:
             # shelf 11 (wave 1): the screened elastic net at p ≫ n under prediction (MS7); under the
             # population answer the families with no design-based estimator rank last (MS4).
             # shelf 12 (MS6): the measured estimate counts the comparisons' repeated k-fold.
-            Stage("shelf", 12, ("working", "cohort", "target_info", "split"),
+            # shelf 13 (REPAIR-VALID): ... and the refits of the grouping's internal–external
+            # validation under prediction.
+            Stage("shelf", 13, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms",
@@ -530,7 +534,17 @@ def build_graph() -> Graph:
             # imputation offers the censoring-aware single fill.
             # fit 19 (wave-1 repairs integrated): the routing gate's fit 18 and MS7 repair's.
             # fit 21 (wave-1 repairs on wave 1b): fit 19 and wave 1b's fit 20 on one engine.
-            Stage("fit", 21, ("working", "design", "split", "target_info", "cohort"),
+            # fit 22 (REPAIR-VALID, MS6): the result names the family as the record does and leaves
+            # the record to vouch for "declared before any score was seen"; the grouping the
+            # question named is validated internal–externally beside the headline under prediction;
+            # folds that cannot keep a unit whole say every score is within-unit performance; at
+            # p ≫ n with several families the nested offer and the label say what it widens; a
+            # multiclass outcome's accuracy and macro-F1 are labeled the customary headline.
+            # REPAIR-MI rides on fit 22 (wave 1b repairs integrated): every row inside its recorded
+            # total energy; the survey design in SMC-FCS's outcome model; a column carried and
+            # imputed once per unit only when the ledger's time-invariance reading is confirmed,
+            # asked otherwise; the Cox draws' baseline hazard as smcfcs takes it.
+            Stage("fit", 22, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -597,7 +611,10 @@ def build_graph() -> Graph:
             # chosen family.
             # sensitivity 12, secondary 3 (wave-1 repairs on wave 1b): both sensitivity 11s and both
             # secondary 2s.
-            Stage("sensitivity", 12, ("working", "design", "split", "target_info"),
+            # sensitivity 13, secondary 4 (wave 1b repairs integrated): each analysis's imputation
+            # as REPAIR-MI's fit 22 draws it, a time-invariance question held as the fit holds it;
+            # the secondary stage's methods sentence reports only the models fit.
+            Stage("sensitivity", 13, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
@@ -616,7 +633,7 @@ def build_graph() -> Graph:
                   label="Correcting energy-adjusted intakes for day-to-day error"),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
-            Stage("secondary", 3, ("working", "design", "split", "target_info"),
+            Stage("secondary", 4, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),
@@ -629,7 +646,9 @@ def build_graph() -> Graph:
             # table's CR2 beside a bootstrap of whole clusters); several corrected scores are
             # calibrated jointly (Rosner); a code reaching a repeat administration or a reference
             # blocks what it would move.
-            Stage("scales", 3, ("working", "design", "split", "target_info", "cohort"),
+            # scales 4 (wave 1b repairs integrated): each copy's correction fit as the fit fits a
+            # copy (REPAIR-MI's copy_pipeline: no median fill inside a copy).
+            Stage("scales", 4, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
                   label="Estimating each scale's reliability"),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
@@ -649,7 +668,10 @@ def build_graph() -> Graph:
             # Model 3 alone on its own rows; every model design-based under the population answer;
             # the marginal, influence and sensitivity edges as R holds them; a difference's E-value
             # by the population's SD (ruling 14); withheld on the data's own imputed copies.
-            Stage("effects", 3, ("working", "design", "split", "target_info"),
+            # effects 4 (wave 1b repairs integrated): every copy fit as the fit fits one (the knots
+            # placed once, no median fill; REPAIR-MI); Model 3 held by its own imputation's question
+            # carries that question's exits, and the methods text lists only the models reported.
+            Stage("effects", 4, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand"),
                   label="Reporting the exposure's effect across the declared models"),

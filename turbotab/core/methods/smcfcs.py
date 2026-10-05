@@ -25,7 +25,10 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
   rejection sampling: a candidate from its covariate model is kept with probability
   f(y | x*, z)/max_x f(y | x, z) — exp(−(y − η)²/2σ²) for a linear outcome, p^y(1 − p)^(1 − y) for a
   logistic one, and for a Cox model exp(−H₀(t)e^η) when censored and H₀(t)e^η exp(1 − H₀(t)e^η) for an
-  event, with H₀ Breslow's at the drawn coefficients. Up to 1,024 candidates per draw, smcfcs's
+  event, with H₀ the cumulative baseline hazard at the drawn coefficients as smcfcs takes it
+  (``survival::basehaz`` of the Efron-ties fit with its coefficients replaced by the draw: Efron's
+  tie-corrected increments, :func:`efron`, which equal Breslow's where no event time is shared).
+  Up to 1,024 candidates per draw, smcfcs's
   budget (24 vectorized first tries, then ``rjlimit`` = 1,000 for each draw still waiting), sent
   through the design in batches and tried in order, so the first kept is exactly what one-at-a-time
   rejection sampling keeps; a draw none of them is kept for holds its last candidate and is counted
@@ -42,10 +45,23 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
   variables and total energy is derived as their sum, E = Σ fⱼ Nⱼ + other. Where E is recorded and
   a source is not, the source is drawn truncated so that other = E − Σ fⱼ Nⱼ stays above zero; where
   E is blank, other is drawn (on the log scale when every recorded other is positive, else
-  truncated at zero) and E follows. Other is therefore never negative in a copy, except where the
-  recorded sources alone already exceed the recorded total (counted in ``identity_infeasible``).
-* **Clustered rows** (ruling 12; ``units``): a ``unit_level`` variable (constant within every
-  unit) is imputed once per unit, from a model of the units on the other unit-level variables and
+  truncated at zero) and E follows. A Gibbs step truncated this way keeps a row inside the
+  identity only if the row starts inside it, so each chain starts every row with a recorded total
+  jointly inside it (:meth:`_Chain.feasible_start`: where the random starts of a row's blank
+  sources together leave no room, they are scaled to half the room their recorded total leaves).
+  Before that start, two blank sources on one row could hold each other above the total forever
+  (each one's bound read the other's start, found no room and kept its own), and on the log scale
+  other fell to −1,700 kcal. Other is therefore never negative in a copy, except where the recorded
+  sources alone already reach the recorded total (counted in ``identity_infeasible``; a logged
+  source there starts at, and keeps, its smallest recorded value). An energy source's covariate
+  model reads the total in place of "other" (:meth:`_Chain.energy_terms`): where the total is
+  recorded, other is a function of the source itself, and reading it held each draw near the
+  source's last value (imputed protein −4 to −5.5 simulation SE low with two sources blank on the
+  log scale, −1 to −2 SE with one; within ±1.4 SE with the total read instead).
+* **Clustered rows** (ruling 12; ``units``): a ``unit_level`` variable (one the user confirmed as
+  one value per unit, through the readings ledger: ``missing.time_invariant_columns``; its
+  recorded value already carried to the unit's blank rows, ``missing.carry_within_units``) is
+  imputed once per unit, from a model of the units on the other unit-level variables and
   the unit means of the row-level ones (the outcome's too, in ``"fcs"``), and copied to every row of
   the unit; a row-level variable's model adds the unit means of the other row-level variables and
   its own mean over the row's other rows in the unit (the unit's level of it: without it, in this
@@ -54,6 +70,11 @@ Med Res Methodol* 12:46): just another variable "should not be used for logistic
   ``"smcfcs"`` a unit's candidate is kept with probability Π f(y_ij | x*, z_ij)/max, each factor the
   row's normalized density. Full two-level FCS is not built (ruling 12: INBOX).
 * **Design variables** and any other complete column are predictors in every covariate model.
+  Under ``"smcfcs"`` a design variable is in the substantive model too (``Substantive.design``
+  holds it beside the analysis model's terms: ``missing.engine_substantive``), since SMC-FCS
+  assumes an auxiliary variable is independent of the outcome given the substantive model's
+  covariates; with the design in the covariate models only, an outcome that differs by stratum
+  biased the pooled design-based estimates (MS2 repair: z −0.06, about 7 Monte Carlo SE).
 """
 from __future__ import annotations
 
@@ -85,6 +106,7 @@ RJLIMIT = 1000  # smcfcs's default rejection limit per row
 FIRST_TRIES = 24  # smcfcs's vectorized first tries (``j`` from 1 while below ``firstTryLimit`` = 25)
 BATCH_ROWS = 4_000  # rows of candidates sent through the design at once
 OTHER_FLOOR = 1e-6  # "other" kept at least this share of total energy above zero (log scale)
+START_SHARE = 0.5  # a row's blank sources that start beyond its total start at this share of the room
 
 
 @dataclass(frozen=True)
@@ -225,16 +247,49 @@ def breslow(eta: np.ndarray, time: np.ndarray, event: np.ndarray, entry: np.ndar
     return H0
 
 
+def efron(eta: np.ndarray, time: np.ndarray, event: np.ndarray, entry: np.ndarray
+          ) -> Callable[[np.ndarray], np.ndarray]:
+    """The Efron-corrected cumulative baseline hazard at linear predictors ``eta`` (risk set at τ:
+    entry < τ ≤ time), as a function of time: H₀(t) = Σ_{event times τ ≤ t} Σ_{k=0}^{d−1} 1/(R(τ) −
+    (k/d) D(τ)), with d the events at τ, R(τ) = Σ_{at risk} e^{η} and D(τ) = Σ_{events at τ} e^{η}.
+    It is what R's ``survival::basehaz(fit, centered = FALSE)`` returns for a Cox fit with Efron
+    ties (``survfit.coxph``'s ``ctype`` 2), which ``smcfcs`` calls after replacing the fit's
+    coefficients by the draw; with no shared event time it is Breslow's (:func:`breslow`)."""
+    shift = float(np.max(eta))
+    r = np.exp(eta - shift)
+    times = np.unique(time[event > 0])
+    by_t = np.argsort(time, kind="stable")
+    by_s = np.argsort(entry, kind="stable")
+    ct = np.concatenate([np.cumsum(r[by_t][::-1])[::-1], [0.0]])
+    cs = np.concatenate([np.cumsum(r[by_s][::-1])[::-1], [0.0]])
+    at_risk = (ct[np.searchsorted(time[by_t], times, side="left")]
+               - cs[np.searchsorted(entry[by_s], times, side="left")])
+    which = np.searchsorted(times, time[event > 0])
+    d = np.bincount(which, minlength=len(times))
+    tied = np.bincount(which, weights=r[event > 0], minlength=len(times))
+    j = np.repeat(np.arange(len(times)), d)  # one term per event: k = 0 … d − 1 at its time
+    k = np.arange(len(j)) - np.repeat(np.cumsum(d) - d, d)
+    terms = 1.0 / (at_risk[j] - k / d[j] * tied[j])
+    steps = np.cumsum(np.bincount(j, weights=terms, minlength=len(times))) * math.exp(-shift)
+
+    def H0(t: np.ndarray) -> np.ndarray:
+        at = np.searchsorted(times, np.asarray(t, dtype=float), side="right")
+        return np.concatenate([[0.0], steps])[at]
+
+    return H0
+
+
 def _cox_draw(M: np.ndarray, out: Outcome, rng: np.random.Generator) -> _Fit:
     """smcfcs's coxph draw: β* ~ N(β̂, I⁻¹) from the partial likelihood (Efron ties; delayed entry),
-    then Breslow's H₀ at β* at each row's own times."""
+    then the Efron-corrected H₀ at β* (:func:`efron`, as smcfcs's ``basehaz`` of the fit holding
+    β*) at each row's own times."""
     from turbotab.core.models.survival import cox_fit, survival_outcome
 
     y = survival_outcome(out.event, out.time, out.entry)
     fit = cox_fit(M, y)
     root = np.linalg.cholesky(fit.cov + np.eye(len(fit.cov)) * 1e-12)
     beta = fit.beta + root @ rng.standard_normal(len(fit.beta))
-    H0 = breslow(M @ beta, out.time, out.event, out.entry)
+    H0 = efron(M @ beta, out.time, out.event, out.entry)
     return _Fit(beta=beta, H=H0(out.time) - H0(out.entry))
 
 
@@ -436,8 +491,9 @@ class _Chain:
         self.st.refresh(ident.other)
 
     def infeasible_rows(self) -> int:
-        """Rows with a recorded total whose recorded sources alone already reach it, so that no
-        draw of their missing sources leaves other above zero."""
+        """Rows with a recorded total whose recorded sources alone already reach it (less the
+        floor a logged "other" keeps), so that no draw of their missing sources leaves other above
+        zero."""
         ident = self.identity
         if ident is None:
             return 0
@@ -449,7 +505,7 @@ class _Chain:
             known += np.where(rec, float(f) * np.nan_to_num(x), 0.0)
             missing_source |= ~rec
         with np.errstate(invalid="ignore"):
-            return int(np.sum(self.E_obs & missing_source & (self.E - known <= 0)))
+            return int(np.sum(self.E_obs & missing_source & (self.E - known - self._floor() <= 0)))
 
     def bounds(self, name: str, rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """The imputation-scale interval each of ``rows`` is drawn in; ``hi`` NaN where a recorded
@@ -509,21 +565,78 @@ class _Chain:
                 v[miss] = limit - (math.log(2.0) if var.censoring.log else spread)
             self.st.values[name] = v
         if self.identity is not None:
-            for s in self.identity.factors:
-                if s not in self.miss:  # a complete source: nothing to start
-                    continue
-                rows = np.flatnonzero(self.miss[s] & self.E_obs)
-                if not len(rows):
-                    continue
-                lo, hi = self.bounds(s, rows)
-                v = self.st.values[s].copy()
-                cur = v[rows]
-                inside = np.where(np.isfinite(hi), np.minimum(cur, hi - 1e-9 * np.abs(hi) - 1e-12), cur)
-                v[rows] = np.where(np.isnan(hi), np.where(np.isfinite(lo), lo, cur), inside)
-                self.st.values[s] = v
+            self.feasible_start()
         for c in self.st.values:
             self.st.refresh(c)
         self.derive_other()
+
+    def _drawn(self, name: str) -> np.ndarray:
+        """The rows whose ``name`` this chain draws: its blanks, or for a unit-level variable the
+        rows of the units that record it nowhere (the rest hold their unit's recorded value)."""
+        if name not in self.vars:
+            return np.zeros(self.n, dtype=bool)
+        if self.vars[name].unit_level and self.units is not None:
+            return self.unit_miss[name][self.units]
+        return self.miss[name].copy()
+
+    def _floor(self) -> np.ndarray | float:
+        ident = self.identity
+        return OTHER_FLOOR * np.abs(self.E) if self.vars[ident.other].log else 0.0
+
+    def room(self) -> tuple[np.ndarray, np.ndarray]:
+        """Per row, under a recorded total: the kcal it leaves the drawn sources (E less the
+        sources it records and the floor), and the drawn sources' current kcal."""
+        ident = self.identity
+        known = np.zeros(self.n)
+        drawn = np.zeros(self.n)
+        for s, f in ident.factors.items():
+            x = self.raw(s, np.asarray(self.st.values[s], dtype=float))
+            mine = self._drawn(s)
+            known += np.where(mine, 0.0, float(f) * np.nan_to_num(x))
+            drawn += np.where(mine, float(f) * np.nan_to_num(x), 0.0)
+        with np.errstate(invalid="ignore"):
+            return self.E - known - self._floor(), drawn
+
+    def feasible_start(self) -> None:
+        """Every row with a recorded total starts inside it, jointly over its blank sources: where
+        their random starts together leave no room, each is scaled by the share that puts their
+        kcal at :data:`START_SHARE` of the room (a unit-level source by its unit's smallest share,
+        so it stays one value per unit). A row whose recorded sources alone reach the total has no
+        room: a source drawn on its own scale starts at zero, a logged one at its smallest recorded
+        value. Every truncated draw after this keeps the row inside (its interval holds its current
+        value), so the identity holds in every copy wherever it can."""
+        ident = self.identity
+        room, drawn = self.room()
+        with np.errstate(invalid="ignore", divide="ignore"):
+            over = self.E_obs & (room > 0) & (drawn > 0) & (drawn >= room)
+            share = np.where(over, START_SHARE * room / np.where(drawn > 0, drawn, 1.0), 1.0)
+            none = self.E_obs & ~(room > 0)
+        for s in ident.factors:
+            mine = self._drawn(s)
+            if not mine.any():
+                continue
+            var = self.vars[s]
+            factor = share
+            if var.unit_level and self.units is not None:
+                per_unit = np.ones(self.G)
+                np.minimum.at(per_unit, self.units[mine], share[mine])
+                factor = per_unit[self.units]
+            v = np.asarray(self.st.values[s], dtype=float).copy()
+            scale = mine & (factor < 1.0)
+            if scale.any():
+                v[scale] = self.scaled(s, self.raw(s, v[scale]) * factor[scale])
+            stuck = mine & none
+            if stuck.any():
+                recorded = v[self.recorded[s]]
+                floor = (float(np.min(recorded)) if self._logged(s) and len(recorded)
+                         else (-np.inf if self._logged(s) else 0.0))
+                if np.isfinite(floor):
+                    if var.unit_level and self.units is not None:
+                        units = np.zeros(self.G, dtype=bool)
+                        units[self.units[stuck]] = True
+                        stuck = mine & units[self.units]
+                    v[stuck] = floor
+            self.st.values[s] = v
 
     def _unit_values(self, name: str, v: np.ndarray) -> np.ndarray:
         """Each unit's value of a unit-level variable: a recorded one where the unit has it, else
@@ -550,14 +663,61 @@ class _Chain:
                                         for j in range(block.shape[1])]) / counts[:, None])
         return out
 
+    def _unit_means(self, block: np.ndarray) -> np.ndarray:
+        counts = np.bincount(self.units, minlength=self.G).astype(float)
+        counts[counts == 0] = 1.0
+        return np.column_stack([np.bincount(self.units, weights=block[:, j], minlength=self.G)
+                                for j in range(block.shape[1])]) / counts[:, None]
+
+    def energy_terms(self, target: str) -> np.ndarray | None:
+        """An energy source's covariate model reads the total in place of "other" (None for any
+        other variable, or with no recorded total): on a row whose total is recorded, other is
+        E − Σ fⱼNⱼ and so a function of the source itself, and conditioning the source's draw on
+        its own last value through it held each draw near its start (the repair's simulation:
+        imputed protein −4 to −5.5 SE low with two sources blank on the log scale, −1 to −2 SE with
+        one; with the total in its place, within ±1.4 SE). So the model's terms are the recorded
+        total on its rows (log E for a logged source) and, on a row whose total is blank, the
+        drawn "other" (there a free variable, the total derived from it) with an indicator of the
+        blank total; each slot standardized over its own rows, zero elsewhere."""
+        ident = self.identity
+        if ident is None or target not in ident.factors or not self.E_obs.any():
+            return None
+        E = np.asarray(self.E, dtype=float)
+        rec = self.E_obs
+        logged = self._logged(target) and bool(np.all(E[rec] > 0))
+        e = np.zeros(self.n)
+        e[rec] = np.log(E[rec]) if logged else E[rec]
+        cols = [self._slot(e, rec)]
+        blank = ~rec
+        if blank.any():
+            other = np.asarray(self.st.values[ident.other], dtype=float)
+            cols += [self._slot(other, blank), blank.astype(float)]
+        return np.column_stack(cols)
+
+    @staticmethod
+    def _slot(values: np.ndarray, rows: np.ndarray) -> np.ndarray:
+        out = np.zeros(len(values))
+        v = values[rows]
+        sd = float(np.std(v)) if len(v) else 0.0
+        out[rows] = (v - float(np.mean(v))) / sd if sd > 0 else 0.0
+        return out
+
     def design_rows(self, target: str, skip: Sequence[str]) -> np.ndarray:
         """A row-level covariate model's design: the intercept, every other column's block and,
         with units, the unit means of the other row-level columns and the mean of the target over
-        the row's other rows in its unit (:meth:`_own_mean`)."""
+        the row's other rows in its unit (:meth:`_own_mean`). An energy source reads the total in
+        place of "other" (:meth:`energy_terms`)."""
+        energy = self.energy_terms(target)
+        if energy is not None:
+            skip = [*skip, self.identity.other]
         X = self.st.predictors(target, skip)
         means = self._cluster_means(target, skip)
         if means:
             X = np.column_stack([X, *[_standardize(mm[self.units]) for mm in means]])
+        if energy is not None:
+            X = np.column_stack([X, energy])
+            if self.units is not None:
+                X = np.column_stack([X, _standardize(self._unit_means(energy)[self.units])])
         own = self._own_mean(target) if self.units is not None else None
         if own is not None:
             X = np.column_stack([X, own])
@@ -579,6 +739,9 @@ class _Chain:
     def design_units(self, target: str, skip: Sequence[str]) -> np.ndarray:
         """A unit-level covariate model's design, one row per unit: the intercept, the other
         unit-level columns and the unit means of the row-level ones."""
+        energy = self.energy_terms(target)
+        if energy is not None:
+            skip = [*skip, self.identity.other]
         parts = [np.ones(self.G)]
         for c, block in self.st.blocks.items():
             var = self.vars.get(c)
@@ -586,6 +749,8 @@ class _Chain:
                 continue
             parts.append(block[self.first])
         parts.extend(_standardize(mm) for mm in self._cluster_means(target, skip))
+        if energy is not None:
+            parts.append(_standardize(self._unit_means(energy)))
         return np.column_stack(parts)
 
     # -- one variable's update --------------------------------------------------
@@ -790,6 +955,14 @@ class _Chain:
         rows = np.flatnonzero(np.isin(self.units, missing_units))
         lo = np.full(len(missing_units), var.lower if var.lower is not None and not var.log
                      else -np.inf)
+        hi = np.full(len(missing_units), np.inf)
+        if self.identity is not None and name in self.identity.factors:
+            # one value for the unit, inside the recorded total of each of its rows
+            local = np.searchsorted(missing_units, self.units[rows])
+            row_lo, row_hi = self.bounds(name, rows)
+            np.maximum.at(lo, local, row_lo)
+            np.minimum.at(hi, local, np.where(np.isnan(row_hi), -np.inf, row_hi))
+            hi = np.where(np.isneginf(hi), np.nan, hi)
         if self.mode == "fcs":
             if var.kind == "categorical":
                 new = _categorical(U, per_unit, self.st.levels[name], umiss, self.rng)
@@ -798,8 +971,7 @@ class _Chain:
                               self.data[name])
             else:
                 _, star, sigma = _norm_draw(U[~umiss], per_unit[~umiss].astype(float), self.rng)
-                new = self._bounded(U[umiss] @ star, sigma, lo,
-                                    np.full(len(missing_units), np.inf), per_unit[umiss])
+                new = self._bounded(U[umiss] @ star, sigma, lo, hi, per_unit[umiss])
             filled = per_unit.copy()
             filled[umiss] = new
             self._set(name, rows, filled[self.units[rows]])
@@ -810,8 +982,7 @@ class _Chain:
         if var.kind in ("binary", "categorical"):
             self._direct(name, var, rows, fitted[missing_units], fit, groups=local)
             return
-        self._reject(name, rows, fitted[missing_units], float(sigma), lo,
-                     np.full(len(missing_units), np.inf), fit, groups=local)
+        self._reject(name, rows, fitted[missing_units], float(sigma), lo, hi, fit, groups=local)
 
     # -- the chain ----------------------------------------------------------------
 
@@ -942,5 +1113,5 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
                        rejection_failures=failures, identity_infeasible=infeasible)
 
 
-__all__ = ["FIRST_TRIES", "Identity", "Mode", "Outcome", "RJLIMIT", "Substantive", "Variable",
-           "breslow", "impute", "outcome_logdensity"]
+__all__ = ["FIRST_TRIES", "Identity", "Mode", "Outcome", "RJLIMIT", "START_SHARE", "Substantive",
+           "Variable", "breslow", "efron", "impute", "outcome_logdensity"]

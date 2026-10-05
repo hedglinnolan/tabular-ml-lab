@@ -100,13 +100,38 @@ held between 1 and √K; the point estimate is ``mean(e) − bias``, the bias ``
 mean(CV)) · (1 + ((K − 2)/K)^1.5)`` from ``⌈R/5⌉`` plain cross-validation runs; and the interval is
 ``estimate ± z · sd(e)/√n · inflation``. It needs a per-row loss, so it covers the strictly proper
 primaries (squared error, log loss, the ranked probability score, the Brier score at a horizon).
+It widens each family's own interval. With several families compared and no rows held out the
+result is the selection-corrected estimate, whose BBC-CV percentile interval rests on the same
+out-of-fold predictions; no nested interval exists for a choice among families, so at p ≫ n that
+interval keeps its label after nested cross-validation runs, and says why
+(``selection.SELECTION_NOT_NESTED``); the offer says so before it runs (:func:`nested_offer_label`).
+
+**When a unit's rows cannot be kept together** (MODELING_SEQUENCE §2: repeated units imply grouped
+folds). The seal groups the folds by the unit it groups the held-out rows by; when it could not
+(one unit, too few to hold out whole, an identifier awaiting its confirmation, or a grain answered
+as not known: ``seal.decide_basis``), the folds, the comparison substrate, BBC-CV and the bootstrap
+resample rows, so a unit's rows sit on both sides of a fold. Nothing then scores performance on new
+units: every score is *within-unit* performance, new rows of units the models were fit on, which
+record-wise cross-validation overestimates as an estimate of the other (Saeb et al., GigaScience
+2017;6(5): "record-wise CV often massively overestimates the prediction accuracy of the
+algorithms"). It is stated, never silent (:func:`unit_spans`): in the split's note and sentence, in
+every performance sentence and the result, and in the chain.
+
+**Performance across sites** (MODELING_SEQUENCE §2: clusters imply, under prediction, "performance
+heterogeneity across sites"; §1 row 11: "internal–external CV when clusters exist"; TRIPOD+AI 12d
+and 23b). When the grouping question names a column above the person (a site, a centre, a
+country) under prediction, every family is also validated internal–externally by it, beside
+whatever validation leads: each level scored by models fit on the others, with the random-effects
+summary and the spread (:func:`internal_external`). It runs for 2 to :data:`SITE_LIMIT` levels, a
+convention: past it the levels are too many to read one by one and each holds few rows, and the
+chain says it was not run and why.
 """
 from __future__ import annotations
 
 import math
 import time
 import warnings
-from typing import Any, Callable, Literal, Sequence
+from typing import Any, Callable, Literal, Mapping, Sequence
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
@@ -127,6 +152,10 @@ TOO_NARROW = "likely too narrow (Bates, Hastie & Tibshirani 2023)"
 P_OVER_N = 1.0  # more candidate predictors than rows: a convention, stated where it is applied
 NESTED_REPS = 50  # Bates et al.'s ``nested_cv`` default repetitions
 NESTED_SOURCE = "Bates, Hastie & Tibshirani 2023"
+SITE_LIMIT = 30  # the grouping's levels validated one by one beside the headline, at most (a convention)
+WITHIN_UNIT = ("every cross-validated score here is within-unit performance, new rows of units the "
+               "models were fit on, not performance on new units, which record-wise "
+               "cross-validation overestimates (Saeb et al. 2017)")
 
 
 class _Model(BaseModel):
@@ -462,9 +491,7 @@ def internal_external(task: str, cv: CrossValidated, labels: Sequence[str], clus
 
 
 def _spread_sentence(metric: str, cluster: str, estimates: Sequence[float], pooled: perf.Pooled) -> str:
-    from turbotab.core.models.metrics import LABELS
-
-    label = LABELS.get(metric, metric)
+    label = score_words(metric)  # mid-sentence: "log loss", never "Log loss"
     if not estimates:
         return f"No level of {cluster} could be scored."
     lo, hi = min(estimates), max(estimates)
@@ -888,8 +915,22 @@ def _register_contracts() -> None:
                      "by unit and nested folds by unit",
                      condition="rows repeat within a unit",
                      enforced_by="turbotab.core.models.folds:kfold_assignment",
-                     id="repeated_units_group_resampling")),
-        sources=("Nadeau & Bengio, Mach Learn 2003;52:239", "Bouckaert & Frank, PAKDD 2004"))
+                     id="repeated_units_group_resampling"),
+            Relation("implies", "within_unit_scores",
+                     "the folds, the resamples and BBC-CV are drawn by row, and every score is "
+                     "stated as within-unit performance, never as performance on new units",
+                     condition="rows repeat within a unit, but the seal could not keep units whole "
+                               "(one unit, too few, an unconfirmed identifier, a grain not known)",
+                     enforced_by=f"{here}:unit_spans", id="within_unit_performance"),
+            Relation("implies", "site_heterogeneity",
+                     "every family is also validated internal–externally by the grouping, each "
+                     "level scored by models fit on the others, with the random-effects summary "
+                     "and the spread (TRIPOD+AI 12d, 23b)", purposes=prediction,
+                     condition=f"the grouping question named a column with 2 to {SITE_LIMIT} "
+                               f"levels",
+                     enforced_by=f"{here}:internal_external", id="clusters_site_heterogeneity")),
+        sources=("Nadeau & Bengio, Mach Learn 2003;52:239", "Bouckaert & Frank, PAKDD 2004",
+                 "Saeb et al., GigaScience 2017;6(5)", "Collins et al., BMJ 2024;384:e074819"))
     contract(
         "bbc_cv", "Bootstrap bias-corrected cross-validation", run_order=3.0,
         needs=("two or more families", "their out-of-fold predictions"),
@@ -978,11 +1019,13 @@ def _register_contracts() -> None:
         storyboard=("for each repetition, each pair of folds fit without both",
                     "each fold fit without it", "the spread of the inner against the outer errors",
                     "widen the interval by it"),
-        sentence="its interval is the nested cross-validation interval ({reps} repetitions of "
-                 "{folds} folds; Bates, Hastie & Tibshirani 2023)",
+        sentence="each family's own performance interval is the nested cross-validation interval "
+                 "({reps} repetitions of {folds} folds; Bates, Hastie & Tibshirani 2023)",
         relations=(Relation("enables", "nested_cv_interval",
-                            "the nested cross-validation interval is offered, and the naive "
-                            "interval is labeled likely too narrow until it runs",
+                            "the nested cross-validation interval is offered for each family's own "
+                            "score, and the naive interval is labeled likely too narrow until it "
+                            "runs; the selection-corrected interval keeps the label, since no "
+                            "nested interval exists for a choice among families",
                             purposes=prediction, condition="more candidate predictors than rows",
                             enforced_by=f"{here}:nested_cv_interval", id="p_much_greater_n"),),
         sources=("Bates, Hastie & Tibshirani, JASA 2023 (arXiv:2104.00673)",))
@@ -1025,15 +1068,78 @@ def score_words(metric: str) -> str:
 
 
 def headline_how(validation: str, scheme: str, folds: int, repeats: int,
-                 cluster: str | None = None) -> str:
-    """How the headline cross-validated score was made, in words."""
+                 cluster: str | None = None, *, by_row: bool = False) -> str:
+    """How the headline cross-validated score was made, in words; ``by_row``: the folds could not
+    keep a unit's rows together (:func:`unit_spans`), so the score is within-unit performance."""
     if scheme == "time_ordered":
-        return f"cross-validation over {folds} time-ordered folds"
-    if validation == "internal_external" and cluster:
-        return f"internal–external validation by {cluster}"
-    if repeats > 1:
-        return f"{folds}-fold cross-validation repeated {repeats} times"
-    return f"{folds}-fold cross-validation"
+        how = f"cross-validation over {folds} time-ordered folds"
+    elif validation == "internal_external" and cluster:
+        how = f"internal–external validation by {cluster}"
+    elif repeats > 1:
+        how = f"{folds}-fold cross-validation repeated {repeats} times"
+    else:
+        how = f"{folds}-fold cross-validation"
+    return f"{how} over rows, not units (within-unit performance)" if by_row else how
+
+
+def unit_spans(basis: Mapping[str, Any] | None) -> str | None:
+    """Why a unit's rows can sit on both sides of a fold, in a clause, when the seal could not keep
+    a unit's rows together (its basis ``abandoned`` or ``undetermined``, ``seal.decide_basis``);
+    None when the folds keep every unit whole or no unit repeats (module docstring)."""
+    if not isinstance(basis, Mapping):
+        return None
+    state = basis.get("state")
+    column = basis.get("column")
+    n = basis.get("n_units")
+    if state == "undetermined":
+        return ("whether a unit can appear in more than one row was answered as not known, so the "
+                "folds were drawn by row")
+    if state != "abandoned":
+        return None
+    if column and n == 1:
+        return f"every row belongs to the one `{column}` unit, so no fold can leave a unit out"
+    if column:
+        units = f" (`{int(n):,}` units)" if n else ""
+        return f"rows repeat within `{column}`{units}, but the folds were drawn by row"
+    return "units were said to repeat, but no column names the unit, so the folds were drawn by row"
+
+
+def within_unit_sentence(basis: Mapping[str, Any] | None) -> str | None:
+    """:func:`unit_spans` and what follows from it, as one sentence (the split's note), or None."""
+    spans = unit_spans(basis)
+    if spans is None:
+        return None
+    then = WITHIN_UNIT if basis.get("state") != "undetermined" else WITHIN_UNIT.replace(
+        "every cross-validated score here is", "every cross-validated score here may be")
+    return f"{spans[0].upper()}{spans[1:]}: {then}."
+
+
+def nested_offer_label(fits_each: int, n_families: int) -> str:
+    """The nested cross-validation offer, saying what it widens: the result's interval with one
+    family; with several, each family's own and not the selection-corrected one (module
+    docstring)."""
+    head = f"Run the nested cross-validation interval ({NESTED_SOURCE})"
+    if n_families > 1:
+        return (f"{head} for each family's own score: {fits_each:,} refits of each family; the "
+                f"selection-corrected interval keeps its label, since no nested interval exists "
+                f"for a choice among families")
+    return f"{head}: {fits_each:,} refits of each family"
+
+
+def site_folds(levels: Any) -> tuple[np.ndarray, list[str]]:
+    """One fold per level of a grouping over the training rows, levels sorted, a missing one its own
+    level, ``(not recorded)``, last; and the levels in fold order (internal–external validation by
+    the grouping, module docstring)."""
+    import pandas as pd
+
+    missing = "(not recorded)"
+    values = ["" if v is None else str(v) for v in np.asarray(levels, dtype=object)]
+    raw = np.asarray(levels, dtype=object)
+    labels = [missing if (raw[i] is None or (isinstance(raw[i], float) and math.isnan(raw[i]))
+                          or raw[i] is pd.NA) else values[i] for i in range(len(values))]
+    names = sorted(set(labels), key=lambda v: (v == missing, v))
+    index = {name: i for i, name in enumerate(names)}
+    return np.asarray([index[v] for v in labels], dtype=np.int64), names
 
 
 def level_words(task: str, level: str) -> str:
@@ -1072,19 +1178,26 @@ def calibration_by(task: str, y: Any, prediction: Any, classes: Sequence[Any] | 
 def fired_chain(task: str, primary: str, *, inference: bool, grouped_by: str | None,
                 families: Sequence[str], n_holdout: int, comparison: Any, selection: Any,
                 result: Any, n_boot: int, horizon_note: str | None, notes: Sequence[str | None],
-                narrow: str | None, nested: bool) -> list[ChainLink]:
-    """The relations of :data:`CONTRACTS` that fired on this fit, each said as "because …, …"."""
-    from turbotab.core.models.metrics import HEADLINE, LABELS, SPOKEN
+                narrow: str | None, nested: bool, spans: str | None = None,
+                sites: Mapping[str, Any] | None = None) -> list[ChainLink]:
+    """The relations of :data:`CONTRACTS` that fired on this fit, each said as "because …, …".
+
+    ``spans``: why the folds could not keep a unit's rows together (:func:`unit_spans`);
+    ``sites``: the grouping the question named under prediction (``column``, ``levels``, and
+    ``ran`` or the ``why`` it did not)."""
+    from turbotab.core.models.metrics import HEADLINE, SPOKEN, headline_words
 
     links: list[ChainLink] = []
     headline = HEADLINE.get(task)
     if headline is not None and headline != primary:
+        words = str(headline_words(task))
         links.append(ChainLink(
             relation="proper_score_primary",
             because=(f"the outcome is {'an' if task[0] in 'aeiou' else 'a'} "
                      f"{task.replace('_', '-')} outcome"),
             then=(f"the models were compared, chosen and declared on {SPOKEN.get(primary, primary)}, "
-                  f"and {LABELS[headline]} is reported as the customary headline")))
+                  f"and {words} {'are' if ' and ' in words else 'is'} reported as the customary "
+                  f"headline")))
     if not inference and comparison is not None and families:
         rk = comparison.repeats * comparison.folds
         on = (f"{comparison.folds}-fold cross-validation repeated {comparison.repeats} times"
@@ -1100,6 +1213,19 @@ def fired_chain(task: str, primary: str, *, inference: bool, grouped_by: str | N
             because=f"rows repeat within `{grouped_by}`",
             then=("every fold of every repeat, the held-out rows, every bootstrap resample, the "
                   "BBC-CV resamples and the nested folds keep each unit's rows together")))
+    elif spans:
+        links.append(ChainLink(relation="within_unit_performance", because=spans,
+                               then=WITHIN_UNIT))
+    if not inference and sites and sites.get("column"):
+        column, levels = sites["column"], sites.get("levels")
+        links.append(ChainLink(
+            relation="clusters_site_heterogeneity",
+            because=(f"the grouping question named `{column}`"
+                     + (f", with {int(levels):,} levels" if levels else "")),
+            then=("every family was also validated internal–externally by it: each level scored by "
+                  "models fit on the others, with the random-effects summary and the spread"
+                  if sites.get("ran") else
+                  f"performance across its levels is not reported: {sites.get('why')}")))
     if not inference and selection:
         links.append(ChainLink(
             relation="choice_among_families_bbc", because=f"{len(families)} families were compared",
@@ -1123,11 +1249,17 @@ def fired_chain(task: str, primary: str, *, inference: bool, grouped_by: str | N
                                because="calibration could not be computed for a family",
                                then="its record says calibration not assessed, and why"))
     if narrow:
-        links.append(ChainLink(
-            relation="p_much_greater_n", because=narrow,
-            then=("the nested cross-validation interval ran" if nested else
-                  f"the intervals are labeled {TOO_NARROW}, and the nested cross-validation "
-                  f"interval is offered")))
+        several = (not inference and len(families) > 1
+                   and getattr(result, "basis", None) == "selection_corrected")
+        if nested:
+            then = ("the nested cross-validation interval ran for each family's own score; the "
+                    f"selection-corrected interval stays labeled {TOO_NARROW}, since no nested "
+                    f"interval exists for a choice among families" if several else
+                    "the nested cross-validation interval ran")
+        else:
+            then = (f"the intervals are labeled {TOO_NARROW}, and the nested cross-validation "
+                    f"interval is offered" + (" for each family's own score" if several else ""))
+        links.append(ChainLink(relation="p_much_greater_n", because=narrow, then=then))
     return links
 
 
@@ -1140,4 +1272,6 @@ __all__ = ["BOOTSTRAP_CAUTION", "CALIBRATION_KEYS", "COMPARISONS_NOTE", "ChainLi
            "nested_cv_fits", "nested_cv_interval", "not_applied", "optimism_bootstrap",
            "performance_points", "performance_sentence", "relation_ids", "resample_concern",
            "validation_plan", "wide", "wide_clause", "calibration_by", "fired_chain",
-           "headline_how", "level_words", "score_words", "VALIDATION_CONTRACTS"]
+           "headline_how", "level_words", "score_words", "VALIDATION_CONTRACTS", "SITE_LIMIT",
+           "WITHIN_UNIT", "nested_offer_label", "site_folds", "unit_spans",
+           "within_unit_sentence"]

@@ -54,10 +54,15 @@ to compare different models on the same dataset". Comparing on AUC or C could de
 miscalibrated model over a calibrated one with the same ranking.
 
 **AUC and C are still always reported**, labeled the *customary headline* (:data:`HEADLINE`), with
-the tension in one line (:data:`TENSION`; BLUEPRINT north star 5): the field reports them first,
-and they say how well risks are ranked, never whether they are right. R² stays beside the MSE: it is
-the same squared error as a share of the no-predictor model's, so it orders families exactly as the
-MSE does.
+the tension in one line (:func:`tension`; BLUEPRINT north star 5): the field reports them first,
+and they say how well risks are ranked, never whether they are right. A multiclass outcome's
+customary headline is accuracy, with macro-F1 beside it: they score only which class is most
+probable, never the probabilities, so neither is strictly proper, and macro-F1 is not proper at
+all. Van Calster et al. (STRATOS TG6): "All classification measures (such as classification
+accuracy and F1) are improper for clinically relevant decision thresholds other than 0.5 or the
+prevalence"; of their 32 measures one "possessed neither characteristic (the F1 measure)". R²
+stays beside the MSE: it is the same squared error as a share of the no-predictor model's, so it
+orders families exactly as the MSE does.
 
 With delayed entry the Brier score at the horizon is not computed (its censoring weights would need
 the truncation distribution), so a time-to-event outcome then falls back to Harrell's C, and the
@@ -84,11 +89,16 @@ METRICS: dict[str, tuple[str, ...]] = {
 PRIMARY: dict[str, str] = {"regression": "mse", "binary": "log_loss", "multiclass": "log_loss",
                            "ordinal": "rps", "time_to_event": "brier_t"}
 # The customary headline, always reported beside the primary (north star 5), and its tension.
-HEADLINE: dict[str, str] = {"binary": "auc", "ordinal": "c_index", "time_to_event": "c_index"}
+HEADLINE: dict[str, str] = {"binary": "auc", "ordinal": "c_index", "time_to_event": "c_index",
+                            "multiclass": "accuracy"}
 HEADLINE_LABEL = "customary headline"
 SEMI_PROPER = ("ranks risks without asking whether they are right (semi-proper), so the models were "
                "compared, chosen and declared on {primary}, a strictly proper score (Van Calster et "
                "al., STRATOS TG6)")
+# A multiclass outcome's customary scores, both reported, both labeled (north star 5).
+CLASSIFICATION = ("score only which class is most probable, never the probabilities, so neither is "
+                  "strictly proper and macro-F1 is improper; the models were compared, chosen and "
+                  "declared on {primary}, a strictly proper score (Van Calster et al., STRATOS TG6)")
 LOWER_IS_BETTER = frozenset({"mse", "rmse", "mae", "brier", "log_loss", "rps", "mae_levels",
                              "brier_t"})
 LABELS: dict[str, str] = {
@@ -129,8 +139,19 @@ def tension(task: str, primary: str | None = None) -> str | None:
                 "score.")
     if headline is None or headline == primary:
         return None
-    return (f"{LABELS[headline]} is the {HEADLINE_LABEL}: it "
-            f"{SEMI_PROPER.format(primary=SPOKEN.get(primary, LABELS[primary]))}.")
+    spoken = SPOKEN.get(primary, LABELS[primary])
+    if task == "multiclass":
+        return (f"Accuracy and macro-F1 are the {HEADLINE_LABEL}: they "
+                f"{CLASSIFICATION.format(primary=spoken)}.")
+    return f"{LABELS[headline]} is the {HEADLINE_LABEL}: it {SEMI_PROPER.format(primary=spoken)}."
+
+
+def headline_words(task: str) -> str | None:
+    """The customary headline of ``task`` as a sentence names it (None: the task has none)."""
+    if task == "multiclass":
+        return "accuracy and macro-F1"
+    headline = HEADLINE.get(task)
+    return LABELS[headline] if headline else None
 CV_DEFINITION = {
     "regression": ("Cross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction; R² is "
                    "measured against the mean of the rows each fold's model was fit on, as the "
@@ -589,7 +610,7 @@ def cross_validate(task: Task, make: Callable[[], Any], X: Any, y: Any,
 
 
 __all__ = ["CV_DEFINITION", "CrossValidated", "FoldPart", "FoldPrediction", "HEADLINE",
-           "HEADLINE_LABEL", "LABELS", "CLASSIFIED", "LOWER_IS_BETTER", "METRICS", "POOLED",
+           "HEADLINE_LABEL", "LABELS", "CLASSIFICATION", "headline_words", "CLASSIFIED", "LOWER_IS_BETTER", "METRICS", "POOLED",
            "PRIMARY", "SE_DEFINITION", "SPOKEN", "classes_of", "concordance", "cross_validate",
            "fold_part", "fold_pairs", "higher_is_better", "metric_labels", "ordinal_scores",
            "pooled", "predict", "primary_metric", "r2_against", "repeated_pairs", "score",

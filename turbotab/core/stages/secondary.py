@@ -171,9 +171,24 @@ def secondary_stage(ctx: StageContext) -> Bundle:
                          "coefficients": [r for r in coef or [] if r["feature"] in features],
                          "inference": inference, "concerns": concerns})
         out.append({"family": family.key, "label": family.label, "fits": fits})
-    methods = (f"Beside the primary model, the same model further adjusted for {listing(further)} "
-               f"was declared before the estimates were shown and fit on {note}; the estimate of "
-               f"{listing(exposures, limit=3)} is reported from each.")
+    # Only the models reported are said to be: one held (its imputation asks what only the user can
+    # settle, or refused) or that failed is not counted among them.
+    unfit = {label for label, _, _ in analyses
+             if all(not f.get("coefficients") for fam in out for f in fam["fits"]
+                    if f["label"] == label)}
+    whose = listing(exposures, limit=3)
+    declared = (f"Beside the primary model, the same model further adjusted for {listing(further)} "
+                f"was declared before the estimates were shown")
+    if not unfit and all(f.get("coefficients") for fam in out for f in fam["fits"]):
+        methods = f"{declared} and fit on {note}; the estimate of {whose} is reported from each."
+    elif unfit == {analyses[1][0]}:
+        methods = (f"{declared}, but it could not be fit, so the estimate of {whose} is reported "
+                   f"from the primary model alone, fit on {note}.")
+    elif unfit == {label for label, _, _ in analyses}:
+        methods = f"{declared}; neither model could be fit, so no estimate of {whose} is reported."
+    else:
+        methods = (f"{declared} and fit on {note} where it could be; the estimate of {whose} is "
+                   f"reported from each model fit.")
     artifact = SecondaryArtifact(purpose="inference", exposure=exposure, further=further,
                                  rows=note, families=out, methods=methods)
     ctx.progress(1.0, "Done")

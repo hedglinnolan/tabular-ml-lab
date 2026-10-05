@@ -1142,7 +1142,8 @@ class ProjectService:
         fit changed after the opening and the post-seal decisions that changed what it reads.
         """
         records = self.log(pid).records()
-        opened = bool(decisions.fold(records).seal_opened)
+        folded = decisions.fold(records)
+        opened = bool(folded.seal_opened)
         cache = self.workspace.cache_dir(pid)
         out = seal.serve_fit(data, opened=opened,
                              scores=lambda: seal.read_sealed_scores(cache, key) if key else None,
@@ -1161,7 +1162,17 @@ class ProjectService:
         out["at_opening"] = at
         if at is not None and not at["current"] and out.get("final_note"):
             out["final_note"] = at["note"]
-        return out
+        # MS6 (MODELING_SEQUENCE §1 row 12 (b), §4): with no rows held out, the result stands only
+        # when every family whose score was shown for this outcome is fitted; the only family
+        # fitted is declared before any score was seen only when no other's was ever shown. A stale
+        # fit (veiled, inert) may answer another outcome, so only the current one is checked.
+        status = self.engine.status(pid).get("fit")
+        if status is None or status.status != "fresh" or status.key != key:
+            return out
+        from turbotab.core.models.selection import read_seen, vouch
+
+        target = folded.target
+        return vouch(out, read_seen(self.workspace.project_dir(pid)).get(target or "", []), target)
 
     def _fresh_sealed_scores(self, pid: str) -> Any:
         """The fresh fit's held-out scores from its sealed frame (None: no fresh fit)."""
@@ -1273,6 +1284,14 @@ class ProjectService:
             records = self.log(pid).records()
             artifact = repairs.annotate(artifact, decisions.fold(records), records)
         self._lock_when_shown(pid, stage, artifact)
+        if stage in ("fit", "explain") and result.fresh and isinstance(artifact, dict):
+            # MS6: the families whose cross-validated scores this client now sees, for its outcome,
+            # kept beside the project; a revert or a new seed cannot unsee them. The explanations'
+            # floors quote the same scores (wave 2a's EXPLAIN), so serving them counts too.
+            from turbotab.core.models.selection import explained_in, note_seen, scored_in
+
+            note_seen(self.workspace.project_dir(pid), self.log(pid).state().target,
+                      scored_in(artifact) if stage == "fit" else explained_in(artifact))
         return {
             "stage": result.stage,
             "key": result.key,

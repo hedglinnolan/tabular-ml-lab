@@ -1943,6 +1943,13 @@ def split_stage(ctx: StageContext) -> Bundle:
     sealed = info.pop("sealed")
     if seal.chronology is not None:
         notes.append(seal.chronology.sentence)
+    # MS6 (MODELING_SEQUENCE §2): when the seal could not keep a unit's rows together the folds are
+    # drawn by row too, and every score is within-unit performance: said here, never silent.
+    from turbotab.core.models.validation import within_unit_sentence
+
+    within = within_unit_sentence(seal.basis.model_dump(mode="json") if seal.basis else None)
+    if within:
+        notes.append(within)
     data = {**info, **seal.facts(), "note": split_note({**info, "notes": notes})}
     # "sealed" holds every held-out row, including ones the cohort now excludes: an exclusion
     # relaxed later brings them back held out, so previews must never read them either.

@@ -288,6 +288,18 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
     ctx.progress(0.5, "Timing one fit of each family on a sample of the training rows")
     try:
         with open_store(ctx) as store:
+            # MS6: the grouping the question named is validated internal–externally beside the
+            # headline under prediction, one refit per level (the fit stage's ``sites``).
+            from turbotab.core.estimand import cluster_answer
+            from turbotab.core.models.validation import SITE_LIMIT
+
+            site = cluster_answer(ctx.state) if ctx.state.purpose != "inference" else None
+            if (site is not None and site in store.columns and scheme != "time_ordered"
+                    and not (data.get("validation") == "internal_external"
+                             and data.get("cluster") == site)):
+                levels = store.materialize([site], np.asarray(train_ids))[site].astype(object)
+                n_levels = int(levels.fillna("(not recorded)").astype(str).nunique())
+                folds += n_levels if 2 <= n_levels <= SITE_LIMIT else 0
             return estimate_fits(store, ctx.state, task, train_ids, families, folds,
                                  cancelled=ctx.cancelled, scheme=scheme)
     except Cancelled:
@@ -677,9 +689,10 @@ def _two(a: float, b: float) -> tuple[str, str]:
 
 
 def baseline_concern(task: str, metric_label: str, model: float | None, base: float | None,
-                     lower: bool = False) -> str | None:
+                     lower: bool = False, metric: str | None = None) -> str | None:
     """A plain sentence when a family scores worse than its baseline on the primary metric
-    (``lower``: the metric is better when lower, as log loss is)."""
+    (``lower``: the metric is better when lower, as log loss is). It says "orders" only of a
+    ranking score (``metric``: Harrell's C); a proper score measures the probabilities (MS6)."""
     if model is None or base is None or not np.isfinite(model) or not np.isfinite(base):
         return None
     if (model <= base) if lower else (model >= base):
@@ -689,12 +702,13 @@ def baseline_concern(task: str, metric_label: str, model: float | None, base: fl
         return f"Predicts worse than the outcome's average: CV {metric_label} {m}, against {b} for the average."
     if task == "binary":
         return f"Predicts worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
+    ranking = metric == "c_index"
     if task == "ordinal":
-        return (f"Orders the outcome worse than the level prior: CV {metric_label} {m}, against {b} "
-                f"for the prior.")
+        verb = "Orders the outcome" if ranking else "Predicts the levels"
+        return f"{verb} worse than the level prior: CV {metric_label} {m}, against {b} for the prior."
     if task == "time_to_event":
-        return (f"Orders the events worse than one risk for everyone: CV {metric_label} {m}, against "
-                f"{b}.")
+        verb = "Orders the events" if ranking or metric is None else "Predicts the risk by the horizon"
+        return f"{verb} worse than one risk for everyone: CV {metric_label} {m}, against {b}."
     return (f"Predicts the classes worse than the class prior: CV {metric_label} {m}, against {b} "
             f"for the prior.")
 
@@ -993,11 +1007,23 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
 
         design = survey.design if survey is not None and getattr(survey, "answer", None) == "population" \
             else None
+        once: list[str] = []
+        if clustered and answer.get("imputation_levels") != "single_level":
+            # Ruling 12 with the ledger (BLUEPRINT §14.1): only a column the user confirmed as one
+            # value per unit is carried and imputed once per unit; one whose records agree within
+            # every unit, unconfirmed, is asked before any copy is drawn.
+            from turbotab.core.methods.missing import time_invariance_ask, time_invariant_columns
+
+            once, ask = time_invariant_columns(state, X, clusters.codes, gaps)
+            if ask:
+                reason, exits = time_invariance_ask(ask, clusters.column, state)
+                return TableMissing(refusal=reason, exits=exits)
         try:
             imputations = impute_for_inference(spec, X, y, task, seed=seed, progress=progress,
                                                cancelled=ctx.cancelled, survey=design,
                                                clusters=clusters if clustered else None,
-                                               nested=nested, factors=_settled_factors(ctx, spec))
+                                               nested=nested, factors=_settled_factors(ctx, spec),
+                                               time_invariant=once)
         except ImputationRefused as exc:
             zeros = list(getattr(exc, "zeros", None) or [])
             exits: list[dict[str, Any]] = []
@@ -1328,12 +1354,16 @@ def fit_stage(ctx: StageContext) -> Bundle:
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.models.selection import OutOfFold, declared_result, selection_optimism
     from turbotab.core.models.survival import follow_up_columns, time_to_event_outcome
-    from turbotab.core.models.validation import (COMPARISONS_NOTE, PER_ROW_LOSSES, calibration_by,
-                                                 family_differences, fired_chain, headline_how,
-                                                 internal_external, level_words, nested_cv_fits,
-                                                 nested_cv_interval, not_applied,
+    from turbotab.core.estimand import cluster_answer
+    from turbotab.core.models.metrics import fold_pairs
+    from turbotab.core.models.validation import (COMPARISONS_NOTE, PER_ROW_LOSSES, SITE_LIMIT,
+                                                 calibration_by, family_differences, fired_chain,
+                                                 headline_how, internal_external, level_words,
+                                                 nested_cv_fits, nested_cv_interval,
+                                                 nested_offer_label, not_applied,
                                                  optimism_bootstrap, performance_sentence,
-                                                 resample_concern, score_words, wide, wide_clause)
+                                                 resample_concern, score_words, site_folds,
+                                                 unit_spans, wide, wide_clause)
     from turbotab.core.seal import SEALED_DETAIL, SEALED_SCORES, sealed_detail_frame, sealed_scores_frame
 
     state = ctx.state
@@ -1369,6 +1399,12 @@ def fit_stage(ctx: StageContext) -> Bundle:
         unit_columns = (cluster_columns(state, store.columns, [grouped_by])
                         if inference or unit_models else [])
         columns += [c for c in unit_columns if c not in columns]
+        # MS6 (MODELING_SEQUENCE §2): under prediction the grouping the question named implies
+        # performance across its levels, validated internal–externally beside the headline.
+        site = cluster_answer(state) if not inference else None
+        site = site if site in store.columns else None
+        if site is not None and site not in columns:
+            columns.append(site)
         frame = modeling_frame(store, columns, assignment.index.to_numpy(), outcome=target)
     train = assignment["train"].to_numpy()
     y_all = frame[target]
@@ -1416,6 +1452,33 @@ def fit_stage(ctx: StageContext) -> Bundle:
         # the unit, but no unit repeats, so clustering by it changes nothing and "its rows repeat"
         # would be false.
         groups, grouped_by, unit_all, hold_groups = None, None, None, None
+    # MS6 (MODELING_SEQUENCE §2): when the seal could not keep a unit's rows together, every score
+    # is within-unit performance, and every sentence says so (models/validation.py).
+    spans = unit_spans(split_data.get("basis")) if grouped_by is None else None
+    # ... and under prediction the grouping the question named is validated internal–externally
+    # beside the headline (2 to SITE_LIMIT levels), unless the headline already is.
+    sites: dict[str, Any] | None = None
+    site_codes, site_labels = None, []
+    if site is not None:
+        site_codes, site_labels = site_folds(frame.loc[train, site].to_numpy(dtype=object))
+        n_levels = len(site_labels)
+        sites = {"column": site, "levels": n_levels, "ran": False, "why": None}
+        if validation == "internal_external" and split_data.get("cluster") == site:
+            sites["ran"], site_codes = True, None  # the headline is this validation
+        elif scheme == "time_ordered":
+            sites["why"] = (f"the folds follow time, and validation by `{site}` would fit on later "
+                            f"rows")
+            site_codes = None
+        elif n_levels < 2:
+            sites["why"] = f"`{site}` has one level among the training rows"
+            site_codes = None
+        elif n_levels > SITE_LIMIT:
+            sites["why"] = (f"`{site}` has {n_levels:,} levels, more than the {SITE_LIMIT} this app "
+                            f"validates one by one")
+            site_codes = None
+        else:
+            sites["ran"] = True
+    site_pairs = fold_pairs(site_codes) if site_codes is not None else []
     # Under a survey design (audit §5 WP10, ME-06): whose estimate the table is. The design is read
     # over every row of the working table, so rows outside the analysis stay in its variance.
     survey, survey_note = _survey(ctx, clusters)
@@ -1488,7 +1551,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
     reference = float(np.mean(y.astype(float))) if task == "regression" and len(y) else None
     n_boot = int(split_data.get("n_boot") or 0) if validation == "bootstrap" else 0
     own_pairs = 0 if headline_repeats is not None else len(pairs)
-    units = max(1, len(keys) * (len(sub_pairs) + own_pairs + 2 + n_boot))
+    units = max(1, len(keys) * (len(sub_pairs) + own_pairs + 2 + n_boot + len(site_pairs)))
     done = 0
     results: dict[str, Any] = {}
     substrates: dict[str, Any] = {}
@@ -1745,8 +1808,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
         versus = versus_baseline(versus_metric, sub_result.folds_of(versus_metric),
                                  base_sub.folds_of(versus_metric), gain=gain,
                                  test_share=sub_result.test_share)
-        worse = baseline_concern(task, LABELS[versus_metric], estimate, base_value, lower=not higher)
-        tie = None if worse else no_better_concern(task, LABELS[versus_metric], versus, estimate,
+        worse = baseline_concern(task, score_words(versus_metric), estimate, base_value,
+                                 lower=not higher, metric=versus_metric)
+        tie = None if worse else no_better_concern(task, score_words(versus_metric), versus, estimate,
                                                    base_value, _two)
         if worse or tie:
             concerns.insert(0, worse or tie)
@@ -1779,6 +1843,22 @@ def fit_stage(ctx: StageContext) -> Bundle:
             iecv = internal_external(task, result, list(split_data.get("fold_labels") or []),
                                      str(split_data["cluster"]), groups=groups, unit=grouped_by,
                                      metric=primary)
+        elif site_pairs:
+            # MS6: the grouping the question named, each level scored by models fit on the others.
+            ctx.progress(share(done), f"{family.label}: each level of {site} scored in turn")
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    by_site = cross_validate(
+                        task, lambda _k=key: with_units(clone(pipelines[_k]), unit_of), X, y,
+                        site_pairs, fit=fit, before_fold=before_fold, keep_predictions=True,
+                        horizon=horizon)
+                iecv = internal_external(task, by_site, site_labels, site, groups=groups,
+                                         unit=grouped_by, metric=primary)
+            except Cancelled:
+                raise
+            except Exception as exc:  # noqa: BLE001 - a level that cannot be fit is a concern
+                concerns.append(f"Internal–external validation by `{site}` could not run: {exc}")
         if survey_note:
             concerns.append(survey_note)
         elif survey is not None and survey.answer == "population" and not survey.refusal:
@@ -1802,7 +1882,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 f"Cross-validated {score_words(primary)}",
                 entry.get("estimate"), entry.get("ci_low"), entry.get("ci_high"),
                 how=headline_how(validation, scheme, k_folds, len(fold_columns),
-                                  split_data.get("cluster")),
+                                  split_data.get("cluster"), by_row=spans is not None),
                 narrow=narrow)
         corrected = ((optimism.estimates.get(primary) if optimism is not None else None))
         if corrected is not None and corrected.corrected is not None:
@@ -1883,7 +1963,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
             else narrow,
             nested=(nested_runs[only].model_dump() if only in nested_runs else None) if only else None,
             how_cv=headline_how(validation, scheme, k_folds, len(fold_columns),
-                                 split_data.get("cluster")))
+                                split_data.get("cluster"), by_row=spans is not None),
+            nested_ran=bool(nested_runs), by_row=spans is not None)
     comparison = (Comparison(folds=len(sub_pairs) // max(len(sub_columns), 1),
                              repeats=len(sub_columns), shared=shared,
                              method=("the corrected repeated k-fold t (Nadeau & Bengio 2003; "
@@ -1896,8 +1977,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                    if k in substrates]
         seconds = round(float(sum(per_fit)) * fits_each, 1) if per_fit else None
         offer = NestedOffer(
-            label=(f"Run the nested cross-validation interval (Bates, Hastie & Tibshirani 2023): "
-                   f"{fits_each:,} refits of each family"),
+            label=nested_offer_label(fits_each, len(predicting)),
             fits=fits_each, seconds=seconds,
             estimate=duration(seconds) if seconds is not None else "not measured",
             decision={"kind": "set_split", **state.split.model_dump(mode="json"), "nested_cv": True})
@@ -1905,7 +1985,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                    families=predicting, n_holdout=n_holdout, comparison=comparison,
                    selection=selection, result=result_declared, n_boot=n_boot,
                    horizon_note=horizon_note, notes=[m.get("calibration_note") for m in models],
-                   narrow=narrow, nested=bool(nested_runs))
+                   narrow=narrow, nested=bool(nested_runs), spans=spans, sites=sites)
     artifact = FitArtifact(task=task, primary_metric=primary, metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,
@@ -2765,10 +2845,18 @@ def _pooled_note(m: int, entries: Sequence[Mapping[str, Any]], n_boot: int, supp
     ``design``, each copy's curve and variance are the surveyed population's (MS4)."""
     what = f"the data's {m} imputed copies" if supplied else f"the {m} imputations"
     parts = []
-    if any(e.get("pooled") == "contrast" for e in entries):
-        parts.append("for the linear all-components model the curve is the exact contrast of the "
-                     "pooled coefficients, with Rubin's total variance and Barnard–Rubin degrees of "
-                     "freedom")
+    exact = [e for e in entries if e.get("pooled") == "contrast"]
+    if exact:
+        # Any linear model whose move changes every row's terms by the same amount takes this
+        # path (the standard, partition and all-components models alike), so it is named by
+        # that property, never by one energy model.
+        mixed = len(exact) < len(entries)
+        whose = (f"for {', '.join(str(e.get('label') or e.get('family')) for e in exact)} "
+                 if mixed else "")
+        parts.append(f"{whose}the move changes every row's model terms by the same amount, so "
+                     f"{'its' if mixed else 'the'} curve is the exact contrast of the pooled "
+                     f"coefficients, with Rubin's total variance and Barnard–Rubin degrees of "
+                     f"freedom")
     if any(e.get("pooled") == "per_k" for e in entries):
         how = ("each copy's survey-weighted curve over the surveyed population, pooled at each k by "
                "Rubin's rules with each copy's Taylor-linearized variance as its within-copy "
