@@ -415,6 +415,5 @@ The human expert review packet (V2 definition of done §4) must check those agai
 1. ~~An adversarial literature review~~ — done (2026-10-03).
 2. Fixture journeys for one prediction and one inference analysis per lens, plus the seven reference
    chains in §6.
-3. A decision on how "Quick" vs "Advanced" verbosity (PRODUCT_VISION §08) changes which steps are
-   stated rather than asked. My proposal: Quick *states* steps 8–10 and the default rungs, and
-   *asks* steps 2, 3 and 5 under inference, because those are the ones a reviewer will question.
+3. ~~Quick vs Advanced~~: withdrawn. No modes. Each decision is asked, stated or silent by its
+   consequence, inside the living methods section (BLUEPRINT §11.4).
