@@ -348,6 +348,17 @@ def representative_decisions():
         # The NCI usual-intake method: one component's distribution, with the EAR's share
         d.SetUsualIntake(nutrient="protein_g", model="amount_only", order_column="recall",
                          weekend=["weekend"], cutoff=46, cutoff_kind="EAR"),
+        # V2 causal row: a time-varying exposure's lane, each method
+        d.SetTimeVarying(exposure="supplement", method="msm_iptw",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"],
+                         baseline=["age", "sex"], censoring="lost", truncation="p1_p99"),
+        d.SetTimeVarying(exposure="supplement", method="msm_iptw", pattern="initiation",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"]),
+        d.SetTimeVarying(exposure="supplement", method="gformula",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"],
+                         baseline=["age"]),
+        d.SetTimeVarying(exposure="supplement", method="standard",
+                         ordering="exposure_precedes_outcome", acknowledged=True),
     ]
 
 

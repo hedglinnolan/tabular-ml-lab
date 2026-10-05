@@ -3113,6 +3113,12 @@ CONSUMERS: tuple[Consumer, ...] = (
     Consumer(_C + "detectors.genomics:card", ("assay_type",), False, WORDS_ONLY),
     Consumer(_C + "stages.working:unit_suggestions", ("measurement", "grain_suggestion"), False,
              WORDS_ONLY),
+    # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
+    # The lane reads each unit's history by the settled time column, and its models read each
+    # covariate's role and code-or-amount reading as the fit does; while one waits, it asks.
+    Consumer(_C + "stages.time_varying:read_setting", (), True, SETTLED_ONLY),
+    Consumer(_C + "time_varying:_lane_needs_a_settled_time_column", (), True, ASK),
+    Consumer(_C + "time_varying:_lane_reads_settled_readings", (), True, ASK),
 )
 
 

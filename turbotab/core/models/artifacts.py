@@ -366,6 +366,8 @@ class EstimandAnnotation(_Model):
     left_out: dict[str, str]  # column -> its derived role
     secondary: list[str]  # the declared "further adjusted for" model's added columns
     features: list[str]  # the model-matrix columns carrying the exposure's effect
+    # V2 causal row: what the exposure's row is when it changes over time (turbotab/core/time_varying.py)
+    time_varying: str | None = None
 
 
 class FitArtifact(_Model):

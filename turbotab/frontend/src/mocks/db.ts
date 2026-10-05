@@ -662,6 +662,8 @@ function slotOf(d: Decision): Slot | null {
       return "estimand";
     case "set_adjustment":
       return "adjustment";
+    case "set_time_varying":
+      return "time_varying";
     case "set_sensitivity":
       return "sensitivity";
     case "set_measurement_error":
@@ -815,6 +817,13 @@ function valueOf(d: Decision): ProjectState[Slot] {
                effect: d.effect ?? "total", contrast: d.contrast ?? null, measure: d.measure };
     case "set_adjustment":
       return null;
+    case "set_time_varying":
+      return { exposure: d.exposure, method: d.method, ordering: d.ordering,
+               confounders: d.confounders ?? [], baseline: d.baseline ?? [],
+               censoring: d.censoring ?? null, pattern: d.pattern ?? "switches",
+               summary: d.summary ?? "cumulative", truncation: d.truncation ?? null,
+               simulations: d.simulations ?? 10000, bootstrap: d.bootstrap ?? 500,
+               acknowledged: d.acknowledged ?? false };
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -918,6 +927,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     codebooks: null,
     batch: null,
     multiplicity: null,
+    time_varying: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

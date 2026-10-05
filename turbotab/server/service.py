@@ -806,7 +806,8 @@ class ProjectService:
         # What the Router reads, when fresh (WP17: the roles stage's proposals name the groupings
         # the cluster question asks about; WP18: the proposals for the ask card, whose "read from
         # your data" reads the roles, the outcome and the proposals as GET /readings does).
-        for stage in ("target_info", "oriented", "structure", "roles", "proposals"):
+        # V2 causal row: the time-varying lane reads whether the exposure changes within units.
+        for stage in ("target_info", "oriented", "structure", "roles", "proposals", "time_varying"):
             status = stages.get(stage)
             if status is not None and status.status == "fresh" and status.key:
                 artifacts[stage] = self._artifact(pid, stage, status.key, public=True)

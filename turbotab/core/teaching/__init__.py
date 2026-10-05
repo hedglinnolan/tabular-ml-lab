@@ -25,28 +25,28 @@ from pydantic import BaseModel, ConfigDict
 QuestionKey = Literal[
     "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "energy_adjustment", "models", "substitution",
-    "open_seal",
+    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "models",
+    "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
     "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "energy_adjustment", "models", "substitution",
-    "open_seal",
+    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "models",
+    "substitution", "open_seal",
 )
 # What is taught, in the sequence's order: every question, plus the one card that is not a
 # question — the repairs offered before the outcome.
 TeachingKey = Literal[
     "lens", "orientation", "repairs", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "energy_adjustment", "models", "substitution",
-    "open_seal",
+    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "models",
+    "substitution", "open_seal",
 ]
 TEACHING_KEYS: tuple[str, ...] = (
     "lens", "orientation", "repairs", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "energy_adjustment", "models", "substitution",
-    "open_seal",
+    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "models",
+    "substitution", "open_seal",
 )
 EvidenceStatus = Literal["SETTLED", "CONVENTION", "DISPUTED"]
 

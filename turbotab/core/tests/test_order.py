@@ -44,6 +44,9 @@ ANSWER = {
     "estimand": d.SetEstimand(exposure="protein_g", measure="mean_difference"),
     "adjustment": d.SetAdjustment(exposure="protein_g", answers={"age": d.CovariateAnswers(
         causes_exposure="yes", causes_outcome="yes", after_exposure="no")}),
+    # V2 causal row: a time-varying exposure's lane
+    "time_varying": d.SetTimeVarying(exposure="protein_g", method="msm_iptw",
+                                     ordering="exposure_precedes_outcome", truncation="none"),
     "purpose": d.SetPurpose(purpose="prediction"),
     "grain": d.SetGrain(grain="repeated", id_column="participant_id"),
     "repeat_kind": d.SetRepeatKind(repeat_kind="repeats"),

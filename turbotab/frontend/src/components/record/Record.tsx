@@ -92,6 +92,7 @@ export const SUBJECT: Record<QuestionKey, string> = {
   survey: "the survey answer",
   estimand: "the exposure and its effect",
   adjustment: "the adjustment set",
+  time_varying: "the time-varying exposure",
   exclusions: "the eligibility",
   missing: "the missing values",
   split: "the seal",

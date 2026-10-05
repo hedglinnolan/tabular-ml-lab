@@ -1407,7 +1407,57 @@ ADJUSTMENT = {
     "evidence": None,
 }
 
+# V2 causal row (turbotab/core/time_varying.py). No research pack covers g-methods, so the card cites
+# its primary sources in place, and its drawer is the pack's passage on exposures updated over
+# follow-up (the time ordering it declares): Robins, Hernán & Brumback (2000, Epidemiology
+# 11:550, abstract): "standard approaches for adjustment of confounding are biased when there exist
+# time-dependent confounders that are also affected by previous treatment"; Cole & Hernán (2008, Am J
+# Epidemiol 168:656): "A necessary condition for correct model specification is that the stabilized
+# weights have a mean of one".
+TIME_VARYING = {
+    "key": "time_varying",
+    "title": "An exposure that changes over time",
+    "question": "How is an exposure that changes over time estimated?",
+    "one_liner": "A confounder that earlier exposure changed needs g-methods; their diagnostics come "
+                 "before any estimate.",
+    "why": "When a confounder of later exposure was itself changed by earlier exposure, standard "
+           "regression is biased either way: adjusting for it removes part of the effect, and "
+           "leaving it out leaves later exposure confounded (Robins, Hernán & Brumback 2000). "
+           "Weights or simulation adjust for it at each time point.",
+    "consumer": "The weights, the outcome model, the simulated risks and the methods read it.",
+    "options": [
+        option("msm_iptw", "Marginal structural model",
+               "Weights balance the confounders at each time point; their distribution is read "
+               "first."),
+        option("gformula", "Parametric g-formula",
+               "Simulates the confounders forward under always and never exposed, and compares the "
+               "risks."),
+        option("standard", "Standard regression",
+               "Sound only when no confounder was changed by earlier exposure; otherwise recorded "
+               "as biased."),
+    ],
+    "terms": [
+        term("time-varying confounder", "A covariate measured at each time point that affects later "
+                                        "exposure and the outcome; earlier exposure may change it."),
+        term("stabilized weight", "The probability of a unit's exposure history given its baseline "
+                                  "covariates, over that given its confounders too; the mean should "
+                                  "be near 1."),
+        term("positivity", "At each time point some units are exposed and some are not, so the "
+                           "effect comes from the data rather than the model alone."),
+    ],
+    "drawer": {"sections": [
+        section("Exposure updated over follow-up, and reverse causation",
+                "With repeated FFQs across follow-up, the standard cohort approach is the "
+                "cumulative average — averaging all FFQs up to each event time — which reduces "
+                "within-person error relative to baseline-only. Caveat: if exposure changes "
+                "because of preclinical disease, cumulative averaging imports reverse causation, "
+                "so a lag or a stop-updating-at-diagnosis rule is conventional.",
+                "CONVENTION", NUT03),
+    ]},
+    "evidence": None,
+}
+
 ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, PURPOSE, GRAIN,
            REPEAT_KIND, UNIT, AGGREGATION, TEMPORAL, ROLES, CLUSTERS, SURVEY, EXCLUSIONS, MISSING,
-           SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, ENERGY_ADJUSTMENT, MODELS, SUBSTITUTION,
-           OPEN_SEAL]
+           SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, TIME_VARYING, ENERGY_ADJUSTMENT, MODELS,
+           SUBSTITUTION, OPEN_SEAL]

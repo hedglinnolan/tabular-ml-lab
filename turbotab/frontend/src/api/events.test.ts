@@ -95,6 +95,7 @@ function view(): ProjectView {
       codebooks: null,
       batch: null,
       multiplicity: null,
+      time_varying: null,
     },
     decisions: [record(1)],
     stages: {

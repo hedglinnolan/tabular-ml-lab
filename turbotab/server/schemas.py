@@ -1077,3 +1077,7 @@ ARTIFACT_MODELS.update({"secondary": SecondaryArtifact})
 from turbotab.core.stages.usual_intake import UsualIntakeArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"usual_intake": UsualIntakeArtifact})
+# V2 causal row: a time-varying exposure by g-methods, diagnostics before estimates.
+from turbotab.core.stages.time_varying import TimeVaryingArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"time_varying": TimeVaryingArtifact})

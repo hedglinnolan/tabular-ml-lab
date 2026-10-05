@@ -101,6 +101,9 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "scales":
         return any(isinstance(sc, Mapping) and sc.get("correction") is not None
                    for sc in artifact.get("scales") or [])
+    if stage == "time_varying":  # its diagnostics read no outcome; only its estimates lock
+        estimates = artifact.get("estimates")
+        return isinstance(estimates, Mapping) and bool(estimates.get("rows"))
     return False
 
 
