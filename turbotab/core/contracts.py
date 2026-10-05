@@ -241,7 +241,7 @@ def scope_of(key: str, option: str | None = None) -> Scope:
 DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.qc_drift", "turbotab.core.methods.omics", "turbotab.core.methods.batch",
     "turbotab.core.scales", "turbotab.core.usual_intake", "turbotab.core.assembly",
-    "turbotab.core.codebook", "turbotab.core.stages.effects",
+    "turbotab.core.codebook", "turbotab.core.stages.effects", "turbotab.core.causal",
 )
 
 

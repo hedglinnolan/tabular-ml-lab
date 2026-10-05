@@ -210,6 +210,9 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "effects":  # ESTIMAND: the declared models' exposure rows, or a marginal estimate
         return any(_effects_shown(f) for f in artifact.get("families") or []
                    if isinstance(f, Mapping))
+    if stage == "causal":  # the causal lane's estimate (turbotab/core/stages/causal.py)
+        return any(e.get("estimate") is not None
+                   for e in artifact.get("estimates") or [] if isinstance(e, Mapping))
     return False
 
 

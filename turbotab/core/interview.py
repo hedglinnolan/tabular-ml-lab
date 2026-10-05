@@ -39,6 +39,14 @@ Rules:
   (MODELING_SEQUENCE §1, "everything after the seal"), so they follow the opening sequence's
   eligibility, missing values and split, which nothing resequences (OPENING_SEQUENCE §01), and
   come before the energy model (step 4, the domain transforms) and the models.
+* ``causal`` (the causal lane; ``turbotab/core/causal.py``) comes before the models under inference,
+  so it is part of the plan declared before any estimate is shown (the plan lock records it):
+  ``not_applicable`` under prediction, for an exposure family, a direct effect or an outcome that is
+  neither numeric nor yes/no; otherwise ``skipped``: the primary model alone is stated, the
+  top-ranked causal estimator one step away (and, when the adjustment set's candidates are many
+  relative to n, why it ranks first: rung (d) ranks high), also while its card computes, so it
+  never holds the models question. It is answered by ``set_causal`` for the declared exposure (a
+  new exposure re-asks it).
 * ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
   fit until then), ``not_applicable`` when nothing is held out, and answered once opened. Its slot
   is ``seal_opened``.
@@ -69,14 +77,14 @@ from turbotab.core.ask import AskCard, AskContext
 QuestionKey = Literal[
     "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "energy_adjustment", "models", "substitution",
-    "open_seal",
+    "missing", "split", "estimand", "adjustment", "energy_adjustment", "causal", "models",
+    "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
     "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "energy_adjustment", "models", "substitution",
-    "open_seal",
+    "missing", "split", "estimand", "adjustment", "energy_adjustment", "causal", "models",
+    "substitution", "open_seal",
 )
 # The ProjectState slot a question's answer writes, where it is not the question's own name.
 SLOT_OF: dict[str, str] = {"open_seal": "seal_opened"}
@@ -113,6 +121,9 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "split": ("findings",),
     "energy_adjustment": ("proposals",),
     "models": ("shelf",),
+    # The causal lane: its card (the options, the assumptions and the outcome-free diagnostics) is
+    # the ``causal_design`` stage's (``turbotab/core/causal.py``).
+    "causal": ("causal_design",),
     "substitution": ("fit",),
     "open_seal": ("fit",),
 }
@@ -422,7 +433,7 @@ def route(
     what the open question's ask card may read (the table's summaries and store); without it the
     card reads the state and the artifacts alone.
     """
-    from turbotab.core import estimand
+    from turbotab.core import causal, estimand
 
     if energy_bearing is None:
         from turbotab.core.stages.rows import energy_bearing as bearing
@@ -449,6 +460,9 @@ def route(
         "clusters": lambda: estimand.clusters_gate(state, artifacts.get("roles")),
         "estimand": lambda: estimand.estimand_gate(state),
         "adjustment": lambda: estimand.adjustment_gate(state),
+        # The causal lane (turbotab/core/causal.py): never under prediction; else stated, its
+        # top-ranked estimator one step away (rung (d) ranks high when candidates are many).
+        "causal": lambda: causal.causal_gate(state, artifacts.get("causal_design")),
     }
     # A question whose answer is not simply its slot's value (WP17): the follow-up is answered by a
     # time to event's follow-up or a yes/no outcome's "same for everyone"; the estimand while its
@@ -457,6 +471,7 @@ def route(
         "follow_up": lambda: estimand.follow_up_answer(state, target_info),
         "estimand": lambda: estimand.current_estimand(state),
         "adjustment": lambda: estimand.adjustment_answer(state),
+        "causal": lambda: causal.current_causal(state),
     }
     writer_slots = {"follow_up": ("follow_up", "censoring")}
 

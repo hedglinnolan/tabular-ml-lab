@@ -992,30 +992,9 @@ class _Run:
 
     def _sensitivity(self, feature: str, found: Mapping[str, Any], imputed: bool,
                      reason: str | None, what: str = "the estimate") -> Sensitivity:
-        from turbotab.core.models import effects
-        from turbotab.core.voice import tick
-
         e = found.get("e_value")
         r = found.get("robustness")
-        parts = []
-        target = tick(self.state.target)
-        if r is not None:
-            bench = r.get("benchmarks") or []
-            lead = (f"An unmeasured confounder would need a partial R² of {r['rv']:.1%} with both "
-                    f"{tick(feature)} and {target}, beyond the measured covariates, to bring the "
-                    f"estimate to zero, and {r['rv_alpha']:.1%} to bring its 95% interval to "
-                    f"include zero ({effects.CINELLI_HAZLETT})")
-            if bench:
-                b = max(bench, key=lambda x: abs(r["estimate"] - x["estimate"]))
-                lead += (f"; one as strong as {tick(b['covariate'])} would move it to "
-                         f"{b['estimate']:.4g} (95% CI {b['ci_low']:.4g} to {b['ci_high']:.4g})")
-            parts.append(lead + ".")
-        if e is not None:
-            limit = ("1, as its interval includes the null" if e.get("interval_includes_null")
-                     else f"{e['limit']:.2f}" if e.get("limit") is not None else "not computed")
-            parts.append(f"E-value for {what}: {e['point']:.2f}, and for the confidence limit "
-                         f"nearer the null {limit} ({effects.VANDERWEELE_DING}); an E-value is read "
-                         f"against the confounders one can name, never as a pass or a fail.")
+        parts = [sensitivity_reading(found, feature, str(self.state.target), what)]
         if imputed and r is not None:
             parts.append("The robustness value reads the first completed copy.")
         return Sensitivity(
@@ -1026,6 +1005,50 @@ class _Run:
             if r is not None else None,
             reading=" ".join(parts), not_computed=(f"No robustness value: {reason}." if reason
                                                    else None))
+
+
+def sensitivity_reading(found: Mapping[str, Any], feature: str, target: str,
+                        what: str = "the estimate") -> str:
+    """What one sensitivity analysis says (``models.effects.unmeasured_confounding``'s result), in
+    the words every inference result and the causal lane share: the robustness value with the
+    benchmark that moves the estimate most, then the E-value, never a pass or a fail."""
+    from turbotab.core.models import effects
+    from turbotab.core.voice import tick
+
+    e = found.get("e_value")
+    r = found.get("robustness")
+    parts = []
+    if r is not None:
+        bench = r.get("benchmarks") or []
+        lead = (f"An unmeasured confounder would need a partial R² of {r['rv']:.1%} with both "
+                f"{tick(feature)} and {tick(target)}, beyond the measured covariates, to bring the "
+                f"estimate to zero, and {r['rv_alpha']:.1%} to bring its 95% interval to "
+                f"include zero ({effects.CINELLI_HAZLETT})")
+        if bench:
+            b = max(bench, key=lambda x: abs(r["estimate"] - x["estimate"]))
+            lead += (f"; one as strong as {tick(b['covariate'])} would move it to "
+                     f"{b['estimate']:.4g} (95% CI {b['ci_low']:.4g} to {b['ci_high']:.4g})")
+        parts.append(lead + ".")
+    if e is not None:
+        limit = ("1, as its interval includes the null" if e.get("interval_includes_null")
+                 else f"{e['limit']:.2f}" if e.get("limit") is not None else "not computed")
+        parts.append(f"E-value for {what}: {e['point']:.2f}, and for the confidence limit "
+                     f"nearer the null {limit} ({effects.VANDERWEELE_DING}); an E-value is read "
+                     f"against the confounders one can name, never as a pass or a fail.")
+    return " ".join(parts)
+
+
+SENSITIVITY_NAMES = {
+    "robustness_value": "the Cinelli–Hazlett robustness value (each adjusted covariate a named "
+                        "benchmark)",
+    "e_value": "the E-value for the estimate and for the confidence limit nearer the null"}
+
+
+def sensitivity_clause(methods: Sequence[str], names: Mapping[str, str] | None = None) -> str:
+    """The methods text's sentence for the analyses that ran, in rank order."""
+    words = {**SENSITIVITY_NAMES, **(names or {})}
+    return (f"Sensitivity to unmeasured confounding is reported by "
+            f"{' and by '.join(words[m] for m in methods)}, never as a pass or a fail.")
 
 
 # ── the methods sentence ─────────────────────────────────────────────────────
@@ -1087,13 +1110,7 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
             text += "."
     lines = [s for s in fam.sensitivity if s.methods]
     if lines:
-        s = lines[0]
-        names = {"robustness_value": "the Cinelli–Hazlett robustness value (each adjusted covariate a "
-                                     "named benchmark)",
-                 "e_value": "the E-value for the estimate and for the confidence limit nearer the "
-                            "null"}
-        text += (f" Sensitivity to unmeasured confounding is reported by "
-                 f"{' and by '.join(names[m] for m in s.methods)}, never as a pass or a fail.")
+        text += " " + sensitivity_clause(lines[0].methods)
     if artifact.multiplicity:
         text += " " + artifact.multiplicity
     return text
@@ -1355,5 +1372,6 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
         ),
         sources=("Gelman & Loken 2013",)),
 ))
-__all__ = ["EFFECTS_READS", "EffectsArtifact", "EffectsFamily", "SequenceFit", "effects_stage",
-           "energy_outputs", "matrix_sources", "matrix_table", "methods_sentence"]
+__all__ = ["EFFECTS_READS", "EffectsArtifact", "EffectsFamily", "SENSITIVITY_NAMES", "SequenceFit",
+           "effects_stage", "energy_outputs", "matrix_sources", "matrix_table", "methods_sentence",
+           "sensitivity_clause", "sensitivity_reading"]

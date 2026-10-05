@@ -1407,7 +1407,59 @@ ADJUSTMENT = {
     "evidence": None,
 }
 
+
+# The causal lane (V2 definition of done §2; MODELING_SEQUENCE §0 ruling 1 rung (d);
+# turbotab/core/causal.py). Stated under inference before the models (one step away, its
+# top-ranked estimator named), so an answer is part of the plan the lock records.
+CAUSAL = {
+    "key": "causal",
+    "title": "Causal machine learning",
+    "question": "Also estimate the effect with flexible learners and cross-fitting?",
+    "one_liner": "DML and TMLE estimate the declared effect without assuming the outcome model's "
+                 "form; the assumptions come first.",
+    "why": "A regression's estimate is right only if its form is. Double machine learning and "
+           "targeted maximum likelihood learn the outcome and the exposure flexibly, cross-fitted "
+           "so the intervals stay valid. They still rest on no unmeasured confounding, positivity, "
+           "consistency and time ordering, so each is declared before any estimate.",
+    "consumer": "The causal estimate, its diagnostics, the methods sentence and the plan lock read "
+                "it.",
+    "options": [
+        option("dml_plr", "Double ML, partially linear",
+               "A numeric exposure's effect per unit, every nuisance model cross-fitted."),
+        option("dml_irm", "Double ML, interactive",
+               "A yes/no exposure's average effect, or its effect among the exposed."),
+        option("tmle", "Targeted maximum likelihood",
+               "A yes/no exposure's average effect, doubly robust, inside the outcome's range."),
+        option("pds_lasso", "Post-double-selection lasso",
+               "Two lassos choose among many declared candidates; the intervals stay valid."),
+        option("none", "The primary model only",
+               "No causal machine-learning estimate beside the primary model."),
+    ],
+    "terms": [
+        term("cross-fitting", "Each row's nuisance predictions come from models fit on the other "
+                              "folds, so its own noise never fits itself."),
+        term("positivity", "Every kind of participant could have had either exposure level; "
+                           "without it the estimate extrapolates."),
+        term("doubly robust", "Consistent when either the outcome model or the propensity model "
+                              "is right."),
+    ],
+    "drawer": {"sections": [
+        section("The learners adjust; your answers identify",
+                "Penalized regression is a remedy for collinearity, not a source of causal "
+                "identification. The lasso and the learners choose only among the covariates your "
+                "answers adjust for; the identification comes from that set and the assumptions "
+                "you declare.",
+                "SETTLED", NUT08),
+        section("Survey weights: say which estimate it is",
+                "With survey weights, decide explicitly whether the estimate generalizes to the "
+                "surveyed population (weights in every fit, a design-based variance) or describes "
+                "these participants (unweighted, and said so).",
+                "SETTLED", NUT08),
+    ]},
+    "evidence": None,
+}
+
 ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, PURPOSE, GRAIN,
            REPEAT_KIND, UNIT, AGGREGATION, TEMPORAL, ROLES, CLUSTERS, SURVEY, EXCLUSIONS, MISSING,
-           SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, ENERGY_ADJUSTMENT, MODELS, SUBSTITUTION,
+           SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, ENERGY_ADJUSTMENT, CAUSAL, MODELS, SUBSTITUTION,
            OPEN_SEAL]

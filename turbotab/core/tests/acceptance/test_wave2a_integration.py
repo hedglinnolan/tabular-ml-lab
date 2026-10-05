@@ -12,12 +12,17 @@ places where two of them meet, each a rule one package wrote that the other's me
   slot, so the latest answer holds for the caption, the methods statement, the fit's table and the
   effects stage alike; and each question's leash is both packages' (unadjusted p-values are blocked
   and recorded for an omics family at any size, and beyond a few declared hypotheses).
+* **The causal lane's sensitivity is ESTIMAND's** (CAUSAL and ESTIMAND; MODELING_SEQUENCE §0 ruling
+  10: "required in the causal lane"). The lane's one call site (``causal.sensitivity_for``) runs
+  ESTIMAND's ``unmeasured_confounding``: the E-value of a difference from the outcome's standard
+  deviation, of a yes/no outcome's marginal risk ratio, and post-double selection's robustness value
+  with each selected covariate a named benchmark; where an analysis is undefined it says why.
 * **A spline exposure is the exposure** (ESTIMAND and WP12a). The Table 2 display shows the
   exposure's rows only; a restricted cubic spline's terms (``x``, ``x'``, ``x''``, as ``rms`` labels
   them) are all the exposure's.
 
-The expected numbers come from an independent path (statsmodels' least squares); the rules are read
-from the packages' own constants.
+The expected numbers come from an independent path (statsmodels' least squares, R's ``EValue`` and
+``sensemakr``); the rules are read from the packages' own constants.
 """
 from __future__ import annotations
 
@@ -31,6 +36,7 @@ import statsmodels.api as sm
 from turbotab.core import decisions as d
 from turbotab.core.decisions import Refusal
 from turbotab.core.tests.acceptance import estimand_fixtures as ef
+from turbotab.core.tests.acceptance.r_reference import needs_r, run_r
 
 AT = "2026-10-05T00:00:00Z"
 
@@ -43,7 +49,8 @@ def _fold(*decisions: d.BaseModel) -> d.ProjectState:
 # ── one registry ─────────────────────────────────────────────────────────────
 
 WAVE2A = {"ESTIMAND": ("effect_measure", "g_computation", "model_sequence", "diagnostics",
-                       "unmeasured_confounding", "exposure_family", "plan_export")}
+                       "unmeasured_confounding", "exposure_family", "plan_export"),
+          "CAUSAL": ("dml_plr", "dml_irm", "tmle", "pds_lasso")}
 
 
 def test_every_wave2a_method_enters_through_the_one_registry():
@@ -185,6 +192,93 @@ def test_a_recorded_method_reaches_the_fit_and_the_effects_stage_alike(tmp_path)
         assert all(r["q"] is None for r in model["effects"]), model["key"]
     assert run["effects"]["multiplicity"].startswith(
         "6 exposures were tested, each in turn; p-values are not adjusted for multiplicity")
+
+
+# ── the causal lane's sensitivity is ESTIMAND's ──────────────────────────────
+
+SENSITIVITY_R = """
+suppressPackageStartupMessages({library(EValue); library(sensemakr)})
+d <- read.csv(rows_csv)
+m <- lm(sbp ~ fiber + age + smoker, data = d)
+s <- sensemakr(m, treatment = "fiber", kd = 1,
+               benchmark_covariates = list(age = "age", smoker = "smoker"))
+st <- s$sensitivity_stats; b <- s$bounds
+e <- suppressMessages(evalues.OLS(est = 0.42, se = 0.11, sd = 2.3))
+r <- suppressMessages(evalues.RR(est = 0.81, lo = 0.70, hi = 0.94))
+out(list(rv_q = st$rv_q, rv_qa = st$rv_qa, labels = b$bound_label, est = b$adjusted_estimate,
+         lo = b$adjusted_lower_CI, hi = b$adjusted_upper_CI,
+         ols_point = e[2, 1], ols_limit = if (is.na(e[2, 2])) e[2, 3] else e[2, 2],
+         rr_point = r[2, 1], rr_limit = if (is.na(r[2, 2])) r[2, 3] else r[2, 2]))
+"""
+
+
+@needs_r
+def test_the_causal_lane_s_required_sensitivity_is_estimand_s_against_r(tmp_path):
+    """``causal.sensitivity_for`` against R: the E-value of a difference (``EValue::evalues.OLS``),
+    of a marginal risk ratio (``evalues.RR``), and post-double selection's robustness values and
+    named benchmarks (``sensemakr`` on the same least-squares fit), to 1e-8. Cross-fitted
+    estimators carry no robustness value, and a risk difference with no ratio no E-value, each said
+    with the reason; the analysis is never a pass or a fail."""
+    from turbotab.core import causal
+
+    rng = np.random.default_rng(31)
+    n = 600
+    age = rng.normal(50, 10, n)
+    smoker = (rng.uniform(size=n) < 0.3).astype(float)
+    fiber = 15 + 0.05 * (age - 50) - 2 * smoker + rng.normal(0, 4, n)
+    sbp = 120 + 0.4 * (age - 50) + 5 * smoker - 0.5 * fiber + rng.normal(0, 8, n)
+    rows = pd.DataFrame({"fiber": fiber, "age": age, "smoker": smoker, "sbp": sbp})
+    r = run_r(SENSITIVITY_R, {"rows": rows}, tmp_path)
+
+    difference = {"measure": "mean_difference", "estimate": 0.42, "se": 0.11, "ci_low": 0.20,
+                  "ci_high": 0.64}
+    pds = causal.sensitivity_for(
+        [difference], method="pds_lasso", exposure="fiber", outcome="sbp", outcome_sd=2.3,
+        matrix=rows[["fiber", "age", "smoker"]], y=sbp, exposure_column="fiber",
+        benchmarks={"age": ["age"], "smoker": ["smoker"]})
+    assert pds["required"] and pds["computed"] and pds["not_computed"] is None
+    assert pds["methods"] == ["robustness_value", "e_value"]  # ranked: the robustness value first
+    assert pds["robustness"]["rv"] == pytest.approx(r["rv_q"], rel=1e-8)
+    assert pds["robustness"]["rv_alpha"] == pytest.approx(r["rv_qa"], rel=1e-8)
+    bench = {b["covariate"]: b for b in pds["robustness"]["benchmarks"]}
+    for label, est, lo, hi in zip(r["labels"], r["est"], r["lo"], r["hi"]):
+        name = label.split(" ")[-1]
+        assert (bench[name]["estimate"], bench[name]["ci_low"], bench[name]["ci_high"]) == \
+            pytest.approx((est, lo, hi), rel=1e-8)
+    assert pds["e_value"]["point"] == pytest.approx(r["ols_point"], rel=1e-8)
+    assert pds["e_value"]["limit"] == pytest.approx(r["ols_limit"], rel=1e-8)
+    assert "pass" not in pds["reading"].replace("never as a pass or a fail", "")
+
+    dml = causal.sensitivity_for([difference], method="dml_plr", exposure="fiber", outcome="sbp",
+                                 outcome_sd=2.3)
+    assert dml["methods"] == ["e_value"] and dml["computed"]
+    assert dml["e_value"]["point"] == pytest.approx(r["ols_point"], rel=1e-8)
+    assert dml["not_computed"].startswith("No robustness value: it is defined for one least-squares")
+    assert causal.sensitivity_sentence(dml) == (
+        " Sensitivity to unmeasured confounding is reported by the E-value for the estimate and for "
+        "the confidence limit nearer the null, never as a pass or a fail.")
+
+    risk = [{"measure": "risk_difference", "estimate": -0.04, "se": 0.012, "ci_low": -0.064,
+             "ci_high": -0.016},
+            {"measure": "risk_ratio", "estimate": 0.81, "se": None, "ci_low": 0.70, "ci_high": 0.94}]
+    tmle = causal.sensitivity_for(risk, method="tmle", exposure="heavy", outcome="dm",
+                                  outcome_sd=None)
+    assert tmle["methods"] == ["e_value"]
+    assert tmle["e_value"]["point"] == pytest.approx(r["rr_point"], rel=1e-8)
+    assert tmle["e_value"]["limit"] == pytest.approx(r["rr_limit"], rel=1e-8)
+    assert "E-value for the marginal risk ratio" in tmle["reading"]
+
+    irm = causal.sensitivity_for(risk[:1], method="dml_irm", exposure="heavy", outcome="dm",
+                                 outcome_sd=None)
+    assert irm["computed"] is False and irm["methods"] == []
+    assert irm["not_computed"] == (
+        "No robustness value: it is defined for one least-squares coefficient (Cinelli & Hazlett "
+        "2020, J R Stat Soc B 82:39), and double/debiased machine learning in the interactive "
+        "model fits its nuisance models by cross-fitted learners; no E-value: a risk difference "
+        "with no risk ratio beside it carries no risks to form one from.")
+    assert causal.sensitivity_sentence(irm).startswith(
+        " Sensitivity to unmeasured confounding, required in the causal lane, could not be computed "
+        "for this estimate: no robustness value")
 
 
 # ── a spline exposure is the exposure ────────────────────────────────────────

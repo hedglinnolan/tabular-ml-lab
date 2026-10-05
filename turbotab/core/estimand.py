@@ -1219,9 +1219,10 @@ HOLDS: dict[str, tuple[str, ...]] = {
     "adjustment": ("inference",),
 }
 # ``scales`` (MS8): a declared scale's corrected coefficient and the uncorrected one beside it;
-# ``effects`` (ESTIMAND): Table 2, the marginal risks, the diagnostics and the sensitivity.
+# ``effects`` (ESTIMAND): Table 2, the marginal risks, the diagnostics and the sensitivity;
+# ``causal``: the causal lane's estimate (``turbotab/core/stages/causal.py``).
 ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "scales",
-                   "effects")
+                   "effects", "causal")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:

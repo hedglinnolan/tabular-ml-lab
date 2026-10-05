@@ -475,6 +475,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/RespondDiagnostic"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCausal-Input"
                   }
                 ],
                 "discriminator": {
@@ -530,7 +533,8 @@
                     "set_scales": "#/components/schemas/SetScales-Input",
                     "set_usual_intake": "#/components/schemas/SetUsualIntake-Input",
                     "set_model_sequence": "#/components/schemas/SetModelSequence-Input",
-                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic"
+                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
+                    "set_causal": "#/components/schemas/SetCausal-Input"
                   }
                 },
                 "title": "Decision"
@@ -1042,6 +1046,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/RespondDiagnostic"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCausal-Input"
                   }
                 ],
                 "discriminator": {
@@ -1097,7 +1104,8 @@
                     "set_scales": "#/components/schemas/SetScales-Input",
                     "set_usual_intake": "#/components/schemas/SetUsualIntake-Input",
                     "set_model_sequence": "#/components/schemas/SetModelSequence-Input",
-                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic"
+                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
+                    "set_causal": "#/components/schemas/SetCausal-Input"
                   }
                 },
                 "title": "Decision"
@@ -2742,6 +2750,130 @@
         ],
         "title": "BatchSpec"
       },
+      "CausalSpec": {
+        "properties": {
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "dml_plr",
+              "dml_irm",
+              "tmle",
+              "pds_lasso"
+            ],
+            "title": "Method"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "linear",
+                  "lasso",
+                  "random_forest",
+                  "boosted_trees"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learner"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "all",
+              "exposed"
+            ],
+            "title": "Population",
+            "default": "all"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "repetitions": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Repetitions",
+            "default": 5
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "assumptions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "no_unmeasured_confounding",
+                "positivity",
+                "consistency",
+                "time_ordering"
+              ]
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "trim": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "sample_only": {
+            "type": "boolean",
+            "title": "Sample Only",
+            "default": false
+          },
+          "complete_rows": {
+            "type": "boolean",
+            "title": "Complete Rows",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "exposure",
+          "method",
+          "learner",
+          "population",
+          "folds",
+          "repetitions",
+          "seed",
+          "assumptions",
+          "trim",
+          "acknowledged",
+          "sample_only",
+          "complete_rows"
+        ],
+        "title": "CausalSpec",
+        "description": "The causal lane's answer for one exposure: the estimator (or none beside the primary), its\nnuisance learner (None: the default for the table's size), whose effect (everyone, or the\nexposed), the cross-fitting folds and sample splits, and the assumptions declared before any\nestimate. ``trim``: keep the rows whose propensity lies in [trim, 1 − trim] (the overlap\npopulation); ``acknowledged``: every row kept although positivity is practically violated;\n``sample_only``: unweighted under a survey design, for these participants (block and record);\n``complete_rows``: the complete rows only, where the missing-values answer fills or imputes."
+      },
       "Caution": {
         "properties": {
           "text": {
@@ -3935,6 +4067,9 @@
               },
               {
                 "$ref": "#/components/schemas/RespondDiagnostic"
+              },
+              {
+                "$ref": "#/components/schemas/SetCausal-Output"
               }
             ],
             "title": "Decision",
@@ -3959,6 +4094,7 @@
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
                 "set_batch": "#/components/schemas/SetBatch-Output",
                 "set_categorical": "#/components/schemas/SetCategorical",
+                "set_causal": "#/components/schemas/SetCausal-Output",
                 "set_censoring": "#/components/schemas/SetCensoring-Output",
                 "set_clusters": "#/components/schemas/SetClusters-Output",
                 "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
@@ -4770,6 +4906,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/RespondDiagnostic"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCausal-Output"
                   }
                 ],
                 "discriminator": {
@@ -4793,6 +4932,7 @@
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
                     "set_batch": "#/components/schemas/SetBatch-Output",
                     "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_causal": "#/components/schemas/SetCausal-Output",
                     "set_censoring": "#/components/schemas/SetCensoring-Output",
                     "set_clusters": "#/components/schemas/SetClusters-Output",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
@@ -6008,6 +6148,7 @@
               "estimand",
               "adjustment",
               "energy_adjustment",
+              "causal",
               "models",
               "substitution",
               "open_seal"
@@ -8445,6 +8586,16 @@
               }
             ],
             "title": "Diagnostic Responses"
+          },
+          "causal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CausalSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8498,7 +8649,8 @@
           "batch",
           "multiplicity",
           "model_sequence",
-          "diagnostic_responses"
+          "diagnostic_responses",
+          "causal"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -10247,6 +10399,256 @@
         ],
         "title": "SetCategorical",
         "description": "Columns whose numbers are codes for categories (RIDRETH3: 1, 2, 3, 4, 6, 7): each enters\nthe models as indicators, one per level after the first, never as one straight line."
+      },
+      "SetCausal-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_causal",
+            "title": "Kind",
+            "default": "set_causal"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "dml_plr",
+              "dml_irm",
+              "tmle",
+              "pds_lasso"
+            ],
+            "title": "Method"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "linear",
+                  "lasso",
+                  "random_forest",
+                  "boosted_trees"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learner"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "all",
+              "exposed"
+            ],
+            "title": "Population",
+            "default": "all"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "repetitions": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Repetitions",
+            "default": 5
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "assumptions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "no_unmeasured_confounding",
+                "positivity",
+                "consistency",
+                "time_ordering"
+              ]
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "trim": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "sample_only": {
+            "type": "boolean",
+            "title": "Sample Only",
+            "default": false
+          },
+          "complete_rows": {
+            "type": "boolean",
+            "title": "Complete Rows",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "method"
+        ],
+        "title": "SetCausal"
+      },
+      "SetCausal-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_causal",
+            "title": "Kind",
+            "default": "set_causal"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "dml_plr",
+              "dml_irm",
+              "tmle",
+              "pds_lasso"
+            ],
+            "title": "Method"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "linear",
+                  "lasso",
+                  "random_forest",
+                  "boosted_trees"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learner"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "all",
+              "exposed"
+            ],
+            "title": "Population",
+            "default": "all"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "repetitions": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Repetitions",
+            "default": 5
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "assumptions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "no_unmeasured_confounding",
+                "positivity",
+                "consistency",
+                "time_ordering"
+              ]
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "trim": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "sample_only": {
+            "type": "boolean",
+            "title": "Sample Only",
+            "default": false
+          },
+          "complete_rows": {
+            "type": "boolean",
+            "title": "Complete Rows",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "learner",
+          "population",
+          "folds",
+          "repetitions",
+          "seed",
+          "assumptions",
+          "trim",
+          "acknowledged",
+          "sample_only",
+          "complete_rows"
+        ],
+        "title": "SetCausal"
       },
       "SetCensoring-Input": {
         "properties": {
@@ -13671,6 +14073,7 @@
               "estimand",
               "adjustment",
               "energy_adjustment",
+              "causal",
               "models",
               "substitution",
               "open_seal"
@@ -14614,6 +15017,52 @@
         "title": "ApplyRepair",
         "type": "object"
       },
+      "AssumptionView": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "diagnostic": {
+            "title": "Diagnostic",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "untestable",
+              "checked",
+              "violated",
+              "stated",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "statement",
+          "diagnostic",
+          "status",
+          "source"
+        ],
+        "title": "AssumptionView",
+        "type": "object"
+      },
       "AtOpening": {
         "additionalProperties": false,
         "description": "The held-out scores recorded when the current outcome's seal was first opened: the reported\nresult, whatever is drawn, fitted or opened later (audit WP16, RO-05). Set by the server.",
@@ -15336,6 +15785,567 @@
           "reason"
         ],
         "title": "CategoricalProposal",
+        "type": "object"
+      },
+      "CausalArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "const": "inference",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "method_label": {
+            "title": "Method Label",
+            "type": "string"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Learner"
+          },
+          "population": {
+            "default": "all",
+            "title": "Population",
+            "type": "string"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssumptionView"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "declared": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Declared",
+            "type": "array"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverlapView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "variation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VariationView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CausalExit"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
+          "estimates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CausalEstimate"
+            },
+            "title": "Estimates",
+            "type": "array"
+          },
+          "repetitions": {
+            "default": [],
+            "items": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Repetitions",
+            "type": "array"
+          },
+          "n": {
+            "default": 0,
+            "title": "N",
+            "type": "integer"
+          },
+          "n_trimmed": {
+            "default": 0,
+            "title": "N Trimmed",
+            "type": "integer"
+          },
+          "selected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CausalSelection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "sensitivity": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sensitivity"
+          },
+          "methods": {
+            "default": "",
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "exposure",
+          "method",
+          "method_label",
+          "learner",
+          "population",
+          "assumptions",
+          "declared",
+          "overlap",
+          "variation",
+          "withheld",
+          "exits",
+          "estimates",
+          "repetitions",
+          "n",
+          "n_trimmed",
+          "selected",
+          "sensitivity",
+          "methods"
+        ],
+        "title": "CausalArtifact",
+        "type": "object"
+      },
+      "CausalDesignArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "const": "inference",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "offered": {
+            "title": "Offered",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "stated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stated"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "exposure_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "binary",
+                  "continuous"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exposure Kind"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task"
+          },
+          "n": {
+            "default": 0,
+            "title": "N",
+            "type": "integer"
+          },
+          "n_limit": {
+            "default": 0,
+            "title": "N Limit",
+            "type": "integer"
+          },
+          "candidates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "many": {
+            "default": false,
+            "title": "Many",
+            "type": "boolean"
+          },
+          "options": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LabeledOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Recommended"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssumptionView"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverlapView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "variation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VariationView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "positivity": {
+            "$ref": "#/components/schemas/PositivityView",
+            "default": {
+              "violated": false,
+              "reason": null
+            }
+          },
+          "missing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MissingView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "survey": {
+            "$ref": "#/components/schemas/SurveyView",
+            "default": {
+              "population": false,
+              "weight": null
+            }
+          },
+          "leash": {
+            "default": "",
+            "title": "Leash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "offered",
+          "reason",
+          "stated",
+          "exposure",
+          "exposure_kind",
+          "level",
+          "task",
+          "n",
+          "n_limit",
+          "candidates",
+          "many",
+          "options",
+          "recommended",
+          "assumptions",
+          "overlap",
+          "variation",
+          "positivity",
+          "missing",
+          "survey",
+          "leash"
+        ],
+        "title": "CausalDesignArtifact",
+        "type": "object"
+      },
+      "CausalEstimate": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "p_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Value"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
+          },
+          "scale": {
+            "default": "difference",
+            "enum": [
+              "difference",
+              "ratio"
+            ],
+            "title": "Scale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "measure",
+          "estimate",
+          "se",
+          "ci_low",
+          "ci_high",
+          "p_value",
+          "df",
+          "scale"
+        ],
+        "title": "CausalEstimate",
+        "type": "object"
+      },
+      "CausalExit": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision"
+          }
+        },
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "CausalExit",
+        "type": "object"
+      },
+      "CausalSelection": {
+        "additionalProperties": false,
+        "description": "What the post-double-selection lassos chose, by raw column, and the model terms kept.",
+        "properties": {
+          "outcome": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Outcome",
+            "type": "array"
+          },
+          "exposure": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exposure",
+            "type": "array"
+          },
+          "union": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Union",
+            "type": "array"
+          },
+          "terms": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "outcome",
+          "exposure",
+          "union",
+          "terms"
+        ],
+        "title": "CausalSelection",
         "type": "object"
       },
       "Chronology": {
@@ -17977,6 +18987,7 @@
                   "estimand",
                   "adjustment",
                   "energy_adjustment",
+                  "causal",
                   "models",
                   "substitution",
                   "open_seal"
@@ -20458,6 +21469,60 @@
         "title": "MissingReading",
         "type": "object"
       },
+      "MissingView": {
+        "additionalProperties": false,
+        "properties": {
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_complete": {
+            "title": "N Complete",
+            "type": "integer"
+          },
+          "n_incomplete": {
+            "title": "N Incomplete",
+            "type": "integer"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "n_rows",
+          "n_complete",
+          "n_incomplete",
+          "answer",
+          "blocked",
+          "reason"
+        ],
+        "title": "MissingView",
+        "type": "object"
+      },
       "ModelOne": {
         "additionalProperties": false,
         "properties": {
@@ -21232,6 +22297,104 @@
         "title": "OutcomeWithinUnit",
         "type": "object"
       },
+      "OverlapView": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "bins": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Bins",
+            "type": "array"
+          },
+          "exposed": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Exposed",
+            "type": "array"
+          },
+          "unexposed": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Unexposed",
+            "type": "array"
+          },
+          "bound": {
+            "title": "Bound",
+            "type": "number"
+          },
+          "n_outside": {
+            "title": "N Outside",
+            "type": "integer"
+          },
+          "share_outside": {
+            "title": "Share Outside",
+            "type": "number"
+          },
+          "extreme_weight_share": {
+            "title": "Extreme Weight Share",
+            "type": "number"
+          },
+          "max_weight": {
+            "title": "Max Weight",
+            "type": "number"
+          },
+          "ess_exposed": {
+            "title": "Ess Exposed",
+            "type": "number"
+          },
+          "ess_unexposed": {
+            "title": "Ess Unexposed",
+            "type": "number"
+          },
+          "n_exposed": {
+            "title": "N Exposed",
+            "type": "integer"
+          },
+          "n_unexposed": {
+            "title": "N Unexposed",
+            "type": "integer"
+          },
+          "min_exposed": {
+            "title": "Min Exposed",
+            "type": "number"
+          },
+          "max_unexposed": {
+            "title": "Max Unexposed",
+            "type": "number"
+          },
+          "violated": {
+            "title": "Violated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "model",
+          "bins",
+          "exposed",
+          "unexposed",
+          "bound",
+          "n_outside",
+          "share_outside",
+          "extreme_weight_share",
+          "max_weight",
+          "ess_exposed",
+          "ess_unexposed",
+          "n_exposed",
+          "n_unexposed",
+          "min_exposed",
+          "max_unexposed",
+          "violated"
+        ],
+        "title": "OverlapView",
+        "type": "object"
+      },
       "Pooled": {
         "additionalProperties": false,
         "description": "A DerSimonian–Laird random-effects summary of one score across clusters.",
@@ -21349,6 +22512,33 @@
           "pi_high"
         ],
         "title": "Pooled",
+        "type": "object"
+      },
+      "PositivityView": {
+        "additionalProperties": false,
+        "properties": {
+          "violated": {
+            "title": "Violated",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "violated",
+          "reason"
+        ],
+        "title": "PositivityView",
         "type": "object"
       },
       "ProfileArtifact": {
@@ -23378,6 +24568,138 @@
           "figures"
         ],
         "title": "SetBatch",
+        "type": "object"
+      },
+      "SetCausal": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_causal",
+            "default": "set_causal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "minLength": 1,
+            "title": "Exposure",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "none",
+              "dml_plr",
+              "dml_irm",
+              "tmle",
+              "pds_lasso"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "enum": [
+                  "linear",
+                  "lasso",
+                  "random_forest",
+                  "boosted_trees"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Learner"
+          },
+          "population": {
+            "default": "all",
+            "enum": [
+              "all",
+              "exposed"
+            ],
+            "title": "Population",
+            "type": "string"
+          },
+          "folds": {
+            "default": 5,
+            "maximum": 10,
+            "minimum": 2,
+            "title": "Folds",
+            "type": "integer"
+          },
+          "repetitions": {
+            "default": 5,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Repetitions",
+            "type": "integer"
+          },
+          "seed": {
+            "default": 0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "assumptions": {
+            "items": {
+              "enum": [
+                "no_unmeasured_confounding",
+                "positivity",
+                "consistency",
+                "time_ordering"
+              ],
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "trim": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trim"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "sample_only": {
+            "default": false,
+            "title": "Sample Only",
+            "type": "boolean"
+          },
+          "complete_rows": {
+            "default": false,
+            "title": "Complete Rows",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "learner",
+          "population",
+          "folds",
+          "repetitions",
+          "seed",
+          "assumptions",
+          "trim",
+          "acknowledged",
+          "sample_only",
+          "complete_rows"
+        ],
+        "title": "SetCausal",
         "type": "object"
       },
       "SetCensoring": {
@@ -25966,6 +27288,33 @@
         "title": "SurveyProposal",
         "type": "object"
       },
+      "SurveyView": {
+        "additionalProperties": false,
+        "properties": {
+          "population": {
+            "title": "Population",
+            "type": "boolean"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "population",
+          "weight"
+        ],
+        "title": "SurveyView",
+        "type": "object"
+      },
       "TargetInfo": {
         "description": "The ``target_info`` artifact.",
         "properties": {
@@ -27106,6 +28455,35 @@
           "source"
         ],
         "title": "ValidationPlan",
+        "type": "object"
+      },
+      "VariationView": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "r2": {
+            "title": "R2",
+            "type": "number"
+          },
+          "residual_sd": {
+            "title": "Residual Sd",
+            "type": "number"
+          },
+          "violated": {
+            "title": "Violated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "model",
+          "r2",
+          "residual_sd",
+          "violated"
+        ],
+        "title": "VariationView",
         "type": "object"
       },
       "VersusBaseline": {

@@ -357,6 +357,18 @@ def representative_decisions():
         d.RespondDiagnostic(exposure="protein_g", check="proportional_hazards",
                             action="period_hazard_ratios"),
         d.RespondDiagnostic(exposure="protein_g", check="influence", action="keep_labeled"),
+        # The causal lane (turbotab/core/causal.py): none beside the primary, DML with its
+        # assumptions declared, TMLE trimmed to the overlap population, post-double selection
+        d.SetCausal(exposure="protein_g", method="none"),
+        d.SetCausal(exposure="protein_g", method="dml_plr", learner="random_forest",
+                    assumptions=["no_unmeasured_confounding", "positivity", "consistency",
+                                 "time_ordering"]),
+        d.SetCausal(exposure="smoker", method="tmle", learner="linear", trim=0.1,
+                    assumptions=["no_unmeasured_confounding", "positivity", "consistency",
+                                 "time_ordering"]),
+        d.SetCausal(exposure="protein_g", method="pds_lasso", sample_only=True,
+                    assumptions=["no_unmeasured_confounding", "positivity", "consistency",
+                                 "time_ordering"]),
     ]
 
 

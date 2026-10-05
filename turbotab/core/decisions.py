@@ -1245,6 +1245,61 @@ class RespondDiagnostic(_DecisionModel):
     exposure: str = Field(min_length=1)
     check: DiagnosticCheck
     action: DiagnosticAction
+# ── The causal lane (V2 definition of done §2; MODELING_SEQUENCE §0 ruling 1 rung (d)) ─────────
+# The answer lives here so the API and the log can parse it; its leash (inference only, after the
+# plan, the assumptions before any estimate, positivity, the survey design) is in
+# ``turbotab/core/causal.py`` and its estimators in ``turbotab/core/models/causal.py``.
+CausalMethod = Literal["none", "dml_plr", "dml_irm", "tmle", "pds_lasso"]
+CausalLearner = Literal["linear", "lasso", "random_forest", "boosted_trees"]
+CausalAssumption = Literal["no_unmeasured_confounding", "positivity", "consistency",
+                           "time_ordering"]
+CausalPopulation = Literal["all", "exposed"]  # the average effect, or the effect among the exposed
+
+
+class CausalSpec(_Value):
+    """The causal lane's answer for one exposure: the estimator (or none beside the primary), its
+    nuisance learner (None: the default for the table's size), whose effect (everyone, or the
+    exposed), the cross-fitting folds and sample splits, and the assumptions declared before any
+    estimate. ``trim``: keep the rows whose propensity lies in [trim, 1 − trim] (the overlap
+    population); ``acknowledged``: every row kept although positivity is practically violated;
+    ``sample_only``: unweighted under a survey design, for these participants (block and record);
+    ``complete_rows``: the complete rows only, where the missing-values answer fills or imputes."""
+
+    exposure: str = Field(min_length=1)
+    method: CausalMethod
+    learner: CausalLearner | None = None
+    population: CausalPopulation = "all"
+    folds: int = Field(default=5, ge=2, le=10)
+    repetitions: int = Field(default=5, ge=1, le=100)
+    seed: int = 0
+    assumptions: list[CausalAssumption] = Field(default_factory=list)
+    trim: float | None = Field(default=None, gt=0.0, lt=0.5)
+    acknowledged: bool = False
+    sample_only: bool = False
+    complete_rows: bool = False
+
+
+class SetCausal(_DecisionModel):
+    kind: Literal["set_causal"] = "set_causal"
+    exposure: str = Field(min_length=1)
+    method: CausalMethod
+    learner: CausalLearner | None = None
+    population: CausalPopulation = "all"
+    folds: int = Field(default=5, ge=2, le=10)
+    repetitions: int = Field(default=5, ge=1, le=100)
+    seed: int = 0
+    assumptions: list[CausalAssumption] = Field(default_factory=list)
+    trim: float | None = Field(default=None, gt=0.0, lt=0.5)
+    acknowledged: bool = False
+    sample_only: bool = False
+    complete_rows: bool = False
+
+    @field_validator("assumptions")
+    @classmethod
+    def _unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("each assumption may be declared only once")
+        return value
 
 
 class OpenSeal(_DecisionModel):
@@ -1497,6 +1552,7 @@ Decision = Annotated[
         JoinFiles, ImportCodebook, SetBatch, SetMultiplicity, SetScales,
         SetUsualIntake,
         SetModelSequence, RespondDiagnostic,
+        SetCausal,
     ],
     Field(discriminator="kind"),
 ]
@@ -1634,6 +1690,9 @@ class ProjectState(BaseModel):
     # and each failed diagnostic's recorded response, by check (``turbotab/core/models/effects.py``)
     model_sequence: ModelSequenceSpec | None = None
     diagnostic_responses: dict[str, DiagnosticResponse] | None = None
+    # The causal lane (``turbotab/core/causal.py``): DML, TMLE or post-double selection beside the
+    # primary model, for the exposure it names (holds while that is the declared exposure)
+    causal: CausalSpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -2078,6 +2137,7 @@ register_kind(SetModelSequence, "model_sequence",
               value=lambda d: ModelSequenceSpec(exposure=d.exposure, model_1=list(d.model_1)))
 register_kind(RespondDiagnostic, "diagnostic_responses", key=lambda d: d.check,
               value=lambda d: DiagnosticResponse(exposure=d.exposure, action=d.action))
+register_kind(SetCausal, "causal", value=lambda d: CausalSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -4642,3 +4702,5 @@ from turbotab.core import codebook as _codebook  # noqa: E402,F401
 from turbotab.core import scales as _scales  # noqa: E402,F401
 # The NCI usual-intake method's refusals, contract and sentence (``set_usual_intake``).
 from turbotab.core import usual_intake as _usual_intake  # noqa: E402,F401
+# The causal lane's leash (inference only, after the plan, assumptions first, positivity, survey).
+from turbotab.core import causal as _causal  # noqa: E402,F401

@@ -98,6 +98,7 @@ function view(): ProjectView {
       multiplicity: null,
       model_sequence: null,
       diagnostic_responses: null,
+      causal: null,
     },
     decisions: [record(1)],
     stages: {

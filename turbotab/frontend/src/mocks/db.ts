@@ -666,6 +666,8 @@ function slotOf(d: Decision): Slot | null {
       return "model_sequence";
     case "respond_diagnostic":
       return "diagnostic_responses";
+    case "set_causal":
+      return "causal";
     case "set_sensitivity":
       return "sensitivity";
     case "set_measurement_error":
@@ -826,6 +828,10 @@ function valueOf(d: Decision): ProjectState[Slot] {
       return { exposure: d.exposure, model_1: d.model_1 ?? [] };
     case "respond_diagnostic": // keyed by check; the fold merges it
       return null;
+    case "set_causal": {
+      const { kind: _kind, ...value } = d;
+      return value;
+    }
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -932,6 +938,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     multiplicity: null,
     model_sequence: null,
     diagnostic_responses: null,
+    causal: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

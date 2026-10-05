@@ -102,6 +102,17 @@ ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11 and 12; turbotab/core/stages/effects.
     primary, Model 3), its adjustment terms apart, the marginal risk difference and ratio when the
     estimand declares one, the primary's diagnostics and their recorded responses, and its
     sensitivity to unmeasured confounding.
+The causal lane (V2 definition of done §2; ``turbotab/core/causal.py``):
+
+    causal_design heavy  deps: working, split, target_info   reads the plan …; requires estimand
+    causal        heavy  deps: working, split, target_info   reads the plan and causal; requires causal,
+                                                              models
+
+    ``causal_design`` (outcome-free) is the causal question's card: the options ranked for the
+    plan, the four assumptions with their diagnostics, and positivity. ``causal`` estimates the
+    declared effect by DML, TMLE or post-double selection over the adjustment set, once the model
+    families are chosen too: the primary model and the lane are declared together, before either
+    estimate is shown, so the plan lock records both.
 
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
@@ -131,6 +142,7 @@ from turbotab.core.stages.scales import SCALES_READS, scales_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
 from turbotab.core.stages.effects import EFFECTS_READS, effects_stage
+from turbotab.core.stages.causal import CAUSAL_READS, causal_design_stage, causal_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.usual_intake import USUAL_INTAKE_READS, usual_intake_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
@@ -558,6 +570,16 @@ def build_graph() -> Graph:
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand"),
                   label="Reporting the exposure's effect across the declared models"),
+            # ── The causal lane (V2 definition of done §2; turbotab/core/causal.py) ──
+            # causal_design is outcome-free: the options, the assumptions and positivity, shown
+            # before any choice; causal runs the chosen estimator once the answer and the model
+            # families are recorded (the whole plan declared before any estimate is shown).
+            Stage("causal_design", 1, ("working", "split", "target_info"), CAUSAL_READS,
+                  causal_design_stage, heavy=True, requires=("estimand",),
+                  label="Reading the causal lane's assumptions and overlap"),
+            Stage("causal", 1, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
+                  causal_stage, heavy=True, requires=("causal", "models"),
+                  label="Estimating the effect in the causal lane"),
         ]
     )
 

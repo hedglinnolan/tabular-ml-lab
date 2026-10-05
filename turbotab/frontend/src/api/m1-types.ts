@@ -43,6 +43,7 @@ const questionKeys = [
   "estimand",
   "adjustment",
   "energy_adjustment",
+  "causal",
   "models",
   "substitution",
   "open_seal",
