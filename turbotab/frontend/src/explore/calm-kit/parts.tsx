@@ -47,10 +47,34 @@ export interface OptionListProps {
   onChoose: (id: string) => void;
 }
 
+/** How long the canvas keeps the last pointed option after the pointer leaves it. Crossing the gap
+ *  between two options then goes straight from one preview to the next instead of flashing back
+ *  to "Your data now" in between (Nolan, 2026-10-05: "it will glitch out back and forth"). */
+export const POINT_GRACE_MS = 160;
+
 /** The options: hover tints, choosing fills, disabled ones say why in their one line; arrow keys
  *  move through them (a native radio group). */
 export function OptionList({ step, chosen, pointed, onPoint, onChoose }: OptionListProps) {
   const name = useId();
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClear = () => {
+    if (clearTimer.current !== null) {
+      clearTimeout(clearTimer.current);
+      clearTimer.current = null;
+    }
+  };
+  const pointAt = (id: string) => {
+    cancelClear();
+    if (id !== pointed) onPoint(id);
+  };
+  const clearSoon = () => {
+    cancelClear();
+    clearTimer.current = setTimeout(() => {
+      clearTimer.current = null;
+      onPoint(null);
+    }, POINT_GRACE_MS);
+  };
+  useEffect(() => cancelClear, []);
   return (
     <fieldset className={k.opts} data-testid="options">
       <legend className={k.legend}>{step.legend}</legend>
@@ -61,8 +85,8 @@ export function OptionList({ step, chosen, pointed, onPoint, onChoose }: OptionL
           data-off={o.disabled || undefined}
           data-pointed={pointed === o.id || undefined}
           data-testid={`opt-${o.id}`}
-          onPointerEnter={() => !o.disabled && onPoint(o.id)}
-          onPointerLeave={() => onPoint(null)}
+          onPointerEnter={() => (o.disabled ? clearSoon() : pointAt(o.id))}
+          onPointerLeave={clearSoon}
         >
           <input
             type="radio"
@@ -71,8 +95,8 @@ export function OptionList({ step, chosen, pointed, onPoint, onChoose }: OptionL
             checked={chosen === o.id}
             disabled={o.disabled}
             onChange={() => onChoose(o.id)}
-            onFocus={() => !o.disabled && onPoint(o.id)}
-            onBlur={() => onPoint(null)}
+            onFocus={() => !o.disabled && pointAt(o.id)}
+            onBlur={clearSoon}
           />
           <span className={k.optName}>
             <Plain text={o.name} />
