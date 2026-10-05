@@ -38,6 +38,7 @@ def build_router() -> APIRouter:
         assembly,
         data,
         events,
+        export,
         jobs,
         models,
         preview,
@@ -47,6 +48,7 @@ def build_router() -> APIRouter:
     )
 
     api = APIRouter(prefix="/api")
-    for module in (system, projects, preview, data, jobs, events, models, teaching, assembly):
+    for module in (system, projects, preview, data, jobs, events, models, teaching, assembly,
+                   export):
         api.include_router(module.router)
     return api

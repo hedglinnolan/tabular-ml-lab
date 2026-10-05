@@ -536,6 +536,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export
+         * @description The manuscript bundle: the methods section from the record (ordered by STROBE or
+         *     TRIPOD+AI), the participant-flow and lineage figures as journal-format SVG, the results tables
+         *     as CSV and Markdown, the filled checklist, the analysis plan with its SHA-256 and the
+         *     provenance record a replay checks (``python -m turbotab.replay``). Refused while a required
+         *     question is unanswered, the plan is open, an input file changed or a result is not computed.
+         */
+        get: operations["export_api_projects__pid__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{pid}/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Checklist
+         * @description The reporting checklist of the declared purpose (STROBE-nut under inference, TRIPOD+AI
+         *     under prediction): every item quoted from its source, with where the record answers it or
+         *     "unanswered — the author must supply this", and what the export still waits for.
+         */
+        get: operations["checklist_api_projects__pid__checklist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -848,6 +894,90 @@ export interface components {
             decision: {
                 [key: string]: unknown;
             };
+        };
+        /** ChecklistCounts */
+        ChecklistCounts: {
+            /** Items */
+            items: number;
+            /** Answered */
+            answered: number;
+            /** Partly Answered */
+            partly_answered: number;
+            /** Unanswered */
+            unanswered: number;
+        };
+        /** ChecklistItem */
+        ChecklistItem: {
+            /** Id */
+            id: string;
+            /** Section */
+            section: string;
+            /** Topic */
+            topic: string;
+            /** Text */
+            text: string;
+            /** Kind */
+            kind: string | null;
+            /** Scope */
+            scope: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "partly answered" | "unanswered";
+            /** Where */
+            where: components["schemas"]["Where"][];
+            /** Owed */
+            owed: string | null;
+            /** Note */
+            note: string;
+        };
+        /**
+         * ChecklistReport
+         * @description A reporting checklist, every item listed with where the bundle answers it.
+         */
+        ChecklistReport: {
+            /**
+             * Checklist
+             * @enum {string}
+             */
+            checklist: "STROBE-nut" | "TRIPOD+AI";
+            /** Title */
+            title: string;
+            /** Citation */
+            citation: string;
+            source: components["schemas"]["ChecklistSource"];
+            /** Purpose */
+            purpose: string | null;
+            /** Items */
+            items: components["schemas"]["ChecklistItem"][];
+            counts: components["schemas"]["ChecklistCounts"];
+            /** Unanswered */
+            unanswered: string[];
+            /** Note */
+            note: string;
+            /**
+             * Waiting
+             * @default []
+             */
+            waiting: string[];
+        };
+        /** ChecklistSource */
+        ChecklistSource: {
+            /** Table */
+            table: string;
+            /** Pmcid */
+            pmcid: string;
+            /** Doi */
+            doi: string;
+            /** Url */
+            url: string;
+            /** Retrieved */
+            retrieved: string;
+            /** Sha256 */
+            sha256: string;
+            /** License */
+            license: string;
         };
         /**
          * ClusterSpec
@@ -5556,6 +5686,27 @@ export interface components {
             value: unknown;
             /** Count */
             count: number;
+        };
+        /**
+         * Where
+         * @description Where an item is answered: a record sentence, an analysis paragraph, or a bundle file.
+         */
+        Where: {
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "record" | "analysis" | "file";
+            /** File */
+            file: string;
+            /** Quote */
+            quote: string;
+            /** Record Id */
+            record_id: string | null;
+            /** Seq */
+            seq: number | null;
+            /** Kind */
+            kind: string | null;
         };
         /**
          * AdjustmentCard
@@ -14467,6 +14618,95 @@ export interface operations {
             };
             /** @description The table is still being read */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_api_projects__pid__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bundle, a zip */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Not ready to export: names everything missing, with a way forward for each */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    checklist_api_projects__pid__checklist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistReport"];
+                };
+            };
+            /** @description No such project */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
