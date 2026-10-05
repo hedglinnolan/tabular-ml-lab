@@ -20,6 +20,9 @@ const StageLabM2Screen = lazy(() =>
   import("./screens/StageLabM2Screen").then((m) => ({ default: m.StageLabM2Screen })),
 );
 const M2Screen = lazy(() => import("./explore/m2/M2Screen").then((m) => ({ default: m.M2Screen })));
+const MethodsDocScreen = lazy(() =>
+  import("./explore/methods-document/MethodsDocScreen").then((m) => ({ default: m.MethodsDocScreen })),
+);
 
 function Routes() {
   const route = useRoute();
@@ -56,6 +59,12 @@ function Routes() {
       return (
         <Suspense fallback={<Header />}>
           <M2Screen />
+        </Suspense>
+      );
+    case "methods-document":
+      return (
+        <Suspense fallback={<Header />}>
+          <MethodsDocScreen />
         </Suspense>
       );
     case "missing":
