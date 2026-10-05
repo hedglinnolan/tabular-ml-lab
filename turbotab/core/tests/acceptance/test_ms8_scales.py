@@ -856,9 +856,11 @@ def test_5_chain_4_runs_end_to_end_with_its_relations_and_methods_sentences(chai
     assert "calibration substudy" in labels[1] and "uncorrected" in labels[2]
     status, body = chain4["item_form"]
     assert status == 409 and body["error"]["code"] == "item_has_a_form"
-    assert body["error"]["exits"][0]["decision"] == {"kind": "set_exposure_form",
-                                                     "column": "pss_3", "form": "linear",
-                                                     "knots": None}
+    # (FORM widened the form's record: its rule, cut points, domain, scale and unit, all unset here)
+    exit_ = body["error"]["exits"][0]["decision"]
+    assert {k: exit_[k] for k in ("kind", "column", "form", "knots")} == {
+        "kind": "set_exposure_form", "column": "pss_3", "form": "linear", "knots": None}
+    assert not any(exit_[k] for k in ("knots_rule", "cuts", "scale", "unit", "acknowledged"))
     status, body = chain4["scored_item"]
     assert status == 409 and body["error"]["code"] == "scored_item"
     assert chain4["record"]["sentence"] == (

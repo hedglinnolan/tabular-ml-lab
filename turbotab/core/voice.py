@@ -2025,6 +2025,8 @@ _QUESTION_NAME = {
     "missing": "the missing-values question",
     "split": "the held-out rows question",
     "energy_adjustment": "the energy-adjustment question",
+    "form": "the functional-form question",  # FORM
+    "modification": "the effect-modifier question",  # FORM
     "models": "the model families question",
     "substitution": "the substitution question",
     "open_seal": "opening the seal",

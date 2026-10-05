@@ -1343,6 +1343,7 @@ export function substitution(
   const banded = spec.n_boot > 0;
   return {
     carried: [],
+    curve_label: null,
     band: banded
       ? {
           n_boot: spec.n_boot,

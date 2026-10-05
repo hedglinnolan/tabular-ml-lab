@@ -231,7 +231,9 @@ def test_a1_a_text_bmi_confirmed_an_amount_first_is_one_slope(tmp_path):
         r = drive.post({"kind": "confirm_reading", "reading": "code_or_count", "column": "bmi",
                         "value": "amount"})
         assert r.status_code == 200, r.text[:400]
-        r = _post_when_reached(client, f"/api/projects/{drive.pid}/decisions", plan["models"])
+        # FORM: `bmi`, now a continuous confounder, is asked its form (a straight line, as before)
+        r = _post_when_reached(client, f"/api/projects/{drive.pid}/decisions", plan["models"],
+                               unblock=lambda: drive.answer_wp17_before(plan["models"]))
         assert r.status_code == 200, r.text[:600]
         coef = coefficients(drive.artifact("fit", timeout=600))
         working = drive.c.get(f"/api/projects/{drive.pid}/stages/working").json()["artifact"]

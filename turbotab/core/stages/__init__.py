@@ -135,6 +135,21 @@ Wave 2, EXPLAIN (V2 definition of done §2, "Explainability"; turbotab/core/mode
     cross-validated score against the baseline) and the family's architecture. Under inference it
     is an estimate stage: withheld until the plan's questions are answered, and locking the plan.
 
+Wave 2, FORM (MODELING_SEQUENCE §1 rows 5 and 7; turbotab/core/methods/exposure_form.py and
+interaction.py):
+
+    forms        heavy   deps: working, cohort, target_info   reads the estimand, the adjustment
+                                                              answers, the transforms …; requires
+                                                              purpose
+    modification heavy   deps: working, design, split,        reads the declared modifiers and the
+                               target_info                    plan …; requires modifications, models
+
+    ``forms`` is the functional-form question's card: which continuous terms take a declared form,
+    on which scale, with k by Harrell's rule. ``modification`` estimates each declared effect
+    modifier or second exposure against a single reference, with the RERI and the ratio of ratios;
+    under inference it is an estimate stage. ``cohort`` reads the forms: a consumers-only domain
+    leaves the non-consumers on a line of their own.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -169,6 +184,8 @@ from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.usual_intake import USUAL_INTAKE_READS, usual_intake_stage
 from turbotab.core.stages.time_varying import TIME_VARYING_READS, time_varying_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
+from turbotab.core.methods.exposure_form import FORMS_READS, forms_stage  # FORM
+from turbotab.core.methods.interaction import MODIFICATION_READS, modification_stage  # FORM
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 
@@ -415,9 +432,11 @@ def build_graph() -> Graph:
             # cohort 6 (wave 1, MS7): the pooled QCs a drift correction read leave as reference rows.
             # cohort 7 (the routing gate): a time-to-event outcome's landmark leaves the rows whose
             # follow-up ended by it, on a line of its own.
-            Stage("cohort", 7, ("working", "target_info"),
+            # cohort 8 (FORM): the consumers-only domain of a food with many non-consumers leaves
+            # the non-consumers on a line of their own (an estimand change, STROBE-nut nut-14).
+            Stage("cohort", 8, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
-                   *WP17_READS, "follow_up", "task"), cohort_stage,
+                   *WP17_READS, "follow_up", "task", "form_domains"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.
             # split 4 (audit WP15, IN-24): the chronology counts held-out rows that predate training.
@@ -671,6 +690,20 @@ def build_graph() -> Graph:
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models"),
                   label="Explaining each fitted model"),
+            # ── Wave 2, FORM (MODELING_SEQUENCE §1 rows 5 and 7) ──
+            # forms: the functional-form question's card, read on the analyzed rows: the declared
+            # exposure and each adjusted continuous confounder on its final scale, k by Harrell's
+            # rule on the effective sample size, a mass at zero, the options for each role. It reads
+            # no form answer, so answering it never recomputes it.
+            Stage("forms", 1, ("working", "cohort", "target_info"), FORMS_READS, forms_stage,
+                  heavy=True, requires=("purpose",),
+                  label="Reading which continuous terms take a declared form"),
+            # modification: each declared effect modifier or second exposure, against a single
+            # reference on both scales (Knol & VanderWeele 2012); an estimate stage.
+            Stage("modification", 1, ("working", "design", "split", "target_info"),
+                  MODIFICATION_READS, modification_stage, heavy=True,
+                  requires=("modifications", "models"),
+                  label="Estimating the declared effect modification"),
         ]
     )
 

@@ -287,9 +287,13 @@ class ExposureTest(_Model):
     spline's overall and nonlinear Wald tests, or quintiles' trend across their medians."""
 
     column: str
-    form: Literal["spline", "quintiles"]
+    # FORM: declared categories, a data-derived cut point, a mass at zero's spline among consumers
+    form: Literal["spline", "quintiles", "categories", "optimal", "zero_spline"]
     # global: every quintile indicator at once (a multi-df Wald test, D1 under multiple imputation)
-    test: Literal["overall", "nonlinear", "trend", "global"]
+    # FORM: beside a declared exposure's spline, each quintile against the lowest and the p for
+    # linear trend (customary); a data-derived cut point's coefficient ("cut")
+    test: Literal["overall", "nonlinear", "trend", "global", "companion_q2", "companion_q3",
+                  "companion_q4", "companion_q5", "companion_trend", "cut"]
     statistic: float | None
     df_num: int | None
     df_den: float | None  # the F or t reference's degrees of freedom; null for χ² and z
@@ -300,6 +304,12 @@ class ExposureTest(_Model):
     ci_high: float | None = None
     knots: list[float] | None = None  # the spline's knots, learned on the fitting rows
     medians: list[float] | None = None  # each quintile's median, learned on the fitting rows
+    # FORM: the statistic's label ("p for linear trend (customary)"), the category boundaries and
+    # the reference category (STROBE 16b), and what a pooled scalar is (its caption's words)
+    label: str | None = None
+    boundaries: list[float] | None = None
+    reference: str | None = None
+    what: str | None = None
     caption: str
 
 
@@ -656,6 +666,10 @@ class SubstitutionArtifact(_Model):
     # row's own total energy ("5% of energy from X replaced by Y"; ks then step by step_percent).
     scale: Literal["kcal", "percent_energy"] = "kcal"
     step_percent: float | None = None
+    # FORM (MODELING_SEQUENCE §2, corrected): with a log or a spline on a moved component, the
+    # curve is an average over the rows of each one's effect of moving that k (k-specific), not a
+    # coefficient difference; None for a model linear in both.
+    curve_label: str | None = None
 
 
 MODELING_ARTIFACTS: dict[str, type[BaseModel]] = {

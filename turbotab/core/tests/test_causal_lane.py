@@ -198,7 +198,9 @@ def test_the_router_states_the_lane_and_names_what_ranks_first():
     # While the card computes, the lane is stated too: it never holds the models question back.
     computing = _step(_state(), None)
     assert computing.status == "skipped" and computing.reason == causal.STATED
-    models = {s.key: s for s in route(_state(), FRESH, {}, [])}["models"]
+    # (FORM: the form question's card finds no continuous term here, so it does not apply)
+    no_forms = {"purpose": "inference", "ready": True, "needs": []}
+    models = {s.key: s for s in route(_state(), FRESH, {"forms": no_forms}, [])}["models"]
     assert models.status == "open"
     waiting = _step(_state(adjustment={}), None)  # the adjustment set comes first
     assert waiting.status == "waiting"

@@ -245,6 +245,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.codebook", "turbotab.core.models.survey", "turbotab.core.methods.missing",
     "turbotab.core.models.validation", "turbotab.core.stages.effects", "turbotab.core.causal",
     "turbotab.core.time_varying", "turbotab.core.models.explain",
+    # FORM: the functional form and the declared modifiers (MODELING_SEQUENCE §1 rows 5 and 7)
+    "turbotab.core.methods.exposure_form", "turbotab.core.methods.interaction",
 )
 
 

@@ -1046,9 +1046,16 @@ def caption(state: Any, task: str | None = None) -> str | None:
                 + f", {scale}, every member shown, with {method} ({len(family):,} tests)")
     else:
         exposure = _get(spec, "exposure")
-        text = (f"The {effect} effect of {_tick(exposure)} on {_tick(target)}"
+        # FORM: the unit on the exposure's final scale (``exposure_form.estimand_unit``), a stale
+        # form's never kept; a consumers-only domain names its population.
+        from turbotab.core.methods.exposure_form import domain_columns, estimand_unit
+
+        among = (f" among consumers of {_tick(exposure)}"
+                 if exposure in domain_columns(state) else "")
+        text = (f"The {effect} effect of {_tick(exposure)} on {_tick(target)}{among}"
                 + (f" ({what})" if what else "")
-                + f", as a {MEASURE_WORDS.get(measure, measure)} per unit of {_tick(exposure)}")
+                + f", as a {MEASURE_WORDS.get(measure, measure)} per "
+                  f"{estimand_unit(state, str(exposure))}")
     derived = derived_roles(state)
     held = mediators(state)
     if effect == "direct" and held:
@@ -1219,6 +1226,9 @@ HOLDS: dict[str, tuple[str, ...]] = {
     "adjustment": ("inference",),
     # V2 causal row (turbotab/core/time_varying.py): an exposure that changes over time.
     "time_varying": ("inference",),
+    # FORM (MODELING_SEQUENCE §1 row 5): the forms are declared before estimates; one a transform
+    # left stale is asked again, and nothing is shown on a form that was not declared.
+    "form": ("inference",),
 }
 # ``scales`` (MS8): a declared scale's corrected coefficient and the uncorrected one beside it;
 # ``effects`` (ESTIMAND): Table 2, the marginal risks, the diagnostics and the sensitivity;
@@ -1227,7 +1237,9 @@ HOLDS: dict[str, tuple[str, ...]] = {
 # ``explain`` (EXPLAIN): explanations of the outcome models are not estimates, but they show what
 # each model learned from the outcome, so under inference they wait and lock as estimates do.
 ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "scales",
-                   "effects", "causal", "time_varying", "explain")
+                   "effects", "causal", "time_varying", "explain",
+                   # FORM: each declared modifier's effects, RERI and ratio of ratios
+                   "modification")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
@@ -1254,6 +1266,8 @@ def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
                           "set beside the primary",
             "time_varying": "an exposure that changes over time needs its estimation lane, and "
                             "inverse-probability weights their truncation, before any estimate",
+            "form": "the form of the exposure and of each continuous confounder is declared on "
+                    "its final scale before any estimate",
         }[str(key)]
         return {"question": key,
                 "reason": f"No estimate is shown until {name} is answered: {why}.",
@@ -1302,7 +1316,8 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
             scales.append(sc)
         out["scales"] = scales
         return out
-    for key in ("curves", "families", "models", "estimates", "rows", "fits"):
+    for key in ("curves", "families", "models", "estimates", "rows", "fits",
+                "modifications"):  # FORM: the declared modifiers' estimates
         if key in out:
             out[key] = [] if isinstance(out[key], list) else None
     return out

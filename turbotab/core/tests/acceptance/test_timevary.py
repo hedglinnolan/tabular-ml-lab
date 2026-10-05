@@ -631,7 +631,9 @@ def test_3_no_estimate_is_served_or_locks_the_plan_while_the_lane_is_open():
     assert not plan_lock.shows_estimates("time_varying", served)
     assert plan_lock.shows_estimates("time_varying", {"estimates": {"rows": [{"estimate": 1.2}]}})
     done = feedback_state(time_varying=MSM_LANE.model_copy(update={"truncation": "none"}))
-    assert estimand.served_gate(done, route(done, ALL_FRESH)) is None
+    # (FORM: the form question's card finds no continuous term to declare a form for here)
+    no_forms = {"purpose": "inference", "ready": True, "needs": []}
+    assert estimand.served_gate(done, route(done, ALL_FRESH, {"forms": no_forms})) is None
 
 
 # ── 4 · routing ──────────────────────────────────────────────────────────────

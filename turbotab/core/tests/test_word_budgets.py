@@ -383,6 +383,14 @@ def representative_decisions():
         # Wave 2, EXPLAIN: the fitted models described (models/explain.py)
         d.SetExplain(),
         d.SetExplain(curves="partial_dependence", exposures=["protein_g", "fiber_g"], reseeds=0),
+        # Wave 2, FORM: the form question's one-tap answer, and a declared modifier
+        d.SetForms(forms={"protein_g": d.ExposureFormSpec(form="spline", knots=5,
+                                                          knots_rule="harrell", n_effective=580),
+                          "age": d.ExposureFormSpec(form="linear")}),
+        d.SetExposureForm(column="fish_g", form="zero_spline", knots=4),
+        d.SetModification(modifier="sex", exposure="protein_g"),
+        d.SetModification(modifier="fat_g", exposure="protein_g", modification="interaction",
+                          post_hoc=True),
     ]
 
 

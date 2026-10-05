@@ -484,6 +484,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetForms-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModification-Input"
                   }
                 ],
                 "discriminator": {
@@ -542,7 +548,9 @@
                     "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
                     "set_causal": "#/components/schemas/SetCausal-Input",
                     "set_time_varying": "#/components/schemas/SetTimeVarying-Input",
-                    "set_explain": "#/components/schemas/SetExplain-Input"
+                    "set_explain": "#/components/schemas/SetExplain-Input",
+                    "set_forms": "#/components/schemas/SetForms-Input",
+                    "set_modification": "#/components/schemas/SetModification-Input"
                   }
                 },
                 "title": "Decision"
@@ -1063,6 +1071,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetForms-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModification-Input"
                   }
                 ],
                 "discriminator": {
@@ -1121,7 +1135,9 @@
                     "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
                     "set_causal": "#/components/schemas/SetCausal-Input",
                     "set_time_varying": "#/components/schemas/SetTimeVarying-Input",
-                    "set_explain": "#/components/schemas/SetExplain-Input"
+                    "set_explain": "#/components/schemas/SetExplain-Input",
+                    "set_forms": "#/components/schemas/SetForms-Input",
+                    "set_modification": "#/components/schemas/SetModification-Input"
                   }
                 },
                 "title": "Decision"
@@ -4145,6 +4161,12 @@
               },
               {
                 "$ref": "#/components/schemas/SetExplain-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetForms-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetModification-Output"
               }
             ],
             "title": "Decision",
@@ -4181,11 +4203,13 @@
                 "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                 "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                 "set_follow_up": "#/components/schemas/SetFollowUp-Output",
+                "set_forms": "#/components/schemas/SetForms-Output",
                 "set_grain": "#/components/schemas/SetGrain-Output",
                 "set_lens": "#/components/schemas/SetLens",
                 "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                 "set_missing": "#/components/schemas/SetMissing-Output",
                 "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
+                "set_modification": "#/components/schemas/SetModification-Output",
                 "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
                 "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
@@ -4992,6 +5016,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetForms-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModification-Output"
                   }
                 ],
                 "discriminator": {
@@ -5027,11 +5057,13 @@
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                     "set_follow_up": "#/components/schemas/SetFollowUp-Output",
+                    "set_forms": "#/components/schemas/SetForms-Output",
                     "set_grain": "#/components/schemas/SetGrain-Output",
                     "set_lens": "#/components/schemas/SetLens",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                     "set_missing": "#/components/schemas/SetMissing-Output",
                     "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
+                    "set_modification": "#/components/schemas/SetModification-Output",
                     "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
@@ -5109,14 +5141,17 @@
         ],
         "title": "ExplainSpec"
       },
-      "ExposureFormSpec": {
+      "ExposureFormSpec-Input": {
         "properties": {
           "form": {
             "type": "string",
             "enum": [
               "linear",
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form"
           },
@@ -5132,16 +5167,205 @@
               }
             ],
             "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "harrell"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "default": "all"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "form"
+        ],
+        "title": "ExposureFormSpec",
+        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles; ``knots_rule`` \"harrell\" when k was set by the\ndeclared rule on ``n_effective``), quintile indicators with a trend test, indicators at declared\ncut points (``cuts``), one data-derived cut point, or, for an exposure with a mass at zero,\nnon-consumers as their own category beside a spline among consumers. ``domain`` \"consumers\"\nrestricts the analysis to consumers (an estimand change, STROBE-nut nut-14). ``acknowledged``\nkeeps a blocked-and-recorded form as a recorded limitation. ``scale`` is the exposure's\ntransform as it stood when the form was declared (``methods.exposure_form.transform_signature``):\na later transform makes the form stale, re-asked and never kept. ``unit`` is the unit the\nestimate is per, on that scale (the estimand's unit)."
+      },
+      "ExposureFormSpec-Output": {
+        "properties": {
+          "form": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "spline",
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
+            ],
+            "title": "Form"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 3.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "harrell"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "default": "all"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "form",
-          "knots"
+          "knots",
+          "knots_rule",
+          "n_effective",
+          "cuts",
+          "domain",
+          "acknowledged",
+          "scale",
+          "unit"
         ],
         "title": "ExposureFormSpec",
-        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles), or quintile indicators with a trend test."
+        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles; ``knots_rule`` \"harrell\" when k was set by the\ndeclared rule on ``n_effective``), quintile indicators with a trend test, indicators at declared\ncut points (``cuts``), one data-derived cut point, or, for an exposure with a mass at zero,\nnon-consumers as their own category beside a spline among consumers. ``domain`` \"consumers\"\nrestricts the analysis to consumers (an estimand change, STROBE-nut nut-14). ``acknowledged``\nkeeps a blocked-and-recorded form as a recorded limitation. ``scale`` is the exposure's\ntransform as it stood when the form was declared (``methods.exposure_form.transform_signature``):\na later transform makes the form stale, re-asked and never kept. ``unit`` is the unit the\nestimate is per, on that scale (the estimand's unit)."
       },
       "FamilyInfo": {
         "properties": {
@@ -6287,6 +6511,8 @@
               "adjustment",
               "time_varying",
               "energy_adjustment",
+              "form",
+              "modification",
               "causal",
               "models",
               "substitution",
@@ -6349,7 +6575,9 @@
                 "type": "string",
                 "enum": [
                   "scale",
-                  "order"
+                  "order",
+                  "stale",
+                  "adjustment"
                 ]
               },
               {
@@ -7703,6 +7931,90 @@
         "title": "ModelSequenceSpec",
         "description": "The declared adjustment sequence beside the primary model (MODELING_SEQUENCE §1 row 11):\nModel 1's columns (the field's age, sex and energy, as the user names them), declared for one\nexposure (or the family's ``*``). The crude model, Model 2 (the primary, the full adjustment\nset) and Model 3 (plus the possible mediators the adjustment answers set beside it) follow from\nthe answers already given."
       },
+      "ModificationSpec": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Kind"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers-Output"
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "post_hoc": {
+            "type": "boolean",
+            "title": "Post Hoc",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "low",
+          "high",
+          "levels",
+          "answers",
+          "post_hoc"
+        ],
+        "title": "ModificationSpec",
+        "description": "One declared modifier or second exposure (``turbotab.core.methods.interaction``).\n\n``exposure`` is the declared exposure the analysis is about (it holds while that is the\nexposure); ``low`` and ``high`` its contrast on its final scale (None: the interquartile\ncontrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th\npercentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure\nof an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates\nwere seen, or so marked); it counts in the family either way."
+      },
       "MultiplicitySpec": {
         "properties": {
           "method": {
@@ -8411,7 +8723,7 @@
             "anyOf": [
               {
                 "additionalProperties": {
-                  "$ref": "#/components/schemas/ExposureFormSpec"
+                  "$ref": "#/components/schemas/ExposureFormSpec-Output"
                 },
                 "type": "object"
               },
@@ -8775,6 +9087,45 @@
                 "type": "null"
               }
             ]
+          },
+          "modifications": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ModificationSpec"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modifications"
+          },
+          "form_domains": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "all",
+                    "consumers"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form Domains"
           }
         },
         "type": "object",
@@ -8831,7 +9182,9 @@
           "diagnostic_responses",
           "causal",
           "time_varying",
-          "explain"
+          "explain",
+          "modifications",
+          "form_domains"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -11614,7 +11967,10 @@
             "enum": [
               "linear",
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form"
           },
@@ -11630,6 +11986,79 @@
               }
             ],
             "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "harrell"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "default": "all"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           }
         },
         "additionalProperties": false,
@@ -11640,7 +12069,7 @@
           "form"
         ],
         "title": "SetExposureForm",
-        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.\nLeft without ``knots``, a spline takes k by the declared rule on the analyzed rows (the\ncompletion records it); ``scale`` and ``unit`` are the server's."
       },
       "SetExposureForm-Output": {
         "properties": {
@@ -11660,7 +12089,10 @@
             "enum": [
               "linear",
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form"
           },
@@ -11676,6 +12108,79 @@
               }
             ],
             "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "harrell"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cuts"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "default": "all"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           }
         },
         "additionalProperties": false,
@@ -11684,10 +12189,17 @@
           "kind",
           "column",
           "form",
-          "knots"
+          "knots",
+          "knots_rule",
+          "n_effective",
+          "cuts",
+          "domain",
+          "acknowledged",
+          "scale",
+          "unit"
         ],
         "title": "SetExposureForm",
-        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column."
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.\nLeft without ``knots``, a spline takes k by the declared rule on the analyzed rows (the\ncompletion records it); ``scale`` and ``unit`` are the server's."
       },
       "SetFeatureTable-Input": {
         "properties": {
@@ -11916,6 +12428,58 @@
         ],
         "title": "SetFollowUp",
         "description": "The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.\n\n``landmark``: follow-up counted from this time on (a landmark, or the customary \"the first\nyears of follow-up excluded\" for reverse causation): a row whose follow-up ended at or before\nit, by an event or not, was not at risk then and leaves, and every other row is at risk from\nit (left truncation; the estimate is among those event-free and followed at the landmark).\n``horizon``: follow-up ends at this time: an event after it counts as censored at it.\n``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes\nno row."
+      },
+      "SetForms-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_forms",
+            "title": "Kind",
+            "default": "set_forms"
+          },
+          "forms": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExposureFormSpec-Input"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Forms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "forms"
+        ],
+        "title": "SetForms",
+        "description": "The form question's one-tap answer (MODELING_SEQUENCE §1 row 5; BLUEPRINT §14.2): a form for\neach listed column, the exposure's and its continuous confounders', each checked and completed\nas its own ``set_exposure_form`` would be."
+      },
+      "SetForms-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_forms",
+            "title": "Kind",
+            "default": "set_forms"
+          },
+          "forms": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExposureFormSpec-Output"
+            },
+            "type": "object",
+            "minProperties": 1,
+            "title": "Forms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "forms"
+        ],
+        "title": "SetForms",
+        "description": "The form question's one-tap answer (MODELING_SEQUENCE §1 row 5; BLUEPRINT §14.2): a form for\neach listed column, the exposure's and its continuous confounders', each checked and completed\nas its own ``set_exposure_form`` would be."
       },
       "SetGrain-Input": {
         "properties": {
@@ -12412,6 +12976,206 @@
           "model_1"
         ],
         "title": "SetModelSequence"
+      },
+      "SetModification-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_modification",
+            "title": "Kind",
+            "default": "set_modification"
+          },
+          "modifier": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Modifier"
+          },
+          "modification": {
+            "type": "string",
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Modification",
+            "default": "effect_modification"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers-Input"
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "post_hoc": {
+            "type": "boolean",
+            "title": "Post Hoc",
+            "default": false
+          },
+          "withdraw": {
+            "type": "boolean",
+            "title": "Withdraw",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "modifier"
+        ],
+        "title": "SetModification",
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."
+      },
+      "SetModification-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_modification",
+            "title": "Kind",
+            "default": "set_modification"
+          },
+          "modifier": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Modifier"
+          },
+          "modification": {
+            "type": "string",
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Modification",
+            "default": "effect_modification"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers-Output"
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "post_hoc": {
+            "type": "boolean",
+            "title": "Post Hoc",
+            "default": false
+          },
+          "withdraw": {
+            "type": "boolean",
+            "title": "Withdraw",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "modifier",
+          "modification",
+          "exposure",
+          "low",
+          "high",
+          "levels",
+          "answers",
+          "post_hoc",
+          "withdraw"
+        ],
+        "title": "SetModification",
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."
       },
       "SetMultiplicity-Input": {
         "properties": {
@@ -13150,7 +13914,8 @@
             "type": "string",
             "enum": [
               "kcal",
-              "percent_energy"
+              "percent_energy",
+              "share_reallocation"
             ],
             "title": "Scale",
             "default": "kcal"
@@ -13213,7 +13978,8 @@
             "type": "string",
             "enum": [
               "kcal",
-              "percent_energy"
+              "percent_energy",
+              "share_reallocation"
             ],
             "title": "Scale",
             "default": "kcal"
@@ -14369,7 +15135,8 @@
             "type": "string",
             "enum": [
               "kcal",
-              "percent_energy"
+              "percent_energy",
+              "share_reallocation"
             ],
             "title": "Scale",
             "default": "kcal"
@@ -14698,6 +15465,8 @@
               "adjustment",
               "time_varying",
               "energy_adjustment",
+              "form",
+              "modification",
               "causal",
               "models",
               "substitution",
@@ -20429,7 +21198,11 @@
             "enum": [
               "spline",
               "linear",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline",
+              "consumers_only"
             ],
             "title": "Value",
             "type": "string"
@@ -20449,6 +21222,18 @@
           "consequence": {
             "title": "Consequence",
             "type": "string"
+          },
+          "rung": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rung"
           }
         },
         "required": [
@@ -20456,9 +21241,133 @@
           "label",
           "customary",
           "sound",
-          "consequence"
+          "consequence",
+          "rung"
         ],
         "title": "ExposureFormOption",
+        "type": "object"
+      },
+      "ExposureFormSpec": {
+        "additionalProperties": false,
+        "description": "How one numeric predictor enters the models: a straight line, a restricted cubic spline\n(``knots`` 3–5, at Harrell's percentiles; ``knots_rule`` \"harrell\" when k was set by the\ndeclared rule on ``n_effective``), quintile indicators with a trend test, indicators at declared\ncut points (``cuts``), one data-derived cut point, or, for an exposure with a mass at zero,\nnon-consumers as their own category beside a spline among consumers. ``domain`` \"consumers\"\nrestricts the analysis to consumers (an estimand change, STROBE-nut nut-14). ``acknowledged``\nkeeps a blocked-and-recorded form as a recorded limitation. ``scale`` is the exposure's\ntransform as it stood when the form was declared (``methods.exposure_form.transform_signature``):\na later transform makes the form stale, re-asked and never kept. ``unit`` is the unit the\nestimate is per, on that scale (the estimand's unit).",
+        "properties": {
+          "form": {
+            "enum": [
+              "linear",
+              "spline",
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "knots": {
+            "anyOf": [
+              {
+                "maximum": 5,
+                "minimum": 3,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "const": "harrell",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cuts"
+          },
+          "domain": {
+            "default": "all",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "type": "string"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "form",
+          "knots",
+          "knots_rule",
+          "n_effective",
+          "cuts",
+          "domain",
+          "acknowledged",
+          "scale",
+          "unit"
+        ],
+        "title": "ExposureFormSpec",
         "type": "object"
       },
       "ExposureTest": {
@@ -20472,7 +21381,10 @@
           "form": {
             "enum": [
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form",
             "type": "string"
@@ -20482,7 +21394,13 @@
               "overall",
               "nonlinear",
               "trend",
-              "global"
+              "global",
+              "companion_q2",
+              "companion_q3",
+              "companion_q4",
+              "companion_q5",
+              "companion_trend",
+              "cut"
             ],
             "title": "Test",
             "type": "string"
@@ -20607,6 +21525,57 @@
             "default": null,
             "title": "Medians"
           },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "boundaries": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Boundaries"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reference"
+          },
+          "what": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "What"
+          },
           "caption": {
             "title": "Caption",
             "type": "string"
@@ -20626,6 +21595,10 @@
           "ci_high",
           "knots",
           "medians",
+          "label",
+          "boundaries",
+          "reference",
+          "what",
           "caption"
         ],
         "title": "ExposureTest",
@@ -21035,6 +22008,8 @@
                   "adjustment",
                   "time_varying",
                   "energy_adjustment",
+                  "form",
+                  "modification",
                   "causal",
                   "models",
                   "substitution",
@@ -21967,6 +22942,293 @@
         "title": "FollowUpCandidate",
         "type": "object"
       },
+      "FormNeed": {
+        "additionalProperties": false,
+        "description": "One column the form question asks about.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "exposure",
+              "confounder"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "receives": {
+            "title": "Receives",
+            "type": "string"
+          },
+          "scale": {
+            "title": "Scale",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "zero_share": {
+            "title": "Zero Share",
+            "type": "number"
+          },
+          "mass_at_zero": {
+            "title": "Mass At Zero",
+            "type": "boolean"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "rule_knots": {
+            "title": "Rule Knots",
+            "type": "integer"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/FormOptionCard"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "proposal": {
+            "additionalProperties": true,
+            "title": "Proposal",
+            "type": "object"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Route"
+          }
+        },
+        "required": [
+          "column",
+          "role",
+          "receives",
+          "scale",
+          "unit",
+          "zero_share",
+          "mass_at_zero",
+          "n_effective",
+          "rule_knots",
+          "rule",
+          "options",
+          "proposal",
+          "label",
+          "route"
+        ],
+        "title": "FormNeed",
+        "type": "object"
+      },
+      "FormOptionCard": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "consequence": {
+            "title": "Consequence",
+            "type": "string"
+          },
+          "rung": {
+            "title": "Rung",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "customary",
+          "sound",
+          "consequence",
+          "rung"
+        ],
+        "title": "FormOptionCard",
+        "type": "object"
+      },
+      "FormStated": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "why"
+        ],
+        "title": "FormStated",
+        "type": "object"
+      },
+      "FormsArtifact": {
+        "additionalProperties": false,
+        "description": "The ``forms`` stage: the functional-form question's card (MODELING_SEQUENCE §1 row 5).",
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Effective"
+          },
+          "rule_knots": {
+            "title": "Rule Knots",
+            "type": "integer"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "needs": {
+            "items": {
+              "$ref": "#/components/schemas/FormNeed"
+            },
+            "title": "Needs",
+            "type": "array"
+          },
+          "stated": {
+            "items": {
+              "$ref": "#/components/schemas/FormStated"
+            },
+            "title": "Stated",
+            "type": "array"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "beside": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beside"
+          }
+        },
+        "required": [
+          "purpose",
+          "ready",
+          "exposure",
+          "task",
+          "n_effective",
+          "rule_knots",
+          "rule",
+          "needs",
+          "stated",
+          "answer",
+          "beside"
+        ],
+        "title": "FormsArtifact",
+        "type": "object"
+      },
       "GoldbergRule": {
         "additionalProperties": false,
         "description": "Keep rows whose reported energy intake over estimated BMR lies within the Goldberg cut-offs\n(Goldberg et al. 1991, revised by Black 2000): ``PAL × exp(±2 S / 100)`` at n = 1, with\n``S = √(CV²_wEI / d + CV²_wB + CV²_tP)``. Every input is stated: the BMR equation, the PAL (one\nvalue, or one per level of an activity column), and the days of intake the energy averages.",
@@ -22250,6 +23512,84 @@
           "stated"
         ],
         "title": "GrainReading",
+        "type": "object"
+      },
+      "Heterogeneity": {
+        "additionalProperties": false,
+        "properties": {
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "df_num": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df Num"
+          },
+          "df_den": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df Den"
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "enum": [
+                  "F",
+                  "chi2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distribution"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statistic",
+          "df_num",
+          "df_den",
+          "distribution",
+          "p",
+          "caption"
+        ],
+        "title": "Heterogeneity",
         "type": "object"
       },
       "HoldoutDetail": {
@@ -24719,6 +26059,290 @@
         "title": "ModelSequenceCard",
         "type": "object"
       },
+      "ModificationArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure"
+          },
+          "family_count": {
+            "additionalProperties": true,
+            "title": "Family Count",
+            "type": "object"
+          },
+          "modifications": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ModificationResult"
+            },
+            "title": "Modifications",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "exposure",
+          "family_count",
+          "modifications",
+          "methods"
+        ],
+        "title": "ModificationArtifact",
+        "type": "object"
+      },
+      "ModificationFit": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "scale": {
+            "enum": [
+              "ratio",
+              "difference"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "effects": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Effects",
+            "type": "array"
+          },
+          "joint": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Joint",
+            "type": "array"
+          },
+          "multiplicative": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Multiplicative",
+            "type": "array"
+          },
+          "reri": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Reri",
+            "type": "array"
+          },
+          "additive": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Quantity"
+            },
+            "title": "Additive",
+            "type": "array"
+          },
+          "heterogeneity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Heterogeneity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "pooled": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pooled"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "measure",
+          "scale",
+          "n_rows",
+          "effects",
+          "joint",
+          "multiplicative",
+          "reri",
+          "additive",
+          "heterogeneity",
+          "pooled",
+          "concerns"
+        ],
+        "title": "ModificationFit",
+        "type": "object"
+      },
+      "ModificationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "modifier": {
+            "title": "Modifier",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "declared",
+              "suggested by data inspection"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "contrast": {
+            "title": "Contrast",
+            "type": "string"
+          },
+          "low": {
+            "title": "Low",
+            "type": "number"
+          },
+          "high": {
+            "title": "High",
+            "type": "number"
+          },
+          "strata": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Strata",
+            "type": "array"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "adjusted_for": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Adjusted For",
+            "type": "array"
+          },
+          "second_adjusted_for": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Second Adjusted For",
+            "type": "array"
+          },
+          "waiting": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Waiting",
+            "type": "array"
+          },
+          "families": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ModificationFit"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "modifier",
+          "kind",
+          "exposure",
+          "status",
+          "contrast",
+          "low",
+          "high",
+          "strata",
+          "reference",
+          "adjusted_for",
+          "second_adjusted_for",
+          "waiting",
+          "families",
+          "sentence",
+          "concerns"
+        ],
+        "title": "ModificationResult",
+        "type": "object"
+      },
       "MultiplicityQuestion": {
         "description": "ESTIMAND (MODELING_SEQUENCE §2): an exposure family's multiplicity method.",
         "properties": {
@@ -26140,6 +27764,87 @@
           "model_sequence"
         ],
         "title": "ProposalsArtifact",
+        "type": "object"
+      },
+      "Quantity": {
+        "additionalProperties": false,
+        "description": "One reported quantity: on a ratio scale ``estimate`` is the ratio (the RERI its own value);\non a difference scale the difference.",
+        "properties": {
+          "stratum": {
+            "title": "Stratum",
+            "type": "string"
+          },
+          "a": {
+            "anyOf": [
+              {
+                "enum": [
+                  "a0",
+                  "a1"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "A"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "P"
+          }
+        },
+        "required": [
+          "stratum",
+          "a",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "p"
+        ],
+        "title": "Quantity",
         "type": "object"
       },
       "QuestionLabels": {
@@ -28630,7 +30335,7 @@
       },
       "SetExposureForm": {
         "additionalProperties": false,
-        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.",
+        "description": "The form of one predictor (``turbotab.core.methods.exposure_form``); one entry per column.\nLeft without ``knots``, a spline takes k by the declared rule on the analyzed rows (the\ncompletion records it); ``scale`` and ``unit`` are the server's.",
         "properties": {
           "kind": {
             "const": "set_exposure_form",
@@ -28647,7 +30352,10 @@
             "enum": [
               "linear",
               "spline",
-              "quintiles"
+              "quintiles",
+              "categories",
+              "optimal",
+              "zero_spline"
             ],
             "title": "Form",
             "type": "string"
@@ -28665,13 +30373,98 @@
             ],
             "default": null,
             "title": "Knots"
+          },
+          "knots_rule": {
+            "anyOf": [
+              {
+                "const": "harrell",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Knots Rule"
+          },
+          "n_effective": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Effective"
+          },
+          "cuts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cuts"
+          },
+          "domain": {
+            "default": "all",
+            "enum": [
+              "all",
+              "consumers"
+            ],
+            "title": "Domain",
+            "type": "string"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit"
           }
         },
         "required": [
           "kind",
           "column",
           "form",
-          "knots"
+          "knots",
+          "knots_rule",
+          "n_effective",
+          "cuts",
+          "domain",
+          "acknowledged",
+          "scale",
+          "unit"
         ],
         "title": "SetExposureForm",
         "type": "object"
@@ -28796,6 +30589,32 @@
           "prediction_horizon"
         ],
         "title": "SetFollowUp",
+        "type": "object"
+      },
+      "SetForms": {
+        "additionalProperties": false,
+        "description": "The form question's one-tap answer (MODELING_SEQUENCE §1 row 5; BLUEPRINT §14.2): a form for\neach listed column, the exposure's and its continuous confounders', each checked and completed\nas its own ``set_exposure_form`` would be.",
+        "properties": {
+          "kind": {
+            "const": "set_forms",
+            "default": "set_forms",
+            "title": "Kind",
+            "type": "string"
+          },
+          "forms": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExposureFormSpec"
+            },
+            "minProperties": 1,
+            "title": "Forms",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "forms"
+        ],
+        "title": "SetForms",
         "type": "object"
       },
       "SetGrain": {
@@ -29038,6 +30857,114 @@
           "model_1"
         ],
         "title": "SetModelSequence",
+        "type": "object"
+      },
+      "SetModification": {
+        "additionalProperties": false,
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure.",
+        "properties": {
+          "kind": {
+            "const": "set_modification",
+            "default": "set_modification",
+            "title": "Kind",
+            "type": "string"
+          },
+          "modifier": {
+            "minLength": 1,
+            "title": "Modifier",
+            "type": "string"
+          },
+          "modification": {
+            "default": "effect_modification",
+            "enum": [
+              "effect_modification",
+              "interaction"
+            ],
+            "title": "Modification",
+            "type": "string"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exposure"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "High"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Levels"
+          },
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CovariateAnswers"
+            },
+            "title": "Answers",
+            "type": "object"
+          },
+          "post_hoc": {
+            "default": false,
+            "title": "Post Hoc",
+            "type": "boolean"
+          },
+          "withdraw": {
+            "default": false,
+            "title": "Withdraw",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "modifier",
+          "modification",
+          "exposure",
+          "low",
+          "high",
+          "levels",
+          "answers",
+          "post_hoc",
+          "withdraw"
+        ],
+        "title": "SetModification",
         "type": "object"
       },
       "SetMultiplicity": {
@@ -29368,7 +31295,8 @@
             "default": "kcal",
             "enum": [
               "kcal",
-              "percent_energy"
+              "percent_energy",
+              "share_reallocation"
             ],
             "title": "Scale",
             "type": "string"
@@ -30653,6 +32581,18 @@
             ],
             "default": null,
             "title": "Step Percent"
+          },
+          "curve_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Curve Label"
           }
         },
         "required": [
@@ -30671,7 +32611,8 @@
           "support",
           "omitted_energy",
           "scale",
-          "step_percent"
+          "step_percent",
+          "curve_label"
         ],
         "title": "SubstitutionArtifact",
         "type": "object"

@@ -47,6 +47,15 @@ Rules:
   relative to n, why it ranks first: rung (d) ranks high), also while its card computes, so it
   never holds the models question. It is answered by ``set_causal`` for the declared exposure (a
   new exposure re-asks it).
+* FORM (MODELING_SEQUENCE §1 rows 5 and 7): ``form`` comes after the domain transforms (the
+  energy model, step 4), so knots, cut points and the estimand's unit belong to the exposure's
+  final scale. Under inference it is asked of the declared exposure and each adjusted continuous
+  confounder the ``forms`` stage's card lists, and answered while each has a form declared on its
+  present scale; a later transform leaves a form stale, and the question opens again
+  (``followup`` "stale"), never keeping it. Under prediction it is stated (``skipped``).
+  ``modification`` is stated until an effect modifier or a second exposure is declared, then
+  answered once an interaction's second exposure has its adjustment answers (``followup``
+  "adjustment" while it waits); not applicable under prediction or for an exposure family.
 * V2 causal row (``turbotab/core/time_varying.py``): ``time_varying`` is asked under inference
   when the rows are a unit's time points kept as rows and one exposure is declared, after the
   adjustment set; ``not_applicable`` when the ``time_varying`` stage reads the exposure as fixed
@@ -82,19 +91,24 @@ from turbotab.core.ask import AskCard, AskContext
 QuestionKey = Literal[
     "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "causal",
+    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "form",
+    "modification", "causal",
     "models",
     "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
     "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "causal",
+    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "form",
+    "modification", "causal",
     "models",
     "substitution", "open_seal",
 )
 # The ProjectState slot a question's answer writes, where it is not the question's own name.
-SLOT_OF: dict[str, str] = {"open_seal": "seal_opened"}
+# FORM: the form question's answers write the forms (``set_exposure_form``, ``set_forms``), the
+# modifiers' question its declared modifiers (``set_modification``).
+SLOT_OF: dict[str, str] = {"open_seal": "seal_opened", "form": "exposure_forms",
+                           "modification": "modifications"}
 ASSAY_LENSES = ("metabolomics", "genomics")
 StepStatus = Literal["answered", "open", "waiting", "skipped", "not_applicable"]
 
@@ -130,6 +144,11 @@ NEEDS: dict[str, tuple[str, ...]] = {
     # are the time_varying stage's (turbotab/core/time_varying.py).
     "time_varying": ("time_varying",),
     "energy_adjustment": ("proposals",),
+    # FORM (MODELING_SEQUENCE §1 rows 5 and 7): the form question's card (the columns it asks
+    # about, on their final scale, with k by the rule) is the ``forms`` stage's; the modifiers'
+    # question reads the state alone.
+    "form": ("forms",),
+    "modification": (),
     "models": ("shelf",),
     # The causal lane: its card (the options, the assumptions and the outcome-free diagnostics) is
     # the ``causal_design`` stage's (``turbotab/core/causal.py``).
@@ -154,7 +173,10 @@ class InterviewStep(BaseModel):
     # WP18 (audit RO-10): what an open task question still needs after its task ("scale": the
     # outcome's scale; "order": an ordinal text outcome's order). Its options are the target
     # stage's ``scale_question`` and ``order_question``.
-    followup: Literal["scale", "order"] | None = None
+    # FORM: the form question re-asked because a domain transform left a declared form stale
+    # ("stale"); an interaction's second exposure still waiting for its adjustment answers
+    # ("adjustment").
+    followup: Literal["scale", "order", "stale", "adjustment"] | None = None
     # WP18 (BLUEPRINT §14.2): the one ask card, on the open question whose answer feeds a consumer
     # of unsettled readings.
     ask: AskCard | None = None
@@ -444,6 +466,7 @@ def route(
     card reads the state and the artifacts alone.
     """
     from turbotab.core import causal, estimand, time_varying
+    from turbotab.core.methods import exposure_form, interaction
 
     if energy_bearing is None:
         from turbotab.core.stages.rows import energy_bearing as bearing
@@ -477,6 +500,11 @@ def route(
         # V2 causal row (turbotab/core/time_varying.py)
         "time_varying": lambda: time_varying.lane_gate(state, structure,
                                                        artifacts.get("time_varying")),
+        # FORM (turbotab/core/methods/exposure_form.py, interaction.py): the form is asked after
+        # the domain transforms, on the exposure's final scale; the modifiers are stated until
+        # one is declared.
+        "form": lambda: exposure_form.form_gate(state, artifacts.get("forms")),
+        "modification": lambda: interaction.modification_gate(state),
     }
     # A question whose answer is not simply its slot's value (WP17): the follow-up is answered by a
     # time to event's follow-up or a yes/no outcome's "same for everyone"; the estimand while its
@@ -487,6 +515,12 @@ def route(
         "adjustment": lambda: estimand.adjustment_answer(state),
         "causal": lambda: causal.current_causal(state),
         "time_varying": lambda: time_varying.lane_answer(state),
+        # FORM: answered while every column the card asks about has a form declared on its present
+        # scale (a stale one is asked again), and once every declared modifier is complete.
+        # (the card last computed while a fresh one is under way: an answer stands meanwhile)
+        "form": lambda: exposure_form.form_answer(
+            state, artifacts.get("forms") or artifacts.get("forms_shown")),
+        "modification": lambda: interaction.modification_answer(state),
     }
     writer_slots = {"follow_up": ("follow_up", "censoring")}
 
@@ -521,6 +555,10 @@ def route(
             # need its scale or its order waits for the reading rather than standing answered.
             undecided = (followup is None and value is not None and "target_info" in pending
                          and task_followup_possible(state))
+        if key == "form" and value is None and exposure_form.stale_forms(state):
+            followup = "stale"  # asked again: a domain transform left a declared form stale
+        if key == "modification" and value is None:
+            followup = interaction.modification_followup(state)
         if value is not None and followup is None and not undecided:
             steps.append(InterviewStep(key=key, status="answered", decision_id=decision_id))
             continue
@@ -541,6 +579,13 @@ def route(
             # The outcome is not read yet for the outcome chosen (its stage is about to start):
             # whether an event or a task is asked at all depends on that reading.
             own.append("target_info")
+        if (key == "form" and artifacts.get("forms") is None and "forms" not in own
+                and "forms" in stages
+                and _get(stages.get("forms"), "status") != "error"
+                and not _get(stages.get("forms"), "cancelled", False)):
+            # FORM: the card is not read for these answers yet (about to be computed): whether
+            # the question asks anything, and about which columns, is the card's.
+            own.append("forms")
         fresh_stage = MUST_BE_FRESH.get(key)
         if fresh_stage and _get(stages.get(fresh_stage), "status") != "fresh" and fresh_stage not in own:
             own.append(fresh_stage)

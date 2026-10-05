@@ -1228,8 +1228,12 @@ def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence
         if test["test"] in ("overall", "nonlinear", "global"):
             if step is None:
                 continue
+            from turbotab.core.methods.exposure_form import nonlinear_outputs
+
             outputs = step._outputs(test["column"])
-            names = outputs[1:] if test["test"] == "nonlinear" else outputs
+            # FORM: a mass at zero's nonlinear terms are its spline's among consumers.
+            names = (nonlinear_outputs(step, test["column"]) if test["test"] == "nonlinear"
+                     else outputs)
             Q, U = [], []
             for table in tables:
                 where = {str(r["feature"]): j for j, r in enumerate(table.rows)}
@@ -1272,10 +1276,13 @@ def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence
                     "distribution": "t" if pooled.df is not None else "z",
                     "medians": ([float(np.mean([mm[g] for mm in medians])) for g in range(len(medians[0]))]
                                 if all(mm for mm in medians) else test.get("medians")),
-                    "caption": (f"Pooled over {m} imputations by Rubin's rules: the trend coefficient "
-                                f"{pooled.estimate:+.4g} per unit (each copy scored by its own "
-                                f"quintile medians), p = {format_p(pooled.p)}. Within each "
-                                f"imputation: {test['caption']}")})
+                    # FORM: a test that names what it pools (a companion quintile, a cut point).
+                    "caption": (f"Pooled over {m} imputations by Rubin's rules: "
+                                + (f"{test['what']} {pooled.estimate:+.4g}" if test.get("what")
+                                   else f"the trend coefficient {pooled.estimate:+.4g} per unit "
+                                        f"(each copy scored by its own quintile medians)")
+                                + f", p = {format_p(pooled.p)}. Within each imputation: "
+                                  f"{test['caption']}")})
     return out
 
 
@@ -2092,6 +2099,14 @@ def _predictor(task: str, pipeline: Any) -> Any:
     return lambda frame: pipeline.predict_proba(frame)[:, 1]
 
 
+def _curve_label(state: Any, donor: str, recipient: str) -> str | None:
+    """FORM: the substitution curve's label under a log or a nonlinear form of a moved component
+    (``methods.exposure_form.substitution_curve_label``)."""
+    from turbotab.core.methods.exposure_form import substitution_curve_label
+
+    return substitution_curve_label(state, donor, recipient)
+
+
 def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     """Move k kcal from the donor to the recipient and follow each fitted model's prediction.
 
@@ -2498,6 +2513,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         omitted_energy=omitted,
         scale=scale,
         step_percent=float(sub.step_percent) if scale == "percent_energy" else None,
+        # FORM (MODELING_SEQUENCE §2, corrected): a log or a spline on an energy component makes
+        # each point of the curve an average over the rows at that k, never one coefficient.
+        curve_label=_curve_label(ctx.state, sub.donor, sub.recipient),
     )
     ctx.progress(1.0, "Done")
     return artifact.model_dump(mode="json")

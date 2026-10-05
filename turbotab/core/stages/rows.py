@@ -1317,6 +1317,7 @@ def cohort_flow(
     repairs: Sequence[Any] | None = None,
     reference: Sequence[Mapping[str, Any]] | None = None,
     landmark: tuple[str, float] | None = None,
+    domain: Sequence[str] = (),
 ) -> tuple[list[dict[str, Any]], Any]:
     """The participant flow over ``frame`` (indexed by row id): its steps and the kept row ids.
 
@@ -1394,6 +1395,29 @@ def cohort_flow(
         steps.append({"key": f"repair:{i}", "label": rule_label(rule), "n": now,
                       "dropped": kept - now, "reason": rule.reason, "decision_id": None})
         kept = now
+    for column in domain:
+        # FORM (STROBE-nut nut-14): the consumers-only domain, an estimand change. A row whose
+        # intake is not recorded cannot be confirmed a consumer, and leaves on its own line first.
+        if column not in frame.columns:
+            continue
+        values = pd.to_numeric(frame[column], errors="coerce")
+        unknown = keep & values.isna()
+        if int(unknown.sum()):
+            keep &= ~unknown
+            now = int(keep.sum())
+            steps.append({"key": f"domain:{column}:not_recorded", "label": f"`{column}` not recorded",
+                          "n": now, "dropped": kept - now,
+                          "reason": f"no value for `{column}`, so it cannot be confirmed a consumer",
+                          "decision_id": None})
+            kept = now
+        keep &= values > 0
+        now = int(keep.sum())
+        steps.append({"key": f"domain:{column}", "label": f"`{column}` above 0: consumers only",
+                      "n": now, "dropped": kept - now,
+                      "reason": (f"a non-consumer of `{column}` (`{column}` = 0): the analysis is "
+                                 f"restricted to consumers, an estimand change (STROBE-nut nut-14)"),
+                      "decision_id": None})
+        kept = now
     if landmark is not None and landmark[0] in frame.columns:
         column, at = landmark
         time = pd.to_numeric(frame[column], errors="coerce")
@@ -1445,11 +1469,20 @@ def cohort_inputs(state: Any, ingest: Mapping[str, Any]) -> tuple[list[str], lis
     mark = landmark_of(state)
     if mark is not None:
         needed.append(mark[0])
+    needed.extend(domain_of(state))  # FORM: the consumers-only domain reads the exposure
     with_missing = _columns_with_missing(ingest)
     levels = set(level_columns(state, preds, {str(c["name"]): c for c in ingest.get("columns", [])}))
     gappy = ([c for c in preds if c in with_missing and c not in levels]
              if missing_strategy(state) == "complete_case" else [])
     return list(dict.fromkeys(needed)), preds, gappy
+
+
+def domain_of(state: Any) -> list[str]:
+    """FORM: the declared exposure whose consumers-only domain restricts the rows (an estimand
+    change; ``methods.exposure_form.domain_columns``)."""
+    from turbotab.core.methods.exposure_form import domain_columns
+
+    return domain_columns(state)
 
 
 def landmark_of(state: Any) -> tuple[str, float] | None:
@@ -1498,6 +1531,7 @@ def compute_cohort(
         repairs=repair_rules(state),
         reference=ingest.get("reference_rows"),
         landmark=landmark_of(state),
+        domain=domain_of(state),
     )
     return steps, kept, preds
 
