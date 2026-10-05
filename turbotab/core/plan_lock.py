@@ -159,6 +159,16 @@ def plan_text(content: Mapping[str, Any], sha: str) -> str:
         tail = (f" {later:,} decision{'s were' if later != 1 else ' was'} made after the estimates "
                 f"were seen, listed with it and marked so in the methods." if later else
                 " No decision has been made since the estimates were seen.")
+    elif (content.get("plan") or {}).get("purpose") == "prediction":
+        # EXPORT: under prediction no plan is locked (the held-out rows are the seal), and scores
+        # may already have been shown, so the plan says neither that it was locked nor that no
+        # estimate was displayed.
+        lead = (f"This is the analysis as declared in TurboTab for prediction, through the decision "
+                f"recorded on {when}. Under prediction no plan is locked: the held-out rows are the "
+                f"seal, and a family's score is the result only as the fit declares it (the "
+                f"held-out score of a family declared final before they were opened, or the "
+                f"selection-corrected estimate).")
+        tail = ""
     else:
         lead = (f"This is the analysis plan as declared in TurboTab so far, through the decision "
                 f"recorded on {when}; no estimate has been displayed yet.")

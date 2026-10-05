@@ -254,6 +254,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.models.design_cv",
     # Wave 2, MULTISUB: a multiclass outcome's substitution curves
     "turbotab.core.methods.substitution",
+    # Wave 2c, EXPORT: the export bundle and its replay
+    "turbotab.core.export.contract",
 )
 
 

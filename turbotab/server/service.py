@@ -995,6 +995,9 @@ class ProjectService:
             cohort_row_ids=cohort_ids,
             sealed_row_ids=sealed,
             training_kind=kind,
+            # The log (a preview's state is the log's fold with the answer; a revert's is the
+            # answer it restores) and the project's folder (an added file, a staged codebook).
+            settings={"records": ctx.records, "project_dir": ctx.project_dir},
         )
         pctx.before = lambda: self._before_frame(pid, pctx, stages, used)
         result = consequences.plan(parsed, pctx, basis="")
@@ -1259,7 +1262,28 @@ class ProjectService:
         # A restated sentence reads what its record's sentence read besides the answers: the
         # detected task, for the families' estimators under the survey answer (MS4).
         facts = SentenceFacts(self.decision_context(pid), None, records)
-        return methods_text(records, {"detected_task": facts.detected_task})
+        return methods_text(records, {"detected_task": facts.detected_task,
+                                      "counts": self._flow_counts(pid)})
+
+    def _flow_counts(self, pid: str) -> dict[str, Any]:
+        """The counts the participant flow has now, by the decision kind whose sentence states them
+        (EXPORT; ``voice.restated_counts``): the complete cases kept of the rows before them, and
+        each exclusion rule's rows. Empty while the flow is being computed: the sentences stay as
+        said."""
+        from turbotab.core.stages.rows import rule_drops
+
+        cohort = self._fresh(pid, "cohort", public=True)
+        steps = cohort.get("steps") if isinstance(cohort, dict) else None
+        if not steps:
+            return {}
+        out: dict[str, Any] = {}
+        cc = next((s for s in steps if s.get("key") == "complete_cases"), None)
+        if cc is not None:
+            out["set_missing"] = {"n_complete": int(cc["n"]),
+                                  "n_before": int(cc["n"]) + int(cc["dropped"])}
+        if any(str(s.get("key")).startswith("exclusion:") for s in steps):
+            out["set_exclusions"] = {"exclusion_counts": rule_drops(steps)}
+        return out
 
     # ── stages and jobs ──
 
@@ -1268,11 +1292,32 @@ class ProjectService:
         if stage not in self.engine.graph:
             raise ApiError(404, "unknown_stage", f"There is no stage named {stage!r}.")
         result = self.engine.get(pid, stage)
-        artifact = result.artifact
+        artifact = self._serve(pid, stage, result.artifact, result.key)
+        self._lock_when_shown(pid, stage, artifact)
+        if stage in ("fit", "explain") and result.fresh and isinstance(artifact, dict):
+            # MS6: the families whose cross-validated scores this client now sees, for its outcome,
+            # kept beside the project; a revert or a new seed cannot unsee them. The explanations'
+            # floors quote the same scores (wave 2a's EXPLAIN), so serving them counts too.
+            from turbotab.core.models.selection import explained_in, note_seen, scored_in
+
+            note_seen(self.workspace.project_dir(pid), self.log(pid).state().target,
+                      scored_in(artifact) if stage == "fit" else explained_in(artifact))
+        return {
+            "stage": result.stage,
+            "key": result.key,
+            "fresh": result.fresh,
+            "status": result.status,
+            "artifact": artifact,
+        }
+
+    def _serve(self, pid: str, stage: str, artifact: Any, key: str | None) -> Any:
+        """A stage's artifact as a client is served it (no side effect: the plan lock and the
+        scores seen are the caller's): the fit's held-out scores withheld until opened, estimates withheld until the
+        questions they rest on are answered, each finding's disposition."""
         if artifact is not None and not isinstance(artifact, dict):
             artifact = {"value": artifact}
         if stage == "fit" and artifact is not None:
-            artifact = self._served_fit(pid, artifact, result.key)
+            artifact = self._served_fit(pid, artifact, key)
         if artifact is not None and stage in estimand.ESTIMATE_STAGES:
             # WP17: no estimate is served while a question it rests on is unanswered (the follow-up;
             # under inference the grouping, the exposure and its effect, the adjustment set), as
@@ -1297,22 +1342,93 @@ class ProjectService:
 
             records = self.log(pid).records()
             artifact = repairs.annotate(artifact, decisions.fold(records), records)
-        self._lock_when_shown(pid, stage, artifact)
-        if stage in ("fit", "explain") and result.fresh and isinstance(artifact, dict):
-            # MS6: the families whose cross-validated scores this client now sees, for its outcome,
-            # kept beside the project; a revert or a new seed cannot unsee them. The explanations'
-            # floors quote the same scores (wave 2a's EXPLAIN), so serving them counts too.
-            from turbotab.core.models.selection import explained_in, note_seen, scored_in
+        return artifact
 
-            note_seen(self.workspace.project_dir(pid), self.log(pid).state().target,
-                      scored_in(artifact) if stage == "fit" else explained_in(artifact))
-        return {
-            "stage": result.stage,
-            "key": result.key,
-            "fresh": result.fresh,
-            "status": result.status,
-            "artifact": artifact,
-        }
+    # ── the export (V2 definition of done §1, §3.6; turbotab/core/export) ──
+
+    def export_source(self, pid: str) -> Any:
+        """The project as the export reads it (``turbotab.core.export.source.Source``): each fresh
+        stage's artifact exactly as a client is served it, never locking anything, and the input
+        files hashed as they are now."""
+        import copy
+
+        from turbotab.core.export.source import Source
+        from turbotab.server import __version__
+
+        meta = self.workspace.get(pid)
+        stages = self.engine.status(pid)
+        records = self.log(pid).records()
+        state = decisions.fold(records)
+
+        def fresh_key(stage: str) -> str | None:
+            status = stages.get(stage)
+            return status.key if status is not None and status.status == "fresh" else None
+
+        def artifact(stage: str) -> Any:
+            key = fresh_key(stage)
+            if not key:
+                return None
+            found = copy.deepcopy(self._artifact(pid, stage, key, public=True))
+            return self._serve(pid, stage, found, key)
+
+        def bundle(stage: str) -> Any:
+            key = fresh_key(stage)
+            return self._artifact(pid, stage, key) if key else None
+
+        path = self.workspace.decisions_path(pid)
+        return Source(
+            name=meta.name, engine_version=__version__, records=records, state=state,
+            interview=self.interview(pid, state, stages, records), statuses=stages,
+            artifact=artifact, bundle=bundle, methods=self.methods(pid),
+            inputs=self._export_inputs(pid, meta, state),
+            decisions_jsonl=path.read_bytes() if path.is_file() else b"",
+            stage_versions={s.name: s.version for s in self.engine.graph.stages()})
+
+    def _export_inputs(self, pid: str, meta: ProjectMeta, state: ProjectState) -> list[Any]:
+        """Every file the analysis read: the table's own, each joined file, each imported
+        codebook's source, hashed now and checked against the fingerprint recorded on reading."""
+        from turbotab.core.assembly import file_meta
+        from turbotab.core.export.source import input_file
+
+        pdir = self.workspace.project_dir(pid)
+        out = [input_file("table", meta.source_name, meta.source_path, self.fingerprint(pid))]
+        for fid in (state.joins or {}):
+            found = file_meta(pdir, fid)
+            if found is not None:
+                out.append(input_file("joined file", str(found.get("name") or fid),
+                                      str(found.get("source_path")), found.get("fingerprint"),
+                                      file_id=fid))
+        for cid in (getattr(state, "codebooks", None) or {}):
+            folder = pdir / "codebooks" / str(cid) / "source"
+            for kept in sorted(folder.iterdir()) if folder.is_dir() else []:
+                out.append(input_file("codebook", kept.name, kept, None, file_id=str(cid)))
+        return out
+
+    def export(self, pid: str) -> bytes:
+        """The manuscript bundle (``turbotab.core.export.bundle``), refused while anything it
+        would report is not settled."""
+        from turbotab.core.export.bundle import contents
+        from turbotab.core.models.selection import note_seen, scored_in
+
+        source = self.export_source(pid)
+        out = contents(source).zip()
+        if source.purpose != "inference":
+            # MS6, as stage_result: the bundle's performance table shows every fitted family's
+            # cross-validated score, so a bundle handed over counts as those scores seen, even by
+            # a client that never asked for the fit stage.
+            note_seen(self.workspace.project_dir(pid), getattr(source.state, "target", None),
+                      scored_in(source.artifact("fit")))
+        return out
+
+    def checklist(self, pid: str) -> Any:
+        """The reporting checklist of the declared purpose, filled from the record and the results
+        as they stand, with what the export still waits for."""
+        from turbotab.core.export import gate
+        from turbotab.core.export.bundle import contents
+
+        source = self.export_source(pid)
+        report = contents(source, gated=False).checklist
+        return report.model_copy(update={"waiting": [m.message for m in gate.missing(source)]})
 
     def run_stage(self, pid: str, stage: str) -> StageStatus:
         """Compute ``stage`` for the current answers, retrying a failure or a cancel upstream too."""

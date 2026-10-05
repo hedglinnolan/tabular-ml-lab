@@ -41,7 +41,7 @@ EVALUATION_READS: tuple[str, ...] = ("target", "purpose", "task", "event", "outc
                                      "intended_use",
                                      "updating", "selection", "levers", "survey",
                                      "models", "split", "follow_up", "outcome_views",
-                                     "exposure_forms", "outcome_scale", "seal_opened")
+                                     "exposure_forms", "outcome_scale")
 BENCHMARK = "spline_benchmark"
 BENCHMARK_LABEL = "Regression with splines (benchmark)"
 SUPPORTED = ("regression", "binary")

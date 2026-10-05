@@ -2305,6 +2305,123 @@
           }
         }
       }
+    },
+    "/api/projects/{pid}/export": {
+      "get": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Export",
+        "description": "The manuscript bundle: the methods section from the record (ordered by STROBE or\nTRIPOD+AI), the participant-flow and lineage figures as journal-format SVG, the results tables\nas CSV and Markdown, the filled checklist, the analysis plan with its SHA-256 and the\nprovenance record a replay checks (``python -m turbotab.replay``). Refused while a required\nquestion is unanswered, the plan is open, an input file changed or a result is not computed.",
+        "operationId": "export_api_projects__pid__export_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The bundle, a zip",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not ready to export: names everything missing, with a way forward for each",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/checklist": {
+      "get": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Checklist",
+        "description": "The reporting checklist of the declared purpose (STROBE-nut under inference, TRIPOD+AI\nunder prediction): every item quoted from its source, with where the record answers it or\n\"unanswered — the author must supply this\", and what the export still waits for.",
+        "operationId": "checklist_api_projects__pid__checklist_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChecklistReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2988,6 +3105,246 @@
           "decision"
         ],
         "title": "CautionExit"
+      },
+      "ChecklistCounts": {
+        "properties": {
+          "items": {
+            "type": "integer",
+            "title": "Items"
+          },
+          "answered": {
+            "type": "integer",
+            "title": "Answered"
+          },
+          "partly_answered": {
+            "type": "integer",
+            "title": "Partly Answered"
+          },
+          "unanswered": {
+            "type": "integer",
+            "title": "Unanswered"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "answered",
+          "partly_answered",
+          "unanswered"
+        ],
+        "title": "ChecklistCounts"
+      },
+      "ChecklistItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "partly answered",
+              "unanswered"
+            ],
+            "title": "Status"
+          },
+          "where": {
+            "items": {
+              "$ref": "#/components/schemas/Where"
+            },
+            "type": "array",
+            "title": "Where"
+          },
+          "owed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owed"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "section",
+          "topic",
+          "text",
+          "kind",
+          "scope",
+          "status",
+          "where",
+          "owed",
+          "note"
+        ],
+        "title": "ChecklistItem"
+      },
+      "ChecklistReport": {
+        "properties": {
+          "checklist": {
+            "type": "string",
+            "enum": [
+              "STROBE-nut",
+              "TRIPOD+AI"
+            ],
+            "title": "Checklist"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "citation": {
+            "type": "string",
+            "title": "Citation"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ChecklistSource"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChecklistItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ChecklistCounts"
+          },
+          "unanswered": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unanswered"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "waiting": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Waiting",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "checklist",
+          "title",
+          "citation",
+          "source",
+          "purpose",
+          "items",
+          "counts",
+          "unanswered",
+          "note",
+          "waiting"
+        ],
+        "title": "ChecklistReport",
+        "description": "A reporting checklist, every item listed with where the bundle answers it."
+      },
+      "ChecklistSource": {
+        "properties": {
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "pmcid": {
+            "type": "string",
+            "title": "Pmcid"
+          },
+          "doi": {
+            "type": "string",
+            "title": "Doi"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "retrieved": {
+            "type": "string",
+            "title": "Retrieved"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "license": {
+            "type": "string",
+            "title": "License"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "table",
+          "pmcid",
+          "doi",
+          "url",
+          "retrieved",
+          "sha256",
+          "license"
+        ],
+        "title": "ChecklistSource"
       },
       "ClusterSpec": {
         "properties": {
@@ -17265,6 +17622,72 @@
           "levers"
         ],
         "title": "ViewOutcome"
+      },
+      "Where": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "record",
+              "analysis",
+              "file"
+            ],
+            "title": "Source"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "file",
+          "quote",
+          "record_id",
+          "seq",
+          "kind"
+        ],
+        "title": "Where",
+        "description": "Where an item is answered: a record sentence, an analysis paragraph, or a bundle file."
       },
       "AdjustmentCard": {
         "description": "WP17 (MODELING_SEQUENCE §1 step 3): the disjunctive cause criterion, asked per covariate.",

@@ -526,7 +526,11 @@ def build_graph() -> Graph:
             # repair's.
             # design 23 (wave 2, EXPLORE): Explore's levers as in-fold rules and the selection menu's
             # in-fold step, under prediction (``methods.levers``, ``models.variable_selection``).
-            Stage("design", 23, ("working", "split", "target_info"),
+            # design 23 (EXPORT): the model matrix the shared steps made is kept as a file of the
+            # artifact (canonical Parquet, read by no stage downstream), so the export hashes it
+            # and a replay compares it byte for byte (V2 definition of done §3.6).
+            # design 24 (wave 2b integration): design 23 of EXPLORE and of EXPORT on one engine.
+            Stage("design", 24, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection"),
@@ -777,7 +781,9 @@ def build_graph() -> Graph:
             Stage("explore", 1, ("working", "cohort", "split", "target_info"),
                   (*EXPLORE_READS, *ROLE_READS, *WP17_READS), explore_stage, heavy=True,
                   requires=("target", "split"), label="Exploring the rows Explore may read"),
-            Stage("evaluation", 1, ("working", "fit", "design", "split", "target_info"),
+            # evaluation 2 (wave 2b integration): the seal's opening left its reads, as nothing it
+            # computes reads it (a re-seal withholds scores and changes no number, wave 2c).
+            Stage("evaluation", 2, ("working", "fit", "design", "split", "target_info"),
                   (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
                   requires=("models",),
                   label="Fitting the benchmark and weighing the models"),
