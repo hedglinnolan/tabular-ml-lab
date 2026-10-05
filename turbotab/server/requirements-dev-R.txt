@@ -1,0 +1,34 @@
+# Test-only R reference implementations for the acceptance suite (turbotab/core/tests/acceptance).
+# Independent paths for checking the engine — never called by the app. Tests that use R are marked
+# skipif(shutil.which("Rscript") is None), so a machine without R skips them cleanly.
+#
+# macOS setup (R 4.6.1):
+#   brew install r nlopt cmake
+#   Rscript -e 'options(repos="https://cloud.r-project.org"); lib <- Sys.getenv("R_LIBS_USER");
+#     dir.create(lib, recursive=TRUE, showWarnings=FALSE);
+#     install.packages(readLines("turbotab/server/requirements-dev-R.txt") |> grep(pattern="^[A-Za-z]", value=TRUE) |> setdiff(c("sva","limma")), lib=lib);
+#     install.packages("BiocManager", lib=lib); BiocManager::install(c("sva","limma"), lib=lib, ask=FALSE, update=FALSE)'
+survey
+smcfcs
+mice
+mitml
+tmle
+gfoRmula
+ipw
+WeightIt
+DoubleML
+EValue
+sensemakr
+dcurves
+rms
+pROC
+psych
+GPArotation
+mecor
+ordinal
+geepack
+lme4
+clubSandwich
+glmnet
+sva
+limma
