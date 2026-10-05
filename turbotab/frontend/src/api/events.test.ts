@@ -82,6 +82,8 @@ function view(): ProjectView {
       reading_confirmations: null,
       shape_confirmations: null,
       sex_codings: null,
+      joins: null,
+      codebooks: null,
     },
     decisions: [record(1)],
     stages: {

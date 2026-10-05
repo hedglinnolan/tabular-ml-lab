@@ -430,6 +430,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReadings"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JoinFiles-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImportCodebook-Input"
                   }
                 ],
                 "discriminator": {
@@ -470,7 +476,9 @@
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "confirm_reading": "#/components/schemas/ConfirmReading",
-                    "confirm_readings": "#/components/schemas/ConfirmReadings"
+                    "confirm_readings": "#/components/schemas/ConfirmReadings",
+                    "join_files": "#/components/schemas/JoinFiles-Input",
+                    "import_codebook": "#/components/schemas/ImportCodebook-Input"
                   }
                 },
                 "title": "Decision"
@@ -831,6 +839,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReadings"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JoinFiles-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImportCodebook-Input"
                   }
                 ],
                 "discriminator": {
@@ -871,7 +885,9 @@
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Input",
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "confirm_reading": "#/components/schemas/ConfirmReading",
-                    "confirm_readings": "#/components/schemas/ConfirmReadings"
+                    "confirm_readings": "#/components/schemas/ConfirmReadings",
+                    "join_files": "#/components/schemas/JoinFiles-Input",
+                    "import_codebook": "#/components/schemas/ImportCodebook-Input"
                   }
                 },
                 "title": "Decision"
@@ -1551,10 +1567,537 @@
           }
         }
       }
+    },
+    "/api/projects/{pid}/files": {
+      "get": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "List Files",
+        "description": "The files added to the project to join to its table, and whether each is joined.",
+        "operationId": "list_files_api_projects__pid__files_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AddedFile"
+                  },
+                  "title": "Response List Files Api Projects  Pid  Files Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Add File",
+        "description": "Add a file on this machine (local mode only); it is read once, as the table was.",
+        "operationId": "add_file_api_projects__pid__files_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddFile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddedFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a readable data file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Server mode: add files by uploading them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No file at that path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/files/upload": {
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Upload File",
+        "description": "Upload a file to join to the project's table (multipart field ``file``).",
+        "operationId": "upload_file_api_projects__pid__files_upload_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddedFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No file, or not a readable data file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/join-preview": {
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Join Preview",
+        "description": "The row counts a join would give, before it is committed (``join_files`` commits it).",
+        "operationId": "join_preview_api_projects__pid__join_preview_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinPreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project or file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table is still being read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/codebooks": {
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Add Codebook",
+        "description": "Read a codebook on this machine (local mode only), or the table's own XPT labels, and say\nwhat importing it would do (``import_codebook`` records it).",
+        "operationId": "add_codebook_api_projects__pid__codebooks_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodebookRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodebookPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a codebook TurboTab reads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Server mode: upload the codebook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table is still being read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/codebooks/upload": {
+      "post": {
+        "tags": [
+          "assembly"
+        ],
+        "summary": "Upload Codebook",
+        "description": "Upload a codebook (multipart field ``file``): a variable table, an NHANES codebook page or\nan XPT file; the answer says what importing it would do.",
+        "operationId": "upload_codebook_api_projects__pid__codebooks_upload_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodebookPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No file, or not a codebook TurboTab reads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The table is still being read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AddFile": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "AddFile",
+        "description": "Add a file on this machine to the project, to join to its table (local mode only)."
+      },
+      "AddedFile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "path",
+              "upload"
+            ],
+            "title": "Source Kind"
+          },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "n_rows": {
+            "type": "integer",
+            "title": "N Rows"
+          },
+          "n_cols": {
+            "type": "integer",
+            "title": "N Cols"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "joined": {
+            "type": "boolean",
+            "title": "Joined",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "source_kind",
+          "fingerprint",
+          "n_rows",
+          "n_cols",
+          "columns",
+          "warnings",
+          "joined"
+        ],
+        "title": "AddedFile"
+      },
       "AggregationSpec": {
         "properties": {
           "method": {
@@ -1772,6 +2315,301 @@
           "anchor"
         ],
         "title": "CoachNote"
+      },
+      "CodebookAsk": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "says": {
+            "type": "string",
+            "title": "Says"
+          },
+          "values": {
+            "type": "string",
+            "title": "Values"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "type": "array",
+            "title": "Exits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column",
+          "field",
+          "says",
+          "values",
+          "exits"
+        ],
+        "title": "CodebookAsk"
+      },
+      "CodebookConflict": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "codes",
+              "type",
+              "range"
+            ],
+            "title": "Field"
+          },
+          "says": {
+            "type": "string",
+            "title": "Says"
+          },
+          "values": {
+            "type": "string",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "field",
+          "says",
+          "values"
+        ],
+        "title": "CodebookConflict",
+        "description": "A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3)."
+      },
+      "CodebookPreview": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "table",
+              "nhanes",
+              "xpt"
+            ],
+            "title": "Form"
+          },
+          "n_entries": {
+            "type": "integer",
+            "title": "N Entries"
+          },
+          "n_matched": {
+            "type": "integer",
+            "title": "N Matched"
+          },
+          "unmatched": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unmatched"
+          },
+          "n_unmatched": {
+            "type": "integer",
+            "title": "N Unmatched"
+          },
+          "settles": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookSettlement"
+            },
+            "type": "array",
+            "title": "Settles"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "labels": {
+            "type": "integer",
+            "title": "Labels"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookAsk"
+            },
+            "type": "array",
+            "title": "Asked"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "form",
+          "n_entries",
+          "n_matched",
+          "unmatched",
+          "n_unmatched",
+          "settles",
+          "units",
+          "labels",
+          "asked",
+          "kept",
+          "sentence"
+        ],
+        "title": "CodebookPreview",
+        "description": "What importing a codebook would do (``import_codebook`` with this ``id`` records it): the\nreadings its structured fields settle, its documented units, how many labels it gives, the\nfields the values contradict (asked, never applied), the readings the user answered\notherwise (kept), and the sentence it would record."
+      },
+      "CodebookRequest": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "labels": {
+            "type": "boolean",
+            "title": "Labels",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CodebookRequest",
+        "description": "A codebook to read: a file on this machine (local mode only), or the variable labels the\ntable's own SAS transport files carry (``labels``)."
+      },
+      "CodebookSettlement": {
+        "properties": {
+          "reading": {
+            "type": "string",
+            "title": "Reading"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reading",
+          "column",
+          "value",
+          "field"
+        ],
+        "title": "CodebookSettlement"
+      },
+      "CodebookSpec": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "form": {
+            "type": "string",
+            "enum": [
+              "table",
+              "nhanes",
+              "xpt"
+            ],
+            "title": "Form"
+          },
+          "settled": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Settled"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookConflict"
+            },
+            "type": "array",
+            "title": "Asked"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "n_entries": {
+            "type": "integer",
+            "title": "N Entries",
+            "default": 0
+          },
+          "n_matched": {
+            "type": "integer",
+            "title": "N Matched",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "form",
+          "settled",
+          "units",
+          "labels",
+          "asked",
+          "kept",
+          "n_entries",
+          "n_matched"
+        ],
+        "title": "CodebookSpec",
+        "description": "One imported codebook as the state keeps it (``codebooks`` slot, keyed by its id):\n``settled`` the readings its structured fields settled (``\"<kind>:<column>\"`` -> value),\n``units`` the documented units no reading kind takes (``mg/dL``; a sentence may state them),\n``labels`` its free-text labels of the table's columns (they only strengthen a guess),\n``asked`` its fields the values contradict, ``kept`` the readings the user had answered\notherwise before (the user's answer stands)."
       },
       "ColumnSummary": {
         "properties": {
@@ -2247,6 +3085,12 @@
               },
               {
                 "$ref": "#/components/schemas/ConfirmReadings"
+              },
+              {
+                "$ref": "#/components/schemas/JoinFiles-Output"
+              },
+              {
+                "$ref": "#/components/schemas/ImportCodebook-Output"
               }
             ],
             "title": "Decision",
@@ -2259,6 +3103,8 @@
                 "confirm_role": "#/components/schemas/ConfirmRole",
                 "defer_finding": "#/components/schemas/DeferFinding",
                 "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                "import_codebook": "#/components/schemas/ImportCodebook-Output",
+                "join_files": "#/components/schemas/JoinFiles-Output",
                 "open_seal": "#/components/schemas/OpenSeal-Output",
                 "revert": "#/components/schemas/Revert",
                 "select_models": "#/components/schemas/SelectModels",
@@ -2906,6 +3752,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ConfirmReadings"
+                  },
+                  {
+                    "$ref": "#/components/schemas/JoinFiles-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImportCodebook-Output"
                   }
                 ],
                 "discriminator": {
@@ -2917,6 +3769,8 @@
                     "confirm_role": "#/components/schemas/ConfirmRole",
                     "defer_finding": "#/components/schemas/DeferFinding",
                     "dismiss_finding": "#/components/schemas/DismissFinding-Output",
+                    "import_codebook": "#/components/schemas/ImportCodebook-Output",
+                    "join_files": "#/components/schemas/JoinFiles-Output",
                     "open_seal": "#/components/schemas/OpenSeal-Output",
                     "revert": "#/components/schemas/Revert",
                     "select_models": "#/components/schemas/SelectModels",
@@ -3880,6 +4734,205 @@
         ],
         "title": "HistogramData"
       },
+      "ImportCodebook-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "import_codebook",
+            "title": "Kind",
+            "default": "import_codebook"
+          },
+          "codebook": {
+            "type": "string",
+            "pattern": "^c[0-9a-f]{10}$",
+            "title": "Codebook"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "table",
+                  "nhanes",
+                  "xpt"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookConflict"
+            },
+            "type": "array",
+            "title": "Asked"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "n_entries": {
+            "type": "integer",
+            "title": "N Entries",
+            "default": 0
+          },
+          "n_matched": {
+            "type": "integer",
+            "title": "N Matched",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "codebook"
+        ],
+        "title": "ImportCodebook",
+        "description": "Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a\nvariable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.\nIts structured fields (units, value-code tables, the variable type) settle readings as the\nuser's own documentation, through the confirmation path ``confirm_readings`` writes; its\nfree-text labels only strengthen the guesses the ask leads with; a field the values contradict\nis asked, never applied. The client names the staged codebook; everything else is the\nserver's, read from the codebook and the values."
+      },
+      "ImportCodebook-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "import_codebook",
+            "title": "Kind",
+            "default": "import_codebook"
+          },
+          "codebook": {
+            "type": "string",
+            "pattern": "^c[0-9a-f]{10}$",
+            "title": "Codebook"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "table",
+                  "nhanes",
+                  "xpt"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels"
+          },
+          "asked": {
+            "items": {
+              "$ref": "#/components/schemas/CodebookConflict"
+            },
+            "type": "array",
+            "title": "Asked"
+          },
+          "kept": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kept"
+          },
+          "n_entries": {
+            "type": "integer",
+            "title": "N Entries",
+            "default": 0
+          },
+          "n_matched": {
+            "type": "integer",
+            "title": "N Matched",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "codebook",
+          "name",
+          "form",
+          "items",
+          "units",
+          "labels",
+          "asked",
+          "kept",
+          "n_entries",
+          "n_matched"
+        ],
+        "title": "ImportCodebook",
+        "description": "Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a\nvariable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.\nIts structured fields (units, value-code tables, the variable type) settle readings as the\nuser's own documentation, through the confirmation path ``confirm_readings`` writes; its\nfree-text labels only strengthen the guesses the ask leads with; a field the values contradict\nis asked, never applied. The client names the staged codebook; everything else is the\nserver's, read from the codebook and the values."
+      },
       "InterviewStep": {
         "properties": {
           "key": {
@@ -4046,6 +5099,559 @@
           "error"
         ],
         "title": "JobView"
+      },
+      "JoinCounts-Input": {
+        "properties": {
+          "relation": {
+            "type": "string",
+            "enum": [
+              "one-to-one",
+              "one-to-many",
+              "many-to-one"
+            ],
+            "title": "Relation"
+          },
+          "table_rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Table Rows"
+          },
+          "file_rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Rows"
+          },
+          "matched_keys": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Matched Keys"
+          },
+          "table_unmatched": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Table Unmatched"
+          },
+          "file_unmatched": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Unmatched"
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Rows"
+          },
+          "added_columns": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Added Columns"
+          },
+          "renamed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Renamed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "relation",
+          "table_rows",
+          "file_rows",
+          "matched_keys",
+          "table_unmatched",
+          "file_unmatched",
+          "rows",
+          "added_columns"
+        ],
+        "title": "JoinCounts",
+        "description": "What the join's preview counted, recorded with the answer (the server's): the rows on each\nside, the identifier values they share, the rows with no partner on each side, and the rows\nthe joined table holds."
+      },
+      "JoinCounts-Output": {
+        "properties": {
+          "relation": {
+            "type": "string",
+            "enum": [
+              "one-to-one",
+              "one-to-many",
+              "many-to-one"
+            ],
+            "title": "Relation"
+          },
+          "table_rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Table Rows"
+          },
+          "file_rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Rows"
+          },
+          "matched_keys": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Matched Keys"
+          },
+          "table_unmatched": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Table Unmatched"
+          },
+          "file_unmatched": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Unmatched"
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Rows"
+          },
+          "added_columns": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Added Columns"
+          },
+          "renamed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Renamed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "relation",
+          "table_rows",
+          "file_rows",
+          "matched_keys",
+          "table_unmatched",
+          "file_unmatched",
+          "rows",
+          "added_columns",
+          "renamed"
+        ],
+        "title": "JoinCounts",
+        "description": "What the join's preview counted, recorded with the answer (the server's): the rows on each\nside, the identifier values they share, the rows with no partner on each side, and the rows\nthe joined table holds."
+      },
+      "JoinFiles-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "join_files",
+            "title": "Kind",
+            "default": "join_files"
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^f[0-9a-f]{10}$",
+            "title": "File"
+          },
+          "on": {
+            "type": "string",
+            "minLength": 1,
+            "title": "On"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "default": "left"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinCounts-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "file",
+          "on"
+        ],
+        "title": "JoinFiles",
+        "description": "Join a file added to the project to the table on a shared identifier (NHANES ships each\ncomponent as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the\ntable (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with\none. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its\nreason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,\nrecorded with the answer."
+      },
+      "JoinFiles-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "join_files",
+            "title": "Kind",
+            "default": "join_files"
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^f[0-9a-f]{10}$",
+            "title": "File"
+          },
+          "on": {
+            "type": "string",
+            "minLength": 1,
+            "title": "On"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "default": "left"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinCounts-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "file",
+          "on",
+          "right_on",
+          "how",
+          "name",
+          "counts"
+        ],
+        "title": "JoinFiles",
+        "description": "Join a file added to the project to the table on a shared identifier (NHANES ships each\ncomponent as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the\ntable (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with\none. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its\nreason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,\nrecorded with the answer."
+      },
+      "JoinPreview": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "on": {
+            "type": "string",
+            "title": "On"
+          },
+          "right_on": {
+            "type": "string",
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How"
+          },
+          "table": {
+            "$ref": "#/components/schemas/JoinSide"
+          },
+          "file_side": {
+            "$ref": "#/components/schemas/JoinSide"
+          },
+          "relation": {
+            "type": "string",
+            "title": "Relation"
+          },
+          "matched_keys": {
+            "type": "integer",
+            "title": "Matched Keys"
+          },
+          "table_unmatched": {
+            "type": "integer",
+            "title": "Table Unmatched"
+          },
+          "file_unmatched": {
+            "type": "integer",
+            "title": "File Unmatched"
+          },
+          "rows": {
+            "type": "integer",
+            "title": "Rows"
+          },
+          "added_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added Columns"
+          },
+          "renamed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Renamed"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinRefusal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "on",
+          "right_on",
+          "how",
+          "table",
+          "file_side",
+          "relation",
+          "matched_keys",
+          "table_unmatched",
+          "file_unmatched",
+          "rows",
+          "added_columns",
+          "renamed",
+          "refusal",
+          "sentence"
+        ],
+        "title": "JoinPreview",
+        "description": "What a join would do before it is committed: each side's rows and identifier values, the\nrelation (one-to-one, one-to-many, many-to-one; many-to-many is refused), the rows with no\npartner on each side, the joined table's rows, its new and renamed columns, and the sentence\nthe join would record."
+      },
+      "JoinPreviewRequest": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "on": {
+            "type": "string",
+            "title": "On"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "default": "left"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file",
+          "on"
+        ],
+        "title": "JoinPreviewRequest",
+        "description": "The join to count: the added file, the identifier (``right_on`` when the file names it\notherwise), and which rows the joined table keeps."
+      },
+      "JoinRefusal": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/Exit"
+            },
+            "type": "array",
+            "title": "Exits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "exits"
+        ],
+        "title": "JoinRefusal"
+      },
+      "JoinSide": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rows": {
+            "type": "integer",
+            "title": "Rows"
+          },
+          "keys": {
+            "type": "integer",
+            "title": "Keys"
+          },
+          "blank_keys": {
+            "type": "integer",
+            "title": "Blank Keys"
+          },
+          "repeats": {
+            "type": "boolean",
+            "title": "Repeats"
+          },
+          "max_repeat": {
+            "type": "integer",
+            "title": "Max Repeat"
+          },
+          "example": {
+            "title": "Example"
+          },
+          "example_count": {
+            "type": "integer",
+            "title": "Example Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "rows",
+          "keys",
+          "blank_keys",
+          "repeats",
+          "max_repeat",
+          "example",
+          "example_count"
+        ],
+        "title": "JoinSide"
+      },
+      "JoinSpec": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "pattern": "^f[0-9a-f]{10}$",
+            "title": "File"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "on": {
+            "type": "string",
+            "title": "On"
+          },
+          "right_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right On"
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "left",
+              "inner"
+            ],
+            "title": "How",
+            "default": "left"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JoinCounts-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file",
+          "name",
+          "on",
+          "right_on",
+          "how",
+          "counts"
+        ],
+        "title": "JoinSpec",
+        "description": "One file joined to the table (``joins`` slot, keyed by the file's id, in answer order)."
       },
       "LevelValues": {
         "properties": {
@@ -5073,6 +6679,34 @@
               }
             ],
             "title": "Sex Codings"
+          },
+          "joins": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JoinSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joins"
+          },
+          "codebooks": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CodebookSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codebooks"
           }
         },
         "type": "object",
@@ -5111,7 +6745,9 @@
           "role_confirmations",
           "reading_confirmations",
           "shape_confirmations",
-          "sex_codings"
+          "sex_codings",
+          "joins",
+          "codebooks"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."

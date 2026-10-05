@@ -1,9 +1,12 @@
 """Ingest once, columnar; answer UI questions with queries (BLUEPRINT §2).
 
-``ingest`` turns a CSV/TSV/TXT, Parquet or Excel file into one Parquet file
-with an added ``__row_id`` BIGINT column, ``0..n-1`` in file order — the stable
+``ingest`` turns a CSV/TSV/TXT, Parquet, Excel or SAS transport (XPT) file into one Parquet
+file with an added ``__row_id`` BIGINT column, ``0..n-1`` in file order — the stable
 row identity everything downstream keys on — plus a small JSON sidecar
-(``raw.info.json``) holding the DatasetInfo.
+(``raw.info.json``) holding the DatasetInfo. An XPT file's variable labels are kept in a second
+sidecar (``raw.labels.json``): they are a codebook the user may import (``turbotab.core.codebook``).
+``joins`` (V2 definition of done §1, minimal multi-file assembly) joins further ingested files
+to the table on a shared identifier before the row ids are numbered (``turbotab.core.assembly``).
 
 ``DataStore`` answers row windows, column summaries and histograms as DuckDB
 queries over that Parquet file, and materializes pandas frames for modeling
@@ -43,7 +46,9 @@ CSV_SUFFIXES = (".csv", ".tsv", ".txt")
 COMPRESSED_SUFFIXES = (".gz", ".zst")
 PARQUET_SUFFIXES = (".parquet", ".pq")
 EXCEL_SUFFIXES = (".xlsx", ".xls")
-SUPPORTED_TYPES = "CSV, TSV or TXT (optionally .gz), Parquet, or Excel (.xlsx, .xls)"
+XPT_SUFFIXES = (".xpt", ".xport")
+SUPPORTED_TYPES = ("CSV, TSV or TXT (optionally .gz), Parquet, Excel (.xlsx, .xls), or SAS "
+                   "transport (.xpt)")
 
 # Read as missing in delimited text AND in Excel cells (one list, so a CSV and an xlsx copy of one
 # table agree on what is missing: audit MA-17): pandas' default NA tokens, less "None" (a real
@@ -413,6 +418,8 @@ def _source_kind(source: Path) -> str:
         return "parquet"
     if not comp and name.endswith(EXCEL_SUFFIXES):
         return "excel"
+    if not comp and name.endswith(XPT_SUFFIXES):
+        return "xpt"
     raise ValueError(f"TurboTab cannot read {source.name!r}; it reads {SUPPORTED_TYPES}")
 
 
@@ -990,6 +997,113 @@ def _ingest_excel(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
         con.unregister("__turbotab_excel")
 
 
+def _ingest_xpt(con: duckdb.DuckDBPyConnection, source: Path, tmp: Path,
+                warnings: list[str], report: _Progress) -> dict[str, Any]:
+    """A SAS transport file (versions 5 and 8; ``turbotab.core.xport``): its first member's
+    observations, a block of rows at a time, into a staging Parquet file, then the columnar copy
+    with its row ids. Returns the file's variable labels, formats and types (the labels sidecar)."""
+    import pyarrow.parquet as pq
+
+    from turbotab.core import xport
+
+    report(0.02, "Reading the transport file's header")
+    try:
+        xpt = xport.read_header(source)
+    except xport.XportError as exc:
+        raise ValueError(str(exc)) from None
+    warnings.extend(xpt.notes)
+    staging = tmp.with_name(f"{tmp.name}.xpt.parquet")
+    writer = None
+    try:
+        total = max(1, xpt.member.n_rows)
+        done = 0
+        for batch in xport.batches(xpt):
+            if writer is None:
+                writer = pq.ParquetWriter(staging, batch.schema, compression="zstd")
+            writer.write_batch(batch)
+            done += batch.num_rows
+            report(0.05 + 0.4 * done / total, "Converting the transport file's numbers")
+        if writer is not None:
+            writer.close()
+            writer = None
+        _ingest_parquet(con, staging, tmp, warnings, report)
+    finally:
+        if writer is not None:
+            writer.close()
+        try:
+            staging.unlink()
+        except FileNotFoundError:
+            pass
+    for name, encoding in xpt.encodings.items():
+        warnings.append(f"column \"{name}\"'s text is not UTF-8; it was read as "
+                        f"{'Windows-1252' if encoding == 'cp1252' else 'Latin-1'}, so check that "
+                        "accented characters look right")
+    for name, n in xpt.special.items():
+        warnings.append(f"column \"{name}\" holds {n:,} SAS special missing value"
+                        f"{'' if n == 1 else 's'} (.A–.Z or ._); "
+                        f"{'it was' if n == 1 else 'they were'} read as missing")
+    dates = [v.name for v in xpt.member.variables if v.kind in ("date", "datetime")]
+    if dates:
+        warnings.append("SAS dates and datetimes were read by their formats: "
+                        + ", ".join(f"\"{n}\"" for n in dates[:6])
+                        + (f" and {len(dates) - 6} more" if len(dates) > 6 else ""))
+    times = [v.name for v in xpt.member.variables if v.kind == "time"]
+    if times:
+        warnings.append("SAS times were kept as numbers of seconds (a SAS time may pass 24 "
+                        "hours): " + ", ".join(f"\"{n}\"" for n in times[:6])
+                        + (f" and {len(times) - 6} more" if len(times) > 6 else ""))
+    m = xpt.member
+    return {"file": source.name, "form": "xpt", "xport_version": xpt.version,
+            "dataset": m.name, "dataset_label": m.label,
+            "entries": [v.to_dict() for v in m.variables]}
+
+
+# ── joins (V2 definition of done §1: minimal multi-file assembly) ────────────
+
+@dataclass
+class JoinInput:
+    """One file joined to the table: its ingested Parquet, its name, the identifier it is joined
+    on (``right_on`` when the file names it differently), and which rows the join keeps."""
+
+    parquet: Path
+    name: str
+    on: str
+    right_on: str | None = None
+    how: str = "left"
+
+
+def _apply_join(con: duckdb.DuckDBPyConnection, left: Path, join: JoinInput, dest: Path,
+                warnings: list[str]) -> dict[str, str]:
+    """``dest`` = ``left`` joined with ``join``'s file; fresh row ids in the left table's order,
+    each left row's partners in the file's order. Returns the file's columns renamed where the
+    table already has the name. The relation and counts are ``turbotab.core.assembly``'s."""
+    from turbotab.core import assembly
+
+    plan = assembly.plan(con, left, join.parquet, on=join.on, right_on=join.right_on,
+                         how=join.how, right_name=join.name)
+    if plan.refusal is not None:
+        raise ValueError(plan.refusal["message"])
+    con.execute(f"COPY ({plan.sql}) TO {_lit(dest)} "
+                f"{_parquet_options(len(plan.columns) + 1, plan.result_rows)}")
+    warnings.append(plan.note)
+    return dict(plan.renamed)
+
+
+def _labels_path(parquet: Path) -> Path:
+    return parquet.with_name(parquet.stem + ".labels.json")
+
+
+def read_labels(parquet: Path) -> dict[str, Any] | None:
+    """The labels sidecar beside an ingested table (the variable labels its XPT sources carry),
+    or None."""
+    try:
+        with open(_labels_path(Path(parquet)), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _schema(con: duckdb.DuckDBPyConnection, rel: str) -> list[tuple[str, str]]:
     rows = con.execute(f"DESCRIBE SELECT * FROM {rel}").fetchall()
     return [(str(r[0]), str(r[1])) for r in rows if r[0] != ROW_ID]
@@ -1214,12 +1328,18 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
 
 
 def ingest(source: Path, dest_parquet: Path, *,
-           progress: ProgressFn | None = None) -> DatasetInfo:
+           progress: ProgressFn | None = None,
+           joins: Sequence[JoinInput] = ()) -> DatasetInfo:
     """Write ``dest_parquet`` (+ its ``.info.json`` sidecar) from ``source``.
 
     ``progress(fraction, message)`` is called with a non-decreasing fraction,
     possibly from a helper thread; if it raises, the ingest stops, nothing is
     left at ``dest_parquet``, and that exception propagates.
+
+    ``joins``: files already ingested (each a Parquet file of this module's), joined to the table
+    in order on their identifiers before the row ids are numbered; the fingerprint then covers
+    them too. The variable labels of every XPT source (the table's own and each joined file's)
+    are written to the labels sidecar (``raw.labels.json``) under the names the table gives them.
     """
     started = time.perf_counter()
     source = Path(source)
@@ -1250,13 +1370,33 @@ def ingest(source: Path, dest_parquet: Path, *,
     temp_dir = dest.parent / f".duckdb-{token}"
     con = _connect(temp_dir)
     warnings: list[str] = []
+    labels: list[dict[str, Any]] = []
     try:
         if kind == "csv":
             _ingest_csv(con, source, tmp, warnings, report)
         elif kind == "parquet":
             _ingest_parquet(con, source, tmp, warnings, report)
+        elif kind == "xpt":
+            labels.append(_ingest_xpt(con, source, tmp, warnings, report))
         else:
             _ingest_excel(con, source, tmp, warnings, report)
+        for i, join in enumerate(joins):
+            report(0.7, f"Joining {join.name}")
+            joined = tmp.with_name(f"{tmp.name}.join{i}")
+            try:
+                renamed = _apply_join(con, tmp, join, joined, warnings)
+                os.replace(joined, tmp)
+            finally:
+                try:
+                    joined.unlink()
+                except FileNotFoundError:
+                    pass
+            for entry in (read_labels(join.parquet) or {}).get("sources") or []:
+                entries = [{**e, "variable": renamed.get(str(e.get("variable")),
+                                                         str(e.get("variable")))}
+                           for e in entry.get("entries") or []
+                           if str(e.get("variable")) not in (join.right_on or join.on,)]
+                labels.append({**entry, "entries": entries})
         n_rows = _count_rows(con, tmp)
         columns, extras = _column_stats(con, tmp, n_rows, report, 0.8, 0.95)
         if extras["nan_columns"]:
@@ -1269,7 +1409,7 @@ def ingest(source: Path, dest_parquet: Path, *,
         hasher.join()
         if "error" in hashed:
             raise hashed["error"]
-        for stale in (_sidecar_path(dest), _summaries_path(dest)):
+        for stale in (_sidecar_path(dest), _summaries_path(dest), _labels_path(dest)):
             try:
                 stale.unlink()  # what described a previous ingest is void
             except FileNotFoundError:
@@ -1288,14 +1428,33 @@ def ingest(source: Path, dest_parquet: Path, *,
                 pass
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+    fingerprint = hashed["value"]
+    if joins:
+        # A joined table is the source and every file joined to it, by content and by how.
+        digest = hashlib.blake2b(fingerprint.encode(), digest_size=16)
+        for join in joins:
+            digest.update(json.dumps([_parquet_fingerprint(join.parquet), join.on, join.right_on,
+                                      join.how]).encode())
+        fingerprint = digest.hexdigest()
     info = DatasetInfo(n_rows=n_rows, n_cols=len(columns), columns=columns,
                        source_bytes=source.stat().st_size, parquet_bytes=dest.stat().st_size,
                        ingest_seconds=round(time.perf_counter() - started, 3),
-                       fingerprint=hashed["value"], warnings=warnings)
+                       fingerprint=fingerprint, warnings=warnings)
+    if labels:
+        _write_json_atomic(_labels_path(dest), {"version": SIDECAR_VERSION, "sources": labels})
     _write_json_atomic(_sidecar_path(dest), {"version": SIDECAR_VERSION,
                                              "info": info.to_dict(), "extras": extras})
     report(1.0, "Ready")
     return info
+
+
+def _parquet_fingerprint(parquet: Path) -> str:
+    """An ingested file's own fingerprint (its sidecar's), else its bytes' hash."""
+    try:
+        with open(_sidecar_path(Path(parquet)), encoding="utf-8") as fh:
+            return str(json.load(fh)["info"]["fingerprint"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return fingerprint_file(Path(parquet))
 
 
 def _increasing(values: np.ndarray) -> bool:

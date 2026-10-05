@@ -654,6 +654,11 @@ function slotOf(d: Decision): Slot | null {
       return "sensitivity";
     case "set_measurement_error":
       return "measurement_error";
+    // DATAIN: the mock serves no added files or codebooks, so neither is recorded here.
+    case "join_files":
+      return "joins";
+    case "import_codebook":
+      return "codebooks";
     case "revert":
       return null;
   }
@@ -779,6 +784,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "confirm_role": // keyed by column; the fold merges it
     case "confirm_reading": // keyed by kind and column; the fold merges it
     case "confirm_readings": // each listed reading where its own confirmation goes
+    case "join_files": // keyed by file; the mock serves no added files
+    case "import_codebook": // keyed by codebook; the mock serves no codebooks
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -854,6 +861,8 @@ export function fold(records: DecisionRecord[]): ProjectState {
     reading_confirmations: null,
     shape_confirmations: null,
     sex_codings: null,
+    joins: null,
+    codebooks: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

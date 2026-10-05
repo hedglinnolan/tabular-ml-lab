@@ -369,7 +369,7 @@ def _aggregation_reads_settled_readings(decision: SetAggregation, ctx: Any) -> N
             "reading_unsettled",
             f"{listing(waiting)} {'holds' if one else 'hold'} whole numbers that change within "
             f"units, which may be codes for categories (combined by the most frequent value) or "
-            f"counts (combined by the {decision.method}). {ask_text(needed)}",
+            f"counts (combined by the {decision.method}). {ask_text(needed, state)}",
             exits=ask_exits(needed, state))
     if not needs_order(decision.method, decision.outcome, decision.columns):
         return

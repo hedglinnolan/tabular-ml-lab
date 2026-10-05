@@ -93,7 +93,9 @@ GRAPH_FACTORY = "turbotab.core.stages:build_graph"
 def build_graph() -> Graph:
     return Graph(
         [
-            Stage("ingest", 1, (), (), ingest_stage, heavy=True, label="Reading the file"),
+            # ingest reads the joins (DATAIN, V2 definition of done §1): the files joined to the
+            # table on a shared identifier, in answer order (``join_files``).
+            Stage("ingest", 1, (), ("joins",), ingest_stage, heavy=True, label="Reading the file"),
             # ── M2: what the table is (M2_CONTRACT §2) ──
             # oriented 3 (WP14): the names are read before the shape, and the shape is scale-aware.
             Stage("oriented", 3, ("ingest",), ("orientation", "feature_table"), oriented_stage,

@@ -36,11 +36,20 @@ ordered by consequence, a homogeneous family grouped, each led by its best guess
 and one block confirmation (``confirm_readings``) settles exactly the readings it lists, each with
 the value it shows.
 
+**The codebook is an evidence source** (BLUEPRINT §14.2, "let the codebook answer"; V2 definition
+of done §1). An imported codebook's structured fields (a unit, a value-code table, the variable
+type) are the user's own documentation: ``import_codebook`` records them through the confirmation
+path ``confirm_readings`` writes, so every consumer honors them as it honors a confirmation, and the
+settle rules are unchanged. The ledger names the codebook as their evidence
+(:func:`codebook_source`, :func:`recorded_evidence`). Its free-text labels are names: they settle
+nothing, and only strengthen the guess an ask leads with (:func:`labeled`).
+
 The structural acceptance test enumerates :data:`CONSUMERS` against the independent census of
 readers and consumers, and checks that each number-changing consumer calls into this module.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -127,8 +136,8 @@ def reading(kind: str, column: str, value: Any, *, confidence: str = "medium",
     if state is not None:
         recorded = confirmation(state, kind, column)
         if recorded is not None:
-            return Reading((str(column),), kind, recorded, "high", "recorded by the user",
-                           corroborated, "confirmed")
+            return Reading((str(column),), kind, recorded, "high",
+                           recorded_evidence(state, kind, column), corroborated, "confirmed")
     return Reading((str(column),), kind, value, confidence, evidence, corroborated, "proposed")
 
 
@@ -180,7 +189,9 @@ def confirmation(state: Any, kind: str, column: str | None) -> Any:
         return legacy
     if kind == "outcome_unit":
         unit = getattr(state, "outcome_unit", None)
-        return unit if unit and getattr(state, "target", None) == column else None
+        if unit and getattr(state, "target", None) == column:
+            return unit
+        return codebook_unit(state, column)
     if kind == "code_or_count":
         if column in (_get(state, "categorical") or []):
             return "code"
@@ -217,6 +228,72 @@ def unit_record(state: Any, column: str | None, *, units: Mapping[str, Any] | No
     return held.get(column) if isinstance(held, Mapping) else None
 
 
+# ── the codebook as an evidence source (BLUEPRINT §14.2) ──────────────────────
+
+
+CODEBOOK_EVIDENCE = "from the codebook"
+
+
+def _codebooks(state: Any) -> list[Any]:
+    """The imported codebooks, in import order (``ProjectState.codebooks``)."""
+    books = _get(state, "codebooks") or {}
+    return list(books.values()) if isinstance(books, Mapping) else []
+
+
+def codebook_source(state: Any, kind: str, column: str | None) -> str | None:
+    """The name of the codebook whose structured field recorded this reading's current value
+    (the latest import that wrote it), or None: the value was recorded by the user, or nothing
+    is recorded."""
+    if column is None:
+        return None
+    books = _codebooks(state)
+    if not books:
+        return None
+    recorded = confirmation(state, kind, column)
+    if recorded is None:
+        return None
+    for spec in reversed(books):
+        written = (_get(spec, "settled") or {}).get(key(kind, column))
+        if written is not None and str(written) == str(recorded):
+            return str(_get(spec, "name"))
+    return None
+
+
+def recorded_evidence(state: Any, kind: str, column: str | None) -> str:
+    """A recorded reading's evidence: the codebook that documents it (``from the codebook
+    `DEMO_J.htm```), else the user's own answer."""
+    name = codebook_source(state, kind, column)
+    return f"{CODEBOOK_EVIDENCE} `{name}`, the user's own documentation" if name else \
+        "recorded by the user"
+
+
+def codebook_unit(state: Any, column: str | None) -> str | None:
+    """The unit the latest imported codebook documents for ``column`` (any unit: ``mg/dL`` as
+    well as the reading kinds' ``kg``), or None. A documented unit is the user's own; an outcome
+    whose unit it documents is stated in it (:func:`confirmation`, kind ``outcome_unit``)."""
+    if column is None:
+        return None
+    for spec in reversed(_codebooks(state)):
+        unit = (_get(spec, "units") or {}).get(column) or \
+            (_get(spec, "settled") or {}).get(key("unit", column))
+        if unit:
+            return str(unit)
+    return None
+
+
+def codebook_label(state: Any, column: str | None) -> str | None:
+    """The free-text label the latest imported codebook gives ``column``, or None. A label is a
+    name: it never settles a reading (BLUEPRINT §14.3), and only strengthens a guess
+    (:func:`labeled`)."""
+    if column is None:
+        return None
+    for spec in reversed(_codebooks(state)):
+        label = (_get(spec, "labels") or {}).get(column)
+        if label:
+            return str(label)
+    return None
+
+
 def recorded_energy(state: Any, column: str | None, *,
                     units: Mapping[str, Any] | None = None) -> tuple[str | None, int | None]:
     """``(unit, days)`` recorded for a total-energy column (:func:`unit_record`), each None while
@@ -250,8 +327,9 @@ class Unsettled(ValueError):
 # blank turns 1–5 into 1.0–5.0), a label count read as free text (country of birth has 70), `uL`
 # read as U/L, and `sex` coded 1/2 read as the CDC's coding. So each kind of reading declares its
 # plausible alternatives, and the values settle it only through a test that rejects every one of
-# them; a kind with no such test is settled by the user (or, later, a codebook). Names are never
-# corroboration: a name chooses what is proposed and what is asked, never what is settled.
+# them; a kind with no such test is settled by the user (or the user's codebook, §14.2). Names
+# are never corroboration: a name chooses what is proposed and what is asked, never what is
+# settled.
 
 
 @dataclass(frozen=True)
@@ -1326,7 +1404,8 @@ def predictors_or_ask(state: Any, info: Mapping[str, Any] | None = None,
             message = (f"{listing(names)} {'holds' if len(names) == 1 else 'hold'} whole numbers, "
                        f"which may be codes for categories (one indicator per level) or amounts "
                        f"(one slope); the fit waits for the answer for each.")
-        raise Unsettled(f"{message} {ask_text(needed)}", needed, ask_exits(needed, state))
+        raise Unsettled(f"{message} {ask_text(needed, state)}", labeled(needed, state),
+                        ask_exits(needed, state))
     return preds
 
 
@@ -1561,8 +1640,8 @@ def body_unit_reading(column: str, measure: str, state: Any = None, values: Any 
 
     recorded = confirmation(state, "unit", column)
     if recorded is not None:
-        return Reading((column,), "unit", str(recorded), "high", "recorded by the user", True,
-                       "confirmed")
+        return Reading((column,), "unit", str(recorded), "high",
+                       recorded_evidence(state, "unit", column), True, "confirmed")
     if measure == "height" and values is not None:
         verdict = height_in_band(values)
         if verdict.settles:
@@ -1853,8 +1932,8 @@ def sex_coding_reading(state: Any, column: str, values: Any = None) -> Reading:
 
     recorded = confirmation(state, "sex_coding", column)
     if recorded is not None and parse_sex_coding(recorded):
-        return Reading((column,), "sex_coding", str(recorded), "high", "recorded by the user",
-                       True, "confirmed")
+        return Reading((column,), "sex_coding", str(recorded), "high",
+                       recorded_evidence(state, "sex_coding", column), True, "confirmed")
     if values is None:
         return Reading((column,), "sex_coding", None, "low", "its values were not read", False,
                        "proposed")
@@ -2119,9 +2198,62 @@ def guess_words(r: Reading) -> str:
     return _GUESS_WORDS.get(str(r.value), str(r.value))
 
 
-def ask_text(readings: Iterable[Reading]) -> str:
+# A codebook label's words that say what a column's numbers are (BLUEPRINT §14.2: a label only
+# strengthens the guess the card leads with; the user confirms it in one tap).
+_LABEL_CODES = re.compile(
+    r"\b(code|codes|coded|status|category|categories|type|group|race|ethnicity|hispanic|origin|"
+    r"gender|sex|education|marital|stratum|strata|psu|region|language|interpreter|proxy|"
+    r"yes/no|indicator|flag|level|class|comment|cycle|release|period)\b", re.I)
+_LABEL_AMOUNTS = re.compile(
+    r"\b(age in|number of|count of|total number|amount|weight|height|length|circumference|"
+    r"intake|ratio|index|score|minutes|hours|days|years|months|per day|per week)\b|#|"
+    r"\((?:g|mg|mcg|µg|kg|kcal|kj|cm|mm|m|ml|l|mmhg|mg/dl|mmol/l|%)\)", re.I)
+# A unit a label spells in parentheses or as "in <unit>" (``Weight (kg)``, ``Age in years``).
+_LABEL_UNIT = re.compile(r"\(([^()]{1,24})\)\s*$|\bin (years|months|weeks|days)\b", re.I)
+
+
+def label_guess(r: Reading, label: str) -> Any:
+    """The value a codebook label points a reading's guess to, or None (no word in it says)."""
+    if r.kind == "code_or_count":
+        codes, amounts = bool(_LABEL_CODES.search(label)), bool(_LABEL_AMOUNTS.search(label))
+        if codes != amounts:
+            return "code" if codes else "amount"
+        return None
+    if r.kind == "unit":
+        from turbotab.core.codebook import unit_value
+
+        m = _LABEL_UNIT.search(label)
+        if m:
+            unit = unit_value(m.group(1) or m.group(2))
+            return unit if unit in UNIT_VALUES else None
+    return None
+
+
+def labeled(readings: Iterable[Reading], state: Any = None) -> list[Reading]:
+    """Each unsettled reading with the label an imported codebook gives its column beside its
+    evidence, and its guess moved to what the label's words point to (a unit it spells, codes or
+    an amount). Still proposed and still medium: a label is a name, and names never settle a
+    reading (BLUEPRINT §14.3); the user confirms the guess in one tap (§14.2)."""
+    out = []
+    for r in readings:
+        label = codebook_label(state, r.column) if state is not None and r is not None else None
+        if r is None or label is None or r.settled:
+            out.append(r)
+            continue
+        guess = label_guess(r, label)
+        said = f"your codebook labels it \"{label}\""
+        evidence = f"{r.evidence}; {said}" if r.evidence else said
+        value = guess if guess is not None else r.value
+        out.append(Reading(r.subject, r.kind, value, r.confidence, evidence, r.corroborated,
+                           r.state))
+    return out
+
+
+def ask_text(readings: Iterable[Reading], state: Any = None) -> str:
     """The question in words: each reading (or family) once, by consequence, its best guess and its
-    evidence."""
+    evidence (a codebook's label beside it, :func:`labeled`, when ``state`` holds one)."""
+    if state is not None:
+        readings = labeled(readings, state)
     lines = []
     for group in families(readings):
         r = group[0]
@@ -2165,8 +2297,8 @@ def block_exit(readings: Iterable[Reading], label: str | None = None) -> dict[st
 def ask_exits(readings: Iterable[Reading], state: Any = None) -> list[dict[str, Any]]:
     """The ask's ways forward: one block confirmation of every best guess as shown (it settles
     exactly those readings), then each reading's own alternatives, one confirmation each, in the
-    ask's order."""
-    listed = ordered(readings)
+    ask's order. A codebook label moves a guess as :func:`ask_text` shows it (:func:`labeled`)."""
+    listed = ordered(labeled(readings, state) if state is not None else readings)
     out: list[dict[str, Any]] = []
     block = block_exit(listed)
     if block is not None and len(listed) > 1:
@@ -2398,5 +2530,6 @@ __all__ = [
     "KcalPerUnit", "ROLE_ALTERNATIVES", "energy_plan", "factor_exits", "factor_in_grams",
     "fractional_verdict", "grid_reading", "kcal_per_unit", "outcome_task_by_values",
     "read_from_data", "read_from_values_sentence", "recorded_energy", "unit_day_candidates",
-    "unit_record",
+    "unit_record", "CODEBOOK_EVIDENCE", "codebook_label", "codebook_source", "codebook_unit",
+    "label_guess", "labeled", "recorded_evidence",
 ]

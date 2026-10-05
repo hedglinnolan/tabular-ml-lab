@@ -13,7 +13,7 @@ import secrets
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Callable
 
 from python_multipart.exceptions import FormParserError, ParseError
 from python_multipart.multipart import MultipartParser, parse_options_header
@@ -49,8 +49,9 @@ def safe_file_name(name: str) -> str:
 
 
 class _Receiver:
-    def __init__(self, staging: Path):
+    def __init__(self, staging: Path, accept: Callable[[Path], Any] = source_kind):
         self.staging = staging
+        self.accept = accept
         self.header_field = bytearray()
         self.header_value = bytearray()
         self.headers: dict[str, bytes] = {}
@@ -98,7 +99,7 @@ class _Receiver:
         name = client_file_name(raw_name.decode("utf-8", "replace"))
         safe = safe_file_name(name)
         try:
-            source_kind(Path(safe))
+            self.accept(Path(safe))
         except ValueError as exc:
             raise ApiError(400, "unsupported_file", str(exc)) from None
         self.staging.mkdir(parents=True, exist_ok=True)
@@ -127,12 +128,16 @@ class _Receiver:
         shutil.rmtree(self.staging, ignore_errors=True)
 
 
-async def receive_upload(request: Request, uploads_dir: Path) -> StagedUpload:
+async def receive_upload(request: Request, uploads_dir: Path,
+                         accept: Callable[[Path], Any] = source_kind) -> StagedUpload:
+    """Stream the multipart upload's file to ``uploads_dir``. ``accept(path)`` raises ValueError
+    for a file type the endpoint does not read (a data file by default; a codebook endpoint passes
+    its own check)."""
     content_type, params = parse_options_header(request.headers.get("content-type"))
     boundary = params.get(b"boundary")
     if content_type != b"multipart/form-data" or not boundary:
         raise ApiError(400, "not_multipart", f"Send the file as multipart/form-data, in a field named {FIELD!r}.")
-    receiver = _Receiver(uploads_dir / secrets.token_hex(8))
+    receiver = _Receiver(uploads_dir / secrets.token_hex(8), accept)
     parser = MultipartParser(boundary, callbacks=receiver.callbacks())
     try:
         try:

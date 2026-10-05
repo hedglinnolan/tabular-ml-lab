@@ -191,11 +191,16 @@ def outcome_unit(column: str, values: Any = None,
 
 
 def recorded_unit(state: Any, column: str | None) -> str | None:
-    """The unit ``set_outcome_unit`` recorded for ``column``, while it is the outcome."""
-    unit = getattr(state, "outcome_unit", None)
-    if not unit or column is None or getattr(state, "target", None) != column:
+    """The unit ``set_outcome_unit`` recorded for ``column``, while it is the outcome; else the
+    unit an imported codebook documents for it (the user's own documentation, BLUEPRINT §14.2)."""
+    if column is None or getattr(state, "target", None) != column:
         return None
-    return str(unit)
+    unit = getattr(state, "outcome_unit", None)
+    if unit:
+        return str(unit)
+    from turbotab.core.readings import codebook_unit
+
+    return codebook_unit(state, column)
 
 
 def with_unit(text: str, unit: str | None) -> str:
