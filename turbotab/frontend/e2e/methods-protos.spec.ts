@@ -6,8 +6,9 @@
  *
  * Each is walked by clicks alone, from its first draft (after its reset) to the locked Table 2 and
  * "Which of my decisions mattered?", and reset again; then the numbers each shows are compared:
- * the three must print the same Table 2 and the same declared alternatives, and those must be the
- * engine's (the scenario's Model 2 estimate). The chooser at /lab/methods opens each.
+ * the three must print the same Table 2, the same footnote degrees of freedom (the primary model's)
+ * and the same declared alternatives, and those must be the engine's (the scenario's Model 2
+ * estimate). The quest log is walked again at phone width. The chooser at /lab/methods opens each.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { walker as paper } from "./methods-protos/document";
@@ -20,6 +21,8 @@ const WALKERS: Walker[] = [paper, questlog, map];
 type Shown = Record<string, { estimate: string; ci: string }>;
 const table2: Record<string, Shown> = {};
 const mattered: Record<string, Shown> = {};
+/** The t degrees of freedom Table 2's footnote gives its intervals, per prototype. */
+const footnote: Record<string, string> = {};
 
 test.describe.configure({ mode: "serial" });
 
@@ -53,6 +56,8 @@ for (const w of WALKERS) {
     await start(page, w);
     await w.toTable2(page);
     table2[w.name] = await read(page, "table2", "data-t2-row", "data-t2-estimate", "data-t2-ci");
+    const caption = await page.getByTestId("t2-inference").first().innerText();
+    footnote[w.name] = /\bt\(([\d,]+)\)/.exec(caption)?.[1] ?? caption;
     await w.toMattered(page);
     mattered[w.name] = await read(page, "mattered", "data-mattered-row", "data-estimate", "data-ci");
     // Reset returns to the first draft: no estimate is on screen.
@@ -62,6 +67,22 @@ for (const w of WALKERS) {
   });
 }
 
+// A person walks the quest log on a phone: the card, where every objective is answered, has the
+// screen's width (three desktop columns once left it none), and nothing scrolls sideways.
+test(`${questlog.name}: walked by clicks on a phone (390×844)`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await start(page, questlog);
+  const card = page.getByTestId("objective");
+  await expect(card).toBeVisible();
+  expect((await card.boundingBox())!.width, "the objective card's width").toBeGreaterThan(300);
+  await questlog.toTable2(page);
+  await questlog.toMattered(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth), "the page's width").toBeLessThanOrEqual(390);
+  // Table 2 scrolls in its own box; the card around it, with its footnote and buttons, does not.
+  const canvas = page.getByRole("complementary", { name: "The canvas" });
+  expect(await canvas.evaluate((e) => e.scrollWidth - e.clientWidth), "the canvas's sideways overflow").toBeLessThanOrEqual(0);
+});
+
 test("the three prototypes show the same Table 2 and the same alternatives", () => {
   const [first, ...rest] = WALKERS.map((w) => w.name);
   expect(Object.keys(table2)).toHaveLength(WALKERS.length);
@@ -69,8 +90,11 @@ test("the three prototypes show the same Table 2 and the same alternatives", () 
   expect(Object.keys(t2)).toEqual(["crude", "model_1", "model_2", "model_3"]);
   // The scenario's primary estimate, as the engine served it (SCENARIO.md).
   expect(t2.model_2).toEqual({ estimate: "−0.0199", ci: "−0.0327 to −0.00718" });
+  // The footnote's intervals are the primary model's: Model 2's t degrees of freedom.
+  expect(footnote[first!], `${first}'s Table 2 footnote`).toBe("21,830");
   for (const name of rest) {
     expect(table2[name], `${name}'s Table 2`).toEqual(t2);
+    expect(footnote[name], `${name}'s Table 2 footnote`).toBe(footnote[first!]);
     expect(mattered[name], `${name}'s declared alternatives`).toEqual(mattered[first!]);
   }
   expect(Object.keys(mattered[first!]!).length).toBeGreaterThanOrEqual(6);

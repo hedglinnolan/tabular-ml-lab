@@ -3,7 +3,8 @@
  * locked Table 2, then to "Which of my decisions mattered?". Each step opens the next slot with the
  * toolbar's "Next" (the slot the walk records next is always first) and presses that slot's own
  * controls with the shared scenario's answers (src/explore/methods-shared/SCENARIO.md). On the way
- * it hovers options so the canvas plays their previews, and it checks that the page never asks the
+ * it hovers options so the canvas plays their previews, it checks at every slot that the paper's
+ * missing-data sentence names the rows the banner shows, and it checks that the page never asks the
  * API anything: the prototype runs from its fixture alone.
  */
 import { expect, type Page } from "@playwright/test";
@@ -37,10 +38,27 @@ function watch(page: Page): string[] {
   return seen;
 }
 
-/** Open the slot the walk records next and wait for its control. */
+/** Once the paper's "Missing data." sentence is recorded, it names the rows the banner ends on:
+ *  the engine re-renders that sentence when a later answer adds predictors with gaps (the block of
+ *  readings takes complete cases from 21,849 rows to 2,996; the adjustment set gives them back). */
+async function rowsAgree(page: Page) {
+  const para = page.locator("#para-missing");
+  if ((await para.getAttribute("data-tier")) !== "recorded") return;
+  const rows = (
+    await page.getByTestId("banner").locator('[data-testid^="banner-rows-"]').last().innerText()
+  ).trim();
+  await expect(
+    para,
+    `the missing-data sentence at ${await page.getByTestId("proto-step").innerText()}`,
+  ).toContainText(rows);
+}
+
+/** Open the slot the walk records next and wait for its control; the paper so far agrees with the
+ *  banner. */
 async function next(page: Page, control: string) {
   await page.getByTestId("next-slot").click();
   await expect(page.getByTestId(control)).toBeVisible();
+  await rowsAgree(page);
 }
 
 async function press(page: Page, testid: string) {
@@ -139,6 +157,7 @@ export const walker: Walker = {
     await next(page, "lock-plan");
     await press(page, "lock-plan");
     await expect(page.getByTestId("table2")).toBeVisible();
+    await rowsAgree(page);
     await expect(step).toHaveText(/moment 17 of 17/);
     expect(api, "requests to the API during the walk").toEqual([]);
   },

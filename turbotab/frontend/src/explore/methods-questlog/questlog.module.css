@@ -1408,6 +1408,42 @@
   }
 }
 
+/* ── phone (≤ 900): one column, the quest log above its card, the canvas below ─
+   Three fixed columns cannot share 390px: the card, where every objective is answered, would get
+   none. The rail keeps the whole list in its own scroll so the card stays near the top. */
+
+@media (max-width: 900px) {
+  .window,
+  .window[data-doc] {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .rail {
+    max-height: 42vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 16px;
+  }
+  .center {
+    overflow: visible;
+    padding: 14px 16px 24px;
+  }
+  .canvas {
+    overflow-x: auto;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 12px 16px 40px;
+  }
+  /* Table 2 scrolls in its own box; its caption and buttons keep the card's width. */
+  .t2 {
+    display: block;
+    overflow-x: auto;
+  }
+  .footActions {
+    flex-wrap: wrap;
+  }
+}
+
 /* sub-slots as side-by-side option cards (effect, contrast, measure) */
 
 .cards {

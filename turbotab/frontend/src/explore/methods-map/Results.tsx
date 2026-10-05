@@ -162,7 +162,7 @@ export function Table2({ fit, a }: { fit: Fit; a: Answers }) {
       <p className={r.caption}>
         <Rich text={fit.caption} />
       </p>
-      <p className={r.inference}>
+      <p className={r.inference} data-testid="t2-inference">
         <Rich text={seq.find((s) => s.key === "model_2")!.inference} />
       </p>
       <button

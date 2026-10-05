@@ -16,6 +16,12 @@ the fixture rather than hidden:
   computed at the energy question (moment "energy"), because the server draws a method's storyboard
   from the data as loaded and the standard model leaves every nutrient's values as loaded.
 
+A record keeps the sentence it was recorded with; the methods text (GET /methods) re-renders a
+record's sentence when a later answer changes what it says (complete cases: "all `21,849` rows
+remain" until the readings make more columns predictors, then "`2,996` of `21,849` rows remain").
+Each moment keeps, as ``methods``, the methods text's sentence for every record it says differently
+from the record, and the prototype prints that one (fixture.ts), as the engine's methods text does.
+
 The scenario's moment "unit_ask" is not kept twice: it is the "roles" moment's view (the screens'
 unit question already open on it, the same records). Preview payloads (scatters and storyboards)
 are rounded to six significant digits; the estimate stages are kept exactly as served.
@@ -119,6 +125,11 @@ def main() -> None:
         view = snap["view"]
         for d in view["decisions"]:
             decisions.setdefault(d["id"], d)
+            assert decisions[d["id"]] == d, (mid, d["id"], "a record changed between moments")
+        recorded = {d["id"]: d.get("sentence") for d in view["decisions"]}
+        rewritten = {line["record_id"]: line["sentence"] for line in snap["methods"]["lines"]
+                     if line["record_id"] in recorded
+                     and line["sentence"] != recorded[line["record_id"]]}
         previews = {k: pool.put(rnd(v)) for k, v in (snap.get("previews") or {}).items()}
         note = None
         if mid in ENERGY_AFTER:
@@ -137,6 +148,7 @@ def main() -> None:
                 "decisions": [d["id"] for d in view["decisions"]],
             },
             "readings": pool.put(snap["readings"]),
+            "methods": rewritten,
             "stages": stages,
             "previews": previews,
             "previewNote": note,

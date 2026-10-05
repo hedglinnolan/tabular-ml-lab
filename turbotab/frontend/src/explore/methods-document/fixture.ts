@@ -70,6 +70,9 @@ interface RawMoment {
   source: string;
   view: { summary: string; state: string; stages: string; interview: string; decisions: string[] };
   readings: string;
+  /** Record id → the methods text's sentence for it at this moment, where it differs from the
+   *  sentence the record was made with (capture/trim.py). */
+  methods: Record<string, string>;
   stages: Record<string, string>;
   previews: Record<string, string>;
   previewNote: Moment["previewNote"];
@@ -101,12 +104,19 @@ export function moment(id: MomentId): Moment {
   const hit = cache.get(id);
   if (hit) return hit;
   const r = FX.moments[id];
+  // Each record says what the engine's methods text says of it now: a later answer can change
+  // that (complete cases keep 21,849 rows until the readings add predictors with gaps).
+  const said = (d: string) => {
+    const rec = FX.decisions[d]!;
+    const now = r.methods[d];
+    return now === undefined ? rec : { ...rec, sentence: now };
+  };
   const view = {
     summary: pooled(r.view.summary),
     state: pooled(r.view.state),
     stages: pooled(r.view.stages),
     interview: pooled(r.view.interview),
-    decisions: r.view.decisions.map((d) => FX.decisions[d]!),
+    decisions: r.view.decisions.map(said),
   } as unknown as ProjectView;
   const previews: Record<string, CapturedPreview> = {};
   for (const [k, ref] of Object.entries(r.previews)) previews[k] = pooled(ref);

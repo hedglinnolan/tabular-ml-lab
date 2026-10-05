@@ -72,6 +72,9 @@ export function TableTwo({ m }: { m: Moment }) {
   const seq = family.sequence;
   // The estimates every prototype prints the same (methods-shared/results.ts), one cell per model.
   const rows = table2Rows(effects);
+  // The footnote is the primary model's inference line (its t degrees of freedom), as the canvas's
+  // coefficients and the other prototypes print it; each model's own df differs by its terms.
+  const primary = seq.find((x) => x.key === rows.find((r) => r.primary)?.key);
   return (
     <figure className={s.t2} data-testid="table2">
       <figcaption className={s.t2Title}>
@@ -122,8 +125,8 @@ export function TableTwo({ m }: { m: Moment }) {
           </li>
         ) : null}
       </ol>
-      <p className={s.t2Inference}>
-        <Rich text={seq[1]?.inference?.caption ?? ""} />
+      <p className={s.t2Inference} data-testid="t2-inference">
+        <Rich text={primary?.inference?.caption ?? ""} />
       </p>
       <button type="button" className={s.appendixToggle} aria-expanded={appendix} onClick={() => setAppendix((v) => !v)}>
         Appendix: {effects.appendix_title} · {terms.length} rows {appendix ? "▾" : "▸"}

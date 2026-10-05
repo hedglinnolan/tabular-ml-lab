@@ -38,7 +38,7 @@ describe("the methods document", () => {
   });
 
   it("writes only the server's sentences, in the guideline the purpose names", () => {
-    for (const id of ["draft", "model_sequence", "locked", "prediction"] as const) {
+    for (const id of ["draft", "estimand", "model_sequence", "locked", "prediction"] as const) {
       const m = moment(id);
       const doc = buildDoc(m);
       expect(doc.guideline).toBe(id === "prediction" ? "TRIPOD+AI" : "STROBE-nut");

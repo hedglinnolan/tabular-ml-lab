@@ -295,7 +295,7 @@ export function ResultsCanvas({
             ))}
           </tbody>
         </table>
-        <p className={s.caption}>
+        <p className={s.caption} data-testid="t2-inference">
           <Rich
             text={`${model.inference.caption} Difference in the mean \`glucose\` per unit of \`${exposure}\`, as the header reads; its unit is not settled.`}
           />
