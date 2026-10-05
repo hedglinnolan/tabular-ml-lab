@@ -96,6 +96,7 @@ export const SUBJECT: Record<QuestionKey, string> = {
   missing: "the missing values",
   split: "the seal",
   energy_adjustment: "the energy adjustment",
+  causal: "the causal estimate",
   models: "the models",
   substitution: "the substitution",
   open_seal: "opening the seal",

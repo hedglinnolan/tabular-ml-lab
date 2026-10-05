@@ -773,7 +773,7 @@ HOLDS: dict[str, tuple[str, ...]] = {
     "estimand": ("inference",),
     "adjustment": ("inference",),
 }
-ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary")
+ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "causal")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:

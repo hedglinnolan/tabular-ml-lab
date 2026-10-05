@@ -76,6 +76,18 @@ adjustment cards and every option's customary and sound labels, the seal plan th
     ``secondary`` fits the primary model and the model further adjusted for the covariates the
     answers declare beside it (unknown timing, or "further adjusted for"), on the same rows.
 
+The causal lane (V2 definition of done §2; ``turbotab/core/causal.py``):
+
+    causal_design heavy  deps: working, split, target_info   reads the plan …; requires estimand
+    causal        heavy  deps: working, split, target_info   reads the plan and causal; requires causal,
+                                                              models
+
+    ``causal_design`` (outcome-free) is the causal question's card: the options ranked for the
+    plan, the four assumptions with their diagnostics, and positivity. ``causal`` estimates the
+    declared effect by DML, TMLE or post-double selection over the adjustment set, once the model
+    families are chosen too: the primary model and the lane are declared together, before either
+    estimate is shown, so the plan lock records both.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -102,6 +114,7 @@ WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
+from turbotab.core.stages.causal import CAUSAL_READS, causal_design_stage, causal_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
@@ -459,6 +472,16 @@ def build_graph() -> Graph:
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),
+            # ── The causal lane (V2 definition of done §2; turbotab/core/causal.py) ──
+            # causal_design is outcome-free: the options, the assumptions and positivity, shown
+            # before any choice; causal runs the chosen estimator once the answer and the model
+            # families are recorded (the whole plan declared before any estimate is shown).
+            Stage("causal_design", 1, ("working", "split", "target_info"), CAUSAL_READS,
+                  causal_design_stage, heavy=True, requires=("estimand",),
+                  label="Reading the causal lane's assumptions and overlap"),
+            Stage("causal", 1, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
+                  causal_stage, heavy=True, requires=("causal", "models"),
+                  label="Estimating the effect in the causal lane"),
         ]
     )
 

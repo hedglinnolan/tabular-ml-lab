@@ -951,3 +951,8 @@ ARTIFACT_MODELS.update({"sensitivity": SensitivityArtifact, "calibration": Calib
 from turbotab.core.stages.secondary import SecondaryArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"secondary": SecondaryArtifact})
+
+# The causal lane: its card (outcome-free) and its estimate (turbotab/core/stages/causal.py).
+from turbotab.core.stages.causal import CausalArtifact, CausalDesignArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"causal_design": CausalDesignArtifact, "causal": CausalArtifact})

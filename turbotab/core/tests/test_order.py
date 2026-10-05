@@ -57,6 +57,8 @@ ANSWER = {
     "split": d.SetSplit(holdout=0.2),
     "energy_adjustment": d.SetEnergyAdjustment(method="none"),
     "models": d.SelectModels(models=["linear"]),
+    # The causal lane (turbotab/core/causal.py): stated under inference unless candidates are many
+    "causal": d.SetCausal(exposure="protein_g", method="none"),
     "substitution": d.SetSubstitution(donor="fat_g", recipient="protein_g"),
     "open_seal": d.OpenSeal(),
 }
