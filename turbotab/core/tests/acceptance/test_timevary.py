@@ -956,6 +956,11 @@ def test_3_through_the_server_no_estimate_comes_before_its_diagnostics(tmp_path)
         drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
         drive.answer_plan("dash")
         assert drive.reach("time_varying")["status"] == "open"
+        # The card is read before the lane is declared, as a person reads it: a declaration naming
+        # no covariate takes the card's proposal (the confounders `sbp` among them), which exists
+        # only once the stage has read the data. Posted sooner, on a loaded machine, the decision
+        # met no proposal and was refused for leaving `sbp` out (wave 2a repairs integration).
+        drive.artifact("time_varying")
 
         g = drive.post({"kind": "set_time_varying", "exposure": "dash", "method": "gformula",
                         "ordering": "exposure_precedes_outcome"})
