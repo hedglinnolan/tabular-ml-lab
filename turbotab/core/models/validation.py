@@ -806,150 +806,200 @@ def nested_cv_interval(task: str, metric: str, make: Callable[[], Any],
 
 
 # ── the method contracts (BLUEPRINT §13) ─────────────────────────────────────
+#
+# Each method this module brings to the comparison enters through the one registry
+# (``turbotab.core.contracts``): slot, data scope, needs, routing (its option labeled customary and
+# sound per purpose, with the leash's rung), storyboard, sentence (its numbers as placeholders in
+# braces) and relations, each with the stable id the fit's chain (:func:`fired_chain`) records.
+
+VALIDATION_CONTRACTS: tuple[str, ...] = ("proper_primary", "comparison_substrate", "bbc_cv",
+                              "bootstrap_optimism", "horizon_calibration", "nested_cv_interval")
+_SCOPE = ("Each score reads the out-of-fold or out-of-resample predictions of models fit on the "
+          "training rows only; nothing here is learned from a row it scores.")
 
 
-class Relation(_Model):
-    """One relation a contract declares (BLUEPRINT §13; MODELING_SEQUENCE §2)."""
+def _register_contracts() -> None:
+    from turbotab.core.contracts import (CONTRACTS as REGISTRY, ContractOption, MethodContract,
+                                        Relation, register_contract)
 
-    id: str
-    kind: Literal["implies", "enables", "disables", "invalidates", "conflicts"]
-    when: str  # the decision or fact that sets it off
-    then: str  # what follows, stated (implies) or opened, closed, re-asked or refused
+    if VALIDATION_CONTRACTS[0] in REGISTRY:
+        return
+    prediction = ("prediction",)
+    here = "turbotab.core.models.validation"
 
+    def stated(key: str, label: str, customary: str, prediction_says: str, inference_says: str,
+               rungs: tuple[str, str]) -> tuple[ContractOption, ...]:
+        return (ContractOption(key, label, customary,
+                               {"prediction": prediction_says, "inference": inference_says},
+                               {"prediction": rungs[0], "inference": rungs[1]}),)
 
-class MethodContract(_Model):
-    """A method's contract (BLUEPRINT §13): where it runs, what it may learn from, what it needs,
-    how it is routed, its storyboard, its methods sentence and its relations."""
+    def contract(key: str, label: str, **fields: Any) -> None:
+        register_contract(MethodContract(key=key, label=label, slot="evaluation",
+                                         scope="training_fold", scope_note=_SCOPE, decision="set_split",
+                                         stage="fit", place="11 · Tuning and comparison", **fields))
 
-    key: str
-    label: str
-    slot: Literal["ingest", "repairs", "reshape", "eligibility", "in_fold", "model", "evaluation"]
-    scope: Literal["row_local", "reference_rows", "training_fold", "descriptive"]
-    needs: list[str]
-    routing: dict[str, str]  # purpose → how it is asked or stated, with its leash rung
-    storyboard: list[str]
-    sentence: str  # the methods sentence, its numbers as placeholders in braces
-    relations: list[Relation]
-    sources: list[str]
-
-
-CONTRACTS: tuple[MethodContract, ...] = (
-    MethodContract(
-        key="proper_primary", label="A strictly proper primary score", slot="evaluation",
-        scope="training_fold", needs=["the task", "out-of-fold predictions"],
-        routing={"prediction": "stated, not asked: compare, choose and declare on the primary; the "
-                               "customary headline reported beside it with the tension",
-                 "inference": "stated: the scores describe fit, not the estimate"},
-        storyboard=["score each row's prediction by a per-row proper loss",
-                    "average the losses", "report AUC or C beside it as the customary headline"],
+    contract(
+        "proper_primary", "A strictly proper primary score", run_order=1.0,
+        needs=("the task", "out-of-fold predictions"),
+        question="(stated, not asked: the primary score is strictly proper)",
+        options=stated(
+            "proper", "A strictly proper per-row loss",
+            "AUC and the C-index are the field's customary headline (semi-proper)",
+            "Stated, not asked: compare, choose and declare on the primary; the customary headline "
+            "reported beside it with the tension",
+            "Stated: the scores describe fit, not the estimate", ("recommended", "available")),
+        storyboard=("score each row's prediction by a per-row proper loss", "average the losses",
+                    "report AUC or C beside it as the customary headline"),
         sentence="{headline} is the customary headline: it ranks risks without asking whether they "
                  "are right (semi-proper), so the models were compared, chosen and declared on "
                  "{primary}, a strictly proper score (Van Calster et al., STRATOS TG6).",
-        relations=[Relation(id="proper_score_primary", kind="implies",
-                            when="a binary, ordinal or time-to-event task",
-                            then="the comparisons, the choice and the declaration read the strictly "
-                                 "proper primary; AUC or C is reported as the customary headline")],
-        sources=["Van Calster et al., STRATOS TG6, arXiv:2412.10288",
-                 "Harrell, Statistically efficient ways to quantify added predictive value"]),
-    MethodContract(
-        key="comparison_substrate", label="Repeated k-fold comparison substrate", slot="evaluation",
-        scope="training_fold", needs=["training rows", "the unit when rows repeat"],
-        routing={"prediction": "stated: whatever validation leads, at least 10 × K folds",
-                 "inference": "not a comparison"},
-        storyboard=["draw the folds 10 times, whole units together",
+        relations=(Relation(
+            "implies", "customary_headline",
+            "the comparisons, the choice and the declaration read the strictly proper primary; "
+            "AUC or C is reported as the customary headline",
+            condition="a binary, ordinal or time-to-event task",
+            enforced_by="turbotab.core.models.metrics:tension", id="proper_score_primary"),),
+        sources=("Van Calster et al., STRATOS TG6, arXiv:2412.10288",
+                 "Harrell, Statistically efficient ways to quantify added predictive value"))
+    contract(
+        "comparison_substrate", "Repeated k-fold comparison substrate", run_order=2.0,
+        needs=("training rows", "the unit when rows repeat"),
+        question="(stated: whatever validation leads, at least 10 × K folds)",
+        options=stated(
+            "repeated_kfold", "At least 10 × K folds, whole units together",
+            "A single k-fold run or one split is the field's habit",
+            "Stated: whatever validation leads, at least 10 × K folds",
+            "Not a comparison", ("recommended", "not_offered")),
+        storyboard=("draw the folds 10 times, whole units together",
                     "fit every family and the baseline on each fold",
-                    "pair their fold scores", "the corrected repeated k-fold t"],
+                    "pair their fold scores", "the corrected repeated k-fold t"),
         sentence="models were compared with each other and with the no-predictor baseline on "
                  "{folds}-fold cross-validation repeated {repeats} times, by the corrected repeated "
                  "k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)",
-        relations=[Relation(id="families_compared_on_substrate", kind="implies",
-                            when="any family under prediction",
-                            then="paired comparisons and the baseline verdict on at least 10 × K "
-                                 "folds, with rK − 1 degrees of freedom"),
-                   Relation(id="repeated_units_group_resampling", kind="implies",
-                            when="rows repeat within a unit",
-                            then="grouped folds in every repeat, a grouped holdout, a bootstrap by "
-                                 "unit, BBC-CV by unit and nested folds by unit")],
-        sources=["Nadeau & Bengio, Mach Learn 2003;52:239",
-                 "Bouckaert & Frank, PAKDD 2004"]),
-    MethodContract(
-        key="bbc_cv", label="Bootstrap bias-corrected cross-validation", slot="evaluation",
-        scope="training_fold", needs=["two or more families", "their out-of-fold predictions"],
-        routing={"prediction": "stated: the choice among families is corrected; with no holdout "
-                               "the selection-corrected estimate is the result (refuse the "
-                               "winner's own score as the result)",
-                 "inference": "not applicable"},
-        storyboard=["resample the out-of-fold predictions by unit",
-                    "choose the best family on the resample",
-                    "score it on the units left out", "average"],
+        relations=(
+            Relation("implies", "corrected_repeated_t",
+                     "paired comparisons and the baseline verdict on at least 10 × K folds, with "
+                     "rK − 1 degrees of freedom", purposes=prediction,
+                     condition="any family under prediction",
+                     enforced_by=f"{here}:corrected_t", id="families_compared_on_substrate"),
+            Relation("implies", "grouped_resampling",
+                     "grouped folds in every repeat, a grouped holdout, a bootstrap by unit, BBC-CV "
+                     "by unit and nested folds by unit",
+                     condition="rows repeat within a unit",
+                     enforced_by="turbotab.core.models.folds:kfold_assignment",
+                     id="repeated_units_group_resampling")),
+        sources=("Nadeau & Bengio, Mach Learn 2003;52:239", "Bouckaert & Frank, PAKDD 2004"))
+    contract(
+        "bbc_cv", "Bootstrap bias-corrected cross-validation", run_order=3.0,
+        needs=("two or more families", "their out-of-fold predictions"),
+        question="(stated: the choice among families is corrected)",
+        options=stated(
+            "bbc_cv", "The choice corrected by BBC-CV",
+            "Reporting the best family's own cross-validated score is the field's habit",
+            "Stated: the choice among families is corrected; with no holdout the "
+            "selection-corrected estimate is the result (refuse the winner's own score as the "
+            "result)", "Not applicable", ("recommended", "not_offered")),
+        storyboard=("resample the out-of-fold predictions by unit",
+                    "choose the best family on the resample", "score it on the units left out",
+                    "average"),
         sentence="the choice among {k} families was corrected by bootstrap bias-corrected "
                  "cross-validation (Tsamardinos et al. 2018, {b} resamples)",
-        relations=[Relation(id="choice_among_families_bbc", kind="implies",
-                            when="two or more families under prediction",
-                            then="the best family's score is corrected for the choice"),
-                   Relation(id="no_holdout_declares_corrected", kind="conflicts",
-                            when="no rows held out and the families compared",
-                            then="the winner's own score as the result is refused; the "
-                                 "selection-corrected estimate is the result")],
-        sources=["Tsamardinos, Greasidou & Borboudakis, Mach Learn 2018;107:1895"]),
-    MethodContract(
-        key="bootstrap_optimism", label="Bootstrap optimism correction", slot="evaluation",
-        scope="training_fold", needs=["a regression-type family", "the whole pipeline"],
-        routing={"prediction": "asked (the split question), ranked first below 20,000 units",
-                 "inference": "offered after one cross-validation run"},
-        storyboard=["fit on every row: the apparent score",
+        relations=(
+            Relation("implies", "selection_corrected_score",
+                     "the best family's score is corrected for the choice", purposes=prediction,
+                     condition="two or more families under prediction",
+                     enforced_by="turbotab.core.models.selection:selection_optimism",
+                     id="choice_among_families_bbc"),
+            Relation("conflicts", "winner_own_score",
+                     "the winner's own score as the result is refused; the selection-corrected "
+                     "estimate is the result", purposes=prediction, rung="refused",
+                     condition="no rows held out and the families compared",
+                     exits=("Keep the compared families",),
+                     enforced_by="turbotab.core.models.selection:_compared_families_stay",
+                     id="no_holdout_declares_corrected")),
+        sources=("Tsamardinos, Greasidou & Borboudakis, Mach Learn 2018;107:1895",))
+    contract(
+        "bootstrap_optimism", "Bootstrap optimism correction", run_order=4.0,
+        needs=("a regression-type family", "the whole pipeline"),
+        question="How is performance estimated on these rows?",
+        options=stated(
+            "bootstrap", "Harrell's bootstrap, the whole pipeline refit on each resample",
+            "Steyerberg's floor of 200 resamples is customary",
+            "Asked (the split question), ranked first below 20,000 units; at least 500 resamples "
+            "(Collins et al. 2024)", "Offered after one cross-validation run",
+            ("recommended", "available")),
+        storyboard=("fit on every row: the apparent score",
                     "refit on a resample of whole units", "score it on the resample and on every row",
-                    "average the gap: the optimism", "subtract it"],
+                    "average the gap: the optimism", "subtract it"),
         sentence="Harrell's bootstrap ({b} resamples, the whole pipeline refit on each)",
-        relations=[Relation(id="bootstrap_resamples", kind="implies",
-                            when="fewer than 500 resamples",
-                            then="the concern is stated (Collins et al. 2024)")],
-        sources=["Harrell, Lee & Mark, Stat Med 1996;15:361", "Collins et al., BMJ 2024;384:e074819"]),
-    MethodContract(
-        key="horizon_calibration", label="Calibration by a horizon, and by level", slot="evaluation",
-        scope="training_fold", needs=["a time to event with its follow-up and a horizon",
-                                      "or an ordinal or multiclass outcome"],
-        routing={"prediction": "stated: the horizon is declared with the follow-up, else the "
-                               "median follow-up time",
-                 "inference": "stated beside the fit scores"},
-        storyboard=["each row's risk by the horizon", "the Kaplan–Meier observed risk",
-                    "observed against expected, by risk group", "the calibration slope"],
+        relations=(Relation("implies", "resample_concern",
+                            "the concern is stated (Collins et al. 2024)",
+                            condition="fewer than 500 resamples",
+                            enforced_by=f"{here}:resample_concern", id="bootstrap_resamples"),),
+        sources=("Harrell, Lee & Mark, Stat Med 1996;15:361", "Collins et al., BMJ 2024;384:e074819"))
+    contract(
+        "horizon_calibration", "Calibration by a horizon, and by level", run_order=5.0,
+        needs=("a time to event with its follow-up and a horizon",
+               "or an ordinal or multiclass outcome"),
+        question="(stated: the horizon is declared with the follow-up, else the median follow-up "
+                 "time)",
+        options=stated(
+            "by_horizon_and_level", "At the horizon; by level for ordinal and multiclass outcomes",
+            "Calibration is often left unreported for these tasks",
+            "Stated: the horizon is declared with the follow-up, else the median follow-up time",
+            "Stated beside the fit scores", ("recommended", "available")),
+        storyboard=("each row's risk by the horizon", "the Kaplan–Meier observed risk",
+                    "observed against expected, by risk group", "the calibration slope"),
         sentence="calibration was assessed at {horizon} by observed (Kaplan–Meier) against "
                  "predicted risk and the calibration slope",
-        relations=[Relation(id="time_to_event_horizon", kind="implies",
-                            when="a time-to-event outcome",
-                            then="the Brier score and calibration are read at the declared "
-                                 "horizon, or at the median follow-up time, stated"),
-                   Relation(id="calibration_not_assessed", kind="implies",
-                            when="calibration cannot be computed",
-                            then="the record says calibration not assessed, and why")],
-        sources=["Graf et al., Stat Med 1999;18:2529", "McLernon et al., Ann Intern Med 2023;176:105",
-                 "Van Calster et al., BMC Med 2019;17:230"]),
-    MethodContract(
-        key="nested_cv_interval", label="The nested cross-validation interval", slot="evaluation",
-        scope="training_fold", needs=["a per-row proper loss", "p ≫ n"],
-        routing={"prediction": "offered with its compute estimate where p/n > 1; else the interval "
-                               "is labeled likely too narrow",
-                 "inference": "not applicable"},
-        storyboard=["for each repetition, each pair of folds fit without both",
+        relations=(
+            Relation("implies", "horizon",
+                     "the Brier score and calibration are read at the declared horizon, or at the "
+                     "median follow-up time, stated", condition="a time-to-event outcome",
+                     enforced_by="turbotab.core.models.performance:horizon_calibration",
+                     id="time_to_event_horizon"),
+            Relation("implies", "not_assessed_note",
+                     "the record says calibration not assessed, and why",
+                     condition="calibration cannot be computed",
+                     enforced_by=f"{here}:calibration_by", id="calibration_not_assessed")),
+        sources=("Graf et al., Stat Med 1999;18:2529", "McLernon et al., Ann Intern Med 2023;176:105",
+                 "Van Calster et al., BMC Med 2019;17:230"))
+    contract(
+        "nested_cv_interval", "The nested cross-validation interval", run_order=6.0,
+        needs=("a per-row proper loss", "p ≫ n"),
+        question="Predictors outnumber the rows: run the nested cross-validation interval?",
+        options=stated(
+            "nested_cv", "Bates, Hastie & Tibshirani's nested cross-validation interval",
+            "The naive cross-validation interval is customary",
+            "Offered with its compute estimate where p/n > 1; else the interval is labeled likely "
+            "too narrow", "Not applicable", ("available", "not_offered")),
+        storyboard=("for each repetition, each pair of folds fit without both",
                     "each fold fit without it", "the spread of the inner against the outer errors",
-                    "widen the interval by it"],
+                    "widen the interval by it"),
         sentence="its interval is the nested cross-validation interval ({reps} repetitions of "
                  "{folds} folds; Bates, Hastie & Tibshirani 2023)",
-        relations=[Relation(id="p_much_greater_n", kind="enables",
-                            when="more candidate predictors than rows",
-                            then="the nested cross-validation interval is offered, and the naive "
-                                 "interval is labeled likely too narrow until it runs")],
-        sources=["Bates, Hastie & Tibshirani, JASA 2023 (arXiv:2104.00673)"]),
-)
+        relations=(Relation("enables", "nested_cv_interval",
+                            "the nested cross-validation interval is offered, and the naive "
+                            "interval is labeled likely too narrow until it runs",
+                            purposes=prediction, condition="more candidate predictors than rows",
+                            enforced_by=f"{here}:nested_cv_interval", id="p_much_greater_n"),),
+        sources=("Bates, Hastie & Tibshirani, JASA 2023 (arXiv:2104.00673)",))
 
 
-def contract(key: str) -> MethodContract:
-    return next(c for c in CONTRACTS if c.key == key)
+_register_contracts()
+
+
+def contract(key: str) -> Any:
+    """One of this module's contracts, as the one registry holds it."""
+    from turbotab.core.contracts import contract as registered
+
+    if key not in VALIDATION_CONTRACTS:
+        raise KeyError(f"{key} is not a validation contract")
+    return registered(key)
 
 
 def relation_ids() -> list[str]:
-    return [r.id for c in CONTRACTS for r in c.relations]
+    return [r.id for key in VALIDATION_CONTRACTS for r in contract(key).relations]
 
 
 class ChainLink(_Model):
@@ -1079,13 +1129,13 @@ def fired_chain(task: str, primary: str, *, inference: bool, grouped_by: str | N
     return links
 
 
-__all__ = ["BOOTSTRAP_CAUTION", "CALIBRATION_KEYS", "COMPARISONS_NOTE", "CONTRACTS", "ChainLink",
+__all__ = ["BOOTSTRAP_CAUTION", "CALIBRATION_KEYS", "COMPARISONS_NOTE", "ChainLink",
            "ClusterScore", "FamilyDifference", "InternalExternal", "METRICS", "MIN_OK_SHARE",
-           "MethodContract", "NESTED_REPS", "NestedCV", "Optimism", "OptimismEstimate", "P_OVER_N",
+           "NESTED_REPS", "NestedCV", "Optimism", "OptimismEstimate", "P_OVER_N",
            "PER_ROW_LOSSES", "PROCEDURE", "PairedTest", "RECOMMENDED_BOOT", "RESAMPLE_BELOW",
-           "RESAMPLE_SOURCE", "Relation", "TOO_NARROW", "ValidationOption", "ValidationPlan",
+           "RESAMPLE_SOURCE", "TOO_NARROW", "ValidationOption", "ValidationPlan",
            "contract", "corrected_t", "family_differences", "internal_external", "loss_rows",
            "nested_cv_fits", "nested_cv_interval", "not_applied", "optimism_bootstrap",
            "performance_points", "performance_sentence", "relation_ids", "resample_concern",
            "validation_plan", "wide", "wide_clause", "calibration_by", "fired_chain",
-           "headline_how", "level_words", "score_words"]
+           "headline_how", "level_words", "score_words", "VALIDATION_CONTRACTS"]

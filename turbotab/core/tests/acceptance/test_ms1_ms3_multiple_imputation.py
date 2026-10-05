@@ -1475,27 +1475,34 @@ def chain_run(tmp_path_factory):
 
 
 def test_chain_contracts_declare_every_part_of_section_13():
-    """Every MI method's contract names its slot, data scope, needs, routing (question; options per
-    purpose with customary and sound labels and the leash's rung), storyboard, the function that
-    writes its sentence, and its relations."""
+    """Every MI method's contract, in the one registry (``turbotab.core.contracts``), names its slot,
+    data scope, needs, routing (question; its option labeled customary and sound for each purpose,
+    with the leash's rung), storyboard, the function that writes its sentence, and its relations;
+    each conflict names its ways forward and each relation the code that makes it fire."""
     import importlib
 
-    from turbotab.core.methods.missing import CONTRACTS
+    from turbotab.core import contracts as C
+    from turbotab.core.methods.missing import MI_CONTRACTS
 
-    assert set(CONTRACTS) == {"multiple_imputation_compatible", "multiple_imputation_passive",
-                              "multiple_imputation_single_level", "imputed_copies_pooled"}
-    for contract in CONTRACTS.values():
-        assert contract.slot and contract.needs and contract.storyboard and contract.relations
-        assert contract.scope in ("row-local", "reference rows", "training fold", "descriptive")
-        assert set(contract.options) == {"inference", "prediction"}
-        for labels in contract.options.values():
-            assert labels["customary"] and labels["sound"]
-            assert labels["rung"] in ("recommended", "available", "block_and_record", "refused")
+    assert set(MI_CONTRACTS) == {"multiple_imputation_compatible", "multiple_imputation_passive",
+                                 "multiple_imputation_single_level", "imputed_copies_pooled"}
+    for key in MI_CONTRACTS:
+        contract = C.contract(key)
+        assert contract.slot in C.SLOTS and contract.needs and contract.storyboard
+        assert contract.relations and contract.question
+        assert contract.scope == ("row_local" if key == "imputed_copies_pooled" else "model")
+        for option in contract.options:
+            assert option.customary and set(option.sound) == set(C.PURPOSES)
+            assert all(option.sound.values()) and set(option.rung) == set(C.PURPOSES)
+            assert all(r in C.RUNGS for r in option.rung.values())
         module, function = contract.sentence.split(":")
         assert callable(getattr(importlib.import_module(module), function))
         for relation in contract.relations:
-            assert relation.kind in ("implies", "enables", "disables", "invalidates", "conflicts")
-            assert (relation.exit is not None) == (relation.kind == "conflicts")
+            assert relation.kind in ("implies", "enables", "disables", "invalidates", "conflicts",
+                                     "precedes")
+            assert bool(relation.exits) == (relation.kind == "conflicts")
+            module, function = relation.enforced_by.split(":")
+            assert callable(getattr(importlib.import_module(module), function))
 
 
 def test_chain_the_inference_run_follows_the_execution_order(chain_run):
@@ -1523,8 +1530,9 @@ def test_chain_the_inference_run_follows_the_execution_order(chain_run):
 def test_chain_every_relation_the_contracts_declare_fires(chain_run, dxa_run):
     """Each relation in the MI contracts, checked on the run it governs; none is listed without a
     check here."""
+    from turbotab.core.contracts import contract
     from turbotab.core.decisions import GrainSpec, RepeatSpec, SetUnit
-    from turbotab.core.methods.missing import CONTRACTS
+    from turbotab.core.methods.missing import MI_CONTRACTS
     from turbotab.core.stages import build_graph
 
     run = chain_run["spline"]
@@ -1578,6 +1586,28 @@ def test_chain_every_relation_the_contracts_declare_fires(chain_run, dxa_run):
         imputations, _ = clustered_imputations(visits_frame(), "clustered")
         assert imputations.plan["unit"] == "id" and imputations.plan["unit_level"]
 
+    def items_before_the_score() -> None:
+        from turbotab.core.decisions import ScaleSpec
+        from turbotab.core.models.pipeline import shared_steps
+        from turbotab.core.tests.acceptance.scales_fixtures import linear_scale_table
+
+        items = [f"sat_{j}" for j in range(1, 9)]
+        scale = linear_scale_table(n=200, missing=0.15)
+        st = ProjectState(purpose="inference", target="sbp",
+                          roles={"age": "covariate", "bmi": "covariate",
+                                 **{c: "covariate" for c in items}},
+                          missing=MissingSpec(strategy="multiple_imputation"),
+                          scales=[ScaleSpec(name="sat_score", items=items,
+                                            reverse=["sat_3", "sat_6"], low=1, high=5,
+                                            kind="reflective")])
+        X = scale[["age", "bmi", *items]]
+        spec = design_spec(st, X, ["age", "bmi", *items])
+        steps = [name for name, _ in shared_steps(spec)]
+        assert steps.index("impute") < steps.index("score")
+        copies = impute_for_inference(spec, X[spec.inputs], scale["sbp"].to_numpy(dtype=float),
+                                      "regression", seed=0)
+        assert set(items) <= set(copies.variables) and "sat_score" not in copies.variables
+
     def passive_conflicts_with_nonlinear_term() -> None:
         st = ProjectState(target="y", purpose="inference", roles={"x": "exposure"},
                           exposure_forms={"x": ExposureFormSpec(form="spline", knots=4)})
@@ -1585,6 +1615,9 @@ def test_chain_every_relation_the_contracts_declare_fires(chain_run, dxa_run):
             validate(SetMissing(strategy="multiple_imputation", imputation_model="passive"),
                      {"state": st})
         assert refused.value.exits[0]["label"].startswith("Multiple imputation compatible")
+        declared = contract("multiple_imputation_passive").relation(
+            "mi.passive_conflicts_with_nonlinear_term")
+        assert [e["label"] for e in refused.value.exits] == list(declared.exits)
 
     def single_level_conflicts_with_clusters() -> None:
         st = ProjectState(target="y", purpose="inference", roles={"x": "exposure"},
@@ -1594,6 +1627,9 @@ def test_chain_every_relation_the_contracts_declare_fires(chain_run, dxa_run):
                      {"state": st})
         assert refused.value.exits[0]["label"] == "Clustered multiple imputation (time-invariant " \
                                                   "values once per unit)"
+        declared = contract("multiple_imputation_single_level").relation(
+            "mi.single_level_conflicts_with_clusters")
+        assert [e["label"] for e in refused.value.exits] == list(declared.exits)
 
     def copies_imply_rubins_rules() -> None:
         assert dxa_run["model"]["inference"]["missing"]["model"] == "supplied"
@@ -1607,6 +1643,8 @@ def test_chain_every_relation_the_contracts_declare_fires(chain_run, dxa_run):
             validate(SetUnit(unit="unit"), {"state": st})
         assert refused.value.code == "imputed_copies_combined"
         assert refused.value.exits[0]["label"] == "Keep each copy as a record, pooled by Rubin's rules"
+        declared = contract("imputed_copies_pooled").relation("copies.conflict_with_combining")
+        assert [e["label"] for e in refused.value.exits] == list(declared.exits)
 
     checks = {
         "mi.pools_every_estimate": pools_every_estimate,
@@ -1617,12 +1655,13 @@ def test_chain_every_relation_the_contracts_declare_fires(chain_run, dxa_run):
         "mi.form_change_invalidates_imputations": form_change_invalidates_imputations,
         "mi.survey_implies_design_variables_and_df": survey_implies_design_variables_and_df,
         "mi.clusters_imply_clustered_imputation": clusters_imply_clustered_imputation,
+        "mi.items_before_the_score": items_before_the_score,
         "mi.passive_conflicts_with_nonlinear_term": passive_conflicts_with_nonlinear_term,
         "mi.single_level_conflicts_with_clusters": single_level_conflicts_with_clusters,
         "copies.imply_rubins_rules": copies_imply_rubins_rules,
         "copies.conflict_with_combining": copies_conflict_with_combining,
     }
-    declared = {r.id for c in CONTRACTS.values() for r in c.relations}
+    declared = {r.id for key in MI_CONTRACTS for r in contract(key).relations}
     assert declared == set(checks)
     for relation_id in sorted(declared):
         checks[relation_id]()

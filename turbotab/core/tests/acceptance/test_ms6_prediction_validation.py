@@ -34,8 +34,8 @@ from turbotab.core.models.metrics import (HEADLINE, PRIMARY, cross_validate, fol
                                           survival_baseline, tension)
 from turbotab.core.models.pipeline import DesignSpec, build_pipeline
 from turbotab.core.models.selection import OutOfFold, selection_optimism
-from turbotab.core.models.validation import (CONTRACTS, PROCEDURE, TOO_NARROW, corrected_t,
-                                             nested_cv_fits, nested_cv_interval,
+from turbotab.core.models.validation import (PROCEDURE, TOO_NARROW, VALIDATION_CONTRACTS,
+                                             corrected_t, nested_cv_fits, nested_cv_interval,
                                              optimism_bootstrap, relation_ids, validation_plan)
 from turbotab.core.stages.modeling import design_stage, fit_stage, shelf_stage
 from turbotab.core.stages.rows import cohort_stage, draw_split, split_stage
@@ -1035,15 +1035,30 @@ write(toJSON(list(est = est, lo = est - half, hi = est + half, bias = bias, infl
 
 
 def test_contracts_declare_every_part_and_their_relations():
-    """BLUEPRINT §13: each method enters through a contract: slot, data scope, needs, routing per
-    purpose, storyboard, sentence, relations."""
-    keys = {c.key for c in CONTRACTS}
-    assert keys == {"proper_primary", "comparison_substrate", "bbc_cv", "bootstrap_optimism",
-                    "horizon_calibration", "nested_cv_interval"}
-    for c in CONTRACTS:
+    """BLUEPRINT §13: each method enters through a contract in the one registry
+    (``turbotab.core.contracts``): slot, data scope, needs, routing per purpose (its option labeled
+    customary and sound for each purpose, with its rung), storyboard, sentence, relations; the
+    refusal of the winner's own score names the exit the refusal itself offers."""
+    import importlib
+
+    from turbotab.core import contracts as C
+
+    assert set(VALIDATION_CONTRACTS) == {"proper_primary", "comparison_substrate", "bbc_cv",
+                                         "bootstrap_optimism", "horizon_calibration",
+                                         "nested_cv_interval"}
+    for key in VALIDATION_CONTRACTS:
+        c = C.contract(key)
         assert c.slot == "evaluation" and c.scope == "training_fold"
         assert c.needs and c.storyboard and c.sentence and c.relations and c.sources
-        assert set(c.routing) == {"prediction", "inference"}
+        for option in c.options:
+            assert set(option.sound) == set(option.rung) == {"prediction", "inference"}
+            assert option.customary and all(option.sound.values())
+        for r in c.relations:
+            module, name = r.enforced_by.split(":")
+            assert callable(getattr(importlib.import_module(module), name)), r.enforced_by
+    refusal = C.contract("bbc_cv").relation("no_holdout_declares_corrected")
+    assert refusal.kind == "conflicts" and refusal.rung == "refused"
+    assert refusal.exits == ("Keep the compared families",)
     assert relation_ids() == [
         "proper_score_primary", "families_compared_on_substrate", "repeated_units_group_resampling",
         "choice_among_families_bbc", "no_holdout_declares_corrected", "bootstrap_resamples",

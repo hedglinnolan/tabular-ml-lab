@@ -581,9 +581,10 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     * regression calibration: blocked, as it has no design-based variance here.
 
     The invariant is checked structurally (:func:`assert_design_based_or_blocked`), and each §2
-    relation the population contract declares (``models.survey.CONTRACTS``) is seen to fire."""
+    relation the population contract declares (in the one registry, ``core.contracts``) is seen
+    to fire."""
+    from turbotab.core.contracts import contract
     from turbotab.core.decisions import ExposureFormSpec, FollowUpSpec, MissingSpec
-    from turbotab.core.models.survey import CONTRACTS
 
     diet = nhanes_diet(seed=11, n_per_psu=40)
     analyzed = np.flatnonzero(diet["eligible"].to_numpy() == 1)
@@ -732,7 +733,7 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     assert any(ATTESTATION in c for c in tests["concerns"])
 
     # The relations the population contract declares, each seen above.
-    relations = {(r.kind, r.target) for r in CONTRACTS["survey_population"].relations}
+    relations = {(r.kind, r.target) for r in contract("survey_population").relations}
     assert relations == {
         ("implies", "every family and display"),
         ("conflicts", "mixed, GEE, feature-wise, elastic net and boosted-tree estimates"),

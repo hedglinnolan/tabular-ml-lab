@@ -1297,203 +1297,244 @@ def row_loss_concern(loss: Mapping[str, Any] | None) -> str | None:
 
 # ── the method contracts (BLUEPRINT §13) ─────────────────────────────────────
 #
-# Each method this module brings to the inference table declares where it runs, what it may learn
-# from, what it needs, how it is asked (its options labeled customary and sound per purpose, with
-# the leash's rung), its storyboard, its sentence and its relations to other decisions
-# (MODELING_SEQUENCE §2). No shared contract registry exists in the tree yet; these are the shape
-# §13 names, kept here until one does. The chain test fires every relation listed.
+# Each method this module brings to the inference table enters through the one registry
+# (``turbotab.core.contracts``): where it runs, what it may learn from, what it needs, how it is
+# asked (its option labeled customary and sound per purpose, with the leash's rung), its
+# storyboard, its sentence and its relations to other decisions (MODELING_SEQUENCE §2). The chain
+# test fires every relation listed.
+
+MI_CONTRACTS: tuple[str, ...] = ("multiple_imputation_compatible", "multiple_imputation_passive",
+                                 "multiple_imputation_single_level", "imputed_copies_pooled")
+_MI_SENTENCE = "turbotab.core.methods.missing:mi_sentence"
+_MI_SOURCES = ("Bartlett, Seaman, White & Carpenter 2015 (SMC-FCS)",
+               "White, Royston & Wood 2011 (m and Monte Carlo error)",
+               "Barnard & Rubin 1999; Reiter 2007 (degrees of freedom)",
+               "Lüdtke, Robitzsch & Grund 2017 (clustered imputation)")
+# The ways forward the refusals of a blocked imputation name (``decisions._imputation_fits_the_analysis``)
+# besides the sound one: the conflict relations below list them, in order.
+_COMPLETE_CASES_EXIT = "Complete cases, with their assumption stated"
+_KEEP_EXIT = "Keep it, recorded as a limitation"
+_MI_SCOPE = ("Under inference the imputation model holds the outcome and reads every analyzed row "
+             "(BLUEPRINT §12 rulings 3 and 4): a row's draws move when the outcome or another row "
+             "changes, so it learns what the outcome model learns from; under prediction it is "
+             "refused, as a new row has no outcome to impute with. It is the first step of each "
+             "copy's pipeline (MODELING_SEQUENCE §1.1: the copies are drawn, then each copy's "
+             "derived terms, scale scores and spline basis, then its fit).")
 
 
-@dataclass(frozen=True)
-class Relation:
-    """One of §13's relations: ``kind`` implies · enables · disables · invalidates · conflicts;
-    ``when`` the decision or reading it starts from; ``then`` what follows; ``exit`` the way
-    forward a conflict names."""
+def _register_contracts() -> None:
+    from turbotab.core.contracts import (CONTRACTS as REGISTRY, ContractOption, MethodContract,
+                                        Relation, register_contract)
 
-    id: str
-    kind: Literal["implies", "enables", "disables", "invalidates", "conflicts"]
-    when: str
-    then: str
-    exit: str | None = None
+    if MI_CONTRACTS[0] in REGISTRY:
+        return
+    inference = ("inference",)
+    here = "turbotab.core.methods.missing"
+    not_here = "Not here: it uses the outcome, which a new row does not have"
+    question = "Missing values under inference: how is the imputation model built?"
+
+    def option(key: str, label: str, customary: str, sound: str, rung: str) -> ContractOption:
+        return ContractOption(key, label, customary, {"inference": sound, "prediction": not_here},
+                              {"inference": rung, "prediction": "refused"})
+
+    register_contract(MethodContract(
+        key="multiple_imputation_compatible",
+        label="Multiple imputation compatible with the analysis model",
+        slot="in_fold", scope="model", scope_note=_MI_SCOPE, run_order=0.5,
+        needs=("the outcome", "the incomplete predictors",
+               "the declared terms (forms, the energy model)",
+               "the energy sources' settled kcal per unit", "the survey design",
+               "the unit of clustering"),
+        question=question,
+        options=(option(
+            "compatible", "Compatible with the analysis model (SMC-FCS where the model needs it)",
+            "Chained equations with derived terms made in each copy (passive) are the field's habit "
+            "(mice's and Stata's defaults)",
+            "Sound: SMC-FCS where the model holds a spline, a log, a ratio or a logistic or Cox "
+            "outcome, chained equations where it is linear in the imputed values (Bartlett et al. "
+            "2015)", "recommended"),),
+        storyboard=("Read the analysis model's terms and fix the knots on the observed values",
+                    "Impute each incomplete column on the analysis scale (logs; the energy identity)",
+                    "Draw each blank compatibly with the analysis model (SMC-FCS or chained "
+                    "equations)",
+                    "Fit the analysis pipeline on each completed copy",
+                    "Pool every estimate by Rubin's rules, multi-parameter tests by D1"),
+        relations=(
+            Relation("implies", "pooled_estimates",
+                     "every estimate shown is pooled: the coefficient table, the form tests (D1) "
+                     "and the substitution curve", purposes=inference,
+                     condition="multiple imputation under inference",
+                     enforced_by="turbotab.core.stages.modeling:pooled_table",
+                     id="mi.pools_every_estimate"),
+            Relation("implies", "smcfcs",
+                     "SMC-FCS with the analysis model as its substantive model", purposes=inference,
+                     condition="a declared nonlinear or derived term (spline, quintiles, log "
+                               "residual, density) or a logistic or Cox outcome",
+                     enforced_by=f"{here}:engine_substantive",
+                     id="mi.nonlinear_term_implies_compatible"),
+            Relation("implies", "log_scale_imputation",
+                     "it is imputed on the log scale, so no copy holds a non-positive value",
+                     purposes=inference, condition="a column the analysis logs",
+                     enforced_by=f"{here}:logged_columns", id="mi.logs_imply_log_scale"),
+            Relation("implies", "energy_identity",
+                     "the sources and the rest are imputed and total energy derived as their sum",
+                     purposes=inference,
+                     condition="energy sources with a settled kcal per unit and total energy in the "
+                               "imputation model",
+                     enforced_by=f"{here}:energy_identity", id="mi.energy_identity"),
+            Relation("implies", "fixed_knots",
+                     "knots and cut points placed once on the observed values, held in every copy",
+                     purposes=inference, condition="a spline or quintile form on an imputed column",
+                     enforced_by=f"{here}:fixed_forms", id="mi.knots_fixed"),
+            Relation("invalidates", "imputations",
+                     "the imputations, redrawn with the new analysis model", purposes=inference,
+                     condition="a change to the declared form or the energy model",
+                     enforced_by="turbotab.core.stages:build_graph",
+                     id="mi.form_change_invalidates_imputations"),
+            Relation("implies", "design_in_imputation",
+                     "the strata, PSU and weight in the imputation model, and ν_com = the design "
+                     "df in Rubin's rules and D1", purposes=inference,
+                     condition="a survey design with a population estimand",
+                     enforced_by=f"{here}:design_variables",
+                     id="mi.survey_implies_design_variables_and_df"),
+            Relation("implies", "clustered_imputation",
+                     "time-invariant variables imputed once per unit, the rest with unit means",
+                     purposes=inference, condition="rows a unit repeats",
+                     enforced_by=f"{here}:unit_level_columns",
+                     id="mi.clusters_imply_clustered_imputation"),
+            Relation("precedes", "scales",
+                     "a scale's items are imputed before it is scored in each copy, never the "
+                     "score itself (MODELING_SEQUENCE §1.1)", purposes=inference,
+                     condition="a declared scale with missing items",
+                     enforced_by="turbotab.core.models.pipeline:shared_steps",
+                     id="mi.items_before_the_score"),
+        ),
+        sources=_MI_SOURCES, decision="set_missing", stage="fit", place="6 · Missing data",
+        sentence=_MI_SENTENCE,
+        leash={"inference": "recommended", "prediction": "refused"}))
+
+    register_contract(MethodContract(
+        key="multiple_imputation_passive",
+        label="Passive multiple imputation (chained equations, terms derived per copy)",
+        slot="in_fold", scope="model", scope_note=_MI_SCOPE, run_order=0.5,
+        needs=("the outcome", "the incomplete predictors"),
+        question=question,
+        options=(option(
+            "passive", "Passive: terms derived in each completed copy",
+            "Customary: mice's and Stata's ice defaults derive transformed and product terms in "
+            "each completed copy",
+            f"Unsound with a declared nonlinear term: {PASSIVE_CAUTION}", "block_and_record"),),
+        storyboard=("Impute each column by chained equations with the outcome",
+                    "Derive the declared terms in each completed copy", "Fit and pool"),
+        relations=(
+            Relation("conflicts", "nonlinear_term",
+                     "blocked and recorded: the form tests are biased toward the null",
+                     purposes=inference, rung="block_and_record",
+                     condition="passive imputation and a declared nonlinear term, under inference",
+                     exits=("Multiple imputation compatible with the analysis model (SMC-FCS)",
+                            _COMPLETE_CASES_EXIT, _KEEP_EXIT),
+                     enforced_by="turbotab.core.decisions:_imputation_fits_the_analysis",
+                     id="mi.passive_conflicts_with_nonlinear_term"),
+        ),
+        sources=_MI_SOURCES, decision="set_missing", stage="fit", place="6 · Missing data",
+        sentence=_MI_SENTENCE,
+        leash={"inference": "block_and_record", "prediction": "refused"}))
+
+    register_contract(MethodContract(
+        key="multiple_imputation_single_level",
+        label="Single-level multiple imputation on clustered rows",
+        slot="in_fold", scope="model", scope_note=_MI_SCOPE, run_order=0.5,
+        needs=("the outcome", "the incomplete predictors", "the unit of clustering"),
+        question=question,
+        options=(option(
+            "single_level", "Single-level on clustered rows",
+            "Customary: chained equations that ignore the clustering",
+            f"Unsound on clustered rows: {SINGLE_LEVEL_CAUTION}", "block_and_record"),),
+        storyboard=("Impute each row on its own, the unit left out", "Fit and pool"),
+        relations=(
+            Relation("conflicts", "clustered_rows",
+                     "blocked and recorded: a unit's time-invariant values differ between its rows",
+                     purposes=inference, rung="block_and_record",
+                     condition="single-level imputation and rows a unit repeats, under inference",
+                     exits=("Clustered multiple imputation (time-invariant values once per unit)",
+                            _COMPLETE_CASES_EXIT, _KEEP_EXIT),
+                     enforced_by="turbotab.core.decisions:_imputation_fits_the_analysis",
+                     id="mi.single_level_conflicts_with_clusters"),
+        ),
+        sources=_MI_SOURCES, decision="set_missing", stage="fit", place="6 · Missing data",
+        sentence=_MI_SENTENCE,
+        leash={"inference": "block_and_record", "prediction": "refused"}))
+
+    register_contract(MethodContract(
+        key="imputed_copies_pooled",
+        label="The data's own imputed copies, pooled by Rubin's rules",
+        slot="reshape", scope="row_local", run_order=1.0,
+        scope_note="The copies were drawn by the data's provider; nothing is learned here: each "
+                   "row is kept as a record of its own copy, as it came, when the grain is read.",
+        needs=("the column numbering the copies", "the unit the copies belong to"),
+        question="The rows repeat as the data's own imputed copies: how are they analyzed?",
+        options=(ContractOption(
+            "supplied", "Each copy analyzed with its own outcome, pooled by Rubin's rules",
+            "Customary in NHANES DXA analyses: each copy analyzed, the estimates combined (NCHS's "
+            "combining rules)",
+            {"inference": "Sound: each copy carries its own outcome; Rubin's rules carry the "
+                          "imputation's uncertainty",
+             "prediction": "The copies are kept as records; the concern is stated"},
+            {"inference": "recommended", "prediction": "available"}),),
+        storyboard=("Split the rows by their copy number", "Fit each copy with its own outcome",
+                    "Pool by Rubin's rules"),
+        relations=(
+            Relation("implies", "rubins_rules",
+                     "each copy analyzed with its own outcome and pooled by Rubin's rules",
+                     purposes=inference, condition="imputed copies kept as records, under inference",
+                     enforced_by=f"{here}:supplied_copies", id="copies.imply_rubins_rules"),
+            Relation("conflicts", "combined_copies",
+                     "blocked and recorded: imputed values treated as measured",
+                     purposes=inference, rung="block_and_record",
+                     condition="imputed copies combined into one row per unit, under inference",
+                     exits=("Keep each copy as a record, pooled by Rubin's rules",
+                            "Combine them, recorded: intervals too narrow"),
+                     enforced_by="turbotab.core.structural:_imputed_copies_are_not_combined_unrecorded",
+                     id="copies.conflict_with_combining"),
+        ),
+        sources=("NCHS, NHANES DXA multiple imputation data files (2008)", "Rubin 1987"),
+        decision="set_repeat_kind", stage="fit", place="6 · Missing data", sentence=_MI_SENTENCE,
+        leash={"inference": "recommended", "prediction": "available"}))
 
 
-@dataclass(frozen=True)
-class MethodContract:
-    """BLUEPRINT §13: slot, data scope, needs, routing, storyboard, sentence, relations."""
-
-    key: str
-    label: str
-    slot: str
-    scope: Literal["row-local", "reference rows", "training fold", "descriptive"]
-    needs: tuple[str, ...]
-    question: str
-    options: Mapping[str, Mapping[str, str]]  # purpose -> {customary, sound, rung}
-    storyboard: tuple[str, ...]
-    sentence: str  # the function that writes it, ``module:function``
-    relations: tuple[Relation, ...]
-
-
-CONTRACTS: dict[str, MethodContract] = {}
-
-
-def register_contract(contract: MethodContract) -> MethodContract:
-    CONTRACTS[contract.key] = contract
-    return contract
-
-
-register_contract(MethodContract(
-    key="multiple_imputation_compatible",
-    label="Multiple imputation compatible with the analysis model",
-    slot="model: imputed copies drawn before each copy's fit, pooled after it",
-    scope="training fold",  # under inference the table's rows are every analyzed row (ruling 3)
-    needs=("the outcome", "the incomplete predictors", "the declared terms (forms, the energy model)",
-           "the energy sources' settled kcal per unit", "the survey design", "the unit of clustering"),
-    question="missing",
-    options={
-        "inference": {"customary": "Chained equations with derived terms made in each copy (passive) "
-                                   "are the field's habit (mice's and Stata's defaults)",
-                      "sound": "Sound: SMC-FCS where the model holds a spline, a log, a ratio or a "
-                               "logistic or Cox outcome, chained equations where it is linear in the "
-                               "imputed values (Bartlett et al. 2015)",
-                      "rung": "recommended"},
-        "prediction": {"customary": "Not used for prediction",
-                       "sound": "Not here: it uses the outcome, which a new row does not have",
-                       "rung": "refused"}},
-    storyboard=("Read the analysis model's terms and fix the knots on the observed values",
-                "Impute each incomplete column on the analysis scale (logs; the energy identity)",
-                "Draw each blank compatibly with the analysis model (SMC-FCS or chained equations)",
-                "Fit the analysis pipeline on each completed copy",
-                "Pool every estimate by Rubin's rules, multi-parameter tests by D1"),
-    sentence="turbotab.core.methods.missing:mi_sentence",
-    relations=(
-        Relation("mi.pools_every_estimate", "implies", "multiple imputation under inference",
-                 "every estimate shown is pooled: the coefficient table, the form tests (D1) and "
-                 "the substitution curve"),
-        Relation("mi.nonlinear_term_implies_compatible", "implies",
-                 "a declared nonlinear or derived term (spline, quintiles, log residual, density) "
-                 "or a logistic or Cox outcome", "SMC-FCS with the analysis model as its "
-                 "substantive model"),
-        Relation("mi.logs_imply_log_scale", "implies", "a column the analysis logs",
-                 "it is imputed on the log scale, so no copy holds a non-positive value"),
-        Relation("mi.energy_identity", "implies", "energy sources with a settled kcal per unit and "
-                 "total energy in the imputation model", "the sources and the rest are imputed and "
-                 "total energy derived as their sum"),
-        Relation("mi.knots_fixed", "implies", "a spline or quintile form on an imputed column",
-                 "knots and cut points placed once on the observed values, held in every copy"),
-        Relation("mi.form_change_invalidates_imputations", "invalidates",
-                 "a change to the declared form or the energy model", "the imputations, redrawn "
-                 "with the new analysis model"),
-        Relation("mi.survey_implies_design_variables_and_df", "implies",
-                 "a survey design with a population estimand", "the strata, PSU and weight in the "
-                 "imputation model, and ν_com = the design df in Rubin's rules and D1"),
-        Relation("mi.clusters_imply_clustered_imputation", "implies", "rows a unit repeats",
-                 "time-invariant variables imputed once per unit, the rest with unit means"),
-    )))
-
-register_contract(MethodContract(
-    key="multiple_imputation_passive",
-    label="Passive multiple imputation (chained equations, terms derived per copy)",
-    slot="model: imputed copies drawn before each copy's fit, pooled after it",
-    scope="training fold",
-    needs=("the outcome", "the incomplete predictors"),
-    question="missing",
-    options={
-        "inference": {"customary": "Customary: mice's and Stata's ice defaults derive transformed and "
-                                   "product terms in each completed copy",
-                      "sound": f"Unsound with a declared nonlinear term: {PASSIVE_CAUTION}",
-                      "rung": "block_and_record"},
-        "prediction": {"customary": "Not used for prediction", "sound": "Not here",
-                       "rung": "refused"}},
-    storyboard=("Impute each column by chained equations with the outcome",
-                "Derive the declared terms in each completed copy", "Fit and pool"),
-    sentence="turbotab.core.methods.missing:mi_sentence",
-    relations=(
-        Relation("mi.passive_conflicts_with_nonlinear_term", "conflicts",
-                 "passive imputation and a declared nonlinear term, under inference",
-                 "blocked and recorded: the form tests are biased toward the null",
-                 exit="Multiple imputation compatible with the analysis model (SMC-FCS)"),
-    )))
-
-register_contract(MethodContract(
-    key="multiple_imputation_single_level",
-    label="Single-level multiple imputation on clustered rows",
-    slot="model: imputed copies drawn before each copy's fit, pooled after it",
-    scope="training fold",
-    needs=("the outcome", "the incomplete predictors", "the unit of clustering"),
-    question="missing",
-    options={
-        "inference": {"customary": "Customary: chained equations that ignore the clustering",
-                      "sound": f"Unsound on clustered rows: {SINGLE_LEVEL_CAUTION}",
-                      "rung": "block_and_record"},
-        "prediction": {"customary": "Not used for prediction", "sound": "Not here",
-                       "rung": "refused"}},
-    storyboard=("Impute each row on its own, the unit left out", "Fit and pool"),
-    sentence="turbotab.core.methods.missing:mi_sentence",
-    relations=(
-        Relation("mi.single_level_conflicts_with_clusters", "conflicts",
-                 "single-level imputation and rows a unit repeats, under inference",
-                 "blocked and recorded: a unit's time-invariant values differ between its rows",
-                 exit="Clustered multiple imputation"),
-    )))
-
-register_contract(MethodContract(
-    key="imputed_copies_pooled",
-    label="The data's own imputed copies, pooled by Rubin's rules",
-    slot="model: each supplied copy analyzed on its own, pooled after the fits",
-    scope="row-local",  # the copies were drawn by the data's provider; nothing is learned here
-    needs=("the column numbering the copies", "the unit the copies belong to"),
-    question="repeat_kind",
-    options={
-        "inference": {"customary": "Customary in NHANES DXA analyses: each copy analyzed, the "
-                                   "estimates combined (NCHS's combining rules)",
-                      "sound": "Sound: each copy carries its own outcome; Rubin's rules carry the "
-                               "imputation's uncertainty",
-                      "rung": "recommended"},
-        "prediction": {"customary": "Copies as records", "sound": "The concern is stated",
-                       "rung": "available"}},
-    storyboard=("Split the rows by their copy number", "Fit each copy with its own outcome",
-                "Pool by Rubin's rules"),
-    sentence="turbotab.core.methods.missing:mi_sentence",
-    relations=(
-        Relation("copies.imply_rubins_rules", "implies", "imputed copies kept as records, under "
-                 "inference", "each copy analyzed with its own outcome and pooled by Rubin's rules"),
-        Relation("copies.conflict_with_combining", "conflicts",
-                 "imputed copies combined into one row per unit, under inference",
-                 "blocked and recorded: imputed values treated as measured",
-                 exit="Keep each copy as a record, pooled by Rubin's rules"),
-    )))
+_register_contracts()
 
 
 # The sub-answers of multiple imputation as the missing-values card offers them (§11.3: an option
 # is never offered silently): each with its contract's labels and rung for the purpose.
 _SUB_OPTIONS = (
-    ("compatible", "multiple_imputation_compatible", {"imputation_model": "compatible"},
-     "Compatible with the analysis model (SMC-FCS where the model needs it)"),
-    ("passive", "multiple_imputation_passive", {"imputation_model": "passive"},
-     "Passive: terms derived in each completed copy"),
-    ("single_level", "multiple_imputation_single_level", {"imputation_levels": "single_level"},
-     "Single-level on clustered rows"),
+    ("multiple_imputation_compatible", {"imputation_model": "compatible"}),
+    ("multiple_imputation_passive", {"imputation_model": "passive"}),
+    ("multiple_imputation_single_level", {"imputation_levels": "single_level"}),
 )
 
 
 def imputation_model_options(purpose: str | None) -> list[dict[str, Any]]:
     """Multiple imputation's sub-answers for ``purpose`` (prediction when undeclared), soundest
     first, each with its contract's customary and sound labels and its rung."""
+    from turbotab.core.contracts import contract
+
     p = purpose if purpose in ("prediction", "inference") else "prediction"
     out = []
-    for key, contract_key, decision, label in _SUB_OPTIONS:
-        labels = CONTRACTS[contract_key].options[p]
-        out.append({"key": key, "label": label, "customary": labels["customary"],
-                    "sound": labels["sound"], "rung": labels["rung"],
+    for contract_key, decision in _SUB_OPTIONS:
+        (labeled,) = contract(contract_key).options_for(p)
+        out.append({"key": labeled["key"], "label": labeled["label"],
+                    "customary": labeled["customary"], "sound": labeled["sound"],
+                    "rung": labeled["rung"],
                     "decision": {"strategy": "multiple_imputation", **decision}})
     return out
 
 
 __all__ = [
-    "imputation_model_options", "CONTRACTS", "CopyGuard", "FixedForms", "ImputationPlan", "MethodContract", "PASSIVE_CAUTION",
-    "Relation", "SINGLE_LEVEL_CAUTION", "copy_template", "design_variables", "energy_identity",
-    "fixed_forms", "imputation_plan", "logged_columns", "mi_sentence", "nonlinear_terms",
-    "register_contract", "supplied_copies", "unit_level_columns",
+    "imputation_model_options", "MI_CONTRACTS", "CopyGuard", "FixedForms", "ImputationPlan",
+    "PASSIVE_CAUTION", "SINGLE_LEVEL_CAUTION", "copy_template", "design_variables",
+    "energy_identity", "fixed_forms", "imputation_plan", "logged_columns", "mi_sentence",
+    "nonlinear_terms", "supplied_copies", "unit_level_columns",
     "BELOW_DETECTION_LABELS", "BelowDetection", "BelowDetectionFill", "COMPLETE_CASE_ASSUMPTION",
     "EnergyAwareImputer", "INDICATOR_CAUTION", "LEFT_CENSORED", "METHODS", "MI_ASSUMPTION",
     "MissingMethod", "ROW_LOSS_SHARE", "RULE", "SINGLE_FILL_CAUTION", "ZEROS", "below_detection_options",
