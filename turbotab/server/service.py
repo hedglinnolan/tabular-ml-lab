@@ -1284,13 +1284,14 @@ class ProjectService:
             records = self.log(pid).records()
             artifact = repairs.annotate(artifact, decisions.fold(records), records)
         self._lock_when_shown(pid, stage, artifact)
-        if stage == "fit" and result.fresh and isinstance(artifact, dict):
+        if stage in ("fit", "explain") and result.fresh and isinstance(artifact, dict):
             # MS6: the families whose cross-validated scores this client now sees, for its outcome,
-            # kept beside the project; a revert or a new seed cannot unsee them.
-            from turbotab.core.models.selection import note_seen, scored_in
+            # kept beside the project; a revert or a new seed cannot unsee them. The explanations'
+            # floors quote the same scores (wave 2a's EXPLAIN), so serving them counts too.
+            from turbotab.core.models.selection import explained_in, note_seen, scored_in
 
             note_seen(self.workspace.project_dir(pid), self.log(pid).state().target,
-                      scored_in(artifact))
+                      scored_in(artifact) if stage == "fit" else explained_in(artifact))
         return {
             "stage": result.stage,
             "key": result.key,

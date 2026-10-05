@@ -527,6 +527,15 @@ class _Run:
     def _design(self) -> Any:
         return self.survey.design if self.survey is not None else None
 
+    @staticmethod
+    def _held(missing: Any) -> Inference:
+        """A model whose missing values cannot be handled as the answer says: no table, the
+        reason and the answer's exits (as the fit's table carries them)."""
+        from turbotab.core.models.survey import blocked
+
+        info = blocked(missing.refusal, missing.exits, estimator="not fitted").info
+        return Inference(**{k: v for k, v in info.items() if k in Inference.model_fields})
+
     def _blocked(self, family: Any, info: Mapping[str, Any]) -> dict[str, Any]:
         """A family with no estimate (block and record, BLUEPRINT §11.3): Model 2 carries the
         reason and the fit's exits; nothing else is shown for it."""
@@ -647,9 +656,14 @@ class _Run:
             n_model = len(self.frame3) if name == "model_3" else len(self.frame)
             table = self._pool(tables, missing, spec) if name not in failures else None
             if table is None:
+                # Model 3's own imputation refused, or asked what only the user can settle (a
+                # column's time-invariance under clustered imputation, MI repair): its exits stand
+                # beside the reason, so the question carries its answers (BLUEPRINT §14.2).
+                held = (missing is not None and name == "model_3" and bool(missing.refusal))
                 sequence.append(SequenceFit(
                     key=name, label=LABELS[name], adjusted_for=adjusted_for.get(name, []),
                     note=self._note(name), n_rows=n_model, effects=None,
+                    inference=self._held(missing) if held else None,
                     concerns=[f"It could not be fit: {failures.get(name, 'no table')}"]))
                 continue
             if missing is not None:
@@ -1460,6 +1474,9 @@ def _robustness_name(lines: Sequence[Sensitivity]) -> str | None:
     return f"the Cinelli–Hazlett robustness value ({words})"
 
 
+UNFIT_WORDS = {"crude": "The unadjusted model", "model_1": "Model 1"}
+
+
 def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
     """The methods text this stage writes, from what it fitted: the sequence, the display rule, the
     marginal standardization, the diagnostics and their responses, and the sensitivity analyses."""
@@ -1470,7 +1487,9 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
         return artifact.methods
     whose = ("each exposure" if artifact.exposure == "*" else tick(artifact.exposure))
     fam = artifact.families[0]
-    keys = [s.key for s in fam.sequence]
+    # The models reported: one declared but not fit (Model 3 held by its own imputation's question,
+    # say) is said apart, never listed among them.
+    keys = [s.key for s in fam.sequence if s.effects]
     two = next((s for s in fam.sequence if s.key == "model_2"), None)
     if two is None or not two.effects:
         why = ((two.inference.refused if two is not None and two.inference is not None else None)
@@ -1499,6 +1518,15 @@ def methods_sentence(state: Any, artifact: EffectsArtifact) -> str:
     else:
         text = (f"The estimate of {whose} is reported across a declared sequence of models fit on "
                 f"{artifact.rows}: {'; '.join(seq)}.")
+    for s in fam.sequence:
+        if s.effects or s.key == "model_2":
+            continue
+        if s.key == "model_3":
+            added = [c for c in s.adjusted_for if c not in two.adjusted_for]
+            text += (f" Model 3, further adjusted for {listing(added)}, could not be fit and is not "
+                     f"reported.")
+        else:
+            text += f" {UNFIT_WORDS[s.key]} could not be fit and is not reported."
     text += (f" Only the exposure's estimates are shown as effects; every other coefficient is "
              f"listed apart as an adjustment term, not an effect estimate ({WESTREICH}).")
     survey = two.inference.survey if two.inference is not None else None

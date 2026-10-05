@@ -505,6 +505,22 @@ def scored_in(fit: Any) -> list[str]:
             if isinstance(m, Mapping) and m.get("family") and m.get("cv")]
 
 
+def explained_in(explanation: Any) -> list[str]:
+    """The families whose cross-validated scores a served explanation shows: each explained
+    family's floor reads its score against the no-predictor baseline's (``models.explain.floor_of``),
+    so an explanation served before the fit shows the comparison as much as the fit does."""
+    if not isinstance(explanation, Mapping):
+        return []
+    out = []
+    for f in explanation.get("families") or []:
+        floor = f.get("floor") if isinstance(f, Mapping) else None
+        scored = isinstance(floor, Mapping) and (floor.get("model") is not None
+                                                 or floor.get("verdict") not in (None, "unscored"))
+        if scored and f.get("family"):
+            out.append(str(f["family"]))
+    return out
+
+
 def read_seen(project_dir: str | os.PathLike[str] | None) -> dict[str, list[str]]:
     """Each outcome's families whose cross-validated scores a client was served ({} for none)."""
     if not project_dir:
@@ -856,5 +872,5 @@ def mark_final(out: dict[str, Any], *, opened: bool, family: str | None) -> dict
 
 __all__ = ["DeclaredResult", "LOWER_IS_BETTER", "METHOD", "OutOfFold", "SEEN_FILE",
            "SELECTION_NOT_NESTED", "compared_families", "declared_family", "declared_result",
-           "family_name", "mark_final", "note_seen", "pooled_score", "read_seen", "scored_in",
-           "seen_for", "selection_optimism", "vouch"]
+           "explained_in", "family_name", "mark_final", "note_seen", "pooled_score", "read_seen",
+           "scored_in", "seen_for", "selection_optimism", "vouch"]
