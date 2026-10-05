@@ -362,6 +362,8 @@ class UsualIntakeSpec(_Value):
     cutoff: float | None = None
     cutoff_kind: CutoffKind | None = None
     n_boot: int = Field(default=200, ge=50, le=2000)
+    ear_for_all: bool = False  # SetUsualIntake: the EAR answered as every participant's group's
+    ear_symmetric: bool = False  # SetUsualIntake: the requirement answered as symmetric here
 
 
 class EnergyAdjustment(_Value):
@@ -1481,6 +1483,15 @@ class SetUsualIntake(_DecisionModel):
     cutoff: float | None = Field(default=None, gt=0)
     cutoff_kind: CutoffKind | None = None
     n_boot: int = Field(default=200, ge=50, le=2000)
+    # The EAR cut-point's conditions the recalls cannot show, answered by the user (Institute of
+    # Medicine 2000, ch. 4; turbotab/core/usual_intake.py). ``ear_for_all``: the cut-off is the EAR
+    # of every participant's DRI life-stage group (age band, sex, pregnancy and lactation status);
+    # unanswered, the share below it is reported as a plain share (block and record).
+    # ``ear_symmetric``: the requirement distribution is symmetric in these participants, asked of
+    # iron, whose requirement is skewed in menstruating women (refused until answered). Both are
+    # read only with an EAR cut-off.
+    ear_for_all: bool = False
+    ear_symmetric: bool = False
 
     @model_validator(mode="after")
     def _shape(self) -> "SetUsualIntake":

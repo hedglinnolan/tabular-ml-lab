@@ -613,7 +613,10 @@ def build_graph() -> Graph:
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
             # dietary lens with repeated recalls the usual-intake distribution is offered as its own
             # estimand, and each recorded component's distribution is fit (amount-only or two-part).
-            Stage("usual_intake", 1, ("oriented", "findings", "structure", "working"),
+            # usual_intake 2 (repair): intervals on the log and logit scales; every refusal and
+            # blocked part carries exits; the prevalence below an EAR waits for the answer that it
+            # is every participant's group's EAR, and iron's waits for a symmetric requirement.
+            Stage("usual_intake", 2, ("oriented", "findings", "structure", "working"),
                   USUAL_INTAKE_READS, usual_intake_stage, heavy=True,
                   requires=("lens", "purpose"),
                   label="Estimating usual-intake distributions"),

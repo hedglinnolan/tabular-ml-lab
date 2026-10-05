@@ -20,6 +20,15 @@ its strata and PSUs.
 column (a long table) or the day columns' order (a wide table): a long table's person whose first
 recall is missing has their second read as their first.
 
+**Refusals and exits** (MODELING_SEQUENCE §4). An analysis the answer cannot run is recorded with
+its reason and its ``exits``, each a decision the client can post (or None: a question to answer),
+the last always "Leave usual intake out": the two-part model with no zero day exits to the
+amount-only model; an unanswered survey question to its answer or the sample-only attestation; a
+stratum of one PSU under the surveyed population (no design-based variance) is blocked and recorded
+with the sample-only attestation first; rows answered as time points to the repeats answer. A share
+below an EAR not answered as every participant's group's EAR is computed and labeled a plain share,
+its prevalence label blocked and recorded with the answer that lifts it among its exits.
+
 **What it reads** (BLUEPRINT §14.1): the user's answers (the component, its days, the order and
 weekend columns, the column marking consumers, the survey answer); the grain; the repeat kind and
 the time column only as the ledger holds them settled. No unit is stated: a sentence quotes the
@@ -109,6 +118,10 @@ class UsualIntakeAnalysis(_Model):
     weight: str | None = None
     assumptions: list[str] = []
     concerns: list[str] = []
+    # The ways forward from a refusal, or from a part blocked and recorded (the prevalence label of
+    # an EAR not answered as everyone's): each a decision the client can post, or None for a
+    # question to answer (MODELING_SEQUENCE §4)
+    exits: list[dict[str, Any]] = []
     methods: str
 
 
@@ -118,7 +131,12 @@ class UsualIntakeArtifact(_Model):
 
 
 class Refused(Exception):
-    """An analysis the recorded answer cannot run, with the reason the artifact states."""
+    """An analysis the recorded answer cannot run, with the reason the artifact states and its
+    exits (each ``{"label", "decision"}``; "Leave usual intake out" is added to every refusal)."""
+
+    def __init__(self, why: str, exits: Sequence[dict[str, Any]] = ()):
+        super().__init__(why)
+        self.exits = list(exits)
 
 
 # ── where the recalls are ────────────────────────────────────────────────────
@@ -340,18 +358,24 @@ def survey_plan(ctx: StageContext, store: Any, design_rows: np.ndarray, person_r
 
     ``design_rows``: one working row per person in the whole table (the design is read over all of
     them); ``person_rows``: the analysis' persons' rows among them."""
-    from turbotab.core.methods.survey import UNANSWERED, analysis_weights
-    from turbotab.core.methods.usual_intake import brr, person_bootstrap, psu_bootstrap
+    from turbotab.core import usual_intake as ui
+    from turbotab.core.methods.survey import analysis_weights
+    from turbotab.core.methods.usual_intake import (UsualIntakeRefused, brr, person_bootstrap,
+                                                    psu_bootstrap)
+    from turbotab.core.models.survey import SAMPLE_EXIT
     from turbotab.core.survey import ATTESTATION, reading_of
 
     state = ctx.state
     survey = state.survey
     n = len(person_rows)
+    sample = {"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}}
     plain = {"weights": None, "weight": None, "attestation": None, "concerns": [],
              "replication": person_bootstrap(n, n_boot, seed)}
     if survey is None:
         if reading_of(state).present:
-            raise Refused(UNANSWERED)
+            raise Refused(ui.SURVEY_UNANSWERED, [
+                {"label": "Answer the survey question: the surveyed population, or these "
+                          "participants", "decision": None}, sample])
         return plain
     if survey.estimand == "sample":
         return {**plain, "attestation": ATTESTATION}
@@ -360,7 +384,8 @@ def survey_plan(ctx: StageContext, store: Any, design_rows: np.ndarray, person_r
     frame = store.materialize(list(dict.fromkeys(columns)), design_rows)
     pooled = analysis_weights(frame, survey.weight, survey.cycle, survey.four_year_weight)
     if pooled.refusal:
-        raise Refused(pooled.refusal)
+        raise Refused(pooled.refusal, [{"label": "Name the four-year weight (the survey question)",
+                                        "decision": None}, sample])
     position = {int(r): i for i, r in enumerate(design_rows)}
     idx = np.array([position[int(r)] for r in person_rows], dtype=np.int64)
     weights = pooled.weights[idx]
@@ -371,8 +396,10 @@ def survey_plan(ctx: StageContext, store: Any, design_rows: np.ndarray, person_r
         per = pd.Series(psu).groupby(strata).nunique()
         try:
             rep = brr(strata, psu) if bool((per == 2).all()) else psu_bootstrap(strata, psu, n_boot, seed)
-        except Exception as error:  # a stratum of one PSU
-            raise Refused(str(error)) from None
+        except UsualIntakeRefused as error:  # a stratum of one PSU: block and record (§4)
+            raise Refused(f"{error} {ui.LONELY_PSU}", [
+                sample, {"label": "Name strata and PSUs with two or more PSUs in every stratum (the "
+                                  "survey question)", "decision": None}]) from None
         replication = _restrict(rep, idx)
     else:
         replication = person_bootstrap(n, n_boot, seed)
@@ -380,6 +407,61 @@ def survey_plan(ctx: StageContext, store: Any, design_rows: np.ndarray, person_r
                         "participants as if each were their own sampling unit.")
     return {"weights": weights, "weight": survey.weight, "attestation": None,
             "concerns": concerns, "replication": replication}
+
+
+def gate_exits(state: Any, reason: str | None) -> list[dict[str, Any]]:
+    """The ways forward when usual intake is not offered (``gate``'s reason)."""
+    from turbotab.core import usual_intake as ui
+
+    if reason == ui.NOT_DIETARY:
+        lenses = [*(state.lens or []), "dietary"]
+        return [{"label": "Add the dietary lens", "decision": {"kind": "set_lens", "lenses": lenses}}]
+    if reason == ui.PREDICTION:
+        return [{"label": "Change the purpose to inference",
+                 "decision": {"kind": "set_purpose", "purpose": "inference"}}]
+    if reason == ui.TIME_POINTS:
+        return [{"label": "Answer the repeats as repeated measurements of one usual intake",
+                 "decision": {"kind": "set_repeat_kind", "repeat_kind": "repeats"}}]
+    if reason == ui.LENS_UNANSWERED:
+        return [{"label": "Answer the lens question", "decision": None}]
+    if reason == ui.PURPOSE_UNANSWERED:
+        return [{"label": "Answer the purpose question", "decision": None}]
+    return [{"label": "Answer how the rows repeat", "decision": None}]
+
+
+def method_exits(code: str, nutrient: str, spec: Any) -> list[dict[str, Any]]:
+    """The ways forward from the method's refusal ``code`` (``UsualIntakeRefused.code``)."""
+    from turbotab.core import usual_intake as ui
+
+    if code == "no_zero_day":
+        return [{"label": "Use the amount-only model, for a component reported every day",
+                 "decision": ui.answer(nutrient, spec, model="amount_only")}]
+    if code in ("no_recall", "no_amount"):
+        out = [{"label": "Name the column (or recall days) that hold the component's amounts",
+                "decision": None}]
+        if spec.population == "consumers":
+            out.append({"label": "Estimate for the whole population",
+                        "decision": ui.answer(nutrient, spec, population="whole",
+                                              consumer_column=None)})
+        return out
+    return []
+
+
+def _weekend(values: pd.Series, spec: Any, column: str, nutrient: str) -> np.ndarray:
+    """:func:`weekend_values`, its refusal carrying the exits: leave the weekend out, or read the
+    column as NHANES's days of the week."""
+    from turbotab.core import usual_intake as ui
+
+    try:
+        return weekend_values(values, spec.weekend_coding, column)
+    except Refused as why:
+        exits = [{"label": "Leave the weekend out",
+                  "decision": ui.answer(nutrient, spec, weekend=[], weekend_coding="indicator")}]
+        if spec.weekend_coding == "indicator":
+            exits.append({"label": f"Read `{column}` as NHANES's days of the week (1 Sunday … 7 "
+                                   f"Saturday)",
+                          "decision": ui.answer(nutrient, spec, weekend_coding="nhanes_day")})
+        raise Refused(str(why), exits) from None
 
 
 def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str | None,
@@ -395,20 +477,25 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
         return UsualIntakeAnalysis(**head, applies=False,
                                    methods=f"No usual-intake distribution was estimated for `{nutrient}`.")
 
-    def refuse(why: str) -> UsualIntakeAnalysis:
+    def refuse(why: str, exits: Sequence[dict[str, Any]] = ()) -> UsualIntakeAnalysis:
         return UsualIntakeAnalysis(**head, applies=False, refused=why, format=fmt,  # type: ignore[arg-type]
+                                   exits=[*exits, ui.leave_out(nutrient)],
                                    methods=(f"No usual-intake distribution was estimated for "
                                             f"`{nutrient}`: {why}"))
 
     if fmt is None:
-        return refuse(reason or "Usual intake is not offered for this table.")
+        return refuse(reason or "Usual intake is not offered for this table.",
+                      gate_exits(state, reason))
     if spec.cutoff_kind == "EAR":
         # Refused when recorded; re-read here in case a role was settled as energy since.
         from turbotab.core.readings import settled_roles
 
         energy = {c for c, r in settled_roles(state).items() if r == "energy"}
         if energy & set(spec.days or [nutrient]):
-            return refuse(ui.ENERGY_NO_EAR)
+            return refuse(ui.ENERGY_NO_EAR, ui.cutoff_exits(nutrient, spec))
+    iron = spec.cutoff_kind == "EAR" and ui.reads_as_iron(nutrient, spec.days)
+    if iron and not spec.ear_symmetric:  # refused when recorded; re-read like energy
+        return refuse(ui.IRON_SKEWED, ui.iron_exits(nutrient, spec))
     structure = getattr(ctx.inputs.get("structure"), "data", ctx.inputs.get("structure"))
     seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
     concerns: list[str] = []
@@ -416,7 +503,8 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
         if fmt == "long":
             if spec.days:
                 raise Refused("This table's rows repeat per person, so its recalls are its rows: "
-                              "name the component's column, not day columns.")
+                              "name the component's column, not day columns.",
+                              [{"label": "Name the component's column", "decision": None}])
             grain = effective_grain(state, structure)
             order = recall_order(state, structure, spec)
             weekend = spec.weekend[0] if spec.weekend else None
@@ -433,13 +521,14 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
                 concerns.append("No column orders each participant's recalls, so no sequence "
                                 "(time-in-sample) effect was modeled and the distribution averages "
                                 "over recall positions.")
-            wk = weekend_values(frame[weekend], spec.weekend_coding, weekend) if weekend else None
+            wk = _weekend(frame[weekend], spec, weekend, nutrient) if weekend else None
             design_rows = long_design_rows(ctx, store, grain.id_column)
             n_persons = len(person_rows)
         else:
             if not spec.days:
                 raise Refused("Each participant has one row: name the columns that hold each recall "
-                              "day, first recall first.")
+                              "day, first recall first.",
+                              [{"label": "Name the recall-day columns", "decision": None}])
             columns = [*spec.days, *spec.weekend]
             frame = store.materialize(list(dict.fromkeys(columns)), rows)
             k = len(spec.days)
@@ -447,23 +536,32 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
                                       for d in spec.days])
             person = np.tile(np.arange(len(frame)), k)
             later = np.repeat((np.arange(k) > 0).astype(float), len(frame))
-            wk = (np.concatenate([weekend_values(frame[c], spec.weekend_coding, c) for c in spec.weekend])
+            wk = (np.concatenate([_weekend(frame[c], spec, c, nutrient) for c in spec.weekend])
                   if spec.weekend else None)
             person_rows = rows
             design_rows = _all_rows(store)
             n_persons = len(rows)
+        if not np.isfinite(amounts).any():
+            raise Refused(f"Every recall of `{nutrient}` is blank, so there is no intake to model.",
+                          [{"label": "Name the column (or recall days) that hold the component's "
+                                     "amounts", "decision": None}])
         negative = np.isfinite(amounts) & (amounts < 0)
         if negative.any():
             raise Refused(f"{int(negative.sum()):,} recalls report a negative amount; an intake is "
-                          f"never below zero.")
+                          f"never below zero.",
+                          [{"label": "Repair the negative amounts (the repairs step)",
+                            "decision": None}])
         domain = None
+        whole_population = {"label": "Estimate for the whole population",
+                            "decision": ui.answer(nutrient, spec, population="whole",
+                                                  consumer_column=None)}
         if spec.population == "consumers":
             flag = pd.to_numeric(person_values(store, person_rows, spec.consumer_column),
                                  errors="coerce").to_numpy(float)
             present = flag[np.isfinite(flag)]
             if not np.all(np.isin(present, [0, 1])):
                 raise Refused(f"`{spec.consumer_column}` holds values other than 0 and 1, so it "
-                              f"cannot say who consumes the food.")
+                              f"cannot say who consumes the food.", [whole_population])
             domain = np.where(np.isfinite(flag), flag, 0.0)
         plan = survey_plan(ctx, store, design_rows, person_rows, spec.n_boot, seed)
         rec = nci.Recalls.of(amounts, person, n_persons, later=later, weekend=wk)
@@ -483,9 +581,9 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
                                   replication=plan["replication"], cutoff=cutoff,
                                   progress=lambda f, m: ctx.progress(0.1 + 0.85 * f, m))
     except Refused as why:
-        return refuse(str(why))
+        return refuse(str(why), why.exits)
     except nci.UsualIntakeRefused as why:
-        return refuse(str(why))
+        return refuse(str(why), method_exits(why.code, nutrient, spec))
     concerns = [*concerns, *plan["concerns"], *result.concerns]
     if spec.model == "amount_only" and result.zero_share > ui.EPISODIC_SHARE:
         concerns.append(  # block and record (MODELING_SEQUENCE §2)
@@ -501,6 +599,8 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
         concerns.append(f"The day-to-day variance rests on {result.n_repeat:,} participants with two "
                         f"or more recalls.")
     share = share_label = None
+    exits: list[dict[str, Any]] = []
+    ear = spec.cutoff_kind == "EAR"
     if result.below is not None:
         below = result.below
         if spec.cutoff_kind == "UL":
@@ -508,11 +608,26 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
                                         ci_low=None if below.ci_high is None else 1.0 - below.ci_high,
                                         ci_high=None if below.ci_low is None else 1.0 - below.ci_low)
             share_label = f"share above the UL ({cutoff:g})"
-        else:
+        elif ear and spec.ear_for_all:
             share = _estimate(below)
             share_label = (f"share below the EAR ({cutoff:g}): the prevalence of inadequacy by the EAR "
-                           f"cut-point method" if spec.cutoff_kind == "EAR"
-                           else f"share below {cutoff:g}")
+                           f"cut-point method")
+        elif ear:  # the prevalence label blocked and recorded until the EAR is answered as everyone's
+            share = _estimate(below)
+            share_label = (f"share below the EAR ({cutoff:g}), not a prevalence of inadequacy: whether "
+                           f"it is the EAR of every participant's DRI life-stage group is not answered")
+            concerns.append(ui.EAR_UNANSWERED)
+            exits = ui.ear_exits(nutrient, spec)
+        else:
+            share = _estimate(below)
+            share_label = f"share below {cutoff:g}"
+        low, high = ui.EAR_RANGE
+        if ear and not low <= below.value <= high:
+            concerns.append(
+                f"The share below the EAR is {below.value:.1%}. The EAR cut-point method is least "
+                f"accurate in the tails: it \"works best\" when the \"true prevalence of inadequacy "
+                f"in the population is no smaller than 8 to 10 percent or no larger than 90 to 92 "
+                f"percent\" (Institute of Medicine 2000).")
     rep = result.replication
     variance = UsualIntakeVariance(method=rep.method if rep is not None else "none",
                                    replicates=0 if rep is None else len(rep.factors),
@@ -525,14 +640,16 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
                  "consumers only)." if whole else
                  f"Results describe consumers only, the participants `{spec.consumer_column}` marks "
                  f"(STROBE-nut nut-14).")
-    assumptions = [*ui.ASSUMPTIONS, *([ui.TWO_PART_ASSUMPTION] if spec.model == "two_part" else [])]
+    assumptions = [*ui.ASSUMPTIONS, *([ui.TWO_PART_ASSUMPTION] if spec.model == "two_part" else []),
+                   *([ui.EAR_CONDITIONS] if ear else [])]
     methods = nci.methods_sentence(
         label=nutrient, model=spec.model, names=result.names, lam=result.lam,
         n_persons=result.n_persons, recalls=result.recalls, n_repeat=result.n_repeat,
         zeros_replaced=result.zeros_replaced, population=spec.population,
         consumer_column=spec.consumer_column, weight=plan["weight"], replication=rep,
         n_ok=result.n_replicates_ok, cutoff=cutoff, cutoff_kind=spec.cutoff_kind,
-        rho=result.parameters.get("rho"), attestation=plan["attestation"])
+        rho=result.parameters.get("rho"), attestation=plan["attestation"],
+        ear_for_all=spec.ear_for_all, iron=iron)
     return UsualIntakeAnalysis(
         **head, applies=True, format=fmt, population_statement=statement,  # type: ignore[arg-type]
         n_persons=result.n_persons, n_recalls=result.n_recalls,
@@ -544,7 +661,7 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
         day_one={str(k): v for k, v in result.day_one.items()},
         mean_of_days={str(k): v for k, v in result.mean_of_days.items()},
         variance=variance, weight=plan["weight"], assumptions=assumptions, concerns=concerns,
-        methods=methods)
+        exits=exits, methods=methods)
 
 
 def long_design_rows(ctx: StageContext, store: Any, id_column: str | None) -> np.ndarray:
