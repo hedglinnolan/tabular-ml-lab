@@ -1152,3 +1152,8 @@ ARTIFACT_MODELS.update({"time_varying": TimeVaryingArtifact})
 from turbotab.core.models.explain import ExplainArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"explain": ExplainArtifact})
+# MS8: each declared scale's reliability and, under inference, its corrected coefficient
+# (turbotab/core/stages/scales.py), so the frontend can type the artifact by its stage name.
+from turbotab.core.stages.scales import ScalesArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"scales": ScalesArtifact})

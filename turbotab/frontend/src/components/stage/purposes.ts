@@ -243,6 +243,24 @@ export const RECORD_PURPOSES: Record<string, Purpose | Structural> = {
     question: "provenance",
     answer: "a finding set aside for this question, back pre-checked with its repair",
   },
+
+  // ── M3: the presentation shell ──
+  GenericAsk: {
+    question: "what",
+    answer: "any open question without its own card, with the server's options and labels",
+  },
+  LabelPair: {
+    question: "matters",
+    answer: "where the field uses an option, and whether it is sound for this purpose",
+  },
+  AskCard: {
+    question: "data_ok",
+    answer: "the best guess about each column this answer reads, with its evidence, to confirm",
+  },
+  ReadFromData: {
+    question: "provenance",
+    answer: "the readings the values settled, each with its evidence and a way to change it",
+  },
 };
 
 export function isStructural(p: Purpose | Structural): p is Structural {

@@ -14,19 +14,29 @@ src/api/events.ts     SSE -> cache (applyProjectEvent is pure; useProjectEvents 
 src/motion/           the motion primitives: prefs (durations, reduced motion), Arrive, StaleVeil,
                       NumberTween. Settle is a shared layoutId on record/blocks.tsx
 src/api/m1-types.ts, m1-stage-types.ts  the M1 aliases over generated.ts (Record, banner, stage)
+src/api/m3-types.ts   the M3 aliases: the ask card, readings, methods, plan, files, codebooks, the
+                      WP17 cards, the causal and time-varying lanes, the ten newer stages
 src/state/focus.tsx   the one StageFocus the Record, the banner and the stage share (per project)
-src/components/record the Record: the Router's questions -> server sentences, teaching, findings
+src/components/record the Record: the Router's questions -> server sentences, teaching, findings;
+                      generic/ composes any open step without a bespoke card (no step is blank:
+                      a new Router key needs a bespoke card or a composer, generic.test.tsx);
+                      ask/AskCard.tsx is the ledger's one ask card on the open step (§14.2)
 src/components/banner the pipeline banner: rows, columns, models, result (derive.ts is pure)
 src/components/stage  the stage: previews with the transform player, evidence, live scenes,
                       the Results, save/export (journal-style SVG and PNG)
 src/screens/          Start, Project, Lab (/lab demonstrates every motion primitive; /lab/stage
-                      hosts the stage beside a stand-in Record, dev:mock only)
-src/mocks/            MSW handlers + an in-memory server with a stage graph (dev:mock only)
+                      hosts the stage beside a stand-in Record; /lab/m3 lists the M3 journeys).
+                      Every /lab route exists only in dev:mock; a production build drops them
+src/mocks/            MSW handlers + an in-memory server with a stage graph (dev:mock only);
+                      m3.ts replays the real server's captured journeys (fixtures/m3-*.json, from
+                      docs/turbotab-next/m3/capture_fixtures.py) as projects m3~<journey>[~<n>]
 src/styles/tokens.css the palette and the three voices; base.css global rules
 e2e/                  one Playwright journey per milestone (mock or real server), review screenshots;
                       M1: m1-journey.spec.ts (the whole journey), m1-record, m1-stage;
                       M2: m2-journeys.spec.ts (every lens and NHANES, real server only), m2-record,
-                      m2-stage (the mock lab at /lab/stage/m2)
+                      m2-stage (the mock lab at /lab/stage/m2);
+                      M3: m3-no-dead-end.spec.ts (six journeys, every open question answerable,
+                      real server only)
 ```
 
 ## Rules

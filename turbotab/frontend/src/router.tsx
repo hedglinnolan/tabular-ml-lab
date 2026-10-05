@@ -1,5 +1,5 @@
 /**
- * Three routes do not need a router library: `/`, `/p/:pid`, `/lab`.
+ * Two routes do not need a router library: `/` and `/p/:pid` (and, in dev:mock only, `/lab`).
  * The location is the browser's; this only subscribes to it.
  */
 import { useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent } from "react";
@@ -12,7 +12,14 @@ export type Route =
   | { name: "stage-lab" }
   | { name: "stage-lab-m2" }
   | { name: "m2-lab" }
+  | { name: "m3-lab" }
   | { name: "missing"; path: string };
+
+/**
+ * The review surfaces under /lab exist only in npm run dev:mock (INBOX 123, 162): a production
+ * build has no /lab route, and the bundler drops their chunks and their fixtures.
+ */
+export const LAB = import.meta.env.VITE_MOCK === "1";
 
 const EVENT = "turbotab:navigate";
 
@@ -27,13 +34,16 @@ function subscribe(cb: () => void): () => void {
 
 const getPath = () => window.location.pathname;
 
-export function parseRoute(path: string): Route {
+export function parseRoute(path: string, lab = LAB): Route {
   if (path === "/" || path === "") return { name: "start" };
-  if (path === "/lab" || path === "/lab/") return { name: "lab" };
-  if (/^\/lab\/explore\/stage\/?$/.test(path)) return { name: "explore-stage" };
-  if (/^\/lab\/stage\/?$/.test(path)) return { name: "stage-lab" };
-  if (/^\/lab\/stage\/m2\/?$/.test(path)) return { name: "stage-lab-m2" };
-  if (/^\/lab\/m2\/?$/.test(path)) return { name: "m2-lab" };
+  if (lab) {
+    if (path === "/lab" || path === "/lab/") return { name: "lab" };
+    if (/^\/lab\/explore\/stage\/?$/.test(path)) return { name: "explore-stage" };
+    if (/^\/lab\/stage\/?$/.test(path)) return { name: "stage-lab" };
+    if (/^\/lab\/stage\/m2\/?$/.test(path)) return { name: "stage-lab-m2" };
+    if (/^\/lab\/m2\/?$/.test(path)) return { name: "m2-lab" };
+    if (/^\/lab\/m3\/?$/.test(path)) return { name: "m3-lab" };
+  }
   const m = /^\/p\/([^/]+)\/?$/.exec(path);
   if (m) return { name: "project", pid: decodeURIComponent(m[1]!) };
   return { name: "missing", path };

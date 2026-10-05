@@ -118,6 +118,60 @@ function sequenceGate(
       return state.purpose === "prediction"
         ? "Under prediction no coefficient is read as an effect, so no causal estimate is offered."
         : null;
+    case "follow_up": {
+      // turbotab/core/estimand.py follow_up_gate: only an outcome followed over time.
+      const task =
+        state.task ?? (targetInfo && targetInfo.column === state.target ? targetInfo.task : null);
+      return task && task !== "binary" && task !== "time_to_event"
+        ? `The outcome is read as ${task.replace(/_/g, " ")}, so no event is followed over time.`
+        : null;
+    }
+    case "estimand":
+    case "adjustment":
+      // estimand.py _purpose_gate
+      return state.purpose === "prediction"
+        ? "Under prediction no coefficient is read as an effect, so no exposure, effect or adjustment set is declared."
+        : null;
+    case "time_varying":
+      // time_varying.py lane_gate
+      if (state.purpose === "prediction")
+        return "Under prediction no coefficient is read as an effect, so no exposure is followed through time.";
+      return repeated === false || (repeated && state.unit === "unit")
+        ? "The rows are not a unit's time points, so no exposure changes over time."
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** The questions the Router states rather than asks (each one's "Not asked:" reason), mirrored:
+ *  the follow-up under a lens whose yes/no outcome is a status at sampling, the grouping when no
+ *  column reads as one, and the causal lane, one step away under inference. */
+function skipGate(
+  key: QuestionKey,
+  state: ProjectState,
+  targetInfo: TargetInfoArtifact | null,
+): string | null {
+  switch (key) {
+    case "follow_up": {
+      const followed = !state.lens || state.lens.some((l) => l === "clinical" || l === "dietary");
+      const task =
+        state.task ?? (targetInfo && targetInfo.column === state.target ? targetInfo.task : null);
+      if (followed || task === "time_to_event" || !targetInfo || targetInfo.column !== state.target)
+        return null;
+      return (targetInfo.follow_up ?? []).length
+        ? null
+        : "no numeric column reads as a follow-up time, and under this lens a yes/no outcome is a status at sampling, so it is read as counted over one period for everyone.";
+    }
+    case "clusters":
+      if (state.roles === null) return null;
+      return Object.values(state.roles).includes("cluster")
+        ? null
+        : "no column reads as a site, centre, household or batch that groups the participants.";
+    case "causal":
+      return state.purpose === "inference"
+        ? "the primary model estimates the declared effect; the causal estimators are one step away."
+        : null;
     default:
       return null;
   }
@@ -180,8 +234,14 @@ export function route(
   const steps: Omit<InterviewStep, "deferred_findings">[] = [];
   let first: QuestionKey | null = null;
   for (const key of QUESTION_KEYS) {
-    // open_seal writes the seal_opened slot (turbotab/core/interview.py SLOT_OF)
-    const value = key === "open_seal" ? state.seal_opened : state[key];
+    // open_seal writes the seal_opened slot (turbotab/core/interview.py SLOT_OF); the follow-up
+    // is answered by a time to event's follow-up or a yes/no outcome's "same for everyone".
+    const value =
+      key === "open_seal"
+        ? state.seal_opened
+        : key === "follow_up"
+          ? (state.follow_up ?? state.censoring)
+          : state[key];
     const decision_id = writers.get(key) ?? null;
     if (key === "orientation" && value !== null) {
       steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [], followup: null, ask: null });
@@ -217,6 +277,19 @@ export function route(
     }
     if (value !== null && value !== undefined) {
       steps.push({ key, status: "answered", decision_id, reason: null, waiting_on: [], followup: null, ask: null });
+      continue;
+    }
+    const stated = skipGate(key, state, targetInfo);
+    if (stated) {
+      steps.push({
+        key,
+        status: "skipped",
+        reason: stated,
+        decision_id: null,
+        waiting_on: [],
+        followup: null,
+        ask: null,
+      });
       continue;
     }
     if (
