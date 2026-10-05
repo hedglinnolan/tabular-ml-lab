@@ -877,6 +877,38 @@ using the median of each quintile as a continuous score, not the quintile number
 subgroup/sensitivity analyses with prespecified/post-hoc status marked · calibration plot and
 discrimination metric if this is genuinely a prediction model.
 
+### The adjustment card's guesses (by exposure–outcome pairing)
+
+Under inference each covariate is asked the modified disjunctive cause criterion (MODELING_SEQUENCE
+§1 step 3). The card leads with the pack's guess, read from the column's name and confirmed by the
+user, never settled by it, and covariates with the same guess are answered as one block, one tap.
+The guess depends on what the exposure and the outcome are (`turbotab/core/covariate_guesses.py`):
+
+| Covariate | Exposure–outcome pairing | Guess (causes exposure, causes outcome, after exposure) | Consequence |
+|---|---|---|---|
+| Demographics (age, sex, race and ethnicity, education, income) | any | yes, yes, no | a confounder, adjusted (Models 1–2) |
+| Lifestyle (smoking, alcohol, physical activity, coffee, tea, caffeine) | any | yes, yes, no | a confounder, adjusted (Model 2) |
+| Other dietary components | any | unknown, unknown, no | a possible confounder, adjusted (Model 4) |
+| Body size and composition | diet or a biomarker → a clinical measurement or an event | unknown, yes, unknown | declared without it and, beside, with it (Model 3) |
+| Clinical measurements (lipids, CRP, HbA1c, liver and kidney markers, blood pressure) | diet → another measurement, or an event; measured with the exposure | unknown, yes, unknown | declared without it and, beside, with it |
+| Medications (statins, antihypertensives, glucose-lowering) | any; measured with the exposure | unknown, yes, unknown | declared without it and, beside, with it |
+| A measurement of the outcome's own group (HbA1c beside fasting glucose; weight beside BMI) | that outcome | no, no, yes | another measure of the outcome, left out |
+| A measurement of the exposure's own group, or a habit of the exposure's own (caffeine beside coffee) | that exposure | no guess | asked |
+
+**[CONVENTION]** for the nested models the first three rows follow (this section's Presentation).
+**[SETTLED]** that a possible intermediate is not adjusted for in a total effect without saying so:
+Schisterman, Cole & Platt (2009, *Epidemiology* 20:488): *"We define overadjustment bias as control
+for an intermediate variable (or a descending proxy for an intermediate variable) on a causal path
+from exposure to outcome."* In cross-sectional data the timing of a biomarker or a treatment
+relative to the diet is unknown, so the honest guess is the declared with-and-without pair, never a
+silent choice. **[SETTLED]** for a medication that treats the outcome: Tobin et al. (2005, *Stat
+Med* 24:2911–2935) found three common analyses of a treated quantitative trait "fundamentally
+flawed", among them *"(ii) fitting a conventional regression model with treatment as a binary
+covariate"* and ignoring the treatment; they recommend adding a sensible constant to treated values
+or a censored normal regression, which the app does not build yet, so the card says so beside the
+pair. **[SETTLED]** that another measure of the outcome is left out: the criterion adjusts for causes
+of the exposure or the outcome (VanderWeele 2019), and a consequence of the outcome is neither.
+
 ### Anti-patterns
 
 Stepwise selection over 40 correlated nutrients, reporting the survivors as "diet predictors of X" ·

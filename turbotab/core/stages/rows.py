@@ -1154,11 +1154,20 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
 
     for p in proposals:
         p["attention"] = p["confidence"] != "high"
+    # The routing gate's leash note (LEASH): under inference, every column that can structurally
+    # group rows, read by its values, for the grouping question (``turbotab.core.groupings``).
+    groupings: list[dict[str, Any]] = []
+    if ctx.state.purpose == "inference":
+        from turbotab.core.groupings import structural_facts
+
+        assay = any(k in OMICS for k in (ctx.state.lens or []))
+        with open_store(ctx) as store:
+            groupings = structural_facts(store, columns, target=ctx.state.target, assay=assay)
     # BLUEPRINT §14 rule 2: every proposal below high needs its own confirmation (``confirm_role``)
     # before a number-changing default reads it; a bulk ``set_roles`` records it unconfirmed.
     return {"columns": proposals, "repeats": repeats,
             "categorical": categorical_proposals(columns, proposals),
-            "needs_confirmation": attention_columns(proposals)}
+            "needs_confirmation": attention_columns(proposals), "groupings": groupings}
 
 
 # ── cohort ────────────────────────────────────────────────────────────────────

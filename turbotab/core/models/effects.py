@@ -841,17 +841,11 @@ def e_values(estimate: float, low: float | None = None, high: float | None = Non
 
 def outcome_sd(values: np.ndarray, weights: np.ndarray | None = None) -> float:
     """The outcome's standard deviation an E-value of a difference standardizes by
-    (MODELING_SEQUENCE §0 ruling 14: the SD the estimand speaks of, the same in the effects stage
-    and the causal lane). With ``weights`` (the surveyed-population answer's design weights at the
-    analyzed rows) the population's: ``Σ w (v − v̄_w)² / Σ w · n / (n − 1)``, as R survey's
-    ``svyvar`` estimates it; else the rows' (n − 1)."""
-    v = np.asarray(values, dtype=float)
-    if weights is None:
-        return float(np.std(v, ddof=1))
-    w = np.asarray(weights, dtype=float)
-    mean = float(np.sum(w * v) / np.sum(w))
-    n = len(v)
-    return float(math.sqrt(float(np.sum(w * (v - mean) ** 2)) / float(np.sum(w)) * n / (n - 1)))
+    (MODELING_SEQUENCE §0 ruling 14: the SD the estimand speaks of, the same in the effects stage,
+    the causal lane and the time-varying lane): :func:`estimand_sd`'s value without its basis.
+    With ``weights`` (the surveyed-population answer's design weights at the analyzed rows) the
+    population's, as R survey's ``svyvar`` estimates it; else the rows' (n − 1)."""
+    return estimand_sd(values, weights)[0]
 
 
 def partial_r2(t: float, dof: float) -> float:
@@ -1058,13 +1052,43 @@ def _group_r2(coef: np.ndarray, cov: np.ndarray, idx: Sequence[int], dof: float)
     return group_partial_r2(F, len(idx), dof)
 
 
+SD_BASES = ("design_weighted", "sample")
+
+
+def estimand_sd(y: Any, weights: Any = None) -> tuple[float, str]:
+    """The standard deviation the E-value of a difference standardizes by, and its basis
+    (MODELING_SEQUENCE §0 ruling 14: "the SD the estimand speaks of"; VanderWeele & Ding 2017's
+    ``d = β / SD``, ``RR ≈ exp(0.91 d)``).
+
+    Under the surveyed-population answer (``weights``, the analysis weights of the analyzed rows)
+    it is the population's: R survey's ``svyvar``, ``n / (n − 1) · Σ w (y − ȳ_w)² / Σ w`` over the
+    rows with a positive weight (``ȳ_w`` the weighted mean, ``n`` those rows' count), whose square
+    root estimates the outcome's standard deviation in the surveyed population. Otherwise it is
+    the analyzed rows' own (``ddof = 1``). The effects stage and the causal lane both call this."""
+    values = np.asarray(y, dtype=float).ravel()
+    if weights is None:
+        return float(np.std(values, ddof=1)), "sample"
+    w = np.asarray(weights, dtype=float).ravel()
+    if len(w) != len(values):
+        raise ValueError("the outcome and its weights must cover the same rows")
+    keep = np.isfinite(w) & (w > 0) & np.isfinite(values)
+    v, w = values[keep], w[keep]
+    n = len(v)
+    if n < 2:
+        return float("nan"), "design_weighted"
+    mean = float(np.sum(w * v) / np.sum(w))
+    var = n / (n - 1) * float(np.sum(w * (v - mean) ** 2) / np.sum(w))
+    return math.sqrt(var), "design_weighted"
+
+
 def unmeasured_confounding(*, measure: str, estimate: float, ci_low: float | None,
                            ci_high: float | None, se: float | None = None,
                            outcome_share: float | None = None, outcome_sd: float | None = None,
                            matrix: pd.DataFrame | None = None, y: np.ndarray | None = None,
                            exposure_column: str | None = None,
                            benchmarks: Mapping[str, Sequence[str]] | None = None,
-                           covariance: str = "classical") -> dict[str, Any]:
+                           covariance: str = "classical",
+                           sd_basis: str | None = None) -> dict[str, Any]:
     """Sensitivity to unmeasured confounding for one inference estimate (MODELING_SEQUENCE §0
     ruling 10): the function every inference result calls, and the one the causal lane must.
 
@@ -1086,7 +1110,8 @@ def unmeasured_confounding(*, measure: str, estimate: float, ci_low: float | Non
                                                    covariance=covariance, shown_se=se).as_dict()
             out["methods"].append("robustness_value")
         if outcome_sd is not None and outcome_sd > 0:
-            out["e_value"] = e_values(estimate, measure="OLS", sd=outcome_sd, se=se)
+            out["e_value"] = {**e_values(estimate, measure="OLS", sd=outcome_sd, se=se),
+                              "sd": float(outcome_sd), "sd_basis": sd_basis or "sample"}
             out["methods"].append("e_value")
         return out
     by = {"odds_ratio": "OR", "hazard_ratio": "HR", "risk_ratio": "RR"}.get(measure)
@@ -1101,12 +1126,12 @@ def unmeasured_confounding(*, measure: str, estimate: float, ci_low: float | Non
 
 __all__ = [
     "ALIAS_TOL", "APPENDIX_TITLE", "BOOT", "Benchmark", "CLASSICAL", "COMMON_OUTCOME",
-    "LEVERAGE_ONE", "LinearSensitivity", "LogisticFit", "PH_ALPHA", "RARE_OUTCOME", "Separated",
-    "Setting", "Standardized", "Unestimable", "adjusted_for_confounder", "benchmark_bounds",
-    "column_basis", "cook_threshold", "counterfactual", "cox_zph", "e_value_rr", "e_values",
-    "g_computation", "group_partial_r2", "linear_sensitivity", "logistic_fit",
-    "logistic_influence", "logistic_mle", "ols_influence", "outcome_sd", "partial_r2",
-    "percentile", "period_hazard_ratios", "resample_indices", "robustness_value",
-    "separated_rows", "settings_of", "split_follow_up", "split_rows", "standardized_risks",
-    "time_scale", "to_risk_ratio", "unmeasured_confounding",
+    "LEVERAGE_ONE", "LinearSensitivity", "LogisticFit", "PH_ALPHA", "RARE_OUTCOME", "SD_BASES",
+    "Separated", "Setting", "Standardized", "Unestimable", "adjusted_for_confounder",
+    "benchmark_bounds", "column_basis", "cook_threshold", "counterfactual", "cox_zph",
+    "e_value_rr", "e_values", "estimand_sd", "g_computation", "group_partial_r2",
+    "linear_sensitivity", "logistic_fit", "logistic_influence", "logistic_mle", "ols_influence",
+    "outcome_sd", "partial_r2", "percentile", "period_hazard_ratios", "resample_indices",
+    "robustness_value", "separated_rows", "settings_of", "split_follow_up", "split_rows",
+    "standardized_risks", "time_scale", "to_risk_ratio", "unmeasured_confounding",
 ]

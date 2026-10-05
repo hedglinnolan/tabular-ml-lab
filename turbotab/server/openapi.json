@@ -19346,6 +19346,34 @@
           "converted": {
             "title": "Converted",
             "type": "boolean"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sd"
+          },
+          "sd_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "design_weighted",
+                  "sample"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sd Basis"
           }
         },
         "required": [
@@ -19357,7 +19385,9 @@
           "limit",
           "interval_includes_null",
           "rare",
-          "converted"
+          "converted",
+          "sd",
+          "sd_basis"
         ],
         "title": "EValueResult",
         "type": "object"

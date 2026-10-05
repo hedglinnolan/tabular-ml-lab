@@ -1419,6 +1419,11 @@ def proposals_stage(ctx: StageContext) -> dict[str, Any]:
              if task == "binary" and target and target in frame.columns else None)
     out["estimand"] = estimand_card(state, task, prevalence=share)
     out["adjustment"] = adjustment_card(state)
+    # LEASH (the routing gate's leash note): the grouping question's card, every column it asks
+    # about with the guess it shows and that guess's evidence (``estimand.grouping_card``).
+    from turbotab.core.estimand import grouping_card
+
+    out["grouping"] = grouping_card(state, ctx.inputs.get("roles"))
     # ESTIMAND (MODELING_SEQUENCE §1 row 11): Model 1 is declared beside the adjustment answers,
     # before any estimate is displayed (the effects stage reports the sequence).
     from turbotab.core.estimand import adjustment_answer, model_sequence_card
