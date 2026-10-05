@@ -424,7 +424,8 @@ def build_graph() -> Graph:
             # shelf 10 (WP17): its predictors are the adjustment set's and the grouping's.
             # shelf 11 (wave 1): the screened elastic net at p ≫ n under prediction (MS7); under the
             # population answer the families with no design-based estimator rank last (MS4).
-            Stage("shelf", 11, ("working", "cohort", "target_info", "split"),
+            # shelf 12 (MS6): the measured estimate counts the comparisons' repeated k-fold.
+            Stage("shelf", 12, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms",
@@ -497,9 +498,18 @@ def build_graph() -> Graph:
             # fit 16 (WP17): the intervals cluster by the grouping the cluster question named.
             # fit 17 (wave 1): an exposure family's recorded multiplicity method (MS7); under the
             # population answer every family is design-based or blocked and recorded (MS4).
-            # fit 18 (the routing gate): each source's average relative effect is per its settled
-            # unit (a standard drink, not the name's gram); a landmark's rows enter at it.
-            Stage("fit", 18, ("working", "design", "split", "target_info", "cohort"),
+            # fit 18 (MS1–MS3): multiple imputation compatible with the analysis model (SMC-FCS,
+            # the log scale, the energy identity, fixed knots, the design and the clusters in the
+            # imputation model, m by the rule); the data's own imputed copies pooled by Rubin's
+            # rules; the copies and each family's fit on each kept for the substitution curve.
+            # fit 18 (the routing gate, on its own branch): each source's average relative effect is
+            # per its settled unit (a standard drink, not the name's gram); a landmark's rows enter
+            # at it.
+            # fit 19 (MS6): a strictly proper primary with AUC/C the customary headline; the
+            # comparisons, the baseline verdict and BBC-CV on repeated k-fold (≥ 10 × K) by unit;
+            # the declared result; calibration by level and by a horizon; the nested-CV interval.
+            # fit 20 (wave 1b's integration): the three above on one engine.
+            Stage("fit", 20, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -522,7 +532,11 @@ def build_graph() -> Graph:
             # substitution 13 (WP17): as fit 16.
             # substitution 14 (wave 1, MS4): under the population answer the curve is the
             # population's, weighted, with a linearized band.
-            Stage("substitution", 14, ("working", "fit", "design"),
+            # substitution 15 (MS3): under multiple imputation the curve is pooled over the copies
+            # (an exact contrast of the pooled coefficients for a linear all-components model;
+            # per-copy curves pooled at each k otherwise), never one fill; under the population
+            # answer each copy's curve is the population's, its design-based variance pooled.
+            Stage("substitution", 15, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -553,7 +567,9 @@ def build_graph() -> Graph:
             # sensitivity 9 (WP17): as fit 16.
             # sensitivity 10 (wave 1, MS4): a family with no design-based estimator is blocked under
             # the population answer.
-            Stage("sensitivity", 10, ("working", "design", "split", "target_info"),
+            # sensitivity 11 (MS1–MS2): as fit 18; each analysis's imputation model holds the survey
+            # design and the clustering.
+            Stage("sensitivity", 11, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
                   label="Refitting the model on each analysis's rows"),
@@ -569,7 +585,8 @@ def build_graph() -> Graph:
                   requires=("measurement_error", "models"),
                   label="Correcting energy-adjusted intakes for day-to-day error"),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
-            Stage("secondary", 1, ("working", "design", "split", "target_info"),
+            # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
+            Stage("secondary", 2, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
                   label="Fitting the model further adjusted for the declared covariates"),
@@ -589,7 +606,9 @@ def build_graph() -> Graph:
                   requires=("lens", "purpose"),
                   label="Estimating usual-intake distributions"),
             # ── ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11, 12): the exposure's effect as declared ──
-            Stage("effects", 1, ("working", "design", "split", "target_info"),
+            # effects 2 (wave 1b, MS2): the declared models' imputation holds the survey design under
+            # the population answer and the clustering, as the fit's does.
+            Stage("effects", 2, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand"),
                   label="Reporting the exposure's effect across the declared models"),
@@ -610,7 +629,8 @@ def build_graph() -> Graph:
                   TIME_VARYING_READS, time_varying_stage, heavy=True,
                   requires=("estimand", "unit"), label="Following the exposure through time"),
             # ── Wave 2, EXPLAIN (V2 definition of done §2): the fitted families described ──
-            Stage("explain", 1, ("working", "fit", "design", "target_info"),
+            # explain 2 (wave 1b, MS6): the floor quotes the fit's own primary score.
+            Stage("explain", 2, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models"),
                   label="Explaining each fitted model"),

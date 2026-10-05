@@ -259,7 +259,8 @@ def test_grouped_inner_splits_never_split_a_unit():
 
 
 def test_elastic_net_inner_cv_never_splits_a_unit_in_any_fit(tmp_path, monkeypatch):
-    """Every elastic-net fit (each outer fold and the refit) tunes its penalty on grouped folds."""
+    """Every elastic-net fit (each outer fold of every repeat of the comparison substrate, and the
+    refit) tunes its penalty on grouped folds."""
     from sklearn.linear_model import ElasticNetCV
 
     frame = mf.nhanes_like(360, seed=11)
@@ -279,7 +280,7 @@ def test_elastic_net_inner_cv_never_splits_a_unit_in_any_fit(tmp_path, monkeypat
     design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
     fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
     person = frame["SEQN"].to_numpy()
-    assert len(seen) == 6  # five outer folds and the refit on every training row
+    assert len(seen) == 51  # 10 × 5 folds (MS6's comparison substrate) and the refit
     for row_ids, cv in seen:
         assert isinstance(cv, list) and len(cv) >= 2
         for train, test in cv:

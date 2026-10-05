@@ -132,7 +132,9 @@ def test_the_missing_question_previews_the_rows_leaving_the_blank_columns_out_sa
     assert view["state"]["missing"] == {"strategy": "complete_case", "drop_columns": ["meds_hbp", "meds_chol"],
                                         "categorical": "impute", "indicators": False, "m": 20,
                                         "below_detection": None, "censored_columns": [],
-                                        "acknowledged": False, "reason": None}
+                                        "acknowledged": False, "reason": None,
+                                        "imputation_model": "compatible",
+                                        "imputation_levels": "clustered"}
     wait_for(client, nhanes, {"cohort": "fresh"})
     cohort = client.get(f"/api/projects/{nhanes}/stages/cohort").json()["artifact"]
     assert cohort["n_final"] == 21_348 and not {"meds_hbp", "meds_chol"} & set(cohort["predictors"])

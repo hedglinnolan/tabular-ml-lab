@@ -587,9 +587,10 @@ def test_4_under_multiple_imputation_items_are_imputed_and_then_scored_in_each_c
     al. 2014); the score is formed in each completed copy. Independent check: the imputation API
     (``methods.missing.impute_for_inference``, owned by the MI package) run on the design's own
     spec gives the copies; in each, pandas sums the keyed imputed items and statsmodels fits OLS;
-    Rubin's rules by hand over the 20 copies give the coefficient the server's fit table and the
+    Rubin's rules by hand over the m copies give the coefficient the server's fit table and the
     scales stage both report, to 1e-8. Imputing the total score instead gives a different
-    number."""
+    number. m follows MS2's rule (the MI package's): at least 20 and at least the percentage of
+    rows with any blank, counted here by pandas."""
     from turbotab.core.methods.missing import impute_for_inference
     from turbotab.core.models.pipeline import design_spec
 
@@ -599,7 +600,10 @@ def test_4_under_multiple_imputation_items_are_imputed_and_then_scored_in_each_c
     missing = run["fit"]["models"][0]["inference"]["missing"]
     assert "sat_score" not in missing["variables"] and set(SAT) <= set(missing["variables"])
     assert "the outcome" in missing["variables"]
-    assert scale["imputation"]["m"] == 20
+    incomplete = frame[["sbp", "age", "bmi", *SAT]].isna().any(axis=1).mean()
+    m = max(20, math.ceil(100 * incomplete - 1e-9))
+    assert m > 20  # 15% blank in each of 8 items leaves most rows incomplete
+    assert scale["imputation"]["m"] == m
     assert scale["imputation"]["imputed"] == {c: int(frame[c].isna().sum()) for c in SAT}
     assert [s["key"] for s in run["design"]["models"][0]["steps"]][:2] == ["impute", "score"]
 
@@ -620,10 +624,11 @@ def test_4_under_multiple_imputation_items_are_imputed_and_then_scored_in_each_c
     table = next(c for c in _terms(run["fit"]) if c["feature"] == "sat_score")
     assert table["estimate"] == pytest.approx(pooled, rel=1e-8)
     assert scale["correction"]["naive"] == pytest.approx(pooled, rel=1e-8)
-    total = float(np.mean(u)) + (1 + 1 / 20) * float(np.var(q, ddof=1))
+    assert len(q) == m
+    total = float(np.mean(u)) + (1 + 1 / m) * float(np.var(q, ddof=1))
     assert table["se"] == pytest.approx(math.sqrt(total), rel=1e-6)
-    assert scale["correction"]["copies"] == 20
-    assert len(scale["reliability"]["across_copies"]) == 20
+    assert scale["correction"]["copies"] == m
+    assert len(scale["reliability"]["across_copies"]) == m
     assert scale["reliability"]["value"] == pytest.approx(
         np.mean(scale["reliability"]["across_copies"]), rel=1e-12)
     # The score-level alternative: impute the total, then fit.
@@ -639,7 +644,7 @@ def test_4_under_multiple_imputation_items_are_imputed_and_then_scored_in_each_c
                                                          seed=0).frames])
     assert abs(total_level - pooled) > 1e-3
     assert scale["methods"].endswith(
-        "Missing items were multiply imputed before scoring (item level, m = 20), and the score, "
+        f"Missing items were multiply imputed before scoring (item level, m = {m}), and the score, "
         "its reliability and the correction were estimated in each completed copy and pooled.")
     assert "(100 replicates in each completed copy)" in scale["methods"]
 

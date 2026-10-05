@@ -127,9 +127,14 @@ def test_the_split_names_its_seed_grouping_and_stratification():
     text = voice.sentence_for(d.SetSplit(holdout=0.2, seed=3, folds=5),
                               ProjectState(target="event", task="binary"),
                               {"n_cohort": 5352, "repeats": {"column": "SEQN"}})
+    # MS6: under prediction (an undeclared purpose reads as prediction) the comparisons run on
+    # repeated k-fold whatever validation gives the score.
     assert text == ("A random `20%` of the rows with `event` recorded (seed `3`, keeping each `SEQN`'s rows "
-                    "together, stratified by `event`) was held out for one final score; models "
-                    "were compared by `5`-fold cross-validation on the rest.")
+                    "together, stratified by `event`) was held out for one final score; performance "
+                    "was estimated on the rest by `5`-fold cross-validation; models were compared "
+                    "with each other and with the no-predictor baseline on `5`-fold "
+                    "cross-validation repeated `10` times, by the corrected repeated k-fold t "
+                    "(Nadeau & Bengio 2003; Bouckaert & Frank 2004).")
 
 
 def test_the_residual_sentence_says_where_it_was_fit():

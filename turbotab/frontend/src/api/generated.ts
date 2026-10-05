@@ -1628,6 +1628,8 @@ export interface components {
             landmark: number | null;
             /** Horizon */
             horizon: number | null;
+            /** Prediction Horizon */
+            prediction_horizon: number | null;
         };
         /** FrameRow */
         FrameRow: {
@@ -2523,6 +2525,18 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
+            /**
+             * Imputation Model
+             * @default compatible
+             * @enum {string}
+             */
+            imputation_model: "compatible" | "passive";
+            /**
+             * Imputation Levels
+             * @default clustered
+             * @enum {string}
+             */
+            imputation_levels: "clustered" | "single_level";
         };
         /**
          * ModelSequenceSpec
@@ -4017,6 +4031,8 @@ export interface components {
          *     it, by an event or not, was not at risk then and leaves, and every other row is at risk from
          *     it (left truncation; the estimate is among those event-free and followed at the landmark).
          *     ``horizon``: follow-up ends at this time: an event after it counts as censored at it.
+         *     ``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes
+         *     no row.
          */
         "SetFollowUp-Input": {
             /**
@@ -4034,6 +4050,8 @@ export interface components {
             landmark?: number | null;
             /** Horizon */
             horizon?: number | null;
+            /** Prediction Horizon */
+            prediction_horizon?: number | null;
         };
         /**
          * SetFollowUp
@@ -4044,6 +4062,8 @@ export interface components {
          *     it, by an event or not, was not at risk then and leaves, and every other row is at risk from
          *     it (left truncation; the estimate is among those event-free and followed at the landmark).
          *     ``horizon``: follow-up ends at this time: an event after it counts as censored at it.
+         *     ``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes
+         *     no row.
          */
         "SetFollowUp-Output": {
             /**
@@ -4061,6 +4081,8 @@ export interface components {
             landmark: number | null;
             /** Horizon */
             horizon: number | null;
+            /** Prediction Horizon */
+            prediction_horizon: number | null;
         };
         /** SetGrain */
         "SetGrain-Input": {
@@ -4207,6 +4229,18 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason?: string | null;
+            /**
+             * Imputation Model
+             * @default compatible
+             * @enum {string}
+             */
+            imputation_model: "compatible" | "passive";
+            /**
+             * Imputation Levels
+             * @default clustered
+             * @enum {string}
+             */
+            imputation_levels: "clustered" | "single_level";
         };
         /**
          * SetMissing
@@ -4255,6 +4289,18 @@ export interface components {
             acknowledged: boolean;
             /** Reason */
             reason: string | null;
+            /**
+             * Imputation Model
+             * @default compatible
+             * @enum {string}
+             */
+            imputation_model: "compatible" | "passive";
+            /**
+             * Imputation Levels
+             * @default clustered
+             * @enum {string}
+             */
+            imputation_levels: "clustered" | "single_level";
         };
         /** SetModelSequence */
         "SetModelSequence-Input": {
@@ -4594,11 +4640,16 @@ export interface components {
             repeats: number;
             /**
              * N Boot
-             * @default 200
+             * @default 500
              */
             n_boot: number;
             /** Cluster */
             cluster?: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
         };
         /** SetSplit */
         "SetSplit-Output": {
@@ -4632,11 +4683,16 @@ export interface components {
             repeats: number;
             /**
              * N Boot
-             * @default 200
+             * @default 500
              */
             n_boot: number;
             /** Cluster */
             cluster: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
         };
         /**
          * SetSubstitution
@@ -5087,11 +5143,16 @@ export interface components {
             repeats: number;
             /**
              * N Boot
-             * @default 200
+             * @default 500
              */
             n_boot: number;
             /** Cluster */
             cluster: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
         };
         /** StageResult */
         StageResult: {
@@ -5548,6 +5609,11 @@ export interface components {
              * @default null
              */
             fmi: number | null;
+            /**
+             * Mc Se
+             * @default null
+             */
+            mc_se: number | null;
             /** Why */
             why: string;
         };
@@ -6275,6 +6341,18 @@ export interface components {
             terms: string[];
         };
         /**
+         * ChainLink
+         * @description A relation that fired on this fit: because ``because``, ``then`` (BLUEPRINT §13).
+         */
+        ChainLink: {
+            /** Relation */
+            relation: string;
+            /** Because */
+            because: string;
+            /** Then */
+            then: string;
+        };
+        /**
          * Chronology
          * @description The chronological draw the temporal answer asked for, and whether it was drawn.
          *
@@ -6389,6 +6467,11 @@ export interface components {
              * @default null
              */
             fmi: number | null;
+            /**
+             * Mc Se
+             * @default null
+             */
+            mc_se: number | null;
         };
         /**
          * CohortArtifact
@@ -6443,6 +6526,25 @@ export interface components {
             varied: boolean;
             /** Chosen */
             chosen: boolean;
+        };
+        /**
+         * Comparison
+         * @description MS6: the repeated k-fold the families and the baseline are compared on (models/folds.py).
+         */
+        Comparison: {
+            /** Folds */
+            folds: number;
+            /** Repeats */
+            repeats: number;
+            /** Shared */
+            shared: number;
+            /** Method */
+            method: string;
+            /**
+             * Note
+             * @default null
+             */
+            note: string | null;
         };
         /**
          * CompleteCaseLoss
@@ -6589,6 +6691,45 @@ export interface components {
             month_first: string;
             /** Day First */
             day_first: string;
+        };
+        /**
+         * DeclaredResult
+         * @description What the fit reports as the result, and on what basis (module docstring).
+         */
+        DeclaredResult: {
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "holdout" | "own_score" | "selection_corrected" | "not_declared";
+            /** Family */
+            family: string | null;
+            /** Metric */
+            metric: string;
+            /** Estimate */
+            estimate: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+            /**
+             * How
+             * @default null
+             */
+            how: string | null;
+            /**
+             * Narrow
+             * @default null
+             */
+            narrow: string | null;
+            /** Sentence */
+            sentence: string;
         };
         /**
          * DerivedColumn
@@ -7384,7 +7525,7 @@ export interface components {
              * Test
              * @enum {string}
              */
-            test: "overall" | "nonlinear" | "trend";
+            test: "overall" | "nonlinear" | "trend" | "global";
             /** Statistic */
             statistic: number | null;
             /** Df Num */
@@ -7428,7 +7569,8 @@ export interface components {
         };
         /**
          * FamilyDifference
-         * @description Two families' primary metric, paired over the same folds, with a corrected interval.
+         * @description Two families' primary metric, paired over the same folds of the comparison substrate, with
+         *     the corrected repeated k-fold t (module docstring).
          */
         FamilyDifference: {
             /** A */
@@ -7447,6 +7589,31 @@ export interface components {
             df: number | null;
             /** Sentence */
             sentence: string;
+            /**
+             * T
+             * @default null
+             */
+            t: number | null;
+            /**
+             * P
+             * @default null
+             */
+            p: number | null;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Folds
+             * @default null
+             */
+            folds: number | null;
+            /**
+             * Repeats
+             * @default null
+             */
+            repeats: number | null;
         };
         /** FamilyExplanation */
         FamilyExplanation: {
@@ -7664,6 +7831,52 @@ export interface components {
             withheld: string | null;
             /** @default null */
             estimand: components["schemas"]["EstimandAnnotation"] | null;
+            /**
+             * Headline Metric
+             * @default null
+             */
+            headline_metric: string | null;
+            /**
+             * Headline Label
+             * @default null
+             */
+            headline_label: string | null;
+            /**
+             * Tension
+             * @default null
+             */
+            tension: string | null;
+            /** @default null */
+            comparison: components["schemas"]["Comparison"] | null;
+            /**
+             * Comparisons Note
+             * @default null
+             */
+            comparisons_note: string | null;
+            /** @default null */
+            result: components["schemas"]["DeclaredResult"] | null;
+            /**
+             * Horizon
+             * @default null
+             */
+            horizon: number | null;
+            /**
+             * Horizon Note
+             * @default null
+             */
+            horizon_note: string | null;
+            /**
+             * Wide
+             * @default null
+             */
+            wide: string | null;
+            /** @default null */
+            nested_offer: components["schemas"]["NestedOffer"] | null;
+            /**
+             * Chain
+             * @default []
+             */
+            chain: components["schemas"]["ChainLink"][];
         };
         /** FittedModel */
         FittedModel: {
@@ -7713,6 +7926,27 @@ export interface components {
              * @default []
              */
             exposure_tests: components["schemas"]["ExposureTest"][];
+            /**
+             * Calibration Levels
+             * @default null
+             */
+            calibration_levels: components["schemas"]["LevelCalibration"][] | null;
+            /** @default null */
+            calibration_horizon: components["schemas"]["HorizonCalibration"] | null;
+            /**
+             * Calibration Note
+             * @default null
+             */
+            calibration_note: string | null;
+            /** @default null */
+            compared_on: components["schemas"]["MetricSummary"] | null;
+            /**
+             * Performance
+             * @default null
+             */
+            performance: string | null;
+            /** @default null */
+            nested_cv: components["schemas"]["NestedCV"] | null;
             /**
              * Adjustment Terms
              * @default null
@@ -7881,6 +8115,18 @@ export interface components {
             };
             /** @default null */
             calibration: components["schemas"]["Calibration"] | null;
+            /**
+             * Calibration Levels
+             * @default null
+             */
+            calibration_levels: components["schemas"]["LevelCalibration"][] | null;
+            /** @default null */
+            calibration_horizon: components["schemas"]["HorizonCalibration"] | null;
+            /**
+             * Calibration Note
+             * @default null
+             */
+            calibration_note: string | null;
         };
         /** HoldoutOption */
         HoldoutOption: {
@@ -7894,6 +8140,37 @@ export interface components {
             measures: string;
             /** Below Floor */
             below_floor: boolean;
+        };
+        /**
+         * HorizonCalibration
+         * @description Calibration of a time-to-event model's risks by a horizon (module docstring).
+         */
+        HorizonCalibration: {
+            /** Horizon */
+            horizon: number;
+            /** N */
+            n: number;
+            /** Observed */
+            observed: number;
+            /** Expected */
+            expected: number;
+            ratio: components["schemas"]["Interval"];
+            slope: components["schemas"]["Interval"];
+            /**
+             * Groups
+             * @default []
+             */
+            groups: components["schemas"]["RiskGroup"][];
+            /**
+             * Flagged
+             * @default false
+             */
+            flagged: boolean;
+            /**
+             * Concern
+             * @default null
+             */
+            concern: string | null;
         };
         /**
          * ImportCodebook
@@ -8341,6 +8618,20 @@ export interface components {
             because: string;
         };
         /**
+         * LevelCalibration
+         * @description One level's calibration: an ordinal cut-point ("at or above") or a multiclass class.
+         */
+        LevelCalibration: {
+            /** Level */
+            level: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "at_or_above" | "is";
+            calibration: components["schemas"]["Calibration"] | null;
+        };
+        /**
          * LockPlan
          * @description The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
          *
@@ -8623,6 +8914,135 @@ export interface components {
              * @default null
              */
             note: string | null;
+            /**
+             * Model
+             * @default null
+             */
+            model: ("chained_equations" | "smcfcs" | "supplied") | null;
+            /**
+             * Compatible
+             * @default null
+             */
+            compatible: boolean | null;
+            /**
+             * Substantive
+             * @default null
+             */
+            substantive: ("linear" | "logistic" | "cox") | null;
+            /**
+             * Terms
+             * @default []
+             */
+            terms: string[];
+            /**
+             * Logged
+             * @default []
+             */
+            logged: string[];
+            /**
+             * Identity Energy
+             * @default null
+             */
+            identity_energy: string | null;
+            /**
+             * Identity Sources
+             * @default []
+             */
+            identity_sources: string[];
+            /**
+             * Identity Infeasible
+             * @default 0
+             */
+            identity_infeasible: number;
+            /**
+             * Design Strata
+             * @default null
+             */
+            design_strata: string | null;
+            /**
+             * Design Psu
+             * @default null
+             */
+            design_psu: string | null;
+            /**
+             * Design Weight
+             * @default null
+             */
+            design_weight: string | null;
+            /**
+             * Df Com
+             * @default null
+             */
+            df_com: number | null;
+            /**
+             * Unit
+             * @default null
+             */
+            unit: string | null;
+            /**
+             * Unit Level
+             * @default []
+             */
+            unit_level: string[];
+            /**
+             * Knots
+             * @default {}
+             */
+            knots: {
+                [key: string]: number[];
+            };
+            /**
+             * Cuts
+             * @default {}
+             */
+            cuts: {
+                [key: string]: number[];
+            };
+            /**
+             * M Asked
+             * @default null
+             */
+            m_asked: number | null;
+            /**
+             * Percent Incomplete
+             * @default null
+             */
+            percent_incomplete: number | null;
+            /**
+             * Rejection Failures
+             * @default 0
+             */
+            rejection_failures: number;
+            /**
+             * Mc Max Ratio
+             * @default null
+             */
+            mc_max_ratio: number | null;
+            /**
+             * Mc Feature
+             * @default null
+             */
+            mc_feature: string | null;
+            /**
+             * Copies
+             * @default null
+             */
+            copies: string[] | null;
+            /**
+             * Implicate
+             * @default null
+             */
+            implicate: string | null;
+            /**
+             * Tests D1
+             * @default 0
+             */
+            tests_d1: number;
+            /**
+             * Sentence
+             * @default null
+             */
+            sentence: string | null;
         };
         /**
          * MissingMethodOption
@@ -8669,6 +9089,11 @@ export interface components {
              * @default []
              */
             below_detection: components["schemas"]["MissingMethodOption"][];
+            /**
+             * Imputation Models
+             * @default []
+             */
+            imputation_models: components["schemas"]["MissingMethodOption"][];
         };
         /** MissingView */
         MissingView: {
@@ -8741,6 +9166,48 @@ export interface components {
             n_tests: number;
         };
         /**
+         * NestedCV
+         * @description Bates, Hastie & Tibshirani's nested cross-validation interval for one family's primary.
+         */
+        NestedCV: {
+            /** Metric */
+            metric: string;
+            /** Estimate */
+            estimate: number | null;
+            /** Ci Low */
+            ci_low: number | null;
+            /** Ci High */
+            ci_high: number | null;
+            /** Raw Mean */
+            raw_mean: number | null;
+            /** Bias */
+            bias: number | null;
+            /** Inflation */
+            inflation: number | null;
+            /** Sd */
+            sd: number | null;
+            /** Reps */
+            reps: number;
+            /** Bias Reps */
+            bias_reps: number;
+            /** Folds */
+            folds: number;
+            /** Fits */
+            fits: number;
+            /** Seconds */
+            seconds: number;
+            /**
+             * Method
+             * @default nested cross-validation (Bates, Hastie & Tibshirani 2023)
+             */
+            method: string;
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+        };
+        /**
          * NestedColumn
          * @description A predictor that is part of another (``fat_sat`` of ``fat_total``), confirmed on training rows.
          */
@@ -8749,6 +9216,24 @@ export interface components {
             column: string;
             /** Parent */
             parent: string;
+        };
+        /**
+         * NestedOffer
+         * @description MS6: the nested cross-validation interval, offered where predictors outnumber rows.
+         */
+        NestedOffer: {
+            /** Label */
+            label: string;
+            /** Fits */
+            fits: number;
+            /** Seconds */
+            seconds: number | null;
+            /** Estimate */
+            estimate: string;
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            };
         };
         /**
          * NotAdjusted
@@ -9335,6 +9820,15 @@ export interface components {
              */
             mc_se: number | null;
         };
+        /** RiskGroup */
+        RiskGroup: {
+            /** N */
+            n: number;
+            /** Predicted */
+            predicted: number;
+            /** Observed */
+            observed: number | null;
+        };
         /** RobustnessResult */
         RobustnessResult: {
             /** Exposure */
@@ -9678,6 +10172,20 @@ export interface components {
             method: string;
             /** Text */
             text: string;
+            /**
+             * By Unit
+             * @default false
+             */
+            by_unit: boolean;
+            /**
+             * Extras
+             * @default {}
+             */
+            extras: {
+                [key: string]: {
+                    [key: string]: number | null;
+                };
+            };
         };
         /** Sensitivity */
         Sensitivity: {
@@ -10216,6 +10724,8 @@ export interface components {
          *     it, by an event or not, was not at risk then and leaves, and every other row is at risk from
          *     it (left truncation; the estimate is among those event-free and followed at the landmark).
          *     ``horizon``: follow-up ends at this time: an event after it counts as censored at it.
+         *     ``prediction_horizon`` (MS6): the time predicted risks are scored and calibrated at; it changes
+         *     no row.
          */
         SetFollowUp: {
             /**
@@ -10243,6 +10753,11 @@ export interface components {
              * @default null
              */
             horizon: number | null;
+            /**
+             * Prediction Horizon
+             * @default null
+             */
+            prediction_horizon: number | null;
         };
         /** SetGrain */
         SetGrain: {
@@ -10347,6 +10862,18 @@ export interface components {
              * @default null
              */
             reason: string | null;
+            /**
+             * Imputation Model
+             * @default compatible
+             * @enum {string}
+             */
+            imputation_model: "compatible" | "passive";
+            /**
+             * Imputation Levels
+             * @default clustered
+             * @enum {string}
+             */
+            imputation_levels: "clustered" | "single_level";
         };
         /** SetModelSequence */
         SetModelSequence: {
@@ -10508,7 +11035,7 @@ export interface components {
             repeats: number;
             /**
              * N Boot
-             * @default 200
+             * @default 500
              */
             n_boot: number;
             /**
@@ -10516,6 +11043,11 @@ export interface components {
              * @default null
              */
             cluster: string | null;
+            /**
+             * Nested Cv
+             * @default false
+             */
+            nested_cv: boolean;
         };
         /**
          * SetSubstitution
@@ -11158,6 +11690,16 @@ export interface components {
              * @default []
              */
             exits: components["schemas"]["InferenceExit"][];
+            /**
+             * Pooled
+             * @default null
+             */
+            pooled: ("contrast" | "per_k") | null;
+            /**
+             * Df
+             * @default null
+             */
+            df: (number | null)[] | null;
         };
         /** SubstitutionPair */
         SubstitutionPair: {

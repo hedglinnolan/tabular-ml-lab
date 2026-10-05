@@ -259,8 +259,13 @@ def test_no_held_out_score_reaches_any_response_until_the_seal_is_opened(client,
     error = undeclared.json()["error"]
     assert error["code"] == "final_model_needed"
     assert {e["decision"]["family"] for e in error["exits"]} == set(FAMILIES)
-    cv = {m["family"]: m["cv"][fit["primary_metric"]]["estimate"] for m in fit["models"]}
-    assert error["exits"][0]["decision"]["family"] == max(cv, key=cv.get)
+    # MS6: the CV-best on the comparison substrate (every repeat of the repeated k-fold), on the
+    # strictly proper primary, which may be better when lower.
+    from turbotab.core.models.metrics import higher_is_better
+
+    cv = {m["family"]: m["compared_on"]["estimate"] for m in fit["models"]}
+    best = (max if higher_is_better(fit["primary_metric"]) else min)(cv, key=cv.get)
+    assert error["exits"][0]["decision"]["family"] == best
     assert_nothing_held_out_in([undeclared.json()], sealed, constant)
     final = error["exits"][0]["decision"]
 

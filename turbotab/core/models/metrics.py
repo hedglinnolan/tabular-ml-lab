@@ -41,11 +41,27 @@ are squared. Under repeated k-fold (audit ME-11) each repeat is estimated as abo
 score is the mean over repeats, its SE the root mean of the repeats' squared SEs, and the spread of
 the repeats' estimates is kept as ``repeat_sd``.
 
-**The primary metric** is the one a family is compared with its baseline on and the banner names:
-R² for regression; AUC for a binary outcome, said as "the highest AUC" because AUC ranks risks and
-says nothing of calibration (Van Calster et al. 2019); log loss for a multiclass outcome, a proper
-scoring rule where macro-F1, the earlier primary, is not (audit ME-10). Log loss, Brier score, RMSE
-and MAE are better when lower (:data:`LOWER_IS_BETTER`).
+**The primary metric is a strictly proper score** (MODELING_SEQUENCE §0 ruling 4, MS6): the one
+families are compared on, chosen by (BBC-CV, :mod:`turbotab.core.models.selection`) and declared
+by, and the one the banner names. Each is the mean of a per-row loss whose expectation only the
+true predictive distribution minimizes: the MSE for regression; log loss for a binary or multiclass
+outcome; the ranked probability score for an ordinal one; Graf et al.'s Brier score at a horizon
+for a time to event (:func:`turbotab.core.models.performance.brier_rows`). Van Calster et al.
+(STRATOS TG6, arXiv:2412.10288): "AUROC, AUPRC, and pAUROC are not strictly proper, because these
+rank-based measures are invariant to monotonic transformations of probability estimates"; "Because
+Brier and R-squared variants … measure overall performance and are strictly proper, they are useful
+to compare different models on the same dataset". Comparing on AUC or C could declare a
+miscalibrated model over a calibrated one with the same ranking.
+
+**AUC and C are still always reported**, labeled the *customary headline* (:data:`HEADLINE`), with
+the tension in one line (:data:`TENSION`; BLUEPRINT north star 5): the field reports them first,
+and they say how well risks are ranked, never whether they are right. R² stays beside the MSE: it is
+the same squared error as a share of the no-predictor model's, so it orders families exactly as the
+MSE does.
+
+With delayed entry the Brier score at the horizon is not computed (its censoring weights would need
+the truncation distribution), so a time-to-event outcome then falls back to Harrell's C, and the
+fit says the comparison rests on a semi-proper score (:func:`primary_metric`).
 """
 from __future__ import annotations
 
@@ -57,25 +73,66 @@ import numpy as np
 from turbotab.core.decisions import Task
 
 METRICS: dict[str, tuple[str, ...]] = {
-    "regression": ("r2", "rmse", "mae"),
+    "regression": ("r2", "mse", "rmse", "mae"),
     "binary": ("auc", "brier", "log_loss"),
     "multiclass": ("log_loss", "accuracy", "macro_f1"),
     "ordinal": ("c_index", "rps", "log_loss", "mae_levels"),
-    "time_to_event": ("c_index",),
+    "time_to_event": ("c_index", "brier_t"),
 }
-# Log loss is a proper scoring rule; macro-F1 is not (audit ME-10). An ordered outcome is ranked on
-# its concordance (WP12a), and so is a time-to-event outcome, by Harrell's C of its risk (WP12b).
-PRIMARY: dict[str, str] = {"regression": "r2", "binary": "auc", "multiclass": "log_loss",
-                           "ordinal": "c_index", "time_to_event": "c_index"}
-LOWER_IS_BETTER = frozenset({"rmse", "mae", "brier", "log_loss", "rps", "mae_levels"})
+# The strictly proper primary of each task (module docstring; MS6). Log loss replaced macro-F1 for a
+# multiclass outcome in audit ME-10; the rest replaced R², AUC and C in MS6.
+PRIMARY: dict[str, str] = {"regression": "mse", "binary": "log_loss", "multiclass": "log_loss",
+                           "ordinal": "rps", "time_to_event": "brier_t"}
+# The customary headline, always reported beside the primary (north star 5), and its tension.
+HEADLINE: dict[str, str] = {"binary": "auc", "ordinal": "c_index", "time_to_event": "c_index"}
+HEADLINE_LABEL = "customary headline"
+SEMI_PROPER = ("ranks risks without asking whether they are right (semi-proper), so the models were "
+               "compared, chosen and declared on {primary}, a strictly proper score (Van Calster et "
+               "al., STRATOS TG6)")
+LOWER_IS_BETTER = frozenset({"mse", "rmse", "mae", "brier", "log_loss", "rps", "mae_levels",
+                             "brier_t"})
 LABELS: dict[str, str] = {
-    "r2": "R²", "rmse": "RMSE", "mae": "MAE", "auc": "AUC", "brier": "Brier score",
+    "r2": "R²", "mse": "MSE", "rmse": "RMSE", "mae": "MAE", "auc": "AUC", "brier": "Brier score",
     "log_loss": "Log loss", "accuracy": "Accuracy", "macro_f1": "Macro-F1",
     "c_index": "C-index", "rps": "Ranked probability score", "mae_levels": "MAE (levels)",
+    "brier_t": "Brier score at the horizon",
 }
-POOLED = ("r2", "rmse", "mae")  # estimated over every out-of-fold prediction, not fold by fold
+POOLED = ("r2", "mse", "rmse", "mae")  # estimated over every out-of-fold prediction, not fold by fold
+# How a sentence names each primary mid-line.
+SPOKEN: dict[str, str] = {"mse": "the MSE", "log_loss": "log loss",
+                          "rps": "the ranked probability score",
+                          "brier_t": "the Brier score at the horizon", "c_index": "Harrell's C",
+                          "r2": "R²", "auc": "the AUC"}
+
+
+def primary_metric(task: str, y: Any = None) -> str:
+    """The primary of ``task`` for these rows: :data:`PRIMARY`, except a time to event with delayed
+    entry, whose Brier score at the horizon is not computed (module docstring): Harrell's C."""
+    if task == "time_to_event" and y is not None:
+        from turbotab.core.models.performance import delayed_entry
+
+        if delayed_entry(y):
+            return "c_index"
+    return PRIMARY[task]
+
+
+def tension(task: str, primary: str | None = None) -> str | None:
+    """The one line naming why the customary headline is not the score models are chosen on; when
+    a time to event's primary fell back to Harrell's C (delayed entry), why; None when the task has
+    no customary headline."""
+    headline = HEADLINE.get(task)
+    primary = primary or PRIMARY[task]
+    if task == "time_to_event" and primary == "c_index":
+        return ("Harrell's C is the only score here: with delayed entry the Brier score at the "
+                "horizon is not computed (its censoring weights would need the truncation "
+                "distribution), so the models were compared, chosen and declared on a semi-proper "
+                "score.")
+    if headline is None or headline == primary:
+        return None
+    return (f"{LABELS[headline]} is the {HEADLINE_LABEL}: it "
+            f"{SEMI_PROPER.format(primary=SPOKEN.get(primary, LABELS[primary]))}.")
 CV_DEFINITION = {
-    "regression": ("Cross-validated R², RMSE and MAE pool every out-of-fold prediction; R² is "
+    "regression": ("Cross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction; R² is "
                    "measured against the mean of the rows each fold's model was fit on, as the "
                    "held-out R² is against the training rows' mean. The fold values show the spread."),
     "binary": "Cross-validated scores are the mean over folds; the fold values show the spread.",
@@ -83,9 +140,10 @@ CV_DEFINITION = {
     "ordinal": ("Cross-validated scores are the mean over folds; the fold values show the spread. "
                 "C is the share of pairs of rows at different levels whose predicted mean level is "
                 "in the same order (ties count one half)."),
-    "time_to_event": ("Cross-validated scores are the mean over folds of Harrell's C, the share of "
-                      "comparable pairs whose order of events the risk score gets right; the fold "
-                      "values show the spread."),
+    "time_to_event": ("Cross-validated scores are the mean over folds. The Brier score at the "
+                      "horizon is the censoring-weighted squared error of each row's predicted risk "
+                      "of the event by then; Harrell's C is the share of comparable pairs whose "
+                      "order of events the risk score gets right. The fold values show the spread."),
 }
 SE_DEFINITION = ("Each standard error counts which rows were scored, with each fold's model as "
                  "fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models "
@@ -109,25 +167,32 @@ def r2_against(y: Any, pred: Any, reference: float) -> float:
     return 1.0 - float(((y - np.asarray(pred, dtype=float)) ** 2).sum()) / sst
 
 
-def score(task: Task, model: Any, X: Any, y: Any, *, reference: float | None = None) -> dict[str, float]:
+def score(task: Task, model: Any, X: Any, y: Any, *, reference: float | None = None,
+          horizon: float | None = None) -> dict[str, float]:
     """Every metric for ``task`` of a fitted model on ``X``, ``y``.
 
     ``reference``: for regression, the mean of the rows the model was fit on; R² is measured
-    against it. Without one, R² is scikit-learn's (against ``y``'s own mean).
+    against it. Without one, R² is scikit-learn's (against ``y``'s own mean). ``horizon``: a time
+    to event's horizon, where its Brier score is read (NaN without one, or without the model's
+    baseline hazard, :func:`survival_baseline`).
     """
     from sklearn import metrics as m
 
     y = np.asarray(y)
     if task == "time_to_event":
+        from turbotab.core.models.performance import brier_at
         from turbotab.core.models.survival import concordance
 
-        return {"c_index": concordance(y["time"], y["event"], model.predict(X))}
+        both = predict(task, model, X, horizon=horizon)
+        return {"c_index": concordance(y["time"], y["event"], both[:, 0]),
+                "brier_t": brier_at(y, both[:, 1], horizon)}
     if task == "regression":
         pred = model.predict(X)
         r2 = (float(m.r2_score(y, pred)) if reference is None
               else r2_against(y, pred, float(reference)))
         return {
             "r2": r2,
+            "mse": float(np.mean((np.asarray(y, dtype=float) - np.asarray(pred, dtype=float)) ** 2)),
             "rmse": float(m.root_mean_squared_error(y, pred)),
             "mae": float(m.mean_absolute_error(y, pred)),
         }
@@ -219,15 +284,15 @@ def fold_part(model: Any, X: Any, y: Any, reference: float) -> FoldPart:
 
 
 def pooled(parts: Sequence[FoldPart]) -> dict[str, float]:
-    """R², RMSE and MAE over every out-of-fold prediction (the module docstring's estimator)."""
+    """R², MSE, RMSE and MAE over every out-of-fold prediction (the module docstring's estimator)."""
     sse = sum(p.sse for p in parts)
     sst = sum(p.sst for p in parts)
     sae = sum(p.sae for p in parts)
     n = sum(p.n for p in parts)
     if not n:
         return {m: float("nan") for m in POOLED}
-    return {"r2": 1.0 - sse / sst if sst > 0 else float("nan"), "rmse": float(np.sqrt(sse / n)),
-            "mae": sae / n}
+    return {"r2": 1.0 - sse / sst if sst > 0 else float("nan"), "mse": sse / n,
+            "rmse": float(np.sqrt(sse / n)), "mae": sae / n}
 
 
 def summarize(task: Task, per_fold: list[dict[str, float]],
@@ -335,12 +400,32 @@ class CrossValidated:
     sizes: list[tuple[int, int]] = field(default_factory=list)  # (rows fit, rows scored) per fold
     predictions: list[FoldPrediction] = field(default_factory=list)
     repeat_of: list[int] = field(default_factory=list)  # each fold's repeat; empty: one run
+    horizon: float | None = None  # a time to event's horizon (its Brier score's)
+    seconds: float = 0.0  # time spent fitting and scoring every fold
 
     def repeats(self) -> list[int]:
         return sorted(set(self.repeat_of)) if self.repeat_of else [0]
 
     def _repeat(self) -> list[int]:
         return self.repeat_of if self.repeat_of else [0] * len(self.per_fold)
+
+    def subset(self, repeats: Sequence[int]) -> "CrossValidated":
+        """The folds of these repeats only (the comparison substrate's first repeat is the
+        headline's one k-fold run, MS6), numbered as they were."""
+        keep = set(int(r) for r in repeats)
+        at = [i for i, r in enumerate(self._repeat()) if r in keep]
+        return CrossValidated(
+            per_fold=[self.per_fold[i] for i in at],
+            parts=[self.parts[i] for i in at] if self.parts else [],
+            sizes=[self.sizes[i] for i in at] if self.sizes else [],
+            predictions=[self.predictions[i] for i in at] if self.predictions else [],
+            repeat_of=[self._repeat()[i] for i in at] if self.repeat_of else [],
+            horizon=self.horizon,
+            seconds=self.seconds * len(at) / max(len(self.per_fold), 1))
+
+    def folds_of(self, metric: str) -> list[float | None]:
+        """``metric`` in every fold of every repeat, in order (the paired comparisons' values)."""
+        return [f.get(metric) for f in self.per_fold]
 
     def summary(self, task: Task, *, groups: Any = None, unit: str | None = None
                 ) -> dict[str, dict[str, Any]]:
@@ -381,7 +466,8 @@ class CrossValidated:
                 variances: list[float] | None = []
                 for f in folds:
                     v = perf.fold_variance(task, m, f.y, f.prediction, classes=f.classes or [],
-                                           groups=None if units is None else units[f.rows])
+                                           groups=None if units is None else units[f.rows],
+                                           horizon=self.horizon)
                     if v is None:
                         variances = None
                         break
@@ -420,12 +506,35 @@ def _rows(data: Any, mask: np.ndarray) -> Any:
 CLASSIFIED = ("binary", "multiclass", "ordinal")  # tasks whose models predict class probabilities
 
 
-def predict(task: Task, model: Any, X: Any) -> np.ndarray:
-    """ŷ for regression, the risk score for a time-to-event outcome (WP12b), and the
+def predict(task: Task, model: Any, X: Any, *, horizon: float | None = None) -> np.ndarray:
+    """ŷ for regression; for a time to event two columns, the risk score (WP12b) and the risk of
+    the event by ``horizon`` (NaN without a horizon or the model's :func:`survival_baseline`); the
     class-probability matrix (columns in ``model.classes_``) otherwise."""
-    if task in ("regression", "time_to_event"):
+    if task == "regression":
         return np.asarray(model.predict(X), dtype=float)
+    if task == "time_to_event":
+        lp = np.asarray(model.predict(X), dtype=float)
+        baseline = getattr(model, "survival_baseline_", None)
+        if horizon is None or baseline is None:
+            return np.column_stack([lp, np.full(len(lp), np.nan)])
+        from turbotab.core.models.performance import risk_by
+
+        return np.column_stack([lp, risk_by(baseline, lp, float(horizon))])
     return np.asarray(model.predict_proba(X), dtype=float)
+
+
+def survival_baseline(model: Any, X: Any, y: Any) -> Any:
+    """Keep on a fitted time-to-event model Breslow's cumulative baseline hazard from the rows it
+    was fit on (``performance.breslow``), so it predicts a risk by any horizon; returns ``model``.
+    A model whose ``predict`` is not a log relative hazard gets a baseline all the same: its risk
+    is then on that score's scale, which the Brier score and the calibration judge as they find."""
+    from turbotab.core.models.performance import breslow
+
+    y = np.asarray(y)
+    if y.dtype.names is None or "time" not in y.dtype.names:
+        return model
+    model.survival_baseline_ = breslow(y, np.asarray(model.predict(X), dtype=float))
+    return model
 
 
 def classes_of(task: Task, model: Any) -> list[Any] | None:
@@ -438,17 +547,22 @@ def cross_validate(task: Task, make: Callable[[], Any], X: Any, y: Any,
                    fit: Callable[[Any, Any, Any, np.ndarray], Any] | None = None,
                    before_fold: Callable[[int, int], None] | None = None,
                    repeat_of: Sequence[int] | None = None,
-                   keep_predictions: bool = False) -> CrossValidated:
+                   keep_predictions: bool = False, horizon: float | None = None) -> CrossValidated:
     """Fit a fresh model (``make()``) on each pair's fit rows and score it on its scored rows.
 
     ``fit(model, X_fit, y_fit, fit_mask)`` fits a model (default: ``model.fit``); the fit stage
     passes one that draws the model's inner splits as the outer folds are. ``before_fold(i, n)``
     runs before each fold (progress, cancellation). ``repeat_of`` names each pair's repeat
     (:func:`repeated_pairs`). ``keep_predictions`` keeps every fold's predictions, for the
-    standard errors and the out-of-fold calibration.
+    standard errors and the out-of-fold calibration. ``horizon``: a time to event's, where its
+    Brier score is read; each fold's model keeps the baseline hazard of its own fit rows.
     """
+    import time
+
+    started = time.perf_counter()
     y = np.asarray(y)
-    out = CrossValidated(per_fold=[], repeat_of=list(repeat_of) if repeat_of is not None else [])
+    out = CrossValidated(per_fold=[], repeat_of=list(repeat_of) if repeat_of is not None else [],
+                         horizon=horizon)
     for i, (_, fit_rows, test_rows) in enumerate(pairs):
         if before_fold is not None:
             before_fold(i, len(pairs))
@@ -456,22 +570,27 @@ def cross_validate(task: Task, make: Callable[[], Any], X: Any, y: Any,
         X_test, y_test = _rows(X, test_rows), y[test_rows]
         model = make()
         model = fit(model, X_fit, y_fit, fit_rows) if fit is not None else model.fit(X_fit, y_fit)
+        if task == "time_to_event" and getattr(model, "survival_baseline_", None) is None:
+            survival_baseline(model, X_fit, y_fit)
         reference = float(np.mean(y_fit.astype(float))) if task == "regression" else None
-        out.per_fold.append(score(task, model, X_test, y_test, reference=reference))
+        out.per_fold.append(score(task, model, X_test, y_test, reference=reference,
+                                  horizon=horizon))
         if task == "regression":
             out.parts.append(fold_part(model, X_test, y_test, reference))
         out.sizes.append((int(fit_rows.sum()), int(test_rows.sum())))
         if keep_predictions:
             classes = classes_of(task, model)
             out.predictions.append(FoldPrediction(
-                rows=np.flatnonzero(test_rows), y=y_test, prediction=predict(task, model, X_test),
+                rows=np.flatnonzero(test_rows), y=y_test,
+                prediction=predict(task, model, X_test, horizon=horizon),
                 reference=reference, classes=classes))
+    out.seconds = time.perf_counter() - started
     return out
 
 
-__all__ = ["CV_DEFINITION", "CrossValidated", "FoldPart", "FoldPrediction", "LABELS",
-           "CLASSIFIED", "LOWER_IS_BETTER", "METRICS", "POOLED", "PRIMARY", "SE_DEFINITION",
-           "classes_of", "concordance",
-           "cross_validate", "fold_part", "fold_pairs", "higher_is_better", "metric_labels",
-           "ordinal_scores", "pooled", "predict", "r2_against", "repeated_pairs", "score",
-           "summarize"]
+__all__ = ["CV_DEFINITION", "CrossValidated", "FoldPart", "FoldPrediction", "HEADLINE",
+           "HEADLINE_LABEL", "LABELS", "CLASSIFIED", "LOWER_IS_BETTER", "METRICS", "POOLED",
+           "PRIMARY", "SE_DEFINITION", "SPOKEN", "classes_of", "concordance", "cross_validate",
+           "fold_part", "fold_pairs", "higher_is_better", "metric_labels", "ordinal_scores",
+           "pooled", "predict", "primary_metric", "r2_against", "repeated_pairs", "score",
+           "summarize", "survival_baseline", "tension"]

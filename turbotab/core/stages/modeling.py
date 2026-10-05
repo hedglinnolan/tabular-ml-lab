@@ -273,7 +273,17 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
     split = ctx.inputs.get("split")
     data = (split.data or {}) if isinstance(split, Bundle) else {}
     # Every fold of every repeat, and each bootstrap refit, is about one fit of the whole table.
-    folds = int(data.get("folds") or 5) * int(data.get("repeats") or 1) + int(data.get("n_boot") or 0)
+    # MS6: under prediction the comparisons' repeated k-fold (≥ 10 × K) is counted too, before the
+    # fit runs, with the split's own repeats as its first ones.
+    from turbotab.core.models.folds import COMPARISON_REPEATS
+
+    k = int(getattr(ctx.state.split, "folds", None) or data.get("folds") or 5)
+    repeats = int(data.get("repeats") or 1)
+    if ctx.state.purpose != "inference" and data.get("fold_scheme") != "time_ordered":
+        own = int(data.get("folds") or k) * repeats if data.get("validation") == "internal_external" else 0
+        folds = k * max(repeats, COMPARISON_REPEATS) + own + int(data.get("n_boot") or 0)
+    else:
+        folds = int(data.get("folds") or 5) * repeats + int(data.get("n_boot") or 0)
     scheme = str((split.data or {}).get("fold_scheme") or "random") if isinstance(split, Bundle) else "random"
     ctx.progress(0.5, "Timing one fit of each family on a sample of the training rows")
     try:
@@ -617,13 +627,34 @@ def baseline_model(task: str) -> Any:
 
 
 def _baseline_cv(task: str, X: Any, y: Any, pairs: Sequence[Any],
-                 repeat_of: Sequence[int] | None = None) -> Any:
+                 repeat_of: Sequence[int] | None = None, horizon: float | None = None) -> Any:
     """The baseline cross-validated on the same fold pairs, scored as the models are."""
     from turbotab.core.models.metrics import cross_validate
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return cross_validate(task, lambda: baseline_model(task), X, y, pairs, repeat_of=repeat_of)
+        return cross_validate(task, lambda: baseline_model(task), X, y, pairs, repeat_of=repeat_of,
+                              horizon=horizon)
+
+
+def follow_up_horizon(state: Any, y: Any) -> tuple[float | None, str | None]:
+    """A time to event's prediction horizon (MS6): the one declared with the follow-up, else the
+    median follow-up time of these rows (the rows the models learn from, after any end of
+    follow-up the follow-up answer set), stated as such. It changes no row: the follow-up's own
+    ``horizon`` is where follow-up ends (the routing gate), this one where predictions are judged."""
+    spec = getattr(state, "follow_up", None)
+    declared = getattr(spec, "prediction_horizon", None) if spec is not None else None
+    column = getattr(spec, "time_column", None) if spec is not None else None
+    named = f"`{column}`" if column else "follow-up"
+    if declared is not None:
+        return float(declared), (f"Scored and calibrated by {named} = `{float(declared):g}`, the "
+                                 f"declared prediction horizon.")
+    times = np.asarray(np.asarray(y)["time"], dtype=float) if len(y) else np.zeros(0)
+    if not len(times):
+        return None, None
+    h = float(np.median(times))
+    return h, (f"Scored and calibrated by {named} = `{h:g}`, the median follow-up time of the "
+               f"training rows, as no prediction horizon was declared with the follow-up.")
 
 
 def _baseline_scores(task: str, X: Any, y: Any, folds: Any, fold_keys: Sequence[int]) -> list[dict[str, float]]:
@@ -657,7 +688,7 @@ def baseline_concern(task: str, metric_label: str, model: float | None, base: fl
     if task == "regression":
         return f"Predicts worse than the outcome's average: CV {metric_label} {m}, against {b} for the average."
     if task == "binary":
-        return f"Separates the classes worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
+        return f"Predicts worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
     if task == "ordinal":
         return (f"Orders the outcome worse than the level prior: CV {metric_label} {m}, against {b} "
                 f"for the prior.")
@@ -668,7 +699,9 @@ def baseline_concern(task: str, metric_label: str, model: float | None, base: fl
             f"for the prior.")
 
 
-RANKING = {"r2": "highest R²", "auc": "highest AUC", "log_loss": "lowest log loss"}
+RANKING = {"r2": "highest R²", "auc": "highest AUC", "log_loss": "lowest log loss",
+           "mse": "lowest MSE", "rps": "lowest ranked probability score",
+           "brier_t": "lowest Brier score at the horizon", "c_index": "highest C-index"}
 
 
 def ranking_phrase(metric: str) -> str:
@@ -716,7 +749,9 @@ def precision_sentence(metric: str, summaries: Mapping[str, Any], labels: Mappin
     if not parts:
         return None
     listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
-    return (f"On these {n_train:,} training rows the cross-validated {LABELS.get(metric, metric)} "
+    from turbotab.core.models.validation import score_words
+
+    return (f"On these {n_train:,} training rows the cross-validated {score_words(metric)} "
             f"has a standard error of {listed}; whether two families differ is read from their "
             f"paired interval, not from either one alone.")
 
@@ -896,15 +931,23 @@ class TableMissing:
 
 
 def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, task: str,
-                       keys: Sequence[str], loss: Mapping[str, Any] | None = None) -> TableMissing | None:
+                       keys: Sequence[str], loss: Mapping[str, Any] | None = None, *,
+                       survey: Any = None, clusters: Any = None,
+                       nested: Mapping[str, str] | None = None) -> TableMissing | None:
     """Under inference, the missing-values answer as the coefficient table applies it.
 
     ``X`` and ``y`` are the rows the table is estimated from; ``loss`` the complete-case comparison
-    the cohort made (default: the cohort artifact's, when the stage has it)."""
+    the cohort made (default: the cohort artifact's, when the stage has it). Under multiple
+    imputation the imputation model is compatible with the analysis model (MS1) and holds the
+    survey design's variables (``survey``: the ``FitSurvey`` of a population answer) and the
+    clusters (``clusters``: by unit, ruling 12); ``nested``: parts of totals, which the energy
+    identity leaves to their own models. Passive imputation with a declared nonlinear term, and
+    single-level imputation on clustered rows, are held until recorded (MODELING_SEQUENCE §4)."""
     from turbotab.core.methods.imputation import ImputationRefused, M_DEFAULT
     from turbotab.core.methods.missing import (COMPLETE_CASE_ASSUMPTION, INDICATOR_CAUTION,
                                                MI_ASSUMPTION, SINGLE_FILL_CAUTION,
-                                               impute_for_inference, missing_block, row_loss_concern)
+                                               impute_for_inference, missing_block, nonlinear_terms,
+                                               row_loss_concern)
     from turbotab.core.models import get_family
 
     state = ctx.state
@@ -912,13 +955,18 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
     if not answer:
         return None
     levels = [c for c in spec.levels if c in X.columns and X[c].isna().any()]
-    held = missing_block(answer, "inference", levels)
+    gaps = [c for c in spec.inputs if c not in levels and c in X.columns and X[c].isna().any()]
+    imputing = answer.get("strategy") == "multiple_imputation" and bool(gaps)
+    clustered = clusters is not None and getattr(clusters, "clustered", False)
+    held = missing_block(answer, "inference", levels,
+                         nonlinear=nonlinear_terms(spec, task) if imputing else (),
+                         passive=imputing and task in ("ordinal", "multiclass"),
+                         clustered=imputing and clustered)
     if held is not None:
         return TableMissing(refusal=held[0], exits=held[1])
     strategy = answer.get("strategy")
     m = int(answer.get("m") or M_DEFAULT)
     if strategy == "multiple_imputation":
-        gaps = [c for c in spec.inputs if c not in levels and c in X.columns and X[c].isna().any()]
         base = {"method": "multiple_imputation", "assumption": MI_ASSUMPTION, "m": m,
                 "n_rows": int(len(X)), "outcome_in_model": True}
         if not gaps:
@@ -936,14 +984,33 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                 ctx.progress(0.01 + 0.01 * done / max(total, 1),
                              f"Imputing missing values with the outcome: model {done:,} of {total:,}")
 
+        design = survey.design if survey is not None and getattr(survey, "answer", None) == "population" \
+            else None
         try:
             imputations = impute_for_inference(spec, X, y, task, seed=seed, progress=progress,
-                                               cancelled=ctx.cancelled)
+                                               cancelled=ctx.cancelled, survey=design,
+                                               clusters=clusters if clustered else None,
+                                               nested=nested, factors=_settled_factors(ctx, spec))
         except ImputationRefused as exc:
-            return TableMissing(
-                refusal=f"Multiple imputation cannot run on these data: {exc}",
-                exits=[{"label": "Complete cases, with their assumption stated",
-                        "decision": {**answer, "kind": "set_missing", "strategy": "complete_case"}}])
+            zeros = list(getattr(exc, "zeros", None) or [])
+            exits: list[dict[str, Any]] = []
+            if zeros:
+                # A recorded zero the analysis logs: no fill or row choice resolves it, only how the
+                # zeros are read, or an energy model without the log (MODELING_SEQUENCE §2, zeros).
+                adj = spec.energy_adjustment()
+                if adj is not None and adj.log_transform and zeros[0] in (*adj.nutrients,
+                                                                           adj.energy_column):
+                    exits.append({"label": "Adjust for energy without the log",
+                                  "decision": {"kind": "set_energy_adjustment",
+                                               **adj.model_dump(), "log_transform": False}})
+                exits.append({"label": f"Say how the zeros of `{zeros[0]}` are read: values below a "
+                                       f"detection limit, or true zeros", "decision": None})
+            else:
+                exits.append({"label": "Complete cases, with their assumption stated",
+                              "decision": {**answer, "kind": "set_missing",
+                                           "strategy": "complete_case"}})
+            return TableMissing(refusal=f"Multiple imputation cannot run on these data: {exc}",
+                                exits=exits)
         return TableMissing(imputations=imputations)
     if strategy == "complete_case":
         if loss is None:
@@ -969,6 +1036,69 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
     return None
 
 
+def _settled_factors(ctx: StageContext, spec: Any) -> dict[str, float]:
+    """Each energy-adjusted nutrient's kcal per unit, where the readings ledger holds it settled
+    (BLUEPRINT §14.1: a recorded unit, or grams the registry's Atwater test reads; never a name):
+    what the imputation's energy identity may compute with."""
+    from turbotab.core.readings import factor_verdicts, kcal_per_unit
+
+    adj = spec.energy_adjustment()
+    nutrients = list(adj.nutrients) if adj is not None else []
+    if not nutrients:
+        return {}
+    try:
+        with open_store(ctx) as store:
+            verdicts = factor_verdicts(ctx.state, store, nutrients)
+    except Exception:  # noqa: BLE001 - no values to read: only a recorded unit settles
+        verdicts = {}
+    out: dict[str, float] = {}
+    for c in nutrients:
+        reading = kcal_per_unit(ctx.state, c, verdict=verdicts.get(c))
+        if reading.settled and reading.factor is not None:
+            out[c] = float(reading.factor)
+    return out
+
+
+def imputed_copies_column(state: Any) -> str | None:
+    """Under inference, the column numbering the imputed copies the data carries (NHANES DXA,
+    ``set_repeat_kind``'s ``implicate_column``), when each copy is kept as a record
+    (``set_unit`` "row"): the fit then analyzes each copy and pools them by Rubin's rules (audit
+    I18; MODELING_SEQUENCE §1.1). None otherwise."""
+    rk = getattr(state, "repeat_kind", None)
+    if (getattr(state, "purpose", None) != "inference" or rk is None
+            or getattr(rk, "repeat_kind", None) != "imputed_copies"
+            or not getattr(rk, "implicate_column", None) or getattr(state, "unit", None) != "row"):
+        return None
+    return str(rk.implicate_column)
+
+
+def _copies_for_table(ctx: StageContext, spec: Any, frame: pd.DataFrame, implicate: str, y: Any,
+                      unit_columns: Sequence[str]) -> tuple[TableMissing, Any]:
+    """The data's own imputed copies as the table's completed copies (each with its own outcome),
+    and the clustering within a copy (none: each unit appears once in a copy). Blanks left inside
+    the copies are not imputed again here (nested imputation is not built): the table is blocked,
+    complete cases its exit."""
+    from turbotab.core.methods.missing import supplied_copies
+    from turbotab.core.models.inference import INDEPENDENT
+
+    state = ctx.state
+    grain = getattr(state, "grain", None)
+    unit = getattr(grain, "id_column", None) if grain is not None else None
+    unit = unit if unit in frame.columns else next((c for c in unit_columns if c in frame.columns), None)
+    answer = spec.missing or (state.missing.model_dump(mode="json") if state.missing else None)
+    blanks = [c for c in spec.inputs if c in frame.columns and frame[c].isna().any()]
+    if blanks and (answer or {}).get("strategy") != "complete_case":
+        return TableMissing(
+            refusal=(f"The rows are the data's imputed copies, and {', '.join(f'`{c}`' for c in blanks[:3])}"
+                     f" still {'has' if len(blanks) == 1 else 'have'} blanks inside them; imputing "
+                     f"within each copy (nested imputation) is not built here."),
+            exits=[{"label": "Complete cases within each copy",
+                    "decision": {**(answer or {}), "kind": "set_missing",
+                                 "strategy": "complete_case"}}]), INDEPENDENT
+    copies = supplied_copies(frame, implicate, unit, list(spec.inputs), y)
+    return TableMissing(imputations=copies), INDEPENDENT
+
+
 def _with_levels(fitted: Any, levels: Sequence[str] | None) -> Any:
     """An ordinal fit's cut-points named by the declared levels (as the fit stage names them)."""
     if levels is not None:
@@ -978,37 +1108,44 @@ def _with_levels(fitted: Any, levels: Sequence[str] | None) -> Any:
 
 def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: str, clusters: Any,
                  outcome: Any, survey: Any, design: Any, spec: Any, rows: str,
-                 fit: Any, cancelled: Any = None, energy_rows: bool = True
+                 fit: Any, cancelled: Any = None, energy_rows: bool = True,
+                 collect: dict[str, Any] | None = None
                  ) -> tuple[Any, list[dict[str, Any]] | None, list[dict[str, Any]], list[str]]:
     """The family's inference table pooled over the completed copies (Rubin's rules), with its
     energy rows and exposure-form tests pooled beside it: (table, pooled rows, tests, concerns).
 
     Each copy is analyzed exactly as an unimputed table is (``fit(model, X_k)`` refits the whole
-    pipeline on it; the table, the all-components relative effects and the form tests follow). A
-    table refused in one copy (too few clusters) is refused: the reason does not depend on the
-    imputed values. ``rows`` = None in the result marks such a refusal."""
-    from sklearn.base import clone
-
+    pipeline on it; the table, the all-components relative effects and the form tests follow),
+    except that its impute step refuses a blank made inside the copy and its knots and cut points
+    are the ones placed once on the observed values (``missing.copy_template``; MS1). Copies the
+    data carried with their own outcomes (``Imputations.outcomes``, NHANES DXA) are fit as
+    ``fit(model, X_k, y_k)``. A table refused in one copy (too few clusters) is refused: the reason
+    does not depend on the imputed values. ``rows`` = None in the result marks such a refusal.
+    ``collect``, when given, receives each copy's fit (``fits``) and table (``tables``)."""
     from turbotab.core.methods.exposure_form import exposure_tests
     from turbotab.core.methods.imputation import pool_rows, pooled_cov
-    from turbotab.core.methods.missing import mi_concerns, multiple_imputation_info
+    from turbotab.core.methods.missing import copy_template, mi_concerns, multiple_imputation_info
     from turbotab.core.models.inference import InferenceTable
 
     m = int(imputations.m)
+    plan = dict(getattr(imputations, "plan", None) or {})
+    outcomes = getattr(imputations, "outcomes", None)
     tables, row_sets, fits, tests = [], [], [], []
     form_concerns: list[str] = []
     for k, X_k in enumerate(imputations.frames):
         if cancelled is not None and cancelled():
             raise Cancelled()
-        fitted = fit(clone(template), X_k)
-        table = _inference_table(family, fitted, X_k, y, task=task, clusters=clusters,
+        y_k = y if outcomes is None else outcomes[k]
+        model = copy_template(template, plan)
+        fitted = fit(model, X_k) if outcomes is None else fit(model, X_k, y_k)
+        table = _inference_table(family, fitted, X_k, y_k, task=task, clusters=clusters,
                                  outcome=outcome, rows=rows, survey=survey)
         if table.info.get("refused"):
-            table.info["missing"] = multiple_imputation_info(imputations, spec, len(y))
+            table.info["missing"] = multiple_imputation_info(imputations, spec, len(y_k))
             return table, None, [], []
-        row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y, task,
+        row_sets.append(_energy_rows(table.rows, design, spec, family, fitted, X_k, y_k, task,
                                      clusters, outcome, survey) if energy_rows else table.rows)
-        found, worries = exposure_tests(family, fitted, X_k, y, task=task, clusters=clusters,
+        found, worries = exposure_tests(family, fitted, X_k, y_k, task=task, clusters=clusters,
                                         table=table, outcome=outcome, survey=survey)
         if k == 0:
             form_concerns = list(worries)
@@ -1017,11 +1154,19 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
         tests.append(found)
     pooled = pool_rows(row_sets)
     info = dict(tables[0].info)
-    info["caption"] = (f"Multiple imputation, m = {m}: each completed table analyzed as follows, "
-                       f"then pooled by Rubin's rules, each interval on t with Barnard–Rubin degrees "
-                       f"of freedom. {tables[0].info.get('caption', '')}").strip()
-    info["missing"] = multiple_imputation_info(imputations, spec, len(y))
-    concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(y))
+    copies = getattr(imputations, "method", "") == "supplied"
+    how = (f"The data's {m} imputed copies, each analyzed as follows with its own outcome" if copies
+           else f"Multiple imputation, m = {m}: each completed table analyzed as follows")
+    info["caption"] = (f"{how}, then pooled by Rubin's rules, each interval on t with Barnard–Rubin "
+                       f"degrees of freedom. {tables[0].info.get('caption', '')}").strip()
+    form_tests = _pool_form_tests(tests, tables, fits, m)
+    df_com = _design_df(tables[0])
+    info["missing"] = multiple_imputation_info(
+        imputations, spec, len(y if outcomes is None else outcomes[0]), rows=pooled, df_com=df_com,
+        tests=sum(1 for t in form_tests if t.get("distribution") in ("F", "chi2")
+                  and int(t.get("df_num") or 0) > 1))
+    concerns = list(tables[0].concerns) + mi_concerns(imputations, pooled, len(y if outcomes is None
+                                                                                else outcomes[0]))
     covs = [t.cov for t in tables]
     cov = None
     if all(c is not None for c in covs) and len({np.shape(c) for c in covs}) == 1:
@@ -1031,14 +1176,31 @@ def pooled_table(family: Any, template: Any, imputations: Any, y: Any, *, task: 
         if Q.shape[1] == len(names) and np.all(np.isfinite(Q)):
             cov = pooled_cov(Q, np.asarray(covs, dtype=float))
     table = InferenceTable(pooled, info, concerns, cov=cov)
-    return table, pooled, _pool_form_tests(tests, tables, fits, m), form_concerns
+    if collect is not None:
+        collect["fits"] = fits
+        collect["tables"] = tables
+    return table, pooled, form_tests, form_concerns
+
+
+def _design_df(table: Any) -> float | None:
+    """A design-based table's complete-data degrees of freedom (its design's), for Rubin's rules
+    and D1 (MODELING_SEQUENCE §2: "ν_com = the design df"); None for any other table."""
+    info = getattr(table, "info", None) or {}
+    if info.get("covariance") != "design":
+        return None
+    df = (info.get("survey") or {}).get("df")
+    if df is None:
+        dfs = [r.get("df") for r in table.rows if r.get("df") is not None]
+        df = dfs[0] if dfs else None
+    return float(df) if df is not None else None
 
 
 def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence[Any],
                      fits: Sequence[Any], m: int) -> list[dict[str, Any]]:
-    """Each exposure-form test pooled over the imputations: a spline's Wald tests by Li,
-    Raghunathan & Rubin's D1 (on each copy's estimates and covariance), the quintile trend's
-    coefficient by Rubin's rules."""
+    """Each exposure-form test pooled over the imputations: a spline's Wald tests and quintiles'
+    global test by Li, Raghunathan & Rubin's D1 (on each copy's estimates and covariance; under a
+    survey design on Reiter's denominator df from the design's), the quintile trend's coefficient
+    by Rubin's rules."""
     from turbotab.core.methods.exposure_form import form_step
     from turbotab.core.methods.imputation import pool_scalar, pooled_wald
     from turbotab.core.models.inference import format_p
@@ -1047,16 +1209,17 @@ def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence
         return []
     out: list[dict[str, Any]] = []
     step = form_step(fits[0])
+    df_com = _design_df(tables[0])
     for test in tests[0]:
         same = [next((t for t in ts if t["column"] == test["column"] and t["test"] == test["test"]),
                      None) for ts in tests]
         if any(t is None for t in same):
             continue
-        if test["form"] == "spline":
+        if test["test"] in ("overall", "nonlinear", "global"):
             if step is None:
                 continue
             outputs = step._outputs(test["column"])
-            names = outputs if test["test"] == "overall" else outputs[1:]
+            names = outputs[1:] if test["test"] == "nonlinear" else outputs
             Q, U = [], []
             for table in tables:
                 where = {str(r["feature"]): j for j, r in enumerate(table.rows)}
@@ -1066,18 +1229,21 @@ def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence
                 ids = [where[n] for n in names]
                 Q.append([table.rows[j]["estimate"] for j in ids])
                 U.append(np.asarray(table.cov, dtype=float)[np.ix_(ids, ids)])
-            result = pooled_wald(np.asarray(Q, dtype=float), np.asarray(U, dtype=float)) if Q else None
+            result = (pooled_wald(np.asarray(Q, dtype=float), np.asarray(U, dtype=float), df_com)
+                      if Q else None)
             if result is None:
                 continue
             f_ref = result["df_den"] is not None
             stat = (f"F({result['df_num']}, {result['df_den']:,.0f}) = {result['statistic']:.2f}"
                     if f_ref else f"χ²({result['df_num']}) = {result['statistic'] * result['df_num']:.2f}")
+            design = (f", on Reiter's denominator df from the design's {df_com:g}"
+                      if df_com is not None and f_ref else "")
             out.append({**test, "statistic": result["statistic"] if f_ref else result["statistic"] * result["df_num"],
                         "df_num": result["df_num"], "df_den": result["df_den"],
                         "distribution": "F" if f_ref else "chi2", "p": result["p"],
-                        "caption": (f"Pooled over {m} imputations by Li, Raghunathan & Rubin's D1: "
-                                    f"{stat}, p = {format_p(result['p'])}. Within each imputation: "
-                                    f"{test['caption']}")})
+                        "caption": (f"Pooled over {m} imputations by Li, Raghunathan & Rubin's D1"
+                                    f"{design}: {stat}, p = {format_p(result['p'])}. Within each "
+                                    f"imputation: {test['caption']}")})
             continue
         ests = [t.get("estimate") for t in same]
         stats_ = [t.get("statistic") for t in same]
@@ -1085,17 +1251,21 @@ def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence
             continue
         variances = [(float(e) / float(st)) ** 2 for e, st in zip(ests, stats_)]
         dfs = [t.get("df_den") for t in same]
-        df_com = None if any(d is None for d in dfs) else float(np.mean(dfs))
-        pooled = pool_scalar(ests, variances, df_com)
+        df_com_t = None if any(d is None for d in dfs) else float(np.mean(dfs))
+        pooled = pool_scalar(ests, variances, df_com_t)
         if pooled.p is None:
             continue
+        medians = [t.get("medians") for t in same]
         out.append({**test, "estimate": pooled.estimate, "ci_low": pooled.ci_low,
                     "ci_high": pooled.ci_high, "p": pooled.p,
                     "statistic": pooled.estimate / math.sqrt(pooled.total), "df_den": pooled.df,
                     "distribution": "t" if pooled.df is not None else "z",
+                    "medians": ([float(np.mean([mm[g] for mm in medians])) for g in range(len(medians[0]))]
+                                if all(mm for mm in medians) else test.get("medians")),
                     "caption": (f"Pooled over {m} imputations by Rubin's rules: the trend coefficient "
-                                f"{pooled.estimate:+.4g} per unit, p = {format_p(pooled.p)}. Within "
-                                f"each imputation: {test['caption']}")})
+                                f"{pooled.estimate:+.4g} per unit (each copy scored by its own "
+                                f"quintile medians), p = {format_p(pooled.p)}. Within each "
+                                f"imputation: {test['caption']}")})
     return out
 
 
@@ -1120,24 +1290,40 @@ def fit_stage(ctx: StageContext) -> Bundle:
     interval on every score and their own calibration, sealed with the scores. The split's
     validation answer adds repeated k-fold (every repeat's folds), bootstrap optimism correction
     (``turbotab.core.models.validation``) or internal–external validation (one fold per cluster).
+
+    MS6 (MODELING_SEQUENCE ruling 4): the primary is strictly proper (``metrics.PRIMARY``), with AUC
+    or C the customary headline beside it; under prediction every family and the baseline are also
+    fit on the comparison substrate, repeated k-fold of at least 10 × K whose first repeats are the
+    split's own (``folds.comparison_folds``), and the comparisons, the baseline verdict and BBC-CV
+    (by whole unit) read it; the result is declared (``selection.declared_result``); calibration is
+    by level, or at a horizon, or said to be not assessed; and the nested cross-validation interval
+    runs when the split asks for it, and is offered where predictors outnumber rows.
     """
     from sklearn.base import clone
 
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import FitArtifact, HoldoutDetail
     from turbotab.core.models.base import reports_coefficients
-    from turbotab.core.models.baseline import compare, no_better_concern
+    from turbotab.core.models.artifacts import Comparison, NestedOffer
+    from turbotab.core.models.baseline import no_better_concern, versus_baseline
+    from turbotab.core.models.cost import duration
+    from turbotab.core.models.folds import comparison_folds
     from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
     from turbotab.core.models.inner_cv import fit_pipeline
-    from turbotab.core.models.metrics import (CV_DEFINITION, LABELS, PRIMARY, SE_DEFINITION,
-                                              classes_of, cross_validate, higher_is_better,
-                                              metric_labels, predict, repeated_pairs, score)
-    from turbotab.core.models.performance import calibration, score_intervals
+    from turbotab.core.models.metrics import (CV_DEFINITION, HEADLINE, HEADLINE_LABEL, LABELS,
+                                              SE_DEFINITION, classes_of, cross_validate,
+                                              higher_is_better, metric_labels, predict,
+                                              primary_metric, repeated_pairs, score, tension)
+    from turbotab.core.models.performance import NOT_ASSESSED, calibration, score_intervals
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
-    from turbotab.core.models.selection import OutOfFold, selection_optimism
+    from turbotab.core.models.selection import OutOfFold, declared_result, selection_optimism
     from turbotab.core.models.survival import follow_up_columns, time_to_event_outcome
-    from turbotab.core.models.validation import (family_differences, internal_external,
-                                                 not_applied, optimism_bootstrap)
+    from turbotab.core.models.validation import (COMPARISONS_NOTE, PER_ROW_LOSSES, calibration_by,
+                                                 family_differences, fired_chain, headline_how,
+                                                 internal_external, level_words, nested_cv_fits,
+                                                 nested_cv_interval, not_applied,
+                                                 optimism_bootstrap, performance_sentence,
+                                                 resample_concern, score_words, wide, wide_clause)
     from turbotab.core.seal import SEALED_DETAIL, SEALED_SCORES, sealed_detail_frame, sealed_scores_frame
 
     state = ctx.state
@@ -1159,6 +1345,10 @@ def fit_stage(ctx: StageContext) -> Bundle:
     follow_up = follow_up_columns(state) if task == "time_to_event" else []
     columns += [c for c in follow_up if c not in columns]
     inference = state.purpose == "inference"
+    # Imputed copies the data carries (NHANES DXA, audit I18): each copy is its own analysis.
+    implicate = imputed_copies_column(state)
+    if implicate is not None and implicate not in columns:
+        columns.append(implicate)
     keys = [k for k in (state.models or []) if k in pipelines]
     # A family that models the unit itself (a random intercept, a working correlation) is told
     # each row's unit through its model step's ``units`` parameter, under either purpose.
@@ -1222,7 +1412,17 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # Missing data by purpose (BLUEPRINT §12 ruling 4; audit §5 WP7): under inference, multiple
     # imputation with the outcome and energy for the coefficient table; a single fill or the
     # missing-indicator method held until recorded; complete cases with their assumption and cost.
-    missing = _missing_for_table(ctx, spec, X_tab, y_tab, task, keys) if inference else None
+    if inference and implicate is not None:
+        missing, copy_clusters = _copies_for_table(ctx, spec, frame.loc[table_rows], implicate,
+                                                    y_tab, unit_columns)
+    else:
+        from turbotab.core.readings import nesting
+
+        copy_clusters = None
+        nested = nesting(state, dict((design.objects or {}).get("nested") or {}), columns=spec.inputs) \
+            if inference else None
+        missing = (_missing_for_table(ctx, spec, X_tab, y_tab, task, keys, survey=survey,
+                                      clusters=clusters, nested=nested) if inference else None)
     # Audit IN-22: under inference the coefficient table says its dietary intakes are measured with
     # error and not corrected here (methods/dietary_caveats.py; Freedman et al. 2011).
     error_line = _measurement_error_line(ctx, spec) if inference else None
@@ -1247,17 +1447,49 @@ def fit_stage(ctx: StageContext) -> Bundle:
             with_units(model, resampled_units(unit_of, X_b.index))
         return fit_pipeline(model, X_b, y_b, groups=units_b)
 
-    primary = PRIMARY[task]
-    base = _baseline_cv(task, X, y, pairs, repeat_of)
+    # MS6 (MODELING_SEQUENCE ruling 4): the primary is a strictly proper score; AUC and C are the
+    # customary headline beside it. A time to event is scored and calibrated by a horizon.
+    horizon, horizon_note = (follow_up_horizon(state, y) if task == "time_to_event" else (None, None))
+    primary = primary_metric(task, y if task == "time_to_event" else None)
+    # MS6: under prediction the families and the baseline are compared, and the choice among them
+    # corrected, on repeated k-fold (≥ 10 × K) whatever validation supplies the headline; the
+    # split's own folds come first, so the headline's run is a subset of it (models/folds.py).
+    seed = int(split_data.get("seed") or 0)
+    k_folds = int(getattr(state.split, "folds", None) or split_data.get("folds") or 5)
+    strata = (None if task == "regression" else
+              np.asarray(y["event"]).astype(int) if task == "time_to_event" else y)
+    if not inference:
+        sub_columns, shared, sub_note = comparison_folds(
+            fold_columns, validation=validation, scheme=scheme, n=len(y), strata=strata,
+            groups=groups, folds=k_folds, seed=seed)
+    else:  # under inference the scores describe fit: not a comparison (MODELING_SEQUENCE §1 row 11)
+        sub_columns, shared, sub_note = fold_columns, len(fold_columns), None
+    sub_pairs, sub_repeat_of = repeated_pairs(sub_columns, scheme)
+    headline_repeats = list(range(len(fold_columns))) if shared else None
+    base_sub = _baseline_cv(task, X, y, sub_pairs, sub_repeat_of, horizon)
+    base = (base_sub.subset(headline_repeats) if headline_repeats is not None
+            else _baseline_cv(task, X, y, pairs, repeat_of, horizon))
     base_cv = base.summary(task)
+    base_sub_cv = base_sub.summary(task) if not inference else base_cv
     baseline = {"metric": primary, "value": base_cv[primary]["estimate"], "label": BASELINE_LABEL[task]}
+    # The verdict against the baseline is read on R² for regression: the baseline's R² is 0 in every
+    # fold, so a family's R² is its MSE gain as a share of the baseline's (the same comparison).
+    versus_metric = "r2" if task == "regression" else primary
     reference = float(np.mean(y.astype(float))) if task == "regression" and len(y) else None
     n_boot = int(split_data.get("n_boot") or 0) if validation == "bootstrap" else 0
-    units = max(1, len(keys) * (len(pairs) + 2 + n_boot))
+    own_pairs = 0 if headline_repeats is not None else len(pairs)
+    units = max(1, len(keys) * (len(sub_pairs) + own_pairs + 2 + n_boot))
     done = 0
     results: dict[str, Any] = {}
+    substrates: dict[str, Any] = {}
     summaries: dict[str, Any] = {}
     sealed_detail: dict[str, Any] = {}
+    nested_runs: dict[str, Any] = {}
+    n_features = len(spec.inputs)
+    narrow = wide_clause(n_features, len(y)) if wide(n_features, len(y)) else None
+    run_nested = bool(getattr(state.split, "nested_cv", False)) and not inference \
+        and primary in PER_ROW_LOSSES
+    unit_series = (pd.Series(groups, index=X.index) if groups is not None else None)
 
     def share(n: int) -> float:
         return 0.02 + 0.97 * n / units
@@ -1265,10 +1497,13 @@ def fit_stage(ctx: StageContext) -> Bundle:
     models: list[dict[str, Any]] = []
     fitted: dict[str, Any] = {}
     every_row: dict[str, Any] = {}  # under inference: each family refit on every analyzed row
+    imputed_fits: dict[str, Any] = {}  # under multiple imputation: each family's fit on each copy
+    imputed_tables: dict[str, Any] = {}  # … and each copy's coefficients and covariance
     sealed: dict[str, Any] = {}  # held-out scores: kept out of the public data (M2_CONTRACT §3)
     # Each family's out-of-fold predictions, for the selection's optimism (models/selection.py):
-    # one repeat's, so each scored row is predicted once (repeated k-fold scores every row again).
-    oof = OutOfFold(task, X, y, [p for p, r in zip(pairs, repeat_of) if r == 0])
+    # the substrate's first repeat, so each scored row is predicted once; resampled by unit.
+    oof = OutOfFold(task, X, y, [p for p, r in zip(sub_pairs, sub_repeat_of) if r == 0],
+                    units=groups, horizon=horizon)
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
@@ -1286,7 +1521,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                       baseline, started, rows="all" if all_rows else "training",
                                       survey=survey, survey_note=survey_note,
                                       missing=missing if all_rows else None))
-            done += len(pairs) + 2
+            done += len(sub_pairs) + own_pairs + 2
             continue
 
         def before_fold(i: int, n: int, _label: str = family.label) -> None:
@@ -1298,11 +1533,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = cross_validate(task, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
-                                    X, y, pairs,
-                                    fit=oof.wrap(key, fit) if len(keys) > 1 else fit,
-                                    before_fold=before_fold, repeat_of=repeat_of,
-                                    keep_predictions=True)
+            sub_result = cross_validate(task, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
+                                        X, y, sub_pairs,
+                                        fit=oof.wrap(key, fit) if len(keys) > 1 else fit,
+                                        before_fold=before_fold, repeat_of=sub_repeat_of,
+                                        keep_predictions=True, horizon=horizon)
+            result = (sub_result.subset(headline_repeats) if headline_repeats is not None else
+                      cross_validate(task, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
+                                     X, y, pairs, fit=fit, before_fold=before_fold,
+                                     repeat_of=repeat_of, keep_predictions=True, horizon=horizon))
             if ctx.cancelled():
                 raise Cancelled()
             ctx.progress(share(done), f"{family.label}: refitting on all training rows")
@@ -1311,16 +1550,22 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 final[-1].level_names_ = list(levels)
             done += 1
             # R² on the held-out rows is measured against the training rows' mean.
-            holdout = score(task, final, X_hold, y_hold, reference=reference) if len(y_hold) else None
+            holdout = (score(task, final, X_hold, y_hold, reference=reference, horizon=horizon)
+                       if len(y_hold) else None)
             if len(y_hold):  # sealed with the scores: an interval on each, and calibration
                 classes = classes_of(task, final)
-                held_pred = predict(task, final, X_hold)
+                held_pred = predict(task, final, X_hold, horizon=horizon)
+                held_levels, held_horizon, held_note = calibration_by(
+                    task, y_hold, held_pred, classes, levels, hold_groups, horizon,
+                    "on the held-out rows")
                 sealed_detail[key] = HoldoutDetail(
                     intervals=score_intervals(task, y_hold, held_pred, classes=classes,
                                               reference=reference, groups=hold_groups,
-                                              unit=grouped_by),
+                                              unit=grouped_by, horizon=horizon),
                     calibration=calibration(task, y_hold, held_pred, classes=classes,
                                             groups=hold_groups, where="on the held-out rows"),
+                    calibration_levels=held_levels, calibration_horizon=held_horizon,
+                    calibration_note=held_note,
                 ).model_dump(mode="json")
             optimism = None
             if n_boot and not getattr(family, "bootstrap_optimism", True):
@@ -1335,8 +1580,22 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
                 optimism = optimism_bootstrap(
                     task, lambda _k=key: clone(pipelines[_k]), refit_resample, X, y, n_boot=n_boot,
-                    seed=int(split_data.get("seed") or 0), groups=groups, unit=grouped_by,
-                    final=final, progress=boot_progress, cancelled=ctx.cancelled)
+                    seed=seed, groups=groups, unit=grouped_by, final=final, horizon=horizon,
+                    progress=boot_progress, cancelled=ctx.cancelled)
+            nested = None
+            if run_nested:
+                ctx.progress(share(done), f"{family.label}: nested cross-validation")
+
+                def nested_fit(model: Any, X_fit: Any, y_fit: Any) -> Any:
+                    units_fit = (None if unit_series is None
+                                 else unit_series.reindex(X_fit.index).to_numpy())
+                    return fit_pipeline(model, X_fit, y_fit, groups=units_fit)
+
+                nested = nested_cv_interval(
+                    task, primary, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
+                    nested_fit, X, y, folds=k_folds, seed=seed, groups=groups, horizon=horizon,
+                    cancelled=ctx.cancelled)
+                nested_runs[key] = nested
             ctx.progress(share(done), f"{family.label}: coefficients")
             concerns: list[str] = []
             interval_info = None
@@ -1370,13 +1629,26 @@ def fit_stage(ctx: StageContext) -> Bundle:
                     elif missing is not None and missing.imputations is not None and on_all:
                         ctx.progress(share(done), f"{family.label}: each of "
                                                   f"{missing.imputations.m} imputations")
+                        def fit_copy(model: Any, X_k: Any, y_k: Any = None) -> Any:
+                            if y_k is None:
+                                return _with_levels(fit_table(with_units(model, unit_of), X_k),
+                                                    levels)
+                            return _with_levels(fit_pipeline(model, X_k, y_k), levels)
+
+                        collected: dict[str, Any] = {}
                         table, pooled, form_tests, form_concerns = pooled_table(
                             family, pipelines[key], missing.imputations, y_c, task=task,
-                            clusters=clusters, outcome=outcome, survey=design_of, design=design,
-                            spec=spec, rows="all",
-                            fit=lambda model, X_k: _with_levels(
-                                fit_table(with_units(model, unit_of), X_k), levels),
-                            cancelled=ctx.cancelled)
+                            clusters=copy_clusters if copy_clusters is not None else clusters,
+                            outcome=outcome, survey=design_of, design=design,
+                            spec=spec, rows="all", fit=fit_copy, cancelled=ctx.cancelled,
+                            collect=collected)
+                        imputed_fits[key] = collected.get("fits") or []
+                        imputed_tables[key] = [
+                            {"names": [str(r["feature"]) for r in t.rows],
+                             "estimates": [r["estimate"] for r in t.rows],
+                             "cov": None if t.cov is None else np.asarray(t.cov, dtype=float),
+                             "df": next((r.get("df") for r in t.rows if r.get("df") is not None), None)}
+                            for t in collected.get("tables") or []]
                         concerns.extend(form_concerns)
                     else:
                         # Under the population answer the table is design-based, its domain every
@@ -1438,7 +1710,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                             task, clusters, outcome,
                                             survey.design if survey is not None else None)
             done += 1
-        concerns = _concerns(caught, len(pairs) + 1) + concerns
+        concerns = _concerns(caught, len(sub_pairs) + own_pairs + 1) + concerns
         if family.key == "linear":
             from turbotab.core.models.linear import collinearity_concern, model_matrix
 
@@ -1451,13 +1723,21 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 singular = None
             if singular and not any("singular" in c for c in concerns):
                 concerns.insert(0, singular)
-        summary = result.summary(task, groups=groups, unit=grouped_by)
-        cv, versus = compare(task, result, base, summary=summary)
-        estimate = cv[primary]["estimate"]
-        worse = baseline_concern(task, LABELS[primary], estimate, baseline["value"],
-                                 lower=not higher_is_better(primary))
-        tie = None if worse else no_better_concern(task, LABELS[primary], versus, estimate,
-                                                   baseline["value"], _two)
+        cv = result.summary(task, groups=groups, unit=grouped_by)
+        sub_cv = sub_result.summary(task, groups=groups, unit=grouped_by) if not inference else cv
+        # The verdict against the baseline, paired over every fold of the substrate (MS6): the
+        # corrected repeated k-fold t, 1/(rK) and rK − 1 df (models/baseline.py).
+        estimate = sub_cv[versus_metric]["estimate"]
+        base_value = base_sub_cv[versus_metric]["estimate"]
+        higher = higher_is_better(versus_metric)
+        gain = ((1.0 if higher else -1.0) * (estimate - base_value)
+                if estimate is not None and base_value is not None else None)
+        versus = versus_baseline(versus_metric, sub_result.folds_of(versus_metric),
+                                 base_sub.folds_of(versus_metric), gain=gain,
+                                 test_share=sub_result.test_share)
+        worse = baseline_concern(task, LABELS[versus_metric], estimate, base_value, lower=not higher)
+        tie = None if worse else no_better_concern(task, LABELS[versus_metric], versus, estimate,
+                                                   base_value, _two)
         if worse or tie:
             concerns.insert(0, worse or tie)
         rows_oof, y_oof, pred_oof = result.out_of_fold(0)
@@ -1466,17 +1746,34 @@ def fit_stage(ctx: StageContext) -> Bundle:
             groups=None if groups is None else groups[rows_oof]) if len(y_oof) else None
         if oof_calibration is not None and oof_calibration.concern:
             concerns.append(oof_calibration.concern)
+        cal_levels, cal_horizon, cal_note = (calibration_by(
+            task, y_oof, pred_oof, classes_of(task, final), levels,
+            None if groups is None else groups[rows_oof], horizon, "out of fold")
+            if len(y_oof) else (None, None, f"{NOT_ASSESSED}: no out-of-fold predictions."))
+        for item in cal_levels or []:
+            if item.calibration is not None and item.calibration.concern:
+                said = item.calibration.concern
+                concerns.append(f"{level_words(task, item.level)}: {said[0].lower()}{said[1:]}")
+        if cal_horizon is not None and cal_horizon.concern:
+            concerns.append(cal_horizon.concern)
+        if task in ("regression", "binary") and oof_calibration is None:
+            cal_note = f"{NOT_ASSESSED}: too few out-of-fold rows, or one class only."
         if optimism is not None and optimism.refused:
             concerns.append(optimism.refused)
+        if n_boot and getattr(family, "bootstrap_optimism", True) and resample_concern(n_boot):
+            concerns.append(resample_concern(n_boot))
+        if nested is not None and nested.refused:
+            concerns.append(nested.refused)
         iecv = None
         if validation == "internal_external" and split_data.get("cluster"):
             iecv = internal_external(task, result, list(split_data.get("fold_labels") or []),
-                                     str(split_data["cluster"]), groups=groups, unit=grouped_by)
+                                     str(split_data["cluster"]), groups=groups, unit=grouped_by,
+                                     metric=primary)
         if survey_note:
             concerns.append(survey_note)
         elif survey is not None and survey.answer == "population" and not survey.refusal:
             concerns.append(POPULATION_SCORES)
-        results[key], summaries[key] = result, cv
+        results[key], substrates[key], summaries[key] = result, sub_result, cv
         fitted[key] = final
         if inference and (same_rows or (on_all and table_fit is not None)):
             # Under inference every estimate reads the fit on every analyzed row (BLUEPRINT §12
@@ -1484,6 +1781,25 @@ def fit_stage(ctx: StageContext) -> Bundle:
             # family with no table is refit on them by the substitution stage, if a curve is asked.
             every_row[key] = table_fit if on_all and table_fit is not None else final
         sealed[key] = holdout
+        entry = cv.get(primary) or {}
+        if nested is not None and nested.estimate is not None:
+            performance = performance_sentence(
+                f"{LABELS[primary]}", nested.estimate, nested.ci_low, nested.ci_high,
+                how=f"nested cross-validation ({nested.reps} repetitions of {nested.folds} folds; "
+                    f"Bates, Hastie & Tibshirani 2023)")
+        else:
+            performance = performance_sentence(
+                f"Cross-validated {score_words(primary)}",
+                entry.get("estimate"), entry.get("ci_low"), entry.get("ci_high"),
+                how=headline_how(validation, scheme, k_folds, len(fold_columns),
+                                  split_data.get("cluster")),
+                narrow=narrow)
+        corrected = ((optimism.estimates.get(primary) if optimism is not None else None))
+        if corrected is not None and corrected.corrected is not None:
+            performance += " " + performance_sentence(
+                f"Optimism-corrected {score_words(primary)}",
+                corrected.corrected, None, None,
+                how=f"Harrell's bootstrap ({optimism.n_ok:,} resamples)")
         models.append({
             "family": key,
             "label": family.label,
@@ -1501,27 +1817,82 @@ def fit_stage(ctx: StageContext) -> Bundle:
             "optimism": optimism.model_dump(mode="json") if optimism is not None else None,
             "internal_external": iecv.model_dump(mode="json") if iecv is not None else None,
             "exposure_tests": form_tests,
+            "calibration_levels": ([c.model_dump(mode="json") for c in cal_levels]
+                                   if cal_levels is not None else None),
+            "calibration_horizon": cal_horizon.model_dump(mode="json") if cal_horizon else None,
+            "calibration_note": cal_note,
+            "compared_on": (sub_cv.get(primary) if not inference else None),
+            "performance": performance,
+            "nested_cv": nested.model_dump(mode="json") if nested is not None else None,
         })
-    # Picking the best of several families by cross-validation flatters it (audit ME-13).
+    # Picking the best of several families by cross-validation flatters it (audit ME-13); under
+    # prediction it is corrected on the substrate's out-of-fold predictions, by whole unit (MS6).
     if len(results) > 1:
         ctx.progress(0.995, "Choosing among the families: bootstrapping the out-of-fold predictions")
     labels = {m["family"]: m["label"] for m in models}
-    selection = selection_optimism(task, primary, results, oof, labels, LABELS[primary])
+    headline = HEADLINE.get(task)
+    extras = [m for m in (headline, "r2" if task == "regression" else None)
+              if m is not None and m != primary]
+    selection = selection_optimism(task, primary, substrates, oof, labels, score_words(primary),
+                                   extras=extras)
     ctx.progress(1.0, "Done")
     n_holdout = int((~train).sum())
-    comparisons = family_differences(task, results, summaries, labels) if len(results) > 1 else []
+    comparisons = (family_differences(task, substrates, summaries, labels, metric=primary)
+                   if len(results) > 1 else [])
     # The event's share beside the table: every analyzed row under inference (ruling 3), the
     # training rows the models learn from under prediction.
     imbalance = (imbalance_sentence(task, y_tab, state.event, "analyzed rows") if inference
                  else imbalance_sentence(task, y, state.event))
-    artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
+    predicting = [m["family"] for m in models if m.get("cv")]
+    result_declared = None
+    if not inference and predicting:
+        only = predicting[0] if len(predicting) == 1 else None
+        one = next((m for m in models if m["family"] == only), None) if only else None
+        result_declared = declared_result(
+            task, primary, n_holdout=n_holdout, families=predicting, labels=labels,
+            summaries=summaries, selection=selection,
+            optimism=(one or {}).get("optimism"),
+            narrow=None if (only and only in nested_runs and nested_runs[only].estimate is not None)
+            else narrow,
+            nested=(nested_runs[only].model_dump() if only in nested_runs else None) if only else None,
+            how_cv=headline_how(validation, scheme, k_folds, len(fold_columns),
+                                 split_data.get("cluster")))
+    comparison = (Comparison(folds=len(sub_pairs) // max(len(sub_columns), 1),
+                             repeats=len(sub_columns), shared=shared,
+                             method=("the corrected repeated k-fold t (Nadeau & Bengio 2003; "
+                                     "Bouckaert & Frank 2004)"), note=sub_note)
+                  if not inference else None)
+    offer = None
+    if narrow and not inference and not run_nested and primary in PER_ROW_LOSSES and predicting:
+        fits_each = nested_cv_fits(k_folds)
+        per_fit = [substrates[k].seconds / max(len(sub_pairs), 1) for k in predicting
+                   if k in substrates]
+        seconds = round(float(sum(per_fit)) * fits_each, 1) if per_fit else None
+        offer = NestedOffer(
+            label=(f"Run the nested cross-validation interval (Bates, Hastie & Tibshirani 2023): "
+                   f"{fits_each:,} refits of each family"),
+            fits=fits_each, seconds=seconds,
+            estimate=duration(seconds) if seconds is not None else "not measured",
+            decision={"kind": "set_split", **state.split.model_dump(mode="json"), "nested_cv": True})
+    chain = fired_chain(task, primary, inference=inference, grouped_by=grouped_by,
+                   families=predicting, n_holdout=n_holdout, comparison=comparison,
+                   selection=selection, result=result_declared, n_boot=n_boot,
+                   horizon_note=horizon_note, notes=[m.get("calibration_note") for m in models],
+                   narrow=narrow, nested=bool(nested_runs))
+    artifact = FitArtifact(task=task, primary_metric=primary, metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,
                            cv_definition=CV_DEFINITION[task], validation=validation,
                            repeats=len(fold_columns), ranking=ranking_phrase(primary),
                            se_definition=SE_DEFINITION, comparisons=comparisons,
                            precision=precision_sentence(primary, summaries, labels, int(train.sum())),
-                           imbalance=imbalance, selection=selection, levels=levels)
+                           imbalance=imbalance, selection=selection, levels=levels,
+                           headline_metric=headline,
+                           headline_label=HEADLINE_LABEL if headline else None,
+                           tension=tension(task, primary), comparison=comparison,
+                           comparisons_note=COMPARISONS_NOTE if comparisons else None,
+                           result=result_declared, horizon=horizon, horizon_note=horizon_note,
+                           wide=narrow, nested_offer=offer, chain=chain)
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     if n_holdout and sealed_detail:
         frames[SEALED_DETAIL] = sealed_detail_frame(sealed_detail)
@@ -1533,8 +1904,16 @@ def fit_stage(ctx: StageContext) -> Bundle:
                            # MS4: the design the population answer binds every display to.
                            "survey_design": (survey.design if survey is not None
                                              and survey.answer == "population"
-                                             and not survey.refusal else None)})
-
+                                             and not survey.refusal else None),
+                           # MS3: every estimate under multiple imputation is pooled, the
+                           # substitution curve included: the copies and each family's fit on each.
+                           "imputations": ({"frames": missing.imputations.frames,
+                                            "outcomes": missing.imputations.outcomes,
+                                            "plan": dict(missing.imputations.plan or {}),
+                                            "fits": imputed_fits, "tables": imputed_tables}
+                                           if inference and missing is not None
+                                           and missing.imputations is not None and imputed_fits
+                                           else None)})
 
 def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
                  final: Any, X: Any, y: Any, task: str, clusters: Any,
@@ -1760,6 +2139,11 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     every_ids = objects.get("every_row_ids")
     on_every_row = ctx.state.purpose == "inference" and every_ids is not None
     trained = objects["fitted"]
+    # MS3: under multiple imputation the curve is pooled over the copies, never drawn on one fill.
+    imputed = objects.get("imputations") if on_every_row else None
+    pooled_entries: list[dict[str, Any]] = []
+    # Under the population answer as well (MS2-MS4): each copy's design-based band, per family.
+    pooled_design: list[tuple[str, dict[str, Any]]] = []
     if on_every_row:
         all_train = np.asarray(every_ids, dtype=np.int64)
         fitted = dict(objects.get("every_row") or {})  # a copy: the fit's objects stay as cached
@@ -1833,6 +2217,35 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         ctx.progress(start, f"{family.label}: moving energy")
         if task in undrawn:
             skipped.append(family.label)
+            continue
+        if imputed is not None and (imputed.get("fits") or {}).get(key):
+            ctx.progress(start, f"{family.label}: each copy's curve")
+
+            def copy_progress(done: int, total: int, _lo: float = start, _w: float = slot,
+                              _label: str = family.label) -> None:
+                ctx.progress(_lo + _w * done / max(total, 1), f"{_label}: copy {done} of {total}")
+
+            started = time.perf_counter()
+            entry, info = _pooled_curve(
+                key, family, task, imputed, train_ids, state=ctx.state, sub=sub, ks=ks,
+                kcal_per_unit=kcal_per_unit, nested=nested, total_energy=total_energy, scale=scale,
+                percent=percent, outcome_unit=outcome_unit, n_boot=n_boot, pipeline=pipelines[key],
+                y_fit=y_fit, group_of=group_of, interval_rows=BAND_ROWS, progress=copy_progress,
+                survey_design=survey_design, models=keys)
+            band_seconds += time.perf_counter() - started
+            first_curve = info["curves"][0]
+            note = note or first_curve["note"]
+            if support is None:
+                fixed = first_curve["fixed_population"]
+                support = {"total": first_curve["total"], "n_rows": first_curve["n_rows"],
+                           "not_recorded": first_curve["n_not_recorded"],
+                           "off_amount": first_curve["n_off_amount"],
+                           "off_share": first_curve["n_off_share"], "fixed_rows": fixed["n_rows"],
+                           "fixed_through": fixed["through"]}
+            pooled_entries.append(entry)
+            models.append(entry)
+            if info.get("design") is not None:
+                pooled_design.append((family.label, info["design"]))
             continue
         if survey_design is not None:
             # MS4: the curve over the surveyed population, design-based or blocked and recorded.
@@ -1960,7 +2373,13 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             # The user's unit, and the kcal per unit it sets (the sixth gate: no record said what a
             # unit of alcohol moved).
             notes.append(f"{c} moves at {reading.factor:g} kcal per unit, {reading.why}.")
-    if spec.multiple_imputation() and X_fit.isna().any().any():
+    if pooled_entries:
+        notes.append(_pooled_note(len(imputed.get("frames") or []), pooled_entries, n_boot,
+                                  imputed.get("outcomes") is not None, design=bool(pooled_design)))
+        if any(e.get("pooled") == "per_k" for e in pooled_entries):
+            notes.append("Support counts are the first copy's; the share of rows on support at each "
+                         "k is the mean over the copies.")
+    elif spec.multiple_imputation() and X_fit.isna().any().any():
         # WP7: the coefficient table pools the multiple imputations; the curve does not.
         which = ("the fit on every analyzed row, whose blanks are filled once without the outcome"
                  if on_every_row else "the training fit, whose blanks are filled once in each "
@@ -1975,14 +2394,18 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                      "yet; the Cox coefficients are log hazard ratios per unit of each column.")
     band = None
     if survey_design is not None:
-        from turbotab.core.models.survey import curve_caption
+        from turbotab.core.models.survey import curve_caption, pooled_design_caption
 
         for entry in models:
             if entry.get("refused"):
                 notes.append(f"{entry['label']}: no curve. {entry['refused']}")
-        if bands:
-            first = bands[0][1]
-            caption = curve_caption(survey_design, first["variance"], len(X))
+        design_bands = bands or pooled_design
+        if design_bands:
+            first = design_bands[0][1]
+            caption = (curve_caption(survey_design, first["variance"], len(X)) if bands else
+                       pooled_design_caption(survey_design, first["variance"], len(X),
+                                             len(imputed.get("frames") or []),
+                                             imputed.get("outcomes") is not None))
             notes.append(caption.replace("Shaded bands: ", "The shaded bands are ", 1))
             if n_boot:
                 notes.append(f"The {n_boot:,} bootstrap refits asked for are not drawn: resampling "
@@ -1993,6 +2416,12 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                     "resample_units": None, "scale": None, "interval": None, "level": 0.95,
                     "min_ok_share": None, "caption": caption, "method": "design",
                     "df": int(first["df"])}
+    elif n_boot and pooled_entries and not bands:
+        caption = _pooled_note(len(imputed.get("frames") or []), pooled_entries, n_boot,
+                               imputed.get("outcomes") is not None)
+        band = {"n_boot": n_boot, "n_rows": int(len(X_fit)), "grouped_by": grouped_by,
+                "seconds": round(band_seconds, 3), "failed": 0, "interval": "normal",
+                "level": 0.95, "min_ok_share": MIN_REFIT_SHARE, "caption": caption}
     elif n_boot and bands:
         first = bands[0][1]
         caption = _band_caption(n_boot, interval, first, len(X_fit), grouped_by, bands,
@@ -2044,6 +2473,285 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     )
     ctx.progress(1.0, "Done")
     return artifact.model_dump(mode="json")
+
+
+def contrast_per_kcal(fitted: Any, shift: Any, X: pd.DataFrame, k: float) -> pd.Series | None:
+    """The change in the model matrix per kcal moved, when it is the same on every row the move is
+    on support for (an all-components model: each source's kcal is its own term), else None: then
+    the curve is no exact linear contrast of the coefficients."""
+    from turbotab.core.models.linear import model_matrix
+
+    rows = X.iloc[np.flatnonzero(shift.valid(X))]
+    if not len(rows) or k <= 0:
+        return None
+    moved, mask = shift.apply(rows, float(k))
+    on = np.flatnonzero(mask)
+    if not len(on):
+        return None
+    base = model_matrix(fitted, rows.iloc[on]).astype(float)
+    after = model_matrix(fitted, moved.iloc[on]).astype(float)
+    diff = (after.to_numpy() - base.to_numpy()) / float(k)
+    scale = max(1.0, float(np.nanmax(np.abs(diff)))) if diff.size else 1.0
+    if not np.all(np.isfinite(diff)) or float(np.max(np.abs(diff - diff[0]))) > 1e-9 * scale:
+        return None
+    return pd.Series(diff[0], index=[str(c) for c in base.columns])
+
+
+def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], train_ids: Any,
+                  *, state: Any, sub: Any, ks: Sequence[float], kcal_per_unit: Mapping[str, float],
+                  nested: Mapping[str, str], total_energy: str | None, scale: str,
+                  percent: Sequence[str], outcome_unit: str | None, n_boot: int,
+                  pipeline: Any, y_fit: Any, group_of: Any, interval_rows: int,
+                  progress: Any = None, survey_design: Any = None,
+                  models: Sequence[str] = ()) -> tuple[dict[str, Any], dict[str, Any]]:
+    """MS3 (MODELING_SEQUENCE §2: "multiple imputation implies pooling of every estimate shown
+    under inference, including substitution curves"): ``key``'s curve pooled over the copies.
+
+    Each copy's curve averages over that copy's own rows (the curve's rows: ``train_ids``, or every
+    row of a copy the data supplied) through that copy's own fit. When the move changes the model
+    matrix by the same amount on every row (a linear all-components model), the pooled curve is the
+    exact linear contrast of the pooled coefficients, Δ(k) = k cᵀQ̄, with Rubin's total variance
+    k² cᵀTc and Barnard–Rubin degrees of freedom (``pooled = "contrast"``). Otherwise each copy's
+    curve is pooled at each k: Q̄(k) the mean, and with a band (``n_boot``) each copy's bootstrap
+    variance its within-copy variance (Schomaker & Heumann 2018's MI-then-bootstrap with Rubin's
+    rules; the ``n_boot`` refits split over the copies), on Barnard–Rubin's ν (``pooled =
+    "per_k"``). Returns (the model entry, what the band record needs).
+
+    Under the population answer (``survey_design``; MS4 with MS2) each copy's curve is the surveyed
+    population's (:func:`~turbotab.core.models.survey.population_curve`: the survey-weighted refit,
+    averaged over every row of the copy in the design's domain with its weight), and each copy's
+    within-copy variance is that curve's design-based (Taylor-linearized) variance, pooled by
+    Rubin's rules with ν_com = the design df; a bootstrap that ignores the strata and PSUs is not
+    run. The linear all-components contrast pools the copies' design-based tables the same way."""
+    from statistics import NormalDist
+
+    from sklearn.base import clone
+
+    from turbotab.core.methods.imputation import pool_scalar
+    from turbotab.core.methods.substitution import (PER_UNIT, _amount, _plain, _signed, refit_band,
+                                                    substitution_curve)
+
+    frames = list(imputed["frames"])
+    fits = list((imputed.get("fits") or {}).get(key) or [])
+    tables = list((imputed.get("tables") or {}).get(key) or [])
+    outcomes = imputed.get("outcomes")
+    m = len(fits)
+    curve_ids = set(int(i) for i in np.asarray(train_ids))
+    curves, shifts, rows_of = [], [], []
+    design_bands: list[dict[str, Any]] = []  # under the population answer: each copy's
+    for k_copy, (X_all, fitted) in enumerate(zip(frames, fits)):
+        if survey_design is not None:
+            from turbotab.core.models.survey import domain_of, population_curve
+
+            # Every row of the copy in the design's domain, none sampled away (as the single fit's
+            # population curve reads them).
+            domain = domain_of(X_all.index, survey_design)
+            rows = list(np.flatnonzero(domain.keep))
+            X_k = X_all.iloc[rows]
+            y_all = np.asarray(outcomes[k_copy]) if outcomes is not None else np.asarray(y_fit)
+            shift = shift_for(state, X_k, donor=sub.donor, recipient=sub.recipient,
+                              kcal_per_unit=kcal_per_unit, design_nested=nested,
+                              total=total_energy, scale=scale, percent=percent)
+            drawn = population_curve(family, task, fitted, X_k, y_all[rows], survey_design, domain,
+                                     models=models, donor=sub.donor, recipient=sub.recipient,
+                                     kcal_per_unit=kcal_per_unit, ks=ks, total_kind="variable",
+                                     nested=nested, total=total_energy, scale=scale, shift=shift)
+            if drawn.band is None:  # blocked and recorded, as the single fit's curve would be
+                curve = drawn.curve
+                return ({"family": key, "label": family.label, "delta": [None] * len(ks),
+                         "ci_low": None, "ci_high": None,
+                         "on_support_fraction": curve["on_support_fraction"],
+                         "stopped_at": curve["stopped_at"], "effect_label": None,
+                         "fixed_delta": [None] * len(ks), "fixed_ci_low": None,
+                         "fixed_ci_high": None, "band_ok": None, "refused": drawn.refused,
+                         "exits": drawn.exits},
+                        {"curves": [curve], "m": m})
+            curves.append(drawn.curve)
+            design_bands.append(drawn.band)
+            shifts.append(shift)
+            rows_of.append(rows)
+            continue
+        rows = [i for i, rid in enumerate(X_all.index) if int(rid) in curve_ids]
+        if outcomes is not None or not rows:  # a supplied copy: its own rows
+            rows = list(range(min(len(X_all), SUBSTITUTION_ROWS)))
+        X_k = X_all.iloc[rows]
+        shift = shift_for(state, X_k, donor=sub.donor, recipient=sub.recipient,
+                          kcal_per_unit=kcal_per_unit, design_nested=nested, total=total_energy,
+                          scale=scale, percent=percent)
+        curves.append(substitution_curve(_predictor(task, fitted), X_k, donor=sub.donor,
+                                         recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
+                                         ks=ks, total_kind="variable", nested=nested,
+                                         total=total_energy, scale=scale, shift=shift))
+        shifts.append(shift)
+        rows_of.append(rows)
+    n_k = len(curves[0]["ks"])
+    live = [all(c["delta"][i] is not None for c in curves) for i in range(n_k)]
+    stops = [c["stopped_at"] for c in curves if c["stopped_at"] is not None]
+    level = 0.95
+    z = NormalDist().inv_cdf(0.5 + level / 2)
+    delta: list[float | None] = [None] * n_k
+    low: list[float | None] = [None] * n_k
+    high: list[float | None] = [None] * n_k
+    dfs: list[float | None] = [None] * n_k
+    fixed = [float(np.mean([c["fixed_population"]["delta"][i] for c in curves]))
+             if live[i] and all(c["fixed_population"]["delta"][i] is not None for c in curves) else None
+             for i in range(n_k)]
+    fixed_low: list[float | None] = [None] * n_k
+    fixed_high: list[float | None] = [None] * n_k
+    how = "per_k"
+    band_info: dict[str, Any] = {}
+    contrast = None
+    # The prediction is the linear predictor itself only for a linear outcome model.
+    if family.key == "linear" and task == "regression" and tables and len(tables) == m \
+            and scale == "kcal":
+        step = next((float(k) for k in curves[0]["ks"] if float(k) > 0), None)
+        found = [contrast_per_kcal(f, s, frames[j].iloc[rows_of[j]], step) if step else None
+                 for j, (f, s) in enumerate(zip(fits, shifts))]
+        if all(c is not None for c in found) and all(c.equals(found[0]) or
+                                                     np.allclose(c.to_numpy(), found[0].to_numpy(),
+                                                                 rtol=1e-9, atol=1e-12)
+                                                     for c in found):
+            contrast = found[0]
+    if contrast is not None:
+        Q, U, df_rows = [], [], []
+        for t in tables:
+            names = list(t["names"])
+            c = np.array([float(contrast.get(n, 0.0)) for n in names])
+            est = np.asarray(t["estimates"], dtype=float)
+            cov = np.asarray(t["cov"], dtype=float)
+            Q.append(float(c @ est))
+            U.append(float(c @ cov @ c))
+            df_rows.append(t.get("df"))
+        df_com = None if any(d is None for d in df_rows) else float(np.mean(df_rows))
+        pooled = pool_scalar(Q, U, df_com, level)
+        how = "contrast"
+        half_per = (pooled.ci_high - pooled.estimate) if pooled.ci_high is not None else None
+        for i, k in enumerate(curves[0]["ks"]):
+            if not live[i]:
+                continue
+            delta[i] = pooled.estimate * float(k)
+            if half_per is not None:
+                low[i] = delta[i] - half_per * float(k)
+                high[i] = delta[i] + half_per * float(k)
+                dfs[i] = pooled.df
+        band_info = {"contrast": {n: float(v) for n, v in contrast.items() if v != 0.0},
+                     "per_kcal": pooled.estimate, "se_per_kcal": math.sqrt(pooled.total)
+                     if pooled.total > 0 else None, "df": pooled.df}
+    else:
+        within = None
+        df_within: float | None = None
+        if design_bands:
+            from scipy import stats
+
+            # Each copy's design-based variance at each k (the fixed population's from its
+            # interval on the design's t), on the design's df as the complete-data df.
+            within = np.full((m, n_k), np.nan)
+            fixed_within = np.full((m, n_k), np.nan)
+            for j, b in enumerate(design_bands):
+                q_j = float(stats.t.ppf(0.5 + level / 2, b["df"]))
+                for i in range(n_k):
+                    if b["se"][i] is not None:
+                        within[j, i] = float(b["se"][i]) ** 2
+                    if b["fixed_ci_low"][i] is not None:
+                        fixed_within[j, i] = ((b["fixed_ci_high"][i] - b["fixed_ci_low"][i])
+                                              / (2 * q_j)) ** 2
+            df_within = float(min(b["df"] for b in design_bands))
+            band_info = {"design": design_bands[0]}
+        elif n_boot:
+            per_copy = max(10, math.ceil(n_boot / max(m, 1)))
+            within = np.full((m, n_k), np.nan)
+            fixed_within = np.full((m, n_k), np.nan)
+            n_ok = 0
+            for j, (X_all, fitted) in enumerate(zip(frames, fits)):
+                y_j = np.asarray(outcomes[j]) if outcomes is not None else y_fit
+
+                def refit(Xb: pd.DataFrame, yb: Any, _full: Any = fitted) -> Any:
+                    from turbotab.core.models.inner_cv import fit_pipeline
+
+                    inner = (group_of.reindex(Xb.index).to_numpy() if group_of is not None
+                             and outcomes is None else Xb.index.to_numpy())
+                    pipe = pinned_to_full_fit(clone(pipeline), _full)
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        return _predictor(task, fit_pipeline(pipe, Xb, yb, groups=inner))
+
+                band = refit_band(refit, X_all, y_j, shift=shifts[j], ks=ks, live=live,
+                                  n_boot=per_copy, random_state=j, center=curves[j]["delta"],
+                                  fixed_center=curves[j]["fixed_population"]["delta"],
+                                  curve_rows=rows_of[j], max_rows=interval_rows, interval="normal",
+                                  groups=(group_of.reindex(X_all.index).to_numpy()
+                                          if group_of is not None and outcomes is None else None))
+                n_ok += band["n_ok"]
+                for i in range(n_k):
+                    if band["ci_low"][i] is not None:
+                        within[j, i] = ((band["ci_high"][i] - band["ci_low"][i]) / (2 * z)) ** 2
+                    if band["fixed_ci_low"][i] is not None:
+                        fixed_within[j, i] = ((band["fixed_ci_high"][i] - band["fixed_ci_low"][i])
+                                              / (2 * z)) ** 2
+                if progress is not None:
+                    progress(j + 1, m)
+            band_info = {"per_copy": per_copy, "n_ok": n_ok}
+        for i in range(n_k):
+            if not live[i]:
+                continue
+            q = [float(c["delta"][i]) for c in curves]
+            if within is not None and np.all(np.isfinite(within[:, i])):
+                pooled = pool_scalar(q, list(within[:, i]), df_within, level)
+                delta[i], low[i], high[i], dfs[i] = (pooled.estimate, pooled.ci_low, pooled.ci_high,
+                                                     pooled.df)
+                fq = [c["fixed_population"]["delta"][i] for c in curves]
+                if all(v is not None for v in fq) and np.all(np.isfinite(fixed_within[:, i])):
+                    fp = pool_scalar([float(v) for v in fq], list(fixed_within[:, i]), df_within,
+                                     level)
+                    fixed_low[i], fixed_high[i] = fp.ci_low, fp.ci_high
+            else:
+                delta[i] = float(np.mean(q))
+    per = PER_UNIT[scale]
+    chosen = curves[0]["label_k"]
+    ks_out = [float(k) for k in curves[0]["ks"]]
+    label = None
+    if chosen is not None and chosen in ks_out and delta[ks_out.index(chosen)] is not None:
+        value = delta[ks_out.index(chosen)]
+        label = f"{_signed(value * per / chosen)} per {_amount(per, scale)} at k = {_plain(chosen)}"
+    banded = bool(n_boot) or how == "contrast" or bool(design_bands)
+    fixed_banded = bool(n_boot) or bool(design_bands)
+    if design_bands and how == "contrast":
+        band_info["design"] = design_bands[0]
+    entry = {
+        "family": key, "label": family.label, "delta": delta, "ci_low": low if banded else None,
+        "ci_high": high if banded else None,
+        "on_support_fraction": [float(np.mean([c["on_support_fraction"][i] for c in curves]))
+                                for i in range(n_k)],
+        "stopped_at": min(stops) if stops else None,
+        "effect_label": _in_outcome_unit(label, outcome_unit),
+        "fixed_delta": fixed, "fixed_ci_low": fixed_low if fixed_banded else None,
+        "fixed_ci_high": fixed_high if fixed_banded else None, "band_ok": band_info.get("n_ok"),
+        "pooled": how, "df": dfs,
+    }
+    return entry, {"curves": curves, "m": m, **band_info}
+
+
+def _pooled_note(m: int, entries: Sequence[Mapping[str, Any]], n_boot: int, supplied: bool,
+                 design: bool = False) -> str:
+    """The substitution note's sentence on how the curves were pooled over the copies (MS3); with
+    ``design``, each copy's curve and variance are the surveyed population's (MS4)."""
+    what = f"the data's {m} imputed copies" if supplied else f"the {m} imputations"
+    parts = []
+    if any(e.get("pooled") == "contrast" for e in entries):
+        parts.append("for the linear all-components model the curve is the exact contrast of the "
+                     "pooled coefficients, with Rubin's total variance and Barnard–Rubin degrees of "
+                     "freedom")
+    if any(e.get("pooled") == "per_k" for e in entries):
+        how = ("each copy's survey-weighted curve over the surveyed population, pooled at each k by "
+               "Rubin's rules with each copy's Taylor-linearized variance as its within-copy "
+               "variance and the design's degrees of freedom as the complete-data df" if design else
+               "each copy's curve, pooled at each k by Rubin's rules with each copy's bootstrap "
+               f"variance as its within-copy variance ({n_boot:,} refits split over the copies; "
+               "Schomaker & Heumann 2018)" if n_boot else
+               "the mean at each k of each copy's curve, with no band until one is asked for")
+        parts.append(f"otherwise {how}" if parts else how)
+    joined = "; ".join(parts)
+    return f"The curve is pooled over {what}: {joined}."
 
 
 def pinned_to_full_fit(pipeline: Any, full: Any) -> Any:

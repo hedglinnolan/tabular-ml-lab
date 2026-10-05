@@ -429,9 +429,10 @@ def _fitted_project(client, models: list[str]) -> str:
 
     # The readings the fit asks about, from dietary_recalls.csv's truth (BLUEPRINT §14.3).
     assert answer_settled(client, pid, None, models_decision).status_code == 200
-    wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+    # MS6: under prediction every family is also fit on the comparisons' 10 × 5 folds.
+    wait_for(client, pid, {"fit": "fresh"}, timeout=900)
     prepare(client, pid, {"kind": "open_seal"})  # the questions after the models, as usual
-    wait_for(client, pid, {"fit": "fresh"}, timeout=240)
+    wait_for(client, pid, {"fit": "fresh"}, timeout=900)
     return pid
 
 
@@ -466,13 +467,17 @@ def test_3a_opening_the_seal_needs_a_declared_final_family_whose_holdout_is_the_
     assert fit["holdout_sealed"] is True and fit["n_holdout"] > 0
     assert fit["final_model"] is None and all(m["role"] is None for m in fit["models"])
     metric = fit["primary_metric"]
-    cv = {m["family"]: m["cv"][metric]["estimate"] for m in fit["models"]}
+    # MS6: the families are compared, and the best named, on the comparison substrate (every
+    # repeat of the repeated k-fold), on a strictly proper score (the MSE: lower is better).
+    cv = {m["family"]: m["compared_on"]["estimate"] for m in fit["models"]}
+    lower = metric in ("mse", "log_loss", "rps", "brier_t")
 
     undeclared = _post(client, pid, {"kind": "open_seal"})
     assert undeclared.status_code == 409, undeclared.text
     error = undeclared.json()["error"]
     assert error["code"] == "final_model_needed"
-    assert [e["decision"]["family"] for e in error["exits"]] == sorted(cv, key=cv.get, reverse=True)
+    assert [e["decision"]["family"] for e in error["exits"]] == sorted(cv, key=cv.get,
+                                                                         reverse=not lower)
     # The cost of choosing on cross-validation is stated with the choice (test 3b checks its size).
     selection = fit["selection"]
     assert selection["best"] == error["exits"][0]["decision"]["family"]
@@ -593,13 +598,16 @@ def test_3c_the_fit_states_the_optimism_only_when_there_was_a_choice(simulated):
     _, fit = fit_linear(frame, paths, target="glucose", task="regression", roles=SIM_ROLES,
                         purpose="prediction", models=FAMILIES)
     selection = fit.data["selection"]
-    cv = {m["family"]: m["cv"]["r2"]["estimate"] for m in fit.data["models"]}
-    assert selection["best"] == max(cv, key=cv.get) and selection["cv"] == max(cv.values())
-    assert selection["metric"] == "r2" and selection["replicates"] >= 500
+    # MS6: chosen on the strictly proper primary (the MSE, better when lower) over the
+    # comparison substrate; R² is corrected for the same choice beside it.
+    cv = {m["family"]: m["compared_on"]["estimate"] for m in fit.data["models"]}
+    assert selection["best"] == min(cv, key=cv.get) and selection["cv"] == min(cv.values())
+    assert selection["metric"] == "mse" and selection["replicates"] >= 500
     assert selection["corrected_low"] <= selection["corrected"] <= selection["corrected_high"]
-    assert selection["optimism"] == pytest.approx(selection["cv"] - selection["corrected"], abs=1e-12)
+    assert selection["optimism"] == pytest.approx(selection["corrected"] - selection["cv"], abs=1e-12)
     assert sum(selection["wins"].values()) == selection["replicates"]
-    assert selection["text"].startswith("Choosing the best of 3 families by cross-validated R²")
+    assert selection["extras"]["r2"]["corrected"] is not None
+    assert selection["text"].startswith("Choosing the best of 3 families by cross-validated MSE")
     _, single = fit_linear(frame, paths, target="glucose", task="regression", roles=SIM_ROLES,
                            purpose="prediction")
     assert single.data["selection"] is None

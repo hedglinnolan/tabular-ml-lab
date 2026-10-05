@@ -169,9 +169,10 @@ def _run(st, paths, split, task, target):
 
 
 @pytest.mark.parametrize("task,target,dummy,scoring,metric", [
-    ("regression", "glucose", DummyRegressor(strategy="mean"), "r2", "r2"),
-    ("binary", "glucose_high", DummyClassifier(strategy="prior"), "roc_auc", "auc"),
-    # Log loss, a proper scoring rule, is the multiclass primary (audit ME-10, WP9).
+    # MS6 (MODELING_SEQUENCE ruling 4): every primary is strictly proper, the MSE for a quantity
+    # and log loss for classes (audit ME-10 made it so for multiclass first).
+    ("regression", "glucose", DummyRegressor(strategy="mean"), "neg_mean_squared_error", "mse"),
+    ("binary", "glucose_high", DummyClassifier(strategy="prior"), "neg_log_loss", "log_loss"),
     ("multiclass", "glucose_band", DummyClassifier(strategy="prior"), "neg_log_loss", "log_loss"),
 ])
 def test_the_baseline_is_a_dummy_model_cross_validated_on_the_same_folds(table, task, target, dummy,
@@ -191,13 +192,12 @@ def test_the_baseline_is_a_dummy_model_cross_validated_on_the_same_folds(table, 
     if scoring.startswith("neg_"):
         expected = -expected  # scikit-learn negates a loss so that higher is better
     if task == "regression":
-        # R² is pooled over every out-of-fold prediction, against each fold's training mean: the
-        # training mean's own pooled R² is exactly 0.
-        sse = sst = 0.0
-        for est, tr, te in zip(result["estimator"], result["indices"]["train"], result["indices"]["test"]):
+        # The MSE is pooled over every out-of-fold prediction (its squared errors summed over
+        # every scored row, then divided by their number).
+        sse = 0.0
+        for est, te in zip(result["estimator"], result["indices"]["test"]):
             sse += ((y[te] - est.predict(X[te])) ** 2).sum()
-            sst += ((y[te] - y[tr].mean()) ** 2).sum()
-        expected = 1 - sse / sst
+        expected = sse / len(y)
     baseline = fit.data["models"][0]["baseline"]
     assert baseline["metric"] == metric
     assert baseline["value"] == pytest.approx(expected, abs=1e-12)

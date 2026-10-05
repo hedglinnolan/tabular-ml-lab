@@ -144,8 +144,11 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     out: list[dict[str, Any]] = []
     total = max(1, len(families) * len(analyses))
     done = 0
+    # MS2: each analysis's imputation model holds the survey design and the clustering, as the
+    # primary's does.
     missing_by = {label: _missing_for_table(ctx, s, frame[list(s.inputs)], y, task, keys,
-                                            loss={"n_dropped": None})
+                                            loss={"n_dropped": None}, survey=survey,
+                                            clusters=every_unit)
                   for label, s, _ in analyses}
     for family in families:
         fits = []

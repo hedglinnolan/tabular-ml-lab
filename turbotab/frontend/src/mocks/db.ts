@@ -753,6 +753,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
         censored_columns: d.censored_columns ?? [],
         acknowledged: d.acknowledged ?? false,
         reason: d.reason ?? null,
+        imputation_model: d.imputation_model ?? "compatible",
+        imputation_levels: d.imputation_levels ?? "clustered",
       };
     case "set_split":
       return {
@@ -761,8 +763,9 @@ function valueOf(d: Decision): ProjectState[Slot] {
         folds: d.folds ?? 5,
         validation: d.validation ?? "kfold",
         repeats: d.repeats ?? 10,
-        n_boot: d.n_boot ?? 200,
+        n_boot: d.n_boot ?? 500,
         cluster: d.cluster ?? null,
+        nested_cv: d.nested_cv ?? false,
       };
     case "select_models":
       return d.models;
@@ -815,7 +818,8 @@ function valueOf(d: Decision): ProjectState[Slot] {
       return d.scales as ProjectState[Slot];
     case "set_follow_up":
       return { time_column: d.time_column, entry_column: d.entry_column ?? null,
-               landmark: d.landmark ?? null, horizon: d.horizon ?? null };
+               landmark: d.landmark ?? null, horizon: d.horizon ?? null,
+               prediction_horizon: d.prediction_horizon ?? null };
     case "set_censoring":
       return d.acknowledged ? "same_attested" : "same";
     case "set_clusters":

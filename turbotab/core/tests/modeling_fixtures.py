@@ -101,6 +101,22 @@ def split_bundle(row_ids: Any, *, holdout: float = 0.2, folds: int = 5, seed: in
     )
 
 
+def comparison_train_sets(split: Bundle, *, folds: int = 5, strata: Any = None,
+                          groups: Any = None) -> set[frozenset]:
+    """The training rows of every fold of the comparison substrate the fit stage draws for this
+    split under prediction (MS6, ``models/folds.comparison_folds``): the split's own folds first,
+    then the draws that make 10 repeats. Each set holds training rows only."""
+    from turbotab.core.models.folds import comparison_folds
+
+    a = split.frames["assignment"]
+    train = a[a["partition"] == "train"]
+    ids, own = train["row_id"].to_numpy(), train["fold"].to_numpy()
+    columns, _, _ = comparison_folds([own], validation="kfold", scheme="random", n=len(ids),
+                                     strata=strata, groups=groups, folds=folds,
+                                     seed=int(split.data["seed"]))
+    return {frozenset(ids[c != k].tolist()) for c in columns for k in np.unique(c)}
+
+
 def cohort_bundle(row_ids: Any, predictors: list[str]) -> Bundle:
     ids = np.asarray(row_ids, dtype=np.int64)
     return Bundle(data={"steps": [], "n_final": int(len(ids)), "predictors": predictors},

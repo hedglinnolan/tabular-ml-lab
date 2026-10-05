@@ -581,9 +581,10 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     * regression calibration: blocked, as it has no design-based variance here.
 
     The invariant is checked structurally (:func:`assert_design_based_or_blocked`), and each §2
-    relation the population contract declares (``models.survey.CONTRACTS``) is seen to fire."""
+    relation the population contract declares (in the one registry, ``core.contracts``) is seen
+    to fire."""
+    from turbotab.core.contracts import contract
     from turbotab.core.decisions import ExposureFormSpec, FollowUpSpec, MissingSpec
-    from turbotab.core.models.survey import CONTRACTS
 
     diet = nhanes_diet(seed=11, n_per_psu=40)
     analyzed = np.flatnonzero(diet["eligible"].to_numpy() == 1)
@@ -631,10 +632,16 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
                            exposure_forms={"protein_g": ExposureFormSpec(form="quintiles")})
     assert assert_design_based_or_blocked(binary["fit"].data) == {"linear": "design",
                                                                  "gee": "blocked"}
-    trend = next(m for m in binary["fit"].data["models"] if m["family"] == "linear")
-    trend = trend["exposure_tests"][0]
-    assert trend["test"] == "trend" and "the cut points and medians are the analyzed rows' own, " \
-                                         "unweighted" in trend["caption"].lower()
+    logistic = next(m for m in binary["fit"].data["models"] if m["family"] == "linear")
+    quintile = {t["test"]: t for t in logistic["exposure_tests"]}
+    trend = quintile["trend"]
+    assert "the cut points and medians are the analyzed rows' own, unweighted" in \
+        trend["caption"].lower()
+    # MS2's global test that every quintile indicator is zero (the MI package's) is the design's
+    # too: the adjusted Wald F on the design's degrees of freedom, as the spline's tests are.
+    d_bin = logistic["inference"]["survey"]["df"]
+    assert quintile["global"]["df_num"] == 4 and quintile["global"]["df_den"] == d_bin - 4 + 1
+    assert "taylor-linearized" in quintile["global"]["caption"].lower()
 
     mortality = nhanes_mortality(seed=5, n_per_psu=35)
     roles = {"SEQN": "identifier", "fiber": "exposure", "RIDAGEYR": "covariate",
@@ -726,7 +733,7 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     assert any(ATTESTATION in c for c in tests["concerns"])
 
     # The relations the population contract declares, each seen above.
-    relations = {(r.kind, r.target) for r in CONTRACTS["survey_population"].relations}
+    relations = {(r.kind, r.target) for r in contract("survey_population").relations}
     assert relations == {
         ("implies", "every family and display"),
         ("conflicts", "mixed, GEE, feature-wise, elastic net and boosted-tree estimates"),
