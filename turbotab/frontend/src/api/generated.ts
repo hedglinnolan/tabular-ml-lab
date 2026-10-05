@@ -4960,6 +4960,42 @@ export interface components {
             label: string;
         };
         /**
+         * BatchFigure
+         * @description The figure ComBat with the outcome protected serves under inference, never a test (the batch
+         *     answer's ``figures``; ``methods/batch.py``): principal components before and after it.
+         */
+        BatchFigure: {
+            /** Column */
+            column: string;
+            /** Outcome */
+            outcome: string;
+            /** N Features */
+            n_features: number;
+            /** Explained Before */
+            explained_before: number[];
+            /** Explained After */
+            explained_after: number[];
+            /** Points */
+            points: components["schemas"]["BatchFigurePoint"][];
+            /** Caption */
+            caption: string;
+        };
+        /**
+         * BatchFigurePoint
+         * @description One row of the batch figure: its batch, its outcome, and its first two principal-component
+         *     scores before and after ComBat with the outcome protected.
+         */
+        BatchFigurePoint: {
+            /** Batch */
+            batch: string;
+            /** Outcome */
+            outcome: string;
+            /** Before */
+            before: number[];
+            /** After */
+            after: number[];
+        };
+        /**
          * BrantCheck
          * @description Brant's (1990) Wald test of the proportional-odds assumption: overall, and per column.
          */
@@ -6084,6 +6120,8 @@ export interface components {
              * @default null
              */
             levels: string[] | null;
+            /** @default null */
+            batch_figure: components["schemas"]["BatchFigure"] | null;
             /**
              * Withheld
              * @default null
@@ -6140,6 +6178,11 @@ export interface components {
              * @default []
              */
             exposure_tests: components["schemas"]["ExposureTest"][];
+            /**
+             * Methods
+             * @default null
+             */
+            methods: string | null;
         };
         /**
          * FollowUpCandidate

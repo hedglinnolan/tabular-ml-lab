@@ -127,7 +127,12 @@ def _excluded_by_name(name: str) -> bool:
 def candidate_columns(frame: pd.DataFrame, target: str | None = None,
                       only: Sequence[str] | None = None) -> list[str]:
     """Numeric columns that could be assay features: not the outcome, not an identifier or a
-    person's characteristic by name, not two-valued. ``only`` limits them (the exposures)."""
+    person's characteristic by name, not two-valued, and not how the samples were acquired: a
+    column named as a run order, batch, plate or well, or one that numbers the rows once each (a
+    run order read name-blind) is never an intensity (MS7 repair: a `run_order` column was counted
+    among the intensities). ``only`` limits them (the exposures)."""
+    from turbotab.core.recognizers import acquisition_kind
+
     allowed = None if only is None else set(only)
     out = []
     for name in frame.columns:
@@ -137,10 +142,22 @@ def candidate_columns(frame: pd.DataFrame, target: str | None = None,
         s = frame[name]
         if pd.api.types.is_bool_dtype(s) or not pd.api.types.is_numeric_dtype(s):
             continue
-        if allowed is None and _excluded_by_name(c):
+        if allowed is None and (_excluded_by_name(c) or acquisition_kind(c) is not None
+                                or _numbers_the_rows(s)):
             continue
         out.append(c)
     return out
+
+
+def _numbers_the_rows(s: pd.Series) -> bool:
+    """Whole numbers that are a permutation of 0…n−1 or 1…n: a row numbering, never a reading."""
+    if not len(s) or s.isna().any():
+        return False
+    v = s.to_numpy(dtype=float)
+    first = float(v.min())
+    if first not in (0.0, 1.0) or float(v.max()) != first + len(v) - 1:
+        return False
+    return bool(np.array_equal(np.sort(v), np.arange(first, first + len(v))))
 
 
 def _block(frame: pd.DataFrame, columns: Sequence[str]) -> np.ndarray:
@@ -1125,10 +1142,18 @@ class QRILCFill(TransformerMixin, BaseEstimator):
     ``censored`` columns' blanks among all of them; :func:`qrilc_parameters` gives the mean and
     standard deviation of the complete-data normal; each blank is drawn from that normal truncated
     above at its ``p + 0.001`` quantile, and returned on the original scale. A row's fill reads only
-    the row (it is row-local; nothing is fitted). imputeLCMD passes the standard deviation where
-    ``rtmvnorm`` takes a variance; this draws with the fitted standard deviation, as the method is
-    described. Draws are seeded by the row's id, so a row is filled the same way every time.
+    the row. imputeLCMD passes the standard deviation where ``rtmvnorm`` takes a variance; this
+    draws with the fitted standard deviation, as the method is described. Draws are seeded by the
+    row's id, so a row is filled the same way every time.
+
+    A sample QRILC cannot read — fewer than five detected values, 99% or more below detection, or a
+    degenerate fit — still has values below detection, never blanks for a median: each becomes half
+    its column's smallest detected value on the fitting rows (half-minimum, the customary rung), and
+    ``fallback_`` counts them. Those rows alone read the fitting rows (training-fold scope); every
+    other row's fill reads only itself.
     """
+
+    MIN_DETECTED = 5
 
     def __init__(self, columns: Sequence[str] = (), censored: Sequence[str] = (), seed: int = 0):
         self.columns = columns
@@ -1138,6 +1163,14 @@ class QRILCFill(TransformerMixin, BaseEstimator):
     def fit(self, X: pd.DataFrame, y: Any = None) -> "QRILCFill":
         self.feature_names_in_ = np.asarray([str(c) for c in X.columns], dtype=object)
         self.n_features_in_ = X.shape[1]
+        self.half_minimum_: dict[str, float] = {}
+        for c in self.censored:
+            if c in X.columns:
+                x = pd.to_numeric(X[c], errors="coerce").to_numpy(dtype=float)
+                detected = x[np.isfinite(x) & (x > 0)]
+                if detected.size:
+                    self.half_minimum_[str(c)] = float(detected.min()) / 2
+        self.fallback_ = 0
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -1155,7 +1188,7 @@ class QRILCFill(TransformerMixin, BaseEstimator):
             blank = ~np.isfinite(v) & is_censored
             observed = np.isfinite(v) & (v > 0)
             n_used = int(blank.sum() + observed.sum())
-            if not blank.any() or observed.sum() < 5 or n_used == 0:
+            if not blank.any() or observed.sum() < self.MIN_DETECTED or n_used == 0:
                 continue
             p = blank.sum() / n_used
             if p >= QRILC_UPPER:
@@ -1170,6 +1203,15 @@ class QRILCFill(TransformerMixin, BaseEstimator):
             v = v.copy()
             v[blank] = np.exp(draws)
             values[i] = v
+        # What QRILC could not read is still below detection: half the column's minimum.
+        half = getattr(self, "half_minimum_", {})
+        left = 0
+        for j, c in enumerate(cols):
+            if is_censored[j] and c in half:
+                gap = ~np.isfinite(values[:, j])
+                left += int(gap.sum())
+                values[gap, j] = half[c]
+        self.fallback_ = left
         out[cols] = values
         return out
 
@@ -1179,7 +1221,8 @@ class QRILCFill(TransformerMixin, BaseEstimator):
     def lineage(self) -> list[dict[str, Any]]:
         filled = set(self.censored)
         return [{"output": c, "inputs": [c],
-                 "operation": "below detection: QRILC draw" if c in filled else "kept"}
+                 "operation": ("below detection: QRILC draw (half the minimum for a sample with "
+                               "too few detected values)") if c in filled else "kept"}
                 for c in self.feature_names_in_]
 
 
@@ -1291,9 +1334,11 @@ def detection_limit_options(purpose: str | None, share: float | None) -> list[di
 
 
 def censored_shares(column_info: Mapping[str, Any] | None, columns: Sequence[str],
-                    n_rows: int | None) -> dict[str, float]:
-    """Each censored column's share of blanks over the table (its non-detects), from the ingest's
-    column summaries: a property of the measurement, read without the outcome."""
+                    n_rows: int | None, zeros: Mapping[str, int] | None = None) -> dict[str, float]:
+    """Each censored column's share of non-detections from column summaries alone (no table at
+    hand): its blanks, plus ``zeros`` (the zeros the user recoded as non-detections, counted by the
+    finding that named them), over ``n_rows``. :func:`censored_shares_on` reads the table itself
+    and is preferred: the summaries may predate the recoding, and count the pooled QCs."""
     out: dict[str, float] = {}
     if not column_info or not n_rows:
         return out
@@ -1304,8 +1349,82 @@ def censored_shares(column_info: Mapping[str, Any] | None, columns: Sequence[str
         get = info.get if isinstance(info, Mapping) else (lambda k, i=info: getattr(i, k, None))
         missing = get("n_missing")
         if missing is not None:
-            out[c] = int(missing) / int(n_rows)
+            out[c] = min(1.0, (int(missing) + int((zeros or {}).get(c) or 0)) / int(n_rows))
     return out
+
+
+def participant_rows(frame: pd.DataFrame, state: Any) -> np.ndarray:
+    """Which of ``frame``'s rows are participants: every row no recorded reference-row answer takes
+    out (the pooled QCs leave before any analysis, by the QC exclusion or QC-RLSC; WP18). A table
+    the QC rows already left keeps every row."""
+    from turbotab.core.methods.qc_drift import _label
+    from turbotab.core.reference_rows import reference_rules
+
+    keep = np.ones(len(frame), dtype=bool)
+    for rule in reference_rules(getattr(state, "findings", None) or {}):
+        column = str(rule["column"])
+        if column not in frame.columns:
+            continue
+        levels = {_label(v) for v in rule.get("levels") or []}
+        keep &= ~frame[column].map(lambda v: _label(v) in levels).to_numpy(dtype=bool)
+    return keep
+
+
+def censored_shares_on(frame: pd.DataFrame, columns: Sequence[str], state: Any) -> dict[str, float]:
+    """Each censored column's share of non-detections among the participant rows
+    (:func:`participant_rows`): its blanks, and its zeros where the user recoded them as
+    non-detections (``zeros_nondetect``; a working table not yet recomputed still holds them as
+    zeros). A property of the measurement, read without the outcome."""
+    from turbotab.core.repairs import nondetect_columns
+
+    keep = participant_rows(frame, state)
+    n = int(keep.sum())
+    if not n:
+        return {}
+    recoded = set(nondetect_columns(getattr(state, "findings", None) or {}))
+    out: dict[str, float] = {}
+    for c in columns:
+        if c not in frame.columns:
+            continue
+        x = pd.to_numeric(frame[c], errors="coerce").to_numpy(dtype=float)[keep]
+        below = ~np.isfinite(x)
+        if c in recoded:
+            below |= x == 0
+        out[c] = float(below.sum()) / n
+    return out
+
+
+def censored_share_of(ctx: Any, columns: Sequence[str]) -> float | None:
+    """The largest censored share among ``columns`` (:func:`censored_shares_on` over the table the
+    analysis reads, when the context can open it; else the column summaries), or None."""
+    state = _ctx(ctx, "state")
+    from turbotab.core.decisions import _store_of
+
+    store = _store_of(ctx)
+    shares: dict[str, float] = {}
+    if store is not None:
+        try:
+            present = set(store.columns)
+            rules = [str(r["column"]) for r in _reference_rules_of(state)]
+            wanted = [c for c in dict.fromkeys([*columns, *rules]) if c in present]
+            if wanted:
+                shares = censored_shares_on(store.materialize(wanted), columns, state)
+        except Exception:  # noqa: BLE001 - an unreadable table: the summaries stand in
+            shares = {}
+    if not shares:
+        from turbotab.core.repairs import nondetect_columns
+
+        recoded = set(nondetect_columns(getattr(state, "findings", None) or {}))
+        norm = normalization_of(state) or {}
+        zeros = {c: k for c, k in dict(norm.get("zero_columns") or {}).items() if c in recoded}
+        shares = censored_shares(_ctx(ctx, "column_info"), columns, _n_rows_of(ctx), zeros)
+    return max(shares.values()) if shares else None
+
+
+def _reference_rules_of(state: Any) -> list[dict[str, Any]]:
+    from turbotab.core.reference_rows import reference_rules
+
+    return reference_rules(getattr(state, "findings", None) or {})
 
 
 def _detection_limit_leash(decision: Any, ctx: Any) -> None:
@@ -1332,10 +1451,9 @@ def _detection_limit_leash(decision: Any, ctx: Any) -> None:
                 if (not roles or roles.get(c) in PREDICTOR_ROLES) and c not in gone]
     if not censored:
         return
-    info = _ctx(ctx, "column_info")
-    n_rows = _n_rows_of(ctx)
-    shares = censored_shares(info, censored, n_rows)
-    share = max(shares.values()) if shares else None
+    # The share of non-detections among the participants, zeros recoded as non-detections
+    # included (a share of blanks alone reads 0 when an export wrote non-detects as zeros).
+    share = censored_share_of(ctx, censored)
     named = ", ".join(f"`{c}`" for c in censored[:6]) + (" and others" if len(censored) > 6 else "")
     aware = _missing_base(decision, below_detection="censoring_aware", censored_columns=censored)
     if decision.below_detection in (None, "as_missing") and decision.strategy != "complete_case":
@@ -1374,6 +1492,11 @@ def _detection_limit_leash(decision: Any, ctx: Any) -> None:
 
 
 def _n_rows_of(ctx: Any) -> int | None:
+    """The rows the column summaries count: the context's own (the server reads both from the table
+    the analysis reads), else the ingest's."""
+    n = _ctx(ctx, "n_rows")
+    if n is not None:
+        return int(n)
     reader = _ctx(ctx, "artifact")
     if callable(reader):
         try:
@@ -1570,13 +1693,17 @@ def apply_multiplicity(table: Any, policy: Mapping[str, Any]) -> Any:
     caption = str(table.info.get("caption") or "")
     import re
 
-    caption = re.sub(r" Benjamini–Hochberg q < [0-9.]+: [0-9,]+ of [0-9,]+\.$", "", caption)
+    # The family's discovery count, wherever it sits: the fit adds "Estimated from all n analyzed
+    # rows." after it (MS7 repair: a regex anchored at the end left it in place).
     if method == "stated_count":
-        caption += (f" Unadjusted p-values for {m:,} tests, stated as such ({ROTHMAN}); no "
-                    f"multiplicity adjustment.")
+        said = (f"Unadjusted p-values for {m:,} tests, stated as such ({ROTHMAN}); no "
+                f"multiplicity adjustment.")
     else:
-        caption += (f" No multiplicity control, recorded as a limitation: {m:,} tests at p < 0.05 "
-                    f"would give about {0.05 * m:,.0f} false positives by chance alone.")
+        said = (f"No multiplicity control, recorded as a limitation: {m:,} tests at p < 0.05 "
+                f"would give about {0.05 * m:,.0f} false positives by chance alone.")
+    caption, n = re.subn(r"Benjamini–Hochberg q < [0-9.]+: [0-9,]+ of [0-9,]+\.", said, caption)
+    if not n:
+        caption = f"{caption} {said}".strip()
     table.info["caption"] = caption
     table.concerns[:] = [c for c in table.concerns if "false-discovery threshold" not in c]
     return table
@@ -1745,7 +1872,9 @@ def _register_contracts() -> None:
         ),
         sources=(LUBIN, WEI, LAZAR, "Di Guida et al. 2016"),
         short="detection-limit-aware imputation",
-        option_scopes={"qrilc": "row_local"},
+        # QRILC reads only the sample it fills, except a sample too sparse to read, whose values
+        # below detection take half the column's minimum on the training fold: the wider scope.
+        option_scopes={"qrilc": "training_fold"},
     ))
     register_contract(MethodContract(
         key="log_transform", label="Log transformation", slot="in_fold", scope="row_local",
@@ -1876,35 +2005,110 @@ def model_clause(family: str, validation: str | None) -> str | None:
 
 def methods_paragraph(state: Any, steps: Sequence[str], family: str, split: Mapping[str, Any] | None,
                       working: Mapping[str, Any] | None = None,
-                      table: Mapping[str, Any] | None = None) -> str:
+                      table: Mapping[str, Any] | None = None, *,
+                      censored: Mapping[str, Any] | None = None,
+                      missing: Mapping[str, Any] | None = None,
+                      inference: Mapping[str, Any] | None = None,
+                      figure: bool = False) -> str:
     """The methods paragraph a run writes: its first sentence from the chain's contracts (the
     pre-seal clauses, the in-fold group, the model's clause), then the details: the QC answer's
-    counts, the fill of values below detection, how the folds kept units together, and an exposure
-    family's tests and multiplicity."""
+    columns and counts, the fill of values below detection, how units were kept together, and an
+    exposure family's tests and multiplicity. The fit stage writes it into each fitted model
+    (``FittedModel.methods``), from what the run did:
+
+    * ``censored``: the design's detect step (``{method, columns}``): the features it fills, after
+      the QC filters removed theirs, not the columns the answer named;
+    * ``missing``: the inference table's missing-data record: under multiple imputation the values
+      below detection are drawn within each imputation, a single fill says so;
+    * ``inference``: the table's record, whose clustering an inference run states in place of
+      folds it does not have;
+    * ``figure``: whether the batch figure ComBat serves exists (:func:`batch.batch_figure`);
+      "ComBat was used for visualization only" is said only then."""
     from turbotab.core.methods import qc_drift
     from turbotab.core.contracts import paragraph
 
     purpose = str(getattr(state, "purpose", None) or "prediction")
     choices = chain_choices(state, steps, family)
     batch = getattr(state, "batch", None)
-    run = {"qc_rlsc": choices.get("qc_rlsc"),
-           "batch": {"method": batch.method, "figures": batch.figures} if batch is not None else {}}
-    details: list[str] = []
     qc = qc_drift._applied(state)
+    run = {"qc_rlsc": choices.get("qc_rlsc"),
+           "batch": ({"method": batch.method, "figures": bool(batch.figures and figure)}
+                     if batch is not None else {})}
+    if qc is not None:
+        run["qc_batch"] = qc[2].get("batch_column")
+    details: list[str] = []
     if qc is not None and choices.get("qc_rlsc"):
         details.append(qc_drift.rlsc_details(qc[2], (working or {}).get("qc_correction")))
     norm = normalization_of(state)
     if purpose == "inference" and norm is not None and norm["method"] in TRANSFORMS:
         details.append(normalization_details(norm["method"]))
     if "detection_limit" in choices:
-        details.append(detection_details(state, choices["detection_limit"]))
+        said = detection_details(state, choices["detection_limit"], censored=censored,
+                                 purpose=purpose, missing=missing, steps=steps)
+        if said:
+            details.append(said)
     validation = (split or {}).get("validation")
-    if split and split.get("grouped_by"):
+    if purpose == "prediction" and split and split.get("grouped_by"):
         details.append(f"Folds kept each `{split['grouped_by']}`'s rows together.")
+    elif purpose == "inference" and (inference or {}).get("covariance") == "CR2" \
+            and (inference or {}).get("grouped_by"):
+        details.append(f"Intervals were cluster-robust (CR2) by `{inference['grouped_by']}`.")
     if family == "featurewise" and table is not None:
         details.append(featurewise_details(table, choices.get("multiplicity") or "bh"))
     clause = model_clause(family, validation) if purpose == "prediction" else None
     return paragraph(choices, run, purpose, model_clause=clause, details=details)
+
+
+# The contracts whose run makes a methods paragraph worth writing (autoscaling alone is any
+# standardizing family's, not the omics chain's).
+CHAIN_CONTRACTS = ("qc_detection_filter", "qc_rlsc", "qc_rsd_filter", "qc_pqn", "qc_rows_leave",
+                   "d_ratio_filter", "omics_normalization", "detection_limit", "log_transform",
+                   "batch", "screen", "multiplicity")
+
+
+def fit_methods(state: Any, family: str, steps: Sequence[str], split: Mapping[str, Any] | None,
+                working: Mapping[str, Any] | None, model: Mapping[str, Any],
+                censored: Mapping[str, Any] | None, figure: bool = False) -> str | None:
+    """The methods paragraph the fit stage writes for one fitted ``model`` (its artifact entry),
+    or None when the run used none of the omics chain's contracts."""
+    choices = chain_choices(state, steps, family)
+    if not set(choices) & set(CHAIN_CONTRACTS):
+        return None
+    info = model.get("inference") or {}
+    table = {"rows": model.get("coefficients") or []} if family == "featurewise" else None
+    return methods_paragraph(state, steps, family, split, working, table, censored=censored,
+                             missing=info.get("missing"), inference=info, figure=figure)
+
+
+def unpooled_refusal(label: str, state: Any) -> tuple[str, list[dict[str, Any]]]:
+    """(reason, exits) of a table that pools no multiple imputations (feature-wise tests), its
+    reason naming exactly the ways forward its exits take (:func:`featurewise_missing_exits`)."""
+    exits = featurewise_missing_exits(state)
+    fill = (", or fill the values below detection once, censoring-aware, recorded as a limitation"
+            if len(exits) > 1 else "")
+    return (f"{label} is not pooled over multiple imputations here: its tests run feature by "
+            f"feature over more columns than an imputation model holds. Choose complete "
+            f"cases{fill}.", exits)
+
+
+def featurewise_missing_exits(state: Any) -> list[dict[str, Any]]:
+    """Where a feature-wise table goes when its missing-values answer is multiple imputation, which
+    it cannot pool (more columns than an imputation model holds): complete cases, and, when values
+    below detection are named, one censoring-aware fill recorded as a limitation (a single fill
+    under inference is block-and-record: its intervals are too narrow)."""
+    spec = getattr(state, "missing", None)
+    keep = {"drop_columns": list(getattr(spec, "drop_columns", None) or [])}
+    exits: list[dict[str, Any]] = [
+        {"label": "Complete cases", "decision": {"kind": "set_missing", "strategy": "complete_case",
+                                                 **keep}}]
+    censored = list(getattr(spec, "censored_columns", None) or [])
+    if censored:
+        exits.append({
+            "label": "Fill values below detection once, censoring-aware, recorded as a limitation",
+            "decision": {"kind": "set_missing", "strategy": "impute",
+                         "below_detection": "censoring_aware", "censored_columns": censored,
+                         "acknowledged": True, **keep}})
+    return exits
 
 
 def normalization_details(method: str) -> str:
@@ -1921,18 +2125,58 @@ def normalization_details(method: str) -> str:
     }[method]
 
 
-def detection_details(state: Any, method: str | None) -> str:
-    spec = getattr(state, "missing", None)
-    n = len(getattr(spec, "censored_columns", None) or [])
-    what = f"{n:,} feature{'s' if n != 1 else ''}"
+def detection_details(state: Any, method: str | None, *, censored: Mapping[str, Any] | None = None,
+                      purpose: str = "prediction", missing: Mapping[str, Any] | None = None,
+                      steps: Sequence[str] | None = None) -> str | None:
+    """The sentence for values below detection: the features the design's detect step fills
+    (``censored``, after the QC filters; the answer's own columns when no design is at hand), and
+    how, by purpose. Under inference with multiple imputation they are drawn below the limit within
+    each imputation; filled once, the sentence says it is a single fill recorded as a limitation.
+    "After normalization and before the log" is said only where the design's steps put the fill
+    there (``steps``)."""
+    if censored is not None:
+        n = len(censored.get("columns") or [])
+    else:
+        n = len(getattr(getattr(state, "missing", None), "censored_columns", None) or [])
+    if not n:
+        return None
+    omics = bool(set(getattr(state, "lens", None) or []) & set(OMICS_LENSES))
+    noun = "feature" if omics else "column"
+    what = f"{n:,} {noun}{'s' if n != 1 else ''}"
+    keys = list(steps) if steps is not None else ["normalize", "detect", "log"]
+    between = ("normalize" in keys and "log" in keys
+               and keys.index("normalize") < keys.index("detect") < keys.index("log")
+               if "detect" in keys else False)
+    where = " after normalization and before the log" if between else ""
+    rows = "the training fold" if purpose == "prediction" else "the analyzed rows"
+    record = dict(missing or {})
+    if getattr(getattr(state, "missing", None), "strategy", None) == "complete_case":
+        # Complete cases leave a row with any blank before the design, so nothing is filled.
+        return (f"Rows with a value below detection in any of {what} were left out (complete "
+                f"cases).")
+    if purpose == "inference" and record.get("method") == "multiple_imputation":
+        m = int(record.get("m") or 0)
+        if method == "half_minimum":  # filled before the chained equations (``imputation_frame``)
+            return (f"Values below detection in {what} were set to half the {noun}'s smallest "
+                    f"detected value before the {m:,} multiple imputations ({LUBIN}).")
+        return (f"Values below detection in {what} were drawn below the limit from a censored-normal "
+                f"(Tobit) model within each of the {m:,} multiple imputations, given the outcome "
+                f"({LUBIN}).")
     if method == "half_minimum":
-        how = "half the feature's smallest detected value on the training fold"
+        how = f"half the {noun}'s smallest detected value on {rows}"
     elif method == "qrilc":
         how = f"a draw below its sample's detection quantile (QRILC; {LAZAR})"
     else:
-        how = (f"its expected value below the limit under a left-censored normal fitted to the "
-               f"feature's logarithm on the training fold ({LUBIN})")
-    return f"Values below detection in {what} were filled after normalization and before the log, each by {how}."
+        # Before a log the censored normal is fitted on the log scale; elsewhere on the scale that
+        # fits better (``imputation.censoring_of``).
+        scale = (f"the {noun}'s logarithm" if between
+                 else f"the {noun} or its logarithm, whichever fits better,")
+        how = (f"its expected value below the limit under a left-censored normal fitted to {scale} "
+               f"on {rows} ({LUBIN})")
+    said = f"Values below detection in {what} were filled{where}, each by {how}."
+    if purpose == "inference":
+        said += " A single fill, recorded as a limitation: its intervals are too narrow."
+    return said
 
 
 def featurewise_details(table: Mapping[str, Any], method: str) -> str:

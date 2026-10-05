@@ -316,6 +316,33 @@ class FittedModel(_Model):
     internal_external: InternalExternal | None = None
     # Under inference, the tests each spline or quintile exposure carries (WP12a).
     exposure_tests: list[ExposureTest] = []
+    # The methods paragraph this family's run writes when it used the omics chain's contracts (QC
+    # drift, normalization, values below detection, batch, screening, multiplicity; MS7): its first
+    # sentence from the contracts, then the counts and columns this run read. Null otherwise.
+    methods: str | None = None
+
+
+class BatchFigurePoint(_Model):
+    """One row of the batch figure: its batch, its outcome, and its first two principal-component
+    scores before and after ComBat with the outcome protected."""
+
+    batch: str
+    outcome: str
+    before: list[float]
+    after: list[float]
+
+
+class BatchFigure(_Model):
+    """The figure ComBat with the outcome protected serves under inference, never a test (the batch
+    answer's ``figures``; ``methods/batch.py``): principal components before and after it."""
+
+    column: str  # the batch column
+    outcome: str
+    n_features: int
+    explained_before: list[float]  # each component's share of the variance, as analyzed
+    explained_after: list[float]  # ... after ComBat with the outcome protected
+    points: list[BatchFigurePoint]
+    caption: str
 
 
 class Selection(_Model):
@@ -409,6 +436,8 @@ class FitArtifact(_Model):
     imbalance: str | None = None
     # An ordinal outcome's levels in their order, lowest first: code k is levels[k] (WP12a).
     levels: list[str] | None = None
+    # Under inference with batch as a covariate and ComBat for figures (MS7): the figure's data.
+    batch_figure: BatchFigure | None = None
     # Set by the server (WP17): why every estimate is withheld while a question it rests on is
     # unanswered; else, under inference, the declared estimand the table is captioned from.
     withheld: str | None = None

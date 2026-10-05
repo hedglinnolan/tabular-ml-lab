@@ -193,9 +193,12 @@ def build_graph() -> Graph:
             # else, or not sure" runs the generic checks alone (RO-11).
             # findings 17 (wave 1, MS7): zeros a log cannot take, and a batch column's confounding with
             # the outcome; the pooled-QC finding offers QC-RLSC and its filters beside the exclusion.
+            # findings 18 (MS7 repair): each QC-RLSC option names the injection-order and batch
+            # columns it reads, and every other batch reading (a `run`, a plate, one curve) is its
+            # own option; a run order is no intensity; no "no pooled QCs" beside the QC rows found.
             Stage(
                 "findings",
-                17,
+                18,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
@@ -239,7 +242,9 @@ def build_graph() -> Graph:
             # the outcome is read and the seal drawn (RO-13); a log-scale outcome is derived (RO-10).
             # working 8 (wave 1, MS7): QC-RLSC, the QC filters and PQN against the pooled QCs run on
             # every injection before the seal, and then the QC rows leave as reference rows.
-            Stage("working", 8, ("oriented", "findings", "structure"),
+            # working 9 (MS7 repair): a feature with a detected value outside its detected QCs'
+            # span is not corrected (its curve would be extrapolated) and leaves as uncorrectable.
+            Stage("working", 9, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical", "outcome_scale"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -398,7 +403,10 @@ def build_graph() -> Graph:
             # design 20 (wave 1, MS7): normalization, then values below detection, then the log; the
             # in-fold D-ratio filter and reference ComBat; a batch confounded with the outcome refused;
             # a declared scale's items scored into one column after the fill (MS8).
-            Stage("design", 20, ("working", "split", "target_info"),
+            # design 21 (MS7 repair): QRILC fills a sample too sparse to read by half the column's
+            # minimum, never leaving a blank for the median; a constant feature within a batch is
+            # left as sva leaves it.
+            Stage("design", 21, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    *WP17_READS),
@@ -425,7 +433,11 @@ def build_graph() -> Graph:
             # fit 16 (WP17): the intervals cluster by the grouping the cluster question named.
             # fit 17 (wave 1): an exposure family's recorded multiplicity method (MS7); under the
             # population answer every family is design-based or blocked and recorded (MS4).
-            Stage("fit", 17, ("working", "design", "split", "target_info", "cohort"),
+            # fit 18 (MS7 repair): each family's methods paragraph from what the run did; the figure
+            # ComBat with the outcome protected serves; a feature-wise caption under a recorded
+            # multiplicity carries no discovery count; a feature-wise table under multiple
+            # imputation offers the censoring-aware single fill.
+            Stage("fit", 18, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),

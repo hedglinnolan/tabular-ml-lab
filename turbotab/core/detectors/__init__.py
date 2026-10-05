@@ -91,6 +91,13 @@ def pack_findings(df: pd.DataFrame, lens: Sequence[str], units: Any = None,
                     "one that legitimately found nothing")
                 continue
             out.extend(f for f in found if f)
+    # Two readings of one question: the naming census found no pooled-QC label (`pooled QC`
+    # escapes its patterns) while the variance reading found the QC rows. The rows are there, so
+    # "I couldn't find any pooled QC samples ... can't compute drift correction" is false beside
+    # it, and after QC-RLSC ran (MS7 repair).
+    ids = {str(f.get("id")) for f in out}
+    if "pack::metabolomics::pooled_qc" in ids:
+        out = [f for f in out if str(f.get("id")) != "pack::metabolomics::no_pooled_qc"]
     return out
 
 

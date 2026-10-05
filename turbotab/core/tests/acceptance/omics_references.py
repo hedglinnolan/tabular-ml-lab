@@ -78,6 +78,30 @@ def drifting_run(seed: int = 0, p: int = 200, batches: int = 3, per_batch: int =
     return frame, truth
 
 
+def uncorrectable_by_hand(frame: pd.DataFrame, features: list[str], qc_column: str = "sample_type",
+                          qc_level: str = "QC", order: str = "injection_order",
+                          batch: str | None = "batch", min_qc: int = 5) -> set[str]:
+    """The features QC-RLSC cannot correct without guessing its curve, by the rule's definition
+    (Dunn et al. 2011; Broadhurst et al. 2018), written with pandas: in some batch, fewer than
+    ``min_qc`` QC injections detected the feature (a positive value), or a detected value of a
+    study injection lies before the first or after the last QC injection that detected it (the
+    curve, fit to the detected QCs only, would be extrapolated there)."""
+    out: set[str] = set()
+    groups = [frame] if batch is None else [g for _, g in frame.groupby(batch, sort=True)]
+    for g in groups:
+        is_qc = g[qc_column].astype(str).eq(qc_level)
+        for c in features:
+            seen = g[c].gt(0) & g[c].notna()
+            qc_orders = g.loc[is_qc & seen, order]
+            if len(qc_orders) < min_qc:
+                out.add(c)
+                continue
+            study = g.loc[~is_qc & seen, order]
+            if ((study < qc_orders.min()) | (study > qc_orders.max())).any():
+                out.add(c)
+    return out
+
+
 # ── PQN by its published steps ───────────────────────────────────────────────
 
 
@@ -98,4 +122,4 @@ def pqn_by_hand(reference_rows: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFram
     return rows.div(quotient, axis=0)
 
 
-__all__ = ["RSCRIPT", "drifting_run", "needs_r", "pqn_by_hand", "run_r"]
+__all__ = ["RSCRIPT", "drifting_run", "needs_r", "pqn_by_hand", "run_r", "uncorrectable_by_hand"]
