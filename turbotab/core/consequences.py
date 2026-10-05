@@ -1016,8 +1016,9 @@ def plan(decision: Any, ctx: PreviewContext, basis: str) -> PreviewResult:
     from turbotab.core import coach  # registers the annotators; imported late (it imports this)
 
     coach.annotate(decision, views, ctx)
-    # A builder may say in words what its views cannot (``ctx.read["note"]``).
-    note = ctx.read.get("note") or (None if views else
+    # A builder may say in words what its views cannot (``ctx.read["note"]``); a caution already
+    # says why nothing is drawn, with its levers (a refusal, or the ask of an unsettled reading).
+    note = ctx.read.get("note") or (None if views or ctx.caution is not None else
                                     "Nothing about this choice can be shown on your data yet.")
     return PreviewResult(kind=decision.kind, views=views, basis=basis, note=note,
                          caution=ctx.caution)
