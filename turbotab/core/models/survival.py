@@ -123,6 +123,9 @@ class _Risk:
     S0: np.ndarray  # (d,)
     S1: np.ndarray  # (d, P)
     loglik: float
+    # Each slot's weight: the mean case weight of its time's tied events (1 without weights), as
+    # R's coxph weights Efron's slots (``meanwt``).
+    mw: np.ndarray | None = None
 
 
 def _suffix(values: np.ndarray, sorted_keys: np.ndarray, at: np.ndarray, side: str) -> np.ndarray:
@@ -132,22 +135,27 @@ def _suffix(values: np.ndarray, sorted_keys: np.ndarray, at: np.ndarray, side: s
     return csum[np.searchsorted(sorted_keys, at, side=side)]
 
 
-def _risk(X: np.ndarray, y: np.ndarray, beta: np.ndarray) -> _Risk:
+def _risk(X: np.ndarray, y: np.ndarray, beta: np.ndarray, w: np.ndarray | None = None) -> _Risk:
+    """The risk-set sums at ``beta``. With case weights ``w`` (Binder's pseudo-likelihood): every
+    risk-set sum is weighted, ``S0 = Σ w r``, ``S1 = Σ w r x``, and each of a time's tied events
+    counts its time's mean weight ``w̄`` in the log-likelihood,
+    ``Σ_events w_i η_i − Σ_slots w̄ log(S0_slot)`` (R's ``coxph``, ``coxfit6``/``agfit4``)."""
     t, e, s = y["time"], y["event"], y["entry"]
     eta = X @ beta
     shift = float(eta.max()) if len(eta) else 0.0
     r = np.exp(eta - shift)
-    rX = r[:, None] * X
+    wr = r if w is None else w * r
+    rX = wr[:, None] * X
     by_t = np.argsort(t, kind="stable")
     by_s = np.argsort(s, kind="stable")
     events = np.flatnonzero(e)
     order = events[np.argsort(t[events], kind="stable")]
     times, k_of = np.unique(t[order], return_inverse=True)
     # At risk at τ: time ≥ τ, less those that had not yet entered (entry ≥ τ).
-    S0_k = _suffix(r[by_t], t[by_t], times, "left") - _suffix(r[by_s], s[by_s], times, "left")
+    S0_k = _suffix(wr[by_t], t[by_t], times, "left") - _suffix(wr[by_s], s[by_s], times, "left")
     S1_k = _suffix(rX[by_t], t[by_t], times, "left") - _suffix(rX[by_s], s[by_s], times, "left")
     d_k = np.bincount(k_of, minlength=len(times)).astype(float)
-    D0_k = np.bincount(k_of, weights=r[order], minlength=len(times))
+    D0_k = np.bincount(k_of, weights=wr[order], minlength=len(times))
     D1_k = np.zeros_like(S1_k)
     np.add.at(D1_k, k_of, rX[order])
     # Efron: the l-th of d tied events sees the risk set less l/d of the tied events' weight.
@@ -156,8 +164,12 @@ def _risk(X: np.ndarray, y: np.ndarray, beta: np.ndarray) -> _Risk:
     frac = l / d_k[k_of]
     S0 = S0_k[k_of] - frac * D0_k[k_of]
     S1 = S1_k[k_of] - frac[:, None] * D1_k[k_of]
-    loglik = float(eta[order].sum() - (np.log(S0) + shift).sum())
-    return _Risk(order=order, k_of=k_of, times=times, frac=frac, S0=S0, S1=S1, loglik=loglik)
+    if w is None:
+        loglik = float(eta[order].sum() - (np.log(S0) + shift).sum())
+        return _Risk(order=order, k_of=k_of, times=times, frac=frac, S0=S0, S1=S1, loglik=loglik)
+    mw = (np.bincount(k_of, weights=w[order], minlength=len(times)) / d_k)[k_of]
+    loglik = float(w[order] @ eta[order] - mw @ (np.log(S0) + shift))
+    return _Risk(order=order, k_of=k_of, times=times, frac=frac, S0=S0, S1=S1, loglik=loglik, mw=mw)
 
 
 def _at_risk_sums(y: np.ndarray, rk: _Risk, per_slot: np.ndarray, own: np.ndarray) -> np.ndarray:
@@ -181,14 +193,23 @@ def _at_risk_sums(y: np.ndarray, rk: _Risk, per_slot: np.ndarray, own: np.ndarra
     return total
 
 
-def _score_info(X: np.ndarray, y: np.ndarray, beta: np.ndarray) -> tuple[float, np.ndarray, np.ndarray, _Risk]:
-    rk = _risk(X, y, beta)
+def _score_info(X: np.ndarray, y: np.ndarray, beta: np.ndarray, w: np.ndarray | None = None
+                ) -> tuple[float, np.ndarray, np.ndarray, _Risk]:
+    """The log-likelihood, score and information at ``beta``; weighted by ``w`` as :func:`_risk`
+    says: ``U = Σ_events w_i x_i − Σ_slots w̄ x̄`` and ``I = Σ_slots w̄ (S2/S0 − x̄ x̄ᵀ)``."""
+    rk = _risk(X, y, beta, w)
     xbar = rk.S1 / rk.S0[:, None]
-    U = X[rk.order].sum(axis=0) - xbar.sum(axis=0)
     eta = X @ beta
     r = np.exp(eta - (float(eta.max()) if len(eta) else 0.0))
-    c = _at_risk_sums(y, rk, 1.0 / rk.S0, (1.0 - rk.frac) / rk.S0)
-    info = (X * (r * c)[:, None]).T @ X - xbar.T @ xbar
+    if w is None:
+        U = X[rk.order].sum(axis=0) - xbar.sum(axis=0)
+        c = _at_risk_sums(y, rk, 1.0 / rk.S0, (1.0 - rk.frac) / rk.S0)
+        info = (X * (r * c)[:, None]).T @ X - xbar.T @ xbar
+        return rk.loglik, U, (info + info.T) / 2, rk
+    U = w[rk.order] @ X[rk.order] - rk.mw @ xbar
+    hazard = rk.mw / rk.S0
+    c = _at_risk_sums(y, rk, hazard, (1.0 - rk.frac) * hazard)
+    info = (X * (w * r * c)[:, None]).T @ X - (xbar * rk.mw[:, None]).T @ xbar
     return rk.loglik, U, (info + info.T) / 2, rk
 
 
@@ -203,16 +224,24 @@ class CoxFit:
     n_events: int
 
 
-def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: float = TOL) -> CoxFit:
+def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: float = TOL,
+            weights: np.ndarray | None = None) -> CoxFit:
     """Maximize Efron's partial likelihood by Newton–Raphson, halving a step that lowers it.
 
     The columns are centered and scaled for the iterations (the coefficients are mapped back), so
     the Newton decrement convergence test does not depend on their units. Not converged when the
     decrement stays above ``tol`` or a coefficient runs past :data:`DIVERGED` SDs (monotone
     likelihood: the estimate is infinite).
+
+    ``weights`` (case weights, positive) fit Binder's pseudo-likelihood, each row weighted in every
+    risk set and Efron's tied slots by their time's mean weight (:func:`_risk`), as R's ``coxph``
+    with ``weights`` does; ``cov`` is then the inverse of the weighted information.
     """
     X = np.asarray(X, dtype=float)
     n, P = X.shape
+    w = None if weights is None else np.asarray(weights, dtype=float)
+    if w is not None and (len(w) != n or not np.all(np.isfinite(w)) or np.any(w <= 0)):
+        raise ValueError("Case weights must be positive and finite, one per row.")
     n_events = int(np.sum(y["event"]))
     if n_events == 0:
         raise ValueError("No row has the event, so the hazard ratios cannot be estimated.")
@@ -221,7 +250,7 @@ def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: floa
     sd[sd == 0] = 1.0
     Z = (X - mean) / sd
     beta = np.zeros(P)
-    ll, U, info, _ = _score_info(Z, y, beta)
+    ll, U, info, _ = _score_info(Z, y, beta, w)
     ll0 = ll
     converged = False
     it = 0
@@ -232,7 +261,7 @@ def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: floa
             break
         for _ in range(40):
             trial = beta + step
-            parts = _score_info(Z, y, trial)
+            parts = _score_info(Z, y, trial, w)
             if parts[0] >= ll - 1e-12 * max(1.0, abs(ll)):
                 break
             step /= 2.0
@@ -248,18 +277,24 @@ def cox_fit(X: np.ndarray, y: np.ndarray, *, max_iter: int = MAX_ITER, tol: floa
                   n_events=n_events)
 
 
-def score_residuals(X: np.ndarray, y: np.ndarray, beta: np.ndarray) -> np.ndarray:
+def score_residuals(X: np.ndarray, y: np.ndarray, beta: np.ndarray,
+                    weights: np.ndarray | None = None) -> np.ndarray:
     """Each row's contribution to the score at ``beta`` (n × P), consistent with Efron's
-    likelihood: ``δ_i (x_i − x̄_i) − r_i Σ_slots φ (x_i − x̄_slot) / S0_slot``, where x̄_i is the mean
-    of the x̄ over the slots of row i's tied event time and φ is 1, or 1 − l/d at a row's own
-    event time. They sum to the score, so to zero at the estimate (Therneau & Grambsch 2000, §7)."""
+    likelihood: ``δ_i (x_i − x̄_i) − r_i Σ_slots φ (x_i − x̄_slot) dΛ_slot``, where x̄_i is the mean
+    of the x̄ over the slots of row i's tied event time, φ is 1, or 1 − l/d at a row's own event
+    time, and ``dΛ = w̄ / S0`` the slot's hazard (``w̄`` 1 without weights). They sum to the score,
+    so to zero at the estimate (Therneau & Grambsch 2000, §7); with ``weights`` they are R's
+    unweighted ``residuals(fit, "score")`` of the weighted fit, and ``w_i`` times them sum to its
+    score."""
     X = np.asarray(X, dtype=float)
-    rk = _risk(X, y, beta)
+    w = None if weights is None else np.asarray(weights, dtype=float)
+    rk = _risk(X, y, beta, w)
     xbar = rk.S1 / rk.S0[:, None]
     eta = X @ beta
     r = np.exp(eta - (float(eta.max()) if len(eta) else 0.0))
-    c = _at_risk_sums(y, rk, 1.0 / rk.S0, (1.0 - rk.frac) / rk.S0)
-    q = _at_risk_sums(y, rk, xbar / rk.S0[:, None], xbar * ((1.0 - rk.frac) / rk.S0)[:, None])
+    hazard = 1.0 / rk.S0 if w is None else rk.mw / rk.S0
+    c = _at_risk_sums(y, rk, hazard, (1.0 - rk.frac) * hazard)
+    q = _at_risk_sums(y, rk, xbar * hazard[:, None], xbar * ((1.0 - rk.frac) * hazard)[:, None])
     out = -r[:, None] * (X * c[:, None] - q)
     K = len(rk.times)
     mean_k = np.zeros((K, X.shape[1]))
@@ -470,6 +505,76 @@ def cox_table(matrix: pd.DataFrame, y: np.ndarray, clusters: Any) -> Any:
     return InferenceTable(rows, _info(estimator, covariance, caption, clusters), concerns)
 
 
+SURVEY_ESTIMATOR = ("survey-weighted Cox proportional hazards (Binder's pseudo-likelihood, Efron "
+                    "ties)")
+
+
+def survey_cox_table(matrix: pd.DataFrame, y: np.ndarray, design: Any) -> Any:
+    """The design-based Cox table over a survey design (MODELING_SEQUENCE §0 ruling 6; MS4).
+
+    Binder (1992, *Int Stat Rev* 60:249): the population's partial-likelihood score is estimated
+    by weighting each analysis row by its survey weight in every risk set, and β̂ solves the
+    weighted score (:func:`cox_fit` with ``weights``). Its variance is the design-based variance
+    of the total of the weighted score residuals ``w_i U_i(β̂)``, sandwiched by the inverse of the
+    weighted information (:func:`~turbotab.core.models.survey.design_table`), which is R's
+    ``survey::svycoxph``: ``svyrecvar`` of ``residuals(fit, "dfbeta", weighted = TRUE)``. The
+    domain is the matrix's rows placed in the design with a positive weight; every other design
+    row keeps its stratum and PSU at a score of zero.
+
+    The proportional-hazards check is Grambsch & Therneau's on these participants, unweighted: a
+    diagnostic of the model's form, never a design-based test, and said so.
+    """
+    from turbotab.core.models.inference import _and, format_p
+    from turbotab.core.models.linear import collinearity_concern
+    from turbotab.core.models.survey import _refused, design_table, domain_of
+
+    names = [str(c) for c in matrix.columns]
+    domain = domain_of(matrix.index, design)
+    X = matrix.to_numpy(dtype=float)[domain.keep]
+    yy = np.asarray(y)[domain.keep]
+    estimator = SURVEY_ESTIMATOR
+    n_events = int(np.sum(yy["event"])) if len(yy) else 0
+    if n_events == 0 or domain.n <= X.shape[1]:
+        return _refused(names, None, estimator, design, domain.n,
+                        f"Only {domain.n:,} analysis rows ({n_events:,} with the event) carry a "
+                        f"positive weight and a place in the design, too few for {X.shape[1]} "
+                        f"coefficients.")
+    try:
+        singular = collinearity_concern(pd.DataFrame(X, columns=names))
+    except Exception:  # noqa: BLE001 - a diagnostic that cannot run is not a verdict
+        singular = None
+    fit = cox_fit(X, yy, weights=domain.weight)
+    if singular:
+        return _refused(names, fit.beta, estimator, design, domain.n, singular)
+    if not fit.converged:
+        sd = X.std(axis=0)
+        runaway = [n for n, b, s in zip(names, fit.beta, sd) if abs(b * s) > DIVERGED] or names
+        reason = (f"The weighted partial likelihood has no maximum for {_and(runaway)} (in "
+                  f"one of its groups every row has the event, or none does), so the hazard ratio "
+                  f"is infinite and no interval or p-value is reported.")
+        return _refused(names, fit.beta, estimator, design, domain.n, reason,
+                        ({"label": f"Leave {_and(runaway)} out, or merge its rare levels",
+                          "decision": None},))
+    U = score_residuals(X, yy, fit.beta, domain.weight) * domain.weight[:, None]
+    table = design_table(names, fit.beta, U, None, design, domain, estimator, bread=fit.cov)
+    if table.info.get("refused"):
+        return table
+    plain = cox_fit(X, yy)
+    if plain.converged:
+        p = ph_test(X, yy, plain)
+        threshold = PH_ALPHA / max(1, len(names))
+        flagged = [(pj, n) for pj, n in zip(p, names) if np.isfinite(pj) and pj < threshold]
+        if flagged:
+            pj, name = min(flagged)
+            table.concerns.append(
+                f"Among these participants, unweighted, the hazard ratio for `{name}` may change "
+                f"over follow-up (Grambsch–Therneau p = {format_p(float(pj))}, against "
+                f"{PH_ALPHA:g} shared over {len(names)} column{'s' if len(names) != 1 else ''}): "
+                f"a check of the model's form, not a design-based test. If it changes in the "
+                f"population too, the hazard ratio is an average over follow-up.")
+    return table
+
+
 # ── the family ───────────────────────────────────────────────────────────────
 
 
@@ -497,8 +602,9 @@ class Cox(FamilyBase):
         detail = ("Fits the log hazard ratio of every column by partial likelihood, Efron ties, "
                   "each row at risk from its entry to its end of follow-up.")
         if purpose == "inference":
-            detail += (" Intervals are Wald, or Lin–Wei cluster-robust when a unit's rows repeat; "
-                       "proportional hazards are checked.")
+            detail += (" Intervals are Wald, or Lin–Wei cluster-robust when a unit's rows repeat, "
+                       "or, for the surveyed population, survey-weighted (Binder) with Taylor "
+                       "linearization over the design; proportional hazards are checked.")
         return "Cox proportional hazards", detail
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
@@ -507,14 +613,37 @@ class Cox(FamilyBase):
         return coefficient_rows([str(f) for f in model.feature_names_in_], model.coef_)
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  outcome: Any = None, rows: Any = None) -> Any:
+                  outcome: Any = None, rows: Any = None, survey: Any = None) -> Any:
         """The Cox table on the hazard-ratio scale (WP8's ``_on_scale``: each row's hazard ratio
-        and its interval, drawn on a log axis, the event named), and the rows it was fit on."""
-        from turbotab.core.models.inference import _on_rows, _on_scale
+        and its interval, drawn on a log axis, the event named), and the rows it was fit on. With
+        ``survey`` (a :class:`~turbotab.core.models.survey.SurveyDesign`, the "surveyed
+        population" answer) the table is design-based (:func:`survey_cox_table`)."""
         from turbotab.core.models.linear import model_matrix
 
-        table = cox_table(model_matrix(pipeline, X), y, clusters)
-        return _on_rows(_on_scale(table, "time_to_event", [0, 1], outcome), len(X), rows)
+        return self.inference_matrix(model_matrix(pipeline, X), y, task=task, classes=[0, 1],
+                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey)
+
+    def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task, classes: Any,
+                         clusters: Any, outcome: Any = None, rows: Any = None,
+                         survey: Any = None) -> Any:
+        """The Cox table on a given model matrix (a quintile trend test's refit), design-based
+        under ``survey``, on the hazard-ratio scale either way."""
+        from turbotab.core.models.inference import _on_rows, _on_scale
+
+        if survey is None:
+            table = cox_table(matrix, y, clusters)
+            return _on_rows(_on_scale(table, "time_to_event", [0, 1], outcome), len(matrix), rows)
+        table = survey_cox_table(matrix, y, survey)
+        if table.rows:
+            table = _on_scale(table, "time_to_event", [0, 1], outcome)
+        n_domain = (table.info.get("survey") or {}).get("n_domain")
+        if n_domain is not None and int(n_domain) < len(matrix):
+            table.info.update(n_rows=int(n_domain), rows=rows)
+            table.info["caption"] += (f" Estimated from the {int(n_domain):,} of the "
+                                      f"{len(matrix):,} analyzed rows with a positive weight and a "
+                                      f"place in the design.")
+            return table
+        return _on_rows(table, len(matrix), rows)
 
     def assess(self, s: Situation) -> Assessment:
         from turbotab.core.models.inference import min_clusters
@@ -542,7 +671,7 @@ class Cox(FamilyBase):
 COX = register_family(Cox())
 
 __all__ = [
-    "COX", "ConstantRisk", "Cox", "CoxFit", "CoxRegressor", "OUTCOME_DTYPE", "concordance",
-    "cox_fit", "cox_table", "follow_up_columns", "ph_test", "schoenfeld_residuals",
-    "score_residuals", "survival_outcome", "time_to_event_outcome",
+    "COX", "ConstantRisk", "Cox", "CoxFit", "CoxRegressor", "OUTCOME_DTYPE", "SURVEY_ESTIMATOR",
+    "concordance", "cox_fit", "cox_table", "follow_up_columns", "ph_test", "schoenfeld_residuals",
+    "score_residuals", "survey_cox_table", "survival_outcome", "time_to_event_outcome",
 ]

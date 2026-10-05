@@ -167,6 +167,13 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
                           lenses=tuple(ctx.state.lens or ()), class_counts=class_counts,
                           n_units=n_units)
     ranked = rank(situation)
+    survey = getattr(ctx.state, "survey", None)
+    if inference and survey is not None and survey.estimand == "population":
+        # MS4: under the population answer a family with no design-based estimator ranks after
+        # every family that has one, and says why before it is chosen (MODELING_SEQUENCE §4).
+        from turbotab.core.models.survey import population_shelf
+
+        ranked = population_shelf(ranked, task)
     # WP11: raw counts or intensities whose totals track the outcome, on the same rows (the
     # training rows under prediction, every analyzed row under inference)
     assay = _assay_concern(ctx, task, rows if trained else None)
@@ -729,10 +736,17 @@ def _accepts(fn: Any, name: str) -> bool:
 
 
 def _inference_table(family: Any, pipeline: Any, X: Any, y: Any, *, task: str, clusters: Any,
-                     outcome: Any, rows: str, survey: Any = None) -> Any:
+                     outcome: Any, rows: str, survey: Any = None,
+                     models: Sequence[str] | None = None) -> Any:
     """``family.inference``, handing it the outcome's names, the rows it is estimated from and the
-    survey design when it takes them (a family registered before WP8 or WP10 may not). A family
-    that cannot weight by the design under the population answer says so in a concern."""
+    survey design when it takes them (a family registered before WP8 or WP10 may not). Under the
+    population answer a family with no design-based estimator is blocked and recorded
+    (MODELING_SEQUENCE §4; ``models.survey.no_design_estimator``), its exits the family that has
+    one (``models``: the chosen families) and the sample-only attestation."""
+    if survey is not None and not _accepts(family.inference, "survey"):
+        from turbotab.core.models.survey import no_design_estimator
+
+        return no_design_estimator(family, task, models)
     extra = {name: value for name, value in (("outcome", outcome), ("rows", rows), ("survey", survey))
              if value is not None and _accepts(family.inference, name)}
     table = family.inference(pipeline, X, y, task=task, clusters=clusters, **extra)
@@ -740,12 +754,14 @@ def _inference_table(family: Any, pipeline: Any, X: Any, y: Any, *, task: str, c
         from turbotab.core.models.inference import _on_rows
 
         table = _on_rows(table, len(X), rows)
-    if survey is not None and "survey" not in extra:
-        table.concerns.insert(0, "Fit without the survey weights: its scores and coefficients "
-                                 "describe these participants, not the surveyed population.")
     return table
 UNWEIGHTED_SCORES = ("Scores are unweighted: they describe these rows, not the population the survey "
                      "weights stand for.")
+# Under the population answer (MS4): the scores are about the fitting procedure on these rows, never
+# a population estimate, and are labeled so beside every design-based table.
+POPULATION_SCORES = ("Cross-validated scores are unweighted: they describe how the model predicts "
+                     "these participants, not the surveyed population; the design-based estimates "
+                     "are the coefficient table's.")
 
 
 def _measurement_error_line(ctx: StageContext, spec: Any) -> str | None:
@@ -1287,11 +1303,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
                              if on_all else final)
                 X_c, y_c = (X_tab, y_tab) if on_all else (X, y)
                 if clusters is not None and hasattr(family, "inference"):
-                    from turbotab.core.models.survey import blocked
+                    from turbotab.core.models.survey import (blocked, has_design_estimator,
+                                                             no_design_estimator)
 
                     design_of = survey.design if survey is not None else None
                     if survey is not None and survey.refusal:
                         table = blocked(survey.refusal, survey.exits)
+                    elif design_of is not None and not has_design_estimator(family, task):
+                        # MS4: the population answer binds every family (MODELING_SEQUENCE §4).
+                        table = no_design_estimator(family, task, state.models)
                     elif missing is not None and missing.refusal:
                         table = blocked(missing.refusal, missing.exits,
                                         estimator="not fitted: the missing-values answer decides it")
@@ -1333,10 +1353,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
                     unit_c = (None if unit_all is None else unit_all[table_rows]) if on_all else groups
                     coefficients = family.coefficients(table_fit, X_c, y_c, task=task,
                                                        purpose=state.purpose, groups=unit_c)
-                    if survey is not None and survey.answer == "population":
-                        concerns.append("Fit without the survey weights: its scores and "
-                                        "coefficients describe these participants, not the "
-                                        "surveyed population.")
+                    if (survey is not None and survey.answer == "population"
+                            and coefficients is not None):
+                        # MS4: penalized coefficients have no design-based estimator here: blocked
+                        # and recorded, as every family without one is (MODELING_SEQUENCE §4).
+                        from turbotab.core.models.survey import no_design_estimator
+
+                        table = no_design_estimator(family, task, state.models)
+                        coefficients, interval_info = table.rows, table.info
+                        concerns.extend(table.concerns)
                     if missing is not None and missing.imputations is not None and coefficients:
                         concerns.append("These coefficients come from a single fill in each "
                                         "fold, not the multiple imputations: the family has no "
@@ -1397,6 +1422,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                      str(split_data["cluster"]), groups=groups, unit=grouped_by)
         if survey_note:
             concerns.append(survey_note)
+        elif survey is not None and survey.answer == "population" and not survey.refusal:
+            concerns.append(POPULATION_SCORES)
         results[key], summaries[key] = result, cv
         fitted[key] = final
         if inference and (same_rows or (on_all and table_fit is not None)):
@@ -1450,7 +1477,11 @@ def fit_stage(ctx: StageContext) -> Bundle:
                   objects={"fitted": fitted, "grouped_by": grouped_by,
                            "every_row": every_row if inference else None,
                            "every_row_ids": (assignment.index[table_rows].to_numpy(dtype=np.int64)
-                                             if inference else None)})
+                                             if inference else None),
+                           # MS4: the design the population answer binds every display to.
+                           "survey_design": (survey.design if survey is not None
+                                             and survey.answer == "population"
+                                             and not survey.refusal else None)})
 
 
 def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
@@ -1486,9 +1517,17 @@ def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, fam
 
         def table(m: Any) -> Any:
             return refit(m, y, task=task, classes=classes, clusters=clusters, **extra).rows
+    weights = None
+    if survey is not None:
+        # MS4: under the surveyed population the shares are the population's (survey-weighted).
+        from turbotab.core.models.survey import domain_of
+
+        domain = domain_of(matrix.index, survey)
+        weights = np.zeros(len(matrix))
+        weights[domain.keep] = domain.raw
     try:
         extra = relative_effect_rows(matrix, list(adj.nutrients), factors, table=table,
-                                     coefficients=rows)
+                                     coefficients=rows, weights=weights)
     except Exception:  # noqa: BLE001 - the coefficients stand without their contrasts
         import logging
 
@@ -1505,8 +1544,8 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
     concerns, and no score (``cv`` empty, ``holdout`` and ``versus_baseline`` null). ``X`` and
     ``y`` are the rows the table is estimated from (``rows``: every analyzed row under inference).
 
-    Under a survey design (WP10) the table waits for the survey answer as the linear family's does,
-    and a population answer is stated as not applied: these tests are not design-weighted."""
+    Under a survey design (WP10) the table waits for the survey answer as the linear family's does;
+    under the population answer a family with no design-based tests is blocked and recorded (MS4)."""
     from turbotab.core.models.inference import _on_rows
     from turbotab.core.models.linear import as_clusters
 
@@ -1518,6 +1557,13 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
             from turbotab.core.models.survey import blocked
 
             table = blocked(survey.refusal, survey.exits)
+        elif (survey is not None and survey.answer == "population"
+              and not _accepts(family.inference, "survey")):
+            # MS4: a family with no design-based estimator under the population answer is blocked
+            # and recorded (MODELING_SEQUENCE §4), its exits the sample-only attestation.
+            from turbotab.core.models.survey import no_design_estimator
+
+            table = no_design_estimator(family, task, getattr(state, "models", None), what="tests")
         elif missing is not None and (missing.refusal or missing.imputations is not None):
             from turbotab.core.models.survey import blocked
 
@@ -1537,10 +1583,7 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
                 table = _on_rows(table, len(X), rows)
             if missing is not None:
                 missing.record(table)
-            if survey is not None and survey.answer == "population":
-                concerns.append("Fit without the survey weights: its tests describe these "
-                                "participants, not the surveyed population.")
-            elif survey is not None and survey.concern():
+            if survey is not None and survey.concern():
                 concerns.append(survey.concern())
         coefficients, interval_info = table.rows, table.info
         concerns.extend(table.concerns)
@@ -1672,7 +1715,17 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         # Every row the models were fit on: the band's refits resample them all.
         fit_frame = modeling_frame(store, [*spec.inputs, *extra], all_train, outcome=target)
     X_fit = fit_frame[spec.inputs]
-    curve_rows = X_fit.index.get_indexer(pd.Index(train_ids))
+    # MS4: under the surveyed population the curve is the population's: every analyzed row in the
+    # design's domain, each counted as the people its survey weight stands for, none sampled away.
+    survey_design = objects.get("survey_design") if on_every_row else None
+    domain = None
+    if survey_design is not None:
+        from turbotab.core.models.survey import domain_of
+
+        domain = domain_of(X_fit.index, survey_design)
+        curve_rows = np.flatnonzero(domain.keep)
+    else:
+        curve_rows = X_fit.index.get_indexer(pd.Index(train_ids))
     X = X_fit.iloc[curve_rows]
     step = float(sub.step_percent) if scale == "percent_energy" else float(sub.step_kcal)
     ks = [step * i for i in range(SUBSTITUTION_STEPS + 1)]
@@ -1720,6 +1773,43 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         ctx.progress(start, f"{family.label}: moving energy")
         if task in undrawn:
             skipped.append(family.label)
+            continue
+        if survey_design is not None:
+            # MS4: the curve over the surveyed population, design-based or blocked and recorded.
+            from turbotab.core.models.survey import population_curve
+
+            drawn = population_curve(
+                family, task, fitted.get(key), X, y_fit[curve_rows], survey_design, domain,
+                models=keys, donor=sub.donor, recipient=sub.recipient,
+                kcal_per_unit=kcal_per_unit, ks=ks, total_kind="variable", nested=nested,
+                total=total_energy, scale=scale, shift=shift)
+            curve = drawn.curve
+            fixed = curve["fixed_population"]
+            if support is None:
+                support = {"total": curve["total"], "n_rows": curve["n_rows"],
+                           "not_recorded": curve["n_not_recorded"],
+                           "off_amount": curve["n_off_amount"], "off_share": curve["n_off_share"],
+                           "fixed_rows": fixed["n_rows"], "fixed_through": fixed["through"]}
+            note = note or curve["note"]
+            if drawn.band is None:
+                models.append({
+                    "family": key, "label": family.label, "delta": [None] * len(ks),
+                    "ci_low": None, "ci_high": None,
+                    "on_support_fraction": curve["on_support_fraction"],
+                    "stopped_at": curve["stopped_at"], "effect_label": None,
+                    "fixed_delta": [None] * len(ks), "fixed_ci_low": None, "fixed_ci_high": None,
+                    "band_ok": None, "refused": drawn.refused, "exits": drawn.exits})
+                continue
+            band_d = drawn.band
+            models.append({
+                "family": key, "label": family.label, "delta": curve["delta"],
+                "ci_low": band_d["ci_low"], "ci_high": band_d["ci_high"],
+                "on_support_fraction": curve["on_support_fraction"],
+                "stopped_at": curve["stopped_at"],
+                "effect_label": _in_outcome_unit(curve["effect_label"], outcome_unit),
+                "fixed_delta": fixed["delta"], "fixed_ci_low": band_d["fixed_ci_low"],
+                "fixed_ci_high": band_d["fixed_ci_high"], "band_ok": None})
+            bands.append((family.label, band_d))
             continue
         if key not in fitted:
             # Under inference, a family with no coefficient table (boosted trees) was fit on the
@@ -1820,7 +1910,26 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         notes.append("A time-to-event outcome's substitution is a hazard ratio, which is not drawn "
                      "yet; the Cox coefficients are log hazard ratios per unit of each column.")
     band = None
-    if n_boot and bands:
+    if survey_design is not None:
+        from turbotab.core.models.survey import curve_caption
+
+        for entry in models:
+            if entry.get("refused"):
+                notes.append(f"{entry['label']}: no curve. {entry['refused']}")
+        if bands:
+            first = bands[0][1]
+            caption = curve_caption(survey_design, first["variance"], len(X))
+            notes.append(caption.replace("Shaded bands: ", "The shaded bands are ", 1))
+            if n_boot:
+                notes.append(f"The {n_boot:,} bootstrap refits asked for are not drawn: resampling "
+                             f"rows ignores the strata and PSUs, so under the surveyed population "
+                             f"the band is the design's.")
+            band = {"n_boot": 0, "n_rows": int(len(X)), "grouped_by": None, "seconds": 0.0,
+                    "failed": 0, "n_units": int(first["variance"].domain_psu),
+                    "resample_units": None, "scale": None, "interval": None, "level": 0.95,
+                    "min_ok_share": None, "caption": caption, "method": "design",
+                    "df": int(first["df"])}
+    elif n_boot and bands:
         first = bands[0][1]
         caption = _band_caption(n_boot, interval, first, len(X_fit), grouped_by, bands,
                                 rows_word=rows_word)
@@ -1845,15 +1954,22 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
               "every other input, total energy included, left as it was")
     moved = ("k percent of each row's own total energy moves" if scale == "percent_energy"
              else "k kcal move")
-    estimand = (f"The average change in {outcome} when {moved} from {sub.donor} to "
+    # Under the surveyed population (MS4) the average is the population's.
+    over = " over the surveyed population" if survey_design is not None else ""
+    estimand = (f"The average change in {outcome}{over} when {moved} from {sub.donor} to "
                 f"{sub.recipient}, with {others}.")
     if shift.carried:
-        estimand = (f"The average change in {outcome} when {moved} from {sub.donor} to "
+        estimand = (f"The average change in {outcome}{over} when {moved} from {sub.donor} to "
                     f"{sub.recipient}, their parts or totals moving with them and {others}.")
+    basis = f"Averaged over {len(X):,} {rows_word}."
+    if survey_design is not None:
+        weight = survey_design.weight_column
+        basis = (f"Averaged over the {len(X):,} analyzed rows in the survey design, each counted as "
+                 f"the people its weight{f' `{weight}`' if weight else ''} stands for.")
     artifact = SubstitutionArtifact(
         donor=sub.donor, recipient=sub.recipient, step_kcal=float(sub.step_kcal),
         ks=[float(k) for k in ks], total_kind="variable", estimand=estimand, note=" ".join(notes),
-        basis=f"Averaged over {len(X):,} {rows_word}.", models=models,
+        basis=basis, models=models,
         carried=list(shift.carried), band=band,
         band_estimate=({"n_boot": BAND_BOOT, "seconds": round(estimate, 1)}
                        if not n_boot and drawable and estimate else None),

@@ -55,6 +55,13 @@ PREDICTION = ("Under prediction the model is used on recalls measured the same w
               "coefficient, which is an inference question.")
 NO_LINEAR = ("Regression calibration corrects a coefficient, and only the linear model reports one "
              "with an interval; choose it among the model families.")
+# MS4: under the population answer every display is design-based or blocked and recorded
+# (MODELING_SEQUENCE §4). This correction is fit unweighted with a row bootstrap, so it is blocked.
+POPULATION = ("Under the surveyed population a calibrated coefficient needs design-based variance (a "
+              "bootstrap by PSU within strata over the whole chain, MODELING_SEQUENCE §0 ruling 7), "
+              "which this correction does not have, so it is blocked and recorded. To calibrate "
+              "for these participants instead, answer the survey question \"these participants\" "
+              "(the sample-only attestation).")
 NOT_COMBINED = ("Each analysis row is one record, not the mean of a person's repeated recalls, so the "
                 "day-to-day variance cannot be estimated. Record the rows as repeats of one person "
                 "and combine them by the mean.")
@@ -279,6 +286,10 @@ def calibration_stage(ctx: StageContext) -> Bundle:
 
     if not inference:
         return done(applies=False, reason=PREDICTION)
+    survey = getattr(state, "survey", None)
+    if survey is not None and survey.estimand == "population":
+        # MS4 (MODELING_SEQUENCE §4): no design-based estimator here, so blocked and recorded.
+        return done(applies=False, reason=POPULATION)
     if working.get("aggregation") is None:
         return done(applies=False, reason=NOT_COMBINED)
     if effective_repeat_kind(state, structure) == "time_points":
@@ -387,12 +398,6 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     if energy and energy in columns:
         concerns.append(f"Total energy (`{energy}`) stays in the model and comes from the same "
                         f"recalls; it is treated as measured without error.")
-    survey = getattr(state, "survey", None)
-    if good and survey is not None and survey.estimand == "population":
-        # WP10: the fit stage's table is design-based under this answer; this correction is not.
-        concerns.append("The calibration is fit without the survey weights: it corrects these "
-                        "participants' coefficient, not the surveyed population's design-based "
-                        "one in the fit's table.")
     if good and spec.multiple_imputation() and X.isna().any().any():
         # WP7: the fit's table pools multiple imputations; this correction refits one fill.
         concerns.append("The calibration refits the model with blanks filled once without the "

@@ -400,6 +400,76 @@ def ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None, cl
     return InferenceTable(rows, info, concerns, cov=bread)
 
 
+SURVEY_ESTIMATOR = "survey-weighted proportional-odds (cumulative logit) model, pseudo-maximum likelihood"
+_SURVEY_TOL = 1e-14  # the Newton decrement at which the weighted fit stops (svyolr's to 1e-5 needs far less)
+
+
+def survey_ordinal_table(matrix: pd.DataFrame, y: Any, levels: Sequence[Any] | None,
+                         design: Any) -> Any:
+    """The design-based proportional-odds table over a survey design (MODELING_SEQUENCE §0 ruling
+    6; MS4).
+
+    The cumulative-logit log-likelihood with each analysis row weighted by its survey weight,
+    maximized by Newton–Raphson (:class:`ProportionalOddsRegression` with ``sample_weight``); the
+    variance is the design-based variance of the total of the weighted scores over (β, θ),
+    sandwiched by the inverse of the weighted information
+    (:func:`~turbotab.core.models.survey.design_table`). This is R's ``survey::svyolr``, whose
+    influence functions are its weighted scores times the inverse Hessian, summed by
+    ``svyrecvar``. The domain is the matrix's rows placed in the design with a positive weight.
+
+    The Brant check is computed on these participants, unweighted: a diagnostic of the model's
+    form, never a design-based test, and said so.
+    """
+    from turbotab.core.models.inference import format_p
+    from turbotab.core.models.survey import _refused, design_table, domain_of
+
+    features = [str(c) for c in matrix.columns]
+    domain = domain_of(matrix.index, design)
+    X = matrix.to_numpy(dtype=float)[domain.keep]
+    codes = np.asarray(y).astype(np.int64)[domain.keep]
+    estimator = SURVEY_ESTIMATOR
+    present = np.unique(codes) if len(codes) else np.array([], dtype=np.int64)
+    K = len(present)
+    names_levels = (list(levels) if levels is not None and K and int(present.max()) < len(levels)
+                    else None)
+    if K < 2 or domain.n <= X.shape[1] + K - 1:
+        return _refused(features, None, estimator, design, domain.n,
+                        f"Only {domain.n:,} analysis rows in {K} level{'s' if K != 1 else ''} carry "
+                        f"a positive weight and a place in the design, too few for the model.")
+    model = ProportionalOddsRegression(tol=_SURVEY_TOL).fit(X, codes, sample_weight=domain.weight)
+    level_names = ([str(names_levels[int(c)]) for c in model.classes_] if names_levels is not None
+                   else [str(c) for c in model.classes_])
+    names = features + cut_names(level_names)
+    est = np.concatenate([model.coef_, model.thresholds_])
+    inner = np.searchsorted(model.classes_, codes).astype(np.int64)
+    _, _, _, scores = loglik_gradient_hessian(model.coef_, model.thresholds_, X, inner,
+                                              domain.weight)
+    table = design_table(names, est, scores * domain.weight[:, None], model.information_,
+                         design, domain, estimator, converged=bool(model.converged_))
+    if table.info.get("refused"):
+        return table
+    table.info["caption"] += (" Coefficients are log cumulative odds ratios: exp(β) multiplies the "
+                              "odds of a higher level, per unit, at every cut-point.")
+    brant = brant_test(X, inner, features)
+    if brant is None:
+        table.concerns.append("The proportional-odds check (Brant) could not be computed: a binary "
+                              "fit at some cut-point does not exist (a column separates it).")
+    elif brant["p"] < BRANT_ALPHA:
+        off = [c for c, r in brant["columns"].items() if r["p"] < BRANT_ALPHA]
+        named = (f"; it fails for {', '.join(f'`{c}`' for c in off)}" if off else "")
+        table.concerns.append(
+            f"Among these participants, unweighted, the proportional-odds assumption is in doubt "
+            f"(Brant test χ²({brant['df']}) = {brant['statistic']:.1f}, p = "
+            f"{format_p(brant['p'])}){named}: a check of the model's form, not a design-based "
+            f"test. If the odds ratios differ across cut-points in the population too, each is "
+            f"averaged into one.")
+    table.info["brant"] = None if brant is None else {
+        "statistic": brant["statistic"], "df": brant["df"], "p": brant["p"],
+        "columns": {c: {"statistic": r["statistic"], "df": r["df"], "p": r["p"]}
+                    for c, r in brant["columns"].items()}}
+    return table
+
+
 def on_cumulative_scale(table: Any, outcome: Any = None, levels: Sequence[Any] | None = None) -> Any:
     """Declare the table's scale as every inference table does (AUDIT_REPORT §5 WP8, ME-07): each
     coefficient is a log cumulative odds ratio, so its row carries exp(β) and exp of its interval's
@@ -458,8 +528,9 @@ class ProportionalOdds(FamilyBase):
         detail = ("Fits one cumulative log-odds effect per column, the same at every cut-point "
                   "between levels.")
         if purpose == "inference":
-            detail += (" Intervals are Wald, or cluster-robust when a unit's rows repeat; the Brant "
-                       "test checks the proportional-odds assumption.")
+            detail += (" Intervals are Wald, or cluster-robust when a unit's rows repeat, or, for "
+                       "the surveyed population, survey-weighted with Taylor linearization over "
+                       "the design; the Brant test checks the proportional-odds assumption.")
         return "Proportional-odds (cumulative logit) model", detail
 
     def coefficients(self, pipeline: Any, X: Any, y: Any, *, task: Task,
@@ -476,21 +547,39 @@ class ProportionalOdds(FamilyBase):
         return self.inference(pipeline, X, y, task=task, clusters=as_clusters(groups)).rows
 
     def inference(self, pipeline: Any, X: Any, y: Any, *, task: Task, clusters: Any,
-                  outcome: Any = None, rows: Any = None) -> Any:
+                  outcome: Any = None, rows: Any = None, survey: Any = None) -> Any:
         """The proportional-odds table on the matrix the model saw, on the cumulative odds-ratio
-        scale (WP8): ``outcome`` names the outcome, ``rows`` says which rows ``X`` holds."""
-        from turbotab.core.models.inference import _on_rows
+        scale (WP8): ``outcome`` names the outcome, ``rows`` says which rows ``X`` holds. With
+        ``survey`` (the "surveyed population" answer's design) it is design-based
+        (:func:`survey_ordinal_table`)."""
         from turbotab.core.models.linear import model_matrix
 
         levels = getattr(pipeline[-1], "level_names_", None)
-        table = on_cumulative_scale(ordinal_table(model_matrix(pipeline, X), y, levels, clusters),
-                                    outcome, levels)
-        return _on_rows(table, len(X), rows)
+        return self.inference_matrix(model_matrix(pipeline, X), y, task=task, classes=levels,
+                                     clusters=clusters, outcome=outcome, rows=rows, survey=survey)
 
     def inference_matrix(self, matrix: pd.DataFrame, y: Any, *, task: Task,
-                         classes: Sequence[Any] | None, clusters: Any, outcome: Any = None) -> Any:
-        """The inference table on a given model matrix (the quintile trend test's refit)."""
-        return on_cumulative_scale(ordinal_table(matrix, y, classes, clusters), outcome, classes)
+                         classes: Sequence[Any] | None, clusters: Any, outcome: Any = None,
+                         rows: Any = None, survey: Any = None) -> Any:
+        """The inference table on a given model matrix (the quintile trend test's refit),
+        design-based under ``survey``."""
+        from turbotab.core.models.inference import _on_rows
+
+        if survey is None:
+            table = on_cumulative_scale(ordinal_table(matrix, y, classes, clusters), outcome,
+                                        classes)
+            return _on_rows(table, len(matrix), rows)
+        table = survey_ordinal_table(matrix, y, classes, survey)
+        if table.rows:
+            table = on_cumulative_scale(table, outcome, classes)
+        n_domain = (table.info.get("survey") or {}).get("n_domain")
+        if n_domain is not None and int(n_domain) < len(matrix):
+            table.info.update(n_rows=int(n_domain), rows=rows)
+            table.info["caption"] += (f" Estimated from the {int(n_domain):,} of the "
+                                      f"{len(matrix):,} analyzed rows with a positive weight and a "
+                                      f"place in the design.")
+            return table
+        return _on_rows(table, len(matrix), rows)
 
     def assess(self, s: Situation) -> Assessment:
         concerns: list[str] = []
@@ -523,5 +612,5 @@ class ProportionalOdds(FamilyBase):
 PROPORTIONAL_ODDS = register_family(ProportionalOdds())
 
 __all__ = ["BRANT_ALPHA", "PROPORTIONAL_ODDS", "ProportionalOdds", "ProportionalOddsRegression",
-           "brant_test", "cut_names", "effective_rows", "loglik_gradient_hessian",
-           "ordinal_outcome", "ordinal_table"]
+           "SURVEY_ESTIMATOR", "brant_test", "cut_names", "effective_rows",
+           "loglik_gradient_hessian", "ordinal_outcome", "ordinal_table", "survey_ordinal_table"]

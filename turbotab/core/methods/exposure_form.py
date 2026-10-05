@@ -504,6 +504,15 @@ def _reference(info: Mapping[str, Any], rows: Sequence[Mapping[str, Any]],
                                    f"denominator degrees of freedom as Stata does")
     if covariance == "model":
         return "chi2", None, "the model's information"
+    if covariance == "design":
+        # MS4: a design-based covariance rests on the design's degrees of freedom; the adjusted
+        # Wald F (``models.survey.adjusted_wald``) allows for that.
+        d = (info.get("survey") or {}).get("df")
+        if not d or d < 1:
+            return None
+        return "F_design", float(d), (f"the Taylor-linearized covariance over the survey design, "
+                                      f"an adjusted Wald F for its {int(d):,} design degrees of "
+                                      f"freedom, Korn & Graubard 1990")
     return None
 
 
@@ -526,6 +535,15 @@ def wald_test(estimates: np.ndarray, cov: np.ndarray, idx: Sequence[int], info: 
         return None
     W = float(b @ np.linalg.pinv(V) @ b)
     kind, den, words = ref
+    if kind == "F_design":
+        from turbotab.core.models.survey import adjusted_wald
+
+        adjusted = adjusted_wald(W, q, int(den))
+        if adjusted is None:
+            return None
+        F, den_df, p = adjusted
+        return {"statistic": F, "df_num": q, "df_den": den_df, "distribution": "F", "p": p,
+                "basis": words}
     if kind == "F":
         F = W / q
         return {"statistic": F, "df_num": q, "df_den": den, "distribution": "F",
@@ -661,6 +679,11 @@ def _trend(family: Any, pipeline: Any, step: ExposureForms, column: str, X: pd.D
                f"({medians}, from the fitting rows), entered as one continuous term in place of "
                f"the four indicators; its coefficient {row['estimate']:+.4g} per unit, "
                f"p = {format_p(row['p'])} ({table.info.get('caption', '').rstrip('.')}).")
+    if survey is not None:
+        # The review of the modeling sequence (§1 step 5, quintiles): "Under survey design, state
+        # whether cut points are weighted."
+        caption += (" The cut points and medians are the analyzed rows' own, unweighted; the "
+                    "trend's coefficient and interval are design-based.")
     return {"column": column, "form": "quintiles", "test": "trend",
             "statistic": (row["estimate"] / row["se"]) if row.get("se") else None,
             "df_num": 1, "df_den": row.get("df"), "distribution": reference, "p": row["p"],

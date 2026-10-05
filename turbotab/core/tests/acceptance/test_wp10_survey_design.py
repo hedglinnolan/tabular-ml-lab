@@ -590,7 +590,9 @@ def test_3_a_lonely_psu_is_handled_and_reported(client, tables):
              "SDMVPSU": "design"}
     pid = open_project(client, tables["lonely"], "y", "inference", roles)
     accepted(client, pid, survey_options(client, pid)[0]["decision"])
-    assert "`1` stratum with a single PSU was centered at the mean of all PSU totals" in \
+    # MS4 states the rule as R survey 4.5 computes it (the strata holding analysis rows: here all).
+    assert ("`1` stratum with a single PSU was centered at the mean PSU total of the strata "
+            "holding analysis rows (R survey's lonely.psu \"adjust\")") in \
         sentence(client, pid, "set_survey")
     model = finish(client, pid)
     info = model["inference"]["survey"]

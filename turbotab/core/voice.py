@@ -1054,6 +1054,12 @@ def _select_models(d: Any, state: Any, ctx: Any) -> str:
     head = _NUMBER_WORD.get(n, tick(n))
     chosen = (f"{head} model {plural(n, 'family', 'families')} {plural(n, 'was', 'were')} "
               f"chosen: {listing(labels, limit=8, ticked=False)}")
+    # MS4: under the surveyed population, each family's design-based estimator, or its block.
+    from turbotab.core.models.survey import models_sentence
+
+    population = models_sentence(state, d.models, task)
+    if population:
+        chosen = f"{chosen}. {population}"
     # BLUEPRINT §14.3 (amendment): the readings the values settled, which the fit reads, are
     # stated in the record ("read from the values"), each with its evidence.
     read = _get(ctx, "read_from_values")
@@ -1075,7 +1081,12 @@ def _set_substitution(d: Any, state: Any, ctx: Any) -> str:
         text = (f"The substitution studied is {tick(d.donor)} replaced by {tick(d.recipient)}, in "
                 f"steps of {tick(number(d.step_kcal))} kcal {fixed}")
     n_boot = int(getattr(d, "n_boot", 0) or 0)
-    if n_boot:
+    from turbotab.core.models.survey import substitution_clause
+
+    population = substitution_clause(state)  # MS4: the design's band replaces the refits
+    if population:
+        text += f"; {population}"
+    elif n_boot:
         # Under inference the curve and its refits read every analyzed row (BLUEPRINT §12 ruling 3).
         rows = ("every analyzed row" if getattr(state, "purpose", None) == "inference"
                 else "training rows")
@@ -1483,8 +1494,10 @@ def _set_survey(d: Any, state: Any, ctx: Any) -> str:
         shape = f" ({count(counts[0])} PSUs in {count(counts[1])} strata)" if counts else ""
         over = f"over {tick(d.psu)} nested within {tick(d.strata)}{shape}"
         if counts and counts[2]:
+            # MS4: the stated rule, R survey's lonely.psu = "adjust" as survey 4.5 computes it.
             over += (f"; {count(counts[2])} {plural(counts[2], 'stratum', 'strata')} with a single "
-                     f"PSU {plural(counts[2], 'was', 'were')} centered at the mean of all PSU totals")
+                     f"PSU {plural(counts[2], 'was', 'were')} centered at the mean PSU total of "
+                     f"the strata holding analysis rows (R survey's lonely.psu \"adjust\")")
     elif d.psu:
         over = f"over {tick(d.psu)} with no strata, as recorded"
     else:

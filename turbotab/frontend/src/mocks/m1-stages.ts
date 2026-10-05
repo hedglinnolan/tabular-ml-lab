@@ -1323,6 +1323,8 @@ export function substitution(
           level: 0.95,
           min_ok_share: 0.9,
           caption: `Shaded bands: 95% intervals from ${spec.n_boot} refits of each model on bootstrap resamples of all ${fmt(f.n_train)} training rows (mock).`,
+          method: "bootstrap",
+          df: null,
         }
       : null,
     support: null,
@@ -1356,6 +1358,8 @@ export function substitution(
         fixed_ci_low: null,
         fixed_ci_high: null,
         band_ok: banded ? spec.n_boot : null,
+        refused: null,
+        exits: [],
       };
     }),
   };

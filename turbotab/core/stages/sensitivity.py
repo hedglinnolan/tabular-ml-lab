@@ -194,6 +194,14 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
         concerns.extend(table.concerns)
     else:
         rows = family.coefficients(fitted, X, y, task=task, purpose=state.purpose)
+        if (rows is not None and survey is not None and survey.design is not None
+                and state.purpose == "inference"):
+            # MS4: no design-based estimator under the population answer: blocked and recorded.
+            from turbotab.core.models.survey import no_design_estimator
+
+            table = no_design_estimator(family, task, getattr(state, "models", None))
+            rows, info = table.rows, table.info
+            concerns.extend(table.concerns)
     return fitted, (rows, info), concerns
 
 

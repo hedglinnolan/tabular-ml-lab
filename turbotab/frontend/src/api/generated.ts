@@ -5510,6 +5510,17 @@ export interface components {
              * @default null
              */
             caption: string | null;
+            /**
+             * Method
+             * @default bootstrap
+             * @enum {string}
+             */
+            method: "bootstrap" | "design";
+            /**
+             * Df
+             * @default null
+             */
+            df: number | null;
         };
         /** SubstitutionModel */
         SubstitutionModel: {
@@ -5549,6 +5560,16 @@ export interface components {
              * @default null
              */
             band_ok: number | null;
+            /**
+             * Refused
+             * @default null
+             */
+            refused: string | null;
+            /**
+             * Exits
+             * @default []
+             */
+            exits: components["schemas"]["InferenceExit"][];
         };
         /** SubstitutionPair */
         SubstitutionPair: {

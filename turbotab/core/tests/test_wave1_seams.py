@@ -237,9 +237,11 @@ def test_the_relative_effect_under_a_surveyed_population_is_design_based(tmp_pat
 
     Reference: survey-weighted least squares and its linearized variance written out from the
     definition over every row (``survey_references.wls_by_definition``, R survey's svyrecvar
-    semantics); θ = c'β with c = 4·(e_p − w_c e_c − w_f e_f), w the sources' unweighted mean shares
-    of the remaining energy (as Tomova et al. define them, over the rows the model was fit on);
-    SE √(c'Vc); df = PSUs − strata (``design_df_by_definition``).
+    semantics); θ = c'β with c = 4·(e_p − w_c e_c − w_f e_f), w the sources' shares of the
+    remaining energy (Tomova et al.) in the surveyed population: survey-weighted means over the
+    rows the model was fit on (MS4: under the population answer every part of the estimand is the
+    population's, numpy's ``average`` with the weights here); SE √(c'Vc); df = PSUs − strata
+    (``design_df_by_definition``).
     """
     from turbotab.core.decisions import SurveySpec
     from turbotab.core.tests.acceptance import survey_references as sref
@@ -263,7 +265,8 @@ def test_the_relative_effect_under_a_surveyed_population_is_design_based(tmp_pat
                          frame["fat_g"] * 9, frame["age"]])
     beta, V = sref.wls_by_definition(X, frame["y"].to_numpy(float), frame["WTMEC2YR"].to_numpy(float),
                                      frame["SDMVSTRA"], frame["SDMVPSU"], np.ones(len(frame), bool))
-    kc, kf = X[:, 2].mean(), X[:, 3].mean()
+    weight = frame["WTMEC2YR"].to_numpy(float)
+    kc, kf = np.average(X[:, 2], weights=weight), np.average(X[:, 3], weights=weight)
     w_c = kc / (kc + kf)
     c = np.array([0.0, 4.0, -4.0 * w_c, -4.0 * (1 - w_c), 0.0])
     theta, se = float(c @ beta), float(np.sqrt(c @ V @ c))

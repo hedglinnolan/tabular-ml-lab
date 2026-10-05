@@ -394,6 +394,10 @@ class SubstitutionModel(_Model):
     fixed_ci_low: list[float | None] | None = None
     fixed_ci_high: list[float | None] | None = None
     band_ok: int | None = None  # refits of this family's band that succeeded
+    # Under the surveyed population (MS4) a family with no design-based estimator draws no curve:
+    # blocked and recorded, with why and the ways forward.
+    refused: str | None = None
+    exits: list[InferenceExit] = []
 
 
 class SubstitutionSupport(_Model):
@@ -423,6 +427,10 @@ class SubstitutionBand(_Model):
     level: float | None = None
     min_ok_share: float | None = None  # a family's band needs this share of its refits to succeed
     caption: str | None = None  # the saved figure's: rows, refits, how many succeeded
+    # "design": under the surveyed population (MS4) the band is Taylor linearization over the
+    # survey design on t(df), not refits (``models.survey.design_curve``); n_boot is then 0.
+    method: Literal["bootstrap", "design"] = "bootstrap"
+    df: int | None = None
 
 
 class BandEstimate(_Model):
