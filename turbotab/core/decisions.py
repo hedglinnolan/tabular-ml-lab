@@ -1332,12 +1332,15 @@ CodebookField = Literal["unit", "codes", "type", "range"]
 
 
 class CodebookConflict(_Value):
-    """A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3)."""
+    """A codebook field the values contradict, or one whose check cannot run here (``checked``
+    False: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT
+    §14.2–§14.3)."""
 
     column: str
     field: CodebookField
     says: str      # what the codebook documents
-    values: str    # what the values show instead
+    values: str    # what the values show instead, or why no check ran
+    checked: bool = True
 
 
 class CodebookSpec(_Value):

@@ -1170,6 +1170,9 @@ DECISION_A: dict[str, tuple[str, str]] = {
     "set_grain": ("grain", "whether a unit can appear in more than one row"),
     "set_unit": ("unit", "what one row of the analysis is"),
     "set_aggregation": ("aggregation", "how each unit's rows are combined"),
+    # DATAIN: a join (slot ``ingest``, before the opening sequence) rebuilds the table and numbers
+    # its rows anew; an inner join drops rows and a one-to-many repeats them.
+    "join_files": ("joins", "the files joined to the table"),
 }
 DECISION_A_SLOTS = tuple(slot for slot, _ in DECISION_A.values())
 

@@ -130,7 +130,10 @@ def build_graph() -> Graph:
             # ingest 2 (wave 1, DATAIN, V2 definition of done §1): SAS transport files are read as R
             # reads them, and the files joined to the table on a shared identifier, in answer order
             # (``join_files``), are joined here.
-            Stage("ingest", 2, (), ("joins",), ingest_stage, heavy=True, label="Reading the file"),
+            # ingest 3 (DATAIN repair): each set of joins is written to a file of its own
+            # (``datastore.table_file``), so a reverted join returns to a table it never wrote
+            # over; a table joined under version 2 is read again into its own file.
+            Stage("ingest", 3, (), ("joins",), ingest_stage, heavy=True, label="Reading the file"),
             # ── M2: what the table is (M2_CONTRACT §2) ──
             # oriented 3 (WP14): the names are read before the shape, and the shape is scale-aware.
             Stage("oriented", 3, ("ingest",), ("orientation", "feature_table"), oriented_stage,

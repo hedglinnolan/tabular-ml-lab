@@ -7,6 +7,8 @@
         decisions.jsonl            append-only decision log
         data/raw.parquet           the ingested table (+ raw.info.json sidecar; raw.labels.json
                                    when an XPT source carries variable labels)
+        data/joined-<digest>.parquet  the table with a set of files joined to it, one file per
+                                   set (``datastore.table_file``; the same sidecars beside it)
         files/<fid>/               a file added to join to the table: its source, its ingested
                                    raw.parquet and file.json (DATAIN, minimal assembly)
         codebooks/<cid>/           an imported codebook: codebook.json and its source file
@@ -182,7 +184,17 @@ class Workspace:
         return pdir
 
     def data_path(self, pid: str) -> Path:
+        """The source file's own table, without any file joined to it."""
         return self.project_dir(pid) / "data" / "raw.parquet"
+
+    def table_path(self, pid: str, state: Any = None) -> Path:
+        """The table the ingest stage writes under ``state``: the source's own
+        (:meth:`data_path`) or, with files joined to it, the file of that set of joins
+        (``datastore.table_file``)."""
+        from turbotab.core.datastore import table_file
+
+        joins = getattr(state, "joins", None) if state is not None else None
+        return table_file(self.project_dir(pid) / "data", joins)
 
     def cache_dir(self, pid: str) -> Path:
         path = self.project_dir(pid) / "cache"

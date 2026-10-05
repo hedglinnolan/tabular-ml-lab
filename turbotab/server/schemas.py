@@ -263,6 +263,8 @@ class CodebookAsk(Model):
     field: str
     says: str
     values: str
+    # False: the field's check cannot run here (it confirms nothing), so it is asked unchecked
+    checked: bool = True
     exits: list[Exit]
 
 
