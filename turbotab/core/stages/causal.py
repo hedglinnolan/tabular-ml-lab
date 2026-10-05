@@ -701,10 +701,16 @@ def causal_stage(ctx: StageContext) -> Bundle:
               "y": y, "exposure_column": prep.exposure,
               "benchmarks": {raw: [c for c in union if raw in prep.x_sources.get(c, [c])]
                              for raw in prep.raw(union)}}
+    # MODELING_SEQUENCE §0 ruling 14: a difference's E-value is standardized by the SD the
+    # estimand speaks of, the surveyed population's (design-weighted, over the lane's rows) under
+    # the population answer, the rows' own otherwise; the effects stage reads the same function.
+    from turbotab.core.models.effects import estimand_sd
+
+    sd, basis = estimand_sd(y, weights if weight_column is not None else None)
     sensitivity = causal.sensitivity_for(
         [e.model_dump() for e in estimates], method=method, exposure=prep.exposure,
-        outcome=str(state.target), outcome_sd=None if outcome_binary else float(np.std(y, ddof=1)),
-        **ls)
+        outcome=str(state.target), outcome_sd=None if outcome_binary else sd,
+        sd_basis=basis, **ls)
     methods = causal.methods_sentence(
         method=method, exposure=prep.exposure, outcome=str(state.target),
         effect=str(getattr(estimand, "effect", "total") or "total"), adjusted=prep.adjusted,

@@ -1290,8 +1290,9 @@ def numbers_read(frame: pd.DataFrame, state: Any) -> pd.DataFrame:
     reads as numbers (``state.numbers_read``), read as the working table reads it (the same SQL,
     composed as the working table composes it: :func:`column_expressions`). The routing gate's p05:
     an `sbp` with SAS "." read as numbers by its repair held 999, 0 and 1300 that no plausibility
-    check ever saw, because the checks ran on the text; they run on these numbers instead. The
-    frame itself when nothing is read."""
+    check ever saw, because the checks ran on the text; they run on these numbers instead. A text
+    predictor confirmed "amount" through the ledger is read the same way (:func:`ledger_amounts`).
+    The frame itself when nothing is read."""
     import duckdb
     import pyarrow as pa
 
@@ -1302,6 +1303,7 @@ def numbers_read(frame: pd.DataFrame, state: Any) -> pd.DataFrame:
                and (fam := family_for(fid)) is not None and fam.key in READS_NUMBERS}
     wanted = {c: sql for c, sql in column_expressions(None, reading).items()
               if c in frame.columns and frame[c].dtype == object}
+    wanted.update(ledger_amounts(frame, state, skip=wanted))
     if not wanted:
         return frame
     out = frame.copy()
@@ -1316,6 +1318,34 @@ def numbers_read(frame: pd.DataFrame, state: Any) -> pd.DataFrame:
             con.unregister("__numbers")
     finally:
         con.close()
+    return out
+
+
+def ledger_amounts(frame: pd.DataFrame, state: Any, skip: Any = ()) -> dict[str, str]:
+    """``{column: SQL}`` for each text column the user confirmed holds amounts through the ledger
+    (``confirm_reading`` code_or_count "amount"; BLUEPRINT §14.3, every confirmation is honored),
+    read as the working table reads it (``stages.working.text_amounts``: missing marks blank; a
+    column whose commas read two ways, or holding values below a detection limit, waits for its
+    own answer, as there). The routing gate's claims note: such a predictor was fit as numbers but
+    checked by the plausibility checks as text, so its impossible values were never found."""
+    from turbotab.core.readings import by_values, confirmation
+
+    out: dict[str, str] = {}
+    for column in frame.columns:
+        c = str(column)
+        if c in skip or frame[column].dtype != object \
+                or confirmation(state, "code_or_count", c) != "amount":
+            continue
+        counts = frame[column].dropna().map(str).value_counts().sort_index()
+        if counts.empty:
+            continue
+        verdict = by_values("code_or_count", pd.Series(list(counts.index), dtype=object),
+                            counts=counts.to_numpy(dtype=float))
+        found = verdict.detail if isinstance(verdict.detail, dict) else {}
+        if not found.get("text_numbers") or found.get("ambiguous_comma") or found.get("below"):
+            continue
+        out[c] = number_sql(ident(c), str(found.get("decimal") or "."),
+                            bool(found.get("thousands")))
     return out
 
 
@@ -1900,7 +1930,7 @@ __all__ = [
     "NUMBER_SHARE", "OfferContext", "RepairOption", "SAS_ZERO", "admits", "ambiguous_date_finding",
     "annotate", "attach", "column_expressions", "date_formats", "deferred_to",
     "disposition_writers", "evaluate", "exclusion_rules", "family_for", "infinite_counts",
-    "infinite_finding", "is_sas_zero", "matching_answer", "number_sql", "offer",
+    "infinite_finding", "is_sas_zero", "ledger_amounts", "matching_answer", "number_sql", "offer",
     "read_text_numbers", "register_family", "repair_views", "sas_zero_counts", "sas_zero_finding",
     "text_number_findings", "unusable_columns",
 ]

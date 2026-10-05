@@ -908,7 +908,9 @@ class SetRepeatKind(_DecisionModel):
     time_column: str | None = None
     levels: list[str] | None = None  # the declared order of a text time column's levels
     implicate_column: str | None = None  # imputed copies: the column numbering them (``_MULT_``)
-    acknowledged: bool = False  # imputed copies under inference: analyzed without Rubin's rules
+    # imputed copies under inference: analyzed without Rubin's rules; or repeats or time points
+    # answered over rows the structure reads as imputed copies (block and record)
+    acknowledged: bool = False
 
     @field_validator("levels")
     @classmethod
@@ -2577,7 +2579,21 @@ def _roles_record_what_rode_along(decision: SetRoles, ctx: Any) -> SetRoles:
         except Exception:  # noqa: BLE001 - nothing was shown
             proposals = []
     if proposals:
-        return decision.model_copy(update={"unconfirmed": rode_along(decision.roles, proposals)})
+        # The routing gate's leash note: a bulk answer that changes one column re-records every
+        # other role as it stands. A role the ledger already holds settled (confirmed one by one,
+        # or the user's own earlier answer) and recorded again unchanged is the user's word kept,
+        # never a proposal riding along, so it is not re-asked and nothing it settled reopens.
+        from turbotab.core.readings import role_reading
+
+        state = _state(ctx)
+        kept = set()
+        if state is not None and getattr(state, "roles", None):
+            for column, role in decision.roles.items():
+                held = role_reading(state, column)
+                if held is not None and held.settled and held.value == role:
+                    kept.add(column)
+        return decision.model_copy(update={"unconfirmed": [
+            c for c in rode_along(decision.roles, proposals) if c not in kept]})
     # No proposal was ever computed, so none was shown and none could ride along: the roles are
     # the user's own answer (a script, a unit test, or a client that names them itself).
     return decision.model_copy(update={"unconfirmed": []})

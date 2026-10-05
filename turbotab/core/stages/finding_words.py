@@ -48,6 +48,9 @@ class FindingContext:
     target: str | None = None
     # The columns' units the user recorded (``set_column_unit``): column -> its unit spec.
     units: Mapping[str, Any] = field(default_factory=dict)
+    # The columns whose values below a detection limit the app's own finding reads, with its repair
+    # (``below_detection__<column>``): the lab pack's censored-values finding leaves them to it.
+    below_detection: frozenset[str] = frozenset()
 
     @property
     def n_rows(self) -> int:
@@ -244,21 +247,39 @@ def _tntc_count(fc: FindingContext, column: str | None) -> tuple[int, int]:
             int(cells.str.lower().str.contains("tntc", regex=False).sum()))
 
 
-def _censored(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
-    entries = [e for e in _list(p.get("analytes")) if isinstance(e, Mapping)]
-    cols = [c for c in (_col(e) for e in entries) if c] or list(f["affected_columns"])
-    n = len(cols)
-    rows = []
-    for e in entries:
+def censored_rows(p: Mapping[str, Any], fc: FindingContext) -> tuple[list[tuple], list[str]]:
+    """The lab pack's censored-values table restated from the cells, one row per analyte with
+    something to say: ``(column, below, limit, above, tntc, failed, failure tokens)``; and the
+    columns whose values below a detection limit are left to the app's own below-detection finding,
+    whose repair reads them (the routing gate's claims note: the pack said "No control for this
+    yet" beside that repair). TNTC, the upper quantitation limit and failures stay the pack's."""
+    rows, handed = [], []
+    for e in [e for e in _list(p.get("analytes")) if isinstance(e, Mapping)]:
         col = _col(e)
         tntc, as_failure = _tntc_count(fc, col)
         below = int(e.get("n_below_lod") or 0)
+        if below and col in fc.below_detection:
+            handed.append(str(col))
+            below = 0
         above = int(e.get("n_above_uloq") or 0) + tntc
         failed = max(0, int(e.get("n_measurement_failure") or 0) - as_failure)
         if below or above or failed:
             rows.append((col, below, e.get("detection_limit"), above, tntc, failed,
                          [t for t in e.get("measurement_failure_tokens") or [] if t != "tntc"]))
-    if not any(r[4] for r in rows):  # no TNTC: the legacy detail is true of the table
+    return rows, handed
+
+
+def _censored(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice:
+    entries = [e for e in _list(p.get("analytes")) if isinstance(e, Mapping)]
+    rows, handed = censored_rows(p, fc)
+    if handed:
+        # The columns left to their below-detection repair leave this finding, and what is left of
+        # it is said from the cells (the findings stage drops it when nothing is left).
+        f["affected_columns"] = [c for c in f["affected_columns"] if c in {r[0] for r in rows}]
+    cols = ([r[0] for r in rows] if handed else
+            [c for c in (_col(e) for e in entries) if c]) or list(f["affected_columns"])
+    n = len(cols)
+    if not any(r[4] for r in rows) and not handed:  # no TNTC: the legacy detail is true of the table
         return Voice(f"{listing(cols, limit=3)} {plural(n, 'carries', 'carry')} values censored at "
                      f"a detection limit.")
     parts = []
@@ -278,16 +299,26 @@ def _censored(f: dict[str, Any], p: dict[str, Any], fc: FindingContext) -> Voice
         parts.append(f"{tick(col)}: " + "; ".join(said))
     failures = (" A measurement failure such as QNS or a hemolyzed specimen has no value and "
                 "routes to missing." if any(r[5] for r in rows) else "")
-    f["detail"] = (
-        ". ".join(parts) + ". TNTC, too numerous to count, means more than the method's countable "
-        "range (" + TNTC_RANGE + " in the " + TNTC_SOURCE + ", which estimates a count with TNTC "
-        "plates read as lower bounds), so the count is above that limit: a right-censored value at "
-        "the laboratory's upper count limit, not a missing one." + failures + " TurboTab has not "
-        "substituted a number for any of them.")
-    kinds = (["below detection"] if any(r[1] for r in rows) else []) + ["too numerous to count"]
+    tntc = any(r[4] for r in rows)
+    said_tntc = (" TNTC, too numerous to count, means more than the method's countable range ("
+                 + TNTC_RANGE + " in the " + TNTC_SOURCE + ", which estimates a count with TNTC "
+                 "plates read as lower bounds), so the count is above that limit: a right-censored "
+                 "value at the laboratory's upper count limit, not a missing one." if tntc else "")
+    left = (f" Values below a detection limit in {listing(handed, limit=3)} are read by "
+            f"{plural(len(handed), 'its own below-detection repair', 'their own below-detection repairs')}"
+            f" (half the limit, or the limit over √2), not here." if handed else "")
+    f["detail"] = ((". ".join(parts) + "." if parts else "") + said_tntc + failures + left
+                   + " TurboTab has not substituted a number for any of them.").strip()
+    if handed:
+        kinds = ((["below detection"] if any(r[1] for r in rows) else [])
+                 + (["too numerous to count"] if tntc else [])
+                 + (["above the quantitation limit"] if any(r[3] - r[4] for r in rows) else [])
+                 + (["measurement failures"] if any(r[5] for r in rows) else []))[:2]
+    else:
+        kinds = (["below detection"] if any(r[1] for r in rows) else []) + ["too numerous to count"]
     censored = sum(1 for r in rows if r[1] or r[3])  # the legacy title counted TNTC as a failure
-    return Voice(f"{listing(cols, limit=2)} {plural(n, 'carries', 'carry')} censored values, "
-                 f"{' or '.join(kinds)}.",
+    return Voice(f"{listing(cols, limit=2)} {plural(n, 'carries', 'carry')} censored values"
+                 + (f", {' or '.join(kinds)}." if kinds else "."),
                  title=f"{count(censored)} {plural(censored, 'analyte')} "
                        f"{plural(censored, 'carries', 'carry')} censored values")
 

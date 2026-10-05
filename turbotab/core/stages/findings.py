@@ -103,14 +103,16 @@ def pack_finding(f: dict[str, Any]) -> dict[str, Any]:
 
 def speak_for(frame: Any, lens: list[str], target: str | None, structural: list[dict[str, Any]],
               from_packs: list[dict[str, Any]],
-              units: Any = None) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+              units: Any = None,
+              below_detection: Any = ()) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """Both legacy streams in the app's voice, plus the app's own findings, as (raw, finding).
 
     One column, one card: a flag column the app speaks for (``imputed_weight`` → ``weight``) is
     not also reported as "a binary variable written as true/false", and a column the binary-text
     check already reports is not reported again as "true/false stored as text".
     """
-    fc = FindingContext(frame=frame, lens=tuple(lens), target=target, units=dict(units or {}))
+    fc = FindingContext(frame=frame, lens=tuple(lens), target=target, units=dict(units or {}),
+                        below_detection=frozenset(str(c) for c in below_detection))
     legacy = [(f, structural_finding(f)) for f in structural] + [(f, pack_finding(f)) for f in from_packs]
     # The pack's energy findings are about the column the app reads as energy intake (audit WP13
     # gate repair: the pack's alias matcher read a device's energy expenditure as intake).
@@ -173,13 +175,23 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     from_packs = detectors.pack_findings(frame, lens, units=units, codings=codings)
     ctx.progress(0.95, "Ranking the findings")
 
-    spoken = speak_for(frame, lens, target, structural, from_packs, units=units)
-    sas = repairs.sas_zero_finding(frame, target)  # M2: the app's own detector for XPT zeros
-    if sas is not None:
-        spoken.append(sas)
     # WP1 (audit MA-05, MA-16, MA-18): what values mean, each with its repair. A column the app's
     # own text-number finding reads is not also reported, without a lever, by the legacy checks.
     own = repairs.text_number_findings(written)
+    # The routing gate's claims note: values below a detection limit that the app's own finding
+    # reads, with its repair, are left to it by the lab pack's censored-values finding, which said
+    # "No control for this yet" beside that repair; its TNTC and failures stay its own, and with
+    # nothing else to say it is not spoken at all (one column, one card).
+    limited = {c for _, f in own if family(f["id"]) == "below_detection"
+               for c in f["affected_columns"]}
+    spoken = speak_for(frame, lens, target, structural, from_packs, units=units,
+                       below_detection=limited)
+    spoken = [pair for pair in spoken
+              if not (family(pair[1]["id"]) == "pack::clinical::censored_values"
+                      and not pair[1]["affected_columns"])]
+    sas = repairs.sas_zero_finding(frame, target)  # M2: the app's own detector for XPT zeros
+    if sas is not None:
+        spoken.append(sas)
     for found in (repairs.ambiguous_date_finding(frame), repairs.infinite_finding(frame)):
         if found is not None:
             own.append(found)

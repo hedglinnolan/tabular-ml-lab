@@ -1547,10 +1547,17 @@ def _set_clusters(d: Any, state: Any, ctx: Any) -> str:
         denied = list(getattr(d, "none_of", None) or [])
         if d.acknowledged and denied:
             one = len(denied) == 1
-            text += (f", although {listing(denied, limit=3)} {'reads' if one else 'read'} as a "
-                     f"site, centre, household or batch; the answer was kept over that reading, so "
-                     f"the intervals do not cluster by {'it' if one else 'them'}, and it is a "
-                     f"stated limitation")
+            text += (f", although {listing(denied, limit=3)} {'reads' if one else 'read'} as "
+                     f"{'a possible grouping' if one else 'possible groupings'} of the participants "
+                     f"(a site, centre, household or batch, by name or by values); the answer was "
+                     f"kept over that reading, so the intervals do not cluster by "
+                     f"{'it' if one else 'them'}, and it is a stated limitation")
+        elif denied:
+            # The leash note: columns asked by their values alone (a category with many labels).
+            one = len(denied) == 1
+            text += (f"; {listing(denied, limit=3)} {'was' if one else 'were'} asked whether "
+                     f"{'it groups' if one else 'they group'} the participants, and the answer "
+                     f"was that {'it does' if one else 'they do'} not")
         elif d.acknowledged:
             text += (", although a column reads as a site, centre, household or batch; the answer "
                      "was kept over that reading and is a stated limitation")
@@ -1723,9 +1730,16 @@ def _set_grain(d: Any, state: Any, ctx: Any) -> str:
 @register_sentence("set_repeat_kind")
 def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
     whose = _whose(state)
+    over_copies = ""
+    if d.repeat_kind != "imputed_copies" and getattr(d, "acknowledged", False):
+        # The routing gate's leash note (block and record): kept over rows read as imputed copies.
+        from turbotab.core.structural import COPIES_CONCERN
+
+        over_copies = (f"; recorded as a limitation: the rows read as imputed copies of one "
+                       f"record, which were not pooled by Rubin's rules, and {COPIES_CONCERN}")
     if d.repeat_kind == "repeats":
         return (f"{whose[:1].upper()}{whose[1:]} rows were taken as repeated measurements of the "
-                f"same quantity, not different time points")
+                f"same quantity, not different time points{over_copies}")
     if d.repeat_kind == "imputed_copies":  # audit I18 (WP18)
         from turbotab.core.structural import COPIES_CONCERN
 
@@ -1742,7 +1756,7 @@ def _set_repeat_kind(d: Any, state: Any, ctx: Any) -> str:
     text = f"{whose[:1].upper()}{whose[1:]} rows were taken as different time points"
     if d.time_column:
         text += f", ordered by {tick(d.time_column)}"
-    return text
+    return text + over_copies
 
 
 @register_sentence("set_unit")

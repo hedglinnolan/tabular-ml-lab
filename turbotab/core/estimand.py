@@ -14,7 +14,10 @@ Cox family). The same follow-up for everyone is ``set_censoring``; said over a f
 that varies, it is refused until attested (block and record), and the fit carries the attestation.
 
 **The grouping above the person** (RO-08). A column read as a site, centre, household or batch is
-asked about after the roles: does it group the participants? Under inference the recommended answer
+asked about after the roles: does it group the participants? Under inference so is any column that
+can structurally group rows, whatever its name, with its guess shown (the routing gate's leash note;
+``turbotab/core/groupings.py``); a sex, an age or any category of ten values or fewer never is.
+Under inference the recommended answer
 gives each group its own intercept (fixed effects) and clusters the intervals by it (CR2 with
 Bell–McCaffrey df, ``models/inference.py``); clustering alone is offered with its concern; "no
 grouping" over a column that reads as one is recorded only with an attestation. Under prediction
@@ -48,9 +51,15 @@ estimation of the total effect, versus mediators, which ought not be controlled 
 * other dietary components default to confounders through the diet's common causes, never to
   "not relevant" (the guess the card leads with, NUTRITION_PACK §08's Model 4).
 
-Asking this of thirty covariates stays light (BLUEPRINT §14.2): covariates the pack guesses alike
-form one group, each group is confirmed with one tap (one ``set_adjustment`` naming its columns),
-and only the pack's guesses lead; a covariate the pack says nothing about is asked without one.
+Asking this of thirty covariates stays light (BLUEPRINT §14.2): the packs guess each covariate's
+answers from its name under the exposure–outcome pairing (``turbotab/core/covariate_guesses.py``;
+NUTRITION_PACK §08, "The adjustment card's guesses"): demographics and lifestyle are confounders,
+other nutrients possible confounders, body size, clinical measurements and medications measured
+with the exposure possible mediators (the declared with-and-without pair), a measurement of the
+outcome's own kind another measure of it. Covariates with the same guess form one block, confirmed
+with one tap (one ``set_adjustment`` naming exactly its columns), every member's guess shown with
+its reason and source; a multi-select answer settles exactly the covariates it lists; a covariate
+the packs say nothing about is asked without a guess.
 
 **No estimate before the plan.** Under inference no coefficient, curve or contrast is served while
 the exposure, the effect or a covariate's answers are missing (``served_gate``, read by the server
@@ -226,12 +235,41 @@ def cluster_candidates(state: Any, roles: Any = None) -> list[str]:
     return [c for c in dict.fromkeys(found) if c not in (target, unit)]
 
 
+def grouping_candidates(state: Any, roles: Any = None) -> list[dict[str, Any]]:
+    """Every column the grouping question asks about, each with the guess it shows: the named
+    groupings (:func:`cluster_candidates`, guessed to group the participants), then, under
+    inference, every column that can structurally group rows (the routing gate's leash note;
+    ``turbotab.core.groupings``), guessed from its values."""
+    from turbotab.core.groupings import candidates
+
+    named = cluster_candidates(state, roles)
+    out = [{"column": c, "guess": "yes", "why": "named like a group of participants (a site, a "
+                                                "centre, a household or a batch)",
+            "structural": False} for c in named]
+    out += [c for c in candidates(state, roles) if c["column"] not in named]
+    return out
+
+
+def grouping_card(state: Any, roles: Any = None) -> dict[str, Any] | None:
+    """What the grouping question shows: each column it asks about with its guess and the evidence
+    the guess rests on (never a settled reading: the user says whether rows sharing a value belong
+    together), and the answers it takes. None when no column can group the rows."""
+    found = grouping_candidates(state, roles)
+    if not found:
+        return None
+    inference = _get(state, "purpose") == "inference"
+    return {"columns": found, "inference": inference,
+            "options": (["fixed_effects", "cluster_only", "none"] if inference
+                        else ["group", "none"]),
+            "none_recorded": any(c["guess"] == "yes" for c in found) and inference}
+
+
 def clusters_gate(state: Any, roles: Any = None) -> Gate:
     if _get(state, "roles") is None:
         return None
-    if not cluster_candidates(state, roles):
-        return ("skipped", "no column reads as a site, centre, household or batch that groups the "
-                           "participants.")
+    if not grouping_candidates(state, roles):
+        return ("skipped", "no column reads as a site, centre, household or batch, or can group "
+                           "the rows by its values.")
     return None
 
 
@@ -740,62 +778,92 @@ def adjustment_answer(state: Any) -> Any:
 
 # ── the pack's guesses (BLUEPRINT §14.2: lead with a guess only where the pack has one) ─────────
 
-_DEMOGRAPHIC = {"age", "sex", "gender", "race", "ethnicity", "ethnic", "education", "educ",
-                "income", "poverty", "pir", "smoking", "smoker", "smoke", "cigarettes",
-                "occupation", "marital", "ses"}
-_NHANES_DEMOGRAPHIC = {"RIDAGEYR", "RIAGENDR", "RIDRETH1", "RIDRETH3", "DMDEDUC2", "INDFMPIR",
-                       "DMDMARTL", "SMQ020", "SMQ040"}
-_BODY = {"bmi", "weight", "height", "waist", "hip", "whr", "adiposity", "bodyfat", "ffm", "lean",
-         "skinfold", "dxa", "bia"}
-_NHANES_BODY = {"BMXBMI", "BMXWT", "BMXHT", "BMXWAIST", "BMXHIP", "DXDTOFAT", "DXDTOPF"}
-_PACK08 = "NUTRITION_PACK §08 (the nested model table: Model 1 age, sex, energy; 2 demographics " \
-          "and lifestyle; 3 body composition; 4 mutually adjusted nutrients)"
+# The guesses are the packs' (``turbotab/core/covariate_guesses.py``; NUTRITION_PACK §08, "The
+# adjustment card's guesses"): one per class, read under the declared exposure–outcome pairing.
+from turbotab.core.covariate_guesses import CLASS_ORDER, GUESSES  # noqa: E402
 
-GUESSES: dict[str, dict[str, Any]] = {
-    "demographic": {
-        "label": "Demographics and lifestyle",
-        "answers": {"causes_exposure": "yes", "causes_outcome": "yes", "after_exposure": "no"},
-        "reason": "set before the diet was measured, and the field's Models 1 and 2 adjust for "
-                  "them as confounders",
-    },
-    "body": {
-        "label": "Body size and composition",
-        "answers": {"causes_exposure": "unknown", "causes_outcome": "yes",
-                    "after_exposure": "unknown"},
-        "reason": "the diet may have changed them, so the field's Model 3 adds them beside the "
-                  "primary; adjusting for a mediator without saying so is the pack's anti-pattern",
-    },
-    "dietary": {
-        "label": "Other dietary components",
-        "answers": {"causes_exposure": "unknown", "causes_outcome": "unknown",
-                    "after_exposure": "no"},
-        "reason": "they share the diet's common causes with the exposure, so they default to "
-                  "confounders, never to not relevant (the field's Model 4)",
-    },
+# What a block's guess says, by the role its answers derive (a total effect's wording).
+GUESS_WORDS = {
+    "confounder": "a confounder: adjusted for in the primary",
+    "exposure_cause": "a cause of the exposure: adjusted for in the primary",
+    "precision": "a cause of the outcome only: adjusted for in the primary",
+    "timing_unknown": "possible mediator, or measured after the exposure: the estimate is declared "
+                      "without it and, beside, with it",
+    "mediator": "a mediator: left out of a total effect",
+    "collider": "another measure of the outcome, or a consequence of the exposure: left out",
+    "not_a_cause": "a cause of neither: left out",
+    "instrument": "an instrument: left out",
+    "proxy": "a proxy for an unmeasured common cause: adjusted for",
+    "mediator_confounder": "a common cause of a mediator and the outcome: adjusted for",
 }
 
 
-def guess_of(column: str) -> str | None:
-    """Which of the pack's guesses a covariate takes, by its name (a proposal the user confirms,
-    never a settled reading: BLUEPRINT §14)."""
-    from turbotab.core.recognizers import is_nutrient, tokens
+def guess_of(column: str, state: Any = None) -> str | None:
+    """Which of the packs' guesses a covariate takes (a ``GUESSES`` key), read from its name under
+    the state's exposure–outcome pairing (a proposal the user confirms, never a settled reading:
+    BLUEPRINT §14); None where the packs have no guess."""
+    from turbotab.core.covariate_guesses import guess
 
-    name = str(column)
-    words = set(tokens(name))
-    if name.upper() in _NHANES_DEMOGRAPHIC or words & _DEMOGRAPHIC:
-        return "demographic"
-    if name.upper() in _NHANES_BODY or words & _BODY or {"fat", "mass"} <= words \
-            or {"body", "fat"} <= words:
-        return "body"
-    if energy_bearing(name) or is_nutrient(name):
-        return "dietary"
-    return None
+    found = guess(column, state)
+    return found.key if found is not None else None
+
+
+def _listed_labels(keys: Sequence[str]) -> str:
+    labels = [GUESSES[k]["label"] for k in keys]
+    words = [labels[0], *(x[:1].lower() + x[1:] for x in labels[1:])]
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+
+
+def guess_blocks(state: Any, columns: Sequence[str], exposure: str,
+                 effect: str = "total") -> list[dict[str, Any]]:
+    """The waiting covariates the packs have a guess for, in blocks of the same guess (the same
+    answers), each answered with one tap (its ``decision``, which lists exactly its columns), every
+    member with its guess's reason and source; then the unguessed, asked plainly. BLUEPRINT §14.2:
+    "Lead with the guess, confirm in one tap, group by consequence"."""
+    from turbotab.core.covariate_guesses import guess, pairing_of
+
+    pairing = pairing_of(state)
+    found = {c: guess(c, state, pairing) for c in columns}
+    blocks: dict[tuple[tuple[str, str], ...], list[Any]] = {}
+    for c in columns:
+        g = found[c]
+        if g is not None:
+            blocks.setdefault(tuple(sorted(g.answers.items())), []).append(g)
+    rank = {k: i for i, k in enumerate(CLASS_ORDER)}
+    ordered = sorted(blocks.values(), key=lambda gs: min(rank.get(g.key, 99) for g in gs))
+    groups = []
+    for members in ordered:
+        members = sorted(members, key=lambda g: (rank.get(g.key, 99), list(columns).index(g.column)))
+        keys = list(dict.fromkeys(g.key for g in members))
+        answers = dict(members[0].answers)
+        derived = derive(answers, effect)
+        cols = [g.column for g in members]
+        groups.append({
+            "key": keys[0], "label": _listed_labels(keys), "classes": keys, "columns": cols,
+            "guess": answers, "guess_words": GUESS_WORDS.get(derived.role),
+            "reason": " ".join(f"{GUESSES[k]['label']}: {GUESSES[k]['reason']} "
+                               f"({GUESSES[k]['source']})." for k in keys),
+            "sources": list(dict.fromkeys(g.source for g in members)),
+            "members": [g.as_dict() for g in members],
+            "derived": derived.role, "derived_words": ROLE_WORDS[derived.role],
+            "decision": {"kind": "set_adjustment", "exposure": exposure,
+                         "answers": {c: dict(answers) for c in cols}}})
+    unguessed = [c for c in columns if found[c] is None]
+    if unguessed:
+        groups.append({"key": "unguessed", "label": "No guess", "classes": [],
+                       "columns": unguessed, "guess": None, "guess_words": None,
+                       "reason": "The packs say nothing about these; each is asked.",
+                       "sources": [], "members": [], "derived": None, "derived_words": None,
+                       "decision": None})
+    return groups
 
 
 def adjustment_card(state: Any) -> dict[str, Any] | None:
-    """What the adjustment question shows: the covariates in groups that share the pack's guess,
-    each confirmed with one tap (its ``decision``), the unguessed ones asked plainly, and what the
-    answers so far derive. None when the question does not apply yet."""
+    """What the adjustment question shows: the covariates in blocks that share the packs' guess,
+    each confirmed with one tap (its ``decision``), each member's guess with its reason and source,
+    the unguessed ones asked plainly, a multi-select answer over any of them (``bulk``: one
+    ``set_adjustment`` settles exactly the columns it lists), and what the answers so far derive.
+    None when the question does not apply yet."""
     spec = current_estimand(state)
     if spec is None or _get(state, "purpose") != "inference":
         return None
@@ -803,26 +871,7 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
     effect = str(_get(spec, "effect") or "total")
     answers = current_answers(state)
     waiting = [c for c in asked_covariates(state) if c not in answers]
-    by_guess: dict[str | None, list[str]] = {}
-    for c in waiting:
-        by_guess.setdefault(guess_of(c), []).append(c)
-    groups = []
-    for key in ("demographic", "dietary", "body"):
-        columns = by_guess.get(key)
-        if not columns:
-            continue
-        g = GUESSES[key]
-        derived = derive(g["answers"], effect)
-        groups.append({
-            "key": key, "label": g["label"], "columns": columns, "guess": dict(g["answers"]),
-            "reason": f"{g['reason']} ({_PACK08}).", "derived": derived.role,
-            "derived_words": ROLE_WORDS[derived.role],
-            "decision": {"kind": "set_adjustment", "exposure": exposure,
-                         "answers": {c: dict(g["answers"]) for c in columns}}})
-    if by_guess.get(None):
-        groups.append({"key": "unguessed", "label": "No guess", "columns": by_guess[None],
-                       "guess": None, "reason": "The pack says nothing about these; each is asked.",
-                       "derived": None, "derived_words": None, "decision": None})
+    groups = guess_blocks(state, waiting, exposure, effect)
     derived = derived_roles(state)
     # A direct effect's own questions (MODELING_SEQUENCE §1 step 3 and §2), for each covariate
     # whose answers so far leave one of them open: one line each, answered with the rest of its
@@ -852,6 +901,10 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
         "adjusted": [c for c, d in derived.items() if d.adjusted],
         "left_out": [c for c, d in derived.items() if not d.adjusted],
         "secondary": secondary_columns(state),
+        # The multi-select answer: any of the waiting covariates, chosen together and answered with
+        # one set of answers, in one ``set_adjustment`` that settles exactly the columns it lists.
+        "bulk": {"columns": waiting, "fields": list(QUESTIONS),
+                 "decision": {"kind": "set_adjustment", "exposure": exposure, "answers": {}}},
         "source": VANDERWEELE,
     }
 
@@ -1257,22 +1310,54 @@ def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
         }[str(key)]
         return {"question": key,
                 "reason": f"No estimate is shown until {name} is answered: {why}.",
-                "exits": [{"label": f"Answer {name}", "decision": None}]}
+                "exits": [{"label": f"Answer {name}", "decision": None}],
+                "purpose": purpose}
     return None
+
+
+# Under inference a cross-validated score describes how well the outcome model fits, not the
+# reported estimate (MODELING_SEQUENCE §1 row 11: under inference the declared object is "not a
+# comparison"; §0 ruling 13). While the plan is open they wait with the estimates: an R² read
+# before the adjustment set is answered is one more fork in the path (Gelman & Loken 2013).
+SCORES_WITHHELD = ("Its cross-validated scores (R², RMSE, MAE and the rest) wait too: under "
+                   "inference they describe the outcome model's fit, not the reported estimate.")
+# The model-level fields that hold an outcome-model fit statistic, and the fit-level ones.
+MODEL_SCORES = ("holdout", "versus_baseline", "calibration", "holdout_detail", "optimism",
+                "internal_external", "compared_on", "performance", "nested_cv",
+                "calibration_levels", "calibration_horizon", "calibration_note")
+FIT_SCORES = ("selection", "precision", "comparison", "comparisons_note", "result",
+              "nested_offer", "at_opening")
+
+
+def _without_scores(model: dict[str, Any]) -> dict[str, Any]:
+    """One served model with every outcome-model fit statistic removed (the cross-validated
+    scores, the baseline's, the held-out ones, calibration, optimism and the comparison
+    substrate); what the model is and why it waits stay."""
+    m = dict(model)
+    m["cv"] = {}
+    for key in MODEL_SCORES:
+        if key in m:
+            m[key] = None
+    if isinstance(m.get("baseline"), dict):
+        m["baseline"] = {**m["baseline"], "value": None}
+    return m
 
 
 def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
     """``artifact`` with every estimate removed and the reason first: the coefficient tables, their
-    tests and intervals; curves; refits. Scores stay (they describe fit, not an effect)."""
+    tests and intervals; curves; refits. Under inference the outcome model's fit statistics wait
+    too (:data:`SCORES_WITHHELD`); under prediction (a follow-up question unanswered) they stay,
+    since there they are the result."""
     if not isinstance(artifact, dict):
         return artifact
     out = dict(artifact)
     reason = str(gate["reason"])
     out["withheld"] = reason
+    inference = gate.get("purpose") == "inference"
     if stage == "fit":
         models = []
         for m in out.get("models") or []:
-            m = dict(m)
+            m = _without_scores(m) if inference else dict(m)
             info = m.get("inference") or {}
             if info.get("refused") and not m.get("coefficients"):
                 # Already refused with its own reason and exits (an unanswered survey question, a
@@ -1282,9 +1367,15 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
             m["coefficients"] = None
             m["inference"] = None
             m["exposure_tests"] = []
-            m["concerns"] = [reason, *(m.get("concerns") or [])]
+            m["concerns"] = [reason, *([SCORES_WITHHELD] if inference else []),
+                             *(m.get("concerns") or [])]
             models.append(m)
         out["models"] = models
+        if inference:
+            for key in FIT_SCORES:
+                if key in out:
+                    out[key] = None
+            out["comparisons"] = []
         return out
     if stage == "sensitivity":
         out["families"] = []
@@ -1530,7 +1621,8 @@ def _no_grouping_names_what_it_denies(decision: Any, ctx: Any) -> Any:
     if decision.column is not None:
         return decision.model_copy(update={"none_of": []})
     state = _state(ctx)
-    found = cluster_candidates(state, _artifact(ctx, "roles")) if state is not None else []
+    found = ([c["column"] for c in grouping_candidates(state, _artifact(ctx, "roles"))]
+             if state is not None else [])
     return decision.model_copy(update={"none_of": list(found)})
 
 
@@ -1542,7 +1634,10 @@ def _no_grouping_is_recorded(decision: Any, ctx: Any) -> None:
     state = _state(ctx)
     if decision.column is not None or decision.acknowledged or _get(state, "purpose") != "inference":
         return
-    candidates = cluster_candidates(state, _artifact(ctx, "roles"))
+    # The named groupings, then the columns whose values read as a grouping (the guess "yes"); a
+    # category with many labels (the guess "no") is asked, and "nothing" over it needs no record.
+    candidates = [c["column"] for c in grouping_candidates(state, _artifact(ctx, "roles"))
+                  if c["guess"] == "yes"]
     if not candidates:
         return
     shown = _listing(candidates, limit=3)
@@ -2053,14 +2148,14 @@ def _register() -> None:
 _register()
 
 __all__ = [
-    "Derived", "ESTIMATE_STAGES", "GUESSES", "HOLDS", "MEASURE_OF_TASK", "MEASURE_WORDS",
-    "NOT_FITTED", "QUESTIONS", "ROLE_PLURAL", "ROLE_SINGULAR", "ROLE_WORDS", "adjustment_answer",
-    "adjustment_card", "asked_covariates",
-    "adjustment_gate", "adjustment_left_out", "annotate_fit", "caption", "cluster_answer",
-    "cluster_candidates", "clusters_gate", "covariates", "current_answers", "current_estimand",
-    "DIRECT_QUESTIONS", "derive", "derived_roles", "direct_questions", "mediators",
-    "effective_task", "estimand_card", "estimand_gate",
+    "DIRECT_QUESTIONS", "Derived", "ESTIMATE_STAGES", "GUESSES", "GUESS_WORDS", "HOLDS",
+    "MEASURE_OF_TASK", "MEASURE_WORDS", "NOT_FITTED", "QUESTIONS", "ROLE_PLURAL", "ROLE_SINGULAR",
+    "ROLE_WORDS", "adjustment_answer", "adjustment_card", "adjustment_gate", "adjustment_left_out",
+    "annotate_fit", "asked_covariates", "caption", "cluster_answer", "cluster_candidates",
+    "clusters_gate", "covariates", "current_answers", "current_estimand", "derive",
+    "derived_roles", "direct_questions", "effective_task", "estimand_card", "estimand_gate",
     "exposure_candidates", "fixed_effects_column", "follow_up_answer", "follow_up_candidates",
-    "follow_up_gate", "guess_of", "measures_offered", "primary_features", "reads_as_follow_up",
-    "secondary_columns", "served_gate", "unanswered", "withhold",
+    "follow_up_gate", "grouping_candidates", "grouping_card", "guess_blocks", "guess_of",
+    "measures_offered", "mediators", "primary_features", "reads_as_follow_up", "secondary_columns",
+    "served_gate", "unanswered", "withhold",
 ]

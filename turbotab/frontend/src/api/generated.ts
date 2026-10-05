@@ -7126,6 +7126,16 @@ export interface components {
             rare: boolean | null;
             /** Converted */
             converted: boolean;
+            /**
+             * Sd
+             * @default null
+             */
+            sd: number | null;
+            /**
+             * Sd Basis
+             * @default null
+             */
+            sd_basis: ("design_weighted" | "sample") | null;
         };
         /**
          * EarlierRows

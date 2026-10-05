@@ -254,11 +254,16 @@ def build_graph() -> Graph:
             # own option; a run order is no intensity; no "no pooled QCs" beside the QC rows found.
             # findings 19 (wave-1 repairs integrated): both findings 18s, the routing gate's and MS7
             # repair's.
+            # findings 20 (LEASH, the routing gate's claims note): values below a detection limit
+            # the app's own finding reads, repair and all, are left to it by the lab pack's
+            # censored-values finding; a text predictor confirmed "amount" through the ledger is
+            # checked by the plausibility checks as the numbers the fit reads.
             Stage(
                 "findings",
-                19,
+                20,
                 ("oriented",),
-                ("lens", "target", "column_units", "sex_codings", "numbers_read"),
+                ("lens", "target", "column_units", "sex_codings", "numbers_read",
+                 "shape_confirmations", "categorical", "aggregation"),
                 findings_stage,
                 heavy=True,
                 requires=("lens",),
@@ -356,7 +361,9 @@ def build_graph() -> Graph:
             # it is proposed excluded (RO-10).
             # roles 11 (the routing gate): the column named as the outcome's follow-up time is the
             # outcome's time, proposed "time" by the user's own follow-up answer.
-            Stage("roles", 11, ("working",),
+            # roles 12 (LEASH): under inference, every column that can structurally group rows is
+            # read by its values for the grouping question (``turbotab.core.groupings``).
+            Stage("roles", 12, ("working",),
                   ("lens", "target", "purpose", "grain", "outcome_scale", "follow_up", "task"),
                   roles_stage,
                   heavy=True, label="Reading what each column is"),
@@ -404,7 +411,10 @@ def build_graph() -> Graph:
             # declared sequence is offered beside the adjustment card, so they read it too.
             # proposals 19 (wave 2a integration): both proposals 18s, the routing gate's and
             # ESTIMAND's, in one card.
-            Stage("proposals", 19, ("working", "roles"),
+            # proposals 20 (LEASH): the adjustment card's guesses cover clinical measurements,
+            # medications and lifestyle under the exposure-outcome pairing, in blocks of the same
+            # guess, with a multi-select answer; the grouping question's card shows each guess.
+            Stage("proposals", 20, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", "event", "model_sequence", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
@@ -645,7 +655,9 @@ def build_graph() -> Graph:
             # ── ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11, 12): the exposure's effect as declared ──
             # effects 2 (wave 1b, MS2): the declared models' imputation holds the survey design under
             # the population answer and the clustering, as the fit's does.
-            Stage("effects", 2, ("working", "design", "split", "target_info"),
+            # effects 3 (LEASH, MODELING_SEQUENCE §0 ruling 14): a difference's E-value is
+            # standardized by the surveyed population's design-weighted SD under that answer.
+            Stage("effects", 3, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand"),
                   label="Reporting the exposure's effect across the declared models"),
@@ -656,7 +668,8 @@ def build_graph() -> Graph:
             Stage("causal_design", 1, ("working", "split", "target_info"), CAUSAL_READS,
                   causal_design_stage, heavy=True, requires=("estimand",),
                   label="Reading the causal lane's assumptions and overlap"),
-            Stage("causal", 1, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
+            # causal 2 (LEASH, ruling 14): the lane's E-value of a difference reads the same SD.
+            Stage("causal", 2, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
                   causal_stage, heavy=True, requires=("causal", "models"),
                   label="Estimating the effect in the causal lane"),
             # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──

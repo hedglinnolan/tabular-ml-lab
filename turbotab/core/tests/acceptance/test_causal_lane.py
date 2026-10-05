@@ -510,6 +510,12 @@ CLOSING = (" It rests on the declared assumptions of no unmeasured confounding g
 # numeric outcome's difference, and post-double selection's robustness value before it.
 E_VALUE_ONLY = (" Sensitivity to unmeasured confounding is reported by the E-value for the estimate "
                 "and for the confidence limit nearer the null, never as a pass or a fail.")
+# LEASH (MODELING_SEQUENCE §0 ruling 14): under the surveyed-population answer the difference is
+# standardized by the population's design-weighted SD, and the clause says so.
+E_VALUE_POPULATION = (" Sensitivity to unmeasured confounding is reported by the E-value for the "
+                      "estimate and for the confidence limit nearer the null, the difference "
+                      "standardized by the outcome's design-weighted standard deviation in the "
+                      "surveyed population, never as a pass or a fail.")
 RV_AND_E_VALUE = (" Sensitivity to unmeasured confounding is reported by the Cinelli–Hazlett "
                   "robustness value (each selected covariate a named benchmark) and by the E-value "
                   "for the estimate and for the confidence limit nearer the null, never as a pass "
@@ -1005,4 +1011,4 @@ cat(toJSON(list(coef = sapply(out, `[`, 1), se = sapply(out, `[`, 2)), digits = 
         f"regressed on the exposure's; the estimate is the median over 3 random sample splits, on "
         f"{n:,} complete rows. The survey weight `WTMEC2YR` entered every nuisance fit and the "
         f"estimating equation, the folds kept each PSU's rows together, and the variance is "
-        f"linearized over the design's strata and PSUs." + CLOSING + E_VALUE_ONLY)
+        f"linearized over the design's strata and PSUs." + CLOSING + E_VALUE_POPULATION)

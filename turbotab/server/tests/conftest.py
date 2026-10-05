@@ -156,8 +156,11 @@ def usual_answer(client: TestClient, pid: str, key: str, view: dict) -> dict:
 
         found = cluster_candidates(ProjectState(**state), _artifact(client, pid, "roles"))
         inference = state.get("purpose") == "inference"
+        # LEASH: under inference a column that can group rows by its values is asked too; a fixture
+        # written before that records "nothing groups them", as it was analyzed then.
         return {"kind": "set_clusters", "column": found[0] if found else None,
-                "adjust": "cluster_only" if inference and found else None}
+                "adjust": "cluster_only" if inference and found else None,
+                "acknowledged": not found}
     if key == "estimand":  # the author's declared question (``exposure:<outcome>``: a column, or
         # ``family``), else the first exposure the card offers; on the scale the engine fits
         card = _artifact(client, pid, "proposals").get("estimand") or {}
