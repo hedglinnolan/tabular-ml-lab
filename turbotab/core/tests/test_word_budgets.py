@@ -383,6 +383,22 @@ def representative_decisions():
         # Wave 2, EXPLAIN: the fitted models described (models/explain.py)
         d.SetExplain(),
         d.SetExplain(curves="partial_dependence", exposures=["protein_g", "fiber_g"], reseeds=0),
+        # Wave 2, EXPLORE: an outcome view, the levers as in-fold rules, the selection menu, intended
+        # use and model updating
+        d.ViewOutcome(view="relationship", columns=["fiber_g"], target="ldl", rows="training",
+                      n_rows=2400, levers={"fiber_g": {"form": "linear", "role": "exposure",
+                                                       "kept": "yes"}}),
+        d.ViewOutcome(view="distribution", target="ldl", rows="analyzed", n_rows=3000),
+        d.SetLevers(forms="rule", variance_filter="near_zero"),
+        d.SetLevers(forms="inner_cv", variance_filter="top", keep=1000, imbalance="weights"),
+        d.SetSelection(method="stability", pre_selected="no"),
+        d.SetSelection(method="stepwise", sensitivity=True),
+        d.SetSelection(method="none", pre_selected="unknown"),
+        d.SetIntendedUse(use="decision_support", threshold_low=0.05, threshold_high=0.3,
+                         subgroups=["sex", "age"]),
+        d.SetIntendedUse(use="risk_estimation", fairness="none"),
+        d.SetUpdating(method="shrinkage"),
+        d.SetUpdating(method="none"),
     ]
 
 

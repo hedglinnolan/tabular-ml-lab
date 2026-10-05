@@ -691,6 +691,16 @@ function slotOf(d: Decision): Slot | null {
       return "usual_intake";
     case "set_explain":
       return "explain";
+    case "view_outcome":
+      return "outcome_views";
+    case "set_levers":
+      return "levers";
+    case "set_selection":
+      return "selection";
+    case "set_intended_use":
+      return "intended_use";
+    case "set_updating":
+      return "updating";
     case "revert":
       return null;
   }
@@ -851,6 +861,15 @@ function valueOf(d: Decision): ProjectState[Slot] {
       const { kind: _k, ...value } = d;
       return value as ProjectState[Slot];
     }
+    case "view_outcome": // one entry per viewed column; the mock records none
+      return null;
+    case "set_levers":
+    case "set_selection":
+    case "set_intended_use":
+    case "set_updating": {
+      const { kind: _k, ...value } = d;
+      return value as ProjectState[Slot];
+    }
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -960,6 +979,11 @@ export function fold(records: DecisionRecord[]): ProjectState {
     causal: null,
     time_varying: null,
     explain: null,
+    outcome_views: null,
+    levers: null,
+    selection: null,
+    intended_use: null,
+    updating: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();

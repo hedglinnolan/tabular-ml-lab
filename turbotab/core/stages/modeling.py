@@ -174,6 +174,11 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
         from turbotab.core.models.survey import population_shelf
 
         ranked = population_shelf(ranked, task)
+    # Wave 2, EXPLORE (MODELING_SEQUENCE §1 row 9): under prediction Riley's minimum sample size runs
+    # before the shelf; below it the regression families rank first, the flexible ones after them.
+    from turbotab.core.models.selection import shelf_order
+
+    ranked, sample_size = shelf_order(ranked, situation)
     # WP11: raw counts or intensities whose totals track the outcome, on the same rows (the
     # training rows under prediction, every analyzed row under inference)
     assay = _assay_concern(ctx, task, rows if trained else None)
@@ -193,6 +198,7 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
         ],
         basis=f"Ranked for {n:,} {rows_word}rows and {len(predictors):,} "
               f"predictors{_terms_clause(terms, len(predictors))}{events}.",
+        sample_size=sample_size,
     )
     return artifact.model_dump(mode="json")
 
@@ -849,6 +855,11 @@ UNWEIGHTED_SCORES = ("Scores are unweighted: they describe these rows, not the p
 POPULATION_SCORES = ("Cross-validated scores are unweighted: they describe how the model predicts "
                      "these participants, not the surveyed population; the design-based estimates "
                      "are the coefficient table's.")
+# Wave 2, EXPLORE (MODELING_SEQUENCE ruling 13): under prediction with the surveyed-population answer.
+PREDICTION_POPULATION_SCORES = (
+    "These cross-validated scores are unweighted, the procedure's performance on these rows; the "
+    "surveyed population's are the design-based cross-validation beside them (whole PSUs within "
+    "strata, every score weighted; Wieczorek, Guerin & McMahon 2022).")
 
 
 def _measurement_error_line(ctx: StageContext, spec: Any) -> str | None:
@@ -891,7 +902,11 @@ def _survey(ctx: StageContext, clusters: Any) -> tuple[Any, str | None]:
     state = ctx.state
     present = reading_of(state).present
     if state.purpose != "inference":
-        return None, (UNWEIGHTED_SCORES if present else None)
+        # Wave 2, EXPLORE (MODELING_SEQUENCE ruling 13): under the surveyed-population answer the
+        # population's scores are the evaluation stage's design-based cross-validation.
+        population = state.survey is not None and state.survey.estimand == "population"
+        return None, (PREDICTION_POPULATION_SCORES if population else
+                      UNWEIGHTED_SCORES if present else None)
     if state.survey is None and not present:
         return None, None
     from turbotab.core.methods.survey import for_fit
@@ -1748,6 +1763,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
         worse = baseline_concern(task, LABELS[versus_metric], estimate, base_value, lower=not higher)
         tie = None if worse else no_better_concern(task, LABELS[versus_metric], versus, estimate,
                                                    base_value, _two)
+        before_scores = list(concerns)  # EXPLORE: what follows quotes a cross-validated score
         if worse or tie:
             concerns.insert(0, worse or tie)
         rows_oof, y_oof, pred_oof = result.out_of_fold(0)
@@ -1766,6 +1782,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 concerns.append(f"{level_words(task, item.level)}: {said[0].lower()}{said[1:]}")
         if cal_horizon is not None and cal_horizon.concern:
             concerns.append(cal_horizon.concern)
+        # Wave 2, EXPLORE (MODELING_SEQUENCE ruling 13): a client is shown none of these under
+        # inference (``stages.evaluation.withhold_scores``).
+        score_concerns = [c for c in concerns if c not in before_scores]
         if task in ("regression", "binary") and oof_calibration is None:
             cal_note = f"{NOT_ASSESSED}: too few out-of-fold rows, or one class only."
         if optimism is not None and optimism.refused:
@@ -1783,6 +1802,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
             concerns.append(survey_note)
         elif survey is not None and survey.answer == "population" and not survey.refusal:
             concerns.append(POPULATION_SCORES)
+            score_concerns.append(POPULATION_SCORES)
         results[key], substrates[key], summaries[key] = result, sub_result, cv
         fitted[key] = final
         if inference and (same_rows or (on_all and table_fit is not None)):
@@ -1834,6 +1854,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
             "compared_on": (sub_cv.get(primary) if not inference else None),
             "performance": performance,
             "nested_cv": nested.model_dump(mode="json") if nested is not None else None,
+            "score_concerns": score_concerns,
         })
     # Picking the best of several families by cross-validation flatters it (audit ME-13); under
     # prediction it is corrected on the substrate's out-of-fold predictions, by whole unit (MS6).
@@ -1929,6 +1950,13 @@ def fit_stage(ctx: StageContext) -> Bundle:
                            "every_row": every_row if inference else None,
                            "every_row_ids": (assignment.index[table_rows].to_numpy(dtype=np.int64)
                                              if inference else None),
+                           # Wave 2, EXPLORE: the comparison substrate (its folds, each family's
+                           # cross-validated predictions on them, the training rows' ids and units),
+                           # which the evaluation stage fits the benchmark on.
+                           "comparison": ({"pairs": sub_pairs, "repeat_of": sub_repeat_of,
+                                           "results": substrates, "groups": groups,
+                                           "train_ids": X.index.to_numpy(dtype=np.int64)}
+                                          if not inference else None),
                            # MS4: the design the population answer binds every display to.
                            "survey_design": (survey.design if survey is not None
                                              and survey.answer == "population"

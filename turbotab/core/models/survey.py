@@ -1156,11 +1156,12 @@ def _register_contracts() -> None:
                          purposes=("inference",),
                          enforced_by="turbotab.core.provenance:restated", id="restated"),
                 Relation("implies", "cross-validated scores labeled unweighted",
-                         "Cross-validated scores, their calibration and the family comparisons "
-                         "are about the fitting procedure on these rows: they are labeled "
-                         "unweighted, not design-based (awaiting the owner's ruling).",
+                         "Under inference no cross-validated score is shown (MODELING_SEQUENCE "
+                         "ruling 13): the fit's unweighted scores, about the fitting procedure on "
+                         "these rows, are withheld from a client; under prediction the "
+                         "population's are design-based cross-validation (EXPLORE).",
                          purposes=("inference",),
-                         enforced_by="turbotab.core.stages.modeling:fit_stage",
+                         enforced_by="turbotab.core.stages.evaluation:withhold_scores",
                          id="unweighted_scores"),
             ),
             sources=("MODELING_SEQUENCE §0 ruling 6, §2, §4",

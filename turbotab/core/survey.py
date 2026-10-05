@@ -329,19 +329,12 @@ def _offered_by_values(reading: DesignReading, placed: Mapping[str, Any],
 
 
 def _asked_under_inference(decision: Any, ctx: Any) -> None:
-    """The question is an inference question: under prediction it is not asked, and an answer
-    would claim an estimand no score has."""
-    from turbotab.core.decisions import Refusal, SetPurpose, _state
-
-    state = _state(ctx)
-    if getattr(state, "purpose", None) != "prediction":
-        return
-    raise Refusal(
-        "not_inference",
-        "Under prediction the scores describe the rows they were computed on, so whose estimate "
-        "it is does not arise; the survey question is asked under inference.",
-        exits=[{"label": "Make the purpose inference",
-                "decision": SetPurpose(purpose="inference")}])
+    """MODELING_SEQUENCE ruling 13 (2026-10-05): under prediction the answer says whose performance
+    the scores estimate. The surveyed population's is design-based cross-validation (whole PSUs
+    within strata, every score weighted; ``models.design_cv``, offered by the ``explore`` stage);
+    these participants' stays unweighted, labeled as the procedure's performance on these rows. So
+    the answer is accepted under both purposes (it was refused under prediction before the ruling)."""
+    return None
 
 
 def _names_real_columns(decision: Any, ctx: Any) -> None:

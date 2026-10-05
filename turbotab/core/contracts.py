@@ -245,6 +245,10 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.codebook", "turbotab.core.models.survey", "turbotab.core.methods.missing",
     "turbotab.core.models.validation", "turbotab.core.stages.effects", "turbotab.core.causal",
     "turbotab.core.time_varying", "turbotab.core.models.explain",
+    # Wave 2, EXPLORE
+    "turbotab.core.stages.explore", "turbotab.core.methods.levers",
+    "turbotab.core.models.variable_selection", "turbotab.core.models.decision_curve",
+    "turbotab.core.models.design_cv",
 )
 
 

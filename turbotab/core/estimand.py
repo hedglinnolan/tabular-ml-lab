@@ -1226,8 +1226,10 @@ HOLDS: dict[str, tuple[str, ...]] = {
 # ``time_varying`` (V2 causal row): the g-methods' estimates (their diagnostics lock nothing);
 # ``explain`` (EXPLAIN): explanations of the outcome models are not estimates, but they show what
 # each model learned from the outcome, so under inference they wait and lock as estimates do.
+# ``evaluation`` (EXPLORE): under inference only the declared selection sensitivity analysis (its
+# pooled Wald tests are estimates); no cross-validated score is shown.
 ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "scales",
-                   "effects", "causal", "time_varying", "explain")
+                   "effects", "causal", "time_varying", "explain", "evaluation")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:

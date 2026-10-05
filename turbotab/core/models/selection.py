@@ -641,5 +641,233 @@ def mark_final(out: dict[str, Any], *, opened: bool, family: str | None) -> dict
     return out
 
 
-__all__ = ["DeclaredResult", "LOWER_IS_BETTER", "METHOD", "OutOfFold", "compared_families",
-           "declared_family", "declared_result", "mark_final", "pooled_score", "selection_optimism"]
+# ── the shelf at this size: Riley's minimum first (MODELING_SEQUENCE §1 row 9; EXPLORE) ──────────
+#
+# The prediction review: "No validated rule predicts which family will perform best. The evidence is
+# about data hunger and stability". Riley's minimum sample size (``models/sample_size.py``; TRIPOD+AI
+# item 10) is computed for the candidate predictor parameters before the shelf is ranked. Below it
+# the regression families rank first and every flexible learner after them, with the stated reason:
+# van der Ploeg, Austin & Steyerberg (BMC Med Res Methodol 2014;14:137) found that support vector
+# machines, neural networks and random forests "may need over 10 times as many events per variable
+# to achieve a stable AUC and a small optimism" as logistic regression. A flexible learner is one
+# that nearly memorizes its rows (it declares ``bootstrap_optimism = False``, ``models/base.py``),
+# unless it declares ``flexible`` itself.
+
+FLEXIBLE_REASON = ("below Riley et al.'s minimum sample size, a flexible learner may need over 10 "
+                   "times as many events per variable as a regression to reach a stable score "
+                   "(van der Ploeg, Austin & Steyerberg 2014), so the regression families rank "
+                   "first")
+
+
+class SampleSizeCriterion(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    key: str
+    what: str
+    n: int
+
+
+class SampleSize(BaseModel):
+    """Riley et al.'s minimum sample size, computed before the shelf is ranked (TRIPOD+AI 10)."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    minimum: int | None
+    n_rows: int
+    parameters: int
+    criteria: list[SampleSizeCriterion] = []
+    binding: str | None = None
+    below: bool = False
+    r2_cs: float | None = None
+    sentence: str
+
+
+def is_flexible(family: Any) -> bool:
+    """A flexible learner (the comment above): its own ``flexible``, else a family that nearly
+    memorizes its rows."""
+    declared = getattr(family, "flexible", None)
+    if declared is not None:
+        return bool(declared)
+    return not bool(getattr(family, "bootstrap_optimism", True))
+
+
+def shelf_order(ranked: Sequence[tuple[Any, Any]], situation: Any
+                ) -> tuple[list[tuple[Any, Any]], SampleSize | None]:
+    """The shelf under prediction with Riley's minimum computed first (the comment above): below it
+    the regression families first and the flexible learners after them, each flexible family
+    carrying the reason; otherwise the order as ranked. Under inference the shelf is unchanged and
+    no minimum is computed (its own per-family concerns judge the coefficients)."""
+    from turbotab.core.models.base import Assessment
+    from turbotab.core.models.sample_size import prediction_minimum
+
+    ranked = list(ranked)
+    if getattr(situation, "purpose", None) == "inference":
+        return ranked, None
+    n = int(situation.n_rows)
+    parameters = int(situation.n_parameters if situation.n_parameters is not None
+                     else situation.n_features)
+    try:
+        minimum = prediction_minimum(situation.task, parameters, n_rows=n,
+                                     n_events=situation.n_events,
+                                     outcome_mean=situation.outcome_mean,
+                                     outcome_sd=situation.outcome_sd)
+    except ValueError:
+        minimum = None
+    if minimum is None:
+        said = (f"Riley et al.'s minimum sample size is not computed for a "
+                f"{str(situation.task).replace('_', '-')} outcome here, so the shelf keeps its "
+                f"order by the families' own judgments." if parameters >= 1 else
+                "No candidate predictor, so no minimum sample size applies.")
+        return ranked, SampleSize(minimum=None, n_rows=n, parameters=parameters, sentence=said)
+    below = n < minimum.n
+    criteria = [SampleSizeCriterion(key=c.key, what=c.what, n=c.n) for c in minimum.criteria]
+    head = (f"Riley et al.'s minimum sample size for {parameters:,} candidate predictor "
+            f"parameters is {minimum.n:,} rows (the binding criterion: {minimum.binding.what})")
+    if below:
+        flexible = [(f, a) for f, a in ranked if is_flexible(f)]
+        regression = [(f, a) for f, a in ranked if not is_flexible(f)]
+        moved = [(f, Assessment(a.score, a.fit, (f"{n:,} rows: {FLEXIBLE_REASON}.", *a.concerns)))
+                 for f, a in flexible]
+        ranked = regression + moved
+        said = (f"{head}; these {n:,} rows fall short of it, so {FLEXIBLE_REASON}; fewer candidate "
+                f"parameters (fewer knots, outcome-blind data reduction) would lower the minimum.")
+    else:
+        said = f"{head}; these {n:,} rows meet it."
+    return ranked, SampleSize(minimum=minimum.n, n_rows=n, parameters=parameters,
+                              criteria=criteria, binding=minimum.binding.key, below=below,
+                              r2_cs=float(minimum.r2_cs), sentence=said)
+
+
+# ── what the interpretable model costs or gains (MODELING_SEQUENCE §5; EXPLORE) ───────────────
+#
+# Renamed from "the price of explainability": Rudin (Nat Mach Intell 2019;1:206): "It is a myth that
+# there is necessarily a trade-off between accuracy and interpretability", and "One can always create
+# an artificial trade-off … by removing parts of a more complex model to reduce accuracy". So the
+# interpretable side is a properly specified regression with splines on the same in-fold
+# preprocessing (the benchmark the ``evaluation`` stage always fits), never a post-hoc explanation of
+# the flexible model. The difference is signed so that a positive value favors the interpretable
+# model: on the strictly proper primary, and on calibration as the distance of the calibration slope
+# from 1. Picking "the best flexible family" flatters it, so the comparison is corrected by BBC-CV over
+# the flexible set: each resample of the out-of-fold predictions (whole units together) chooses the
+# best flexible family on the drawn rows and scores both on the rows left out. When the interval
+# spans 0 the record says "no measurable cost on these rows".
+
+NO_COST = "no measurable cost on these rows"
+
+
+def _slope(task: str, y: np.ndarray, pred: np.ndarray, classes: Sequence[Any]) -> float | None:
+    from turbotab.core.models.validation import _calibration_points
+
+    try:
+        found = _calibration_points(task, y, pred, list(classes) if classes else None)
+    except Exception:  # noqa: BLE001 - a resample with one class has no slope
+        return None
+    value = found.get("calibration_slope")
+    return float(value) if value is not None and math.isfinite(value) else None
+
+
+def interpretable_cost(task: str, metric: str, oof: OutOfFold, interpretable: str,
+                       flexible: Sequence[str], *, labels: Mapping[str, str] | None = None,
+                       metric_label: str | None = None, replicates: int | None = None,
+                       seed: int = SEED) -> dict[str, Any] | None:
+    """The signed paired difference between the interpretable model and the best flexible family,
+    corrected for choosing the best of the flexible set (the comment above). ``oof`` holds every
+    family's out-of-fold predictions; draws are ``draw_units`` from
+    ``numpy.random.default_rng(seed)``, as :func:`selection_optimism` draws them. None without a
+    flexible family or with too few rows."""
+    from turbotab.core.models.folds import draw_units, unit_rows
+
+    flexible = [k for k in flexible if k in oof.predictions and k != interpretable]
+    if interpretable not in oof.predictions or not flexible:
+        return None
+    lower = metric in LOWER_IS_BETTER
+    keys = [interpretable, *flexible]
+    ok = oof.scored.copy()
+    for k in keys:
+        values = oof.predictions[k]
+        ok &= np.isfinite(values if values.ndim == 1 else values.sum(axis=1))
+    rows = np.flatnonzero(ok)
+    n = len(rows)
+    if n < 10:
+        return None
+    codes, members = unit_rows(None if oof.units is None
+                               else np.asarray(oof.units, dtype=object)[rows], n)
+    U = len(members)
+    B = replicates or (REPLICATES if n <= LARGE else REPLICATES_LARGE)
+    rng = np.random.default_rng(seed)
+    calibrated = task in ("regression", "binary")
+    diffs: list[float] = []
+    cal: list[float] = []
+    wins = {k: 0 for k in flexible}
+    for _ in range(B):
+        draw = draw_units(rng, U)
+        times = np.bincount(draw, minlength=U)[codes]
+        if times.all():
+            continue
+        drawn = np.repeat(rows, times)
+        out = rows[times == 0]
+        inbag = {k: oof.score(metric, k, drawn) for k in flexible}
+        inbag = {k: v for k, v in inbag.items() if math.isfinite(v)}
+        if not inbag or len(out) < 2:
+            continue
+        chosen = (min if lower else max)(inbag, key=inbag.get)
+        a, b = oof.score(metric, interpretable, out), oof.score(metric, chosen, out)
+        if not (math.isfinite(a) and math.isfinite(b)):
+            continue
+        diffs.append(b - a if lower else a - b)
+        wins[chosen] += 1
+        if calibrated:
+            y = oof.y[out]
+            sa = _slope(task, y, oof.predictions[interpretable][out], oof.classes)
+            sb = _slope(task, y, oof.predictions[chosen][out], oof.classes)
+            if sa is not None and sb is not None:
+                cal.append(abs(1.0 - sb) - abs(1.0 - sa))
+    if len(diffs) < B / 2:
+        return None
+    names = labels or {}
+    label = metric_label or metric
+
+    def summary(values: Sequence[float]) -> dict[str, float | None]:
+        if not values:
+            return {"difference": None, "ci_low": None, "ci_high": None}
+        return {"difference": float(np.mean(values)),
+                "ci_low": float(np.percentile(values, 2.5)),
+                "ci_high": float(np.percentile(values, 97.5))}
+
+    score_part = summary(diffs)
+    cal_part = summary(cal)
+
+    def verdict(part: Mapping[str, float | None]) -> str | None:
+        lo, hi = part["ci_low"], part["ci_high"]
+        if lo is None or hi is None:
+            return None
+        if lo <= 0 <= hi:
+            return NO_COST
+        return "the interpretable model gains" if lo > 0 else "the interpretable model costs"
+
+    who = names.get(interpretable, interpretable)
+    flex = ", ".join(names.get(k, k) for k in flexible)
+
+    def clause(what: str, part: Mapping[str, float | None]) -> str:
+        said = verdict(part)
+        return (f"on {what} the difference is {_num(part['difference'])} (95% interval "
+                f"{_num(part['ci_low'])} to {_num(part['ci_high'])}): {said}")
+
+    text = (f"What the interpretable model costs or gains: {who} against the best of {flex}, "
+            f"chosen anew in each of {len(diffs):,} resamples of the out-of-fold predictions "
+            f"(BBC-CV over the flexible set; positive favors {who}); "
+            + clause(label, score_part)
+            + (f"; {clause('calibration (the slope’s distance from 1)', cal_part)}"
+               if cal_part["difference"] is not None else "") + ".")
+    return {"interpretable": interpretable, "flexible": list(flexible), "metric": metric,
+            "score": {**score_part, "verdict": verdict(score_part)},
+            "calibration": ({**cal_part, "verdict": verdict(cal_part)}
+                            if cal_part["difference"] is not None else None),
+            "replicates": len(diffs), "wins": wins, "by_unit": oof.units is not None,
+            "text": text}
+
+
+__all__ = ["DeclaredResult", "FLEXIBLE_REASON", "LOWER_IS_BETTER", "METHOD", "NO_COST",
+           "OutOfFold", "SampleSize", "SampleSizeCriterion", "compared_families",
+           "declared_family", "declared_result", "interpretable_cost", "is_flexible",
+           "mark_final", "pooled_score", "selection_optimism", "shelf_order"]

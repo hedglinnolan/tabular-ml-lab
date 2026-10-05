@@ -168,6 +168,7 @@ const fit: FitArtifact = {
       ...ms6,
       exposure_tests: [],
       adjustment_terms: null,
+      score_concerns: [],
     },
     {
       family: "elastic_net",
@@ -189,6 +190,7 @@ const fit: FitArtifact = {
       ...ms6,
       exposure_tests: [],
       adjustment_terms: null,
+      score_concerns: [],
     },
     {
       family: "boosted_trees",
@@ -210,6 +212,7 @@ const fit: FitArtifact = {
       ...ms6,
       exposure_tests: [],
       adjustment_terms: null,
+      score_concerns: [],
     },
   ],
   holdout_sealed: true,

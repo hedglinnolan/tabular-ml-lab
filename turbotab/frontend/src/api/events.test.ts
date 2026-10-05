@@ -101,6 +101,11 @@ function view(): ProjectView {
       causal: null,
       time_varying: null,
       explain: null,
+      outcome_views: null,
+      levers: null,
+      selection: null,
+      intended_use: null,
+      updating: null,
     },
     decisions: [record(1)],
     stages: {

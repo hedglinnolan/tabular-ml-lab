@@ -1152,3 +1152,8 @@ ARTIFACT_MODELS.update({"time_varying": TimeVaryingArtifact})
 from turbotab.core.models.explain import ExplainArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"explain": ExplainArtifact})
+# Wave 2, EXPLORE: Explore after the seal, and the benchmark, decision curve and design-based scores.
+from turbotab.core.stages.explore import ExploreArtifact  # noqa: E402
+from turbotab.core.stages.evaluation import EvaluationArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"explore": ExploreArtifact, "evaluation": EvaluationArtifact})

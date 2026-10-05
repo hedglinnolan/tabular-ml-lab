@@ -219,6 +219,9 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "explain":  # wave 2: an explanation shows what a model learned from the outcome
         return any(f.get("explained") for f in artifact.get("families") or []
                    if isinstance(f, Mapping))
+    if stage == "evaluation":  # wave 2, EXPLORE: under inference, the selection sensitivity's tests
+        estimates = artifact.get("estimates")
+        return isinstance(estimates, Mapping) and bool(estimates.get("path"))
     return False
 
 

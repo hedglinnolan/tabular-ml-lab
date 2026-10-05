@@ -484,6 +484,21 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ViewOutcome-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetLevers-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSelection-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetIntendedUse-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUpdating-Input"
                   }
                 ],
                 "discriminator": {
@@ -542,7 +557,12 @@
                     "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
                     "set_causal": "#/components/schemas/SetCausal-Input",
                     "set_time_varying": "#/components/schemas/SetTimeVarying-Input",
-                    "set_explain": "#/components/schemas/SetExplain-Input"
+                    "set_explain": "#/components/schemas/SetExplain-Input",
+                    "view_outcome": "#/components/schemas/ViewOutcome-Input",
+                    "set_levers": "#/components/schemas/SetLevers-Input",
+                    "set_selection": "#/components/schemas/SetSelection-Input",
+                    "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
+                    "set_updating": "#/components/schemas/SetUpdating-Input"
                   }
                 },
                 "title": "Decision"
@@ -1063,6 +1083,21 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ViewOutcome-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetLevers-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSelection-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetIntendedUse-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUpdating-Input"
                   }
                 ],
                 "discriminator": {
@@ -1121,7 +1156,12 @@
                     "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
                     "set_causal": "#/components/schemas/SetCausal-Input",
                     "set_time_varying": "#/components/schemas/SetTimeVarying-Input",
-                    "set_explain": "#/components/schemas/SetExplain-Input"
+                    "set_explain": "#/components/schemas/SetExplain-Input",
+                    "view_outcome": "#/components/schemas/ViewOutcome-Input",
+                    "set_levers": "#/components/schemas/SetLevers-Input",
+                    "set_selection": "#/components/schemas/SetSelection-Input",
+                    "set_intended_use": "#/components/schemas/SetIntendedUse-Input",
+                    "set_updating": "#/components/schemas/SetUpdating-Input"
                   }
                 },
                 "title": "Decision"
@@ -4145,6 +4185,21 @@
               },
               {
                 "$ref": "#/components/schemas/SetExplain-Output"
+              },
+              {
+                "$ref": "#/components/schemas/ViewOutcome-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetLevers-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetSelection-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetIntendedUse-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetUpdating-Output"
               }
             ],
             "title": "Decision",
@@ -4182,7 +4237,9 @@
                 "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                 "set_follow_up": "#/components/schemas/SetFollowUp-Output",
                 "set_grain": "#/components/schemas/SetGrain-Output",
+                "set_intended_use": "#/components/schemas/SetIntendedUse-Output",
                 "set_lens": "#/components/schemas/SetLens",
+                "set_levers": "#/components/schemas/SetLevers-Output",
                 "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                 "set_missing": "#/components/schemas/SetMissing-Output",
                 "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
@@ -4195,6 +4252,7 @@
                 "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                 "set_roles": "#/components/schemas/SetRoles-Output",
                 "set_scales": "#/components/schemas/SetScales-Output",
+                "set_selection": "#/components/schemas/SetSelection-Output",
                 "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                 "set_split": "#/components/schemas/SetSplit-Output",
                 "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -4204,7 +4262,9 @@
                 "set_temporal": "#/components/schemas/SetTemporal-Output",
                 "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
                 "set_unit": "#/components/schemas/SetUnit",
-                "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
+                "set_updating": "#/components/schemas/SetUpdating-Output",
+                "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                "view_outcome": "#/components/schemas/ViewOutcome-Output"
               }
             }
           }
@@ -4992,6 +5052,21 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetExplain-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ViewOutcome-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetLevers-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetSelection-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetIntendedUse-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetUpdating-Output"
                   }
                 ],
                 "discriminator": {
@@ -5028,7 +5103,9 @@
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                     "set_follow_up": "#/components/schemas/SetFollowUp-Output",
                     "set_grain": "#/components/schemas/SetGrain-Output",
+                    "set_intended_use": "#/components/schemas/SetIntendedUse-Output",
                     "set_lens": "#/components/schemas/SetLens",
+                    "set_levers": "#/components/schemas/SetLevers-Output",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                     "set_missing": "#/components/schemas/SetMissing-Output",
                     "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
@@ -5041,6 +5118,7 @@
                     "set_repeat_kind": "#/components/schemas/SetRepeatKind-Output",
                     "set_roles": "#/components/schemas/SetRoles-Output",
                     "set_scales": "#/components/schemas/SetScales-Output",
+                    "set_selection": "#/components/schemas/SetSelection-Output",
                     "set_sensitivity": "#/components/schemas/SetSensitivity-Output",
                     "set_split": "#/components/schemas/SetSplit-Output",
                     "set_substitution": "#/components/schemas/SetSubstitution-Output",
@@ -5050,7 +5128,9 @@
                     "set_temporal": "#/components/schemas/SetTemporal-Output",
                     "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
                     "set_unit": "#/components/schemas/SetUnit",
-                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
+                    "set_updating": "#/components/schemas/SetUpdating-Output",
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Output",
+                    "view_outcome": "#/components/schemas/ViewOutcome-Output"
                   }
                 }
               },
@@ -6260,6 +6340,84 @@
         "title": "ImportCodebook",
         "description": "Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a\nvariable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.\nIts structured fields (units, value-code tables, the variable type) settle readings as the\nuser's own documentation, through the confirmation path ``confirm_readings`` writes; its\nfree-text labels only strengthen the guesses the ask leads with; a field the values contradict\nis asked, never applied. The client names the staged codebook; everything else is the\nserver's, read from the codebook and the values."
       },
+      "IntendedUseSpec": {
+        "properties": {
+          "use": {
+            "type": "string",
+            "enum": [
+              "decision_support",
+              "risk_estimation"
+            ],
+            "title": "Use"
+          },
+          "threshold_low": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold Low"
+          },
+          "threshold_high": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold High"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "subgroups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subgroups"
+          },
+          "fairness": {
+            "type": "string",
+            "enum": [
+              "none",
+              "subgroup_performance"
+            ],
+            "title": "Fairness",
+            "default": "subgroup_performance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "use",
+          "threshold_low",
+          "threshold_high",
+          "threshold",
+          "subgroups",
+          "fairness"
+        ],
+        "title": "IntendedUseSpec"
+      },
       "InterviewStep": {
         "properties": {
           "key": {
@@ -7037,6 +7195,62 @@
         ],
         "title": "LevelValues",
         "description": "A number per level of another column (a PAL per activity category)."
+      },
+      "LeverSpec": {
+        "properties": {
+          "forms": {
+            "type": "string",
+            "enum": [
+              "none",
+              "rule",
+              "inner_cv"
+            ],
+            "title": "Forms",
+            "default": "none"
+          },
+          "variance_filter": {
+            "type": "string",
+            "enum": [
+              "none",
+              "near_zero",
+              "top"
+            ],
+            "title": "Variance Filter",
+            "default": "none"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "imbalance": {
+            "type": "string",
+            "enum": [
+              "none",
+              "weights",
+              "undersample",
+              "oversample"
+            ],
+            "title": "Imbalance",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "forms",
+          "variance_filter",
+          "keep",
+          "imbalance"
+        ],
+        "title": "LeverSpec"
       },
       "Lineage": {
         "properties": {
@@ -7926,6 +8140,77 @@
         ],
         "title": "OutcomeScaleSpec"
       },
+      "OutcomeViewSpec": {
+        "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "relationship",
+              "distribution"
+            ],
+            "title": "View"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "training",
+                  "analyzed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Rows"
+          },
+          "levers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Levers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "view",
+          "column",
+          "target",
+          "rows",
+          "n_rows",
+          "levers"
+        ],
+        "title": "OutcomeViewSpec"
+      },
       "PlanExport": {
         "properties": {
           "format": {
@@ -8775,6 +9060,60 @@
                 "type": "null"
               }
             ]
+          },
+          "outcome_views": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/OutcomeViewSpec"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Views"
+          },
+          "levers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeverSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectionSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "intended_use": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntendedUseSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdatingSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8831,7 +9170,12 @@
           "diagnostic_responses",
           "causal",
           "time_varying",
-          "explain"
+          "explain",
+          "outcome_views",
+          "levers",
+          "selection",
+          "intended_use",
+          "updating"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -10222,6 +10566,104 @@
           "models"
         ],
         "title": "SelectModels"
+      },
+      "SelectionSpec": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "elastic_net",
+              "stability",
+              "screening",
+              "stepwise",
+              "univariable",
+              "vip"
+            ],
+            "title": "Method",
+            "default": "none"
+          },
+          "where": {
+            "type": "string",
+            "enum": [
+              "in_fold",
+              "outside"
+            ],
+            "title": "Where",
+            "default": "in_fold"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "pre_selected": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no",
+                  "yes",
+                  "other_data",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Selected"
+          },
+          "sensitivity": {
+            "type": "boolean",
+            "title": "Sensitivity",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method",
+          "where",
+          "keep",
+          "threshold",
+          "q",
+          "pre_selected",
+          "sensitivity"
+        ],
+        "title": "SelectionSpec"
       },
       "SensitivityAnalysis-Input": {
         "properties": {
@@ -12003,6 +12445,171 @@
         ],
         "title": "SetGrain"
       },
+      "SetIntendedUse-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_intended_use",
+            "title": "Kind",
+            "default": "set_intended_use"
+          },
+          "use": {
+            "type": "string",
+            "enum": [
+              "decision_support",
+              "risk_estimation"
+            ],
+            "title": "Use"
+          },
+          "threshold_low": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold Low"
+          },
+          "threshold_high": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold High"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "subgroups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subgroups"
+          },
+          "fairness": {
+            "type": "string",
+            "enum": [
+              "none",
+              "subgroup_performance"
+            ],
+            "title": "Fairness",
+            "default": "subgroup_performance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "use"
+        ],
+        "title": "SetIntendedUse"
+      },
+      "SetIntendedUse-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_intended_use",
+            "title": "Kind",
+            "default": "set_intended_use"
+          },
+          "use": {
+            "type": "string",
+            "enum": [
+              "decision_support",
+              "risk_estimation"
+            ],
+            "title": "Use"
+          },
+          "threshold_low": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold Low"
+          },
+          "threshold_high": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold High"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "subgroups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subgroups"
+          },
+          "fairness": {
+            "type": "string",
+            "enum": [
+              "none",
+              "subgroup_performance"
+            ],
+            "title": "Fairness",
+            "default": "subgroup_performance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "use",
+          "threshold_low",
+          "threshold_high",
+          "threshold",
+          "subgroups",
+          "fairness"
+        ],
+        "title": "SetIntendedUse"
+      },
       "SetLens": {
         "properties": {
           "kind": {
@@ -12035,6 +12642,128 @@
           "lenses"
         ],
         "title": "SetLens"
+      },
+      "SetLevers-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_levers",
+            "title": "Kind",
+            "default": "set_levers"
+          },
+          "forms": {
+            "type": "string",
+            "enum": [
+              "none",
+              "rule",
+              "inner_cv"
+            ],
+            "title": "Forms",
+            "default": "none"
+          },
+          "variance_filter": {
+            "type": "string",
+            "enum": [
+              "none",
+              "near_zero",
+              "top"
+            ],
+            "title": "Variance Filter",
+            "default": "none"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "imbalance": {
+            "type": "string",
+            "enum": [
+              "none",
+              "weights",
+              "undersample",
+              "oversample"
+            ],
+            "title": "Imbalance",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetLevers"
+      },
+      "SetLevers-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_levers",
+            "title": "Kind",
+            "default": "set_levers"
+          },
+          "forms": {
+            "type": "string",
+            "enum": [
+              "none",
+              "rule",
+              "inner_cv"
+            ],
+            "title": "Forms",
+            "default": "none"
+          },
+          "variance_filter": {
+            "type": "string",
+            "enum": [
+              "none",
+              "near_zero",
+              "top"
+            ],
+            "title": "Variance Filter",
+            "default": "none"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "imbalance": {
+            "type": "string",
+            "enum": [
+              "none",
+              "weights",
+              "undersample",
+              "oversample"
+            ],
+            "title": "Imbalance",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "forms",
+          "variance_filter",
+          "keep",
+          "imbalance"
+        ],
+        "title": "SetLevers"
       },
       "SetMeasurementError-Input": {
         "properties": {
@@ -12900,6 +13629,209 @@
         ],
         "title": "SetScales",
         "description": "The multi-item scales scored as predictors (MS8): each one's items become one score in the\nmodels. An empty list is the answer \"no scale is scored\"."
+      },
+      "SetSelection-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_selection",
+            "title": "Kind",
+            "default": "set_selection"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "elastic_net",
+              "stability",
+              "screening",
+              "stepwise",
+              "univariable",
+              "vip"
+            ],
+            "title": "Method",
+            "default": "none"
+          },
+          "where": {
+            "type": "string",
+            "enum": [
+              "in_fold",
+              "outside"
+            ],
+            "title": "Where",
+            "default": "in_fold"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "pre_selected": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no",
+                  "yes",
+                  "other_data",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Selected"
+          },
+          "sensitivity": {
+            "type": "boolean",
+            "title": "Sensitivity",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetSelection"
+      },
+      "SetSelection-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_selection",
+            "title": "Kind",
+            "default": "set_selection"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "elastic_net",
+              "stability",
+              "screening",
+              "stepwise",
+              "univariable",
+              "vip"
+            ],
+            "title": "Method",
+            "default": "none"
+          },
+          "where": {
+            "type": "string",
+            "enum": [
+              "in_fold",
+              "outside"
+            ],
+            "title": "Where",
+            "default": "in_fold"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "pre_selected": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no",
+                  "yes",
+                  "other_data",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Selected"
+          },
+          "sensitivity": {
+            "type": "boolean",
+            "title": "Sensitivity",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method",
+          "where",
+          "keep",
+          "threshold",
+          "q",
+          "pre_selected",
+          "sensitivity"
+        ],
+        "title": "SetSelection"
       },
       "SetSensitivity-Input": {
         "properties": {
@@ -13815,6 +14747,57 @@
         ],
         "title": "SetUnit",
         "description": "When a unit repeats: is one row of the analysis a unit (combined) or a record?"
+      },
+      "SetUpdating-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_updating",
+            "title": "Kind",
+            "default": "set_updating"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "shrinkage"
+            ],
+            "title": "Method",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetUpdating"
+      },
+      "SetUpdating-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_updating",
+            "title": "Kind",
+            "default": "set_updating"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "shrinkage"
+            ],
+            "title": "Method",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetUpdating"
       },
       "SetUsualIntake-Input": {
         "properties": {
@@ -14966,6 +15949,25 @@
         ],
         "title": "TimeVaryingSpec"
       },
+      "UpdatingSpec": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "shrinkage"
+            ],
+            "title": "Method",
+            "default": "none"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "method"
+        ],
+        "title": "UpdatingSpec"
+      },
       "UsualIntakeSpec": {
         "properties": {
           "model": {
@@ -15151,6 +16153,183 @@
           "count"
         ],
         "title": "ValueCount"
+      },
+      "ViewOutcome-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "view_outcome",
+            "title": "Kind",
+            "default": "view_outcome"
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "relationship",
+              "distribution"
+            ],
+            "title": "View"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "training",
+                  "analyzed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Rows"
+          },
+          "levers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "view"
+        ],
+        "title": "ViewOutcome"
+      },
+      "ViewOutcome-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "view_outcome",
+            "title": "Kind",
+            "default": "view_outcome"
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "relationship",
+              "distribution"
+            ],
+            "title": "View"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "training",
+                  "analyzed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Rows"
+          },
+          "levers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levers"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "view",
+          "columns",
+          "target",
+          "rows",
+          "n_rows",
+          "levers"
+        ],
+        "title": "ViewOutcome"
       },
       "AdjustmentCard": {
         "description": "WP17 (MODELING_SEQUENCE §1 step 3): the disjunctive cause criterion, asked per covariate.",
@@ -16186,6 +17365,99 @@
         "title": "BeeswarmInput",
         "type": "object"
       },
+      "Benchmark": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "default": "spline_benchmark",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "default": "Regression with splines (benchmark)",
+            "title": "Label",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "versus_baseline": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Versus Baseline"
+          },
+          "differences": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Differences",
+            "type": "array"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "metric",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "versus_baseline",
+          "differences",
+          "sentence"
+        ],
+        "title": "Benchmark",
+        "type": "object"
+      },
       "BenchmarkResult": {
         "additionalProperties": false,
         "properties": {
@@ -16243,6 +17515,37 @@
           "kd"
         ],
         "title": "BenchmarkResult",
+        "type": "object"
+      },
+      "BinPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "n"
+        ],
+        "title": "BinPoint",
         "type": "object"
       },
       "BrantCheck": {
@@ -18584,6 +19887,81 @@
         "title": "DesignArtifact",
         "type": "object"
       },
+      "DesignBased": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "folds": {
+            "title": "Folds",
+            "type": "integer"
+          },
+          "repeats": {
+            "title": "Repeats",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          },
+          "families": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Choice"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "source",
+          "metric",
+          "folds",
+          "repeats",
+          "note",
+          "families",
+          "choice",
+          "sentence"
+        ],
+        "title": "DesignBased",
+        "type": "object"
+      },
       "DesignModel": {
         "additionalProperties": false,
         "properties": {
@@ -20145,6 +21523,209 @@
         "title": "Estimates",
         "type": "object"
       },
+      "EvaluationArtifact": {
+        "additionalProperties": false,
+        "description": "The ``evaluation`` artifact (module docstring).",
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "scores_shown": {
+            "title": "Scores Shown",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Metric"
+          },
+          "reported_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reported Family"
+          },
+          "benchmark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Benchmark"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "interpretable": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interpretable"
+          },
+          "decision_curve": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision Curve"
+          },
+          "subgroups": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Subgroups",
+            "type": "array"
+          },
+          "shrinkage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Shrinkage"
+          },
+          "internal_external": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Internal External",
+            "type": "array"
+          },
+          "inclusion": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Inclusion"
+          },
+          "design_based": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesignBased"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "hand_levers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Hand Levers",
+            "type": "array"
+          },
+          "estimates": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimates"
+          },
+          "sentences": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sentences",
+            "type": "array"
+          }
+        },
+        "required": [
+          "purpose",
+          "task",
+          "scores_shown",
+          "note",
+          "metric",
+          "reported_family",
+          "benchmark",
+          "interpretable",
+          "decision_curve",
+          "subgroups",
+          "shrinkage",
+          "internal_external",
+          "inclusion",
+          "design_based",
+          "hand_levers",
+          "estimates",
+          "sentences"
+        ],
+        "title": "EvaluationArtifact",
+        "type": "object"
+      },
       "ExclusionProposal": {
         "description": "One of the pack's exclusion rules, with the rows it would remove. Never pre-selected.",
         "properties": {
@@ -20420,6 +22001,195 @@
           "withheld"
         ],
         "title": "ExplainArtifact",
+        "type": "object"
+      },
+      "ExploreArtifact": {
+        "additionalProperties": false,
+        "description": "The ``explore`` artifact (module docstring).",
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_holdout": {
+            "title": "N Holdout",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ExploreFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "more": {
+            "default": 0,
+            "title": "More",
+            "type": "integer"
+          },
+          "proposed_subgroups": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Proposed Subgroups",
+            "type": "array"
+          },
+          "viewed": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Viewed",
+            "type": "array"
+          },
+          "hand_levers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HandLever"
+            },
+            "title": "Hand Levers",
+            "type": "array"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "rows",
+          "n_rows",
+          "n_holdout",
+          "findings",
+          "more",
+          "proposed_subgroups",
+          "viewed",
+          "hand_levers",
+          "sentence"
+        ],
+        "title": "ExploreArtifact",
+        "type": "object"
+      },
+      "ExploreFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "outcome_view": {
+            "default": false,
+            "title": "Outcome View",
+            "type": "boolean"
+          },
+          "viewed": {
+            "default": false,
+            "title": "Viewed",
+            "type": "boolean"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          },
+          "points": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BinPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "groups": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GroupQuality"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Detail"
+          },
+          "lever": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lever"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Record"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "summary",
+          "columns",
+          "outcome_view",
+          "viewed",
+          "view",
+          "points",
+          "groups",
+          "detail",
+          "lever",
+          "record"
+        ],
+        "title": "ExploreFinding",
         "type": "object"
       },
       "ExposureFormOption": {
@@ -21845,6 +23615,14 @@
             ],
             "default": null,
             "title": "Methods"
+          },
+          "score_concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Score Concerns",
+            "type": "array"
           }
         },
         "required": [
@@ -21872,7 +23650,8 @@
           "performance",
           "nested_cv",
           "adjustment_terms",
-          "methods"
+          "methods",
+          "score_concerns"
         ],
         "title": "FittedModel",
         "type": "object"
@@ -22250,6 +24029,69 @@
           "stated"
         ],
         "title": "GrainReading",
+        "type": "object"
+      },
+      "GroupQuality": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "missing_share": {
+            "title": "Missing Share",
+            "type": "number"
+          }
+        },
+        "required": [
+          "group",
+          "n",
+          "missing_share"
+        ],
+        "title": "GroupQuality",
+        "type": "object"
+      },
+      "HandLever": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          },
+          "what": {
+            "title": "What",
+            "type": "string"
+          },
+          "then": {
+            "title": "Then",
+            "type": "string"
+          },
+          "now": {
+            "title": "Now",
+            "type": "string"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "view",
+          "what",
+          "then",
+          "now",
+          "sentence"
+        ],
+        "title": "HandLever",
         "type": "object"
       },
       "HoldoutDetail": {
@@ -23539,6 +25381,82 @@
           "calibration"
         ],
         "title": "LevelCalibration",
+        "type": "object"
+      },
+      "Lever": {
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/LeverOption"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "options"
+        ],
+        "title": "Lever",
+        "type": "object"
+      },
+      "LeverOption": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "rung": {
+            "title": "Rung",
+            "type": "string"
+          },
+          "in_fold": {
+            "default": false,
+            "title": "In Fold",
+            "type": "boolean"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound",
+          "rung",
+          "in_fold",
+          "decision"
+        ],
+        "title": "LeverOption",
         "type": "object"
       },
       "LockPlan": {
@@ -26801,6 +28719,108 @@
         "title": "RowComparison",
         "type": "object"
       },
+      "SampleSize": {
+        "additionalProperties": false,
+        "description": "Riley et al.'s minimum sample size, computed before the shelf is ranked (TRIPOD+AI 10).",
+        "properties": {
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "parameters": {
+            "title": "Parameters",
+            "type": "integer"
+          },
+          "criteria": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SampleSizeCriterion"
+            },
+            "title": "Criteria",
+            "type": "array"
+          },
+          "binding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Binding"
+          },
+          "below": {
+            "default": false,
+            "title": "Below",
+            "type": "boolean"
+          },
+          "r2_cs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "R2 Cs"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "minimum",
+          "n_rows",
+          "parameters",
+          "criteria",
+          "binding",
+          "below",
+          "r2_cs",
+          "sentence"
+        ],
+        "title": "SampleSize",
+        "type": "object"
+      },
+      "SampleSizeCriterion": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "what": {
+            "title": "What",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "what",
+          "n"
+        ],
+        "title": "SampleSizeCriterion",
+        "type": "object"
+      },
       "ScaleQuestion": {
         "description": "The scale a positive, markedly skewed outcome is analyzed on\n(``turbotab.core.structural.scale_question``).",
         "properties": {
@@ -28843,6 +30863,158 @@
         "title": "SetGrain",
         "type": "object"
       },
+      "SetIntendedUse": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_intended_use",
+            "default": "set_intended_use",
+            "title": "Kind",
+            "type": "string"
+          },
+          "use": {
+            "enum": [
+              "decision_support",
+              "risk_estimation"
+            ],
+            "title": "Use",
+            "type": "string"
+          },
+          "threshold_low": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold Low"
+          },
+          "threshold_high": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold High"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold"
+          },
+          "subgroups": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Subgroups",
+            "type": "array"
+          },
+          "fairness": {
+            "default": "subgroup_performance",
+            "enum": [
+              "none",
+              "subgroup_performance"
+            ],
+            "title": "Fairness",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "use",
+          "threshold_low",
+          "threshold_high",
+          "threshold",
+          "subgroups",
+          "fairness"
+        ],
+        "title": "SetIntendedUse",
+        "type": "object"
+      },
+      "SetLevers": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_levers",
+            "default": "set_levers",
+            "title": "Kind",
+            "type": "string"
+          },
+          "forms": {
+            "default": "none",
+            "enum": [
+              "none",
+              "rule",
+              "inner_cv"
+            ],
+            "title": "Forms",
+            "type": "string"
+          },
+          "variance_filter": {
+            "default": "none",
+            "enum": [
+              "none",
+              "near_zero",
+              "top"
+            ],
+            "title": "Variance Filter",
+            "type": "string"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Keep"
+          },
+          "imbalance": {
+            "default": "none",
+            "enum": [
+              "none",
+              "weights",
+              "undersample",
+              "oversample"
+            ],
+            "title": "Imbalance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "forms",
+          "variance_filter",
+          "keep",
+          "imbalance"
+        ],
+        "title": "SetLevers",
+        "type": "object"
+      },
       "SetMeasurementError": {
         "additionalProperties": false,
         "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011).",
@@ -29215,6 +31387,115 @@
           "scales"
         ],
         "title": "SetScales",
+        "type": "object"
+      },
+      "SetSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_selection",
+            "default": "set_selection",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "default": "none",
+            "enum": [
+              "none",
+              "elastic_net",
+              "stability",
+              "screening",
+              "stepwise",
+              "univariable",
+              "vip"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "where": {
+            "default": "in_fold",
+            "enum": [
+              "in_fold",
+              "outside"
+            ],
+            "title": "Where",
+            "type": "string"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Keep"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1,
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Q"
+          },
+          "pre_selected": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no",
+                  "yes",
+                  "other_data",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pre Selected"
+          },
+          "sensitivity": {
+            "default": false,
+            "title": "Sensitivity",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "method",
+          "where",
+          "keep",
+          "threshold",
+          "q",
+          "pre_selected",
+          "sensitivity"
+        ],
+        "title": "SetSelection",
         "type": "object"
       },
       "SetSensitivity": {
@@ -29656,6 +31937,32 @@
         "title": "SetTimeVarying",
         "type": "object"
       },
+      "SetUpdating": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_updating",
+            "default": "set_updating",
+            "title": "Kind",
+            "type": "string"
+          },
+          "method": {
+            "default": "none",
+            "enum": [
+              "none",
+              "shrinkage"
+            ],
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "method"
+        ],
+        "title": "SetUpdating",
+        "type": "object"
+      },
       "SetUsualIntake": {
         "additionalProperties": false,
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``.",
@@ -29933,11 +32240,23 @@
           "basis": {
             "title": "Basis",
             "type": "string"
+          },
+          "sample_size": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SampleSize"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "families",
-          "basis"
+          "basis",
+          "sample_size"
         ],
         "title": "ShelfArtifact",
         "type": "object"
@@ -33132,6 +35451,101 @@
           "level"
         ],
         "title": "VersusBaseline",
+        "type": "object"
+      },
+      "ViewOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "view_outcome",
+            "default": "view_outcome",
+            "title": "Kind",
+            "type": "string"
+          },
+          "view": {
+            "enum": [
+              "relationship",
+              "distribution"
+            ],
+            "title": "View",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "enum": [
+                  "training",
+                  "analyzed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rows"
+          },
+          "n_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N Rows"
+          },
+          "levers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Levers"
+          }
+        },
+        "required": [
+          "kind",
+          "view",
+          "columns",
+          "target",
+          "rows",
+          "n_rows",
+          "levers"
+        ],
+        "title": "ViewOutcome",
         "type": "object"
       },
       "WeightSummary": {

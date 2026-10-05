@@ -34,6 +34,10 @@ from turbotab.core.models import previews  # noqa: F401,E402 - registers the con
 from turbotab.core.models import selection  # noqa: F401,E402 - registers
 # Wave 2, EXPLAIN: the explanations' method contract and the set_explain validators.
 from turbotab.core.models import explain  # noqa: F401,E402 - registers
+# Wave 2, EXPLORE: the levers', the selection menu's, intended use's and design-based CV's contracts
+# and validators.
+from turbotab.core.methods import levers as _levers  # noqa: F401,E402 - registers
+from turbotab.core.models import variable_selection, decision_curve, design_cv  # noqa: F401,E402
 
 __all__ = [
     "Assessment", "FamilyInfo", "ModelFamily", "Situation", "families", "get_family", "info",
