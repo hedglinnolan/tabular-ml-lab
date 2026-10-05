@@ -609,11 +609,14 @@ def build_graph() -> Graph:
             # calibration 8 (wave 1, MS4): blocked and recorded under the population answer.
             # calibration 9 (SURVEY repair): the block's exits are decisions (the sample-only
             # attestation; no correction).
-            Stage("calibration", 9,
+            # calibration 10 (MS5): every error-prone intake calibrated jointly inside each imputed
+            # copy, a declared secondary with a whole-chain bootstrap (PSUs within strata, clusters
+            # or people), the adjustment set it was declared under kept.
+            Stage("calibration", 10,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
-                  label="Correcting energy-adjusted intakes for day-to-day error"),
+                  label="Correcting intakes for day-to-day error in the recalls"),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             Stage("secondary", 3, ("working", "design", "split", "target_info"),

@@ -7473,6 +7473,30 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "whole_chain_bootstrap",
+              "model_based",
+              "rubin_only"
+            ],
+            "title": "Interval",
+            "default": "whole_chain_bootstrap"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
           }
         },
         "additionalProperties": false,
@@ -7480,7 +7504,9 @@
         "required": [
           "method",
           "exposures",
-          "n_boot"
+          "n_boot",
+          "interval",
+          "adjustment"
         ],
         "title": "MeasurementErrorSpec"
       },
@@ -12065,6 +12091,30 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "whole_chain_bootstrap",
+              "model_based",
+              "rubin_only"
+            ],
+            "title": "Interval",
+            "default": "whole_chain_bootstrap"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
           }
         },
         "additionalProperties": false,
@@ -12074,7 +12124,7 @@
           "method"
         ],
         "title": "SetMeasurementError",
-        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011)."
+        "description": "Whether the intakes the recalls measure are corrected for day-to-day error, by regression\ncalibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).\n``adjustment`` is filled by the server from the state, never by the client."
       },
       "SetMeasurementError-Output": {
         "properties": {
@@ -12105,6 +12155,30 @@
             "minimum": 50.0,
             "title": "N Boot",
             "default": 200
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "whole_chain_bootstrap",
+              "model_based",
+              "rubin_only"
+            ],
+            "title": "Interval",
+            "default": "whole_chain_bootstrap"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
           }
         },
         "additionalProperties": false,
@@ -12113,10 +12187,12 @@
           "kind",
           "method",
           "exposures",
-          "n_boot"
+          "n_boot",
+          "interval",
+          "adjustment"
         ],
         "title": "SetMeasurementError",
-        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011)."
+        "description": "Whether the intakes the recalls measure are corrected for day-to-day error, by regression\ncalibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).\n``adjustment`` is filled by the server from the state, never by the client."
       },
       "SetMissing-Input": {
         "properties": {
@@ -16302,9 +16378,97 @@
         "title": "BrantColumn",
         "type": "object"
       },
+      "CalibratedContrast": {
+        "additionalProperties": false,
+        "description": "The substitution as the difference of calibrated coefficients (all-components).",
+        "properties": {
+          "donor": {
+            "title": "Donor",
+            "type": "string"
+          },
+          "recipient": {
+            "title": "Recipient",
+            "type": "string"
+          },
+          "step_kcal": {
+            "title": "Step Kcal",
+            "type": "number"
+          },
+          "naive": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Naive"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          }
+        },
+        "required": [
+          "donor",
+          "recipient",
+          "step_kcal",
+          "naive",
+          "estimate",
+          "se",
+          "ci_low",
+          "ci_high"
+        ],
+        "title": "CalibratedContrast",
+        "type": "object"
+      },
       "CalibratedExposure": {
         "additionalProperties": false,
-        "description": "One energy-adjusted exposure: its uncorrected and its calibrated coefficient.",
+        "description": "One error-prone column: its uncorrected and its calibrated coefficient.",
         "properties": {
           "feature": {
             "title": "Feature",
@@ -16413,6 +16577,18 @@
             "default": null,
             "title": "Ci High"
           },
+          "delta_se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delta Se"
+          },
           "attenuation": {
             "anyOf": [
               {
@@ -16424,18 +16600,6 @@
             ],
             "default": null,
             "title": "Attenuation"
-          },
-          "attenuation_se": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Attenuation Se"
           },
           "within_variance": {
             "anyOf": [
@@ -16514,8 +16678,8 @@
           "se",
           "ci_low",
           "ci_high",
+          "delta_se",
           "attenuation",
-          "attenuation_se",
           "within_variance",
           "between_variance",
           "n_persons",
@@ -16696,9 +16860,143 @@
             "title": "Rows",
             "type": "string"
           },
+          "role": {
+            "const": "secondary",
+            "default": "secondary",
+            "title": "Role",
+            "type": "string"
+          },
+          "label": {
+            "default": "corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption)",
+            "title": "Label",
+            "type": "string"
+          },
+          "test": {
+            "default": "The test of no association is the uncorrected model's: “the usual statistical test of the null hypothesis (no exposure effect) remains theoretically valid” (Freedman et al. 2011, J Natl Cancer Inst 103:1086); the calibrated estimate gives the size, with its own interval.",
+            "title": "Test",
+            "type": "string"
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "enum": [
+                  "univariate",
+                  "multivariate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Calibration"
+          },
+          "calibrated": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Calibrated",
+            "type": "array"
+          },
+          "covariates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Covariates",
+            "type": "array"
+          },
+          "order": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Order",
+            "type": "array"
+          },
+          "resampling": {
+            "anyOf": [
+              {
+                "enum": [
+                  "persons",
+                  "clusters",
+                  "psu_within_strata"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resampling"
+          },
+          "weighted": {
+            "default": false,
+            "title": "Weighted",
+            "type": "boolean"
+          },
+          "imputations": {
+            "default": 0,
+            "title": "Imputations",
+            "type": "integer"
+          },
+          "boot_copies": {
+            "default": 0,
+            "title": "Boot Copies",
+            "type": "integer"
+          },
+          "attenuation": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attenuation"
+          },
+          "within_covariance": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Within Covariance"
+          },
           "n_persons": {
             "default": 0,
             "title": "N Persons",
+            "type": "integer"
+          },
+          "n_boot": {
+            "default": 0,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "n_boot_ok": {
+            "default": 0,
+            "title": "N Boot Ok",
             "type": "integer"
           },
           "recalls": {
@@ -16715,6 +17013,14 @@
               "$ref": "#/components/schemas/CalibratedExposure"
             },
             "title": "Exposures",
+            "type": "array"
+          },
+          "contrasts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CalibratedContrast"
+            },
+            "title": "Contrasts",
             "type": "array"
           },
           "assumptions": {
@@ -16746,9 +17052,25 @@
           "exits",
           "family",
           "rows",
+          "role",
+          "label",
+          "test",
+          "calibration",
+          "calibrated",
+          "covariates",
+          "order",
+          "resampling",
+          "weighted",
+          "imputations",
+          "boot_copies",
+          "attenuation",
+          "within_covariance",
           "n_persons",
+          "n_boot",
+          "n_boot_ok",
           "recalls",
           "exposures",
+          "contrasts",
           "assumptions",
           "concerns",
           "methods"
@@ -28845,7 +29167,7 @@
       },
       "SetMeasurementError": {
         "additionalProperties": false,
-        "description": "Whether energy-adjusted exposures are corrected for day-to-day error in the recalls\n(univariate regression calibration; audit IN-22, Freedman et al. 2011).",
+        "description": "Whether the intakes the recalls measure are corrected for day-to-day error, by regression\ncalibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).\n``adjustment`` is filled by the server from the state, never by the client.",
         "properties": {
           "kind": {
             "const": "set_measurement_error",
@@ -28874,13 +29196,40 @@
             "minimum": 50,
             "title": "N Boot",
             "type": "integer"
+          },
+          "interval": {
+            "default": "whole_chain_bootstrap",
+            "enum": [
+              "whole_chain_bootstrap",
+              "model_based",
+              "rubin_only"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Adjustment"
           }
         },
         "required": [
           "kind",
           "method",
           "exposures",
-          "n_boot"
+          "n_boot",
+          "interval",
+          "adjustment"
         ],
         "title": "SetMeasurementError",
         "type": "object"

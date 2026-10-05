@@ -1,39 +1,44 @@
-"""The ``calibration`` stage: energy-adjusted exposures corrected for day-to-day error (audit IN-22).
+"""The ``calibration`` stage: regression calibration from repeated recalls, a declared secondary
+analysis beside the uncorrected estimate (MS5; MODELING_SEQUENCE §0 ruling 7, §1.1, §2, §6 chain 2).
 
 When each person's row is the mean of two or more 24-hour recalls, the mean still carries
-day-to-day error, and a coefficient on it is biased. Freedman et al. 2011 (*J Natl Cancer Inst*
-103:1086) recommend "statistical adjustment of relative risks ... using univariate (only for
-energy-adjusted intakes such as densities or residuals) or multivariate regression calibration".
-This stage does the univariate one (``turbotab/core/methods/calibration.py`` has the arithmetic and
-its sources) for each energy-adjusted exposure of the linear model, from the recalls themselves:
-the within-person variance comes from the days each person's mean was made of.
+day-to-day error, and coefficients on it are biased. This stage corrects them by regression
+calibration (``turbotab/core/methods/calibration.py`` has the arithmetic and its sources), from
+the recalls themselves: the within-person covariance comes from the days each person's mean was
+made of.
 
-**Where it applies, and where it refuses** (the artifact's ``reason`` says which):
+**What is calibrated** (MODELING_SEQUENCE §2, "Regression calibration implies multivariate
+calibration when several intakes are error-prone"): every column of the outcome model that the
+recalls measure, jointly. The energy model says which: the energy-adjusted nutrient of the residual
+or density model and total energy beside it (when the model keeps it); the nutrient and total
+energy of the standard model; every energy source and "other" of the partition and all-components
+models; an exposure taken as it is. One such column is the univariate method (Rosner, Willett &
+Spiegelman 1989); several, the multivariate one (Rosner, Spiegelman & Willett 1990), which is what
+lets the all-components model (BLUEPRINT §12 ruling 2) be calibrated at all. The exposures among
+them are reported; the others are calibrated with them and named.
 
-* inference only. Under prediction the model is used on recalls measured the same way as these,
-  so its predictions need no correction (BLUEPRINT §12: the leash is right for prediction);
-* the linear model only: the correction is to a coefficient, and only that family reports one
-  with an interval;
-* rows combined per person from repeats of one quantity (``set_grain`` repeated, ``set_repeat_kind``
-  repeats, ``set_aggregation`` by the mean). Visits over time are not replicate measurements of
-  one usual intake;
-* energy-adjusted exposures only (residual or density outputs of the energy step). Freedman et al.:
-  "Univariate adjustment for the unadjusted intakes used in the standard and partition models is
-  inappropriate because the attenuation factor for the nutrient would be too small; the
-  multivariate adjustment is recommended in this case." The multivariate method is not offered,
-  so under the standard, partition or no-adjustment answers the stage refuses and says so.
+**The calibration's covariates** are every other column of the outcome model (Boe et al. 2023), and
+never the outcome. A change to the adjustment set invalidates the declaration (§2): the decision
+records the set it was declared under (``SetMeasurementError.adjustment``), and the stage refuses
+to run on another one until it is declared again (:func:`current_calibration`).
 
-**The recalls.** The oriented table's rows (the row-local repairs applied, as the working stage
-applies them) are mapped to the analysis rows by the working table's row map. Each day goes through
-the same fitted pipeline steps as the person-level rows, so a day's energy-adjusted value is
-computed with the slope fitted on the analysis rows; a day missing the nutrient or energy is not a
-recall of it. Each person's days are then centered on the person's own model-matrix value, so the
-person-level exposure is exactly the one the coefficient table used and the days contribute only
-their spread (for the linear residual transform the centering moves nothing; for a density it
-replaces the mean of daily ratios by the ratio the model saw).
+**The run order** (MODELING_SEQUENCE §1.1, inference, for each imputed copy): (1) the imputation,
+compatible with the analysis model, the copy the coefficient table pools; (2) the energy model
+refit on the copy and applied to each recall day (energy adjusted per day first, then calibrated);
+(3) the calibration; (4) the outcome model. The point estimate is the mean over the copies (Rubin's
+Q̄); its interval comes from a bootstrap over the whole chain, each replicate drawn as the design
+says (PSUs within strata, clusters, or people) and imputed again (Schomaker & Heumann's Boot MI).
+Model-based and Rubin-only intervals are refused for a calibrated coefficient.
 
-**Rows** are every eligible row (BLUEPRINT §12 ruling 3: inference estimates from all eligible rows,
-with honest intervals), the pipeline refit on them as the sensitivity stage refits it.
+**A declared secondary analysis** (ruling 7): it sits beside the uncorrected estimate, whose test of
+no association stays the uncorrected model's (Freedman et al. 2011), and it is labeled with what it
+corrects and what it assumes (:data:`~turbotab.core.methods.calibration.LABEL`).
+
+**Where it refuses** (the artifact's ``reason`` and ``exits`` say which): under prediction (the
+model is used on recalls measured the same way); without the linear family; outside a continuous
+or yes/no outcome; on rows not combined from repeated recalls by the mean; on time points; on an
+error-prone column with a declared spline or quintiles (the calibration corrects a linear term);
+and when the survey design has no stratum with two PSUs (no bootstrap by PSU within strata).
 """
 from __future__ import annotations
 
@@ -44,24 +49,26 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
 from turbotab.core.graph import Bundle, StageContext
+from turbotab.core.methods.calibration import (BOOT_COPIES, CARROLL, FREEDMAN, LABEL, RAO_WU,
+                                               ROSNER_1989, ROSNER_1990, SCHOMAKER)
 
-FREEDMAN = "Freedman et al. 2011, J Natl Cancer Inst 103:1086"
-CARROLL = "Carroll, Ruppert, Stefanski & Crainiceanu 2006, Measurement Error in Nonlinear Models, §4.4"
-CALIBRATED_OPERATIONS = ("residual", "density")  # the energy step's energy-adjusted outputs
-UNIVARIATE_METHODS = ("residual", "density", "density_multivariate")
+# The energy step's outputs the recalls measure (``methods.energy``'s lineage operations).
+ERROR_PRONE_OPERATIONS = ("residual", "density", "kept", "partition", "partition-other")
+ENERGY_ADJUSTED = ("residual", "density")
+ALL_SOURCES = ("partition", "all_components")
 
 PREDICTION = ("Under prediction the model is used on recalls measured the same way as these, so its "
               "predictions need no correction; regression calibration corrects an exposure's "
               "coefficient, which is an inference question.")
 NO_LINEAR = ("Regression calibration corrects a coefficient, and only the linear model reports one "
              "with an interval; choose it among the model families.")
-# MS4: under the population answer every display is design-based or blocked and recorded
-# (MODELING_SEQUENCE §4). This correction is fit unweighted with a row bootstrap, so it is blocked.
-POPULATION = ("Under the surveyed population a calibrated coefficient needs design-based variance (a "
-              "bootstrap by PSU within strata over the whole chain, MODELING_SEQUENCE §0 ruling 7), "
-              "which this correction does not have, so it is blocked and recorded. To calibrate "
-              "for these participants instead, answer the survey question \"these participants\" "
-              "(the sample-only attestation).")
+# MS4 → MS5: under the population answer the calibration is design-based (weighted, with a
+# bootstrap by PSU within strata); it is blocked only where no such bootstrap exists.
+POPULATION = ("Under the surveyed population a calibrated coefficient's interval comes from a "
+              "bootstrap by PSU within strata over the whole chain (MODELING_SEQUENCE §0 ruling 7), "
+              "and no stratum of this design holds two PSUs with analyzed participants, so it is "
+              "blocked and recorded. To calibrate for these participants instead, answer the survey "
+              "question \"these participants\" (the sample-only attestation).")
 UNCORRECTED_EXIT = "Keep the population's estimates uncorrected: record no calibration"
 
 
@@ -80,22 +87,18 @@ NOT_COMBINED = ("Each analysis row is one record, not the mean of a person's rep
                 "and combine them by the mean.")
 TIME_POINTS = ("The rows repeat as time points, not as repeated recalls of one usual intake, so their "
                "spread is change over time rather than day-to-day error.")
-NOT_ENERGY_ADJUSTED = (
-    "Univariate regression calibration is for energy-adjusted intakes (residuals or densities). "
-    f"{FREEDMAN}: “Univariate adjustment for the unadjusted intakes used in the standard and "
-    "partition models is inappropriate because the attenuation factor for the nutrient would be "
-    "too small; the multivariate adjustment is recommended in this case.” This version does not "
-    "fit the multivariate one; choose the residual or density method to calibrate.")
+NONE_ERROR_PRONE = ("No column of the outcome model is measured by the recalls (no exposure, and no "
+                    "energy model's term), so there is nothing to calibrate.")
+TEST = ("The test of no association is the uncorrected model's: “the usual statistical test of the "
+        f"null hypothesis (no exposure effect) remains theoretically valid” ({FREEDMAN}); the "
+        "calibrated estimate gives the size, with its own interval.")
 ASSUMPTIONS = (
     "Each recall's error is independent of the person's true intake and of their other days' "
-    "errors (classical error). Recalls share a person's own reporting bias, which this reads as true "
-    "intake, so the corrected estimate can still be off in either direction (Freedman et al. 2011, "
-    "Table 2).",
-    "Each exposure is corrected on its own; total energy and the other covariates are treated as "
-    "measured without error (Freedman's univariate method takes the contamination factors as zero).",
-    "For a single error-prone exposure the test of no association is the uncorrected one's: "
-    "“the usual statistical test of the null hypothesis (no exposure effect) remains theoretically "
-    "valid even though the estimated relative risk is attenuated” (Freedman et al. 2011).",
+    "errors (classical error). Recalls share a person's own reporting bias, which this reads as "
+    "true intake, so the corrected estimate can still be off in either direction "
+    f"({FREEDMAN}, Table 2; Kipnis et al. 2003).",
+    "The covariates of the outcome model are taken as measured without error; each is in the "
+    "calibration equation, and the outcome never is.",
 )
 
 
@@ -104,23 +107,23 @@ class _Model(BaseModel):
 
 
 class CalibratedExposure(_Model):
-    """One energy-adjusted exposure: its uncorrected and its calibrated coefficient."""
+    """One error-prone column: its uncorrected and its calibrated coefficient."""
 
-    feature: str  # the model-matrix column (``protein_adj``)
+    feature: str  # the model-matrix column (``protein_adj``, ``kcal_from_fat``)
     source: str  # the raw nutrient column
-    operation: str  # "residual" or "density"
+    operation: str  # the energy step's operation ("residual", "partition", …; "as is")
     naive: float | None
     naive_ci_low: float | None = None
     naive_ci_high: float | None = None
     p: float | None = None  # the uncorrected test of no association (Freedman 2011)
-    estimate: float | None = None
-    se: float | None = None
-    ci_low: float | None = None
+    estimate: float | None = None  # calibrated
+    se: float | None = None  # the whole-chain bootstrap's standard deviation
+    ci_low: float | None = None  # its percentile interval
     ci_high: float | None = None
-    attenuation: float | None = None  # λ at the most common number of recalls
-    attenuation_se: float | None = None
-    within_variance: float | None = None  # σ²_u, day to day
-    between_variance: float | None = None  # σ²_{x|z}, of true intake given the covariates
+    delta_se: float | None = None  # Rosner's delta method: a check, where it is defined
+    attenuation: float | None = None  # Γ_jj at the most common number of recalls
+    within_variance: float | None = None  # Σ_uu,jj: day to day
+    between_variance: float | None = None  # Σ_x|z,jj: of true intake given the covariates
     n_persons: int = 0
     n_repeat: int = 0  # people with two or more recalls
     recalls: dict[str, int] = {}  # number of recalls -> people
@@ -129,23 +132,95 @@ class CalibratedExposure(_Model):
     refused: str | None = None
 
 
+class CalibratedContrast(_Model):
+    """The substitution as the difference of calibrated coefficients (all-components)."""
+
+    donor: str
+    recipient: str
+    step_kcal: float
+    naive: float | None  # the uncorrected contrast (its interval: the substitution curve's)
+    estimate: float | None
+    se: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
+
+
 class CalibrationArtifact(_Model):
     method: Literal["none", "regression_calibration"]
     purpose: Literal["inference", "prediction"]
     applies: bool
     reason: str | None = None  # why nothing was calibrated
-    # The ways past a block, each a decision the client can post (BLUEPRINT §11.3: block and
-    # record names its exits); the population answer's: the sample-only attestation, or no
-    # correction (MS4).
+    # The ways past a block, each a decision the client can post (BLUEPRINT §11.3).
     exits: list[dict[str, Any]] = []
     family: str | None = None
     rows: Literal["all eligible rows"] = "all eligible rows"
+    role: Literal["secondary"] = "secondary"  # beside the uncorrected estimate (ruling 7)
+    label: str = LABEL
+    test: str = TEST
+    calibration: Literal["univariate", "multivariate"] | None = None
+    calibrated: list[str] = []  # every error-prone column, calibrated jointly
+    covariates: list[str] = []  # the calibration's covariates: every other outcome-model column
+    order: list[str] = []  # MODELING_SEQUENCE §1.1 as run
+    resampling: Literal["persons", "clusters", "psu_within_strata"] | None = None
+    weighted: bool = False  # survey-weighted (the surveyed population)
+    imputations: int = 0  # the copies the point estimate is the mean over (0: none)
+    boot_copies: int = 0  # each bootstrap replicate's own imputations (0: none)
+    attenuation: list[list[float]] | None = None  # Γ at the most common k, in ``calibrated`` order
+    within_covariance: list[list[float]] | None = None  # Σ_uu, in ``calibrated`` order
     n_persons: int = 0
+    n_boot: int = 0
+    n_boot_ok: int = 0
     recalls: dict[str, int] = {}  # number of recalls -> people (energy recorded on each)
     exposures: list[CalibratedExposure] = []
+    contrasts: list[CalibratedContrast] = []
     assumptions: list[str] = []
     concerns: list[str] = []
     methods: str
+
+
+# ── the declaration and its adjustment set (MODELING_SEQUENCE §2, "invalidates") ──────────────
+
+
+def declared_adjustment(state: Any) -> list[str]:
+    """The outcome model's covariates as the state declares them under inference: every settled
+    predictor but the exposures, less the answered covariates the primary leaves out (sorted). The
+    set a calibration is declared under; a change to it invalidates the declaration."""
+    from turbotab.core.estimand import adjustment_left_out, predictor_roles
+
+    if getattr(state, "purpose", None) != "inference":
+        return []
+    gone = set(adjustment_left_out(state))
+    return sorted(c for c, r in predictor_roles(state).items() if r != "exposure" and c not in gone)
+
+
+def current_calibration(state: Any) -> tuple[Any, list[str] | None]:
+    """(the measurement-error answer, the adjustment set it was declared under when that set has
+    changed since, else None). A calibration declared under another adjustment set is re-asked,
+    never silently kept (MODELING_SEQUENCE §2)."""
+    spec = getattr(state, "measurement_error", None)
+    if spec is None or spec.method == "none":
+        return spec, None
+    recorded = getattr(spec, "adjustment", None)
+    if recorded is None:
+        return spec, None
+    return spec, (None if sorted(recorded) == declared_adjustment(state) else list(recorded))
+
+
+def invalidated(spec: Any, recorded: Sequence[str], state: Any) -> tuple[str, list[dict[str, Any]]]:
+    from turbotab.core.voice import listing
+
+    now = declared_adjustment(state)
+    was = listing(list(recorded), limit=8) if recorded else "no covariate"
+    is_ = listing(now, limit=8) if now else "no covariate"
+    again = {"kind": "set_measurement_error", "method": spec.method,
+             "exposures": list(spec.exposures), "n_boot": int(spec.n_boot)}
+    return ((f"Regression calibration was declared when the model adjusted for {was}; it now "
+             f"adjusts for {is_}. Its calibration equation must hold every covariate of the outcome "
+             f"model, so the declaration is re-asked, not kept (MODELING_SEQUENCE §2)."),
+            [{"label": "Declare the calibration again under the current adjustment set",
+              "decision": again},
+             {"label": "Record no calibration",
+              "decision": {"kind": "set_measurement_error", "method": "none"}}])
 
 
 # ── the recalls ──────────────────────────────────────────────────────────────
@@ -190,10 +265,35 @@ def adjusted_exposures(fitted: Any, roles: Mapping[str, str]) -> list[dict[str, 
         return []
     out = []
     for entry in step.lineage():
-        if entry["operation"] in CALIBRATED_OPERATIONS and roles.get(str(entry["inputs"][0])) == "exposure":
+        if entry["operation"] in ENERGY_ADJUSTED and roles.get(str(entry["inputs"][0])) == "exposure":
             out.append({"feature": str(entry["output"]), "source": str(entry["inputs"][0]),
                         "energy": str(entry["inputs"][1]), "operation": str(entry["operation"])})
     return out
+
+
+def error_prone(fitted: Any, columns: Sequence[str], roles: Mapping[str, str],
+                energy: str | None) -> list[dict[str, Any]]:
+    """Every model-matrix column the recalls measure, in the matrix's order: the energy step's
+    outputs other than pass-through (``ERROR_PRONE_OPERATIONS``) and each exposure taken as it is.
+    Each with its ``inputs`` (the raw columns read on each recall day) and ``source``."""
+    have = set(columns)
+    found: dict[str, dict[str, Any]] = {}
+    step = dict(fitted.steps).get("energy")
+    if step is not None and hasattr(step, "lineage"):
+        for entry in step.lineage():
+            out, op = str(entry["output"]), str(entry["operation"])
+            inputs = [str(c) for c in entry["inputs"]]
+            if op not in ERROR_PRONE_OPERATIONS or out not in have:
+                continue
+            if op == "partition-other" and energy and energy not in inputs:
+                inputs = [energy, *inputs]
+            found[out] = {"feature": out, "source": inputs[0], "operation": op,
+                          "inputs": inputs}
+    for c, r in roles.items():
+        if r == "exposure" and str(c) in have and str(c) not in found:
+            found[str(c)] = {"feature": str(c), "source": str(c), "operation": "as is",
+                             "inputs": [str(c)]}
+    return [found[c] for c in columns if c in found]
 
 
 def combine_rule(state: Any, working: Mapping[str, Any], column: str) -> str:
@@ -206,6 +306,45 @@ def combine_rule(state: Any, working: Mapping[str, Any], column: str) -> str:
     receipt = (working.get("aggregation") or {})
     listed = {c["column"]: c["rule"] for c in receipt.get("columns") or []}
     return str(listed.get(column) or receipt.get("method") or getattr(agg, "method", ""))
+
+
+def recall_matrix(fitted: Any, X: pd.DataFrame, days: pd.DataFrame, person: np.ndarray,
+                  raw: Sequence[str], features: Sequence[str], matrix: pd.DataFrame) -> tuple[
+                      np.ndarray, np.ndarray]:
+    """Each recall day of the error-prone ``features``, energy adjusted on the day itself.
+
+    A day's row is its person's row of ``X`` with the recall-measured ``raw`` columns taken from the
+    day (``days``); it goes through the fitted pipeline's own steps (the energy model the copy fit),
+    so the day's energy-adjusted value uses the copy's slope (MODELING_SEQUENCE §2: "for residual or
+    density models, energy is adjusted per recall day first, then calibrated"). A day missing one of
+    ``raw`` is not a recall of the set. Each person's days are then centered on the person's own
+    model-matrix value, so their mean is exactly the value the outcome model saw and the days add
+    only their spread (for the residual the centering moves nothing; for a density it replaces the
+    mean of daily ratios by the ratio of means the model saw). Returns ``(values, person)``."""
+    from turbotab.core.models.linear import model_matrix
+
+    rows = X.iloc[person].reset_index(drop=True).copy()
+    present = np.ones(len(person), dtype=bool)
+    for c in raw:
+        if c in rows.columns and c in days.columns:
+            v = pd.to_numeric(days[c], errors="coerce").to_numpy(dtype=float)
+            rows[c] = v
+            present &= np.isfinite(v)
+    if not present.any():
+        return np.empty((0, len(features))), np.empty(0, dtype=np.int64)
+    rows, person = rows.loc[present].reset_index(drop=True), person[present]
+    day_matrix = model_matrix(fitted, rows)
+    w = day_matrix[list(features)].to_numpy(dtype=float)
+    keep = np.isfinite(w).all(axis=1)
+    w, person = w[keep], person[keep]
+    n = len(X)
+    sums = np.column_stack([np.bincount(person, weights=w[:, j], minlength=n)
+                            for j in range(w.shape[1])])
+    counts = np.bincount(person, minlength=n).astype(float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        day_mean = sums / counts[:, None]
+    target = matrix[list(features)].to_numpy(dtype=float)
+    return w - day_mean[person] + target[person], person
 
 
 def replicate_values(day_matrix: pd.DataFrame, raw_days: pd.DataFrame, units: np.ndarray,
@@ -228,7 +367,7 @@ def replicate_values(day_matrix: pd.DataFrame, raw_days: pd.DataFrame, units: np
     return w - day_mean[person] + person_values[person], person
 
 
-# ── the stage ────────────────────────────────────────────────────────────────
+# ── the words ────────────────────────────────────────────────────────────────
 
 
 def _recall_counts(counts: np.ndarray) -> dict[str, int]:
@@ -245,44 +384,150 @@ def _days_phrase(recalls: Mapping[str, int]) -> str:
     return f"{ks[0]} to {ks[-1]} recalls each"
 
 
-def methods_sentence(method: str, exposures: Sequence[Mapping[str, Any]], recalls: Mapping[str, int],
-                     n_persons: int) -> str:
+RESAMPLED = {"psu_within_strata": "PSUs within strata", "clusters": "whole clusters",
+             "persons": "participants"}
+# The share of bootstrap resamples that must carry the calibration for an interval to be shown (a
+# stated floor: past it the resamples left out would shape the interval).
+MIN_BOOT_SHARE = 0.9
+FAILURE_WORDS = {"CalibrationRefused": "had no positive true-intake covariance",
+                 "LinAlgError": "had a singular fit", "ValueError": "could not be refit",
+                 "ImputationRefused": "could not be imputed", "not finite": "gave no finite estimate"}
+
+
+def main_clause(run: Mapping[str, Any]) -> str | None:
+    """The calibration's clause of the methods paragraph (MODELING_SEQUENCE §6 chain 2's reviewers'
+    sentence, as the run makes it): what was calibrated, the substitution when one is drawn, and
+    the bootstrap. ``run``: ``calibration`` ("univariate"/"multivariate"), ``all_sources``,
+    ``calibrated`` (the columns), ``contrast`` (bool), ``resampling``, ``imputed`` (bool)."""
     from turbotab.core.voice import listing
 
+    kind = run.get("calibration")
+    if kind is None:
+        return None
+    if kind == "multivariate":
+        what = ("Usual intakes of all energy sources were calibrated jointly"
+                if run.get("all_sources") else
+                f"Usual intakes of {listing(list(run.get('calibrated') or []), limit=8)} were "
+                f"calibrated jointly")
+    else:
+        (column,) = run.get("calibrated") or ["the exposure"]
+        what = f"The usual intake of `{column}` was calibrated"
+    parts = [f"{what} with every outcome-model covariate in the calibration model"]
+    if run.get("contrast"):
+        parts.append("the substitution is the difference of calibrated coefficients in the "
+                     "all-components model")
+    steps = "calibration, imputation and the outcome model" if run.get("imputed") else \
+        "calibration and the outcome model"
+    if run.get("interval", True) is not False:
+        parts.append(f"CIs by a bootstrap resampling {RESAMPLED[str(run.get('resampling'))]} that "
+                     f"repeats {steps}")
+    return "; ".join(parts)
+
+
+def methods_sentence(method: str, exposures: Sequence[Mapping[str, Any]], recalls: Mapping[str, int],
+                     n_persons: int, run: Mapping[str, Any] | None = None) -> str:
+    """The methods text: the reviewers' clause (:func:`main_clause`) and what it rests on."""
     days = _days_phrase(recalls)
     if method == "none" and not recalls:  # nothing was read: purpose or rows ruled it out first
-        return "Energy-adjusted exposures were not corrected for day-to-day error in the recalls."
+        return "Intakes were not corrected for day-to-day error in the recalls."
     if method == "none":
-        return (f"Energy-adjusted exposures were the mean of each participant's recalls ({days}, "
+        return (f"Intakes were the mean of each participant's recalls ({days}, "
                 f"{n_persons:,} participants) and were not corrected for day-to-day error.")
     done = [e for e in exposures if e.get("estimate") is not None]
-    if not done:
-        return ("Regression calibration was asked for, but no energy-adjusted exposure could be "
-                "calibrated; the estimates are uncorrected.")
-    lam = "; ".join(f"`{e['feature']}` λ = {e['attenuation']:.2f}" for e in done)
+    if not done or run is None:
+        return ("Regression calibration was asked for, but no intake could be calibrated; the "
+                "estimates are uncorrected.")
+    clause = main_clause(run) or ""
     n_repeat = max(int(e["n_repeat"]) for e in done)
-    boots = min(int(e["n_boot_ok"]) for e in done)
-    noun = "exposure" if len(done) == 1 else "exposures"
-    return (f"The energy-adjusted {noun} {listing([e['feature'] for e in done], limit=6)} "
-            f"{'was' if len(done) == 1 else 'were'} corrected for day-to-day variation in the recalls "
-            f"by univariate regression calibration ({FREEDMAN}; {CARROLL}), each on its own: the "
-            f"within-person variance came from the {n_repeat:,} participants with two or more "
-            f"recalls ({days}), the calibration regression adjusted for the model's other "
-            f"covariates, and intervals came from {boots:,} bootstrap refits over participants "
-            f"(attenuation factors: {lam}).")
+    source = ROSNER_1990 if run.get("calibration") == "multivariate" else ROSNER_1989
+    by_copy = " by each imputed copy's own energy model" if run.get("imputed") else ""
+    per_day = (f" Energy was adjusted on each recall day{by_copy} before calibration."
+               if run.get("per_day") else "")
+    spread = "covariance" if run.get("calibration") == "multivariate" else "variance"
+    weighted = (" The calibration and the outcome model were survey-weighted, PSUs resampled by "
+                f"Rao and Wu's bootstrap ({RAO_WU})." if run.get("weighted") else "")
+    boot = int(run.get("n_boot_ok") or 0)
+    if run.get("imputed"):
+        interval = (f" Each of {boot:,} bootstrap resamples was imputed {BOOT_COPIES} "
+                    f"times and the interval is the percentile interval of their means (Boot MI, "
+                    f"{SCHOMAKER}); the estimate is the mean over the {int(run.get('m') or 0)} "
+                    f"imputed copies.")
+    else:
+        interval = f" The interval is the percentile interval of {boot:,} bootstrap resamples."
+    if run.get("interval") is False:
+        interval = (f" Only {boot:,} of {int(run.get('n_boot') or 0):,} bootstrap resamples could "
+                    f"be calibrated, too few for an interval, so none is reported.")
+    return (f"{clause}. Calibration ({source}; {CARROLL}) used the within-person {spread} of the "
+            f"recalls of the {n_repeat:,} participants with two or more ({days}).{per_day}{weighted}"
+            f"{interval} It is a declared secondary analysis beside the uncorrected estimate, whose "
+            f"test of no association is the primary's; it {LABEL}.")
+
+
+# ── the stage ────────────────────────────────────────────────────────────────
+
+
+def _nonlinear(columns: Sequence[str], feature: str) -> bool:
+    return any(c != feature and (c.startswith(f"{feature}'") or c.startswith(f"{feature}_Q"))
+               for c in columns)
+
+
+def resampling_of(survey: Any, clusters: Any, row_ids: np.ndarray) -> Any:
+    """How the whole chain is redrawn: PSUs within strata under the population answer, whole
+    clusters under repeated units, participants otherwise (MODELING_SEQUENCE §0 ruling 7)."""
+    from turbotab.core.methods.calibration import Resampling
+
+    n = len(row_ids)
+    design = survey.design if survey is not None and survey.answer == "population" else None
+    if design is not None:
+        at = pd.Series(np.arange(len(design.row_ids)), index=design.row_ids)
+        pos = at.reindex(row_ids).to_numpy().astype(np.int64)
+        every = {int(u): int(s) for u, s in zip(design.psu, design.stratum)}
+        per = pd.Series(list(every.values())).value_counts()
+        present = set(design.stratum[pos].tolist())
+        lonely = sum(1 for s in present if int(per.get(s, 0)) == 1)
+        return Resampling("psu_within_strata", n, stratum=design.stratum[pos], psu=design.psu[pos],
+                          design_psus=every, lonely=lonely)
+    if clusters is not None and getattr(clusters, "clustered", False):
+        return Resampling("clusters", n, codes=pd.factorize(np.asarray(clusters.codes))[0])
+    return Resampling("persons", n)
+
+
+def _impute(spec: Any, X: pd.DataFrame, y: Any, task: str, m: int, seed: int, survey: Any,
+            clusters: Any, nested: Any, factors: Any) -> list[pd.DataFrame]:
+    """``m`` completed copies of ``X``, drawn as the coefficient table's are
+    (``missing.impute_for_inference``) with ``m`` fixed: a bootstrap replicate's own imputations."""
+    from turbotab.core.methods.missing import imputation_plan
+    from turbotab.core.methods.smcfcs import impute
+
+    plan = imputation_plan(spec, X, y, task, survey=survey, clusters=clusters, nested=nested,
+                           factors=factors)
+    out = impute(plan.data, plan.variables, mode=plan.mode, substantive=plan.substantive,
+                 identity=plan.identity, units=plan.units, m=int(m), seed=seed, kinds=plan.kinds)
+    frames = []
+    for f in out.frames:
+        done = X.copy()
+        for c in X.columns:
+            if c in f.columns and c not in plan.levels:
+                done[c] = f[c].to_numpy() if not isinstance(f[c].dtype, pd.CategoricalDtype) else f[c]
+        frames.append(done)
+    return frames
 
 
 def calibration_stage(ctx: StageContext) -> Bundle:
     from sklearn.base import clone
 
-    from turbotab.core.methods.calibration import (CalibrationRefused, Replicates, logistic_fit,
-                                                   ols_fit, regression_calibration)
-    from turbotab.core.models.inference import INDEPENDENT, inference_table
+    from turbotab.core.methods.calibration import (CalibrationRefused, correct, delta_covariance,
+                                                   logistic_fit, model_covariance, ols_fit,
+                                                   whole_chain)
+    from turbotab.core.methods.missing import copy_template
+    from turbotab.core.models.inference import (INDEPENDENT, Clusters, cluster_columns,
+                                                inference_table, resolve_clusters)
     from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.stages.data import open_store
-    from turbotab.core.stages.modeling import _task, coded_outcome
+    from turbotab.core.stages.modeling import (_missing_for_table, _settled_factors, _survey, _task,
+                                               coded_outcome)
     from turbotab.core.stages.working import effective_repeat_kind
 
     state = ctx.state
@@ -303,12 +548,10 @@ def calibration_stage(ctx: StageContext) -> Bundle:
 
     if not inference:
         return done(applies=False, reason=PREDICTION)
-    survey = getattr(state, "survey", None)
-    if survey is not None and survey.estimand == "population" and method != "none":
-        # MS4 (MODELING_SEQUENCE §4): no design-based estimator here, so blocked and recorded, with
-        # its exits as decisions: the sample-only attestation, or the uncorrected estimates. "No
-        # correction" asks for nothing to block, and reads its recalls as under any answer.
-        return done(applies=False, reason=POPULATION, exits=population_exits())
+    spec_now, recorded = current_calibration(state)
+    if recorded is not None:
+        reason, exits = invalidated(spec_now, recorded, state)
+        return done(applies=False, reason=reason, exits=exits)
     if working.get("aggregation") is None:
         return done(applies=False, reason=NOT_COMBINED)
     if effective_repeat_kind(state, structure) == "time_points":
@@ -322,20 +565,29 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     energy = adj.energy_column if adj is not None and adj.method != "none" else None
     rows = ctx.inputs["cohort"].frames["rows"]["row_id"].to_numpy(dtype=np.int64)
 
-    ctx.progress(0.05, "Reading the analysis rows and each person's recalls")
+    ctx.progress(0.03, "Reading the analysis rows and each person's recalls")
     with open_store(ctx) as store:
         frame = modeling_frame(store, [*spec.inputs, state.target], rows, outcome=state.target)
-    y = coded_outcome(task, frame[state.target].to_numpy(), state.event)
-    X = frame[list(spec.inputs)]
+        unit_columns = cluster_columns(state, store.columns)
+        units = modeling_frame(store, unit_columns, rows) if unit_columns else None
+    clusters = resolve_clusters(state, units) if units is not None else INDEPENDENT
+    if clusters.refusal:
+        clusters = INDEPENDENT
+    survey, _ = _survey(ctx, clusters)
+    if survey is not None and survey.refusal and method != "none":
+        return done(applies=False, reason=survey.refusal, exits=list(survey.exits))
+    y_all = coded_outcome(task, frame[state.target].to_numpy(), state.event)
+    X_all = frame[list(spec.inputs)]
     raw_columns = list(dict.fromkeys([*spec.inputs, *([energy] if energy else [])]))
     days = day_rows(ctx, raw_columns, rows)
-    units = days.pop("__unit").to_numpy(dtype=np.int64)
-    person_of = {int(r): i for i, r in enumerate(frame.index.to_numpy(dtype=np.int64))}
+    day_unit = days.pop("__unit").to_numpy(dtype=np.int64)
+    position = {int(r): i for i, r in enumerate(frame.index.to_numpy(dtype=np.int64))}
+    day_person = np.array([position.get(int(u), -1) for u in day_unit], dtype=np.int64)
     if energy and energy in days.columns:
-        recorded = pd.to_numeric(days[energy], errors="coerce").notna().to_numpy()
-        per_person = np.bincount([person_of[int(u)] for u in units[recorded]], minlength=len(frame))
+        recorded_e = pd.to_numeric(days[energy], errors="coerce").notna().to_numpy()
+        per_person = np.bincount(day_person[recorded_e & (day_person >= 0)], minlength=len(frame))
     else:
-        per_person = np.bincount([person_of[int(u)] for u in units], minlength=len(frame))
+        per_person = np.bincount(day_person[day_person >= 0], minlength=len(frame))
     recalls = _recall_counts(per_person)
     n_persons = int(len(frame))
 
@@ -349,97 +601,356 @@ def calibration_stage(ctx: StageContext) -> Bundle:
             f"Regression calibration here corrects a least-squares or logistic coefficient; a "
             f"{task.replace('_', '-')} outcome's coefficients are not corrected."),
             recalls=recalls, n_persons=n_persons)
-    if adj is None or adj.method not in UNIVARIATE_METHODS:
-        return done(applies=False, reason=NOT_ENERGY_ADJUSTED, recalls=recalls, n_persons=n_persons)
 
-    ctx.progress(0.15, "Refitting the linear model on every eligible row")
-    fitted = fit_pipeline(clone(pipelines["linear"]), X, y)
-    matrix = model_matrix(fitted, X).astype(float)
-    items = adjusted_exposures(fitted, spec.roles)
-    wanted = set(spec_me.exposures)
-    if wanted:
-        items = [i for i in items if i["source"] in wanted or i["feature"] in wanted]
-    if not items:
-        reason = ("None of the model's exposures is energy-adjusted, so there is nothing univariate "
-                  "regression calibration applies to." if not wanted else
-                  f"{', '.join(f'`{c}`' for c in sorted(wanted))} "
-                  f"{'is' if len(wanted) == 1 else 'are'} not among the model's energy-adjusted "
-                  f"exposures.")
-        return done(applies=False, reason=reason, family="linear", recalls=recalls,
-                    n_persons=n_persons)
+    # ── the rows: the domain under the population answer, the imputations under MI ──
+    population = survey is not None and survey.answer == "population" and survey.design is not None
+    keep = np.ones(n_persons, dtype=bool)
+    weights_all: np.ndarray | None = None
+    if population:
+        from turbotab.core.models.survey import domain_of
 
-    day_matrix = model_matrix(fitted, days[list(spec.inputs)])
-    columns = [str(c) for c in matrix.columns]
-    Xm = matrix.to_numpy(dtype=float)
-    yv = np.asarray(y, dtype=float)
-    fit = ols_fit if task == "regression" else logistic_fit
-    classes = list(getattr(fitted[-1], "classes_", [])) or None
-    seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
-    out: list[dict[str, Any]] = []
-    for n, item in enumerate(items):
-        ctx.progress(0.2 + 0.75 * n / len(items), f"Calibrating `{item['feature']}`")
-        base = {"feature": item["feature"], "source": item["source"], "operation": item["operation"],
-                "naive": None}
-        rule = combine_rule(state, working, item["source"])
-        if rule != "mean":
-            out.append({**base, "refused": (f"`{item['source']}` was combined by its {rule} record, "
-                                            f"not the mean of the recalls, so its error is a single "
-                                            f"day's; combine it by the mean to calibrate it.")})
-            continue
-        j = columns.index(item["feature"])
-        values, person = replicate_values(day_matrix, days, units, person_of, item, Xm[:, j])
-        rep = Replicates.of(values, person, n_persons)
-        have = rep.counts() >= 1
-        try:
-            table = inference_table(task, matrix.loc[have], yv[have], classes, INDEPENDENT)
-            row = next(r for r in table.rows if r["feature"] == item["feature"])
-            result = regression_calibration(rep, Xm, j, yv, fit=fit, n_boot=spec_me.n_boot, seed=seed)
-        except CalibrationRefused as refused:
-            out.append({**base, "refused": str(refused)})
-            continue
-        out.append({**base, "naive": result.naive, "naive_ci_low": row.get("ci_low"),
-                    "naive_ci_high": row.get("ci_high"), "p": row.get("p"),
-                    "estimate": result.estimate, "se": result.se, "ci_low": result.ci_low,
-                    "ci_high": result.ci_high, "attenuation": result.attenuation,
-                    "attenuation_se": result.attenuation_se, "within_variance": result.sigma2_u,
-                    "between_variance": result.sigma2_xz, "n_persons": result.n_persons,
-                    "n_repeat": result.n_repeat,
-                    "recalls": {str(k): v for k, v in result.recalls.items()},
-                    "n_boot": result.n_boot, "n_boot_ok": result.n_boot_ok})
+        domain = domain_of(frame.index, survey.design)
+        keep &= np.asarray(domain.keep, dtype=bool)
+        weights_all = np.full(n_persons, np.nan)
+        weights_all[np.flatnonzero(domain.keep)] = domain.weight
+    resampling = resampling_of(survey, clusters, frame.index.to_numpy(dtype=np.int64))
+    if resampling.kind == "psu_within_strata":
+        per = pd.Series(list((resampling.design_psus or {}).values())).value_counts()
+        present = set(resampling.stratum[keep].tolist())
+        if not any(int(per.get(s, 0)) >= 2 for s in present):
+            return done(applies=False, reason=POPULATION, exits=population_exits(),
+                        recalls=recalls, n_persons=n_persons)
+    from turbotab.core.readings import nesting
 
+    nested = nesting(state, dict((design.objects or {}).get("nested") or {}), columns=spec.inputs)
+    clustered = clusters is not None and clusters.clustered
+    missing = _missing_for_table(ctx, spec, X_all, y_all, task, ["linear"], survey=survey,
+                                 clusters=clusters if clustered else None, nested=nested)
+    if missing is not None and missing.refusal:
+        return done(applies=False, reason=missing.refusal, exits=list(missing.exits),
+                    recalls=recalls, n_persons=n_persons)
+    imputations = getattr(missing, "imputations", None) if missing is not None else None
+    imputed = imputations is not None and getattr(imputations, "method", "") != "supplied"
+    plan = dict(getattr(imputations, "plan", None) or {}) if imputed else {}
+    template = copy_template(pipelines["linear"], plan) if imputed else clone(pipelines["linear"])
+    copies = list(imputations.frames) if imputed else [X_all]
+    factors = _settled_factors(ctx, spec) if imputed else {}
     concerns: list[str] = []
-    good = [e for e in out if e.get("estimate") is not None]
-    if len(good) > 1:
-        concerns.append(f"{len(good)} error-prone exposures are in the model, each corrected on its "
-                        f"own. {FREEDMAN}: with two or more mismeasured exposures “estimated relative "
-                        f"risks may become attenuated, inflated, or can even change direction”; the "
-                        f"univariate correction does not undo that.")
-    if energy and energy in columns:
-        concerns.append(f"Total energy (`{energy}`) stays in the model and comes from the same "
-                        f"recalls; it is treated as measured without error.")
-    if good and spec.multiple_imputation() and X.isna().any().any():
-        # WP7: the fit's table pools multiple imputations; this correction refits one fill.
-        concerns.append("The calibration refits the model with blanks filled once without the "
-                        "outcome, not over the multiple imputations the fit's table pools; its "
-                        "naive coefficient can differ from the table's.")
-    short = [e for e in good if e.get("n_boot_ok", 0) < e.get("n_boot", 0)]
-    for e in short:
-        concerns.append(f"`{e['feature']}`: {e['n_boot_ok']:,} of {e['n_boot']:,} bootstrap refits "
-                        f"could be calibrated; the interval rests on those.")
-    return done(applies=bool(good), reason=None if good else "No exposure could be calibrated; each "
-                "says why.", family="linear", recalls=recalls, n_persons=n_persons, exposures=out,
-                assumptions=list(ASSUMPTIONS), concerns=concerns,
-                methods=methods_sentence(method, out, recalls, n_persons))
+    fit = ols_fit if task == "regression" else logistic_fit
+    yv_all = np.asarray(y_all, dtype=float)
+
+    # ── the error-prone columns, from the first copy's pipeline ──
+    ctx.progress(0.08, "Refitting the linear model on every eligible row")
+    first = fit_pipeline(clone(template), copies[0], y_all)
+    matrix0 = model_matrix(first, copies[0])
+    columns = [str(c) for c in matrix0.columns]
+    items = error_prone(first, columns, spec.roles, energy)
+    if not items:
+        return done(applies=False, reason=NONE_ERROR_PRONE, family="linear", recalls=recalls,
+                    n_persons=n_persons)
+    shaped = [i["feature"] for i in items if _nonlinear(columns, i["feature"])]
+    if shaped:
+        from turbotab.core.voice import listing
+
+        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
+            f"{listing(shaped)} {'has' if len(shaped) == 1 else 'have'} a "
+            f"declared spline or quintiles; regression calibration here corrects a linear term, so "
+            f"E[X | W̄, Z] would be put through a curve it was not fit for."),
+            exits=[{"label": "Calibrate the linear form of the intake (the form question)",
+                    "decision": None},
+                   {"label": "Record no calibration",
+                    "decision": {"kind": "set_measurement_error", "method": "none"}}])
+    raw = list(dict.fromkeys(c for i in items for c in i["inputs"]))
+    by_mean = {c: combine_rule(state, working, c) for c in raw}
+    other = sorted(c for c, rule in by_mean.items() if rule != "mean")
+    if other:
+        from turbotab.core.voice import listing
+
+        c = other[0]
+        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
+            f"{listing(other)} {'was' if len(other) == 1 else 'were'} combined "
+            f"by {'its' if len(other) == 1 else 'their'} {by_mean[c]} record, not the mean of the "
+            f"recalls, so the error is a single day's; combine by the mean to calibrate."),
+            exits=[{"label": "Combine the recalls by the mean", "decision": None}])
+    features = [i["feature"] for i in items]
+    J = [columns.index(f) for f in features]
+    covariates = [c for c in columns if c not in set(features)]
+    # Reported: the intakes the answer names, else the exposures among them, else all of them;
+    # every error-prone column is calibrated jointly whichever are reported.
+    wanted = set(spec_me.exposures)
+    named = [i for i in items if i["source"] in wanted or i["feature"] in wanted]
+    if wanted and not named:
+        names = ", ".join(f"`{c}`" for c in sorted(wanted))
+        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
+            f"{names} {'is' if len(wanted) == 1 else 'are'} not among the model's intakes the "
+            f"recalls measure."))
+    exposure_roles = {c for c, r in spec.roles.items() if r == "exposure"}
+    reported = named or [i for i in items if i["source"] in exposure_roles] or list(items)
+
+    # recall days of the analyzed persons
+    on_day = day_person >= 0
+    day_frame = days.loc[on_day].reset_index(drop=True)
+    day_of = day_person[on_day]
+    keep &= np.bincount(day_of, minlength=n_persons) >= 1
+    if not imputed and X_all.isna().to_numpy().any() and (spec.missing or {}).get("strategy") == \
+            "complete_case":
+        keep &= ~X_all.isna().any(axis=1).to_numpy()
+    persons = np.flatnonzero(keep)
+    remap = np.full(n_persons, -1)
+    remap[persons] = np.arange(len(persons))
+    day_mask = remap[day_of] >= 0
+    day_frame = day_frame.loc[day_mask].reset_index(drop=True)
+    day_of = remap[day_of[day_mask]]
+    day_order = np.argsort(day_of, kind="stable")
+    day_frame, day_of = day_frame.iloc[day_order].reset_index(drop=True), day_of[day_order]
+    day_starts = np.concatenate([[0], np.cumsum(np.bincount(day_of, minlength=len(persons)))])
+    yv = yv_all[persons]
+    w = None if weights_all is None else weights_all[persons]
+    classes = list(getattr(first[-1], "classes_", [])) or None
+    seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
+    contrast = _contrast(state, adj, features)
+
+    def chain(frames: Sequence[pd.DataFrame], yy: np.ndarray, dframe: pd.DataFrame,
+              dperson: np.ndarray, ww: np.ndarray | None) -> list[Any]:
+        """Each copy's (fitted, matrix, Corrected): steps (2)–(4) of §1.1."""
+        out = []
+        for Xc in frames:
+            fitted = fit_pipeline(clone(template), Xc, yy)
+            matrix = model_matrix(fitted, Xc)
+            cols = [str(c) for c in matrix.columns]
+            if [cols.index(f) for f in features if f in cols] != J or len(cols) != len(columns):
+                raise ValueError("a replicate's model matrix differs from the analysis's")
+            values, who = recall_matrix(fitted, Xc, dframe, dperson, raw, features, matrix)
+            from turbotab.core.methods.calibration import Recalls
+
+            rec = Recalls.of(values, who, len(Xc))
+            corrected = correct(matrix.to_numpy(dtype=float), J, rec, yy, fit=fit, weights=ww)
+            out.append((fitted, matrix, corrected))
+        return out
+
+    def quantities(results: Sequence[Any]) -> np.ndarray:
+        naive = np.mean([r[2].naive[J] for r in results], axis=0)
+        est = np.mean([r[2].estimate[J] for r in results], axis=0)
+        extra = []
+        if contrast is not None:
+            a, b, step = contrast
+            extra = [step * (est[features.index(a)] - est[features.index(b)])]
+        return np.concatenate([est, extra, naive])
+
+    ctx.progress(0.12, "Calibrating each copy" if imputed else "Calibrating the intakes")
+    X_rows = [c.iloc[persons] for c in copies]
+    try:
+        results = chain(X_rows, yv, day_frame, day_of, w)
+    except CalibrationRefused as refused:
+        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons,
+                    reason=str(refused), exits=refused.exits)
+    point = quantities(results)
+    cal0 = results[0][2].calibration
+    p = len(J)
+    n_ok = len(persons)
+
+    # ── the whole-chain bootstrap ──
+    design_obj = survey.design if population else None
+
+    def replicate(draw: Any, b: int) -> np.ndarray:
+        idx = np.asarray(draw.rows, dtype=np.int64)  # positions among the analyzed persons
+        Xb = [X_all.iloc[persons[idx]].reset_index(drop=True)]
+        yb = yv[idx]
+        wb = None if w is None else w[idx] * draw.factor
+        counts = day_starts[idx + 1] - day_starts[idx]
+        take = np.concatenate([np.arange(day_starts[i], day_starts[i + 1]) for i in idx]) \
+            if len(idx) else np.zeros(0, dtype=np.int64)
+        db = day_frame.iloc[take].reset_index(drop=True)
+        pb = np.repeat(np.arange(len(idx)), counts)
+        if imputed:
+            from turbotab.core.models.survey import SurveyDesign
+
+            sb = None
+            if design_obj is not None:
+                sb = SurveyDesign(row_ids=np.arange(len(idx)), weight=wb,
+                                  stratum=np.asarray(draw.stratum, dtype=np.int64),
+                                  psu=np.asarray(draw.unit, dtype=np.int64),
+                                  weight_column=design_obj.weight_column,
+                                  strata_column=design_obj.strata_column,
+                                  psu_column=design_obj.psu_column)
+            cb = None
+            if clustered:
+                codes = np.asarray(clusters.codes)[persons][idx]
+                pair = pd.factorize(pd.MultiIndex.from_arrays([draw.unit, codes]))[0]
+                cb = Clusters(column=clusters.column, codes=pair, n_clusters=int(pair.max()) + 1)
+            Xb = _impute(spec, Xb[0], yb, task, BOOT_COPIES, seed + 1009 * (b + 1), sb, cb,
+                         nested, factors)
+        return quantities(chain(Xb, yb, db, pb, wb))
+
+    n_boot = int(spec_me.n_boot)
+    from turbotab.core.methods.calibration import Resampling
+
+    boot_resampling = Resampling(resampling.kind, n_ok,
+                                 codes=None if resampling.codes is None else
+                                 pd.factorize(resampling.codes[persons])[0],
+                                 stratum=None if resampling.stratum is None else
+                                 resampling.stratum[persons],
+                                 psu=None if resampling.psu is None else resampling.psu[persons],
+                                 design_psus=resampling.design_psus, lonely=resampling.lonely)
+
+    def progress(i: int, total: int) -> None:
+        if i == total or i % max(1, total // 40) == 0:
+            ctx.progress(0.15 + 0.8 * i / max(total, 1),
+                         f"Bootstrap resample {i:,} of {total:,} (the whole chain)")
+
+    boot = whole_chain(replicate, boot_resampling, n_boot, seed, progress=progress,
+                       cancelled=ctx.cancelled)
+    # The resamples a calibration cannot carry are left out, and said; past a tenth of them the
+    # ones kept are no longer the bootstrap distribution, so no interval is shown.
+    enough = boot.n_ok >= 2 and boot.n_ok >= MIN_BOOT_SHARE * n_boot
+    low, high = boot.interval()
+    se = boot.se()
+
+    # ── the uncorrected model's own test (the primary's) ──
+    tables = []
+    for _, matrix, corrected in results:
+        m_rows = matrix.iloc[corrected.rows] if len(corrected.rows) != len(matrix) else matrix
+        m_rows = m_rows.copy()
+        m_rows.index = frame.index[persons][corrected.rows]
+        if population:
+            from turbotab.core.models.survey import survey_table
+
+            table = survey_table(task, m_rows, y_all[persons][corrected.rows], classes,
+                                 survey.design)
+        else:
+            cl = INDEPENDENT
+            if clustered:
+                codes = np.asarray(clusters.codes)[persons][corrected.rows]
+                cl = Clusters(column=clusters.column, codes=codes,
+                              n_clusters=int(len(np.unique(codes))))
+            table = inference_table(task, m_rows, y_all[persons][corrected.rows], classes, cl)
+        tables.append(table.rows)
+    if len(tables) > 1:
+        from turbotab.core.methods.imputation import pool_rows
+
+        rows_naive = {str(r["feature"]): r for r in pool_rows(tables)}
+    else:
+        rows_naive = {str(r["feature"]): r for r in tables[0]}
+    delta = None
+    if not imputed and not population and not clustered:
+        corrected = results[0][2]
+        naive_cov = model_covariance(fit, corrected.X, yv[corrected.rows])[np.ix_(J, J)]
+        delta = delta_covariance(corrected, naive_cov)
+
+    modal = cal0.modal_k
+    gamma = cal0.slope(modal)
+    k_counts = cal0.counts[cal0.counts >= 1].astype(np.int64)
+    rec_counts = {str(int(k)): int(c) for k, c in enumerate(np.bincount(k_counts)) if c and k}
+    out: list[dict[str, Any]] = []
+    for i in reported:
+        j = features.index(i["feature"])
+        row = rows_naive.get(i["feature"], {})
+        out.append({
+            "feature": i["feature"], "source": i["source"], "operation": i["operation"],
+            "naive": float(point[p + (1 if contrast else 0) + j]),
+            "naive_ci_low": row.get("ci_low"), "naive_ci_high": row.get("ci_high"),
+            "p": row.get("p"), "estimate": float(point[j]),
+            "se": _f(se[j]) if enough else None,
+            "ci_low": _f(low[j]) if enough else None,
+            "ci_high": _f(high[j]) if enough else None,
+            "delta_se": _f(np.sqrt(delta[j, j])) if delta is not None else None,
+            "attenuation": float(gamma[j, j]),
+            "within_variance": float(cal0.sigma_uu[j, j]),
+            "between_variance": float(cal0.conditional[j, j]),
+            "n_persons": int(cal0.n), "n_repeat": int(cal0.within.n_repeat), "recalls": rec_counts,
+            "n_boot": n_boot, "n_boot_ok": boot.n_ok})
+    contrasts = []
+    if contrast is not None:
+        a, b, step = contrast
+        k = p
+        naive_c = step * (point[p + 1 + features.index(a)] - point[p + 1 + features.index(b)])
+        contrasts.append({
+            "donor": items[features.index(b)]["source"], "recipient": items[features.index(a)]["source"],
+            "step_kcal": float(step), "naive": float(naive_c), "estimate": float(point[k]),
+            "se": _f(se[k]) if enough else None,
+            "ci_low": _f(low[k]) if enough else None,
+            "ci_high": _f(high[k]) if enough else None})
+
+    if boot.n_ok < n_boot:
+        why = "; ".join(f"{n:,} {FAILURE_WORDS.get(k, k)}" for k, n in sorted(boot.failures.items()))
+        rests = ("the interval rests on those" if enough else
+                 f"fewer than {MIN_BOOT_SHARE:.0%} of them, so no interval is shown")
+        concerns.append(f"{boot.n_ok:,} of {n_boot:,} bootstrap resamples could be calibrated "
+                        f"({why}); {rests}.")
+    if resampling.kind == "psu_within_strata" and resampling.lonely:
+        one = resampling.lonely == 1
+        concerns.append(f"{resampling.lonely:,} {'stratum has' if one else 'strata have'} a single "
+                        f"PSU, kept whole in every resample: {'it adds' if one else 'they add'} no "
+                        f"between-PSU variance, so the interval may be too narrow.")
+    if p > 1:
+        concerns.append("With several error-prone intakes the uncorrected test of one can be off, "
+                        "because the error in the others leaves some confounding uncorrected "
+                        f"({ROSNER_1990}); the calibrated interval is the check.")
+    if task == "binary":
+        concerns.append("For a logistic outcome model, substituting E[X | W̄, Z] is an "
+                        "approximation (Carroll et al. 2006, §4.2), close when the effect is "
+                        "moderate.")
+    if n_ok < n_persons:
+        concerns.append(f"{n_persons - n_ok:,} of {n_persons:,} participants have no recall day "
+                        f"with every calibrated intake recorded (or lie outside the analysis) and "
+                        f"are not in the calibration.")
+    per_day = adj is not None and adj.method in ("residual", "residual_energy_dropped", "density",
+                                                 "density_multivariate")
+    m = len(copies) if imputed else 0
+    run = {"calibration": "multivariate" if p > 1 else "univariate",
+           "all_sources": adj is not None and adj.method in ALL_SOURCES,
+           "calibrated": features, "contrast": contrast is not None,
+           "resampling": resampling.kind, "imputed": imputed, "per_day": per_day,
+           "weighted": population, "n_boot_ok": boot.n_ok, "m": m, "interval": enough,
+           "n_boot": n_boot}
+    copy = " on each copy" if imputed else ""
+    order = [*([f"multiple imputation compatible with the analysis model (m = {m})"]
+               if imputed else []),
+             (f"the energy model refit{copy}, then applied to each recall day" if adj is not None
+              and adj.method != "none" else f"the pipeline refit{copy}, then applied to each "
+                                            f"recall day"),
+             "regression calibration" + (" in each copy" if imputed else ""),
+             "the outcome model" + (" in each copy" if imputed else ""),
+             "the whole-chain bootstrap" + (" (Boot MI)" if imputed else "")]
+    return done(
+        applies=True, family="linear", recalls=rec_counts, n_persons=int(cal0.n), exposures=out,
+        contrasts=contrasts, calibration=run["calibration"], calibrated=features,
+        covariates=covariates, order=order, resampling=resampling.kind, weighted=population,
+        imputations=m, boot_copies=BOOT_COPIES if imputed else 0,
+        attenuation=[[float(v) for v in r] for r in gamma],
+        within_covariance=[[float(v) for v in r] for r in cal0.sigma_uu],
+        n_boot=n_boot, n_boot_ok=boot.n_ok, assumptions=list(ASSUMPTIONS), concerns=concerns,
+        methods=methods_sentence(method, out, rec_counts, int(cal0.n), run))
+
+
+def _f(value: Any) -> float | None:
+    v = float(value)
+    return v if np.isfinite(v) else None
+
+
+def _contrast(state: Any, adj: Any, features: Sequence[str]) -> tuple[str, str, float] | None:
+    """(the recipient's feature, the donor's, the step in kcal) of the declared substitution, when
+    the all-components (or partition) model holds both as calibrated kcal terms; else None."""
+    sub = getattr(state, "substitution", None)
+    if sub is None or adj is None or adj.method not in ALL_SOURCES:
+        return None
+    if getattr(sub, "scale", "kcal") != "kcal":
+        return None
+    a, b = f"kcal_from_{sub.recipient}", f"kcal_from_{sub.donor}"
+    if a not in features or b not in features:
+        return None
+    return a, b, float(sub.step_kcal)
 
 
 CALIBRATION_READS = ("measurement_error", "purpose", "models", "task", "event", "target", "roles",
                      "roles_unconfirmed", "role_confirmations", "reading_confirmations",
-                     "shape_confirmations",
-                     "survey",
+                     "shape_confirmations", "survey", "missing", "substitution",
                      "energy_adjustment", "aggregation", "repeat_kind", "grain", "split", "findings")
 
 __all__ = [
-    "ASSUMPTIONS", "CALIBRATION_READS", "CalibratedExposure", "CalibrationArtifact", "POPULATION",
-    "UNCORRECTED_EXIT", "adjusted_exposures", "calibration_stage", "combine_rule", "day_rows",
-    "methods_sentence", "population_exits", "replicate_values",
+    "ASSUMPTIONS", "CALIBRATION_READS", "CalibratedContrast", "CalibratedExposure",
+    "CalibrationArtifact", "POPULATION", "TEST", "UNCORRECTED_EXIT", "adjusted_exposures",
+    "calibration_stage", "combine_rule", "current_calibration", "day_rows", "declared_adjustment",
+    "error_prone", "invalidated", "main_clause", "methods_sentence", "population_exits",
+    "recall_matrix", "replicate_values", "resampling_of",
 ]
