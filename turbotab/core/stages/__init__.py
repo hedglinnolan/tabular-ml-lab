@@ -90,6 +90,51 @@ adjustment cards and every option's customary and sound labels, the seal plan th
     ``secondary`` fits the primary model and the model further adjusted for the covariates the
     answers declare beside it (unknown timing, or "further adjusted for"), on the same rows.
 
+ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11 and 12; turbotab/core/stages/effects.py):
+
+    effects      heavy   deps: working, design, split, target_info   reads the estimand, the
+                                                                      adjustment answers, the model
+                                                                      sequence, the diagnostic
+                                                                      responses …; requires models,
+                                                                      estimand
+
+    ``effects`` reports the exposure across the declared models (unadjusted, Model 1, Model 2 the
+    primary, Model 3), its adjustment terms apart, the marginal risk difference and ratio when the
+    estimand declares one, the primary's diagnostics and their recorded responses, and its
+    sensitivity to unmeasured confounding.
+
+The causal lane (V2 definition of done §2; ``turbotab/core/causal.py``):
+
+    causal_design heavy  deps: working, split, target_info   reads the plan …; requires estimand
+    causal        heavy  deps: working, split, target_info   reads the plan and causal; requires causal,
+                                                              models
+
+    ``causal_design`` (outcome-free) is the causal question's card: the options ranked for the
+    plan, the four assumptions with their diagnostics, and positivity. ``causal`` estimates the
+    declared effect by DML, TMLE or post-double selection over the adjustment set, once the model
+    families are chosen too: the primary model and the lane are declared together, before either
+    estimate is shown, so the plan lock records both.
+
+V2 causal row (turbotab/core/time_varying.py): an exposure that changes over time, by g-methods.
+
+    time_varying heavy   deps: working, split, target_info,       reads the estimand, the adjustment
+                               structure                          answers, the lane …; requires
+                                                                  estimand, unit
+
+    ``time_varying`` reads the setting (the unit, the settled time column, which columns change
+    within units), then the diagnostics (weights, truncation options, positivity per time point),
+    then, once the lane is complete, the marginal structural model or the g-formula's risks.
+
+Wave 2, EXPLAIN (V2 definition of done §2, "Explainability"; turbotab/core/models/explain.py):
+
+    explain      heavy   deps: working, fit, design, target_info   reads explain, purpose, the estimand …;
+                                                                    requires explain, models
+
+    ``explain`` describes each fitted family: SHAP values with their stability over reseeded refits,
+    the interaction ranking, each top exposure's curve per family on one grid (gated by the family's
+    cross-validated score against the baseline) and the family's architecture. Under inference it
+    is an estimate stage: withheld until the plan's questions are answered, and locking the plan.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -115,10 +160,14 @@ ROLE_READS: tuple[str, ...] = ("roles", "roles_unconfirmed", "role_confirmations
 WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.scales import SCALES_READS, scales_stage
+from turbotab.core.stages.explain import EXPLAIN_READS, explain_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
+from turbotab.core.stages.effects import EFFECTS_READS, effects_stage
+from turbotab.core.stages.causal import CAUSAL_READS, causal_design_stage, causal_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.usual_intake import USUAL_INTAKE_READS, usual_intake_stage
+from turbotab.core.stages.time_varying import TIME_VARYING_READS, time_varying_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
@@ -340,9 +389,14 @@ def build_graph() -> Graph:
             # their role's confirmation; under a direct effect the adjustment card asks for each
             # covariate's mediator–outcome answer and each mediator's interaction (MODELING_SEQUENCE
             # §1 step 3, §2).
-            Stage("proposals", 18, ("working", "roles"),
+            # proposals 18 (ESTIMAND): the outcome's event share ranks the effect measures
+            # (MODELING_SEQUENCE §0 ruling 9), so the proposals read the event; Model 1 of the
+            # declared sequence is offered beside the adjustment card, so they read it too.
+            # proposals 19 (wave 2a integration): both proposals 18s, the routing gate's and
+            # ESTIMAND's, in one card.
+            Stage("proposals", 19, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
-                   "sex_codings", "task", *WP17_READS),
+                   "sex_codings", "task", "event", "model_sequence", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
@@ -534,6 +588,32 @@ def build_graph() -> Graph:
                   USUAL_INTAKE_READS, usual_intake_stage, heavy=True,
                   requires=("lens", "purpose"),
                   label="Estimating usual-intake distributions"),
+            # ── ESTIMAND (MODELING_SEQUENCE §1 rows 2, 11, 12): the exposure's effect as declared ──
+            Stage("effects", 1, ("working", "design", "split", "target_info"),
+                  EFFECTS_READS, effects_stage, heavy=True,
+                  requires=("models", "estimand"),
+                  label="Reporting the exposure's effect across the declared models"),
+            # ── The causal lane (V2 definition of done §2; turbotab/core/causal.py) ──
+            # causal_design is outcome-free: the options, the assumptions and positivity, shown
+            # before any choice; causal runs the chosen estimator once the answer and the model
+            # families are recorded (the whole plan declared before any estimate is shown).
+            Stage("causal_design", 1, ("working", "split", "target_info"), CAUSAL_READS,
+                  causal_design_stage, heavy=True, requires=("estimand",),
+                  label="Reading the causal lane's assumptions and overlap"),
+            Stage("causal", 1, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
+                  causal_stage, heavy=True, requires=("causal", "models"),
+                  label="Estimating the effect in the causal lane"),
+            # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
+            # It requires the unit answer, which is set only when units repeat: a table of one row
+            # per unit never runs it (nothing there changes over time).
+            Stage("time_varying", 1, ("working", "split", "target_info", "structure"),
+                  TIME_VARYING_READS, time_varying_stage, heavy=True,
+                  requires=("estimand", "unit"), label="Following the exposure through time"),
+            # ── Wave 2, EXPLAIN (V2 definition of done §2): the fitted families described ──
+            Stage("explain", 1, ("working", "fit", "design", "target_info"),
+                  (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
+                  requires=("explain", "models"),
+                  label="Explaining each fitted model"),
         ]
     )
 

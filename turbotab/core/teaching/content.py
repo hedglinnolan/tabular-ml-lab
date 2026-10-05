@@ -1407,7 +1407,109 @@ ADJUSTMENT = {
     "evidence": None,
 }
 
+
+# The causal lane (V2 definition of done §2; MODELING_SEQUENCE §0 ruling 1 rung (d);
+# turbotab/core/causal.py). Stated under inference before the models (one step away, its
+# top-ranked estimator named), so an answer is part of the plan the lock records.
+CAUSAL = {
+    "key": "causal",
+    "title": "Causal machine learning",
+    "question": "Also estimate the effect with flexible learners and cross-fitting?",
+    "one_liner": "DML and TMLE estimate the declared effect without assuming the outcome model's "
+                 "form; the assumptions come first.",
+    "why": "A regression's estimate is right only if its form is. Double machine learning and "
+           "targeted maximum likelihood learn the outcome and the exposure flexibly, cross-fitted "
+           "so the intervals stay valid. They still rest on no unmeasured confounding, positivity, "
+           "consistency and time ordering, so each is declared before any estimate.",
+    "consumer": "The causal estimate, its diagnostics, the methods sentence and the plan lock read "
+                "it.",
+    "options": [
+        option("dml_plr", "Double ML, partially linear",
+               "A numeric exposure's effect per unit, every nuisance model cross-fitted."),
+        option("dml_irm", "Double ML, interactive",
+               "A yes/no exposure's average effect, or its effect among the exposed."),
+        option("tmle", "Targeted maximum likelihood",
+               "A yes/no exposure's average effect, doubly robust, inside the outcome's range."),
+        option("pds_lasso", "Post-double-selection lasso",
+               "Two lassos choose among many declared candidates; the intervals stay valid."),
+        option("none", "The primary model only",
+               "No causal machine-learning estimate beside the primary model."),
+    ],
+    "terms": [
+        term("cross-fitting", "Each row's nuisance predictions come from models fit on the other "
+                              "folds, so its own noise never fits itself."),
+        term("positivity", "Every kind of participant could have had either exposure level; "
+                           "without it the estimate extrapolates."),
+        term("doubly robust", "Consistent when either the outcome model or the propensity model "
+                              "is right."),
+    ],
+    "drawer": {"sections": [
+        section("The learners adjust; your answers identify",
+                "Penalized regression is a remedy for collinearity, not a source of causal "
+                "identification. The lasso and the learners choose only among the covariates your "
+                "answers adjust for; the identification comes from that set and the assumptions "
+                "you declare.",
+                "SETTLED", NUT08),
+        section("Survey weights: say which estimate it is",
+                "With survey weights, decide explicitly whether the estimate generalizes to the "
+                "surveyed population (weights in every fit, a design-based variance) or describes "
+                "these participants (unweighted, and said so).",
+                "SETTLED", NUT08),
+    ]},
+    "evidence": None,
+}
+
+# V2 causal row (turbotab/core/time_varying.py). No research pack covers g-methods, so the card cites
+# its primary sources in place, and its drawer is the pack's passage on exposures updated over
+# follow-up (the time ordering it declares): Robins, Hernán & Brumback (2000, Epidemiology
+# 11:550, abstract): "standard approaches for adjustment of confounding are biased when there exist
+# time-dependent confounders that are also affected by previous treatment"; Cole & Hernán (2008, Am J
+# Epidemiol 168:656): "A necessary condition for correct model specification is that the stabilized
+# weights have a mean of one".
+TIME_VARYING = {
+    "key": "time_varying",
+    "title": "An exposure that changes over time",
+    "question": "How is an exposure that changes over time estimated?",
+    "one_liner": "A confounder that earlier exposure changed needs g-methods; their diagnostics come "
+                 "before any estimate.",
+    "why": "When a confounder of later exposure was itself changed by earlier exposure, standard "
+           "regression is biased either way: adjusting for it removes part of the effect, and "
+           "leaving it out leaves later exposure confounded (Robins, Hernán & Brumback 2000). "
+           "Weights or simulation adjust for it at each time point.",
+    "consumer": "The weights, the outcome model, the simulated risks and the methods read it.",
+    "options": [
+        option("msm_iptw", "Marginal structural model",
+               "Weights balance the confounders at each time point; their distribution is read "
+               "first."),
+        option("gformula", "Parametric g-formula",
+               "Simulates the confounders forward under always and never exposed, and compares the "
+               "risks."),
+        option("standard", "Standard regression",
+               "Sound only when no confounder was changed by earlier exposure; otherwise recorded "
+               "as biased."),
+    ],
+    "terms": [
+        term("time-varying confounder", "A covariate measured at each time point that affects later "
+                                        "exposure and the outcome; earlier exposure may change it."),
+        term("stabilized weight", "The probability of a unit's exposure history given its baseline "
+                                  "covariates, over that given its confounders too; the mean should "
+                                  "be near 1."),
+        term("positivity", "At each time point some units are exposed and some are not, so the "
+                           "effect comes from the data rather than the model alone."),
+    ],
+    "drawer": {"sections": [
+        section("Exposure updated over follow-up, and reverse causation",
+                "With repeated FFQs across follow-up, the standard cohort approach is the "
+                "cumulative average — averaging all FFQs up to each event time — which reduces "
+                "within-person error relative to baseline-only. Caveat: if exposure changes "
+                "because of preclinical disease, cumulative averaging imports reverse causation, "
+                "so a lag or a stop-updating-at-diagnosis rule is conventional.",
+                "CONVENTION", NUT03),
+    ]},
+    "evidence": None,
+}
+
 ENTRIES = [LENS, ORIENTATION, REPAIRS, TARGET, EVENT, TASK, FOLLOW_UP, PURPOSE, GRAIN,
            REPEAT_KIND, UNIT, AGGREGATION, TEMPORAL, ROLES, CLUSTERS, SURVEY, EXCLUSIONS, MISSING,
-           SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, ENERGY_ADJUSTMENT, MODELS, SUBSTITUTION,
-           OPEN_SEAL]
+           SPLIT, ESTIMAND_QUESTION, ADJUSTMENT, TIME_VARYING, ENERGY_ADJUSTMENT, CAUSAL, MODELS,
+           SUBSTITUTION, OPEN_SEAL]

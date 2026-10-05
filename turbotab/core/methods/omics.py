@@ -1520,21 +1520,39 @@ def multiplicity_policy(state: Any) -> dict[str, Any]:
     feature-wise analyses")."""
     spec = getattr(state, "multiplicity", None)
     if spec is None:
+        # ESTIMAND: an exposure family declares its method with the estimand (``set_estimand``),
+        # which also writes this slot; a state built without that fold still reads it there.
+        from turbotab.core.decisions import ESTIMAND_MULTIPLICITY
+
+        est = getattr(state, "estimand", None)
+        get = (est.get if isinstance(est, Mapping) else
+               (lambda k, d=None: getattr(est, k, d)))
+        if est is not None and get("family") and get("multiplicity"):
+            return {"method": ESTIMAND_MULTIPLICITY[str(get("multiplicity"))],
+                    "acknowledged": bool(get("multiplicity_acknowledged", False)), "recorded": True}
         return {"method": "bh", "acknowledged": False, "recorded": False}
     get = spec.get if isinstance(spec, Mapping) else (lambda k, d=None: getattr(spec, k, d))
     return {"method": str(get("method")), "acknowledged": bool(get("acknowledged", False)),
             "recorded": True}
 
 
-def multiplicity_rung(method: str, n_tests: int | None) -> str:
+def multiplicity_rung(method: str, n_tests: int | None, omics: bool = False) -> str:
     """BH is recommended; the number of tests stated (no adjustment) is customary for a few
-    prespecified hypotheses (Rothman 1990) and blocked and recorded beyond them; no control at all
-    is blocked and recorded."""
+    prespecified hypotheses (Rothman 1990) and blocked and recorded beyond them, or for an omics
+    family at any size (METABOLOMICS_PACK §08: its absence "is a fatal flaw in review"); no control
+    at all is blocked and recorded."""
     if method == "bh":
         return "recommended"
-    if method == "stated_count" and n_tests is not None and n_tests <= MULTIPLICITY_SMALL:
+    if (method == "stated_count" and not omics and n_tests is not None
+            and n_tests <= MULTIPLICITY_SMALL):
         return "available"
     return "block_and_record"
+
+
+def omics_family(state: Any) -> bool:
+    """Whether an exposure family is an omics one: the study's lens is metabolomics or genomics."""
+    lens = getattr(state, "lens", None) if state is not None else None
+    return bool(set(lens or []) & set(OMICS_LENSES))
 
 
 def multiplicity_options(n_tests: int | None) -> list[dict[str, Any]]:
@@ -1602,9 +1620,11 @@ def _multiplicity_leash(decision: Any, ctx: Any) -> None:
     state = _state(ctx)
     roles = (getattr(state, "roles", None) or {}) if state is not None else {}
     n_tests = sum(1 for r in roles.values() if r == "exposure") or None
-    if multiplicity_rung(decision.method, n_tests) != "block_and_record" or decision.acknowledged:
+    omics = omics_family(state)
+    if (multiplicity_rung(decision.method, n_tests, omics) != "block_and_record"
+            or decision.acknowledged):
         return
-    what = ("Unadjusted p-values for an exposure family of "
+    what = (f"Unadjusted p-values for {'an omics' if omics else 'an exposure'} family of "
             f"{n_tests:,} tests" if decision.method == "stated_count" and n_tests else
             "An exposure family without multiplicity control")
     raise Refusal(

@@ -349,6 +349,11 @@ def test_b_previews_under_inference_read_every_analyzed_row(tmp_path):
             # the energy model (MODELING_SEQUENCE §1 steps 2–4), answered from the truth.
             drive.answer_wp17_before(preview)
             drive.reach("energy_adjustment")  # its card's stages read for the answers above
+            # The preview samples the split's rows (the cohort's while it recomputes), read only
+            # once fresh; the estimand and adjustment answers above recompute both, and the energy
+            # question waits on the proposals alone, so the pool is waited for here.
+            drive.artifact("cohort")
+            drive.artifact("split")
             r = client.post(f"/api/projects/{drive.pid}/preview", json=preview)
             assert r.status_code == 200, r.text
             result = r.json()

@@ -411,6 +411,15 @@ writeLines(toJSON(list(mecor = unname(m$corfit$coef["ref"])), digits = NA, auto_
 # ── through the server: a linear outcome, complete and with missing items ────
 
 
+def _terms(fit: dict) -> list[dict]:
+    """Every term of the served model: the exposure's rows and, apart from them, the adjustment
+    terms (ESTIMAND's Table 2 display; the card leads with ``age``, so a scale score, which it cannot
+    yet name as the exposure, is served among the adjustment terms)."""
+    model = fit["models"][0]
+    return [*(model["coefficients"] or []), *(model.get("adjustment_terms") or [])]
+
+
+
 ROLES_LIN = {"pid": "identifier", "age": "covariate", "bmi": "covariate", "sat_ref": "excluded",
              **{c: "covariate" for c in SAT}}
 SAT_SCALE = {"name": "sat_score", "items": SAT, "reverse": SAT_REVERSE, "low": 1, "high": 5,
@@ -506,8 +515,7 @@ out$mecor <- unname(m$corfit$coef["cor_W"])
     assert rel["alpha"] == pytest.approx(ref["alpha"], abs=1e-6)
     assert "customary" in rel["alpha_label"]
     assert corr["estimate"] == pytest.approx(ref["mecor"], rel=1e-5)
-    row = next(c for c in linear_runs["complete"]["fit"]["models"][0]["coefficients"]
-               if c["feature"] == "sat_score")
+    row = next(c for c in _terms(linear_runs["complete"]["fit"]) if c["feature"] == "sat_score")
     assert corr["naive"] == pytest.approx(row["estimate"], rel=1e-10)
     assert corr["naive_ci_low"] == pytest.approx(row["ci_low"], rel=1e-10)
     assert corr["p"] == pytest.approx(row["p"], rel=1e-8)
@@ -517,7 +525,7 @@ out$mecor <- unname(m$corfit$coef["cor_W"])
     assert any(l.startswith("A declared secondary analysis") for l in corr["labels"])
     assert any("omits transient error" in l for l in corr["labels"])
     assert not any(c["feature"] in SAT for c in
-                   linear_runs["complete"]["fit"]["models"][0]["coefficients"])
+                   _terms(linear_runs["complete"]["fit"]))
 
 
 @needs_r
@@ -609,7 +617,7 @@ def test_4_under_multiple_imputation_items_are_imputed_and_then_scored_in_each_c
         q.append(fit.params[1])
         u.append(fit.get_robustcov_results("HC3").bse[1] ** 2)  # the table's HC3, per copy
     pooled = float(np.mean(q))
-    table = next(c for c in run["fit"]["models"][0]["coefficients"] if c["feature"] == "sat_score")
+    table = next(c for c in _terms(run["fit"]) if c["feature"] == "sat_score")
     assert table["estimate"] == pytest.approx(pooled, rel=1e-8)
     assert scale["correction"]["naive"] == pytest.approx(pooled, rel=1e-8)
     total = float(np.mean(u)) + (1 + 1 / 20) * float(np.var(q, ddof=1))
@@ -859,7 +867,7 @@ def test_5_chain_4_runs_end_to_end_with_its_relations_and_methods_sentences(chai
     assert steps.index("score") < steps.index("model")
     ops = {(l["target"], l["operation"]) for l in chain4["design"]["lineage"]["links"]}
     assert ("adj:pss_score", "scale score (sum)") in ops
-    table = {c["feature"]: c for c in chain4["fit"]["models"][0]["coefficients"]}
+    table = {c["feature"]: c for c in _terms(chain4["fit"])}
     assert {"pss_score", "dq_score"} <= set(table) and not set(PSS_ITEMS + DQ_ITEMS) & set(table)
 
     pss, dq = chain4["scales"]["scales"]

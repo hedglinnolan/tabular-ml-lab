@@ -606,6 +606,9 @@ class SetBatch(_DecisionModel):
 
 # MS7 (MODELING_SEQUENCE §2, "An exposure family"): the multiplicity method of an exposure family.
 MultiplicityMethod = Literal["bh", "stated_count", "none"]
+# The estimand card's names for the same methods (ESTIMAND): a family declared with the estimand
+# writes its method into this one slot, so the latest answer, whichever question gave it, holds.
+ESTIMAND_MULTIPLICITY: dict[str, str] = {"fdr_bh": "bh", "count_stated": "stated_count"}
 
 
 class MultiplicitySpec(_Value):
@@ -1112,14 +1115,19 @@ class SetClusters(_DecisionModel):
 
 EffectKind = Literal["total", "direct"]
 EnergyContrast = Literal["substitution", "addition"]
-# The effect measure (MODELING_SEQUENCE §0 ruling 9). The engine fits the conditional measures of
-# each family; the marginal risk difference and risk ratio (g-computation) are named so that a
-# request for them is refused with the reason, never silently answered with an odds ratio.
+# The effect measure (MODELING_SEQUENCE §0 ruling 9): a difference or a ratio, conditional or
+# marginal. Each family fits its conditional measure; a yes/no outcome's marginal risk difference
+# and risk ratio are standardized over the analyzed rows from its logistic model (g-computation,
+# ``turbotab/core/models/effects.py``); another task's request for them is refused with the reason.
 EffectMeasure = Literal["mean_difference", "odds_ratio", "hazard_ratio", "cumulative_odds_ratio",
                         "relative_risk_ratio", "risk_difference", "risk_ratio",
                         "exposure_mean_difference"]
 # The exposure family's sentinel in the adjustment answers: answered for every exposure of the family.
 EXPOSURE_FAMILY = "*"
+# An exposure family's multiplicity method (MODELING_SEQUENCE §2: "An exposure family implies
+# multiplicity control"): Benjamini–Hochberg q-values across the family, or, for a few declared
+# nutrient hypotheses, unadjusted p-values with the number of tests stated.
+Multiplicity = Literal["fdr_bh", "count_stated"]
 
 
 class EstimandSpec(_Value):
@@ -1132,6 +1140,10 @@ class EstimandSpec(_Value):
     effect: EffectKind = "total"
     contrast: EnergyContrast | None = None  # an energy-bearing exposure: substitution or addition
     measure: EffectMeasure
+    # ESTIMAND (MODELING_SEQUENCE §1 step 2): a family's multiplicity method (filled "fdr_bh" when a
+    # family is declared without one), and an omics family's unadjusted p-values kept as recorded
+    multiplicity: Multiplicity | None = None
+    multiplicity_acknowledged: bool = False
 
 
 class SetEstimand(_DecisionModel):
@@ -1141,11 +1153,15 @@ class SetEstimand(_DecisionModel):
     effect: EffectKind = "total"
     contrast: EnergyContrast | None = None
     measure: EffectMeasure
+    multiplicity: Multiplicity | None = None
+    multiplicity_acknowledged: bool = False
 
     @model_validator(mode="after")
     def _one_or_a_family(self) -> "SetEstimand":
         if self.family == (self.exposure is not None and self.exposure != ""):
             raise ValueError("name one exposure, or declare the exposure family, not both")
+        if self.multiplicity is not None and not self.family:
+            raise ValueError("a multiplicity method belongs to an exposure family")
         return self
 
 
@@ -1190,6 +1206,177 @@ class SetAdjustment(_DecisionModel):
     kind: Literal["set_adjustment"] = "set_adjustment"
     exposure: str = Field(min_length=1)
     answers: dict[str, CovariateAnswers] = Field(min_length=1)
+
+
+class ModelSequenceSpec(_Value):
+    """The declared adjustment sequence beside the primary model (MODELING_SEQUENCE §1 row 11):
+    Model 1's columns (the field's age, sex and energy, as the user names them), declared for one
+    exposure (or the family's ``*``). The crude model, Model 2 (the primary, the full adjustment
+    set) and Model 3 (plus the possible mediators the adjustment answers set beside it) follow from
+    the answers already given."""
+
+    exposure: str
+    model_1: list[str] = Field(default_factory=list)
+
+
+class SetModelSequence(_DecisionModel):
+    kind: Literal["set_model_sequence"] = "set_model_sequence"
+    exposure: str = Field(min_length=1)
+    model_1: list[str] = Field(default_factory=list)
+
+
+DiagnosticCheck = Literal["proportional_hazards", "influence"]
+# What a failed check changes, as recorded (MODELING_SEQUENCE §1 row 11: "a failed check leads to
+# a recorded change, never a silent switch"): the estimate kept and labeled with the failure; the
+# exposure's hazard ratio before and after the median event time; the primary refit without the
+# influential rows, beside it.
+DiagnosticAction = Literal["keep_labeled", "period_hazard_ratios", "without_influential"]
+
+
+class DiagnosticResponse(_Value):
+    exposure: str  # the exposure (or the family's ``*``) the check was made for
+    action: DiagnosticAction
+
+
+class RespondDiagnostic(_DecisionModel):
+    """The recorded response to a failed diagnostic of the primary model (``models/effects.py``)."""
+
+    kind: Literal["respond_diagnostic"] = "respond_diagnostic"
+    exposure: str = Field(min_length=1)
+    check: DiagnosticCheck
+    action: DiagnosticAction
+
+
+# ── The causal lane (V2 definition of done §2; MODELING_SEQUENCE §0 ruling 1 rung (d)) ─────────
+# The answer lives here so the API and the log can parse it; its leash (inference only, after the
+# plan, the assumptions before any estimate, positivity, the survey design) is in
+# ``turbotab/core/causal.py`` and its estimators in ``turbotab/core/models/causal.py``.
+CausalMethod = Literal["none", "dml_plr", "dml_irm", "tmle", "pds_lasso"]
+CausalLearner = Literal["linear", "lasso", "random_forest", "boosted_trees"]
+CausalAssumption = Literal["no_unmeasured_confounding", "positivity", "consistency",
+                           "time_ordering"]
+CausalPopulation = Literal["all", "exposed"]  # the average effect, or the effect among the exposed
+
+
+class CausalSpec(_Value):
+    """The causal lane's answer for one exposure: the estimator (or none beside the primary), its
+    nuisance learner (None: the default for the table's size), whose effect (everyone, or the
+    exposed), the cross-fitting folds and sample splits, and the assumptions declared before any
+    estimate. ``trim``: keep the rows whose propensity lies in [trim, 1 − trim] (the overlap
+    population); ``acknowledged``: every row kept although positivity is practically violated;
+    ``sample_only``: unweighted under a survey design, for these participants (block and record);
+    ``complete_rows``: the complete rows only, where the missing-values answer fills or imputes."""
+
+    exposure: str = Field(min_length=1)
+    method: CausalMethod
+    learner: CausalLearner | None = None
+    population: CausalPopulation = "all"
+    folds: int = Field(default=5, ge=2, le=10)
+    repetitions: int = Field(default=5, ge=1, le=100)
+    seed: int = 0
+    assumptions: list[CausalAssumption] = Field(default_factory=list)
+    trim: float | None = Field(default=None, gt=0.0, lt=0.5)
+    acknowledged: bool = False
+    sample_only: bool = False
+    complete_rows: bool = False
+
+
+class SetCausal(_DecisionModel):
+    kind: Literal["set_causal"] = "set_causal"
+    exposure: str = Field(min_length=1)
+    method: CausalMethod
+    learner: CausalLearner | None = None
+    population: CausalPopulation = "all"
+    folds: int = Field(default=5, ge=2, le=10)
+    repetitions: int = Field(default=5, ge=1, le=100)
+    seed: int = 0
+    assumptions: list[CausalAssumption] = Field(default_factory=list)
+    trim: float | None = Field(default=None, gt=0.0, lt=0.5)
+    acknowledged: bool = False
+    sample_only: bool = False
+    complete_rows: bool = False
+
+    @field_validator("assumptions")
+    @classmethod
+    def _unique(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("each assumption may be declared only once")
+        return value
+
+
+# V2 causal row: a time-varying exposure estimated by g-methods (``turbotab/core/time_varying.py``,
+# ``turbotab/core/models/time_varying.py``). The method, the declared time ordering, the columns each
+# model reads, and, for the weights, the truncation declared after their diagnostics are read.
+TimeVaryingMethod = Literal["msm_iptw", "gformula", "standard"]
+TimeOrdering = Literal["exposure_precedes_outcome", "same_time", "unknown"]
+ExposurePattern = Literal["switches", "initiation"]  # can stop and restart, or once started stays
+ExposureSummary = Literal["current", "cumulative"]  # the exposure history the MSM is a function of
+WeightTruncation = Literal["none", "p1_p99", "p5_p95"]
+
+
+class TimeVaryingSpec(_Value):
+    exposure: str
+    method: TimeVaryingMethod
+    ordering: TimeOrdering
+    confounders: list[str] = Field(default_factory=list)  # time-varying, measured before the exposure
+    baseline: list[str] = Field(default_factory=list)  # fixed within a unit
+    censoring: str | None = None  # 1 on a unit's last time point before it was lost to follow-up
+    pattern: ExposurePattern = "switches"
+    summary: ExposureSummary = "cumulative"
+    truncation: WeightTruncation | None = None
+    simulations: int = Field(default=10_000, ge=1_000, le=200_000)
+    bootstrap: int = Field(default=500, ge=100, le=2_000)
+    # Standard regression kept over a confounder affected by prior exposure (block and record).
+    acknowledged: bool = False
+
+
+class SetTimeVarying(_DecisionModel):
+    kind: Literal["set_time_varying"] = "set_time_varying"
+    exposure: str = Field(min_length=1)
+    method: TimeVaryingMethod
+    ordering: TimeOrdering
+    confounders: list[str] = Field(default_factory=list)
+    baseline: list[str] = Field(default_factory=list)
+    censoring: str | None = None
+    pattern: ExposurePattern = "switches"
+    summary: ExposureSummary = "cumulative"
+    truncation: WeightTruncation | None = None
+    simulations: int = Field(default=10_000, ge=1_000, le=200_000)
+    bootstrap: int = Field(default=500, ge=100, le=2_000)
+    acknowledged: bool = False
+
+    @model_validator(mode="after")
+    def _columns_once(self) -> "SetTimeVarying":
+        named = [*self.confounders, *self.baseline]
+        if len(set(named)) != len(named):
+            raise ValueError("a column is a time-varying confounder or a baseline covariate, not both")
+        if self.exposure in named or (self.censoring is not None and self.censoring in named):
+            raise ValueError("the exposure and the censoring indicator are not covariates")
+        return self
+
+
+# Wave 2, EXPLAIN (V2 definition of done §2, "Explainability"; turbotab/core/models/explain.py):
+# how the fitted models are described. ``curves``: accumulated local effects (sound with correlated
+# intakes) or partial dependence (customary, ranked lower); ``exposures``: the raw columns whose
+# curves are drawn (empty: the top exposures; under inference the declared one); ``reseeds``: the
+# refits the stability is measured over. ``as_effect`` asks for the explanations to be reported
+# as the exposures' effects, which is refused under both purposes (MODELING_SEQUENCE §4).
+ExplainCurves = Literal["ale", "partial_dependence"]
+
+
+class ExplainSpec(_Value):
+    curves: ExplainCurves = "ale"
+    exposures: list[str] = Field(default_factory=list)
+    reseeds: int = Field(default=5, ge=0, le=20)
+    as_effect: bool = False
+
+
+class SetExplain(_DecisionModel):
+    kind: Literal["set_explain"] = "set_explain"
+    curves: ExplainCurves = "ale"
+    exposures: list[str] = Field(default_factory=list)
+    reseeds: int = Field(default=5, ge=0, le=20)
+    as_effect: bool = False
 
 
 class OpenSeal(_DecisionModel):
@@ -1441,6 +1628,10 @@ Decision = Annotated[
         SetCensoring, SetClusters, SetEstimand, SetAdjustment,
         JoinFiles, ImportCodebook, SetBatch, SetMultiplicity, SetScales,
         SetUsualIntake,
+        SetModelSequence, RespondDiagnostic,
+        SetCausal,
+        SetTimeVarying,
+        SetExplain,
     ],
     Field(discriminator="kind"),
 ]
@@ -1574,6 +1765,17 @@ class ProjectState(BaseModel):
     # multiplicity method (``set_batch``, ``set_multiplicity``)
     batch: BatchSpec | None = None
     multiplicity: MultiplicitySpec | None = None
+    # ESTIMAND (MODELING_SEQUENCE §1 row 11): the declared adjustment sequence beside the primary,
+    # and each failed diagnostic's recorded response, by check (``turbotab/core/models/effects.py``)
+    model_sequence: ModelSequenceSpec | None = None
+    diagnostic_responses: dict[str, DiagnosticResponse] | None = None
+    # The causal lane (``turbotab/core/causal.py``): DML, TMLE or post-double selection beside the
+    # primary model, for the exposure it names (holds while that is the declared exposure)
+    causal: CausalSpec | None = None
+    # V2 causal row: a time-varying exposure's estimation lane (``turbotab/core/time_varying.py``)
+    time_varying: TimeVaryingSpec | None = None
+    # Wave 2, EXPLAIN: how the fitted models are described (``turbotab/core/models/explain.py``)
+    explain: ExplainSpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1998,7 +2200,11 @@ register_kind(SetClusters, "clusters", value=lambda d: ClusterSpec(**d.model_dum
                                   if d.column else
                                   [("reading_confirmations", f"cluster:{c}", "no")
                                    for c in d.none_of]))
-register_kind(SetEstimand, "estimand", value=lambda d: EstimandSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetEstimand, "estimand", value=lambda d: EstimandSpec(**d.model_dump(exclude={"kind"})),
+              also={"multiplicity": lambda d: MultiplicitySpec(
+                  method=ESTIMAND_MULTIPLICITY[d.multiplicity],
+                  acknowledged=d.multiplicity_acknowledged)
+                  if d.family and d.multiplicity else None})
 register_kind(SetAdjustment, "adjustment", value=lambda d: None,
               entries=lambda d: [("adjustment", column, AdjustmentAnswer(
                   exposure=d.exposure, **answers.model_dump()))
@@ -2009,6 +2215,17 @@ register_kind(SetMultiplicity, "multiplicity",
 register_kind(SetScales, "scales")
 register_kind(SetUsualIntake, "usual_intake", key=lambda d: d.nutrient,
               value=lambda d: UsualIntakeSpec(**d.model_dump(exclude={"kind", "nutrient"})))
+# ESTIMAND: the declared model sequence, and each failed diagnostic's response (keyed by its check)
+register_kind(SetModelSequence, "model_sequence",
+              value=lambda d: ModelSequenceSpec(exposure=d.exposure, model_1=list(d.model_1)))
+register_kind(RespondDiagnostic, "diagnostic_responses", key=lambda d: d.check,
+              value=lambda d: DiagnosticResponse(exposure=d.exposure, action=d.action))
+register_kind(SetCausal, "causal", value=lambda d: CausalSpec(**d.model_dump(exclude={"kind"})))
+# V2 causal row: the time-varying exposure's lane (its refusals are in turbotab/core/time_varying.py)
+register_kind(SetTimeVarying, "time_varying",
+              value=lambda d: TimeVaryingSpec(**d.model_dump(exclude={"kind"})))
+# Wave 2, EXPLAIN: its validators live with the method (``turbotab/core/models/explain.py``).
+register_kind(SetExplain, "explain", value=lambda d: ExplainSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -4573,3 +4790,7 @@ from turbotab.core import codebook as _codebook  # noqa: E402,F401
 from turbotab.core import scales as _scales  # noqa: E402,F401
 # The NCI usual-intake method's refusals, contract and sentence (``set_usual_intake``).
 from turbotab.core import usual_intake as _usual_intake  # noqa: E402,F401
+# The causal lane's leash (inference only, after the plan, assumptions first, positivity, survey).
+from turbotab.core import causal as _causal  # noqa: E402,F401
+# V2 causal row: a time-varying exposure by g-methods (its gate, refusals and §13 contract).
+from turbotab.core import time_varying as _time_varying  # noqa: E402,F401

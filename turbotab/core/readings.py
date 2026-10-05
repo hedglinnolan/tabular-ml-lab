@@ -3116,6 +3116,10 @@ CONSUMERS: tuple[Consumer, ...] = (
     Consumer(_C + "voice:_outcome_unit", ("outcome_unit",), True, NO_UNIT,
              via=_C + "units:outcome_unit",
              kinds=("outcome_unit",)),
+    # Wave 2, EXPLAIN: the fitted equation states the outcome's unit and each column's unit only
+    # as recorded or confirmed; until then it quotes the header verbatim.
+    Consumer(_C + "models.explain:equation_units", ("outcome_unit",), True, NO_UNIT,
+             kinds=("outcome_unit", "unit:column")),
     # ── total energy, its unit, its day count, the body measures and sex the screens read ──
     Consumer(_C + "stages.proposals:energy_unit_reading", ("energy_unit_days",), True, ASK,
              kinds=("unit:energy", "day_count")),
@@ -3202,6 +3206,12 @@ CONSUMERS: tuple[Consumer, ...] = (
     Consumer(_C + "detectors.genomics:card", ("assay_type",), False, WORDS_ONLY),
     Consumer(_C + "stages.working:unit_suggestions", ("measurement", "grain_suggestion"), False,
              WORDS_ONLY),
+    # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
+    # The lane reads each unit's history by the settled time column, and its models read each
+    # covariate's role and code-or-amount reading as the fit does; while one waits, it asks.
+    Consumer(_C + "stages.time_varying:read_setting", (), True, SETTLED_ONLY),
+    Consumer(_C + "time_varying:_lane_needs_a_settled_time_column", (), True, ASK),
+    Consumer(_C + "time_varying:_lane_reads_settled_readings", (), True, ASK),
 )
 
 

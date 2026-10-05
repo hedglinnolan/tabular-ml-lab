@@ -123,6 +123,14 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "estimand";
     case "set_adjustment":
       return "adjustment";
+    case "set_model_sequence":
+      return "model_sequence";
+    case "respond_diagnostic":
+      return "diagnostic_responses";
+    case "set_causal":
+      return "causal";
+    case "set_time_varying":
+      return "time_varying";
     case "set_sensitivity":
       return "sensitivity";
     case "set_measurement_error":
@@ -141,6 +149,8 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "scales";
     case "set_usual_intake":
       return "usual_intake";
+    case "set_explain":
+      return "explain";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

@@ -662,6 +662,14 @@ function slotOf(d: Decision): Slot | null {
       return "estimand";
     case "set_adjustment":
       return "adjustment";
+    case "set_model_sequence":
+      return "model_sequence";
+    case "respond_diagnostic":
+      return "diagnostic_responses";
+    case "set_causal":
+      return "causal";
+    case "set_time_varying":
+      return "time_varying";
     case "set_sensitivity":
       return "sensitivity";
     case "set_measurement_error":
@@ -681,6 +689,8 @@ function slotOf(d: Decision): Slot | null {
       return "scales";
     case "set_usual_intake":
       return "usual_intake";
+    case "set_explain":
+      return "explain";
     case "revert":
       return null;
   }
@@ -813,9 +823,30 @@ function valueOf(d: Decision): ProjectState[Slot] {
                acknowledged: d.acknowledged ?? false, none_of: d.none_of ?? [] };
     case "set_estimand":
       return { exposure: d.exposure ?? null, family: d.family ?? false,
-               effect: d.effect ?? "total", contrast: d.contrast ?? null, measure: d.measure };
+               effect: d.effect ?? "total", contrast: d.contrast ?? null, measure: d.measure,
+               multiplicity: d.multiplicity ?? (d.family ? "fdr_bh" : null),
+               multiplicity_acknowledged: d.multiplicity_acknowledged ?? false };
     case "set_adjustment":
       return null;
+    case "set_model_sequence":
+      return { exposure: d.exposure, model_1: d.model_1 ?? [] };
+    case "respond_diagnostic": // keyed by check; the fold merges it
+      return null;
+    case "set_causal": {
+      const { kind: _kind, ...value } = d;
+      return value;
+    }
+    case "set_time_varying":
+      return { exposure: d.exposure, method: d.method, ordering: d.ordering,
+               confounders: d.confounders ?? [], baseline: d.baseline ?? [],
+               censoring: d.censoring ?? null, pattern: d.pattern ?? "switches",
+               summary: d.summary ?? "cumulative", truncation: d.truncation ?? null,
+               simulations: d.simulations ?? 10000, bootstrap: d.bootstrap ?? 500,
+               acknowledged: d.acknowledged ?? false };
+    case "set_explain": {
+      const { kind: _k, ...value } = d;
+      return value as ProjectState[Slot];
+    }
     case "set_survey": {
       const { kind: _kind, ...value } = d;
       return value;
@@ -920,6 +951,11 @@ export function fold(records: DecisionRecord[]): ProjectState {
     codebooks: null,
     batch: null,
     multiplicity: null,
+    model_sequence: null,
+    diagnostic_responses: null,
+    causal: null,
+    time_varying: null,
+    explain: null,
   };
   // Each record's slots as they stood before it (a block confirmation writes several).
   const before = new Map<string, { slot: Slot; prior: Slots[Slot] }[]>();
@@ -978,6 +1014,12 @@ export function fold(records: DecisionRecord[]): ProjectState {
       // set_roles also writes which proposals it recorded unconfirmed (decisions.py, ``also``).
       state.roles = d.roles;
       state.roles_unconfirmed = d.unconfirmed ?? [];
+      continue;
+    }
+    if (d.kind === "respond_diagnostic") {
+      // A keyed slot: one response per check (turbotab/core/decisions.py, diagnostic_responses).
+      const response = { exposure: d.exposure, action: d.action };
+      state.diagnostic_responses = { ...(state.diagnostic_responses ?? {}), [d.check]: response };
       continue;
     }
     if (d.kind === "set_exposure_form") {

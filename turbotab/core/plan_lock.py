@@ -37,7 +37,9 @@ from __future__ import annotations
 import hashlib
 import json
 from functools import lru_cache
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping, Sequence
+
+from pydantic import BaseModel, ConfigDict
 
 from turbotab.core import decisions
 from turbotab.core.decisions import Refusal
@@ -72,6 +74,110 @@ def digest(plan: Mapping[str, Any]) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# ── the export (ESTIMAND; MODELING_SEQUENCE §1 row 12: "The plan exports with a timestamp and a
+# content hash for external registration") ─────────────────────────────────────────────────────
+
+PLAN_FORMAT = "turbotab-analysis-plan/1"
+# The words the plan's text never uses: the lock says what was declared in the software before the
+# estimates were displayed, never that it was registered anywhere (MODELING_SEQUENCE §1 row 12).
+NEVER_SAID = ("prespecified", "pre-specified", "preregistered", "pre-registered")
+
+
+class PlanExport(BaseModel):
+    """The exported analysis plan: the plan, when it was declared, its hash and its text."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    format: str
+    status: Literal["locked", "declared"]
+    declared_at: str | None  # ISO 8601, UTC: the lock's record, else the last record the plan holds
+    through_record: int | None  # the last decision the plan holds (its sequence number)
+    plan: dict[str, Any]
+    plan_sha256: str  # the plan's own digest, as the lock records it (:func:`digest`)
+    sentences: list[str]  # the decisions the plan holds, as the record words them
+    after_estimates: list[dict[str, Any]]  # each later decision: seq, kind, at, sentence
+    sha256: str  # SHA-256 over the canonical JSON of every field above
+    text: str
+
+
+def canonical(value: Any) -> bytes:
+    """Canonical JSON: keys sorted, no spaces, UTF-8 (the bytes :func:`digest` hashes)."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def _when(at: Any) -> str | None:
+    if at is None:
+        return None
+    from datetime import timezone
+
+    return at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def plan_document(records: Sequence[Any]) -> PlanExport:
+    """The analysis plan as the decision log holds it, a pure function of the records (no clock is
+    read): once locked, the plan the lock recorded and the lock's own time; before, the plan in
+    force and the time of the last decision it holds. The hash covers every field but itself and
+    the text, which quotes it."""
+    from turbotab.core.provenance import in_force
+
+    ordered = sorted(records, key=lambda r: r.seq)
+    lock = next((r for r in ordered if r.decision.kind == "lock_plan"), None)
+    if lock is not None:
+        plan = dict(lock.decision.plan or {})
+        held = [r for r in ordered if r.seq < lock.seq]
+        status, at, through = "locked", lock.at, lock.seq
+        later = [r for r in ordered if r.seq > lock.seq and r.sentence]
+    else:
+        plan = plan_of(decisions.fold(ordered))
+        held, later = ordered, []
+        status = "declared"
+        at = ordered[-1].at if ordered else None
+        through = ordered[-1].seq if ordered else None
+    keep = in_force(held)
+    sentences = [r.sentence for r in held if r.id in keep and r.sentence]
+    content = {
+        "format": PLAN_FORMAT, "status": status, "declared_at": _when(at),
+        "through_record": through, "plan": plan, "plan_sha256": digest(plan),
+        "sentences": sentences,
+        "after_estimates": [{"seq": r.seq, "kind": r.decision.kind, "at": _when(r.at),
+                             "sentence": r.sentence} for r in later],
+    }
+    content = json.loads(canonical(content))  # every value as JSON holds it
+    sha = hashlib.sha256(canonical(content)).hexdigest()
+    return PlanExport(**content, sha256=sha, text=plan_text(content, sha))
+
+
+def plan_text(content: Mapping[str, Any], sha: str) -> str:
+    """What the export says of itself: what was declared in the software, and when; never that it
+    was registered or specified before the data were seen (the analyst may have seen them)."""
+    at = content.get("declared_at") or "an unrecorded time"
+    when = at.replace("T", " at ").replace("Z", " UTC") if isinstance(at, str) else at
+    later = len(content.get("after_estimates") or [])
+    if content.get("status") == "locked":
+        lead = (f"This is the analysis plan as declared in TurboTab before any estimate was "
+                f"displayed; it was locked when the first estimate was shown, on {when}.")
+        tail = (f" {later:,} decision{'s were' if later != 1 else ' was'} made after the estimates "
+                f"were seen, listed with it and marked so in the methods." if later else
+                " No decision has been made since the estimates were seen.")
+    else:
+        lead = (f"This is the analysis plan as declared in TurboTab so far, through the decision "
+                f"recorded on {when}; no estimate has been displayed yet.")
+        tail = ""
+    text = (f"{lead} It records what was declared in the software and when; it is not a "
+            f"registration with any outside registry, and the analyst may have seen the data. Its "
+            f"SHA-256 over canonical JSON (keys sorted, no spaces, UTF-8) is {sha}: the same "
+            f"decisions give the same bytes, so the hash can be cited in an external registration."
+            f"{tail}")
+    if any(word in text.lower() for word in NEVER_SAID):
+        raise RuntimeError('the plan text must never call the plan prespecified or preregistered')
+    return text
+
+
+def plan_export(records: Sequence[Any]) -> bytes:
+    """The export's bytes: the canonical JSON of :func:`plan_document`, byte-identical on replay."""
+    return canonical(plan_document(records).model_dump(mode="json"))
+
+
 def _estimated(table: Mapping[str, Any]) -> bool:
     """Whether a fitted table carries an estimate: coefficients, an exposure's test, or an
     inference table that is not a refusal. A refusal (an unanswered survey question, a held
@@ -101,7 +207,27 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "scales":
         return any(isinstance(sc, Mapping) and sc.get("correction") is not None
                    for sc in artifact.get("scales") or [])
+    if stage == "effects":  # ESTIMAND: the declared models' exposure rows, or a marginal estimate
+        return any(_effects_shown(f) for f in artifact.get("families") or []
+                   if isinstance(f, Mapping))
+    if stage == "causal":  # the causal lane's estimate (turbotab/core/stages/causal.py)
+        return any(e.get("estimate") is not None
+                   for e in artifact.get("estimates") or [] if isinstance(e, Mapping))
+    if stage == "time_varying":  # its diagnostics read no outcome; only its estimates lock
+        estimates = artifact.get("estimates")
+        return isinstance(estimates, Mapping) and bool(estimates.get("rows"))
+    if stage == "explain":  # wave 2: an explanation shows what a model learned from the outcome
+        return any(f.get("explained") for f in artifact.get("families") or []
+                   if isinstance(f, Mapping))
     return False
+
+
+def _effects_shown(family: Mapping[str, Any]) -> bool:
+    rows = [r for s in family.get("sequence") or [] if isinstance(s, Mapping)
+            for r in s.get("effects") or [] if isinstance(r, Mapping)]
+    contrasts = (family.get("marginal") or {}).get("contrasts") or []
+    return (any(r.get("estimate") is not None for r in rows)
+            or any(c.get("rd") is not None for c in contrasts if isinstance(c, Mapping)))
 
 
 def _state(ctx: Any) -> Any:
@@ -164,4 +290,5 @@ decisions.register_validator("lock_plan", _locked_once_under_inference)
 decisions.register_completion("lock_plan", _the_lock_records_the_plan)
 decisions.register_validator("revert", _the_lock_stays, first=True)
 
-__all__ = ["ESTIMATE_STAGES", "digest", "plan_of", "plan_slots", "shows_estimates"]
+__all__ = ["ESTIMATE_STAGES", "NEVER_SAID", "PlanExport", "canonical", "digest", "plan_document",
+           "plan_export", "plan_of", "plan_slots", "plan_text", "shows_estimates"]

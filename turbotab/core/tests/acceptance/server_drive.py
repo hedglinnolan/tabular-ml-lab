@@ -71,6 +71,15 @@ def _post_when_reached(client: Any, url: str, body: dict[str, Any], timeout: flo
         time.sleep(0.1)
 
 
+def every_row(model: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every coefficient a served model carries. Under inference with a declared exposure the fit is
+    served as the Table 2 display (ESTIMAND; Westreich & Greenland 2013): ``coefficients`` holds the
+    exposure's rows and every other row sits in ``adjustment_terms``, the appendix titled
+    "adjustment terms, not effect estimates". A test that checks a covariate's coefficient (that a
+    code reached the fit as indicators, that age was adjusted for) reads both."""
+    return [*(model.get("coefficients") or []), *(model.get("adjustment_terms") or [])]
+
+
 def answer_plan(drive: Any, exposure: str, *, effect: str = "total", contrast: str | None = None,
                 timeout: float = 240.0) -> list[dict[str, Any]]:
     """Under inference, the exposure and its effect (WP17, MODELING_SEQUENCE §1 steps 2–3), then the
@@ -108,7 +117,12 @@ def answer_estimand(drive: Any, exposure: str, *, effect: str = "total",
     confirmation it needs, which the fixture's truth answers (``settle_post``)."""
     card = drive.artifact("proposals")["estimand"]
     option = next((e for e in card["exposures"] if e["column"] == exposure), None)
-    fitted = next(m["measure"] for m in card["measures"] if m["fitted"])
+    # The outcome model's own measure (ESTIMAND: a yes/no outcome's card also fits the marginal
+    # risk difference and ratio, ranked first when the event is common), unless the fixture's
+    # author declares another (``measure:<exposure>``).
+    fitted = drive.truth.get(f"measure:{exposure}") or next(
+        m["measure"] for m in card["measures"]
+        if m["fitted"] and m.get("conditioning", "conditional") != "marginal")
     body: dict[str, Any] = {"kind": "set_estimand", "exposure": exposure, "effect": effect,
                             "measure": fitted}
     chosen = contrast or drive.truth.get(f"contrast:{exposure}") or "substitution"
@@ -120,7 +134,8 @@ def answer_estimand(drive: Any, exposure: str, *, effect: str = "total",
     assert r.status_code == 200, ("set_estimand", r.text[:900])
 
 
-WP17_QUESTIONS = ("follow_up", "clusters", "estimand", "adjustment")
+# With the V2 causal row's time-varying exposure question (``turbotab/core/time_varying.py``).
+WP17_QUESTIONS = ("follow_up", "clusters", "estimand", "adjustment", "time_varying")
 
 
 def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
@@ -135,7 +150,10 @@ def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
       (a column, or ``family``), else the card's first; the total effect on the scale the engine
       fits, an energy-bearing exposure's ``contrast``;
     * the adjustment set: each covariate from the fixture's declared causal truth
-      (:func:`answer_plan`)."""
+      (:func:`answer_plan`);
+    * the time-varying exposure (V2 causal row): standard regression, the analysis every drive
+      written before the question runs, with the exposure declared to precede the outcome; where
+      a confounder affected by prior exposure holds it (block and record), its attestation exit."""
     if key not in WP17_QUESTIONS:
         return False
     step = drive.reach(key, timeout=300)
@@ -170,6 +188,15 @@ def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
                           "contrast": contrast if family["energy_contrast"] else None})
             return True
         answer_estimand(drive, chosen, contrast=drive.truth.get(f"contrast:{chosen}") or contrast)
+    elif key == "time_varying":
+        exposed = (state.get("estimand") or {}).get("exposure")
+        lane = {"kind": "set_time_varying", "exposure": exposed, "method": "standard",
+                "ordering": "exposure_precedes_outcome"}
+        r = post(lane)
+        if r.status_code == 409 and r.json()["error"]["code"] == "affected_confounder":
+            r = post(next(e["decision"] for e in r.json()["error"]["exits"]
+                          if (e["decision"] or {}).get("acknowledged")))
+        assert r.status_code == 200, r.text[:600]
     else:
         from turbotab.core.decisions import EXPOSURE_FAMILY
 

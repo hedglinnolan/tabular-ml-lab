@@ -349,6 +349,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
       labels: null,
       estimand: null,
       adjustment: null,
+      model_sequence: null,
     };
   }
   const energy =
@@ -508,6 +509,7 @@ export function proposalsArtifact(ds: MockDataset, state: ProjectState): Proposa
     labels: null,
     estimand: null,
     adjustment: null,
+    model_sequence: null,
   };
 }
 
@@ -1270,6 +1272,7 @@ export function fit(
       optimism: null,
       internal_external: null,
       exposure_tests: [],
+      adjustment_terms: null,
     };
   });
   // The fit computes the held-out scores; as on the server (turbotab/core/seal.py), the route

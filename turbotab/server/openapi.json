@@ -469,6 +469,21 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUsualIntake-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModelSequence-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RespondDiagnostic"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCausal-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTimeVarying-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExplain-Input"
                   }
                 ],
                 "discriminator": {
@@ -522,7 +537,12 @@
                     "set_batch": "#/components/schemas/SetBatch-Input",
                     "set_multiplicity": "#/components/schemas/SetMultiplicity-Input",
                     "set_scales": "#/components/schemas/SetScales-Input",
-                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Input"
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Input",
+                    "set_model_sequence": "#/components/schemas/SetModelSequence-Input",
+                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
+                    "set_causal": "#/components/schemas/SetCausal-Input",
+                    "set_time_varying": "#/components/schemas/SetTimeVarying-Input",
+                    "set_explain": "#/components/schemas/SetExplain-Input"
                   }
                 },
                 "title": "Decision"
@@ -653,6 +673,59 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MethodsText"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/plan": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Plan",
+        "description": "The analysis plan for external registration (MODELING_SEQUENCE §1 row 12): the plan as\ndeclared, its timestamp and its SHA-256 over canonical JSON, as canonical JSON bytes that are\nthe same for the same decision log.",
+        "operationId": "plan_api_projects__pid__plan_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanExport"
                 }
               }
             }
@@ -975,6 +1048,21 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUsualIntake-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModelSequence-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RespondDiagnostic"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCausal-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTimeVarying-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExplain-Input"
                   }
                 ],
                 "discriminator": {
@@ -1028,7 +1116,12 @@
                     "set_batch": "#/components/schemas/SetBatch-Input",
                     "set_multiplicity": "#/components/schemas/SetMultiplicity-Input",
                     "set_scales": "#/components/schemas/SetScales-Input",
-                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Input"
+                    "set_usual_intake": "#/components/schemas/SetUsualIntake-Input",
+                    "set_model_sequence": "#/components/schemas/SetModelSequence-Input",
+                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
+                    "set_causal": "#/components/schemas/SetCausal-Input",
+                    "set_time_varying": "#/components/schemas/SetTimeVarying-Input",
+                    "set_explain": "#/components/schemas/SetExplain-Input"
                   }
                 },
                 "title": "Decision"
@@ -2673,6 +2766,130 @@
         ],
         "title": "BatchSpec"
       },
+      "CausalSpec": {
+        "properties": {
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "dml_plr",
+              "dml_irm",
+              "tmle",
+              "pds_lasso"
+            ],
+            "title": "Method"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "linear",
+                  "lasso",
+                  "random_forest",
+                  "boosted_trees"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learner"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "all",
+              "exposed"
+            ],
+            "title": "Population",
+            "default": "all"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "repetitions": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Repetitions",
+            "default": 5
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "assumptions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "no_unmeasured_confounding",
+                "positivity",
+                "consistency",
+                "time_ordering"
+              ]
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "trim": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "sample_only": {
+            "type": "boolean",
+            "title": "Sample Only",
+            "default": false
+          },
+          "complete_rows": {
+            "type": "boolean",
+            "title": "Complete Rows",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "exposure",
+          "method",
+          "learner",
+          "population",
+          "folds",
+          "repetitions",
+          "seed",
+          "assumptions",
+          "trim",
+          "acknowledged",
+          "sample_only",
+          "complete_rows"
+        ],
+        "title": "CausalSpec",
+        "description": "The causal lane's answer for one exposure: the estimator (or none beside the primary), its\nnuisance learner (None: the default for the table's size), whose effect (everyone, or the\nexposed), the cross-fitting folds and sample splits, and the assumptions declared before any\nestimate. ``trim``: keep the rows whose propensity lies in [trim, 1 − trim] (the overlap\npopulation); ``acknowledged``: every row kept although positivity is practically violated;\n``sample_only``: unweighted under a survey design, for these participants (block and record);\n``complete_rows``: the complete rows only, where the missing-values answer fills or imputes."
+      },
       "Caution": {
         "properties": {
           "text": {
@@ -3860,6 +4077,21 @@
               },
               {
                 "$ref": "#/components/schemas/SetUsualIntake-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetModelSequence-Output"
+              },
+              {
+                "$ref": "#/components/schemas/RespondDiagnostic"
+              },
+              {
+                "$ref": "#/components/schemas/SetCausal-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetTimeVarying-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetExplain-Output"
               }
             ],
             "title": "Decision",
@@ -3877,12 +4109,14 @@
                 "lock_plan": "#/components/schemas/LockPlan-Output",
                 "open_seal": "#/components/schemas/OpenSeal-Output",
                 "reseal": "#/components/schemas/Reseal-Output",
+                "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
                 "revert": "#/components/schemas/Revert",
                 "select_models": "#/components/schemas/SelectModels",
                 "set_adjustment": "#/components/schemas/SetAdjustment-Output",
                 "set_aggregation": "#/components/schemas/SetAggregation-Output",
                 "set_batch": "#/components/schemas/SetBatch-Output",
                 "set_categorical": "#/components/schemas/SetCategorical",
+                "set_causal": "#/components/schemas/SetCausal-Output",
                 "set_censoring": "#/components/schemas/SetCensoring-Output",
                 "set_clusters": "#/components/schemas/SetClusters-Output",
                 "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
@@ -3890,6 +4124,7 @@
                 "set_estimand": "#/components/schemas/SetEstimand-Output",
                 "set_event": "#/components/schemas/SetEvent",
                 "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                "set_explain": "#/components/schemas/SetExplain-Output",
                 "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                 "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                 "set_follow_up": "#/components/schemas/SetFollowUp-Output",
@@ -3897,6 +4132,7 @@
                 "set_lens": "#/components/schemas/SetLens",
                 "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                 "set_missing": "#/components/schemas/SetMissing-Output",
+                "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
                 "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                 "set_orientation": "#/components/schemas/SetOrientation",
                 "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
@@ -3913,6 +4149,7 @@
                 "set_target": "#/components/schemas/SetTarget",
                 "set_task": "#/components/schemas/SetTask",
                 "set_temporal": "#/components/schemas/SetTemporal-Output",
+                "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
                 "set_unit": "#/components/schemas/SetUnit",
                 "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
               }
@@ -3961,6 +4198,30 @@
         ],
         "title": "DeferFinding",
         "description": "Hold a finding until the question it belongs to; it resurfaces there, attributed."
+      },
+      "DiagnosticResponse": {
+        "properties": {
+          "exposure": {
+            "type": "string",
+            "title": "Exposure"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "keep_labeled",
+              "period_hazard_ratios",
+              "without_influential"
+            ],
+            "title": "Action"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "exposure",
+          "action"
+        ],
+        "title": "DiagnosticResponse"
       },
       "DismissFinding-Input": {
         "properties": {
@@ -4305,6 +4566,26 @@
               "exposure_mean_difference"
             ],
             "title": "Measure"
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fdr_bh",
+                  "count_stated"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiplicity"
+          },
+          "multiplicity_acknowledged": {
+            "type": "boolean",
+            "title": "Multiplicity Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -4314,7 +4595,9 @@
           "family",
           "effect",
           "contrast",
-          "measure"
+          "measure",
+          "multiplicity",
+          "multiplicity_acknowledged"
         ],
         "title": "EstimandSpec",
         "description": "The exposure and the effect the inference reports (MODELING_SEQUENCE §1 step 2): one\nexposure, or an exposure family (``family``: every exposure-role column, each reported, with\nits multiplicity method; ``exposure`` is then None)."
@@ -4641,6 +4924,21 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetUsualIntake-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetModelSequence-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RespondDiagnostic"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetCausal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTimeVarying-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetExplain-Output"
                   }
                 ],
                 "discriminator": {
@@ -4657,12 +4955,14 @@
                     "lock_plan": "#/components/schemas/LockPlan-Output",
                     "open_seal": "#/components/schemas/OpenSeal-Output",
                     "reseal": "#/components/schemas/Reseal-Output",
+                    "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
                     "revert": "#/components/schemas/Revert",
                     "select_models": "#/components/schemas/SelectModels",
                     "set_adjustment": "#/components/schemas/SetAdjustment-Output",
                     "set_aggregation": "#/components/schemas/SetAggregation-Output",
                     "set_batch": "#/components/schemas/SetBatch-Output",
                     "set_categorical": "#/components/schemas/SetCategorical",
+                    "set_causal": "#/components/schemas/SetCausal-Output",
                     "set_censoring": "#/components/schemas/SetCensoring-Output",
                     "set_clusters": "#/components/schemas/SetClusters-Output",
                     "set_column_unit": "#/components/schemas/SetColumnUnit-Output",
@@ -4670,6 +4970,7 @@
                     "set_estimand": "#/components/schemas/SetEstimand-Output",
                     "set_event": "#/components/schemas/SetEvent",
                     "set_exclusions": "#/components/schemas/SetExclusions-Output",
+                    "set_explain": "#/components/schemas/SetExplain-Output",
                     "set_exposure_form": "#/components/schemas/SetExposureForm-Output",
                     "set_feature_table": "#/components/schemas/SetFeatureTable-Output",
                     "set_follow_up": "#/components/schemas/SetFollowUp-Output",
@@ -4677,6 +4978,7 @@
                     "set_lens": "#/components/schemas/SetLens",
                     "set_measurement_error": "#/components/schemas/SetMeasurementError-Output",
                     "set_missing": "#/components/schemas/SetMissing-Output",
+                    "set_model_sequence": "#/components/schemas/SetModelSequence-Output",
                     "set_multiplicity": "#/components/schemas/SetMultiplicity-Output",
                     "set_orientation": "#/components/schemas/SetOrientation",
                     "set_outcome_order": "#/components/schemas/SetOutcomeOrder",
@@ -4693,6 +4995,7 @@
                     "set_target": "#/components/schemas/SetTarget",
                     "set_task": "#/components/schemas/SetTask",
                     "set_temporal": "#/components/schemas/SetTemporal-Output",
+                    "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
                     "set_unit": "#/components/schemas/SetUnit",
                     "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
                   }
@@ -4711,6 +5014,47 @@
           "decision"
         ],
         "title": "Exit"
+      },
+      "ExplainSpec": {
+        "properties": {
+          "curves": {
+            "type": "string",
+            "enum": [
+              "ale",
+              "partial_dependence"
+            ],
+            "title": "Curves",
+            "default": "ale"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "reseeds": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Reseeds",
+            "default": 5
+          },
+          "as_effect": {
+            "type": "boolean",
+            "title": "As Effect",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "curves",
+          "exposures",
+          "reseeds",
+          "as_effect"
+        ],
+        "title": "ExplainSpec"
       },
       "ExposureFormSpec": {
         "properties": {
@@ -5876,7 +6220,9 @@
               "split",
               "estimand",
               "adjustment",
+              "time_varying",
               "energy_adjustment",
+              "causal",
               "models",
               "substitution",
               "open_seal"
@@ -7249,6 +7595,29 @@
         "title": "MissingSpec",
         "description": "The missing-values answer: columns left out of the predictors, then a strategy for the rest.\n\n``m``: the imputations under multiple imputation. ``below_detection`` and ``censored_columns``:\nhow the blanks of columns whose values lie below a detection limit are filled. ``acknowledged``\nand ``reason``: the recorded attestation that keeps a blocked answer (a single fill or the\nmissing-indicator method under inference; a median fill of non-detections, with its reason)."
       },
+      "ModelSequenceSpec": {
+        "properties": {
+          "exposure": {
+            "type": "string",
+            "title": "Exposure"
+          },
+          "model_1": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Model 1"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "exposure",
+          "model_1"
+        ],
+        "title": "ModelSequenceSpec",
+        "description": "The declared adjustment sequence beside the primary model (MODELING_SEQUENCE §1 row 11):\nModel 1's columns (the field's age, sex and energy, as the user names them), declared for one\nexposure (or the family's ``*``). The crude model, Model 2 (the primary, the full adjustment\nset) and Model 3 (plus the possible mediators the adjustment answers set beside it) follow from\nthe answers already given."
+      },
       "MultiplicitySpec": {
         "properties": {
           "method": {
@@ -7471,6 +7840,92 @@
           "scale"
         ],
         "title": "OutcomeScaleSpec"
+      },
+      "PlanExport": {
+        "properties": {
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "locked",
+              "declared"
+            ],
+            "title": "Status"
+          },
+          "declared_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared At"
+          },
+          "through_record": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Through Record"
+          },
+          "plan": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Plan"
+          },
+          "plan_sha256": {
+            "type": "string",
+            "title": "Plan Sha256"
+          },
+          "sentences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sentences"
+          },
+          "after_estimates": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "After Estimates"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "format",
+          "status",
+          "declared_at",
+          "through_record",
+          "plan",
+          "plan_sha256",
+          "sentences",
+          "after_estimates",
+          "sha256",
+          "text"
+        ],
+        "title": "PlanExport",
+        "description": "The exported analysis plan: the plan, when it was declared, its hash and its text."
       },
       "PreviewResult": {
         "properties": {
@@ -8181,6 +8636,60 @@
                 "type": "null"
               }
             ]
+          },
+          "model_sequence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSequenceSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostic_responses": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/DiagnosticResponse"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostic Responses"
+          },
+          "causal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CausalSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_varying": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeVaryingSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "explain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExplainSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8232,7 +8741,12 @@
           "joins",
           "codebooks",
           "batch",
-          "multiplicity"
+          "multiplicity",
+          "model_sequence",
+          "diagnostic_responses",
+          "causal",
+          "time_varying",
+          "explain"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -8876,6 +9390,48 @@
         ],
         "title": "Reseal",
         "description": "Draw the held-out rows again after they were opened (audit WP16, RO-05).\n\nOnce opened, the held-out rows hold still: a new seed or holdout, or anything else that would\ndraw them again, waits for this recorded re-seal. It withdraws the opening of the current\noutcome's seal, so the rows drawn next are withheld until they are opened in turn; the scores\nat the first opening stay the reported result, and later held-out scores are not an\nindependent test. ``target`` is filled by the server. It stands while its outcome is the\ntarget, as the opening does."
+      },
+      "RespondDiagnostic": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "respond_diagnostic",
+            "title": "Kind",
+            "default": "respond_diagnostic"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "check": {
+            "type": "string",
+            "enum": [
+              "proportional_hazards",
+              "influence"
+            ],
+            "title": "Check"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "keep_labeled",
+              "period_hazard_ratios",
+              "without_influential"
+            ],
+            "title": "Action"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "check",
+          "action"
+        ],
+        "title": "RespondDiagnostic",
+        "description": "The recorded response to a failed diagnostic of the primary model (``models/effects.py``)."
       },
       "Revert": {
         "properties": {
@@ -9940,6 +10496,256 @@
         "title": "SetCategorical",
         "description": "Columns whose numbers are codes for categories (RIDRETH3: 1, 2, 3, 4, 6, 7): each enters\nthe models as indicators, one per level after the first, never as one straight line."
       },
+      "SetCausal-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_causal",
+            "title": "Kind",
+            "default": "set_causal"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "dml_plr",
+              "dml_irm",
+              "tmle",
+              "pds_lasso"
+            ],
+            "title": "Method"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "linear",
+                  "lasso",
+                  "random_forest",
+                  "boosted_trees"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learner"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "all",
+              "exposed"
+            ],
+            "title": "Population",
+            "default": "all"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "repetitions": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Repetitions",
+            "default": 5
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "assumptions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "no_unmeasured_confounding",
+                "positivity",
+                "consistency",
+                "time_ordering"
+              ]
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "trim": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "sample_only": {
+            "type": "boolean",
+            "title": "Sample Only",
+            "default": false
+          },
+          "complete_rows": {
+            "type": "boolean",
+            "title": "Complete Rows",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "method"
+        ],
+        "title": "SetCausal"
+      },
+      "SetCausal-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_causal",
+            "title": "Kind",
+            "default": "set_causal"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "none",
+              "dml_plr",
+              "dml_irm",
+              "tmle",
+              "pds_lasso"
+            ],
+            "title": "Method"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "linear",
+                  "lasso",
+                  "random_forest",
+                  "boosted_trees"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learner"
+          },
+          "population": {
+            "type": "string",
+            "enum": [
+              "all",
+              "exposed"
+            ],
+            "title": "Population",
+            "default": "all"
+          },
+          "folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Folds",
+            "default": 5
+          },
+          "repetitions": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Repetitions",
+            "default": 5
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed",
+            "default": 0
+          },
+          "assumptions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "no_unmeasured_confounding",
+                "positivity",
+                "consistency",
+                "time_ordering"
+              ]
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "trim": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trim"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          },
+          "sample_only": {
+            "type": "boolean",
+            "title": "Sample Only",
+            "default": false
+          },
+          "complete_rows": {
+            "type": "boolean",
+            "title": "Complete Rows",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "learner",
+          "population",
+          "folds",
+          "repetitions",
+          "seed",
+          "assumptions",
+          "trim",
+          "acknowledged",
+          "sample_only",
+          "complete_rows"
+        ],
+        "title": "SetCausal"
+      },
       "SetCensoring-Input": {
         "properties": {
           "kind": {
@@ -10393,6 +11199,26 @@
               "exposure_mean_difference"
             ],
             "title": "Measure"
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fdr_bh",
+                  "count_stated"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiplicity"
+          },
+          "multiplicity_acknowledged": {
+            "type": "boolean",
+            "title": "Multiplicity Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -10464,6 +11290,26 @@
               "exposure_mean_difference"
             ],
             "title": "Measure"
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fdr_bh",
+                  "count_stated"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiplicity"
+          },
+          "multiplicity_acknowledged": {
+            "type": "boolean",
+            "title": "Multiplicity Acknowledged",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -10474,7 +11320,9 @@
           "family",
           "effect",
           "contrast",
-          "measure"
+          "measure",
+          "multiplicity",
+          "multiplicity_acknowledged"
         ],
         "title": "SetEstimand"
       },
@@ -10570,6 +11418,98 @@
         ],
         "title": "SetExclusions",
         "description": "Row exclusions; an empty list is the answer \"keep every row\"."
+      },
+      "SetExplain-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_explain",
+            "title": "Kind",
+            "default": "set_explain"
+          },
+          "curves": {
+            "type": "string",
+            "enum": [
+              "ale",
+              "partial_dependence"
+            ],
+            "title": "Curves",
+            "default": "ale"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "reseeds": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Reseeds",
+            "default": 5
+          },
+          "as_effect": {
+            "type": "boolean",
+            "title": "As Effect",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "SetExplain"
+      },
+      "SetExplain-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_explain",
+            "title": "Kind",
+            "default": "set_explain"
+          },
+          "curves": {
+            "type": "string",
+            "enum": [
+              "ale",
+              "partial_dependence"
+            ],
+            "title": "Curves",
+            "default": "ale"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposures"
+          },
+          "reseeds": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Reseeds",
+            "default": 5
+          },
+          "as_effect": {
+            "type": "boolean",
+            "title": "As Effect",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "curves",
+          "exposures",
+          "reseeds",
+          "as_effect"
+        ],
+        "title": "SetExplain"
       },
       "SetExposureForm-Input": {
         "properties": {
@@ -11265,6 +12205,65 @@
         ],
         "title": "SetMissing",
         "description": "How missing predictor values are handled.\n\n``drop_columns`` leave the predictors first (a mostly blank column that means \"not asked\"),\nand the strategy applies to the predictors that remain; the cohort and the design read both."
+      },
+      "SetModelSequence-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_model_sequence",
+            "title": "Kind",
+            "default": "set_model_sequence"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "model_1": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Model 1"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure"
+        ],
+        "title": "SetModelSequence"
+      },
+      "SetModelSequence-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_model_sequence",
+            "title": "Kind",
+            "default": "set_model_sequence"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "model_1": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Model 1"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "model_1"
+        ],
+        "title": "SetModelSequence"
       },
       "SetMultiplicity-Input": {
         "properties": {
@@ -12383,6 +13382,255 @@
         ],
         "title": "SetTemporal"
       },
+      "SetTimeVarying-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_time_varying",
+            "title": "Kind",
+            "default": "set_time_varying"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "msm_iptw",
+              "gformula",
+              "standard"
+            ],
+            "title": "Method"
+          },
+          "ordering": {
+            "type": "string",
+            "enum": [
+              "exposure_precedes_outcome",
+              "same_time",
+              "unknown"
+            ],
+            "title": "Ordering"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Confounders"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Baseline"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Censoring"
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "switches",
+              "initiation"
+            ],
+            "title": "Pattern",
+            "default": "switches"
+          },
+          "summary": {
+            "type": "string",
+            "enum": [
+              "current",
+              "cumulative"
+            ],
+            "title": "Summary",
+            "default": "cumulative"
+          },
+          "truncation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "p1_p99",
+                  "p5_p95"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncation"
+          },
+          "simulations": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 1000.0,
+            "title": "Simulations",
+            "default": 10000
+          },
+          "bootstrap": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 100.0,
+            "title": "Bootstrap",
+            "default": 500
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "ordering"
+        ],
+        "title": "SetTimeVarying"
+      },
+      "SetTimeVarying-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_time_varying",
+            "title": "Kind",
+            "default": "set_time_varying"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "msm_iptw",
+              "gformula",
+              "standard"
+            ],
+            "title": "Method"
+          },
+          "ordering": {
+            "type": "string",
+            "enum": [
+              "exposure_precedes_outcome",
+              "same_time",
+              "unknown"
+            ],
+            "title": "Ordering"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Confounders"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Baseline"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Censoring"
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "switches",
+              "initiation"
+            ],
+            "title": "Pattern",
+            "default": "switches"
+          },
+          "summary": {
+            "type": "string",
+            "enum": [
+              "current",
+              "cumulative"
+            ],
+            "title": "Summary",
+            "default": "cumulative"
+          },
+          "truncation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "p1_p99",
+                  "p5_p95"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncation"
+          },
+          "simulations": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 1000.0,
+            "title": "Simulations",
+            "default": 10000
+          },
+          "bootstrap": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 100.0,
+            "title": "Bootstrap",
+            "default": 500
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "ordering",
+          "confounders",
+          "baseline",
+          "censoring",
+          "pattern",
+          "summary",
+          "truncation",
+          "simulations",
+          "bootstrap",
+          "acknowledged"
+        ],
+        "title": "SetTimeVarying"
+      },
       "SetUnit": {
         "properties": {
           "kind": {
@@ -13261,7 +14509,9 @@
               "split",
               "estimand",
               "adjustment",
+              "time_varying",
               "energy_adjustment",
+              "causal",
               "models",
               "substitution",
               "open_seal"
@@ -13407,6 +14657,127 @@
           "time_column"
         ],
         "title": "TemporalSpec"
+      },
+      "TimeVaryingSpec": {
+        "properties": {
+          "exposure": {
+            "type": "string",
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "msm_iptw",
+              "gformula",
+              "standard"
+            ],
+            "title": "Method"
+          },
+          "ordering": {
+            "type": "string",
+            "enum": [
+              "exposure_precedes_outcome",
+              "same_time",
+              "unknown"
+            ],
+            "title": "Ordering"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Confounders"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Baseline"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Censoring"
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "switches",
+              "initiation"
+            ],
+            "title": "Pattern",
+            "default": "switches"
+          },
+          "summary": {
+            "type": "string",
+            "enum": [
+              "current",
+              "cumulative"
+            ],
+            "title": "Summary",
+            "default": "cumulative"
+          },
+          "truncation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "p1_p99",
+                  "p5_p95"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncation"
+          },
+          "simulations": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 1000.0,
+            "title": "Simulations",
+            "default": 10000
+          },
+          "bootstrap": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 100.0,
+            "title": "Bootstrap",
+            "default": 500
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "exposure",
+          "method",
+          "ordering",
+          "confounders",
+          "baseline",
+          "censoring",
+          "pattern",
+          "summary",
+          "truncation",
+          "simulations",
+          "bootstrap",
+          "acknowledged"
+        ],
+        "title": "TimeVaryingSpec"
       },
       "UsualIntakeSpec": {
         "properties": {
@@ -13638,6 +15009,18 @@
           "source": {
             "title": "Source",
             "type": "string"
+          },
+          "estimand_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimand Note"
           }
         },
         "required": [
@@ -13649,7 +15032,8 @@
           "adjusted",
           "left_out",
           "secondary",
-          "source"
+          "source",
+          "estimand_note"
         ],
         "title": "AdjustmentCard",
         "type": "object"
@@ -13723,6 +15107,18 @@
               }
             ],
             "title": "Decision"
+          },
+          "estimand_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimand Note"
           }
         },
         "required": [
@@ -13733,9 +15129,182 @@
           "reason",
           "derived",
           "derived_words",
-          "decision"
+          "decision",
+          "estimand_note"
         ],
         "title": "AdjustmentGroup",
+        "type": "object"
+      },
+      "AdjustmentTerm": {
+        "additionalProperties": false,
+        "description": "A coefficient that is not an effect estimate (ESTIMAND; Westreich & Greenland 2013): an\nadjustment term, the intercept or a modifier's main effect, with why. Served apart from the\nexposure's rows, under the title ``models/effects.py`` gives the appendix.",
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
+          },
+          "meaning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Meaning"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio"
+          },
+          "ratio_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio Low"
+          },
+          "ratio_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ratio High"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Q"
+          },
+          "fmi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fmi"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "feature",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "p",
+          "se",
+          "df",
+          "meaning",
+          "ratio",
+          "ratio_low",
+          "ratio_high",
+          "q",
+          "fmi",
+          "why"
+        ],
+        "title": "AdjustmentTerm",
         "type": "object"
       },
       "AggregationMenu": {
@@ -13939,6 +15508,39 @@
         "title": "AggregationReceipt",
         "type": "object"
       },
+      "AppendixModel": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "crude",
+              "model_1",
+              "model_2",
+              "model_3"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentTerm"
+            },
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "terms"
+        ],
+        "title": "AppendixModel",
+        "type": "object"
+      },
       "ApplyRepair": {
         "additionalProperties": false,
         "description": "Apply one of a finding's repair options. Row-local repairs rewrite the working table now;\nstatistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).",
@@ -13972,6 +15574,102 @@
           "params"
         ],
         "title": "ApplyRepair",
+        "type": "object"
+      },
+      "Architecture": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "equation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Equation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "trees": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TreeStructure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "path": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShrinkagePath"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "kind",
+          "equation",
+          "trees",
+          "path"
+        ],
+        "title": "Architecture",
+        "type": "object"
+      },
+      "AssumptionView": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "diagnostic": {
+            "title": "Diagnostic",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "untestable",
+              "checked",
+              "violated",
+              "stated",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "statement",
+          "diagnostic",
+          "status",
+          "source"
+        ],
+        "title": "AssumptionView",
         "type": "object"
       },
       "AtOpening": {
@@ -14103,6 +15801,146 @@
           "label"
         ],
         "title": "Baseline",
+        "type": "object"
+      },
+      "BeeswarmInput": {
+        "additionalProperties": false,
+        "description": "One input's points: its SHAP value, its value (None for a category or a blank), and its\nvalue's percentile among the explained rows for the color (a category: its level's place).",
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "phi": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Phi",
+            "type": "array"
+          },
+          "value": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Value",
+            "type": "array"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
+          },
+          "color": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Color",
+            "type": "array"
+          }
+        },
+        "required": [
+          "input",
+          "role",
+          "phi",
+          "value",
+          "level",
+          "color"
+        ],
+        "title": "BeeswarmInput",
+        "type": "object"
+      },
+      "BenchmarkResult": {
+        "additionalProperties": false,
+        "properties": {
+          "covariate": {
+            "title": "Covariate",
+            "type": "string"
+          },
+          "r2dxj": {
+            "title": "R2Dxj",
+            "type": "number"
+          },
+          "r2yxj": {
+            "title": "R2Yxj",
+            "type": "number"
+          },
+          "r2dz": {
+            "title": "R2Dz",
+            "type": "number"
+          },
+          "r2yz": {
+            "title": "R2Yz",
+            "type": "number"
+          },
+          "estimate": {
+            "title": "Estimate",
+            "type": "number"
+          },
+          "se": {
+            "title": "Se",
+            "type": "number"
+          },
+          "ci_low": {
+            "title": "Ci Low",
+            "type": "number"
+          },
+          "ci_high": {
+            "title": "Ci High",
+            "type": "number"
+          },
+          "kd": {
+            "title": "Kd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "covariate",
+          "r2dxj",
+          "r2yxj",
+          "r2dz",
+          "r2yz",
+          "estimate",
+          "se",
+          "ci_low",
+          "ci_high",
+          "kd"
+        ],
+        "title": "BenchmarkResult",
         "type": "object"
       },
       "BrantCheck": {
@@ -14606,6 +16444,47 @@
         "title": "CalibrationArtifact",
         "type": "object"
       },
+      "Candidate": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "varies": {
+            "title": "Varies",
+            "type": "boolean"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "adjusted": {
+            "title": "Adjusted",
+            "type": "boolean"
+          },
+          "affected": {
+            "title": "Affected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "varies",
+          "role",
+          "adjusted",
+          "affected"
+        ],
+        "title": "Candidate",
+        "type": "object"
+      },
       "CategoricalProposal": {
         "description": "A predictor whose numbers may be codes for groups (``set_categorical`` declares it).",
         "properties": {
@@ -14637,6 +16516,567 @@
           "reason"
         ],
         "title": "CategoricalProposal",
+        "type": "object"
+      },
+      "CausalArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "const": "inference",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "method_label": {
+            "title": "Method Label",
+            "type": "string"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Learner"
+          },
+          "population": {
+            "default": "all",
+            "title": "Population",
+            "type": "string"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssumptionView"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "declared": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Declared",
+            "type": "array"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverlapView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "variation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VariationView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CausalExit"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
+          "estimates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CausalEstimate"
+            },
+            "title": "Estimates",
+            "type": "array"
+          },
+          "repetitions": {
+            "default": [],
+            "items": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Repetitions",
+            "type": "array"
+          },
+          "n": {
+            "default": 0,
+            "title": "N",
+            "type": "integer"
+          },
+          "n_trimmed": {
+            "default": 0,
+            "title": "N Trimmed",
+            "type": "integer"
+          },
+          "selected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CausalSelection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "sensitivity": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sensitivity"
+          },
+          "methods": {
+            "default": "",
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "exposure",
+          "method",
+          "method_label",
+          "learner",
+          "population",
+          "assumptions",
+          "declared",
+          "overlap",
+          "variation",
+          "withheld",
+          "exits",
+          "estimates",
+          "repetitions",
+          "n",
+          "n_trimmed",
+          "selected",
+          "sensitivity",
+          "methods"
+        ],
+        "title": "CausalArtifact",
+        "type": "object"
+      },
+      "CausalDesignArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "const": "inference",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "offered": {
+            "title": "Offered",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "stated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stated"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "exposure_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "binary",
+                  "continuous"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exposure Kind"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task"
+          },
+          "n": {
+            "default": 0,
+            "title": "N",
+            "type": "integer"
+          },
+          "n_limit": {
+            "default": 0,
+            "title": "N Limit",
+            "type": "integer"
+          },
+          "candidates": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "many": {
+            "default": false,
+            "title": "Many",
+            "type": "boolean"
+          },
+          "options": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LabeledOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Recommended"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssumptionView"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverlapView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "variation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VariationView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "positivity": {
+            "$ref": "#/components/schemas/PositivityView",
+            "default": {
+              "violated": false,
+              "reason": null
+            }
+          },
+          "missing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MissingView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "survey": {
+            "$ref": "#/components/schemas/SurveyView",
+            "default": {
+              "population": false,
+              "weight": null
+            }
+          },
+          "leash": {
+            "default": "",
+            "title": "Leash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "offered",
+          "reason",
+          "stated",
+          "exposure",
+          "exposure_kind",
+          "level",
+          "task",
+          "n",
+          "n_limit",
+          "candidates",
+          "many",
+          "options",
+          "recommended",
+          "assumptions",
+          "overlap",
+          "variation",
+          "positivity",
+          "missing",
+          "survey",
+          "leash"
+        ],
+        "title": "CausalDesignArtifact",
+        "type": "object"
+      },
+      "CausalEstimate": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Se"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "p_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Value"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Df"
+          },
+          "scale": {
+            "default": "difference",
+            "enum": [
+              "difference",
+              "ratio"
+            ],
+            "title": "Scale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "measure",
+          "estimate",
+          "se",
+          "ci_low",
+          "ci_high",
+          "p_value",
+          "df",
+          "scale"
+        ],
+        "title": "CausalEstimate",
+        "type": "object"
+      },
+      "CausalExit": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision"
+          }
+        },
+        "required": [
+          "label",
+          "decision"
+        ],
+        "title": "CausalExit",
+        "type": "object"
+      },
+      "CausalSelection": {
+        "additionalProperties": false,
+        "description": "What the post-double-selection lassos chose, by raw column, and the model terms kept.",
+        "properties": {
+          "outcome": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Outcome",
+            "type": "array"
+          },
+          "exposure": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exposure",
+            "type": "array"
+          },
+          "union": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Union",
+            "type": "array"
+          },
+          "terms": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "outcome",
+          "exposure",
+          "union",
+          "terms"
+        ],
+        "title": "CausalSelection",
         "type": "object"
       },
       "Chronology": {
@@ -15263,6 +17703,58 @@
         "title": "CovariateAnswers",
         "type": "object"
       },
+      "Curve": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "drawn": {
+            "title": "Drawn",
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "drawn",
+          "values",
+          "reason"
+        ],
+        "title": "Curve",
+        "type": "object"
+      },
       "CurvePoint": {
         "additionalProperties": false,
         "properties": {
@@ -15431,6 +17923,18 @@
           "why": {
             "title": "Why",
             "type": "string"
+          },
+          "estimand_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Estimand Note"
           }
         },
         "required": [
@@ -15438,7 +17942,8 @@
           "words",
           "adjusted",
           "secondary",
-          "why"
+          "why",
+          "estimand_note"
         ],
         "title": "DerivedRole",
         "type": "object"
@@ -15588,6 +18093,279 @@
         "title": "DesignStep",
         "type": "object"
       },
+      "Diagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "enum": [
+              "proportional_hazards",
+              "influence"
+            ],
+            "title": "Check",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_assessed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "reading": {
+            "title": "Reading",
+            "type": "string"
+          },
+          "tests": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticTest"
+            },
+            "title": "Tests",
+            "type": "array"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Threshold"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reference"
+          },
+          "flagged": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Flagged"
+          },
+          "largest": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Largest"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "N"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InferenceExit"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Response"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Coefficient"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change"
+          },
+          "change_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Label"
+          }
+        },
+        "required": [
+          "check",
+          "status",
+          "method",
+          "reading",
+          "tests",
+          "threshold",
+          "reference",
+          "flagged",
+          "largest",
+          "n",
+          "exits",
+          "response",
+          "change",
+          "change_label"
+        ],
+        "title": "Diagnostic",
+        "type": "object"
+      },
+      "DiagnosticTest": {
+        "additionalProperties": false,
+        "properties": {
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "statistic": {
+            "title": "Statistic",
+            "type": "number"
+          },
+          "df": {
+            "title": "Df",
+            "type": "number"
+          },
+          "p": {
+            "title": "P",
+            "type": "number"
+          }
+        },
+        "required": [
+          "term",
+          "statistic",
+          "df",
+          "p"
+        ],
+        "title": "DiagnosticTest",
+        "type": "object"
+      },
+      "Diagnostics": {
+        "additionalProperties": false,
+        "properties": {
+          "weights": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "weights_by_time": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WeightsAtTime"
+            },
+            "title": "Weights By Time",
+            "type": "array"
+          },
+          "exposure_weights": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "censoring_weights": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "truncation": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TruncationOption"
+            },
+            "title": "Truncation",
+            "type": "array"
+          },
+          "positivity": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PositivityAtTime"
+            },
+            "title": "Positivity",
+            "type": "array"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "weights",
+          "weights_by_time",
+          "exposure_weights",
+          "censoring_weights",
+          "truncation",
+          "positivity",
+          "concerns"
+        ],
+        "title": "Diagnostics",
+        "type": "object"
+      },
       "DismissFinding": {
         "additionalProperties": false,
         "properties": {
@@ -15623,6 +18401,139 @@
         "title": "DismissFinding",
         "type": "object"
       },
+      "EValue": {
+        "additionalProperties": false,
+        "properties": {
+          "reads": {
+            "title": "Reads",
+            "type": "string"
+          },
+          "rr": {
+            "title": "Rr",
+            "type": "number"
+          },
+          "lo": {
+            "title": "Lo",
+            "type": "number"
+          },
+          "hi": {
+            "title": "Hi",
+            "type": "number"
+          },
+          "point": {
+            "title": "Point",
+            "type": "number"
+          },
+          "ci": {
+            "title": "Ci",
+            "type": "number"
+          }
+        },
+        "required": [
+          "reads",
+          "rr",
+          "lo",
+          "hi",
+          "point",
+          "ci"
+        ],
+        "title": "EValue",
+        "type": "object"
+      },
+      "EValueResult": {
+        "additionalProperties": false,
+        "properties": {
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "rr": {
+            "title": "Rr",
+            "type": "number"
+          },
+          "rr_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rr Low"
+          },
+          "rr_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rr High"
+          },
+          "point": {
+            "title": "Point",
+            "type": "number"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Limit"
+          },
+          "interval_includes_null": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interval Includes Null"
+          },
+          "rare": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rare"
+          },
+          "converted": {
+            "title": "Converted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "measure",
+          "rr",
+          "rr_low",
+          "rr_high",
+          "point",
+          "limit",
+          "interval_includes_null",
+          "rare",
+          "converted"
+        ],
+        "title": "EValueResult",
+        "type": "object"
+      },
       "EarlierRows": {
         "additionalProperties": false,
         "description": "For one held-out share drawn by time: how many held-out rows there are, and how many were\nobserved before the latest training row (audit IN-24).",
@@ -15651,6 +18562,222 @@
           "n_earlier"
         ],
         "title": "EarlierRows",
+        "type": "object"
+      },
+      "EffectsArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "const": "inference",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exposures",
+            "type": "array"
+          },
+          "measure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Measure"
+          },
+          "measure_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Measure Label"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "conditioning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Conditioning"
+          },
+          "collapsible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Collapsible"
+          },
+          "rows": {
+            "default": "",
+            "title": "Rows",
+            "type": "string"
+          },
+          "appendix_title": {
+            "title": "Appendix Title",
+            "type": "string"
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Multiplicity"
+          },
+          "model_1": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelOne"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/EffectsFamily"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "exposure",
+          "exposures",
+          "measure",
+          "measure_label",
+          "scale",
+          "conditioning",
+          "collapsible",
+          "rows",
+          "appendix_title",
+          "multiplicity",
+          "model_1",
+          "families",
+          "methods"
+        ],
+        "title": "EffectsArtifact",
+        "type": "object"
+      },
+      "EffectsFamily": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sequence": {
+            "items": {
+              "$ref": "#/components/schemas/SequenceFit"
+            },
+            "title": "Sequence",
+            "type": "array"
+          },
+          "appendix": {
+            "items": {
+              "$ref": "#/components/schemas/AppendixModel"
+            },
+            "title": "Appendix",
+            "type": "array"
+          },
+          "marginal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Marginal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "diagnostics": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "sensitivity": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Sensitivity"
+            },
+            "title": "Sensitivity",
+            "type": "array"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "sequence",
+          "appendix",
+          "marginal",
+          "diagnostics",
+          "sensitivity",
+          "concerns"
+        ],
+        "title": "EffectsFamily",
         "type": "object"
       },
       "EnergyRanking": {
@@ -15881,6 +19008,66 @@
         "title": "EnergyUnitReading",
         "type": "object"
       },
+      "Equation": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "scale": {
+            "title": "Scale",
+            "type": "string"
+          },
+          "outcome_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Unit"
+          },
+          "intercept": {
+            "title": "Intercept",
+            "type": "number"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/Term"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "n_terms": {
+            "title": "N Terms",
+            "type": "integer"
+          },
+          "zeros": {
+            "default": 0,
+            "title": "Zeros",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "scale",
+          "outcome_unit",
+          "intercept",
+          "terms",
+          "n_terms",
+          "zeros",
+          "text"
+        ],
+        "title": "Equation",
+        "type": "object"
+      },
       "EstimandAnnotation": {
         "additionalProperties": false,
         "description": "WP17: the served fit under a declared estimand (``turbotab/core/estimand.py``): the caption\nworded from it, and which table rows are the exposure's effect; the rest are adjustment terms.",
@@ -15955,6 +19142,42 @@
             },
             "title": "Features",
             "type": "array"
+          },
+          "appendix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Appendix"
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Multiplicity"
+          },
+          "time_varying": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time Varying"
           }
         },
         "required": [
@@ -15966,7 +19189,10 @@
           "adjusted",
           "left_out",
           "secondary",
-          "features"
+          "features",
+          "appendix",
+          "multiplicity",
+          "time_varying"
         ],
         "title": "EstimandAnnotation",
         "type": "object"
@@ -16001,13 +19227,38 @@
             },
             "title": "Measures",
             "type": "array"
+          },
+          "family": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimandFamily"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "prevalence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Prevalence"
           }
         },
         "required": [
           "exposures",
           "effects",
           "contrasts",
-          "measures"
+          "measures",
+          "family",
+          "prevalence"
         ],
         "title": "EstimandCard",
         "type": "object"
@@ -16082,6 +19333,50 @@
         "title": "EstimandExposure",
         "type": "object"
       },
+      "EstimandFamily": {
+        "description": "Every exposure reported in turn (the feature-wise family), with its multiplicity method.",
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "energy_contrast": {
+            "title": "Energy Contrast",
+            "type": "boolean"
+          },
+          "measures": {
+            "items": {
+              "$ref": "#/components/schemas/EstimandMeasure"
+            },
+            "title": "Measures",
+            "type": "array"
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MultiplicityQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "consequence": {
+            "title": "Consequence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "n",
+          "energy_contrast",
+          "measures",
+          "multiplicity",
+          "consequence"
+        ],
+        "title": "EstimandFamily",
+        "type": "object"
+      },
       "EstimandMeasure": {
         "properties": {
           "measure": {
@@ -16099,15 +19394,213 @@
           "reason": {
             "title": "Reason",
             "type": "string"
+          },
+          "scale": {
+            "default": "ratio",
+            "enum": [
+              "difference",
+              "ratio"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "conditioning": {
+            "default": "conditional",
+            "title": "Conditioning",
+            "type": "string"
+          },
+          "collapsible": {
+            "default": false,
+            "title": "Collapsible",
+            "type": "boolean"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rank"
           }
         },
         "required": [
           "measure",
           "label",
           "fitted",
-          "reason"
+          "reason",
+          "scale",
+          "conditioning",
+          "collapsible",
+          "rank"
         ],
         "title": "EstimandMeasure",
+        "type": "object"
+      },
+      "EstimateRow": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "estimate": {
+            "title": "Estimate",
+            "type": "number"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "P"
+          }
+        },
+        "required": [
+          "label",
+          "measure",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "se",
+          "p"
+        ],
+        "title": "EstimateRow",
+        "type": "object"
+      },
+      "Estimates": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/EstimateRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "curves": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RiskCurve"
+            },
+            "title": "Curves",
+            "type": "array"
+          },
+          "e_value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EValue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_units": {
+            "title": "N Units",
+            "type": "integer"
+          },
+          "simulations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Simulations"
+          },
+          "bootstrap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Bootstrap"
+          },
+          "failed_resamples": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Failed Resamples"
+          }
+        },
+        "required": [
+          "rows",
+          "curves",
+          "e_value",
+          "n_rows",
+          "n_units",
+          "simulations",
+          "bootstrap",
+          "failed_resamples"
+        ],
+        "title": "Estimates",
         "type": "object"
       },
       "ExclusionProposal": {
@@ -16237,6 +19730,154 @@
           "missing"
         ],
         "title": "ExclusionRule",
+        "type": "object"
+      },
+      "ExplainArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "describes": {
+            "title": "Describes",
+            "type": "string"
+          },
+          "under_inference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Under Inference"
+          },
+          "single_fill": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Single Fill"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "rows_of": {
+            "title": "Rows Of",
+            "type": "integer"
+          },
+          "rows_basis": {
+            "title": "Rows Basis",
+            "type": "string"
+          },
+          "row_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Row Ids",
+            "type": "array"
+          },
+          "curve_method": {
+            "title": "Curve Method",
+            "type": "string"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyExplanation"
+            },
+            "title": "Families",
+            "type": "array"
+          },
+          "curves": {
+            "items": {
+              "$ref": "#/components/schemas/InputCurves"
+            },
+            "title": "Curves",
+            "type": "array"
+          },
+          "methods": {
+            "title": "Methods",
+            "type": "string"
+          },
+          "adjustment_terms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Adjustment Terms"
+          },
+          "relations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relations",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld"
+          }
+        },
+        "required": [
+          "purpose",
+          "task",
+          "describes",
+          "under_inference",
+          "single_fill",
+          "rows",
+          "rows_of",
+          "rows_basis",
+          "row_ids",
+          "curve_method",
+          "families",
+          "curves",
+          "methods",
+          "adjustment_terms",
+          "relations",
+          "notes",
+          "withheld"
+        ],
+        "title": "ExplainArtifact",
         "type": "object"
       },
       "ExposureFormOption": {
@@ -16525,6 +20166,158 @@
         "title": "FamilyDifference",
         "type": "object"
       },
+      "FamilyExplanation": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "explained": {
+            "title": "Explained",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Method"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "base": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base"
+          },
+          "floor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Floor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "importance": {
+            "items": {
+              "$ref": "#/components/schemas/InputImportance"
+            },
+            "title": "Importance",
+            "type": "array"
+          },
+          "beeswarm": {
+            "items": {
+              "$ref": "#/components/schemas/BeeswarmInput"
+            },
+            "title": "Beeswarm",
+            "type": "array"
+          },
+          "observations": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observations"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "stability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stability"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "interactions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interactions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "architecture": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Architecture"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "family",
+          "label",
+          "explained",
+          "reason",
+          "method",
+          "scale",
+          "base",
+          "floor",
+          "importance",
+          "beeswarm",
+          "observations",
+          "stability",
+          "interactions",
+          "architecture"
+        ],
+        "title": "FamilyExplanation",
+        "type": "object"
+      },
       "Finding": {
         "properties": {
           "id": {
@@ -16632,7 +20425,9 @@
                   "split",
                   "estimand",
                   "adjustment",
+                  "time_varying",
                   "energy_adjustment",
+                  "causal",
                   "models",
                   "substitution",
                   "open_seal"
@@ -17195,6 +20990,21 @@
             },
             "title": "Exposure Tests",
             "type": "array"
+          },
+          "adjustment_terms": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdjustmentTerm"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Adjustment Terms"
           }
         },
         "required": [
@@ -17214,9 +21024,71 @@
           "holdout_detail",
           "optimism",
           "internal_external",
-          "exposure_tests"
+          "exposure_tests",
+          "adjustment_terms"
         ],
         "title": "FittedModel",
+        "type": "object"
+      },
+      "Floor": {
+        "additionalProperties": false,
+        "description": "The held-out performance floor: the family's cross-validated score against the\nno-predictor baseline's on the same folds (``models/baseline.py``).",
+        "properties": {
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "passed",
+          "verdict",
+          "metric",
+          "model",
+          "baseline",
+          "reason"
+        ],
+        "title": "Floor",
         "type": "object"
       },
       "FollowUpCandidate": {
@@ -17957,6 +21829,263 @@
         "title": "InferenceExit",
         "type": "object"
       },
+      "InputCurves": {
+        "additionalProperties": false,
+        "description": "One input's curve for every family, on one grid (shared axes).",
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "grid": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Grid",
+            "type": "array"
+          },
+          "counts": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "supported": {
+            "items": {
+              "type": "boolean"
+            },
+            "title": "Supported",
+            "type": "array"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "curves": {
+            "items": {
+              "$ref": "#/components/schemas/Curve"
+            },
+            "title": "Curves",
+            "type": "array"
+          }
+        },
+        "required": [
+          "input",
+          "sources",
+          "role",
+          "method",
+          "grid",
+          "counts",
+          "supported",
+          "unit",
+          "curves"
+        ],
+        "title": "InputCurves",
+        "type": "object"
+      },
+      "InputImportance": {
+        "additionalProperties": false,
+        "description": "One input's mean |SHAP|, its rank, and its rank in each reseeded refit.",
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "mean_abs": {
+            "title": "Mean Abs",
+            "type": "number"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "reseed_ranks": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Reseed Ranks",
+            "type": "array"
+          },
+          "in_top": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "In Top"
+          }
+        },
+        "required": [
+          "input",
+          "mean_abs",
+          "rank",
+          "role",
+          "reseed_ranks",
+          "in_top"
+        ],
+        "title": "InputImportance",
+        "type": "object"
+      },
+      "Interaction": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "title": "A",
+            "type": "string"
+          },
+          "b": {
+            "title": "B",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "strength": {
+            "title": "Strength",
+            "type": "number"
+          },
+          "h2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "H2"
+          },
+          "reseed_strength": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Reseed Strength",
+            "type": "array"
+          },
+          "reseed_h2": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Reseed H2",
+            "type": "array"
+          },
+          "in_top": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "In Top"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "rank",
+          "strength",
+          "h2",
+          "reseed_strength",
+          "reseed_h2",
+          "in_top"
+        ],
+        "title": "Interaction",
+        "type": "object"
+      },
+      "Interactions": {
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/Interaction"
+            },
+            "title": "Pairs",
+            "type": "array"
+          },
+          "rho_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho Mean"
+          },
+          "additive": {
+            "title": "Additive",
+            "type": "boolean"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "inputs",
+          "rows",
+          "pairs",
+          "rho_mean",
+          "additive",
+          "method"
+        ],
+        "title": "Interactions",
+        "type": "object"
+      },
       "InternalExternal": {
         "additionalProperties": false,
         "description": "Internal–external validation by ``cluster`` (module docstring).",
@@ -18214,6 +22343,41 @@
         "title": "JoinFiles",
         "type": "object"
       },
+      "LabeledChoice": {
+        "description": "An option with north star 5's two labels (as ``custom_sound`` shapes them).",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Customary",
+            "type": "object"
+          },
+          "sound": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Sound",
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound"
+        ],
+        "title": "LabeledChoice",
+        "type": "object"
+      },
       "LabeledOption": {
         "additionalProperties": false,
         "properties": {
@@ -18294,6 +22458,45 @@
           "tension"
         ],
         "title": "LabeledQuestion",
+        "type": "object"
+      },
+      "LaneOption": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "rung": {
+            "title": "Rung",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound",
+          "rung",
+          "order"
+        ],
+        "title": "LaneOption",
         "type": "object"
       },
       "LeaveOut": {
@@ -18427,6 +22630,178 @@
           "seen_at"
         ],
         "title": "LockPlan",
+        "type": "object"
+      },
+      "Marginal": {
+        "additionalProperties": false,
+        "properties": {
+          "declared": {
+            "enum": [
+              "risk_difference",
+              "risk_ratio"
+            ],
+            "title": "Declared",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "contrasts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MarginalContrast"
+            },
+            "title": "Contrasts",
+            "type": "array"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refused"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InferenceExit"
+            },
+            "title": "Exits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "declared",
+          "method",
+          "contrasts",
+          "refused",
+          "exits"
+        ],
+        "title": "Marginal",
+        "type": "object"
+      },
+      "MarginalContrast": {
+        "additionalProperties": false,
+        "properties": {
+          "setting": {
+            "title": "Setting",
+            "type": "string"
+          },
+          "risk_low": {
+            "title": "Risk Low",
+            "type": "number"
+          },
+          "risk_high": {
+            "title": "Risk High",
+            "type": "number"
+          },
+          "rd": {
+            "title": "Rd",
+            "type": "number"
+          },
+          "rr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rr"
+          },
+          "rd_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rd Low"
+          },
+          "rd_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rd High"
+          },
+          "rr_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rr Low"
+          },
+          "rr_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rr High"
+          },
+          "n_boot": {
+            "default": 0,
+            "title": "N Boot",
+            "type": "integer"
+          },
+          "n_failed": {
+            "default": 0,
+            "title": "N Failed",
+            "type": "integer"
+          },
+          "by_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "By Unit"
+          }
+        },
+        "required": [
+          "setting",
+          "risk_low",
+          "risk_high",
+          "rd",
+          "rr",
+          "rd_low",
+          "rd_high",
+          "rr_low",
+          "rr_high",
+          "n_boot",
+          "n_failed",
+          "by_unit"
+        ],
+        "title": "MarginalContrast",
         "type": "object"
       },
       "MatrixShape": {
@@ -18891,6 +23266,207 @@
         "title": "MissingReading",
         "type": "object"
       },
+      "MissingView": {
+        "additionalProperties": false,
+        "properties": {
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_complete": {
+            "title": "N Complete",
+            "type": "integer"
+          },
+          "n_incomplete": {
+            "title": "N Incomplete",
+            "type": "integer"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "n_rows",
+          "n_complete",
+          "n_incomplete",
+          "answer",
+          "blocked",
+          "reason"
+        ],
+        "title": "MissingView",
+        "type": "object"
+      },
+      "ModelOne": {
+        "additionalProperties": false,
+        "properties": {
+          "declared": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared"
+          },
+          "guess": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Guess",
+            "type": "array"
+          },
+          "allowed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "decision": {
+            "additionalProperties": true,
+            "title": "Decision",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "declared",
+          "guess",
+          "allowed",
+          "decision",
+          "reason"
+        ],
+        "title": "ModelOne",
+        "type": "object"
+      },
+      "ModelSequenceCard": {
+        "description": "ESTIMAND (MODELING_SEQUENCE §1 row 11): Model 1's declaration, the pack's guess leading.",
+        "properties": {
+          "declared": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared"
+          },
+          "guess": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Guess",
+            "type": "array"
+          },
+          "allowed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "decision": {
+            "additionalProperties": true,
+            "title": "Decision",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "declared",
+          "guess",
+          "allowed",
+          "decision",
+          "reason"
+        ],
+        "title": "ModelSequenceCard",
+        "type": "object"
+      },
+      "MultiplicityQuestion": {
+        "description": "ESTIMAND (MODELING_SEQUENCE §2): an exposure family's multiplicity method.",
+        "properties": {
+          "question": {
+            "const": "multiplicity",
+            "title": "Question",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/LabeledChoice"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "customary_first": {
+            "title": "Customary First",
+            "type": "string"
+          },
+          "tension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tension"
+          },
+          "n_tests": {
+            "title": "N Tests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question",
+          "options",
+          "customary_first",
+          "tension",
+          "n_tests"
+        ],
+        "title": "MultiplicityQuestion",
+        "type": "object"
+      },
       "NestedColumn": {
         "additionalProperties": false,
         "description": "A predictor that is part of another (``fat_sat`` of ``fat_total``), confirmed on training rows.",
@@ -18928,6 +23504,64 @@
           "reason"
         ],
         "title": "NotAdjusted",
+        "type": "object"
+      },
+      "Observations": {
+        "additionalProperties": false,
+        "description": "Per-row attributions: ``base + Σ phi + rest == prediction`` on the model's scale.",
+        "properties": {
+          "row_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Row Ids",
+            "type": "array"
+          },
+          "base": {
+            "title": "Base",
+            "type": "number"
+          },
+          "prediction": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Prediction",
+            "type": "array"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "phi": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Phi",
+            "type": "array"
+          },
+          "rest": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Rest",
+            "type": "array"
+          }
+        },
+        "required": [
+          "row_ids",
+          "base",
+          "prediction",
+          "inputs",
+          "phi",
+          "rest"
+        ],
+        "title": "Observations",
         "type": "object"
       },
       "OmittedEnergy": {
@@ -19518,6 +24152,131 @@
         "title": "OutcomeWithinUnit",
         "type": "object"
       },
+      "OverlapView": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "bins": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Bins",
+            "type": "array"
+          },
+          "exposed": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Exposed",
+            "type": "array"
+          },
+          "unexposed": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Unexposed",
+            "type": "array"
+          },
+          "bound": {
+            "title": "Bound",
+            "type": "number"
+          },
+          "n_outside": {
+            "title": "N Outside",
+            "type": "integer"
+          },
+          "share_outside": {
+            "title": "Share Outside",
+            "type": "number"
+          },
+          "extreme_weight_share": {
+            "title": "Extreme Weight Share",
+            "type": "number"
+          },
+          "max_weight": {
+            "title": "Max Weight",
+            "type": "number"
+          },
+          "ess_exposed": {
+            "title": "Ess Exposed",
+            "type": "number"
+          },
+          "ess_unexposed": {
+            "title": "Ess Unexposed",
+            "type": "number"
+          },
+          "n_exposed": {
+            "title": "N Exposed",
+            "type": "integer"
+          },
+          "n_unexposed": {
+            "title": "N Unexposed",
+            "type": "integer"
+          },
+          "min_exposed": {
+            "title": "Min Exposed",
+            "type": "number"
+          },
+          "max_unexposed": {
+            "title": "Max Unexposed",
+            "type": "number"
+          },
+          "violated": {
+            "title": "Violated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "model",
+          "bins",
+          "exposed",
+          "unexposed",
+          "bound",
+          "n_outside",
+          "share_outside",
+          "extreme_weight_share",
+          "max_weight",
+          "ess_exposed",
+          "ess_unexposed",
+          "n_exposed",
+          "n_unexposed",
+          "min_exposed",
+          "max_unexposed",
+          "violated"
+        ],
+        "title": "OverlapView",
+        "type": "object"
+      },
+      "PathLine": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "coefficients": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Coefficients",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column",
+          "input",
+          "coefficients"
+        ],
+        "title": "PathLine",
+        "type": "object"
+      },
       "Pooled": {
         "additionalProperties": false,
         "description": "A DerSimonian–Laird random-effects summary of one score across clusters.",
@@ -19637,6 +24396,82 @@
         "title": "Pooled",
         "type": "object"
       },
+      "PositivityAtTime": {
+        "additionalProperties": false,
+        "properties": {
+          "time": {
+            "title": "Time",
+            "type": "integer"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "exposed": {
+            "title": "Exposed",
+            "type": "integer"
+          },
+          "unexposed": {
+            "title": "Unexposed",
+            "type": "integer"
+          },
+          "p_min": {
+            "title": "P Min",
+            "type": "number"
+          },
+          "p_max": {
+            "title": "P Max",
+            "type": "number"
+          },
+          "near_zero": {
+            "title": "Near Zero",
+            "type": "integer"
+          },
+          "near_one": {
+            "title": "Near One",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "rows",
+          "exposed",
+          "unexposed",
+          "p_min",
+          "p_max",
+          "near_zero",
+          "near_one"
+        ],
+        "title": "PositivityAtTime",
+        "type": "object"
+      },
+      "PositivityView": {
+        "additionalProperties": false,
+        "properties": {
+          "violated": {
+            "title": "Violated",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "violated",
+          "reason"
+        ],
+        "title": "PositivityView",
+        "type": "object"
+      },
       "ProfileArtifact": {
         "description": "The ``profile`` artifact.",
         "properties": {
@@ -19665,6 +24500,31 @@
           "basis"
         ],
         "title": "ProfileArtifact",
+        "type": "object"
+      },
+      "Proposal": {
+        "additionalProperties": false,
+        "properties": {
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Confounders",
+            "type": "array"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Baseline",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confounders",
+          "baseline"
+        ],
+        "title": "Proposal",
         "type": "object"
       },
       "ProposalsArtifact": {
@@ -19768,6 +24628,17 @@
               }
             ],
             "default": null
+          },
+          "model_sequence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSequenceCard"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -19782,7 +24653,8 @@
           "energy_unit",
           "labels",
           "estimand",
-          "adjustment"
+          "adjustment",
+          "model_sequence"
         ],
         "title": "ProposalsArtifact",
         "type": "object"
@@ -20135,6 +25007,115 @@
           "target"
         ],
         "title": "Reseal",
+        "type": "object"
+      },
+      "RiskCurve": {
+        "additionalProperties": false,
+        "properties": {
+          "strategy": {
+            "enum": [
+              "always",
+              "never",
+              "natural",
+              "observed"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "risks": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "mc_se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mc Se"
+          }
+        },
+        "required": [
+          "strategy",
+          "label",
+          "risks",
+          "mc_se"
+        ],
+        "title": "RiskCurve",
+        "type": "object"
+      },
+      "RobustnessResult": {
+        "additionalProperties": false,
+        "properties": {
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "estimate": {
+            "title": "Estimate",
+            "type": "number"
+          },
+          "se": {
+            "title": "Se",
+            "type": "number"
+          },
+          "t": {
+            "title": "T",
+            "type": "number"
+          },
+          "dof": {
+            "title": "Dof",
+            "type": "number"
+          },
+          "partial_r2": {
+            "title": "Partial R2",
+            "type": "number"
+          },
+          "rv": {
+            "title": "Rv",
+            "type": "number"
+          },
+          "rv_alpha": {
+            "title": "Rv Alpha",
+            "type": "number"
+          },
+          "alpha": {
+            "title": "Alpha",
+            "type": "number"
+          },
+          "benchmarks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkResult"
+            },
+            "title": "Benchmarks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "exposure",
+          "estimate",
+          "se",
+          "t",
+          "dof",
+          "partial_r2",
+          "rv",
+          "rv_alpha",
+          "alpha",
+          "benchmarks"
+        ],
+        "title": "RobustnessResult",
         "type": "object"
       },
       "RoleProposal": {
@@ -20991,6 +25972,70 @@
         "title": "Selection",
         "type": "object"
       },
+      "Sensitivity": {
+        "additionalProperties": false,
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "methods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "e_value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EValueResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "robustness": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RobustnessResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "reading": {
+            "title": "Reading",
+            "type": "string"
+          },
+          "not_computed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Not Computed"
+          }
+        },
+        "required": [
+          "feature",
+          "methods",
+          "e_value",
+          "robustness",
+          "reading",
+          "not_computed"
+        ],
+        "title": "Sensitivity",
+        "type": "object"
+      },
       "SensitivityAnalysis": {
         "additionalProperties": false,
         "description": "One analysis beside the primary: the same model on the rows these rules keep instead.",
@@ -21301,6 +26346,93 @@
         "title": "SensitivityRow",
         "type": "object"
       },
+      "SequenceFit": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "crude",
+              "model_1",
+              "model_2",
+              "model_3"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "adjusted_for": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Adjusted For",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "effects": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Coefficient"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effects"
+          },
+          "inference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Inference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "adjusted_for",
+          "note",
+          "n_rows",
+          "effects",
+          "inference",
+          "concerns"
+        ],
+        "title": "SequenceFit",
+        "type": "object"
+      },
       "SetAdjustment": {
         "additionalProperties": false,
         "description": "Answers for some covariates, against one exposure: one tap per group of covariates that\nshare their answers (BLUEPRINT §14.2). Each covariate's answer is kept under its column, so a\nlater group's answers never undo an earlier group's.",
@@ -21438,6 +26570,138 @@
           "figures"
         ],
         "title": "SetBatch",
+        "type": "object"
+      },
+      "SetCausal": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_causal",
+            "default": "set_causal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "minLength": 1,
+            "title": "Exposure",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "none",
+              "dml_plr",
+              "dml_irm",
+              "tmle",
+              "pds_lasso"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "learner": {
+            "anyOf": [
+              {
+                "enum": [
+                  "linear",
+                  "lasso",
+                  "random_forest",
+                  "boosted_trees"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Learner"
+          },
+          "population": {
+            "default": "all",
+            "enum": [
+              "all",
+              "exposed"
+            ],
+            "title": "Population",
+            "type": "string"
+          },
+          "folds": {
+            "default": 5,
+            "maximum": 10,
+            "minimum": 2,
+            "title": "Folds",
+            "type": "integer"
+          },
+          "repetitions": {
+            "default": 5,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Repetitions",
+            "type": "integer"
+          },
+          "seed": {
+            "default": 0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "assumptions": {
+            "items": {
+              "enum": [
+                "no_unmeasured_confounding",
+                "positivity",
+                "consistency",
+                "time_ordering"
+              ],
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "trim": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Trim"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "sample_only": {
+            "default": false,
+            "title": "Sample Only",
+            "type": "boolean"
+          },
+          "complete_rows": {
+            "default": false,
+            "title": "Complete Rows",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "learner",
+          "population",
+          "folds",
+          "repetitions",
+          "seed",
+          "assumptions",
+          "trim",
+          "acknowledged",
+          "sample_only",
+          "complete_rows"
+        ],
+        "title": "SetCausal",
         "type": "object"
       },
       "SetCensoring": {
@@ -21709,6 +26973,27 @@
             ],
             "title": "Measure",
             "type": "string"
+          },
+          "multiplicity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fdr_bh",
+                  "count_stated"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Multiplicity"
+          },
+          "multiplicity_acknowledged": {
+            "default": false,
+            "title": "Multiplicity Acknowledged",
+            "type": "boolean"
           }
         },
         "required": [
@@ -21717,7 +27002,9 @@
           "family",
           "effect",
           "contrast",
-          "measure"
+          "measure",
+          "multiplicity",
+          "multiplicity_acknowledged"
         ],
         "title": "SetEstimand",
         "type": "object"
@@ -21752,6 +27039,54 @@
           "rules"
         ],
         "title": "SetExclusions",
+        "type": "object"
+      },
+      "SetExplain": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_explain",
+            "default": "set_explain",
+            "title": "Kind",
+            "type": "string"
+          },
+          "curves": {
+            "default": "ale",
+            "enum": [
+              "ale",
+              "partial_dependence"
+            ],
+            "title": "Curves",
+            "type": "string"
+          },
+          "exposures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exposures",
+            "type": "array"
+          },
+          "reseeds": {
+            "default": 5,
+            "maximum": 20,
+            "minimum": 0,
+            "title": "Reseeds",
+            "type": "integer"
+          },
+          "as_effect": {
+            "default": false,
+            "title": "As Effect",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "curves",
+          "exposures",
+          "reseeds",
+          "as_effect"
+        ],
+        "title": "SetExplain",
         "type": "object"
       },
       "SetExposureForm": {
@@ -22100,6 +27435,36 @@
           "reason"
         ],
         "title": "SetMissing",
+        "type": "object"
+      },
+      "SetModelSequence": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_model_sequence",
+            "default": "set_model_sequence",
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "minLength": 1,
+            "title": "Exposure",
+            "type": "string"
+          },
+          "model_1": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Model 1",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "exposure",
+          "model_1"
+        ],
+        "title": "SetModelSequence",
         "type": "object"
       },
       "SetMultiplicity": {
@@ -22581,6 +27946,137 @@
         "title": "SetTemporal",
         "type": "object"
       },
+      "SetTimeVarying": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_time_varying",
+            "default": "set_time_varying",
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "minLength": 1,
+            "title": "Exposure",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "msm_iptw",
+              "gformula",
+              "standard"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "ordering": {
+            "enum": [
+              "exposure_precedes_outcome",
+              "same_time",
+              "unknown"
+            ],
+            "title": "Ordering",
+            "type": "string"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Confounders",
+            "type": "array"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Baseline",
+            "type": "array"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Censoring"
+          },
+          "pattern": {
+            "default": "switches",
+            "enum": [
+              "switches",
+              "initiation"
+            ],
+            "title": "Pattern",
+            "type": "string"
+          },
+          "summary": {
+            "default": "cumulative",
+            "enum": [
+              "current",
+              "cumulative"
+            ],
+            "title": "Summary",
+            "type": "string"
+          },
+          "truncation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "p1_p99",
+                  "p5_p95"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Truncation"
+          },
+          "simulations": {
+            "default": 10000,
+            "maximum": 200000,
+            "minimum": 1000,
+            "title": "Simulations",
+            "type": "integer"
+          },
+          "bootstrap": {
+            "default": 500,
+            "maximum": 2000,
+            "minimum": 100,
+            "title": "Bootstrap",
+            "type": "integer"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "ordering",
+          "confounders",
+          "baseline",
+          "censoring",
+          "pattern",
+          "summary",
+          "truncation",
+          "simulations",
+          "bootstrap",
+          "acknowledged"
+        ],
+        "title": "SetTimeVarying",
+        "type": "object"
+      },
       "SetUsualIntake": {
         "additionalProperties": false,
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``.",
@@ -22717,6 +28213,121 @@
         "title": "SetUsualIntake",
         "type": "object"
       },
+      "Setting": {
+        "additionalProperties": false,
+        "properties": {
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "time_column": {
+            "title": "Time Column",
+            "type": "string"
+          },
+          "time_points": {
+            "title": "Time Points",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "late_units": {
+            "title": "Late Units",
+            "type": "integer"
+          },
+          "gap_units": {
+            "title": "Gap Units",
+            "type": "integer"
+          },
+          "repeat_units": {
+            "title": "Repeat Units",
+            "type": "integer"
+          },
+          "exposure_binary": {
+            "title": "Exposure Binary",
+            "type": "boolean"
+          },
+          "exposure_levels": {
+            "title": "Exposure Levels",
+            "type": "integer"
+          },
+          "exposure_varies": {
+            "title": "Exposure Varies",
+            "type": "boolean"
+          },
+          "exposure_changers": {
+            "title": "Exposure Changers",
+            "type": "integer"
+          },
+          "exposure_stops": {
+            "title": "Exposure Stops",
+            "type": "integer"
+          },
+          "outcome_kind": {
+            "enum": [
+              "event",
+              "repeated_binary",
+              "measure",
+              "other"
+            ],
+            "title": "Outcome Kind",
+            "type": "string"
+          },
+          "units_after_event": {
+            "title": "Units After Event",
+            "type": "integer"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "varies": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Varies",
+            "type": "object"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/Proposal"
+          }
+        },
+        "required": [
+          "exposure",
+          "unit",
+          "time_column",
+          "time_points",
+          "units",
+          "rows",
+          "late_units",
+          "gap_units",
+          "repeat_units",
+          "exposure_binary",
+          "exposure_levels",
+          "exposure_varies",
+          "exposure_changers",
+          "exposure_stops",
+          "outcome_kind",
+          "units_after_event",
+          "candidates",
+          "varies",
+          "proposal"
+        ],
+        "title": "Setting",
+        "type": "object"
+      },
       "ShelfArtifact": {
         "additionalProperties": false,
         "description": "The ``shelf`` artifact: every family that can model the task, best first.",
@@ -22811,6 +28422,69 @@
           "estimate"
         ],
         "title": "ShelfFamily",
+        "type": "object"
+      },
+      "ShrinkagePath": {
+        "additionalProperties": false,
+        "properties": {
+          "penalty_name": {
+            "title": "Penalty Name",
+            "type": "string"
+          },
+          "penalties": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Penalties",
+            "type": "array"
+          },
+          "chosen": {
+            "title": "Chosen",
+            "type": "number"
+          },
+          "chosen_index": {
+            "title": "Chosen Index",
+            "type": "integer"
+          },
+          "l1_ratio": {
+            "title": "L1 Ratio",
+            "type": "number"
+          },
+          "scale": {
+            "title": "Scale",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PathLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "nonzero": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Nonzero",
+            "type": "array"
+          },
+          "n_columns": {
+            "title": "N Columns",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "penalty_name",
+          "penalties",
+          "chosen",
+          "chosen_index",
+          "l1_ratio",
+          "scale",
+          "lines",
+          "nonzero",
+          "n_columns"
+        ],
+        "title": "ShrinkagePath",
         "type": "object"
       },
       "Sound": {
@@ -23003,6 +28677,140 @@
           "time_ordered_folds"
         ],
         "title": "SplitArtifact",
+        "type": "object"
+      },
+      "SplitCount": {
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "root": {
+            "title": "Root",
+            "type": "integer"
+          },
+          "splits": {
+            "title": "Splits",
+            "type": "integer"
+          },
+          "median_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Threshold"
+          }
+        },
+        "required": [
+          "input",
+          "root",
+          "splits",
+          "median_threshold"
+        ],
+        "title": "SplitCount",
+        "type": "object"
+      },
+      "Stability": {
+        "additionalProperties": false,
+        "description": "Mean |SHAP| over the same rows, refit on bootstrap resamples each with its own seed.",
+        "properties": {
+          "reseeds": {
+            "title": "Reseeds",
+            "type": "integer"
+          },
+          "resampled_by": {
+            "title": "Resampled By",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "importance": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Importance",
+            "type": "array"
+          },
+          "pairwise": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Pairwise",
+            "type": "array"
+          },
+          "versus_fit": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Versus Fit",
+            "type": "array"
+          },
+          "rho_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho Mean"
+          },
+          "rho_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rho Min"
+          },
+          "top": {
+            "title": "Top",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reseeds",
+          "resampled_by",
+          "inputs",
+          "importance",
+          "pairwise",
+          "versus_fit",
+          "rho_mean",
+          "rho_min",
+          "top"
+        ],
+        "title": "Stability",
         "type": "object"
       },
       "StatedGrain": {
@@ -23973,6 +29781,33 @@
         "title": "SurveyProposal",
         "type": "object"
       },
+      "SurveyView": {
+        "additionalProperties": false,
+        "properties": {
+          "population": {
+            "title": "Population",
+            "type": "boolean"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "population",
+          "weight"
+        ],
+        "title": "SurveyView",
+        "type": "object"
+      },
       "TargetInfo": {
         "description": "The ``target_info`` artifact.",
         "properties": {
@@ -24153,6 +29988,78 @@
         "title": "TargetInfo",
         "type": "object"
       },
+      "Term": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "coefficient": {
+            "title": "Coefficient",
+            "type": "number"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "coefficient_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coefficient Unit"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Level"
+          },
+          "role": {
+            "default": "predictor",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "input",
+          "kind",
+          "coefficient",
+          "unit",
+          "coefficient_unit",
+          "level",
+          "role"
+        ],
+        "title": "Term",
+        "type": "object"
+      },
       "TimeOrder": {
         "description": "Whether the time column can put a unit's records in order (stages.working.time_order).",
         "properties": {
@@ -24217,6 +30124,343 @@
           "examples"
         ],
         "title": "TimeOrder",
+        "type": "object"
+      },
+      "TimeVaryingArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "const": "inference",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exposure"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Method"
+          },
+          "setting": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Setting"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "options": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LaneOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "affected": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected",
+            "type": "array"
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Diagnostics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "estimates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Estimates"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
+          "relations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Relations",
+            "type": "array"
+          },
+          "methods": {
+            "default": "",
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "applies",
+          "reason",
+          "exposure",
+          "method",
+          "setting",
+          "options",
+          "affected",
+          "diagnostics",
+          "estimates",
+          "withheld",
+          "exits",
+          "relations",
+          "methods"
+        ],
+        "title": "TimeVaryingArtifact",
+        "type": "object"
+      },
+      "TreeNode": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "blanks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blanks"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right"
+          }
+        },
+        "required": [
+          "id",
+          "depth",
+          "column",
+          "input",
+          "threshold",
+          "blanks",
+          "n",
+          "value",
+          "left",
+          "right"
+        ],
+        "title": "TreeNode",
+        "type": "object"
+      },
+      "TreeStructure": {
+        "additionalProperties": false,
+        "properties": {
+          "n_trees": {
+            "title": "N Trees",
+            "type": "integer"
+          },
+          "levels": {
+            "title": "Levels",
+            "type": "integer"
+          },
+          "first_tree": {
+            "items": {
+              "$ref": "#/components/schemas/TreeNode"
+            },
+            "title": "First Tree",
+            "type": "array"
+          },
+          "splits": {
+            "items": {
+              "$ref": "#/components/schemas/SplitCount"
+            },
+            "title": "Splits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "n_trees",
+          "levels",
+          "first_tree",
+          "splits"
+        ],
+        "title": "TreeStructure",
+        "type": "object"
+      },
+      "TruncationOption": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "none",
+              "p1_p99",
+              "p5_p95"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/WeightSummary"
+          },
+          "chosen": {
+            "title": "Chosen",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound",
+          "summary",
+          "chosen"
+        ],
+        "title": "TruncationOption",
         "type": "object"
       },
       "TurnCheck": {
@@ -25115,6 +31359,35 @@
         "title": "ValidationPlan",
         "type": "object"
       },
+      "VariationView": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "r2": {
+            "title": "R2",
+            "type": "number"
+          },
+          "residual_sd": {
+            "title": "Residual Sd",
+            "type": "number"
+          },
+          "violated": {
+            "title": "Violated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "model",
+          "r2",
+          "residual_sd",
+          "violated"
+        ],
+        "title": "VariationView",
+        "type": "object"
+      },
       "VersusBaseline": {
         "additionalProperties": false,
         "description": "A family's primary metric against its baseline's, paired over the same folds.",
@@ -25218,6 +31491,129 @@
           "level"
         ],
         "title": "VersusBaseline",
+        "type": "object"
+      },
+      "WeightSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "mean": {
+            "title": "Mean",
+            "type": "number"
+          },
+          "sd": {
+            "title": "Sd",
+            "type": "number"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          },
+          "p1": {
+            "title": "P1",
+            "type": "number"
+          },
+          "p25": {
+            "title": "P25",
+            "type": "number"
+          },
+          "median": {
+            "title": "Median",
+            "type": "number"
+          },
+          "p75": {
+            "title": "P75",
+            "type": "number"
+          },
+          "p99": {
+            "title": "P99",
+            "type": "number"
+          },
+          "max": {
+            "title": "Max",
+            "type": "number"
+          }
+        },
+        "required": [
+          "n",
+          "mean",
+          "sd",
+          "min",
+          "p1",
+          "p25",
+          "median",
+          "p75",
+          "p99",
+          "max"
+        ],
+        "title": "WeightSummary",
+        "type": "object"
+      },
+      "WeightsAtTime": {
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "mean": {
+            "title": "Mean",
+            "type": "number"
+          },
+          "sd": {
+            "title": "Sd",
+            "type": "number"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          },
+          "p1": {
+            "title": "P1",
+            "type": "number"
+          },
+          "p25": {
+            "title": "P25",
+            "type": "number"
+          },
+          "median": {
+            "title": "Median",
+            "type": "number"
+          },
+          "p75": {
+            "title": "P75",
+            "type": "number"
+          },
+          "p99": {
+            "title": "P99",
+            "type": "number"
+          },
+          "max": {
+            "title": "Max",
+            "type": "number"
+          },
+          "time": {
+            "title": "Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "mean",
+          "sd",
+          "min",
+          "p1",
+          "p25",
+          "median",
+          "p75",
+          "p99",
+          "max",
+          "time"
+        ],
+        "title": "WeightsAtTime",
         "type": "object"
       },
       "WorkingArtifact": {

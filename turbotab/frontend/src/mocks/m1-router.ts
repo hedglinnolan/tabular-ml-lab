@@ -24,10 +24,12 @@ const NEEDS: Record<QuestionKey, string[]> = {
   survey: ["proposals"],
   estimand: ["proposals"],
   adjustment: ["proposals"],
+  time_varying: ["time_varying"],
   exclusions: ["proposals"],
   missing: [],
   split: [],
   energy_adjustment: ["proposals"],
+  causal: ["causal_design"],
   models: ["shelf"],
   substitution: ["fit"],
   open_seal: ["fit"],
@@ -111,6 +113,11 @@ function sequenceGate(
       return Object.keys(state.roles).some((c) => /^WT(DRD1|DR2D|MEC2YR|INT2YR)$/i.test(c))
         ? null
         : "No column reads as a survey weight, so there is no surveyed population to weight to.";
+    case "causal":
+      // turbotab/core/causal.py: the causal lane is never offered under prediction.
+      return state.purpose === "prediction"
+        ? "Under prediction no coefficient is read as an effect, so no causal estimate is offered."
+        : null;
     default:
       return null;
   }

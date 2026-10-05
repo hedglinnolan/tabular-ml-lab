@@ -608,8 +608,10 @@ def test_4_the_six_unit_exit_is_a_mixed_model_with_sodium_p_085(tmp_path):
     assert sodium["p"] == pytest.approx(0.85, abs=0.01)
     assert mixed.pvalues["sodium_mg"] == pytest.approx(0.85, abs=0.01)
     assert naive.pvalues["sodium_mg"] < 1e-12
-    for name in ("sodium_mg", "age"):
-        assert _row(model["coefficients"], name)["estimate"] == pytest.approx(
+    from turbotab.core.tests.acceptance.server_drive import every_row
+
+    for name in ("sodium_mg", "age"):  # age: an adjustment term, served in the appendix
+        assert _row(every_row(model), name)["estimate"] == pytest.approx(
             mixed.fe_params[name], rel=1e-4)
     # The interval is the t interval on the coefficient's own Satterthwaite df.
     q = stats.t.ppf(0.975, sodium["df"])
