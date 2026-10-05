@@ -245,6 +245,7 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.codebook", "turbotab.core.models.survey", "turbotab.core.methods.missing",
     "turbotab.core.models.validation", "turbotab.core.stages.effects", "turbotab.core.causal",
     "turbotab.core.time_varying", "turbotab.core.models.explain", "turbotab.core.routing_leash",
+    "turbotab.core.methods.calibration",
 )
 
 

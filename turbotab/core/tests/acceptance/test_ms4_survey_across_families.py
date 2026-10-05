@@ -634,7 +634,9 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
       adjusted Wald tests;
     * multiple imputation (MS2's frame, the MI package's): each completed copy is analyzed
       design-based, so the pooled table is too;
-    * regression calibration: blocked, as it has no design-based variance here.
+    * regression calibration: design-based since MS5 (weighted, PSUs resampled within strata), so
+      the population answer blocks nothing; on this table, whose rows are not combined recalls, it
+      says so instead.
 
     The invariant is checked structurally (:func:`assert_design_based_or_blocked`), each block's
     exits are checked to change only what they say (the design-based family in the blocked one's
@@ -739,20 +741,15 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     assert pooled["inference"]["missing"]["method"] == "multiple_imputation"
 
     from turbotab.core.decisions import MeasurementErrorSpec
-    from turbotab.core.stages.calibration import POPULATION as CALIBRATION_BLOCK
-    from turbotab.core.stages.calibration import UNCORRECTED_EXIT, calibration_stage
+    from turbotab.core.stages.calibration import NOT_COMBINED, calibration_stage
     from turbotab.core.tests import modeling_fixtures as mf
 
     st = run["state"].model_copy(update={"measurement_error": MeasurementErrorSpec(
         method="regression_calibration")})
     calibrated = calibration_stage(mf.context(st, {"working": {}, "structure": None},
                                               run["paths"])).data
-    assert calibrated["applies"] is False and calibrated["reason"] == CALIBRATION_BLOCK
-    assert "these participants" in CALIBRATION_BLOCK
-    # The block's exits are decisions, not prose (each is taken in the calibration chain below).
-    assert calibrated["exits"] == [
-        {"label": SAMPLE_EXIT, "decision": SAMPLE_ONLY},
-        {"label": UNCORRECTED_EXIT, "decision": {"kind": "set_measurement_error", "method": "none"}}]
+    assert calibrated["applies"] is False and calibrated["reason"] == NOT_COMBINED
+    assert calibrated["exits"] == []  # the population answer blocks nothing (MS5)
 
     # The shelf says it before the families are chosen: those with a design-based estimator
     # first, the rest after them with the reason; the shelf is never shortened.
@@ -824,7 +821,7 @@ def test_4_no_table_or_curve_under_the_population_answer_carries_srs_intervals(t
     assert relations == {
         ("implies", "design_based_or_blocked"), ("conflicts", "no_design_estimator"),
         ("invalidates", "bootstrap_band"), ("implies", "multiple_imputation"),
-        ("conflicts", "regression_calibration"), ("conflicts", "scale_correction"),
+        ("implies", "regression_calibration"), ("conflicts", "scale_correction"),
         ("implies", "restated"), ("implies", "unweighted_scores")}
 
 
@@ -1004,14 +1001,18 @@ SWAP_POPULATION = ("over the surveyed population its curve is the weighted mean 
                    "linearization over the survey design (the `50` bootstrap refits asked for are "
                    "not drawn: a row bootstrap ignores the strata and PSUs).")
 SWAP_SAMPLE = "its band comes from `50` refits of each model on bootstrap resamples of every analyzed row."
+# MS5 (MODELING_SEQUENCE §0 ruling 7): regression calibration is design-based under the surveyed
+# population (weighted fits, a bootstrap resampling PSUs within strata over the whole chain); the
+# record says so on the answer as it stands.
 CALIBRATION_APPLIED = (
-    "Univariate regression calibration was applied to every energy-adjusted exposure, with the "
-    "day-to-day variance estimated from repeated recalls and intervals from `{n}` bootstrap "
-    "refits over people.")
-CALIBRATION_BLOCKED = (
-    "Univariate regression calibration of every energy-adjusted exposure was asked for, but under "
-    "the surveyed population it has no design-based variance (a bootstrap by PSU within strata "
-    "over the whole chain), so it was blocked and recorded, and the estimates are uncorrected.")
+    "Regression calibration of every intake the recalls measure from the repeated recalls was "
+    "declared as a secondary analysis beside the uncorrected estimate, with intervals from `{n}` "
+    "bootstrap resamples of the whole chain.")
+CALIBRATION_POPULATION = (
+    "Regression calibration of every intake the recalls measure from the repeated recalls was "
+    "declared as a secondary analysis beside the uncorrected estimate, with intervals from `{n}` "
+    "bootstrap resamples of the whole chain, resampling PSUs within strata with the fits "
+    "survey-weighted.")
 SEEN = "After the estimates were seen, "
 
 
@@ -1090,7 +1091,8 @@ def test_4_the_methods_text_restates_what_the_survey_answer_does_on_the_answer_a
     assert [x.sentence for x in now["select_models"]] == [f"{head} {WEIGHTED_AND_BLOCKED}"]
     assert [x.sentence for x in now["set_substitution"]] == [
         SWAP_SAID.format(held="at the same total energy") + SWAP_POPULATION]
-    assert [x.sentence for x in now["set_measurement_error"]] == [CALIBRATION_BLOCKED]
+    assert [x.sentence for x in now["set_measurement_error"]] == [
+        CALIBRATION_POPULATION.format(n=200)]
     assert [x.sentence for x in now["set_scales"]] == [scale_blocked]  # the scales stage blocks it
     # The Record keeps each as said.
     said = {r.id: r.sentence for r in log.records()}
@@ -1301,18 +1303,20 @@ def test_4_taking_the_sample_only_exit_restates_the_record_and_each_exit_changes
 def test_4_the_calibration_block_exits_are_decisions_that_run_and_the_record_follows_them(
         tmp_path):
     """The verifier's findings (a) and (e) for regression calibration (MODELING_SEQUENCE §0
-    ruling 7 with §4): under the surveyed population the calibration stage blocks it, and
-    ``set_measurement_error`` is recorded (block and record), but its sentence said "was applied"
-    and its exit was prose. Now, on WP12c's two-recall table carrying a stratified two-PSU design:
+    ruling 7 with §4), as MS5 left them: under the surveyed population the calibration is
+    design-based (the fits weighted, a bootstrap resampling PSUs within strata over the whole
+    chain), and blocked and recorded only where no stratum holds two PSUs. On WP12c's two-recall
+    table:
 
-    * the block names its exits as decisions: the sample-only attestation, and no correction;
-    * the methods text says the calibration was asked for and blocked, word for word;
-    * the sample-only exit, taken, calibrates: λ (the attenuation factor) is the statsmodels REML
-      reference's (WP12c's ``reference``, from the CSV) to 1e-6, and the methods text now says the
-      calibration was applied, word for word;
-    * the population answered again blocks it again, and the record follows;
-    * the second exit, taken, records no correction: nothing is blocked, the stage states the
-      recall days, and the methods text says the exposures were not corrected."""
+    * with a stratified two-PSU design, the population answer calibrates design-based, and the
+      methods text says so, word for word;
+    * the sample-only exit, taken, calibrates unweighted over participants: λ (the attenuation
+      factor) is WP12c's NumPy reference from the CSV (``reference``) to 1e-6, and the methods text
+      follows, word for word;
+    * with one PSU in every stratum, the block names its exits as decisions: the sample-only
+      attestation, and no correction; the second, taken, records no correction: nothing is
+      blocked, the stage states the recall days, and the methods text says the intakes were not
+      corrected."""
     from turbotab.core.stages.calibration import POPULATION as CALIBRATION_BLOCK
     from turbotab.core.stages.calibration import UNCORRECTED_EXIT
     from turbotab.core.tests.acceptance.server_drive import local_server, open_project
@@ -1327,19 +1331,17 @@ def test_4_the_calibration_block_exits_are_decisions_that_run_and_the_record_fol
     frame["WTDRD1"] = weight[person]
     path = tmp_path / "recalls.csv"
     frame.to_csv(path, index=False)
+    lonely = frame.assign(SDMVPSU=1)  # one PSU in every stratum: no between-PSU spread to resample
+    lonely_path = tmp_path / "lonely.csv"
+    lonely.to_csv(lonely_path, index=False)
     truth = recall_truth()
     truth.update({"code_or_count:SDMVSTRA": "code", "code_or_count:SDMVPSU": "code"})
     exits = [{"label": SAMPLE_EXIT, "decision": SAMPLE_ONLY},
              {"label": UNCORRECTED_EXIT,
               "decision": {"kind": "set_measurement_error", "method": "none"}}]
-    with local_server(tmp_path / "home") as client:
-        d = open_project(client, path, truth)
 
-        def force(kind: str) -> str:
-            lines = client.get(f"/api/projects/{d.pid}/methods").json()["lines"]
-            (line,) = [x for x in lines if x["kind"] == kind and x["in_force"]]
-            return line["sentence"]
-
+    def project(client, source):
+        d = open_project(client, source, truth)
         d.decide({"kind": "set_lens", "lenses": ["dietary"]})
         d.reach("target")
         d.decide({"kind": "set_target", "column": "ldl"})
@@ -1366,37 +1368,46 @@ def test_4_the_calibration_block_exits_are_decisions_that_run_and_the_record_fol
         d.decide({"kind": "select_models", "models": ["linear"]})
         d.decide({"kind": "set_measurement_error", "method": "regression_calibration",
                   "n_boot": 50})
-        blocked = d.artifact("calibration")
-        said_blocked = force("set_measurement_error")
-        d.decide(blocked["exits"][0]["decision"])  # the sample-only attestation
+        return d
+
+    with local_server(tmp_path / "home") as client:
+        def force(d, kind: str) -> str:
+            lines = client.get(f"/api/projects/{d.pid}/methods").json()["lines"]
+            (line,) = [x for x in lines if x["kind"] == kind and x["in_force"]]
+            return line["sentence"]
+
+        d = project(client, path)
+        weighted = d.artifact("calibration")
+        said_population = force(d, "set_measurement_error")
+        d.decide(SAMPLE_ONLY)  # the sample-only attestation
         calibrated, fit = d.artifact("calibration"), d.artifact("fit")
-        said_applied = force("set_measurement_error")
-        d.decide(population)
-        again = d.artifact("calibration")
-        said_again = force("set_measurement_error")
-        d.decide(again["exits"][1]["decision"])  # no correction
-        uncorrected = d.artifact("calibration")
-        said_none = force("set_measurement_error")
-    assert (blocked["applies"], blocked["reason"], blocked["exits"]) == (False, CALIBRATION_BLOCK,
-                                                                          exits)
-    assert said_blocked == CALIBRATION_BLOCKED
+        said_applied = force(d, "set_measurement_error")
+        b = project(client, lonely_path)
+        blocked = b.artifact("calibration")
+        b.decide(blocked["exits"][1]["decision"])  # no correction
+        uncorrected = b.artifact("calibration")
+        said_none = force(b, "set_measurement_error")
+    assert weighted["applies"] and weighted["exits"] == []
+    assert (weighted["weighted"], weighted["resampling"]) == (True, "psu_within_strata")
+    assert said_population == CALIBRATION_POPULATION.format(n=50)
     assert calibrated["applies"] and calibrated["exits"] == []
-    (exposure,) = calibrated["exposures"]
+    assert (calibrated["weighted"], calibrated["resampling"]) == (False, "persons")
+    exposure = next(e for e in calibrated["exposures"] if e["feature"] == "protein_g_adj")
     features = {c["feature"] for c in all_terms(fit["models"][0])}
     ref = reference(frame, energy_in_model="energy_kcal" in features)
     assert calibrated["n_persons"] == ref["n"] == 400
     assert exposure["attenuation"] == pytest.approx(ref["lam"], rel=1e-6)
     assert exposure["naive"] == pytest.approx(ref["naive"], rel=1e-8)
     assert said_applied == CALIBRATION_APPLIED.format(n=50)
-    assert (again["applies"], again["reason"], again["exits"]) == (False, CALIBRATION_BLOCK, exits)
-    assert said_again == CALIBRATION_BLOCKED
+    assert (blocked["applies"], blocked["reason"], blocked["exits"]) == (False, CALIBRATION_BLOCK,
+                                                                          exits)
+    assert "these participants" in CALIBRATION_BLOCK
     assert uncorrected["method"] == "none" and not uncorrected["applies"]
     assert uncorrected["exits"] == [] and uncorrected["reason"] != CALIBRATION_BLOCK
-    assert uncorrected["methods"] == ("Energy-adjusted exposures were the mean of each "
-                                      "participant's recalls (2 recalls each, 400 participants) "
-                                      "and were not corrected for day-to-day error.")
-    assert said_none == (f"{SEEN}energy-adjusted exposures were not corrected for day-to-day "
-                         f"error in the recalls.")
+    assert uncorrected["methods"] == ("Intakes were the mean of each participant's recalls (2 "
+                                      "recalls each, 400 participants) and were not corrected for "
+                                      "day-to-day error.")
+    assert said_none == "Intakes were not corrected for day-to-day error in the recalls."
 
 
 def test_4_the_survey_contracts_enter_the_one_registry(tmp_path):

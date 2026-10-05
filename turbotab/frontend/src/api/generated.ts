@@ -2484,6 +2484,14 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Interval
+             * @default whole_chain_bootstrap
+             * @enum {string}
+             */
+            interval: "whole_chain_bootstrap" | "model_based" | "rubin_only";
+            /** Adjustment */
+            adjustment: string[] | null;
         };
         /**
          * MethodsLine
@@ -4172,8 +4180,9 @@ export interface components {
         };
         /**
          * SetMeasurementError
-         * @description Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
-         *     (univariate regression calibration; audit IN-22, Freedman et al. 2011).
+         * @description Whether the intakes the recalls measure are corrected for day-to-day error, by regression
+         *     calibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).
+         *     ``adjustment`` is filled by the server from the state, never by the client.
          */
         "SetMeasurementError-Input": {
             /**
@@ -4193,11 +4202,20 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Interval
+             * @default whole_chain_bootstrap
+             * @enum {string}
+             */
+            interval: "whole_chain_bootstrap" | "model_based" | "rubin_only";
+            /** Adjustment */
+            adjustment?: string[] | null;
         };
         /**
          * SetMeasurementError
-         * @description Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
-         *     (univariate regression calibration; audit IN-22, Freedman et al. 2011).
+         * @description Whether the intakes the recalls measure are corrected for day-to-day error, by regression
+         *     calibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).
+         *     ``adjustment`` is filled by the server from the state, never by the client.
          */
         "SetMeasurementError-Output": {
             /**
@@ -4217,6 +4235,14 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Interval
+             * @default whole_chain_bootstrap
+             * @enum {string}
+             */
+            interval: "whole_chain_bootstrap" | "model_based" | "rubin_only";
+            /** Adjustment */
+            adjustment: string[] | null;
         };
         /**
          * SetMissing
@@ -5977,8 +6003,39 @@ export interface components {
             p: number;
         };
         /**
+         * CalibratedContrast
+         * @description The substitution as the difference of calibrated coefficients (all-components).
+         */
+        CalibratedContrast: {
+            /** Donor */
+            donor: string;
+            /** Recipient */
+            recipient: string;
+            /** Step Kcal */
+            step_kcal: number;
+            /** Naive */
+            naive: number | null;
+            /** Estimate */
+            estimate: number | null;
+            /**
+             * Se
+             * @default null
+             */
+            se: number | null;
+            /**
+             * Ci Low
+             * @default null
+             */
+            ci_low: number | null;
+            /**
+             * Ci High
+             * @default null
+             */
+            ci_high: number | null;
+        };
+        /**
          * CalibratedExposure
-         * @description One energy-adjusted exposure: its uncorrected and its calibrated coefficient.
+         * @description One error-prone column: its uncorrected and its calibrated coefficient.
          */
         CalibratedExposure: {
             /** Feature */
@@ -6025,15 +6082,15 @@ export interface components {
              */
             ci_high: number | null;
             /**
+             * Delta Se
+             * @default null
+             */
+            delta_se: number | null;
+            /**
              * Attenuation
              * @default null
              */
             attenuation: number | null;
-            /**
-             * Attenuation Se
-             * @default null
-             */
-            attenuation_se: number | null;
             /**
              * Within Variance
              * @default null
@@ -6164,10 +6221,86 @@ export interface components {
              */
             rows: "all eligible rows";
             /**
+             * Role
+             * @default secondary
+             * @constant
+             */
+            role: "secondary";
+            /**
+             * Label
+             * @default corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption)
+             */
+            label: string;
+            /**
+             * Test
+             * @default The test of no association is the uncorrected model's: “the usual statistical test of the null hypothesis (no exposure effect) remains theoretically valid” (Freedman et al. 2011, J Natl Cancer Inst 103:1086); the calibrated estimate gives the size, with its own interval.
+             */
+            test: string;
+            /**
+             * Calibration
+             * @default null
+             */
+            calibration: ("univariate" | "multivariate") | null;
+            /**
+             * Calibrated
+             * @default []
+             */
+            calibrated: string[];
+            /**
+             * Covariates
+             * @default []
+             */
+            covariates: string[];
+            /**
+             * Order
+             * @default []
+             */
+            order: string[];
+            /**
+             * Resampling
+             * @default null
+             */
+            resampling: ("persons" | "clusters" | "psu_within_strata") | null;
+            /**
+             * Weighted
+             * @default false
+             */
+            weighted: boolean;
+            /**
+             * Imputations
+             * @default 0
+             */
+            imputations: number;
+            /**
+             * Boot Copies
+             * @default 0
+             */
+            boot_copies: number;
+            /**
+             * Attenuation
+             * @default null
+             */
+            attenuation: number[][] | null;
+            /**
+             * Within Covariance
+             * @default null
+             */
+            within_covariance: number[][] | null;
+            /**
              * N Persons
              * @default 0
              */
             n_persons: number;
+            /**
+             * N Boot
+             * @default 0
+             */
+            n_boot: number;
+            /**
+             * N Boot Ok
+             * @default 0
+             */
+            n_boot_ok: number;
             /**
              * Recalls
              * @default {}
@@ -6180,6 +6313,11 @@ export interface components {
              * @default []
              */
             exposures: components["schemas"]["CalibratedExposure"][];
+            /**
+             * Contrasts
+             * @default []
+             */
+            contrasts: components["schemas"]["CalibratedContrast"][];
             /**
              * Assumptions
              * @default []
@@ -11117,8 +11255,9 @@ export interface components {
         };
         /**
          * SetMeasurementError
-         * @description Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
-         *     (univariate regression calibration; audit IN-22, Freedman et al. 2011).
+         * @description Whether the intakes the recalls measure are corrected for day-to-day error, by regression
+         *     calibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).
+         *     ``adjustment`` is filled by the server from the state, never by the client.
          */
         SetMeasurementError: {
             /**
@@ -11139,6 +11278,17 @@ export interface components {
              * @default 200
              */
             n_boot: number;
+            /**
+             * Interval
+             * @default whole_chain_bootstrap
+             * @enum {string}
+             */
+            interval: "whole_chain_bootstrap" | "model_based" | "rubin_only";
+            /**
+             * Adjustment
+             * @default null
+             */
+            adjustment: string[] | null;
         };
         /**
          * SetMissing

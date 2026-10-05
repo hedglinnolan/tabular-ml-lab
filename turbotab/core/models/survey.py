@@ -1134,13 +1134,17 @@ def _register_contracts() -> None:
                          purposes=("inference",),
                          enforced_by="turbotab.core.stages.modeling:pooled_table",
                          id="multiple_imputation"),
-                Relation("conflicts", "regression calibration",
-                         "Regression calibration has no design-based variance here (a bootstrap "
-                         "by PSU within strata over the whole chain), so it is blocked and "
-                         "recorded.",
-                         purposes=("inference",), rung="block_and_record",
-                         exits=("the sample-only attestation", "no correction"),
-                         enforced_by="turbotab.core.stages.calibration:population_exits",
+                # MS5 (ruling 7): regression calibration is design-based, weighted with a
+                # bootstrap by PSU within strata over the whole chain; blocked and recorded only
+                # where no stratum holds two PSUs.
+                Relation("implies", "regression calibration by PSU within strata",
+                         "Regression calibration and its outcome model are survey-weighted, and "
+                         "its interval comes from a bootstrap resampling PSUs within strata over "
+                         "the whole chain (Rao and Wu's); with no stratum of two PSUs it is "
+                         "blocked and recorded, with the sample-only attestation or no correction "
+                         "as its exits.",
+                         purposes=("inference",),
+                         enforced_by="turbotab.core.stages.calibration:resampling_of",
                          id="regression_calibration"),
                 Relation("conflicts", "a scale's corrected coefficient",
                          "A scale's correction and the uncorrected coefficient beside it are fit "

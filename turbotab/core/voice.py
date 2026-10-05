@@ -1457,22 +1457,19 @@ def _set_sensitivity(d: Any, state: Any, ctx: Any) -> str:
 @register_sentence("set_measurement_error")
 def _set_measurement_error(d: Any, state: Any, ctx: Any) -> str:
     if d.method == "none":
-        return ("Energy-adjusted exposures were not corrected for day-to-day error in the "
-                "recalls")
-    which = (f"{listing(d.exposures)}" if d.exposures else "every energy-adjusted exposure")
+        return "Intakes were not corrected for day-to-day error in the recalls"
+    which = (f"{listing(d.exposures)}" if d.exposures else "every intake the recalls measure")
     from turbotab.core.models.survey import population_answer
 
-    if population_answer(state):
-        # MS4 (MODELING_SEQUENCE §4): the calibration stage blocks it under the surveyed
-        # population, so the record says so. The methods text restates this sentence whole when
-        # the survey answer changes (:func:`restate`).
-        return (f"Univariate regression calibration of {which} was asked for, but under the "
-                f"surveyed population it has no design-based variance (a bootstrap by PSU within "
-                f"strata over the whole chain), so it was blocked and recorded, and the estimates "
-                f"are uncorrected")
-    return (f"Univariate regression calibration was applied to {which}, with the day-to-day "
-            f"variance estimated from repeated recalls and intervals from {count(d.n_boot)} "
-            f"bootstrap refits over people")
+    # MS5 (MODELING_SEQUENCE §0 ruling 7): a declared secondary analysis, every error-prone intake
+    # calibrated jointly, its interval from a bootstrap over the whole chain; under the surveyed
+    # population the fits are weighted and PSUs are resampled within strata. The methods text
+    # restates this sentence whole when the survey answer changes (:func:`restate`).
+    over = (", resampling PSUs within strata with the fits survey-weighted"
+            if population_answer(state) else "")
+    return (f"Regression calibration of {which} from the repeated recalls was declared as a "
+            f"secondary analysis beside the uncorrected estimate, with intervals from "
+            f"{count(d.n_boot)} bootstrap resamples of the whole chain{over}")
 
 
 restated_whole("set_measurement_error")

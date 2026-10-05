@@ -261,12 +261,19 @@ class SensitivityAnalysis(_Value):
 
 
 MeasurementErrorMethod = Literal["none", "regression_calibration"]
+# MS5 (MODELING_SEQUENCE §0 ruling 7): a calibrated coefficient's interval comes from a bootstrap
+# over the whole chain; model-based and Rubin-only intervals are refused (methods/calibration.py).
+CalibrationInterval = Literal["whole_chain_bootstrap", "model_based", "rubin_only"]
 
 
 class MeasurementErrorSpec(_Value):
     method: MeasurementErrorMethod
-    exposures: list[str] = Field(default_factory=list)  # [] = every energy-adjusted exposure
+    exposures: list[str] = Field(default_factory=list)  # [] = every exposure the recalls measure
     n_boot: int = Field(default=200, ge=50, le=2000)
+    interval: CalibrationInterval = "whole_chain_bootstrap"
+    # The adjustment set the calibration was declared under, as the server recorded it (a change
+    # to it invalidates the declaration: MODELING_SEQUENCE §2; stages/calibration.py).
+    adjustment: list[str] | None = None
 
 
 # MS8 (MODELING_SEQUENCE §0 ruling 8): a multi-item scale scored as one predictor, its reliability
@@ -581,13 +588,16 @@ class SetSensitivity(_DecisionModel):
 
 
 class SetMeasurementError(_DecisionModel):
-    """Whether energy-adjusted exposures are corrected for day-to-day error in the recalls
-    (univariate regression calibration; audit IN-22, Freedman et al. 2011)."""
+    """Whether the intakes the recalls measure are corrected for day-to-day error, by regression
+    calibration declared as a secondary analysis (MS5; audit IN-22, Freedman et al. 2011).
+    ``adjustment`` is filled by the server from the state, never by the client."""
 
     kind: Literal["set_measurement_error"] = "set_measurement_error"
     method: MeasurementErrorMethod
     exposures: list[str] = Field(default_factory=list)
     n_boot: int = Field(default=200, ge=50, le=2000)
+    interval: CalibrationInterval = "whole_chain_bootstrap"
+    adjustment: list[str] | None = None
 
     @field_validator("exposures")
     @classmethod
@@ -4633,9 +4643,36 @@ def _calibration_is_for_inference(decision: SetMeasurementError, ctx: Any) -> No
                {"label": "Change the purpose to inference", "decision": None}])
 
 
+def _calibrated_interval_is_the_whole_chain(decision: SetMeasurementError, ctx: Any) -> None:
+    """MS5 (MODELING_SEQUENCE §2): a calibrated coefficient's interval comes from a bootstrap over
+    the whole chain; a model-based or Rubin-only one is refused, with the bootstrap as its exit."""
+    if decision.method == "none" or decision.interval == "whole_chain_bootstrap":
+        return
+    from turbotab.core.methods.calibration import interval_refusal
+
+    raise Refusal(
+        "calibrated_interval", interval_refusal(decision.interval) or "",
+        exits=[{"label": "Take the interval from a bootstrap over the whole chain",
+                "decision": decision.model_copy(update={"interval": "whole_chain_bootstrap"})},
+               {"label": "Record no calibration", "decision": SetMeasurementError(method="none")}])
+
+
+def _calibration_records_its_adjustment_set(decision: SetMeasurementError, ctx: Any) -> Any:
+    """The adjustment set the calibration is declared under, from the state, never from the client:
+    a change to it invalidates the declaration (MODELING_SEQUENCE §2)."""
+    state = _state(ctx)
+    if decision.method == "none" or state is None:
+        return decision.model_copy(update={"adjustment": None})
+    from turbotab.core.stages.calibration import declared_adjustment
+
+    return decision.model_copy(update={"adjustment": declared_adjustment(state)})
+
+
 register_validator("set_sensitivity", _sensitivity_rules_are_eligibility_rules)
 register_validator("set_measurement_error", _calibrated_exposures_are_columns)
 register_validator("set_measurement_error", _calibration_is_for_inference)
+register_validator("set_measurement_error", _calibrated_interval_is_the_whole_chain)
+register_completion("set_measurement_error", _calibration_records_its_adjustment_set)
 register_validator("set_task", _task_fits_the_outcome)
 register_validator("set_outcome_order", _order_names_the_outcome)
 register_validator("set_outcome_unit", _unit_names_the_outcome)
