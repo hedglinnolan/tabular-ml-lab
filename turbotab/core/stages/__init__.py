@@ -424,7 +424,9 @@ def build_graph() -> Graph:
             # split 5 (WP13 + WP15 merged): both of the above in one stage.
             # split 6 (recognition's leash): the draw groups by a settled identifier only.
             # split 7 (BLUEPRINT §14.3): as fit 14.
-            Stage("split", 7, ("working", "cohort", "target_info", "structure"),
+            # split 8 (REPAIR-VALID, MS6): when the seal cannot keep a unit's rows together, the
+            # note says the folds are drawn by row and every score is within-unit performance.
+            Stage("split", 8, ("working", "cohort", "target_info", "structure"),
                   ("split", *ROLE_READS, "task", *SEAL_READS), split_stage, heavy=True,
                   requires=("split",), label="Drawing the held-out rows"),
             # shelf 7 (methods gate): under inference it ranks for every analyzed row and its basis
@@ -435,7 +437,9 @@ def build_graph() -> Graph:
             # shelf 11 (wave 1): the screened elastic net at p ≫ n under prediction (MS7); under the
             # population answer the families with no design-based estimator rank last (MS4).
             # shelf 12 (MS6): the measured estimate counts the comparisons' repeated k-fold.
-            Stage("shelf", 12, ("working", "cohort", "target_info", "split"),
+            # shelf 13 (REPAIR-VALID): ... and the refits of the grouping's internal–external
+            # validation under prediction.
+            Stage("shelf", 13, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms",
@@ -530,7 +534,13 @@ def build_graph() -> Graph:
             # imputation offers the censoring-aware single fill.
             # fit 19 (wave-1 repairs integrated): the routing gate's fit 18 and MS7 repair's.
             # fit 21 (wave-1 repairs on wave 1b): fit 19 and wave 1b's fit 20 on one engine.
-            Stage("fit", 21, ("working", "design", "split", "target_info", "cohort"),
+            # fit 22 (REPAIR-VALID, MS6): the result names the family as the record does and leaves
+            # the record to vouch for "declared before any score was seen"; the grouping the
+            # question named is validated internal–externally beside the headline under prediction;
+            # folds that cannot keep a unit whole say every score is within-unit performance; at
+            # p ≫ n with several families the nested offer and the label say what it widens; a
+            # multiclass outcome's accuracy and macro-F1 are labeled the customary headline.
+            Stage("fit", 22, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
