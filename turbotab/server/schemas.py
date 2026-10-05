@@ -166,6 +166,127 @@ class ReadFromData(Model):
     change: list[Exit]
 
 
+# ── files to join and codebooks to import (DATAIN, V2 definition of done §1) ─────
+
+
+class AddFile(BaseModel):
+    """Add a file on this machine to the project, to join to its table (local mode only)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+
+
+class AddedFile(Model):
+    id: str
+    name: str
+    source_kind: SourceKind
+    fingerprint: str
+    n_rows: int
+    n_cols: int
+    columns: list[str]
+    warnings: list[str]
+    joined: bool = False
+
+
+class JoinPreviewRequest(BaseModel):
+    """The join to count: the added file, the identifier (``right_on`` when the file names it
+    otherwise), and which rows the joined table keeps."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    file: str
+    on: str
+    right_on: str | None = None
+    how: Literal["left", "inner"] = "left"
+
+
+class JoinSide(Model):
+    name: str
+    rows: int
+    keys: int
+    blank_keys: int
+    repeats: bool
+    max_repeat: int
+    example: Any
+    example_count: int
+
+
+class JoinRefusal(Model):
+    code: str
+    message: str
+    exits: list[Exit]
+
+
+class JoinPreview(Model):
+    """What a join would do before it is committed: each side's rows and identifier values, the
+    relation (one-to-one, one-to-many, many-to-one; many-to-many is refused), the rows with no
+    partner on each side, the joined table's rows, its new and renamed columns, and the sentence
+    the join would record."""
+
+    file: str
+    on: str
+    right_on: str
+    how: Literal["left", "inner"]
+    table: JoinSide
+    file_side: JoinSide
+    relation: str
+    matched_keys: int
+    table_unmatched: int
+    file_unmatched: int
+    rows: int
+    added_columns: list[str]
+    renamed: dict[str, str]
+    refusal: JoinRefusal | None
+    sentence: str
+
+
+class CodebookRequest(BaseModel):
+    """A codebook to read: a file on this machine (local mode only), or the variable labels the
+    table's own SAS transport files carry (``labels``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str | None = None
+    labels: bool = False
+
+
+class CodebookSettlement(Model):
+    reading: str
+    column: str
+    value: str
+    field: str
+
+
+class CodebookAsk(Model):
+    column: str
+    field: str
+    says: str
+    values: str
+    exits: list[Exit]
+
+
+class CodebookPreview(Model):
+    """What importing a codebook would do (``import_codebook`` with this ``id`` records it): the
+    readings its structured fields settle, its documented units, how many labels it gives, the
+    fields the values contradict (asked, never applied), the readings the user answered
+    otherwise (kept), and the sentence it would record."""
+
+    id: str
+    name: str
+    form: Literal["table", "nhanes", "xpt"]
+    n_entries: int
+    n_matched: int
+    unmatched: list[str]
+    n_unmatched: int
+    settles: list[CodebookSettlement]
+    units: dict[str, str]
+    labels: int
+    asked: list[CodebookAsk]
+    kept: list[str]
+    sentence: str
+
+
 class ReadingsCard(Model):
     """The readings card's "read from your data": every reading the values settled, never a
     required tap, and the methods record's line for them."""

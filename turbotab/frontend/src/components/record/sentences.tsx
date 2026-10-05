@@ -129,6 +129,10 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "measurement_error";
     case "set_outcome_scale":
       return "target";
+    case "join_files":
+      return "joins";
+    case "import_codebook":
+      return "codebooks";
     case "revert": {
       const undone = records.find((r) => r.id === d.decision_id);
       return undone ? slotOf(undone.decision, records) : null;

@@ -95,6 +95,9 @@ class DecisionContext:
     # The fresh fit's held-out scores, set only while a decision is being recorded, never for a
     # preview: what the opening keeps in the record as the reported result (audit WP16, RO-05).
     sealed_scores: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    # The project's folder: a join reads its added files, a codebook import its staged codebook
+    # (DATAIN, V2 definition of done §1).
+    project_dir: str | None = None
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -503,6 +506,171 @@ class ProjectService:
         self.engine.on_decision(meta.id)
         return meta
 
+    # ── files to join, codebooks to import (DATAIN, V2 definition of done §1) ──
+
+    def add_file_from_path(self, pid: str, raw: str) -> dict[str, Any]:
+        """Add a file on this machine to the project, to join to its table: it is read where it
+        is, once, into ``files/<id>/raw.parquet`` (as the table's own file is read)."""
+        self.workspace.get(pid)
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            raise ApiError(400, "relative_path", "Give the file's full path, starting from the top of the disk.")
+        if path.is_dir():
+            raise ApiError(400, "is_a_folder", f"{path} is a folder. Choose a file inside it.")
+        if not path.is_file():
+            raise ApiError(404, "no_such_file", f"There is no file at {path}.")
+        try:
+            source_kind(path)
+        except ValueError as exc:
+            raise ApiError(400, "unsupported_file", str(exc)) from None
+        if not os.access(path, os.R_OK):
+            raise ApiError(403, "unreadable_file", f"TurboTab is not allowed to read {path}.")
+        return self._add_file(pid, path.resolve(), path.name, "path", copy=False)
+
+    def add_file_from_upload(self, pid: str, staged: Path, client_name: str) -> dict[str, Any]:
+        """Adopt a file streamed into ``uploads/`` as a file to join to the project's table."""
+        try:
+            return self._add_file(pid, staged, client_name, "upload", copy=True)
+        finally:
+            shutil.rmtree(staged.parent, ignore_errors=True)
+
+    def _add_file(self, pid: str, source: Path, name: str, kind: str, *, copy: bool) -> dict[str, Any]:
+        """``copy``: an upload moves into ``files/<id>/source/``; a file on this machine is read
+        where it is, as the table's own file is. Either is read once, into the file's own
+        ``raw.parquet``, which every join reads."""
+        import secrets
+
+        from turbotab.core.datastore import ingest
+
+        files = self.workspace.files_dir(pid)
+        while True:
+            fid = "f" + secrets.token_hex(5)
+            folder = files / fid
+            try:
+                folder.mkdir()
+                break
+            except FileExistsError:
+                continue
+        dest = source
+        if copy:
+            (folder / "source").mkdir()
+            dest = folder / "source" / source.name
+            os.replace(source, dest)
+        try:
+            info = ingest(dest, folder / "raw.parquet")
+        except (ValueError, OSError) as exc:
+            shutil.rmtree(folder, ignore_errors=True)
+            raise ApiError(400, "unreadable_file", f"{name} could not be read: {exc}") from None
+        meta = {"id": fid, "name": name, "source_kind": kind, "source_path": str(dest),
+                "fingerprint": info.fingerprint,
+                "n_rows": info.n_rows, "n_cols": info.n_cols,
+                "columns": [c.name for c in info.columns], "warnings": list(info.warnings)}
+        _write_json_atomic(folder / "file.json", meta)
+        return meta
+
+    def files(self, pid: str) -> list[dict[str, Any]]:
+        """The files added to the project, oldest first, and whether each is joined."""
+        from turbotab.core.assembly import file_meta
+
+        self.workspace.get(pid)
+        state = self.log(pid).state()
+        joined = set((state.joins or {}).keys())
+        folder = self.workspace.files_dir(pid)
+        out = []
+        for entry in sorted(folder.iterdir(), key=lambda p: p.stat().st_mtime):
+            meta = file_meta(self.workspace.project_dir(pid), entry.name)
+            if meta is not None:
+                out.append({**meta, "joined": entry.name in joined})
+        return out
+
+    def _table_ready(self, pid: str) -> Path:
+        ingest = self.engine.status(pid)["ingest"]
+        if ingest.status != "fresh":
+            raise ApiError(409, "not_yet", "The table is still being read; try again once it is ready.")
+        return self.workspace.data_path(pid)
+
+    def join_preview(self, pid: str, file: str, on: str, right_on: str | None, how: str) -> dict[str, Any]:
+        """What joining ``file`` on ``on`` would do: the row counts on each side, the rows with no
+        partner, the relation, the joined table's rows, and the sentence it would record; a
+        many-to-many join carries its refusal. Nothing is recorded."""
+        from turbotab.core.assembly import file_meta, file_parquet, join_sentence, preview
+
+        self.workspace.get(pid)
+        pdir = self.workspace.project_dir(pid)
+        meta = file_meta(pdir, file)
+        if meta is None:
+            raise ApiError(404, "unknown_file", f"This project has no added file {file!r}.")
+        table = self._table_ready(pid)
+        plan = preview(table, file_parquet(pdir, file), on=on, right_on=right_on, how=how,
+                       left_name=self.workspace.get(pid).source_name, right_name=str(meta["name"]))
+        out = plan.to_dict()
+        out["file_side"] = out.pop("file")
+        out["file"] = file
+        out["sentence"] = (voice.finish(join_sentence(str(meta["name"]), on, right_on, how,
+                                                      plan.counts()))
+                           if plan.refusal is None else "")
+        return out
+
+    def stage_codebook(self, pid: str, *, path: str | None = None, labels: bool = False,
+                       staged: Path | None = None, client_name: str | None = None) -> dict[str, Any]:
+        """Read a codebook (a file on this machine, an upload, or the table's own XPT labels), keep
+        it in the project, and say what importing it would do: the readings it settles, the fields
+        the values contradict (asked), the answers that stand, and the sentence it would record.
+        Nothing is recorded until ``import_codebook``."""
+        from turbotab.core import codebook as cb
+
+        self.workspace.get(pid)
+        pdir = self.workspace.project_dir(pid)
+        table = self._table_ready(pid)
+
+        def book_source(raw: str | None, up: Path | None) -> Path | None:
+            if up is not None:
+                return up
+            return Path(raw).expanduser() if raw else None
+
+        try:
+            book = self._read_codebook(table, path, labels, staged, client_name)
+            cb.stage(book, pdir, book_source(path, staged))
+        finally:
+            if staged is not None:
+                shutil.rmtree(staged.parent, ignore_errors=True)
+        a = cb.assessment_for(book, pdir, self.log(pid).state())
+        out = a.to_dict()
+        out["sentence"] = voice.finish(out["sentence"])
+        return out
+
+    def _read_codebook(self, table: Path, path: str | None, labels: bool, staged: Path | None,
+                       client_name: str | None) -> Any:
+        from turbotab.core import codebook as cb
+        from turbotab.core.datastore import read_labels
+
+        try:
+            if labels:
+                sidecar = read_labels(table) or {}
+                sources = sidecar.get("sources") or []
+                files = [str(s.get("file")) for s in sources if s.get("file")]
+                if not files:
+                    raise ApiError(400, "no_labels", "The table's files carry no variable labels "
+                                                     "(only SAS transport files do).")
+                book = cb.from_labels(sources, voice.listing(files, limit=50, ticked=False))
+            else:
+                if staged is not None:
+                    source: Path = staged
+                    name = client_name or staged.name
+                else:
+                    if not path:
+                        raise ApiError(400, "no_codebook", "Name the codebook's file, or ask for the table's own labels.")
+                    source = Path(path).expanduser()
+                    if not source.is_absolute():
+                        raise ApiError(400, "relative_path", "Give the file's full path, starting from the top of the disk.")
+                    if not source.is_file():
+                        raise ApiError(404, "no_such_file", f"There is no file at {source}.")
+                    name = source.name
+                book = cb.read(source, name)
+        except cb.CodebookError as exc:
+            raise ApiError(400, "unreadable_codebook", str(exc)) from None
+        return book
+
     # ── reading projects ──
 
     def _ingest_facts(self, pid: str, key: str, stage: str = "ingest") -> IngestFacts:
@@ -700,6 +868,7 @@ class ProjectService:
             records=lambda: self.log(pid).records(),
             interview=lambda: self.interview(pid, state, stages, self.log(pid).records()),
             shown=lambda stage: self._shown(pid, stage),
+            project_dir=str(self.workspace.project_dir(pid)),
         )
 
     def decide(self, pid: str, decision: Any) -> dict[str, Any]:

@@ -31,10 +31,18 @@ def gigabytes(n: int) -> str:
 
 
 def ingest_stage(ctx: StageContext) -> dict[str, Any]:
-    """Read the source file once into ``data/raw.parquet``; the artifact is DatasetInfo."""
-    from turbotab.core.datastore import ingest
+    """Read the source file once into ``data/raw.parquet``; the artifact is DatasetInfo. The files
+    joined to it (``joins``, DATAIN) are joined in answer order on their identifiers, each read
+    from its own ingested copy (``files/<id>/raw.parquet``)."""
+    from turbotab.core.assembly import file_parquet
+    from turbotab.core.datastore import JoinInput, ingest
 
-    info = ingest(Path(ctx.paths["source"]), Path(ctx.paths["data"]), progress=ctx.progress)
+    joins = []
+    for spec in (getattr(ctx.state, "joins", None) or {}).values():
+        joins.append(JoinInput(parquet=file_parquet(Path(ctx.paths["project_dir"]), spec.file),
+                               name=spec.name, on=spec.on, right_on=spec.right_on, how=spec.how))
+    info = ingest(Path(ctx.paths["source"]), Path(ctx.paths["data"]), progress=ctx.progress,
+                  joins=joins)
     return info.to_dict()
 
 

@@ -1077,6 +1077,114 @@ class DismissFinding(_DecisionModel):
     reason: str | None = None
 
 
+# V2 definition of done §1 (package DATAIN): minimal multi-file assembly and codebook import.
+# Their logic lives in ``turbotab.core.assembly`` and ``turbotab.core.codebook``, which register
+# their validators, completions and sentences when this module imports them (at its end).
+
+FILE_ID = r"^f[0-9a-f]{10}$"
+CODEBOOK_ID = r"^c[0-9a-f]{10}$"
+JoinHow = Literal["left", "inner"]
+JoinRelation = Literal["one-to-one", "one-to-many", "many-to-one"]
+
+
+class JoinCounts(_Value):
+    """What the join's preview counted, recorded with the answer (the server's): the rows on each
+    side, the identifier values they share, the rows with no partner on each side, and the rows
+    the joined table holds."""
+
+    relation: JoinRelation
+    table_rows: int = Field(ge=0)
+    file_rows: int = Field(ge=0)
+    matched_keys: int = Field(ge=0)
+    table_unmatched: int = Field(ge=0)
+    file_unmatched: int = Field(ge=0)
+    rows: int = Field(ge=0)
+    added_columns: int = Field(ge=0)
+    renamed: dict[str, str] = Field(default_factory=dict)
+
+
+class JoinSpec(_Value):
+    """One file joined to the table (``joins`` slot, keyed by the file's id, in answer order)."""
+
+    file: str = Field(pattern=FILE_ID)
+    name: str
+    on: str
+    right_on: str | None = None
+    how: JoinHow = "left"
+    counts: JoinCounts | None = None
+
+
+class JoinFiles(_DecisionModel):
+    """Join a file added to the project to the table on a shared identifier (NHANES ships each
+    component as its own file, joined on ``SEQN``). ``how``: ``left`` keeps every row of the
+    table (a row with no partner holds blanks in the file's columns), ``inner`` only the rows with
+    one. One-to-one, one-to-many and many-to-one are joined; many-to-many is refused with its
+    reason. ``name`` and ``counts`` are the server's, never the client's: the preview's counts,
+    recorded with the answer."""
+
+    kind: Literal["join_files"] = "join_files"
+    file: str = Field(pattern=FILE_ID)
+    on: str = Field(min_length=1)
+    right_on: str | None = None
+    how: JoinHow = "left"
+    name: str | None = None
+    counts: JoinCounts | None = None
+
+
+CodebookForm = Literal["table", "nhanes", "xpt"]
+CodebookField = Literal["unit", "codes", "type", "range"]
+
+
+class CodebookConflict(_Value):
+    """A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3)."""
+
+    column: str
+    field: CodebookField
+    says: str      # what the codebook documents
+    values: str    # what the values show instead
+
+
+class CodebookSpec(_Value):
+    """One imported codebook as the state keeps it (``codebooks`` slot, keyed by its id):
+    ``settled`` the readings its structured fields settled (``"<kind>:<column>"`` -> value),
+    ``units`` the documented units no reading kind takes (``mg/dL``; a sentence may state them),
+    ``labels`` its free-text labels of the table's columns (they only strengthen a guess),
+    ``asked`` its fields the values contradict, ``kept`` the readings the user had answered
+    otherwise before (the user's answer stands)."""
+
+    name: str
+    form: CodebookForm
+    settled: dict[str, str] = Field(default_factory=dict)
+    units: dict[str, str] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+    asked: list[CodebookConflict] = Field(default_factory=list)
+    kept: list[str] = Field(default_factory=list)
+    n_entries: int = 0
+    n_matched: int = 0
+
+
+class ImportCodebook(_DecisionModel):
+    """Import the researcher's own data dictionary (Nolan, 2026-10-03; BLUEPRINT §14.2): a
+    variable/label/unit/codes table, an NHANES codebook page, or the labels an XPT file carries.
+    Its structured fields (units, value-code tables, the variable type) settle readings as the
+    user's own documentation, through the confirmation path ``confirm_readings`` writes; its
+    free-text labels only strengthen the guesses the ask leads with; a field the values contradict
+    is asked, never applied. The client names the staged codebook; everything else is the
+    server's, read from the codebook and the values."""
+
+    kind: Literal["import_codebook"] = "import_codebook"
+    codebook: str = Field(pattern=CODEBOOK_ID)
+    name: str | None = None
+    form: CodebookForm | None = None
+    items: list[ReadingItem] = Field(default_factory=list)
+    units: dict[str, str] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+    asked: list[CodebookConflict] = Field(default_factory=list)
+    kept: list[str] = Field(default_factory=list)
+    n_entries: int = 0
+    n_matched: int = 0
+
+
 Decision = Annotated[
     Union[
         SetLens, SetTarget, SetTask, SetPurpose, Revert,
@@ -1090,6 +1198,7 @@ Decision = Annotated[
         ConfirmReading, ConfirmReadings, SetOutcomeScale,
         Reseal, LockPlan,
         SetCensoring, SetClusters, SetEstimand, SetAdjustment,
+        JoinFiles, ImportCodebook,
     ],
     Field(discriminator="kind"),
 ]
@@ -1204,6 +1313,12 @@ class ProjectState(BaseModel):
     # Audit RO-10 (WP18): the scale the user chose for a positive, markedly skewed outcome; under
     # "log" the target slot names the derived ``ln_<column>`` (``SetOutcomeScale``)
     outcome_scale: OutcomeScaleSpec | None = None
+    # V2 definition of done §1 (DATAIN): the files joined to the table, by file id in answer order
+    # (``join_files``; the ingest stage reads it), and each imported codebook by its id
+    # (``import_codebook``): what its structured fields settled, its units and labels, and what
+    # the values contradicted
+    joins: dict[str, JoinSpec] | None = None
+    codebooks: dict[str, CodebookSpec] | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1487,6 +1602,13 @@ def reading_slot(reading: str, column: str) -> tuple[str, str]:
     return "reading_confirmations", f"{reading}:{column}"
 
 
+def _codebook_spec(d: "ImportCodebook") -> "CodebookSpec":
+    return CodebookSpec(name=d.name or d.codebook, form=d.form or "table",
+                        settled={f"{i.reading}:{i.column}": i.value for i in d.items},
+                        units=dict(d.units), labels=dict(d.labels), asked=list(d.asked),
+                        kept=list(d.kept), n_entries=d.n_entries, n_matched=d.n_matched)
+
+
 def reading_entry(reading: str, column: str, value: str) -> tuple[str, str, Any]:
     """One confirmation's write, ``(slot, key, value)``: a unit or a day count is merged into the
     column's recorded spec (a callable the fold applies to the entry before it), every other
@@ -1512,6 +1634,15 @@ register_kind(ConfirmReading, "reading_confirmations", value=lambda d: d.value,
 # nothing else (BLUEPRINT §14.2).
 register_kind(ConfirmReadings, "reading_confirmations", value=lambda d: None,
               entries=lambda d: [reading_entry(i.reading, i.column, i.value) for i in d.items])
+register_kind(JoinFiles, "joins", key=lambda d: d.file,
+              value=lambda d: JoinSpec(file=d.file, name=d.name or d.file, on=d.on,
+                                       right_on=d.right_on, how=d.how, counts=d.counts))
+# A codebook's structured fields write each reading exactly where its own confirmation would
+# (BLUEPRINT §14.2, "let the codebook answer"), and the codebook itself under its id: the
+# readings ledger names it as their evidence (``readings.codebook_source``).
+register_kind(ImportCodebook, "codebooks", value=lambda d: None,
+              entries=lambda d: [*(reading_entry(i.reading, i.column, i.value) for i in d.items),
+                                 ("codebooks", d.codebook, _codebook_spec(d))])
 register_kind(SetEnergyAdjustment, "energy_adjustment",
               value=lambda d: EnergyAdjustment(**d.model_dump(exclude={"kind"})))
 register_kind(SetExclusions, "exclusions")
@@ -3953,3 +4084,6 @@ from turbotab.core import estimand as _estimand  # noqa: E402,F401
 # of the five, predictors summarized after the outcome, the outcome's order and scale, reference
 # rows, and imputed copies.
 from turbotab.core import structural as _structural  # noqa: E402,F401
+# Joins and codebook import (DATAIN): their validators, completions and sentences.
+from turbotab.core import assembly as _assembly  # noqa: E402,F401
+from turbotab.core import codebook as _codebook  # noqa: E402,F401
