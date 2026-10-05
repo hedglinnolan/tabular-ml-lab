@@ -230,6 +230,7 @@ export class MockServer {
       sentence: this.sentenceFor?.(p, decision) ?? null,
       // As the server marks it: recorded after the seal was opened (it is never reverted).
       post_seal: p.records.some((r) => r.decision.kind === "open_seal"),
+      after_estimates: p.records.some((r) => r.decision.kind === "lock_plan"),
       decision,
     };
     p.records.push(record);
@@ -623,7 +624,10 @@ function slotOf(d: Decision): Slot | null {
     case "set_temporal":
       return "temporal";
     case "open_seal":
+    case "reseal":
       return "seal_opened";
+    case "lock_plan":
+      return "plan_locked";
     case "apply_repair":
     case "defer_finding":
     case "dismiss_finding":
@@ -747,7 +751,10 @@ function valueOf(d: Decision): ProjectState[Slot] {
     case "set_unit":
       return d.unit;
     case "open_seal":
+    case "lock_plan":
       return true;
+    case "reseal":
+      return null;
     case "set_grain":
     case "set_repeat_kind":
     case "set_aggregation":
@@ -838,6 +845,7 @@ export function fold(records: DecisionRecord[]): ProjectState {
     aggregation: null,
     temporal: null,
     seal_opened: null,
+    plan_locked: null,
     findings: null,
     feature_table: null,
     categorical: null,

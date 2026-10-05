@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
 
+from turbotab.core.provenance import MethodsText
 from turbotab.server.routes import get_service, get_settings, refusal, require_local
 from turbotab.server.schemas import (
     CreateProject,
@@ -101,6 +102,18 @@ def readings_card(request: Request, pid: str) -> dict:
     """The readings the values settled with no question asked, each with its evidence and the
     answers that change it ("read from your data"; BLUEPRINT §14.3). Nothing waits on them."""
     return get_service(request).readings(pid)
+
+
+@router.get(
+    "/projects/{pid}/methods",
+    response_model=MethodsText,
+    responses={404: refusal("No such project")},
+)
+def methods(request: Request, pid: str) -> MethodsText:
+    """The methods text built from the decision log: the sentences in force, with decisions
+    superseded before anything was seen folded out, and every change made after the estimates
+    were seen or the held-out rows were opened kept and marked (audit WP16)."""
+    return get_service(request).methods(pid)
 
 
 @router.get(

@@ -6,17 +6,19 @@ the data layer (``DataStore``) or from a stage artifact.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import tempfile
 import threading
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
 
 from turbotab.core import consequences, decisions, seal, voice  # seal: its validators and preview
+from turbotab.core import plan_lock  # noqa: F401 - the analysis-plan lock's validators (WP16)
 from turbotab.core.config import Settings
 from turbotab.core.datastore import DataStore, fingerprint_file
 from turbotab.core.datastore import _source_kind as source_kind  # the one list of readable types
@@ -35,6 +37,8 @@ from turbotab.core.jobs import PRELOAD, JobRunner, JobView
 from turbotab.core.stages import GRAPH_FACTORY
 from turbotab.core.workspace import ProjectMeta, Workspace
 from turbotab.server.errors import ApiError
+
+log = logging.getLogger(__name__)
 
 WORKER_PRELOAD = PRELOAD + (
     "duckdb",
@@ -88,6 +92,9 @@ class DecisionContext:
     # A stage's newest public artifact, fresh or stale: what a client may have been shown (the
     # readings ledger reads which roles a bulk answer carried against it; BLUEPRINT §14.1).
     shown: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
+    # The fresh fit's held-out scores, set only while a decision is being recorded, never for a
+    # preview: what the opening keeps in the record as the reported result (audit WP16, RO-05).
+    sealed_scores: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
 
 
 def _target_needs_columns(decision: Any, ctx: Any) -> None:
@@ -403,6 +410,7 @@ class ProjectService:
         self._stores: dict[str, tuple[str, DataStore]] = {}
         self._artifacts: OrderedDict[tuple[str, str, str], Any] = OrderedDict()
         self._frames: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
+        self._locking = threading.Lock()  # one analysis-plan lock per project, however many reads
 
     def close(self) -> None:
         self.engine.shutdown()
@@ -675,13 +683,14 @@ class ProjectService:
 
     def decide(self, pid: str, decision: Any) -> dict[str, Any]:
         self.workspace.get(pid)
-        ctx = self.decision_context(pid)
+        ctx = replace(self.decision_context(pid), sealed_scores=lambda: self._fresh_sealed_scores(pid))
         parsed = decisions.validate(decision, ctx)  # raises Refusal
         log = self.log(pid)
         facts = SentenceFacts(ctx, parsed, log.records())
+        # The log leads the sentence with what had been seen: held-out scores, or the inference
+        # estimates (``decisions.disclose``; audit WP16).
         record = log.append(  # raises Refusal for a revert it cannot make
-            parsed, sentence=lambda d, before: seal.post_seal_sentence(
-                voice.sentence_for(d, before, facts), before))
+            parsed, sentence=lambda d, before: voice.sentence_for(d, before, facts))
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         self._restart_stopped(pid, parsed.kind)
@@ -919,7 +928,45 @@ class ProjectService:
         # AUDIT_REPORT §5 WP8 (ME-13): the family declared final at the opening is the result.
         from turbotab.core.models.selection import declared_family, mark_final
 
-        return mark_final(out, opened=opened, family=declared_family(records) if opened else None)
+        out = mark_final(out, opened=opened, family=declared_family(records) if opened else None)
+        # Audit WP16 (RO-05): the scores the first opening kept stay the reported result; once the
+        # served ones are not those (a fit changed after it, rows drawn again), the note says so.
+        at = seal.reported_result(records, opened=opened, changed=out["changed_after_seal"])
+        out["at_opening"] = at
+        if at is not None and not at["current"] and out.get("final_note"):
+            out["final_note"] = at["note"]
+        return out
+
+    def _fresh_sealed_scores(self, pid: str) -> Any:
+        """The fresh fit's held-out scores from its sealed frame (None: no fresh fit)."""
+        status = self.engine.status(pid).get("fit")
+        if status is None or status.status != "fresh" or not status.key:
+            return None
+        return seal.read_sealed_scores(self.workspace.cache_dir(pid), status.key)
+
+    def _lock_when_shown(self, pid: str, stage: str, artifact: Any) -> None:
+        """Under inference, the first estimate served to a client locks the analysis plan: the
+        plan in force is recorded as declared before any estimate was displayed, and every later
+        decision is marked as made after the estimates were seen (audit WP16, RO-12)."""
+        from turbotab.core import plan_lock
+
+        if stage not in plan_lock.ESTIMATE_STAGES or not plan_lock.shows_estimates(stage, artifact):
+            return
+        with self._locking:
+            state = self.log(pid).state()
+            if state.purpose != "inference" or state.plan_locked:
+                return
+            try:
+                self.decide(pid, {"kind": "lock_plan"})
+            except Refusal:
+                log.exception("the analysis plan of %s could not be locked", pid)
+
+    def methods(self, pid: str) -> Any:
+        """The methods text built from the decision log (``turbotab.core.provenance``)."""
+        from turbotab.core.provenance import methods_text
+
+        self.workspace.get(pid)
+        return methods_text(self.log(pid).records())
 
     # ── stages and jobs ──
 
@@ -938,6 +985,7 @@ class ProjectService:
 
             records = self.log(pid).records()
             artifact = repairs.annotate(artifact, decisions.fold(records), records)
+        self._lock_when_shown(pid, stage, artifact)
         return {
             "stage": result.stage,
             "key": result.key,

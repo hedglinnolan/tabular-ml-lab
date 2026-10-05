@@ -852,6 +852,53 @@ class OpenSeal(_DecisionModel):
 
     kind: Literal["open_seal"] = "open_seal"
     family: str | None = None
+    # Filled by the server when the opening is recorded, never taken from a client (audit WP16,
+    # RO-05): the outcome whose seal this opens (the opening holds only while it is the outcome: a
+    # new outcome starts its own seal), how many rows were held out, the fit's primary metric, and
+    # every family's held-out scores at this moment, ``{family: {metric: value}}``: the scores
+    # the record keeps as the reported result, whatever is fitted later.
+    target: str | None = None
+    n_holdout: int | None = None
+    metric: str | None = None
+    scores: dict[str, dict[str, float | None]] | None = None
+
+
+class Reseal(_DecisionModel):
+    """Draw the held-out rows again after they were opened (audit WP16, RO-05).
+
+    Once opened, the held-out rows hold still: a new seed or holdout, or anything else that would
+    draw them again, waits for this recorded re-seal. It withdraws the opening of the current
+    outcome's seal, so the rows drawn next are withheld until they are opened in turn; the scores
+    at the first opening stay the reported result, and later held-out scores are not an
+    independent test. ``target`` is filled by the server. It stands while its outcome is the
+    target, as the opening does.
+    """
+
+    kind: Literal["reseal"] = "reseal"
+    reason: str | None = None
+    target: str | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def _said(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("a reason must say something")
+        return value.strip() if value is not None else None
+
+
+class LockPlan(_DecisionModel):
+    """The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
+
+    Recorded by the server when inference estimates are first displayed (or by the user, before
+    that): the plan in force then is what was declared in the software before any estimate was
+    displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+    (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
+    server. The lock is never undone.
+    """
+
+    kind: Literal["lock_plan"] = "lock_plan"
+    plan: dict[str, Any] | None = None
+    digest: str | None = None
 
 
 class ApplyRepair(_DecisionModel):
@@ -889,6 +936,7 @@ Decision = Annotated[
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
         SetSensitivity, SetMeasurementError, SetOutcomeUnit, SetColumnUnit, ConfirmRole,
         ConfirmReading, ConfirmReadings,
+        Reseal, LockPlan,
     ],
     Field(discriminator="kind"),
 ]
@@ -913,8 +961,12 @@ class DecisionRecord(BaseModel):
     sentence: str | None = None
     # Recorded after the held-out rows were opened (``open_seal``; M2_CONTRACT §3). Set when the
     # record is appended, from the log as it stood; never by rewriting a past line, so every
-    # record from before the opening (and every pre-M2 line) reads False.
+    # record from before the opening (and every pre-M2 line) reads False. A seal opened for an
+    # earlier outcome, or before a re-seal, counts: the held-out scores were seen (audit RO-05).
     post_seal: bool = False
+    # Recorded after the inference estimates were first displayed (``lock_plan``; audit WP16,
+    # RO-12), set the same way: the decision was made with the estimates in view.
+    after_estimates: bool = False
     decision: Decision
 
     @field_validator("at")
@@ -947,7 +999,11 @@ class ProjectState(BaseModel):
     unit: Literal["unit", "row"] | None = None
     aggregation: AggregationSpec | None = None
     temporal: TemporalSpec | None = None
+    # Whether the current outcome's seal is open: its latest opening stands and no re-seal came
+    # after it (audit WP16, RO-05). None for a new outcome's seal, or after a re-seal.
     seal_opened: bool | None = None
+    # The inference analysis plan was locked when its estimates were first displayed (RO-12).
+    plan_locked: bool | None = None
     findings: dict[str, FindingDisposition] | None = None  # finding id -> its disposition
     # WP1 (audit §5): what values mean
     feature_table: FeatureTableSpec | None = None  # a features-in-rows table's label and annotations
@@ -1305,7 +1361,16 @@ register_kind(SetAggregation, "aggregation",
               value=lambda d: AggregationSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetTemporal, "temporal",
               value=lambda d: TemporalSpec(**d.model_dump(exclude={"kind"})))
-register_kind(OpenSeal, "seal_opened", value=lambda d: True)
+# An opening, and a re-seal, stand only while the outcome they name is the target (audit WP16,
+# RO-05): a new outcome starts its own seal. The latest that stands decides: opened, or (after a
+# re-seal) sealed again. Records from before the rule name no outcome and always stand.
+def _for_this_outcome(decision: Any, slots: Mapping[str, Any]) -> bool:
+    return decision.target is None or slots.get("target") == decision.target
+
+
+register_kind(OpenSeal, "seal_opened", value=lambda d: True, holds=_for_this_outcome)
+register_kind(Reseal, "seal_opened", value=lambda d: None, holds=_for_this_outcome)
+register_kind(LockPlan, "plan_locked", value=lambda d: True)
 register_kind(ApplyRepair, "findings", key=lambda d: d.finding_id,
               value=lambda d: FindingDisposition(action="applied", option=d.option, params=d.params))
 register_kind(DeferFinding, "findings", key=lambda d: d.finding_id,
@@ -3536,6 +3601,37 @@ def _check_revert(existing: Sequence[DecisionRecord], decision: Revert) -> None:
         )
 
 
+# ── what had been seen when a decision was made (audit WP16) ────────────────
+
+def opened_ever(records: Sequence[DecisionRecord]) -> bool:
+    """Whether held-out rows were ever opened in this log: for any outcome, before any re-seal.
+    An opening is never undone, so its scores were seen from then on."""
+    try:
+        cancelled = reverted(records)
+    except Refusal:
+        cancelled = {}
+    return any(r.decision.kind == "open_seal" and r.id not in cancelled for r in records)
+
+
+SEEN_ESTIMATES = "After the estimates were seen"
+SEEN_HELD_OUT = "After the held-out rows were opened"
+SEEN_BOTH = "After the estimates were seen and the held-out rows were opened"
+
+
+def disclose(text: str | None, *, post_seal: bool, after_estimates: bool) -> str | None:
+    """A record's sentence, led by what had been seen when it was made: the held-out scores
+    (``post_seal``) or the inference estimates (``after_estimates``; Gelman & Loken 2013's forking
+    paths). Never applied twice."""
+    if not text or not (post_seal or after_estimates):
+        return text
+    lead = SEEN_BOTH if post_seal and after_estimates else (
+        SEEN_ESTIMATES if after_estimates else SEEN_HELD_OUT)
+    if text.startswith((SEEN_BOTH, SEEN_ESTIMATES, SEEN_HELD_OUT)):
+        return text
+    body = text[0].lower() + text[1:] if text[:1].isupper() and not text[1:2].isupper() else text
+    return f"{lead}, {body}"
+
+
 # ── the log ──────────────────────────────────────────────────────────────────
 
 class DecisionLog:
@@ -3568,6 +3664,8 @@ class DecisionLog:
 
         ``state_before`` is the fold of the log as it stands under the lock, just before this
         record. A sentence that fails is logged and left unset: the answer is still recorded.
+        The record is marked, and its sentence led, by what had been seen when it was made: held-out
+        scores (``post_seal``) and the inference estimates (``after_estimates``; :func:`disclose`).
         """
         decision = parse_decision(decision)
         with self._lock:
@@ -3587,13 +3685,17 @@ class DecisionLog:
                     except Exception:  # noqa: BLE001 - a missing sentence never loses an answer
                         log.exception("no sentence for a %s decision", decision.kind)
                         text = None
+                post_seal, after_estimates = opened_ever(existing), bool(before.plan_locked)
+                if isinstance(text, str):
+                    text = disclose(text, post_seal=post_seal, after_estimates=after_estimates)
                 record = DecisionRecord(
                     id=uuid.uuid4().hex,
                     seq=max((r.seq for r in existing), default=0) + 1,
                     at=datetime.now(timezone.utc),
                     note=note,
                     sentence=text if isinstance(text, str) and text.strip() else None,
-                    post_seal=bool(before.seal_opened),
+                    post_seal=post_seal,
+                    after_estimates=after_estimates,
                     decision=decision,
                 )
                 data = (record.model_dump_json() + "\n").encode("utf-8")

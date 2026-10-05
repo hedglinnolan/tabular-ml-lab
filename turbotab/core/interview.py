@@ -172,6 +172,11 @@ def _live_writer(records: Sequence[Any], state: Any) -> dict[str, str]:
             decision.column != state.target or decision.level != state.event
         ):
             continue
+        # An opening or a re-seal is about its own outcome's seal (audit WP16, RO-05).
+        if decision.kind in ("open_seal", "reseal") and getattr(decision, "target", None) not in (
+            None, state.target
+        ):
+            continue
         out[slot] = record.id
     return out
 

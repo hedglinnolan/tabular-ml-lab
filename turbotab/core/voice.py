@@ -460,6 +460,8 @@ def _revert(d: Any, state: Any, ctx: Any) -> str:
         if entry is None:
             return f"{label}, so {what} is open again"
         return f"{label}, so {what} is {_attr(entry, 'action')} again"
+    if slot == "seal_opened" and target.decision.kind == "reseal" and after:  # WP16
+        return f"{label}, so the re-seal is withdrawn and the held-out rows are open again"
     if slot == "seal_opened":
         return (f"{label}, so the held-out rows are sealed again" if not after
                 else f"{label}, and the held-out rows stay open")
@@ -1430,10 +1432,48 @@ def _set_temporal(d: Any, state: Any, ctx: Any) -> str:
             f"random{together}")
 
 
+def _earlier_opening(d: Any, ctx: Any) -> Any | None:
+    """An earlier opening of the same outcome's seal in the records before this one (a re-seal
+    came between: audit WP16, RO-05), or None."""
+    from turbotab.core.decisions import Refusal, reverted
+
+    records = list(_get(ctx, "records") or [])
+    try:
+        cancelled = reverted(records)
+    except Refusal:
+        cancelled = {}
+    return next((r for r in sorted(records, key=lambda r: r.seq)
+                 if r.id not in cancelled and r.decision.kind == "open_seal"
+                 and getattr(r.decision, "target", None) in (None, getattr(d, "target", None))),
+                None)
+
+
+def _scored(d: Any) -> str:
+    """``: held-out AUC `0.801``` — the kept score of the declared family (WP16), or nothing."""
+    from turbotab.core.models.metrics import LABELS
+
+    scores = getattr(d, "scores", None) or {}
+    metric = getattr(d, "metric", None)
+    family = getattr(d, "family", None)
+    value = (scores.get(family) or {}).get(metric) if family and metric else None
+    if value is None:
+        return ""
+    return f": held-out {LABELS.get(metric, metric)} {tick(f'{value:.3f}')}"
+
+
 @register_sentence("open_seal")
 def _open_seal(d: Any, state: Any, ctx: Any) -> str:
-    n = _get(ctx, "n_holdout")
+    n = getattr(d, "n_holdout", None) or _get(ctx, "n_holdout")
     rows = f"The {count(n)} held-out rows were" if n else "The held-out rows were"
+    earlier = _earlier_opening(d, ctx)
+    if earlier is not None:  # a re-seal came between (WP16, RO-05)
+        family = getattr(d, "family", None)
+        task = getattr(state, "task", None) or _get(ctx, "detected_task")
+        named = f" with {_family_label(family, task, ctx)} declared the final model" if family else ""
+        held = f"The {count(n)} held-out rows" if n else "The held-out rows"
+        return (f"{held} drawn again after the opening at decision {tick(f'#{earlier.seq}')} "
+                f"were opened{named} and scored{_scored(d)}; this is not an independent test, and "
+                f"the scores at that opening stay the reported result")
     # AUDIT_REPORT §5 WP8 (ME-13): the final model was declared on cross-validation beforehand.
     family = getattr(d, "family", None)
     if family:
@@ -1441,11 +1481,34 @@ def _open_seal(d: Any, state: Any, ctx: Any) -> str:
         others = len(getattr(state, "models", None) or []) > 1
         rest = ", the other families' are secondary," if others else ","
         return (f"With {_family_label(family, task, ctx)} declared the final model on "
-                f"cross-validation beforehand, {rows[0].lower()}{rows[1:]} opened once and scored; "
-                f"its held-out score is the reported result{rest} and any later change is marked "
-                f"as made after the seal was opened")
+                f"cross-validation beforehand, {rows[0].lower()}{rows[1:]} opened once and "
+                f"scored{_scored(d)}; its held-out score is the reported result{rest} and any later "
+                f"change is marked as made after the seal was opened")
     return (f"{rows} opened once and scored; those scores are fixed in the record, and any later "
             f"change is marked as made after the seal was opened")
+
+
+@register_sentence("reseal")
+def _reseal(d: Any, state: Any, ctx: Any) -> str:
+    """Recorded only after an opening, so the log leads it with "After the held-out rows were
+    opened" (``decisions.disclose``)."""
+    earlier = _earlier_opening(d, ctx)
+    at = f" at decision {tick(f'#{earlier.seq}')}" if earlier is not None else ""
+    why = f" ({d.reason})" if getattr(d, "reason", None) else ""
+    return (f"The seal was withdrawn so the held-out rows could be drawn again{why}; the scores at "
+            f"the opening{at} stay the reported result, and rows drawn afterwards are withheld "
+            f"until opened, as a test that is not independent")
+
+
+@register_sentence("lock_plan")
+def _lock_plan(d: Any, state: Any, ctx: Any) -> str:
+    """What was declared in the software before any estimate was displayed (MODELING_SEQUENCE §1
+    row 12): never "prespecified" or "preregistered"."""
+    digest = getattr(d, "digest", None)
+    hashed = f" (SHA-256 {tick(digest[:12])})" if digest else ""
+    return (f"The analysis plan recorded above was declared in TurboTab before any estimate was "
+            f"displayed{hashed}; every later change is marked as made after the estimates were "
+            f"seen")
 
 
 # set_survey (audit §5 WP10)
