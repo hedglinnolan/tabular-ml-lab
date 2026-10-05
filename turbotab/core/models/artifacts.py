@@ -15,7 +15,7 @@ from turbotab.core.models.base import Fit
 from turbotab.core.models.baseline import VersusBaseline
 from turbotab.core.models.performance import (Calibration, HorizonCalibration, Interval,
                                                LevelCalibration)
-from turbotab.core.models.selection import DeclaredResult
+from turbotab.core.models.selection import DeclaredResult, SampleSize
 from turbotab.core.models.validation import (ChainLink, FamilyDifference, InternalExternal, NestedCV,
                                              Optimism)
 
@@ -43,6 +43,9 @@ class ShelfArtifact(_Model):
 
     families: list[ShelfFamily]
     basis: str
+    # Wave 2, EXPLORE (MODELING_SEQUENCE §1 row 9; TRIPOD+AI 10): Riley et al.'s minimum sample size,
+    # computed before the families are ranked under prediction (``models.selection.shelf_order``).
+    sample_size: SampleSize | None = None
 
 
 class MatrixShape(_Model):
@@ -398,6 +401,10 @@ class FittedModel(_Model):
     # drift, normalization, values below detection, batch, screening, multiplicity; MS7): its first
     # sentence from the contracts, then the counts and columns this run read. Null otherwise.
     methods: str | None = None
+    # Wave 2, EXPLORE (MODELING_SEQUENCE ruling 13): the concerns that quote a cross-validated score
+    # (the baseline verdict, out-of-fold calibration), which a client is not shown under inference
+    # (``stages.evaluation.withhold_scores``).
+    score_concerns: list[str] = []
 
 
 class BatchFigurePoint(_Model):

@@ -311,6 +311,11 @@ class DesignSpec:
     # readings ledger settled it, ``{column: {"factor", "why", "unit"}}`` (``factor`` None while
     # unsettled: the energy step then refuses rather than read the name). None: not split.
     energy_factors: dict[str, dict[str, Any]] | None = None
+    # Wave 2, EXPLORE: Explore's levers as in-fold rules (``methods.levers``: the form rule, the
+    # variance filter, the imbalance correction) and the selection menu's in-fold step
+    # (``models.variable_selection``), under prediction only; None otherwise.
+    levers: dict[str, Any] | None = None
+    selection: dict[str, Any] | None = None
 
     def multiple_imputation(self) -> bool:
         return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
@@ -455,7 +460,19 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         d_ratio=design_d_ratio(state, inputs, qc),
         scales=scales,
         energy_factors=_energy_factors(state, adj, frame, energy_factors),
+        levers=_explore_answer(state, "levers"),
+        selection=_explore_answer(state, "selection"),
     )
+
+
+def _explore_answer(state: Any, slot: str) -> dict[str, Any] | None:
+    """Wave 2, EXPLORE: the ``levers`` or ``selection`` answer the pipeline runs in each training
+    fold, under prediction only (under inference the levers are refused and selection is a labeled
+    sensitivity analysis beside the declared model, never a pipeline step)."""
+    value = getattr(state, slot, None)
+    if value is None or getattr(state, "purpose", None) == "inference":
+        return None
+    return value.model_dump(mode="json")
 
 
 def _energy_factors(state: Any, adj: Any, frame: pd.DataFrame,
@@ -616,16 +633,50 @@ def detect_step(spec: DesignSpec) -> Any:
     return BelowDetectionFill(columns, method)
 
 
-def family_steps(spec: DesignSpec, family: ModelFamily) -> list[tuple[str, Any]]:
+def explore_candidates(spec: DesignSpec) -> list[str]:
+    """The continuous predictors a form rule may bend, as the step after construction receives them:
+    numbers not already formed by a declared form, not two-valued, not a level, a scale's items
+    replaced by its score, each under the name the energy step gives it."""
+    from turbotab.core.methods.exposure_form import formed_name
+
+    formed = set(spec.exposure_forms or {})
+    items = {c for sc in getattr(spec, "scales", None) or [] for c in sc.get("items") or []}
+    skip = formed | set(spec.two_valued or []) | set(spec.levels or []) | items
+    numeric = set(spec.numeric)
+    names = [c for c in spec.predictors if c in numeric and c not in skip]
+    names += [sc["name"] for sc in getattr(spec, "scales", None) or []]
+    return [formed_name(c, spec.energy) for c in names]
+
+
+def explore_steps(spec: DesignSpec, task: Task | None = None) -> list[tuple[str, Any]]:
+    """Wave 2, EXPLORE: after construction, the levers' form rule and variance filter, then the
+    selection menu's step (MODELING_SEQUENCE §1.1: construction; filters and selection; the fit)."""
+    levers = getattr(spec, "levers", None)
+    selection = getattr(spec, "selection", None)
+    if not levers and not selection:
+        return []
+    from turbotab.core.methods.exposure_form import formed_name
+    from turbotab.core.methods.levers import lever_steps
+    from turbotab.core.models.variable_selection import selection_step
+
+    inputs = [formed_name(c, spec.energy) for c in spec.predictors]
+    inputs += [sc["name"] for sc in getattr(spec, "scales", None) or []]
+    return [*lever_steps(levers, task, explore_candidates(spec)),
+            *selection_step(selection, task, inputs=inputs)]
+
+
+def family_steps(spec: DesignSpec, family: ModelFamily,
+                 task: Task | None = None) -> list[tuple[str, Any]]:
     """The shared steps plus what this family declares it needs.
 
     A family may add steps of its own (``preprocess(spec) -> [(name, step), ...]``, e.g. a spline
     basis); they run after the shared steps and before scaling. The lineage, the step list and the
     select_models preview all read them from the pipeline, so a new family needs nothing else.
+    Explore's in-fold levers and the selection step run between the two (:func:`explore_steps`).
     """
     from sklearn.preprocessing import StandardScaler
 
-    steps = shared_steps(spec)
+    steps = shared_steps(spec) + explore_steps(spec, task)
     extra = getattr(family, "preprocess", None)
     if extra is not None:
         steps.extend(extra(spec))
@@ -638,11 +689,15 @@ def build_pipeline(spec: DesignSpec, family: ModelFamily, task: Task, purpose: P
                    n_rows: int, n_features: int) -> Any:
     from sklearn.pipeline import Pipeline
 
-    steps = family_steps(spec, family)
+    steps = family_steps(spec, family, task)
     # A family whose model step depends on the design (which columns it tests) builds from the spec.
     build_for = getattr(family, "build_for", None)
     model = (build_for(spec, task, purpose, n_rows, n_features) if build_for is not None
              else family.build(task, purpose, n_rows, n_features))
+    if getattr(spec, "levers", None):  # EXPLORE: an imbalance correction, then recalibration
+        from turbotab.core.methods.levers import wrap_model
+
+        model = wrap_model(model, spec.levers, task)
     steps.append(("model", model))
     return Pipeline(steps).set_output(transform="pandas")
 
@@ -701,8 +756,13 @@ def describe_steps(spec: DesignSpec, family: ModelFamily, task: Task,
     from turbotab.core.methods.omics import splits_for_detection
 
     split = splits_for_detection(spec.normalization, getattr(spec, "censored", None))
-    for name, step in family_steps(spec, family):
-        if name == "normalize" and split:
+    for name, step in family_steps(spec, family, task):
+        if name in ("lever_forms", "lever_filter", "select"):
+            from turbotab.core.methods.levers import describe_step as describe_lever
+
+            label, detail = describe_lever(name, spec)
+            out.append({"key": name, "label": label, "detail": detail})
+        elif name == "normalize" and split:
             from turbotab.core.methods.omics import describe_split
 
             label, detail = describe_split(spec.normalization or {}, "normalize")
@@ -904,7 +964,7 @@ __all__ = [
     "ADJUST_STEPS", "DesignSpec", "MISSING_LEVEL", "MissingLevelEncoder", "PREDICTOR_ROLES",
     "PresentColumns", "build_pipeline", "describe_steps", "design_spec", "detect_detail",
     "detect_step", "energy_detail",
-    "family_steps", "impute_detail",
+    "explore_candidates", "explore_steps", "family_steps", "impute_detail",
     "frame_level_columns", "input_columns", "is_categorical", "level_columns", "missing_as_level",
     "model_predictors", "modeling_frame", "normalize_frame", "predictors_from_roles",
     "shared_steps", "takes_level", "transformer", "warnings_for",

@@ -1289,10 +1289,12 @@ HOLDS: dict[str, tuple[str, ...]] = {
 # ``time_varying`` (V2 causal row): the g-methods' estimates (their diagnostics lock nothing);
 # ``explain`` (EXPLAIN): explanations of the outcome models are not estimates, but they show what
 # each model learned from the outcome, so under inference they wait and lock as estimates do.
+# ``evaluation`` (EXPLORE): under inference only the declared selection sensitivity analysis (its
+# pooled Wald tests are estimates); no cross-validated score is shown.
 ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "scales",
                    "effects", "causal", "time_varying", "explain",
                    # FORM: each declared modifier's effects, RERI and ratio of ratios
-                   "modification")
+                   "modification", "evaluation")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
@@ -1345,7 +1347,7 @@ FIT_SCORES = ("selection", "precision", "comparison", "comparisons_note", "resul
               "nested_offer", "at_opening")
 
 
-def _without_scores(model: dict[str, Any]) -> dict[str, Any]:
+def without_scores(model: dict[str, Any]) -> dict[str, Any]:
     """One served model with every outcome-model fit statistic removed (the cross-validated
     scores, the baseline's, the held-out ones, calibration, optimism and the comparison
     substrate); what the model is and why it waits stay."""
@@ -1373,7 +1375,7 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
     if stage == "fit":
         models = []
         for m in out.get("models") or []:
-            m = _without_scores(m) if inference else dict(m)
+            m = without_scores(m) if inference else dict(m)
             info = m.get("inference") or {}
             if info.get("refused") and not m.get("coefficients"):
                 # Already refused with its own reason and exits (an unanswered survey question, a
@@ -2165,8 +2167,8 @@ def _register() -> None:
 _register()
 
 __all__ = [
-    "DIRECT_QUESTIONS", "Derived", "ESTIMATE_STAGES", "GUESSES", "GUESS_WORDS", "HOLDS",
-    "MEASURE_OF_TASK", "MEASURE_WORDS", "NOT_FITTED", "QUESTIONS", "ROLE_PLURAL", "ROLE_SINGULAR",
+    "DIRECT_QUESTIONS", "Derived", "ESTIMATE_STAGES", "FIT_SCORES", "GUESSES", "GUESS_WORDS",
+    "HOLDS", "MEASURE_OF_TASK", "MODEL_SCORES", "MEASURE_WORDS", "NOT_FITTED", "QUESTIONS", "ROLE_PLURAL", "ROLE_SINGULAR",
     "ROLE_WORDS", "adjustment_answer", "adjustment_card", "adjustment_gate", "adjustment_left_out",
     "annotate_fit", "asked_covariates", "caption", "cluster_answer", "cluster_candidates",
     "clusters_gate", "covariates", "current_answers", "current_estimand", "derive",
@@ -2174,5 +2176,5 @@ __all__ = [
     "exposure_candidates", "fixed_effects_column", "follow_up_answer", "follow_up_candidates",
     "follow_up_gate", "grouping_candidates", "grouping_card", "guess_blocks", "guess_of",
     "measures_offered", "mediators", "primary_features", "reads_as_follow_up", "secondary_columns",
-    "served_gate", "unanswered", "withhold",
+    "served_gate", "unanswered", "withhold", "without_scores",
 ]

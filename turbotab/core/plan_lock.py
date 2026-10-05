@@ -224,6 +224,9 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
                    for m in artifact.get("modifications") or [] if isinstance(m, Mapping)
                    for f in m.get("families") or [] if isinstance(f, Mapping)
                    for q in f.get("effects") or [] if isinstance(q, Mapping))
+    if stage == "evaluation":  # wave 2, EXPLORE: under inference, the selection sensitivity's tests
+        estimates = artifact.get("estimates")
+        return isinstance(estimates, Mapping) and bool(estimates.get("path"))
     return False
 
 

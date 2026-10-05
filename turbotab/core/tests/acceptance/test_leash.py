@@ -482,7 +482,9 @@ def test_2_3_a_grouping_named_by_structure_clusters_the_intervals_and_fit_statis
     names, so the grouping question was skipped and the intervals were HC3. Asked now, and answered, the
     intervals are CR2 by it with Bell–McCaffrey df (reference: both written out by definition,
     ``references.cr2_by_definition``). Then an answer the estimate rests on is taken back: the fit
-    serves no R², RMSE, MAE or other score while the plan is open, and serves them once answered."""
+    serves no R², RMSE, MAE or other score while the plan is open, and says why. Answered, it serves
+    none either (MODELING_SEQUENCE §0 ruling 13, EXPLORE's ``withhold_scores``; wave 2b
+    integration): under inference no cross-validated score is shown."""
     frame = _facilities()
     path = _csv(frame, tmp_path, "facilities")
     X = np.column_stack([np.ones(len(frame)), frame["x"], frame["age"]])
@@ -532,7 +534,11 @@ def test_2_3_a_grouping_named_by_structure_clusters_the_intervals_and_fit_statis
         assert model["inference"]["grouped_by"] == "facility_id"
         assert (row["ci_low"], row["ci_high"]) == pytest.approx(expected, abs=1e-6)
         assert row["df"] == pytest.approx(df[1], rel=1e-6)
-        assert _scores_in(fit)  # once the plan is answered its scores are served
+        # Answered, still no score (ruling 13), and the served fit says why.
+        from turbotab.core.stages.evaluation import NO_SCORE_UNDER_INFERENCE
+
+        assert _scores_in(fit) == [] and fit["cv_definition"] == NO_SCORE_UNDER_INFERENCE
+        assert model["cv"] == {} and model["baseline"]["value"] is None
 
         # Taking the adjustment answer back reopens the plan: no estimate and no fit statistic.
         tap_id = next(x["id"] for x in _records(drive) if x["decision"]["kind"] == "set_adjustment")
@@ -548,7 +554,7 @@ def test_2_3_a_grouping_named_by_structure_clusters_the_intervals_and_fit_statis
                       "answers": {"age": {"causes_exposure": "no", "causes_outcome": "yes",
                                           "after_exposure": "no"}}})
         served = _until(lambda: _served(drive, "fit"), lambda f: not f.get("withheld"))
-        assert _scores_in(served)
+        assert _scores_in(served) == [] and served["models"][0]["coefficients"]  # ruling 13
 
     # Under prediction a held follow-up question withholds the estimates only: there the scores are
     # the result, so they stay.

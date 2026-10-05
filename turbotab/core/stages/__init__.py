@@ -176,6 +176,8 @@ WP17_READS: tuple[str, ...] = ("clusters", "estimand", "adjustment")
 from turbotab.core.stages.calibration import CALIBRATION_READS, calibration_stage
 from turbotab.core.stages.scales import SCALES_READS, scales_stage
 from turbotab.core.stages.explain import EXPLAIN_READS, explain_stage
+from turbotab.core.stages.explore import EXPLORE_READS, explore_stage
+from turbotab.core.stages.evaluation import EVALUATION_READS, evaluation_stage
 from turbotab.core.stages.sensitivity import SENSITIVITY_READS, sensitivity_stage
 from turbotab.core.stages.secondary import SECONDARY_READS, secondary_stage
 from turbotab.core.stages.effects import EFFECTS_READS, effects_stage
@@ -468,7 +470,10 @@ def build_graph() -> Graph:
             # shelf 12 (MS6): the measured estimate counts the comparisons' repeated k-fold.
             # shelf 13 (REPAIR-VALID): ... and the refits of the grouping's internal–external
             # validation under prediction.
-            Stage("shelf", 13, ("working", "cohort", "target_info", "split"),
+            # shelf 14 (wave 2b integration): shelf 13 of REPAIR-VALID and of EXPLORE, one engine;
+            # under prediction Riley's minimum runs before the ranking; below it the regression
+            # families rank first (``models.selection.shelf_order``).
+            Stage("shelf", 14, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms",
@@ -519,10 +524,12 @@ def build_graph() -> Graph:
             # left as sva leaves it.
             # design 22 (wave-1 repairs integrated): both design 21s, the routing gate's and MS7
             # repair's.
-            Stage("design", 22, ("working", "split", "target_info"),
+            # design 23 (wave 2, EXPLORE): Explore's levers as in-fold rules and the selection menu's
+            # in-fold step, under prediction (``methods.levers``, ``models.variable_selection``).
+            Stage("design", 23, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
-                   "column_units", *WP17_READS),
+                   "column_units", *WP17_READS, "levers", "selection"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -573,7 +580,11 @@ def build_graph() -> Graph:
             # total energy; the survey design in SMC-FCS's outcome model; a column carried and
             # imputed once per unit only when the ledger's time-invariance reading is confirmed,
             # asked otherwise; the Cox draws' baseline hazard as smcfcs takes it.
-            Stage("fit", 22, ("working", "design", "split", "target_info", "cohort"),
+            # fit 23 (wave 2b integration): REPAIR-VALID's fit 22 with EXPLORE's: the concerns that
+            # quote a score are named (withheld from a client under inference, ruling 13); the
+            # comparison substrate is kept for the evaluation stage; under prediction with the
+            # population answer, the note points to the design-based scores.
+            Stage("fit", 23, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -756,6 +767,20 @@ def build_graph() -> Graph:
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models"),
                   label="Estimating the declared effect modification"),
+            # ── Wave 2, EXPLORE (MODELING_SEQUENCE §0 ruling 3; §1 rows 1, 9, 11) ──
+            # explore reads the training rows under prediction and every analyzed row under
+            # inference: each finding tied to its lever, outcome views recorded as looked at;
+            # evaluation fits the regression-with-splines benchmark on the fit's own folds, weighs
+            # the interpretable model against the flexible ones, draws the decision curve, scores
+            # subgroups, offers shrinkage, runs internal–external CV and design-based CV, and under
+            # inference shows no cross-validated score (only a declared selection sensitivity).
+            Stage("explore", 1, ("working", "cohort", "split", "target_info"),
+                  (*EXPLORE_READS, *ROLE_READS, *WP17_READS), explore_stage, heavy=True,
+                  requires=("target", "split"), label="Exploring the rows Explore may read"),
+            Stage("evaluation", 1, ("working", "fit", "design", "split", "target_info"),
+                  (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
+                  requires=("models",),
+                  label="Fitting the benchmark and weighing the models"),
         ]
     )
 

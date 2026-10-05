@@ -248,6 +248,10 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.calibration",
     # FORM: the functional form and the declared modifiers (MODELING_SEQUENCE §1 rows 5 and 7)
     "turbotab.core.methods.exposure_form", "turbotab.core.methods.interaction",
+    # Wave 2, EXPLORE
+    "turbotab.core.stages.explore", "turbotab.core.methods.levers",
+    "turbotab.core.models.variable_selection", "turbotab.core.models.decision_curve",
+    "turbotab.core.models.design_cv",
 )
 
 

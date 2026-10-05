@@ -1286,6 +1286,12 @@ class ProjectService:
                 artifact = estimand.withhold(stage, artifact, gate)
             elif stage == "fit":
                 artifact = estimand.annotate_fit(artifact, state)
+            if stage == "fit":
+                # Wave 2, EXPLORE (MODELING_SEQUENCE ruling 13): under inference no cross-validated
+                # score is shown.
+                from turbotab.core.stages.evaluation import withhold_scores
+
+                artifact = withhold_scores(artifact, state)
         if stage == "findings" and artifact is not None:  # M2 §4: each finding's disposition
             from turbotab.core import repairs
 

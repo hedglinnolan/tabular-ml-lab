@@ -1534,6 +1534,120 @@ class SetExplain(_DecisionModel):
     as_effect: bool = False
 
 
+# Wave 2, EXPLORE (MODELING_SEQUENCE §0 ruling 3; §1 rows 1, 2, 8, 9, 11; ``stages/explore.py``,
+# ``methods/levers.py``, ``models/variable_selection.py``, ``models/decision_curve.py``).
+# ``view_outcome``: an outcome view the user opened in Explore, recorded as looked at under both
+# purposes (forking paths; Gelman & Loken 2013). ``target``, ``rows``, ``n_rows`` and ``levers``
+# (each viewed column's lever answers at its first look) are filled by the server.
+OutcomeView = Literal["relationship", "distribution"]
+
+
+class OutcomeViewSpec(_Value):
+    view: OutcomeView
+    column: str
+    target: str | None = None
+    rows: Literal["training", "analyzed"] | None = None
+    n_rows: int | None = None
+    levers: dict[str, str] = Field(default_factory=dict)
+
+
+class ViewOutcome(_DecisionModel):
+    kind: Literal["view_outcome"] = "view_outcome"
+    view: OutcomeView
+    columns: list[str] = Field(default_factory=list)  # relationship: the predictors; else the outcome
+    target: str | None = None
+    rows: Literal["training", "analyzed"] | None = None
+    n_rows: int | None = None
+    levers: dict[str, dict[str, str]] | None = None
+
+
+# ``set_levers`` (prediction): Explore's levers as in-fold rules the resampling repeats. ``forms``:
+# every continuous predictor a restricted cubic spline with k by Harrell's rule, or linear against
+# spline chosen by inner cross-validation; ``variance_filter``: near-zero-variance predictors, or all
+# but the ``keep`` most variable, dropped in each training fold; ``imbalance``: a correction fitted
+# in-fold and followed by recalibration (TRIPOD+AI 13).
+LeverForms = Literal["none", "rule", "inner_cv"]
+VarianceFilter = Literal["none", "near_zero", "top"]
+ImbalanceCorrection = Literal["none", "weights", "undersample", "oversample"]
+
+
+class LeverSpec(_Value):
+    forms: LeverForms = "none"
+    variance_filter: VarianceFilter = "none"
+    keep: int | None = Field(default=None, ge=1)
+    imbalance: ImbalanceCorrection = "none"
+
+
+class SetLevers(_DecisionModel):
+    kind: Literal["set_levers"] = "set_levers"
+    forms: LeverForms = "none"
+    variance_filter: VarianceFilter = "none"
+    keep: int | None = Field(default=None, ge=1)
+    imbalance: ImbalanceCorrection = "none"
+
+
+# ``set_selection`` (MODELING_SEQUENCE §1 row 8): the selection menu, in-fold under prediction (or
+# ``where = "outside"``, refused: a false performance number), a labeled sensitivity analysis under
+# inference; ``pre_selected`` is TRIPOD+AI 9a's question.
+SelectionMethod = Literal["none", "elastic_net", "stability", "screening", "stepwise",
+                          "univariable", "vip"]
+
+
+class SelectionSpec(_Value):
+    method: SelectionMethod = "none"
+    where: Literal["in_fold", "outside"] = "in_fold"
+    keep: int | None = Field(default=None, ge=1)
+    threshold: float | None = Field(default=None, gt=0, lt=1)
+    q: int | None = Field(default=None, ge=1)
+    pre_selected: Literal["no", "yes", "other_data", "unknown"] | None = None
+    sensitivity: bool = False
+
+
+class SetSelection(_DecisionModel):
+    kind: Literal["set_selection"] = "set_selection"
+    method: SelectionMethod = "none"
+    where: Literal["in_fold", "outside"] = "in_fold"
+    keep: int | None = Field(default=None, ge=1)
+    threshold: float | None = Field(default=None, gt=0, lt=1)
+    q: int | None = Field(default=None, ge=1)
+    pre_selected: Literal["no", "yes", "other_data", "unknown"] | None = None
+    sensitivity: bool = False
+
+
+# ``set_intended_use`` (MODELING_SEQUENCE §1 row 2, prediction; TRIPOD+AI 12e, 14, 15, 23a): decision
+# support gates the decision curve and its threshold range; ``subgroups`` are the columns whose
+# groups get performance with intervals; ``fairness`` records the approach, even "none".
+class IntendedUseSpec(_Value):
+    use: Literal["decision_support", "risk_estimation"]
+    threshold_low: float | None = Field(default=None, gt=0, lt=1)
+    threshold_high: float | None = Field(default=None, gt=0, lt=1)
+    # the decision threshold declared from the decision's harms (None: chosen in-fold by Youden's J)
+    threshold: float | None = Field(default=None, gt=0, lt=1)
+    subgroups: list[str] = Field(default_factory=list)
+    fairness: Literal["none", "subgroup_performance"] = "subgroup_performance"
+
+
+class SetIntendedUse(_DecisionModel):
+    kind: Literal["set_intended_use"] = "set_intended_use"
+    use: Literal["decision_support", "risk_estimation"]
+    threshold_low: float | None = Field(default=None, gt=0, lt=1)
+    threshold_high: float | None = Field(default=None, gt=0, lt=1)
+    threshold: float | None = Field(default=None, gt=0, lt=1)
+    subgroups: list[str] = Field(default_factory=list)
+    fairness: Literal["none", "subgroup_performance"] = "subgroup_performance"
+
+
+# ``set_updating`` (TRIPOD+AI 12f): uniform shrinkage of a regression model's coefficients by the
+# optimism-corrected calibration slope, stated as model updating, or none.
+class UpdatingSpec(_Value):
+    method: Literal["none", "shrinkage"] = "none"
+
+
+class SetUpdating(_DecisionModel):
+    kind: Literal["set_updating"] = "set_updating"
+    method: Literal["none", "shrinkage"] = "none"
+
+
 class OpenSeal(_DecisionModel):
     """Open the held-out rows: once, at the end. Held-out scores are withheld until then.
 
@@ -1800,6 +1914,7 @@ Decision = Annotated[
         SetTimeVarying,
         SetExplain,
         SetForms, SetModification,
+        ViewOutcome, SetLevers, SetSelection, SetIntendedUse, SetUpdating,
     ],
     Field(discriminator="kind"),
 ]
@@ -1951,6 +2066,14 @@ class ProjectState(BaseModel):
     # by column, kept apart from the forms so that a form answer never reshapes the participant
     # flow; only "consumers" entries are kept
     form_domains: dict[str, FormDomain] | None = None
+    # Wave 2, EXPLORE (``turbotab/core/stages/explore.py``): the outcome views looked at, keyed
+    # ``"<view>:<column>"``; Explore's levers as in-fold rules; the selection menu's answer; the
+    # intended use; model updating
+    outcome_views: dict[str, OutcomeViewSpec] | None = None
+    levers: LeverSpec | None = None
+    selection: SelectionSpec | None = None
+    intended_use: IntendedUseSpec | None = None
+    updating: UpdatingSpec | None = None
 
     @field_validator("form_domains", mode="after")
     @classmethod
@@ -2419,6 +2542,19 @@ register_kind(SetTimeVarying, "time_varying",
               value=lambda d: TimeVaryingSpec(**d.model_dump(exclude={"kind"})))
 # Wave 2, EXPLAIN: its validators live with the method (``turbotab/core/models/explain.py``).
 register_kind(SetExplain, "explain", value=lambda d: ExplainSpec(**d.model_dump(exclude={"kind"})))
+# Wave 2, EXPLORE: each viewed column is its own entry, so a later look at one column keeps the
+# others' (the view's completion carries each column's first-look lever answers forward).
+register_kind(ViewOutcome, "outcome_views", value=lambda d: None,
+              entries=lambda d: [("outcome_views", f"{d.view}:{c}", OutcomeViewSpec(
+                  view=d.view, column=c, target=d.target, rows=d.rows, n_rows=d.n_rows,
+                  levers=dict((d.levers or {}).get(c) or {})))
+                  for c in (d.columns or ([d.target] if d.target else []))])
+register_kind(SetLevers, "levers", value=lambda d: LeverSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetSelection, "selection",
+              value=lambda d: SelectionSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetIntendedUse, "intended_use",
+              value=lambda d: IntendedUseSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetUpdating, "updating", value=lambda d: UpdatingSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))

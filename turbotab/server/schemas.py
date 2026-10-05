@@ -1161,3 +1161,8 @@ from turbotab.core.methods.exposure_form import FormsArtifact  # noqa: E402
 from turbotab.core.methods.interaction import ModificationArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"forms": FormsArtifact, "modification": ModificationArtifact})
+# Wave 2, EXPLORE: Explore after the seal, and the benchmark, decision curve and design-based scores.
+from turbotab.core.stages.explore import ExploreArtifact  # noqa: E402
+from turbotab.core.stages.evaluation import EvaluationArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"explore": ExploreArtifact, "evaluation": EvaluationArtifact})

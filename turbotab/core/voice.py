@@ -1959,6 +1959,57 @@ def _lock_plan(d: Any, state: Any, ctx: Any) -> str:
             f"seen")
 
 
+@register_sentence("view_outcome")
+def _view_outcome(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: an outcome view recorded as looked at (forking paths;
+    ``turbotab/core/stages/explore.py``)."""
+    from turbotab.core.stages.explore import view_sentence, view_standing
+
+    tail = view_standing(d, state, ctx)  # the standing clause, restated as the answers change
+    return f"{view_sentence(d, state)}. {tail}" if tail else view_sentence(d, state)
+
+
+@register_standing("view_outcome")
+def _view_outcome_standing(d: Any, state: Any, ctx: Any) -> str | None:
+    """The levers on the viewed columns set after the view, said on the answers as they stand."""
+    from turbotab.core.stages.explore import view_standing
+
+    return view_standing(d, state, ctx)
+
+
+@register_sentence("set_levers")
+def _set_levers(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: Explore's levers as in-fold rules (``turbotab/core/methods/levers.py``)."""
+    from turbotab.core.methods.levers import decision_sentence
+
+    return decision_sentence(d, state)
+
+
+@register_sentence("set_selection")
+def _set_selection(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: the selection menu (``turbotab/core/models/variable_selection.py``)."""
+    from turbotab.core.models.variable_selection import decision_sentence
+
+    return decision_sentence(d, state)
+
+
+@register_sentence("set_intended_use")
+def _set_intended_use(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: intended use, the decision curve and subgroups
+    (``turbotab/core/models/decision_curve.py``)."""
+    from turbotab.core.models.decision_curve import intended_use_sentence
+
+    return intended_use_sentence(d, state)
+
+
+@register_sentence("set_updating")
+def _set_updating(d: Any, state: Any, ctx: Any) -> str:
+    """Wave 2, EXPLORE: model updating (TRIPOD+AI 12f)."""
+    from turbotab.core.models.decision_curve import updating_sentence
+
+    return updating_sentence(d, state)
+
+
 @register_sentence("set_explain")
 def _set_explain(d: Any, state: Any, ctx: Any) -> str:
     """Wave 2, EXPLAIN: what the explanations are, and that they are not effects
