@@ -1306,7 +1306,9 @@ class SetCausal(_DecisionModel):
 
 # V2 causal row: a time-varying exposure estimated by g-methods (``turbotab/core/time_varying.py``,
 # ``turbotab/core/models/time_varying.py``). The method, the declared time ordering, the columns each
-# model reads, and, for the weights, the truncation declared after their diagnostics are read.
+# model reads, and what is declared after the lane's diagnostics are read: the weights' truncation,
+# or the g-formula's simulation size. ``diagnostics_seen`` is the server's, never the client's: the
+# key of the diagnostics that declaration came after (``time_varying._lane_records_what_it_read``).
 TimeVaryingMethod = Literal["msm_iptw", "gformula", "standard"]
 TimeOrdering = Literal["exposure_precedes_outcome", "same_time", "unknown"]
 ExposurePattern = Literal["switches", "initiation"]  # can stop and restart, or once started stays
@@ -1324,10 +1326,13 @@ class TimeVaryingSpec(_Value):
     pattern: ExposurePattern = "switches"
     summary: ExposureSummary = "cumulative"
     truncation: WeightTruncation | None = None
-    simulations: int = Field(default=10_000, ge=1_000, le=200_000)
-    bootstrap: int = Field(default=500, ge=100, le=2_000)
+    simulations: int | None = Field(default=None, ge=1_000, le=200_000)
+    bootstrap: int | None = Field(default=None, ge=100, le=2_000)
     # Standard regression kept over a confounder affected by prior exposure (block and record).
     acknowledged: bool = False
+    # Standard regression kept with the exposure measured with its outcome (block and record).
+    ordering_acknowledged: bool = False
+    diagnostics_seen: str | None = None
 
 
 class SetTimeVarying(_DecisionModel):
@@ -1341,9 +1346,11 @@ class SetTimeVarying(_DecisionModel):
     pattern: ExposurePattern = "switches"
     summary: ExposureSummary = "cumulative"
     truncation: WeightTruncation | None = None
-    simulations: int = Field(default=10_000, ge=1_000, le=200_000)
-    bootstrap: int = Field(default=500, ge=100, le=2_000)
+    simulations: int | None = Field(default=None, ge=1_000, le=200_000)
+    bootstrap: int | None = Field(default=None, ge=100, le=2_000)
     acknowledged: bool = False
+    ordering_acknowledged: bool = False
+    diagnostics_seen: str | None = None
 
     @model_validator(mode="after")
     def _columns_once(self) -> "SetTimeVarying":

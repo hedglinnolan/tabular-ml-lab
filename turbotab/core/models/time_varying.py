@@ -52,10 +52,14 @@ many not, and the range of the denominator's fitted probability of exposure. A t
 **The marginal structural model** (:func:`fit_msm`) is a weighted generalized linear model (logit for
 an event in each interval, identity for a repeated measure) whose interval treats each unit as a
 cluster: the sandwich ``A⁻¹BA⁻¹`` with ``A = Σ w_i v(μ_i) x_i x_iᵀ`` and ``B = Σ_g U_g U_gᵀ``,
-``U_g = Σ_{i∈g} w_i (y_i − μ_i) x_i``. That is the robust variance of R ``geepack::geeglm`` with an
-independence working correlation (Liang & Zeger 1986). Hernán, Brumback & Robins (2000, *Epidemiology*
-11:561–570) call this interval conservative ("95% conservative confidence interval"): it treats the
-weights as known.
+``U_g = Σ_{i∈g} w_i (y_i − μ_i) x_i``. That (``variance="CR0"``) is the robust variance of R
+``geepack::geeglm`` with an independence working correlation (Liang & Zeger 1986). Hernán, Brumback &
+Robins (2000, *Epidemiology* 11:561–570) call this interval conservative ("95% conservative
+confidence interval"): it treats the weights as known. The app reports ``variance="CR2"``: the same
+sandwich on the weighted model's working linear model (``W^½ X`` and ``W^½`` times the working
+residuals, ``W = w v(μ)``; McCaffrey & Bell 2006, *Stat Med* 25:4081) with the CR2 adjustment and
+Bell–McCaffrey degrees of freedom, the engine every other family's clustered interval uses
+(``models/inference.py``; MODELING_SEQUENCE §2, "repeated units … imply … a small-sample sandwich").
 
 **The parametric g-formula** (:func:`gformula`) is R ``gfoRmula``'s algorithm for a survival outcome
 (McGrath et al. 2020, *Patterns* 1:100008), read from its source (``simulate``, ``pred_fun_cov``,
@@ -76,7 +80,10 @@ The Monte Carlo sample is the units themselves when ``n_sim`` equals their numbe
 drawn with replacement. Its Monte Carlo error is reported as ``sd(r_i)/√n_sim`` over the simulated
 units' risks ``r_i``, which bounds it from above. The natural course (each exposure drawn from its own
 model) is compared with the observed risk as a check of the models (:func:`observed_risk`). The
-interval is the percentile bootstrap over units (:func:`gformula_bootstrap`), refitting every model.
+interval is the percentile bootstrap over units (:func:`gformula_bootstrap`), refitting every model;
+a resample whose models cannot be fit is counted, never silently dropped. What the whole run will take
+is measured before it (:func:`gformula_cost`): one fit, one resample and a slice of the simulation
+are timed and multiplied by the counts declared.
 
 Every model here enters time as ``t`` and ``t²`` of the time point's index (0, 1, …, K − 1), the
 specification of Hernán & Robins's pooled logistic models (*Causal Inference: What If*, ch. 17
@@ -85,6 +92,7 @@ programs: "time + timesq"). Nothing here imports R.
 from __future__ import annotations
 
 import math
+import time as _clock
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal, Mapping, Sequence
 
@@ -92,6 +100,7 @@ import numpy as np
 import pandas as pd
 from scipy.special import expit
 from scipy.stats import norm
+from scipy.stats import t as student_t
 
 from turbotab.core.models.effects import RARE_OUTCOME, e_values
 
@@ -101,6 +110,7 @@ LAG = "lag1_"  # the previous time point's value of a column (0 at the first tim
 WeightKind = Literal["all", "first", "cens"]
 Family = Literal["binomial", "gaussian"]
 CovariateKind = Literal["binary", "normal"]
+Variance = Literal["CR0", "CR2"]
 # The truncation options: the percentile below which (and above whose complement) weights are set
 # to it; ``none`` keeps them as estimated (Cole & Hernán 2008).
 TRUNCATIONS: dict[str, float | None] = {"none": None, "p1_p99": 0.01, "p5_p95": 0.05}
@@ -110,8 +120,23 @@ NEAR = 0.01
 
 
 class NotEstimable(ValueError):
-    """A model that cannot be fit as declared: an indicator the covariates separate perfectly (no
-    exposed, or no unexposed, row in some stratum: a positivity violation), or no rows at all."""
+    """A model that cannot be fit as declared: a yes/no column its covariates separate perfectly, or
+    no rows at all. :func:`fit_glm` says only that; the caller names the model and what separation
+    means for it (for the exposure model, a positivity violation; for an outcome, too few events)."""
+
+
+def _naming(what: str, meaning: str | None = None) -> Any:
+    """A context that re-raises :class:`NotEstimable` with the model named (and what it means)."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def named() -> Any:
+        try:
+            yield
+        except NotEstimable as exc:
+            raise NotEstimable(f"{what}: {exc}" + (f" ({meaning})" if meaning else "")) from None
+
+    return named()
 
 
 # ── long tables ─────────────────────────────────────────────────────────────
@@ -248,8 +273,8 @@ def fit_glm(X: np.ndarray, y: Any, names: Sequence[str], family: Family = "binom
         try:
             step = np.linalg.solve(H, g)
         except np.linalg.LinAlgError as exc:
-            raise NotEstimable("the model's information is singular (an indicator the covariates "
-                               "separate perfectly)") from exc
+            raise NotEstimable("its information is singular: the covariates separate the yes/no "
+                               "column perfectly") from exc
         new = beta + step
         new_dev = deviance(new)
         halvings = 0
@@ -262,11 +287,11 @@ def fit_glm(X: np.ndarray, y: Any, names: Sequence[str], family: Family = "binom
         if np.max(np.abs(step)) <= tol * (1.0 + np.max(np.abs(beta))) and abs(old - dev) <= 1e-10 * (abs(dev) + 0.1):
             fitted = expit(Z @ beta)
             if np.max(np.abs(beta)) > 30 and (fitted.min() < 1e-10 or fitted.max() > 1 - 1e-10):
-                raise NotEstimable("the covariates separate the indicator perfectly: some rows have "
-                                   "a fitted probability of 0 or 1 (a positivity violation)")
+                raise NotEstimable("the covariates separate the yes/no column perfectly: some rows "
+                                   "have a fitted probability of 0 or 1")
             return GLMFit("binomial", tuple(names), beta, tuple(kept), dropped, it)
-    raise NotEstimable("the logistic model did not converge: the covariates separate the indicator "
-                       "(no exposed, or no unexposed, rows in some stratum: a positivity violation)")
+    raise NotEstimable("the logistic model did not converge: the covariates separate the yes/no "
+                       "column")
 
 
 # ── inverse-probability weights (R ``ipw::ipwtm``, binomial, logit) ───────────
@@ -314,27 +339,33 @@ def _factors(fit: GLMFit | None, X: np.ndarray, a: np.ndarray, sel: np.ndarray,
 
 def ipw_weights(data: pd.DataFrame, *, id: str, time: str, indicator: str,
                 numerator: Sequence[str] | None, denominator: Sequence[str],
-                kind: WeightKind) -> WeightModel:
+                kind: WeightKind, label: str | None = None) -> WeightModel:
     """Stabilized weights for ``indicator`` (the exposure, or a censoring indicator under
     ``"cens"``), as ``ipwtm(exposure = indicator, family = "binomial", link = "logit", numerator =
     ~ numerator, denominator = ~ denominator, id, timevar = time, type = kind)``. ``numerator`` None
-    is ipwtm's absent numerator: unstabilized weights. Every term is a numeric column of ``data``."""
+    is ipwtm's absent numerator: unstabilized weights. Every term is a numeric column of ``data``.
+    ``label`` names the indicator in a refusal (default: the column)."""
     if kind not in ("all", "first", "cens"):
         raise ValueError(f"unknown weight type {kind!r}")
+    name = label or f"`{indicator}`"
+    meaning = ("no unit lost, or none kept, in some stratum" if kind == "cens" else
+               "no exposed, or no unexposed, rows in some stratum: a positivity violation")
     d, back = sort_long(data, id, time)
     a = np.asarray(d[indicator], dtype=float)
     if np.isnan(a).any():
-        raise NotEstimable(f"`{indicator}` has missing values")
+        raise NotEstimable(f"{name} has missing values")
     ids = d[id].to_numpy()
     sel = _selected(ids, a, kind)
     Xd, nd = design(d, denominator)
-    den = fit_glm(Xd[sel], a[sel], nd)
+    with _naming(f"the denominator model of {name}", meaning):
+        den = fit_glm(Xd[sel], a[sel], nd)
     fd, pd_ = _factors(den, Xd, a, sel, kind)
     num = None
     fn = np.ones(len(a))
     if numerator is not None:
         Xn, nn = design(d, numerator)
-        num = fit_glm(Xn[sel], a[sel], nn)
+        with _naming(f"the numerator model of {name}", meaning):
+            num = fit_glm(Xn[sel], a[sel], nn)
         fn, _ = _factors(num, Xn, a, sel, kind)
     wd = pd.Series(fd).groupby(ids, sort=False).cumprod().to_numpy()
     wn = pd.Series(fn).groupby(ids, sort=False).cumprod().to_numpy()
@@ -343,7 +374,7 @@ def ipw_weights(data: pd.DataFrame, *, id: str, time: str, indicator: str,
 
 def censoring_weights(data: pd.DataFrame, *, id: str, time: str, indicator: str,
                       numerator: Sequence[str] | None, denominator: Sequence[str],
-                      at_risk: Any = None) -> WeightModel:
+                      at_risk: Any = None, label: str | None = None) -> WeightModel:
     """Stabilized weights for loss to follow-up, where ``indicator`` is 1 on a unit's last observed
     time point when it was lost after it (that row's outcome was seen, so the cohort keeps it).
 
@@ -354,7 +385,7 @@ def censoring_weights(data: pd.DataFrame, *, id: str, time: str, indicator: str,
     is not). ``modeled``, ``p_event`` and the products are ipwtm's on those rows."""
     risk = np.ones(len(data), dtype=bool) if at_risk is None else np.asarray(at_risk, dtype=bool)
     fit = ipw_weights(data.loc[risk], id=id, time=time, indicator=indicator, numerator=numerator,
-                      denominator=denominator, kind="cens")
+                      denominator=denominator, kind="cens", label=label)
     product = np.full(len(data), np.nan)
     product[risk] = fit.weights
     d = pd.DataFrame({"id": data[id].to_numpy(), "t": np.asarray(data[time]), "w": product,
@@ -437,7 +468,8 @@ def positivity(t: Any, exposed: Any, p_exposed: Any, modeled: Any,
 
 @dataclass(frozen=True)
 class MSMFit:
-    """The weighted model with its unit-clustered sandwich variance (independence GEE)."""
+    """The weighted model with its unit-clustered sandwich variance (independence GEE): ``CR0``
+    with normal intervals, or ``CR2`` with each coefficient's Bell–McCaffrey df and t intervals."""
 
     family: str
     names: tuple[str, ...]
@@ -446,19 +478,34 @@ class MSMFit:
     vcov: np.ndarray
     n_rows: int
     n_units: int
+    variance: str = "CR0"
+    df: np.ndarray | None = None
 
     def row(self, name: str) -> dict[str, float]:
         j = self.names.index(name)
         b, s = float(self.coef[j]), float(self.se[j])
-        z = b / s if s > 0 else math.nan
-        return {"estimate": b, "se": s, "ci_low": b - Z95 * s, "ci_high": b + Z95 * s,
-                "z": z, "p": float(2 * norm.sf(abs(z))) if s > 0 else math.nan}
+        df = float(self.df[j]) if self.df is not None and np.isfinite(self.df[j]) else None
+        stat = b / s if s > 0 else math.nan
+        if df is not None:
+            q = float(student_t.ppf(0.975, df))
+            p = float(2 * student_t.sf(abs(stat), df)) if s > 0 else math.nan
+        else:
+            q, p = Z95, float(2 * norm.sf(abs(stat))) if s > 0 else math.nan
+        return {"estimate": b, "se": s, "ci_low": b - q * s, "ci_high": b + q * s, "z": stat,
+                "p": p, "df": df}
 
 
 def fit_msm(X: np.ndarray, names: Sequence[str], y: Any, weights: Any, units: Any,
-            family: Family) -> MSMFit:
-    """The marginal structural model's weighted fit and its robust variance, clustered by unit
-    (R ``geeglm(..., weights, id, corstr = "independence")``'s ``san.se``)."""
+            family: Family, variance: Variance = "CR2") -> MSMFit:
+    """The marginal structural model's weighted fit and its robust variance, clustered by unit.
+
+    ``CR0`` is R ``geeglm(..., weights, id, corstr = "independence")``'s ``san.se``. ``CR2`` is the
+    CR2 sandwich of the weighted model's working linear model, ``W^½ X`` and
+    ``(y − μ)·√w / √v(μ)`` with ``W = w·v(μ)`` (its score per row is ``w (y − μ) x``, as CR0's), by
+    ``models.inference.cr2``, with each coefficient's Bell–McCaffrey df (Bell & McCaffrey 2002;
+    McCaffrey & Bell 2006)."""
+    from turbotab.core.models.inference import cr2
+
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
     w = np.asarray(weights, dtype=float)
@@ -468,13 +515,23 @@ def fit_msm(X: np.ndarray, names: Sequence[str], y: Any, weights: Any, units: An
     mu = fit.predict(X)
     v = mu * (1 - mu) if family == "binomial" else np.ones(len(y))
     A = (X * (w * v)[:, None]).T @ X
-    scores = X * (w * (y - mu))[:, None]
     codes = pd.factorize(pd.Series(np.asarray(units)))[0]
-    U = np.zeros((int(codes.max()) + 1, X.shape[1]))
-    np.add.at(U, codes, scores)
+    G = int(codes.max()) + 1
     Ainv = np.linalg.inv(A)
+    if variance == "CR2":
+        root = np.sqrt(np.clip(w * v, 0.0, None))
+        Xw = X * root[:, None]
+        ew = np.sqrt(w) * (y - mu) / np.sqrt(np.clip(v, 1e-300, None))
+        V, df = cr2(Xw, ew, codes, Ainv)
+        if df is None:  # too costly to compute (``inference.BM_BUDGET``): t(G − 1), as the engine
+            df = np.full(X.shape[1], float(G - 1))
+        return MSMFit(family, tuple(names), fit.coef, np.sqrt(np.clip(np.diag(V), 0.0, None)), V,
+                      len(y), G, "CR2", df)
+    scores = X * (w * (y - mu))[:, None]
+    U = np.zeros((G, X.shape[1]))
+    np.add.at(U, codes, scores)
     V = Ainv @ (U.T @ U) @ Ainv
-    return MSMFit(family, tuple(names), fit.coef, np.sqrt(np.diag(V)), V, len(y), int(U.shape[0]))
+    return MSMFit(family, tuple(names), fit.coef, np.sqrt(np.diag(V)), V, len(y), G)
 
 
 # ── the parametric g-formula (R ``gfoRmula``, survival outcome) ────────────────
@@ -548,14 +605,21 @@ def fit_gformula(d: pd.DataFrame, spec: GFormulaSpec) -> GFormulaModels:
         rows = d.loc[later]
         X, names = design(rows, c.terms)
         family: Family = "binomial" if c.kind == "binary" else "gaussian"
-        fits[c.name] = fit_glm(X, rows[c.name].to_numpy(float), names, family)
+        with _naming(f"the model of `{c.name}`"):
+            fits[c.name] = fit_glm(X, rows[c.name].to_numpy(float), names, family)
         if c.kind == "normal":
             ranges[c.name] = (float(d[c.name].min()), float(d[c.name].max()))
     rows = d.loc[later & ((d[LAG + spec.exposure] == 0) if spec.absorbing else True)]
     X, names = design(rows, spec.exposure_terms)
-    exposure = fit_glm(X, rows[spec.exposure].to_numpy(float), names)
+    with _naming("the exposure model", "no exposed, or no unexposed, rows in some stratum: a "
+                                       "positivity violation"):
+        exposure = fit_glm(X, rows[spec.exposure].to_numpy(float), names)
     X, names = design(d, spec.outcome_terms)
-    outcome = fit_glm(X, d[spec.outcome].to_numpy(float), names)
+    y = d[spec.outcome].to_numpy(float)
+    events = int(np.nansum(y))
+    with _naming("the outcome model", f"{events:,} event{'' if events == 1 else 's'} in "
+                                      f"{len(y):,} rows for {X.shape[1]:,} terms"):
+        outcome = fit_glm(X, y, names)
     return GFormulaModels(fits, exposure, outcome, ranges)
 
 
@@ -604,13 +668,20 @@ def _simulate(base: pd.DataFrame, spec: GFormulaSpec, models: GFormulaModels, K:
     return means, risk
 
 
-def observed_risk(d: pd.DataFrame, spec: GFormulaSpec) -> list[float]:
-    """The nonparametric risk by each time point: the share of the rows at each time point with
-    the event, accumulated as ``Σ_t h_t Π_{k<t}(1 − h_k)`` (``gfoRmula``'s ``obs_calculate``
-    without censoring weights, so it assumes loss to follow-up is independent of the outcome)."""
-    h = d.groupby(TIME)[spec.outcome].mean().sort_index().to_numpy(float)
+def cumulative_risk(t: Any, y: Any) -> list[float]:
+    """The nonparametric risk of an event by each time point: the share of the rows at each time
+    point with the event (``h_t``), accumulated as ``Σ_t h_t Π_{k<t}(1 − h_k)``. It assumes loss to
+    follow-up is independent of the outcome."""
+    h = pd.Series(np.asarray(y, dtype=float)).groupby(np.asarray(t)).mean().sort_index()
+    h = h.to_numpy(float)
     surv = np.concatenate([[1.0], np.cumprod(1 - h)[:-1]])
     return [float(x) for x in np.cumsum(h * surv)]
+
+
+def observed_risk(d: pd.DataFrame, spec: GFormulaSpec) -> list[float]:
+    """The observed risk by each time point (:func:`cumulative_risk`; ``gfoRmula``'s
+    ``obs_calculate`` without censoring weights)."""
+    return cumulative_risk(d[TIME], d[spec.outcome])
 
 
 def gformula(data: pd.DataFrame, spec: GFormulaSpec, *,
@@ -674,40 +745,87 @@ def gformula_bootstrap(data: pd.DataFrame, spec: GFormulaSpec, *, reps: int, n_s
     return {"intervals": out, "reps": int(reps), "failed": failed, "draws": draws}
 
 
+def gformula_cost(data: pd.DataFrame, spec: GFormulaSpec, *, n_sim: int, reps: int,
+                  seed: int, probe: int = 1_000) -> dict[str, float]:
+    """What :func:`gformula` with ``n_sim`` simulated units and ``reps`` bootstrap resamples will
+    take, measured on these rows before it runs (V2_DEFINITION_OF_DONE §3 gate 5: a fit expected to
+    take long shows its estimate first). Three things are timed: fitting every model once
+    (``fit_seconds``, which also says whether they can be fit at all: a model that cannot raises
+    :class:`NotEstimable` here, before anything is declared), one strategy's simulation over
+    ``probe`` units (``unit_seconds`` per unit) and one bootstrap resample (``resample_seconds``).
+    The run is one fit and three strategies over ``n_sim`` units, then ``reps`` resamples:
+    ``fit + 3·n_sim·unit + reps·resample``."""
+    d = _prepared(data, spec)
+    K = check_schedule(d, spec.id, spec.time)["time_points"]
+    started = _clock.perf_counter()
+    models = fit_gformula(d, spec)
+    fit_seconds = _clock.perf_counter() - started
+    base = d.loc[d[TIME] == 0].reset_index(drop=True)
+    rng = np.random.default_rng(seed)
+    sample = base.iloc[rng.integers(0, len(base), max(1, int(probe)))].reset_index(drop=True)
+    started = _clock.perf_counter()
+    _simulate(sample, spec, models, K, 1.0, seed)
+    unit_seconds = (_clock.perf_counter() - started) / len(sample)
+    resample_seconds = 0.0
+    if reps:
+        started = _clock.perf_counter()
+        gformula_bootstrap(data, spec, reps=1, n_sim=None, seed=seed + 1)
+        resample_seconds = _clock.perf_counter() - started
+    seconds = fit_seconds + 3 * int(n_sim) * unit_seconds + int(reps) * resample_seconds
+    return {"seconds": float(seconds), "fit_seconds": float(fit_seconds),
+            "unit_seconds": float(unit_seconds), "resample_seconds": float(resample_seconds)}
+
+
 # ── sensitivity to unmeasured confounding (MODELING_SEQUENCE §0 ruling 10) ─────
 
 # VanderWeele & Ding (2017, Ann Intern Med 167:268–274), computed by the one implementation every
 # inference result uses (ESTIMAND's ``models.effects.e_values``, checked against R ``EValue``): the
 # E-value of a risk ratio and of the limit of its interval nearer 1 (1 when the interval holds 1); an
-# odds ratio read as a risk ratio when the outcome is rare, below 15%, and as √OR otherwise; a
-# difference in means d (in outcome SDs) as RR = exp(0.91 d), its interval exp(0.91 d ± 1.78 se).
-# The lane's artifact keeps its own shape (``rr``, ``lo``, ``hi``, ``point``, ``ci``).
+# odds ratio read as a risk ratio when the outcome is rare, below 15%, and as √OR otherwise; a hazard
+# ratio as a risk ratio when the outcome is rare by the end of follow-up, else by
+# ``(1 − 0.5^√HR)/(1 − 0.5^√(1/HR))``; a difference in means d (in outcome SDs) as RR = exp(0.91 d),
+# its interval exp(0.91 d ± 1.78 se). A pooled logistic model of an event at each time point is a
+# discrete-time hazard model, so its odds ratio is read as a hazard ratio, and whether the outcome
+# is rare is judged by its cumulative risk by the end of follow-up, not by the share of rows (VanderWeele
+# & Ding's rule for a hazard ratio; EValue's ``evalues.HR(rare = …)``). Without an interval, the
+# E-value of the estimate alone. The lane's artifact keeps its own shape (``rr``, ``lo``, ``hi``,
+# ``point``, ``ci``).
 RARE = RARE_OUTCOME
 
 
-def _lane(found: dict[str, Any]) -> dict[str, float]:
-    return {"rr": float(found["rr"]), "lo": float(found["rr_low"]), "hi": float(found["rr_high"]),
-            "point": float(found["point"]), "ci": float(found["limit"])}
+def _lane(found: dict[str, Any]) -> dict[str, Any]:
+    def num(x: Any) -> float | None:
+        return None if x is None else float(x)
+
+    return {"rr": float(found["rr"]), "lo": num(found["rr_low"]), "hi": num(found["rr_high"]),
+            "point": float(found["point"]), "ci": num(found["limit"])}
 
 
-def e_value(rr: float, lo: float, hi: float) -> dict[str, float]:
+def e_value(rr: float, lo: float | None, hi: float | None) -> dict[str, Any]:
     """The E-value of a risk ratio and of its 95% interval."""
     return _lane(e_values(rr, lo, hi, measure="RR"))
 
 
-def e_value_or(odds: float, lo: float, hi: float, rare: bool) -> dict[str, float]:
+def e_value_or(odds: float, lo: float | None, hi: float | None, rare: bool) -> dict[str, Any]:
     return _lane(e_values(odds, lo, hi, measure="OR", rare=rare))
 
 
-def e_value_md(d: float, se: float) -> dict[str, float]:
+def e_value_hr(hazard: float, lo: float | None, hi: float | None, rare: bool) -> dict[str, Any]:
+    """A hazard ratio's E-value; ``rare``: the cumulative risk by the end of follow-up is below
+    15%."""
+    return _lane(e_values(hazard, lo, hi, measure="HR", rare=rare))
+
+
+def e_value_md(d: float, se: float | None) -> dict[str, Any]:
     """``d`` and ``se`` on the outcome's standard-deviation scale."""
     return _lane(e_values(d, measure="OLS", sd=1.0, se=se))
 
 
 __all__ = [
-    "Covariate", "GFormulaResult", "RARE", "e_value", "e_value_md", "e_value_or", "GFormulaSpec", "GLMFit", "LAG", "MSMFit", "NEAR",
-    "NotEstimable", "SUMMARY_QUANTILES", "TIME", "TIME2", "TRUNCATIONS", "WeightModel", "by_time",
-    "censoring_weights", "check_schedule", "design", "fit_glm", "fit_gformula", "fit_msm", "gformula",
-    "gformula_bootstrap", "ipw_weights", "observed_risk", "positivity", "sort_long", "summarize",
-    "time_index", "truncate", "with_history",
+    "Covariate", "GFormulaResult", "GFormulaSpec", "GLMFit", "LAG", "MSMFit", "NEAR",
+    "NotEstimable", "RARE", "SUMMARY_QUANTILES", "TIME", "TIME2", "TRUNCATIONS", "WeightModel",
+    "by_time", "censoring_weights", "check_schedule", "cumulative_risk", "design", "e_value",
+    "e_value_hr", "e_value_md", "e_value_or", "fit_glm", "fit_gformula", "fit_msm", "gformula",
+    "gformula_bootstrap", "gformula_cost", "ipw_weights", "observed_risk", "positivity",
+    "sort_long", "summarize", "time_index", "truncate", "with_history",
 ]

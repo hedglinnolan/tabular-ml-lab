@@ -74,12 +74,13 @@ def r_dataset(name: str, package: str, folder: Path) -> pd.DataFrame:
 
 
 def feedback_cohort(n: int = 3000, visits: int = 6, seed: int = 2026,
-                    censoring: bool = True) -> pd.DataFrame:
+                    censoring: bool = True, c0: float = -4.2) -> pd.DataFrame:
     """One row per person per visit until the event or loss to follow-up (see the module text).
 
     ``sbp_t = 128 + 8 U − 6 dash_{t−1} + N(0, 4²)``;
     ``logit P(dash_t) = −1 + 0.08 (sbp_t − 128) + 1.2 dash_{t−1} + 0.3 female``;
-    ``logit P(cvd_t) = −4.2 + 0.9 U + 0.02 (age − 55)``: no term in the diet;
+    ``logit P(cvd_t) = c0 + 0.9 U + 0.02 (age − 55)`` (``c0`` −4.2 unless set): no term in the
+    diet;
     ``logit P(lost_t) = −3.2 + 0.05 (sbp_t − 128) − 0.4 dash_t`` after a visit without the event
     (``lost`` is 1 on the last visit seen).
     """
@@ -93,7 +94,7 @@ def feedback_cohort(n: int = 3000, visits: int = 6, seed: int = 2026,
     for t in range(visits):
         sbp = 128 + 8 * U - 6 * prev + rng.normal(0, 4, n)
         dash = rng.binomial(1, expit(-1 + 0.08 * (sbp - 128) + 1.2 * prev + 0.3 * female))
-        cvd = rng.binomial(1, expit(-4.2 + 0.9 * U + 0.02 * (age - 55)))
+        cvd = rng.binomial(1, expit(c0 + 0.9 * U + 0.02 * (age - 55)))
         lost = (rng.binomial(1, expit(-3.2 + 0.05 * (sbp - 128) - 0.4 * dash)) * (cvd == 0)
                 if censoring else np.zeros(n, dtype=int))
         for i in np.flatnonzero(alive):
