@@ -15912,16 +15912,40 @@
             "type": "number"
           },
           "se": {
-            "title": "Se",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
           },
           "ci_low": {
-            "title": "Ci Low",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
           },
           "ci_high": {
-            "title": "Ci High",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
           },
           "kd": {
             "title": "Kd",
@@ -18189,6 +18213,18 @@
             "default": null,
             "title": "N"
           },
+          "leverage_one": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Leverage One"
+          },
           "exits": {
             "default": [],
             "items": {
@@ -18248,6 +18284,7 @@
           "flagged",
           "largest",
           "n",
+          "leverage_one",
           "exits",
           "response",
           "change",
@@ -22667,12 +22704,32 @@
             "default": null,
             "title": "Refused"
           },
+          "interval_refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interval Refused"
+          },
           "exits": {
             "default": [],
             "items": {
               "$ref": "#/components/schemas/InferenceExit"
             },
             "title": "Exits",
+            "type": "array"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
             "type": "array"
           }
         },
@@ -22681,7 +22738,9 @@
           "method",
           "contrasts",
           "refused",
-          "exits"
+          "interval_refused",
+          "exits",
+          "concerns"
         ],
         "title": "Marginal",
         "type": "object"
@@ -22764,14 +22823,46 @@
             "default": null,
             "title": "Rr High"
           },
+          "rr_unbounded": {
+            "default": false,
+            "title": "Rr Unbounded",
+            "type": "boolean"
+          },
           "n_boot": {
             "default": 0,
             "title": "N Boot",
             "type": "integer"
           },
+          "n_limit": {
+            "default": 0,
+            "title": "N Limit",
+            "type": "integer"
+          },
           "n_failed": {
             "default": 0,
             "title": "N Failed",
+            "type": "integer"
+          },
+          "failed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Failed Reason"
+          },
+          "n_rr_infinite": {
+            "default": 0,
+            "title": "N Rr Infinite",
+            "type": "integer"
+          },
+          "n_rr_undefined": {
+            "default": 0,
+            "title": "N Rr Undefined",
             "type": "integer"
           },
           "by_unit": {
@@ -22797,8 +22888,13 @@
           "rd_high",
           "rr_low",
           "rr_high",
+          "rr_unbounded",
           "n_boot",
+          "n_limit",
           "n_failed",
+          "failed_reason",
+          "n_rr_infinite",
+          "n_rr_undefined",
           "by_unit"
         ],
         "title": "MarginalContrast",
@@ -25087,12 +25183,37 @@
             "type": "number"
           },
           "rv_alpha": {
-            "title": "Rv Alpha",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rv Alpha"
           },
           "alpha": {
             "title": "Alpha",
             "type": "number"
+          },
+          "covariance": {
+            "default": "classical",
+            "title": "Covariance",
+            "type": "string"
+          },
+          "interval_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interval Note"
           },
           "benchmarks": {
             "default": [],
@@ -25113,6 +25234,8 @@
           "rv",
           "rv_alpha",
           "alpha",
+          "covariance",
+          "interval_note",
           "benchmarks"
         ],
         "title": "RobustnessResult",
@@ -26023,6 +26146,29 @@
             ],
             "default": null,
             "title": "Not Computed"
+          },
+          "of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Of"
+          },
+          "companion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Coefficient"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -26031,7 +26177,9 @@
           "e_value",
           "robustness",
           "reading",
-          "not_computed"
+          "not_computed",
+          "of",
+          "companion"
         ],
         "title": "Sensitivity",
         "type": "object"
@@ -26418,6 +26566,33 @@
             },
             "title": "Concerns",
             "type": "array"
+          },
+          "comparison": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Coefficient"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Comparison"
+          },
+          "comparison_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Comparison Label"
           }
         },
         "required": [
@@ -26428,7 +26603,9 @@
           "n_rows",
           "effects",
           "inference",
-          "concerns"
+          "concerns",
+          "comparison",
+          "comparison_label"
         ],
         "title": "SequenceFit",
         "type": "object"
