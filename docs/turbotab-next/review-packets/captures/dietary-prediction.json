@@ -1,0 +1,965 @@
+{
+ "journey": {
+  "name": "dietary-prediction",
+  "lens": "dietary",
+  "purpose": "prediction",
+  "question": "How well do diet and body measures predict fasting glucose?",
+  "fixture": "_tt_tmp_nhanes.csv (the NHANES export, untracked)",
+  "why": "V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference journeys.",
+  "lenses": [
+   "dietary"
+  ],
+  "target": "glucose",
+  "exposure": null
+ },
+ "captured": {
+  "commit": "caa9563bbd",
+  "date": "2026-10-05",
+  "seconds": 1375,
+  "workers": 2
+ },
+ "answers": [
+  {
+   "kind": "set_lens",
+   "status": 200,
+   "summary": "{\"lenses\": [\"dietary\"]}",
+   "source": "the journey",
+   "seq": 1,
+   "sentence": "The table was read through the `dietary` lens."
+  },
+  {
+   "kind": "apply_repair",
+   "status": 200,
+   "summary": "{\"finding_id\": \"sas_zeros\", \"option\": \"zero\"}",
+   "source": "the finding's first repair option",
+   "seq": 2,
+   "sentence": "`152` cells holding `5.4e-79`, a misread SAS transport zero, were read as `0`."
+  },
+  {
+   "kind": "set_target",
+   "status": 200,
+   "summary": "{\"column\": \"glucose\"}",
+   "source": "the journey",
+   "seq": 3,
+   "sentence": "`glucose` was chosen as the outcome; it is measured on all `21,849` rows."
+  },
+  {
+   "kind": "set_purpose",
+   "status": 200,
+   "summary": "{\"purpose\": \"prediction\"}",
+   "source": "the journey",
+   "seq": 4,
+   "sentence": "The analysis was declared for `prediction`: models are judged on rows they never saw."
+  },
+  {
+   "kind": "set_roles",
+   "status": 200,
+   "summary": "identifier: SEQN; covariate: cycle_begin_year, age, gender, bp_sys, bp_di, weight and 7 more; energy: kcal; exposure: protein, sugar, carb, fat_total, fat_sat, fat_mon and 1 more; flag: imputed_weight, imputed_height, imputed_bmi, imputed_waist, imputed_bp_sys, imputed_bp_di",
+   "source": "the app's proposed roles, confirmed",
+   "seq": 5,
+   "sentence": "Column roles were set for `28` columns: energy `kcal`; exposures `protein`, `sugar`, `carb` and 4 more; covariates `cycle_begin_year`, `age`, `gender` and 10 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more; `cycle_begin_year`, `bp_sys` and 14 more were proposed below high confidence and wait for their own confirmation before any default reads them."
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "16 readings (role 16): role:cycle_begin_year=covariate, role:bp_sys=covariate, role:bp_di=covariate, role:weight=covariate and 12 more",
+   "source": "a reading the server asked about, answered from the fixture's truth",
+   "seq": 6,
+   "sentence": "Confirmed together, each as the question showed it: `10` columns (from `cycle_begin_year`) were confirmed as a covariate; `6` columns (from `imputed_weight`) were confirmed as a flag."
+  },
+  {
+   "kind": "set_exclusions",
+   "status": 200,
+   "summary": "{\"rules\": []}",
+   "source": "the app's first-ranked option",
+   "seq": 7,
+   "sentence": "No rows were excluded: every row with `glucose` measured stays in the analysis."
+  },
+  {
+   "kind": "set_missing",
+   "status": 200,
+   "summary": "{\"strategy\": \"impute\"}",
+   "source": "the app's first-ranked option",
+   "seq": 8,
+   "sentence": "Missing predictor values were imputed in each training fold without the outcome: the median for numbers, an energy-bearing nutrient from its line on total energy (`kcal`), the most frequent value for categories; no row was dropped for a missing predictor."
+  },
+  {
+   "kind": "set_split",
+   "status": 200,
+   "summary": "{\"holdout\": 0.2, \"seed\": 0, \"folds\": 5, \"validation\": \"kfold\"}",
+   "source": "the app's first-ranked option (the seal plan)",
+   "seq": 9,
+   "sentence": "A random `20%` of the rows with `glucose` recorded (seed `0`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction."
+  },
+  {
+   "kind": "set_energy_adjustment",
+   "status": 200,
+   "summary": "{\"method\": \"standard\", \"energy_column\": \"kcal\", \"nutrients\": [\"protein\", \"sugar\", \"carb\", \"fat_total\", \"fat_sat\", \"fat_mon\", \"fat_poly\"]}",
+   "source": "the app's first-ranked applicable option",
+   "seq": 10,
+   "sentence": "Energy was adjusted by the standard (multivariate) model: `kcal` enters the models beside `protein`, `sugar`, `carb`, `fat_total`, `fat_sat`, `fat_mon` and `fat_poly`, so each nutrient's effect is at fixed total energy."
+  },
+  {
+   "kind": "select_models",
+   "status": 409,
+   "summary": "{\"models\": [\"boosted_trees\", \"elastic_net\"]}",
+   "source": "the shelf's first-ranked families",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "`cycle_begin_year`, `age`, `kcal`, `hdl` and `triglycerides` hold whole numbers, which may be codes for categories (one indicator per level) or amounts (one slope); the fit waits for the answer for each. Tell me about these columns: `kcal`: an amount? (`4,276` whole-number values from 0 to 15,594); `triglycerides`: an amount? (`653` whole-number values from 10 to 4,233); `hdl`: an amount? (`143` whole-number values from 6 to 226); `age`: an amount? (`68` whole-number values from 18 to 85); `cycle_begin_year`: codes for categories? (`9` whole-number values from 2,001 to 2,017, few of them).",
+    "exits": [
+     "Confirm each of the 5 as shown",
+     "`kcal` is a count or an amount (a slope; a unit's rows averaged)",
+     "`kcal` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`triglycerides` is a count or an amount (a slope; a unit's rows averaged)",
+     "`triglycerides` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`hdl` is a count or an amount (a slope; a unit's rows averaged)",
+     "`hdl` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`age` is a count or an amount (a slope; a unit's rows averaged)",
+     "`age` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`cycle_begin_year` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`cycle_begin_year` is a count or an amount (a slope; a unit's rows averaged)",
+     "Change the roles (the roles question)"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "5 readings (code_or_count 5): code_or_count:kcal=amount, code_or_count:triglycerides=amount, code_or_count:hdl=amount, code_or_count:age=amount and 1 more",
+   "source": "a reading the server asked about, answered from the fixture's truth",
+   "seq": 11,
+   "sentence": "Confirmed together, each as the question showed it: `kcal` was confirmed to hold amounts or counts; `triglycerides` was confirmed to hold amounts or counts; `hdl` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories."
+  },
+  {
+   "kind": "select_models",
+   "status": 200,
+   "summary": "{\"models\": [\"boosted_trees\", \"elastic_net\"]}",
+   "source": "the shelf's first-ranked families",
+   "seq": 12,
+   "sentence": "Two model families were chosen: gradient-boosted trees and elastic net. Read from the values, no question asked: `SEQN` is the unit's identifier (`SEQN` is the NHANES respondent number; `21,849` whole numbers, each on one row, within a span of `92,991`: a measurement spread over so narrow a span would repeat about `2,567` times); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `gender` is a covariate (A person's characteristic, usually adjusted for rather than studied); `bmi` is a covariate (A person's characteristic, usually adjusted for rather than studied); `kcal` is total energy intake (Total energy intake: its values follow the macronutrients' energy (r = 0.98)); `protein` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.79)); `sugar` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.67)); `carb` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.88)); `fat_total` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.88)); `fat_sat` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.82)); `fat_mon` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.84)); `fat_poly` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.72)); `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `kcal` is in kcal (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm)."
+  },
+  {
+   "kind": "set_substitution",
+   "status": 409,
+   "summary": "{\"donor\": \"protein\", \"recipient\": \"sugar\", \"step_kcal\": 100}",
+   "source": "the first pair the design offers, 100 kcal a step",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "`sugar` reads as an energy-bearing nutrient, but its unit is not recorded, so the kcal each unit carries is a guess (a name never says it). Record the unit first.",
+    "exits": [
+     "`sugar` is in grams",
+     "`sugar` is in kilograms",
+     "`sugar` is in kcal",
+     "`sugar` is in kJ",
+     "`sugar` is a share of energy: move a share of energy instead (the substitution's share-of-energy scale)",
+     "Choose two nutrients whose units are stated"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "1 readings (unit 1): unit:sugar=g",
+   "source": "a reading the server asked about, answered from the fixture's truth",
+   "seq": 13,
+   "sentence": "Confirmed together, each as the question showed it: `sugar` was confirmed to be in g."
+  },
+  {
+   "kind": "set_substitution",
+   "status": 200,
+   "summary": "{\"donor\": \"protein\", \"recipient\": \"sugar\", \"step_kcal\": 100}",
+   "source": "the first pair the design offers, 100 kcal a step",
+   "seq": 14,
+   "sentence": "The substitution studied is `protein` replaced by `sugar`, in steps of `100` kcal with `kcal` held fixed."
+  },
+  {
+   "kind": "open_seal",
+   "status": 200,
+   "summary": "{\"family\": \"boosted_trees\"}",
+   "source": "the shelf's first-ranked family, declared final",
+   "seq": 15,
+   "sentence": "With gradient-boosted trees declared the final model on cross-validation beforehand, the `4,370` held-out rows were opened once and scored: held-out MSE `1126.171`; its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened."
+  }
+ ],
+ "guessed": [],
+ "notes": [
+  "findings with repairs: sas_zeros, binary_text__gender"
+ ],
+ "export": {
+  "status": 200,
+  "engine": "2.0.0.dev0",
+  "files": [
+   "README.md",
+   "analysis_plan.json",
+   "checklist/tripod_ai.json",
+   "checklist/tripod_ai.md",
+   "decisions.jsonl",
+   "figures/lineage.svg",
+   "figures/participant_flow.svg",
+   "manifest.json",
+   "methods.json",
+   "methods.md",
+   "methods.txt",
+   "provenance.json",
+   "results/performance.csv",
+   "results/performance.md"
+  ],
+  "methods_md": "# Methods: _tt_tmp_nhanes\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `dietary` lens.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `glucose` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\n`152` cells holding `5.4e-79`, a misread SAS transport zero, were read as `0`.\n\n## Outcome (TRIPOD+AI 8)\n\n`glucose` was chosen as the outcome; it is measured on all `21,849` rows.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `28` columns: energy `kcal`; exposures `protein`, `sugar`, `carb` and 4 more; covariates `cycle_begin_year`, `age`, `gender` and 10 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more; `cycle_begin_year`, `bp_sys` and 14 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `10` columns (from `cycle_begin_year`) were confirmed as a covariate; `6` columns (from `imputed_weight`) were confirmed as a flag. Confirmed together, each as the question showed it: `kcal` was confirmed to hold amounts or counts; `triglycerides` was confirmed to hold amounts or counts; `hdl` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories. Confirmed together, each as the question showed it: `sugar` was confirmed to be in g.\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, an energy-bearing nutrient from its line on total energy (`kcal`), the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. A random `20%` of the rows with `glucose` recorded (seed `0`) was held out for one final score; performance was estimated on the rest by `5`-fold cross-validation; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004); R² was measured against the training rows' mean and pooled over every out-of-fold prediction. Energy was adjusted by the standard (multivariate) model: `kcal` enters the models beside `protein`, `sugar`, `carb`, `fat_total`, `fat_sat`, `fat_mon` and `fat_poly`, so each nutrient's effect is at fixed total energy. Two model families were chosen: gradient-boosted trees and elastic net. Read from the values, no question asked: `SEQN` is the unit's identifier (`SEQN` is the NHANES respondent number; `21,849` whole numbers, each on one row, within a span of `92,991`: a measurement spread over so narrow a span would repeat about `2,567` times); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `gender` is a covariate (A person's characteristic, usually adjusted for rather than studied); `bmi` is a covariate (A person's characteristic, usually adjusted for rather than studied); `kcal` is total energy intake (Total energy intake: its values follow the macronutrients' energy (r = 0.98)); `protein` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.79)); `sugar` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.67)); `carb` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.88)); `fat_total` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.88)); `fat_sat` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.82)); `fat_mon` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.84)); `fat_poly` is an exposure (A nutrient that carries energy: an exposure; it rises with total energy (r = 0.72)); `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `kcal` is in kcal (`kcal` matches the energy its macronutrients carry: kcal, over the same days as they span. How many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too); record it before screening by `kcal`); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm). The substitution studied is `protein` replaced by `sugar`, in steps of `100` kcal with `kcal` held fixed.\n\nCross-validated R², MSE, RMSE and MAE pool every out-of-fold prediction; R² is measured against the mean of the rows each fold's model was fit on, as the held-out R² is against the training rows' mean. The fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\nWith gradient-boosted trees declared the final model on cross-validation beforehand, the `4,370` held-out rows were opened once and scored: held-out MSE `1126.171`; its held-out score is the reported result, the other families' are secondary, and any later change is marked as made after the seal was opened.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `caa9563bbdfb`). The supplementary provenance record holds the decision log (`15` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `85cfe634510d`) and the model matrix (`17,479` rows by `28` columns; SHA-256 `29a43aa0baf5` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "checklist": {
+   "checklist": "TRIPOD+AI",
+   "title": "TRIPOD+AI checklist for the reporting of prediction model studies",
+   "citation": "Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. BMJ 2024;385:e078378. doi:10.1136/bmj-2023-078378",
+   "counts": {
+    "items": 52,
+    "answered": 4,
+    "partly_answered": 11,
+    "unanswered": 37
+   },
+   "items": [
+    {
+     "id": "1",
+     "section": "Title",
+     "topic": "Title",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "2",
+     "section": "Abstract",
+     "topic": "Abstract",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3a",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3b",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3c",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "4",
+     "section": "Introduction",
+     "topic": "Objectives",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "seq": 4
+      }
+     ],
+     "owed": "the study's objectives, and whether it develops or validates a model (or both)"
+    },
+    {
+     "id": "5a",
+     "section": "Methods",
+     "topic": "Data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "5b",
+     "section": "Methods",
+     "topic": "Data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6a",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6b",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 7
+      }
+     ],
+     "owed": "the study's own eligibility criteria before the table was assembled"
+    },
+    {
+     "id": "6c",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "7",
+     "section": "Methods",
+     "topic": "Data preparation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "apply_repair",
+       "seq": 2
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 6
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 11
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 13
+      }
+     ],
+     "owed": "whether the checks were similar across sociodemographic groups"
+    },
+    {
+     "id": "8a",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_target",
+       "seq": 3
+      }
+     ],
+     "owed": "how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups"
+    },
+    {
+     "id": "8b",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "8c",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "9a",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_roles",
+       "seq": 5
+      }
+     ],
+     "owed": "why these predictors, and any pre-selection of predictors before model building"
+    },
+    {
+     "id": "9b",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_roles",
+       "seq": 5
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 6
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 11
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 13
+      }
+     ],
+     "owed": "how and when each predictor was measured"
+    },
+    {
+     "id": "9c",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "10",
+     "section": "Methods",
+     "topic": "Sample size",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "11",
+     "section": "Methods",
+     "topic": "Missing data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 8
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12a",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "seq": 4
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_split",
+       "seq": 9
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12b",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_energy_adjustment",
+       "seq": 10
+      },
+      {
+       "source": "file",
+       "file": "figures/lineage.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12c",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_split",
+       "seq": 9
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "select_models",
+       "seq": 12
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      }
+     ],
+     "owed": "the rationale for each model family"
+    },
+    {
+     "id": "12d",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12e",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "file",
+       "file": "results/performance.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the rationale for each measure"
+    },
+    {
+     "id": "12f",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12g",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "13",
+     "section": "Methods",
+     "topic": "Class imbalance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "14",
+     "section": "Methods",
+     "topic": "Fairness",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "15",
+     "section": "Methods",
+     "topic": "Model output",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "16",
+     "section": "Methods",
+     "topic": "Training versus evaluation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "17",
+     "section": "Methods",
+     "topic": "Ethical approval",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18a",
+     "section": "Open science",
+     "topic": "Funding",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18b",
+     "section": "Open science",
+     "topic": "Conflicts of interest",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18c",
+     "section": "Open science",
+     "topic": "Protocol",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18d",
+     "section": "Open science",
+     "topic": "Registration",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18e",
+     "section": "Open science",
+     "topic": "Data sharing",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18f",
+     "section": "Open science",
+     "topic": "Code sharing",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "provenance.json",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "where the bundle, and the TurboTab version it names, can be obtained"
+    },
+    {
+     "id": "19",
+     "section": "Patient and public involvement",
+     "topic": "Patient and public involvement",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "20a",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "20b",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "20c",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "21",
+     "section": "Result",
+     "topic": "Model development",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the number of participants (and outcome events) in each analysis: development, tuning and evaluation"
+    },
+    {
+     "id": "22",
+     "section": "Result",
+     "topic": "Model specification",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "23a",
+     "section": "Result",
+     "topic": "Model performance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "results/performance.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "performance in key subgroups, with intervals"
+    },
+    {
+     "id": "23b",
+     "section": "Result",
+     "topic": "Model performance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "24",
+     "section": "Result",
+     "topic": "Model updating",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "25",
+     "section": "Discussion",
+     "topic": "Interpretation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "26",
+     "section": "Discussion",
+     "topic": "Limitations",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27a",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27b",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27c",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    }
+   ],
+   "unanswered": [
+    "1",
+    "2",
+    "3a",
+    "3b",
+    "3c",
+    "5a",
+    "5b",
+    "6a",
+    "6c",
+    "8b",
+    "8c",
+    "9c",
+    "10",
+    "12d",
+    "12f",
+    "12g",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18a",
+    "18b",
+    "18c",
+    "18d",
+    "18e",
+    "19",
+    "20b",
+    "20c",
+    "22",
+    "23b",
+    "24",
+    "25",
+    "26",
+    "27a",
+    "27b",
+    "27c"
+   ]
+  }
+ }
+}

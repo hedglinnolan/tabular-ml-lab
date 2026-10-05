@@ -1,0 +1,1089 @@
+{
+ "journey": {
+  "name": "genomics-inference",
+  "lens": "genomics",
+  "purpose": "inference",
+  "question": "Which genes are differentially expressed between cases and controls?",
+  "fixture": "turbotab/sample_data/genomics_expression.csv",
+  "why": "MODELING_SEQUENCE §6 chain 5's inference twin: feature-wise models with Benjamini–Hochberg.",
+  "lenses": [
+   "genomics"
+  ],
+  "target": "condition",
+  "exposure": "family"
+ },
+ "captured": {
+  "commit": "caa9563bbd",
+  "date": "2026-10-05",
+  "seconds": 63,
+  "workers": 2
+ },
+ "answers": [
+  {
+   "kind": "set_lens",
+   "status": 200,
+   "summary": "{\"lenses\": [\"genomics\"]}",
+   "source": "the journey",
+   "seq": 1,
+   "sentence": "The table was read through the `genomics` lens."
+  },
+  {
+   "kind": "set_orientation",
+   "status": 200,
+   "summary": "{\"orientation\": \"sample_major\"}",
+   "source": "the fixture's layout",
+   "seq": 2,
+   "sentence": "The table was confirmed as one row per sample, as supplied, and was not transposed."
+  },
+  {
+   "kind": "apply_repair",
+   "status": 200,
+   "summary": "{\"finding_id\": \"omics_scale\", \"option\": \"log_cpm_tmm\"}",
+   "source": "the finding's first repair option",
+   "seq": 3,
+   "sentence": "Of the 486 count columns, those of them the models take as exposures were transformed to log2 counts per million (edgeR cpm, prior count 2) on library sizes scaled by TMM factors (Robinson and Oshlack 2010), fit within each training fold."
+  },
+  {
+   "kind": "set_target",
+   "status": 200,
+   "summary": "{\"column\": \"condition\"}",
+   "source": "the journey",
+   "seq": 4,
+   "sentence": "`condition` was chosen as the outcome; it is measured on all `60` rows."
+  },
+  {
+   "kind": "set_event",
+   "status": 200,
+   "summary": "{\"column\": \"condition\", \"level\": \"case\"}",
+   "source": "the journey",
+   "seq": 5,
+   "sentence": "`case` of `condition` was taken as the event and coded 1; `control` was coded 0."
+  },
+  {
+   "kind": "set_purpose",
+   "status": 200,
+   "summary": "{\"purpose\": \"inference\"}",
+   "source": "the journey",
+   "seq": 6,
+   "sentence": "The analysis was declared for `inference`: associations are estimated with their uncertainty."
+  },
+  {
+   "kind": "set_grain",
+   "status": 200,
+   "summary": "{\"grain\": \"one_row_per_unit\"}",
+   "source": "the fixture's layout",
+   "seq": 7,
+   "sentence": "Each row was declared a different participant: no one appears in more than one row."
+  },
+  {
+   "kind": "set_roles",
+   "status": 200,
+   "summary": "identifier: sample_id; covariate: batch, sex, age; exposure: gene_0001, gene_0002, gene_0003, gene_0004, gene_0005, gene_0006 and 489 more",
+   "source": "the app's proposed roles, confirmed",
+   "seq": 8,
+   "sentence": "Column roles were set for `499` columns: exposures `gene_0001`, `gene_0002`, `gene_0003` and 492 more; covariates `batch`, `sex` and `age`; identifier `sample_id`; `batch`, `gene_0001` and 494 more were proposed below high confidence and wait for their own confirmation before any default reads them."
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "496 readings (role 496): role:batch=covariate, role:gene_0001=exposure, role:gene_0002=exposure, role:gene_0003=exposure and 492 more",
+   "source": "a reading the server asked about, answered from the fixture's truth",
+   "seq": 9,
+   "sentence": "Confirmed together, each as the question showed it: `batch` was confirmed as a covariate; `495` columns (from `gene_0001`) were confirmed as an exposure."
+  },
+  {
+   "kind": "set_exclusions",
+   "status": 200,
+   "summary": "{\"rules\": []}",
+   "source": "the app's first-ranked option",
+   "seq": 10,
+   "sentence": "No rows were excluded: every row with `condition` measured stays in the analysis."
+  },
+  {
+   "kind": "set_missing",
+   "status": 200,
+   "summary": "{\"strategy\": \"multiple_imputation\"}",
+   "source": "the app's first-ranked option",
+   "seq": 11,
+   "sentence": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor."
+  },
+  {
+   "kind": "set_split",
+   "status": 200,
+   "summary": "{\"holdout\": 0.0, \"seed\": 0, \"folds\": 5, \"validation\": \"kfold\"}",
+   "source": "the app's first-ranked option (the seal plan)",
+   "seq": 12,
+   "sentence": "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`, stratified by `condition`)."
+  },
+  {
+   "kind": "set_estimand",
+   "status": 200,
+   "summary": "{\"family\": true, \"measure\": \"exposure_mean_difference\", \"contrast\": null}",
+   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "seq": 13,
+   "sentence": "The analysis estimates the total effect of each exposure in turn on `condition`, as the difference in each exposure's mean between the event and the other level (the limma design), every member reported with its Benjamini–Hochberg q-value across all 495 tests."
+  },
+  {
+   "kind": "set_adjustment",
+   "status": 200,
+   "summary": "{\"exposure\": \"*\", \"answers\": {\"sex\": {\"causes_exposure\": \"yes\", \"causes_outcome\": \"yes\", \"after_exposure\": \"no\"}, \"age\": {\"causes_exposure\": \"yes\", \"causes_outcome\": \"yes\", \"after_exposure\": \"no\"}}}",
+   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "seq": 14,
+   "sentence": "For the effect of each exposure, by the disjunctive cause criterion: `sex` and `age` are confounders, adjusted for."
+  },
+  {
+   "kind": "set_adjustment",
+   "status": 200,
+   "summary": "{\"exposure\": \"*\", \"answers\": {\"batch\": {\"after_exposure\": \"no\", \"causes_exposure\": \"yes\", \"causes_outcome\": \"no\", \"instrument\": false, \"proxy\": false}}}",
+   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "seq": 15,
+   "sentence": "For the effect of each exposure, by the disjunctive cause criterion: `batch` is a cause of the exposure, adjusted for."
+  },
+  {
+   "kind": "set_forms",
+   "status": 200,
+   "summary": "{\"forms\": {\"age\": {\"form\": \"linear\"}}}",
+   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "seq": 16,
+   "sentence": "`age` entered the models as a straight line."
+  },
+  {
+   "kind": "set_batch",
+   "status": 200,
+   "summary": "{\"column\": \"batch\", \"method\": \"covariate\"}",
+   "source": "the batch contract's first-ranked option for the purpose (declared, not asked)",
+   "seq": 17,
+   "sentence": "`batch` enters the outcome model as a covariate, so batch differences are not read as biology (Nygaard, Rødland & Hovig 2016)."
+  },
+  {
+   "kind": "select_models",
+   "status": 409,
+   "summary": "{\"models\": [\"featurewise\"]}",
+   "source": "the shelf's first-ranked families",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "`age` holds whole numbers, which may be codes for categories (one indicator per level) or amounts (one slope); the fit waits for the answer for each. Tell me about this column: `age`: an amount? (`39` whole-number values from 31 to 79).",
+    "exits": [
+     "`age` is a count or an amount (a slope; a unit's rows averaged)",
+     "`age` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "Change the roles (the roles question)"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "1 readings (code_or_count 1): code_or_count:age=amount",
+   "source": "a reading the server asked about, answered from the fixture's truth",
+   "seq": 18,
+   "sentence": "Confirmed together, each as the question showed it: `age` was confirmed to hold amounts or counts."
+  },
+  {
+   "kind": "select_models",
+   "status": 200,
+   "summary": "{\"models\": [\"featurewise\"]}",
+   "source": "the shelf's first-ranked families",
+   "seq": 19,
+   "sentence": "One model family was chosen: feature-wise least-squares tests with Benjamini–Hochberg false-discovery control. Read from the values, no question asked: `sample_id` is the unit's identifier (Named like an identifier; it names rows or samples: `60` labels, one per row); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `condition` is a binary outcome (Text with two values, `case` and `control` — read as a binary outcome); `batch` holds codes for categories (one indicator per label) (`3` labels, not numbers); `sex` is coded F female, M male (the labels spell the sexes (`F` female))."
+  }
+ ],
+ "guessed": [],
+ "notes": [
+  "findings with repairs: omics_scale, binary_text__condition, binary_text__sex",
+  "the export waited for the plan lock: the estimates were shown (the effects served), which locks it"
+ ],
+ "export": {
+  "status": 200,
+  "engine": "2.0.0.dev0",
+  "files": [
+   "README.md",
+   "analysis_plan.json",
+   "checklist/strobe_nut.json",
+   "checklist/strobe_nut.md",
+   "decisions.jsonl",
+   "figures/lineage.svg",
+   "figures/participant_flow.svg",
+   "manifest.json",
+   "methods.json",
+   "methods.md",
+   "methods.txt",
+   "provenance.json",
+   "results/table2.csv",
+   "results/table2.md",
+   "results/table2_appendix.csv",
+   "results/table2_appendix.md",
+   "results/table2_sensitivity.csv",
+   "results/table2_sensitivity.md"
+  ],
+  "methods_md": "# Methods: genomics_expression\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the estimates were seen is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow STROBE and STROBE-nut; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Study design (STROBE 4)\n\nThe analysis was declared for `inference`: associations are estimated with their uncertainty. Each row was declared a different participant: no one appears in more than one row.\n\n## Participants (STROBE 6)\n\nNo rows were excluded: every row with `condition` measured stays in the analysis.\n\n## Variables (STROBE 7)\n\n`condition` was chosen as the outcome; it is measured on all `60` rows. `case` of `condition` was taken as the event and coded 1; `control` was coded 0. Column roles were set for `499` columns: exposures `gene_0001`, `gene_0002`, `gene_0003` and 492 more; covariates `batch`, `sex` and `age`; identifier `sample_id`; `batch`, `gene_0001` and 494 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `batch` was confirmed as a covariate; `495` columns (from `gene_0001`) were confirmed as an exposure. The analysis estimates the total effect of each exposure in turn on `condition`, as the difference in each exposure's mean between the event and the other level (the limma design), every member reported with its Benjamini–Hochberg q-value across all 495 tests. Confirmed together, each as the question showed it: `age` was confirmed to hold amounts or counts.\n\n## Data sources and measurement (STROBE 8)\n\nThe table was read through the `genomics` lens. The table was confirmed as one row per sample, as supplied, and was not transposed. Of the 486 count columns, those of them the models take as exposures were transformed to log2 counts per million (edgeR cpm, prior count 2) on library sizes scaled by TMM factors (Robinson and Oshlack 2010), fit within each training fold. `batch` enters the outcome model as a covariate, so batch differences are not read as biology (Nygaard, Rødland & Hovig 2016).\n\n## Quantitative variables (STROBE 11)\n\n`age` entered the models as a straight line.\n\n## Statistical methods (STROBE 12)\n\nMissing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor. No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`, stratified by `condition`). For the effect of each exposure, by the disjunctive cause criterion: `sex` and `age` are confounders, adjusted for. For the effect of each exposure, by the disjunctive cause criterion: `batch` is a cause of the exposure, adjusted for. One model family was chosen: feature-wise least-squares tests with Benjamini–Hochberg false-discovery control. Read from the values, no question asked: `sample_id` is the unit's identifier (Named like an identifier; it names rows or samples: `60` labels, one per row); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `condition` is a binary outcome (Text with two values, `case` and `control` — read as a binary outcome); `batch` holds codes for categories (one indicator per label) (`3` labels, not numbers); `sex` is coded F female, M male (the labels spell the sexes (`F` female)).\n\nThe estimate of each exposure is reported across a declared sequence of models fit on all 60 analyzed rows: unadjusted; Model 2, the primary, adjusted for `batch`, `sex` and `age`. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). 495 exposures were tested, each in turn; Benjamini–Hochberg q-values control the false-discovery rate across all 495 (Benjamini & Hochberg 1995, J R Stat Soc B 57:289), and every member is shown, significant or not.\n\nBatch was included as a covariate. Counts were transformed to log2 counts per million on library sizes scaled by TMM factors (edgeR, prior count 2; Robinson and Oshlack 2010). Each of the 495 features was tested in its own linear model with the covariates; Benjamini–Hochberg q-values across the 495 tests (14 below 0.05), every feature shown.\n\nThe analysis plan recorded above was declared in TurboTab before any estimate was displayed (SHA-256 `81ee8475c3ef`); every later change is marked as made after the estimates were seen.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `caa9563bbdfb`). The supplementary provenance record holds the decision log (`20` records), the SHA-256 of the input file `genomics_expression.csv` (SHA-256 `8019dd6e6cf9`), the analysis plan (SHA-256 `81ee8475c3ef`) and the model matrix (`60` rows by `499` columns; SHA-256 `ffa940df5118` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "checklist": {
+   "checklist": "STROBE-nut",
+   "title": "STROBE-nut: an extension of the STROBE statement for nutritional epidemiology",
+   "citation": "Lachat C, Hawwash D, Ocké MC, et al. Strengthening the Reporting of Observational Studies in Epidemiology—Nutritional Epidemiology (STROBE-nut): an extension of the STROBE statement. PLoS Med 2016;13(6):e1002036. doi:10.1371/journal.pmed.1002036",
+   "counts": {
+    "items": 58,
+    "answered": 8,
+    "partly_answered": 9,
+    "unanswered": 41
+   },
+   "items": [
+    {
+     "id": "1a",
+     "section": "Title and Abstract",
+     "topic": "Title and Abstract",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-1",
+     "section": "Title and Abstract",
+     "topic": "Title and Abstract",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "1b",
+     "section": "Title and Abstract",
+     "topic": "Title and Abstract",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "2",
+     "section": "Introduction",
+     "topic": "Background Rationale",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3",
+     "section": "Introduction",
+     "topic": "Objectives",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_estimand",
+       "seq": 13
+      }
+     ],
+     "owed": "the study's objectives and hypotheses, in the author's words"
+    },
+    {
+     "id": "4",
+     "section": "Methods",
+     "topic": "Study Design",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "seq": 6
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_grain",
+       "seq": 7
+      }
+     ],
+     "owed": "the study design by its usual name (cohort, case-control or cross-sectional)"
+    },
+    {
+     "id": "5",
+     "section": "Methods",
+     "topic": "Settings",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-5",
+     "section": "Methods",
+     "topic": "Settings",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6a",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 10
+      }
+     ],
+     "owed": "the sources and methods of selection of participants, and of follow-up"
+    },
+    {
+     "id": "nut-6",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6b",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "7",
+     "section": "Methods",
+     "topic": "Variables",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_target",
+       "seq": 4
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_event",
+       "seq": 5
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_roles",
+       "seq": 8
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 9
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_estimand",
+       "seq": 13
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 18
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 14
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 15
+      }
+     ],
+     "owed": "each variable's definition beyond its column, and any diagnostic criteria"
+    },
+    {
+     "id": "nut-7.1",
+     "section": "Methods",
+     "topic": "Variables",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-7.2",
+     "section": "Methods",
+     "topic": "Variables",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "8",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_batch",
+       "seq": 17
+      }
+     ],
+     "owed": "each variable's source and method of assessment"
+    },
+    {
+     "id": "nut-8.1",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.2",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.3",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.4",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.5",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.6",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "9",
+     "section": "Methods",
+     "topic": "Bias",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 14
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 15
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "effects",
+       "seq": null
+      }
+     ],
+     "owed": "any other source of bias the author addressed, and how"
+    },
+    {
+     "id": "nut-9",
+     "section": "Methods",
+     "topic": "Bias",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "10",
+     "section": "Methods",
+     "topic": "Study Size",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "11",
+     "section": "Methods",
+     "topic": "Quantitative Variables",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-11",
+     "section": "Methods",
+     "topic": "Quantitative Variables",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12a",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 14
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 15
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "select_models",
+       "seq": 19
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "effects",
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12b",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12c",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 11
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12d",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12e",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "effects",
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "nut-12.1",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-12.2",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-12.3",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "13a",
+     "section": "Results",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 10
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 11
+      },
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the numbers before the table was assembled: potentially eligible, examined for eligibility, and completing follow-up"
+    },
+    {
+     "id": "13b",
+     "section": "Results",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the reasons for nonparticipation before the table was assembled"
+    },
+    {
+     "id": "13c",
+     "section": "Results",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "nut-13",
+     "section": "Results",
+     "topic": "Participants",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 10
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 11
+      },
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "14a",
+     "section": "Results",
+     "topic": "Descriptive Data",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "14b",
+     "section": "Results",
+     "topic": "Descriptive Data",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "14c",
+     "section": "Results",
+     "topic": "Descriptive Data",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-14",
+     "section": "Results",
+     "topic": "Descriptive Data",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "15",
+     "section": "Results",
+     "topic": "Outcome Data",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "16a",
+     "section": "Results",
+     "topic": "Main Results",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 14
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 15
+      },
+      {
+       "source": "file",
+       "file": "results/table2.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "16b",
+     "section": "Results",
+     "topic": "Main Results",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "16c",
+     "section": "Results",
+     "topic": "Main Results",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-16",
+     "section": "Results",
+     "topic": "Main Results",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "17",
+     "section": "Results",
+     "topic": "Other Analyses",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "results/table2_sensitivity.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "nut-17",
+     "section": "Results",
+     "topic": "Other Analyses",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 11
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "18",
+     "section": "Discussion",
+     "topic": "Key Results",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "19",
+     "section": "Discussion",
+     "topic": "Limitation",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-19",
+     "section": "Discussion",
+     "topic": "Limitation",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "20",
+     "section": "Discussion",
+     "topic": "Interpretation",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-20",
+     "section": "Discussion",
+     "topic": "Interpretation",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "21",
+     "section": "Discussion",
+     "topic": "Generalizability",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "22",
+     "section": "Other Information",
+     "topic": "Funding",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-22.1",
+     "section": "Other Information",
+     "topic": "Ethics",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-22.2",
+     "section": "Other Information",
+     "topic": "Supplementary Material",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "provenance.json",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the data collection tools and the data, or how they can be accessed"
+    }
+   ],
+   "unanswered": [
+    "1a",
+    "nut-1",
+    "1b",
+    "2",
+    "5",
+    "nut-5",
+    "nut-6",
+    "6b",
+    "nut-7.1",
+    "nut-7.2",
+    "nut-8.1",
+    "nut-8.2",
+    "nut-8.3",
+    "nut-8.4",
+    "nut-8.5",
+    "nut-8.6",
+    "nut-9",
+    "10",
+    "11",
+    "nut-11",
+    "12b",
+    "12d",
+    "nut-12.1",
+    "nut-12.2",
+    "nut-12.3",
+    "14a",
+    "14b",
+    "14c",
+    "nut-14",
+    "15",
+    "16b",
+    "16c",
+    "nut-16",
+    "18",
+    "19",
+    "nut-19",
+    "20",
+    "nut-20",
+    "21",
+    "22",
+    "nut-22.1"
+   ]
+  }
+ }
+}
