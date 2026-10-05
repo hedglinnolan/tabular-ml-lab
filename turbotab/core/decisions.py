@@ -379,7 +379,9 @@ class EnergyAdjustment(_Value):
 Validation = Literal["kfold", "repeated_kfold", "bootstrap", "internal_external"]
 REPEATS = 10  # repeated k-fold's default: 10 × 5
 MAX_REPEATS = 50
-OPTIMISM_BOOT = 200  # bootstrap optimism correction's default resamples (audit WP9: B ≈ 200)
+# Bootstrap optimism correction's default resamples. MS6 (MODELING_SEQUENCE ruling 4): Collins et
+# al., BMJ 2024: "we generally recommend at least 500 bootstraps" (WP9's 200 is Steyerberg's floor).
+OPTIMISM_BOOT = 500
 
 
 def _validation_fields(validation: str, cluster: str | None) -> None:
@@ -398,6 +400,9 @@ class SplitSpec(_Value):
     repeats: int = Field(default=REPEATS, ge=2, le=MAX_REPEATS)  # repeated_kfold
     n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)  # bootstrap
     cluster: str | None = None  # internal_external: each level is a fold
+    # MS6: Bates, Hastie & Tibshirani's nested cross-validation interval for each family's primary
+    # (models/validation.py), offered with its compute estimate where predictors outnumber rows.
+    nested_cv: bool = False
 
     @field_validator("holdout")
     @classmethod
@@ -709,6 +714,7 @@ class SetSplit(_DecisionModel):
     repeats: int = Field(default=REPEATS, ge=2, le=MAX_REPEATS)
     n_boot: int = Field(default=OPTIMISM_BOOT, ge=20, le=2000)
     cluster: str | None = None
+    nested_cv: bool = False  # MS6: the nested cross-validation interval (SplitSpec)
 
     @model_validator(mode="after")
     def _scheme(self) -> "SetSplit":
@@ -836,6 +842,9 @@ class FollowUpSpec(_Value):
 
     time_column: str
     entry_column: str | None = None  # staggered or delayed entry: when each row came under observation
+    # MS6: the horizon a time-to-event prediction is scored and calibrated at, on the follow-up's
+    # time scale; None reads the median follow-up time of the rows the models learn from, stated.
+    horizon: float | None = None
 
 
 class SetFollowUp(_DecisionModel):
@@ -845,6 +854,7 @@ class SetFollowUp(_DecisionModel):
     column: str = Field(min_length=1)
     time_column: str = Field(min_length=1)
     entry_column: str | None = None
+    horizon: float | None = Field(default=None, gt=0)  # MS6: FollowUpSpec.horizon
 
 
 class SetGrain(_DecisionModel):
@@ -1907,7 +1917,8 @@ register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column,
 register_kind(SetOutcomeOrder, "outcome_order", value=lambda d: list(d.levels),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetFollowUp, "follow_up",
-              value=lambda d: FollowUpSpec(time_column=d.time_column, entry_column=d.entry_column),
+              value=lambda d: FollowUpSpec(time_column=d.time_column, entry_column=d.entry_column,
+                                           horizon=d.horizon),
               holds=lambda d, slots: slots.get("target") == d.column)
 register_kind(SetOutcomeUnit, "outcome_unit", value=lambda d: d.unit,
               holds=lambda d, slots: slots.get("target") == d.column)

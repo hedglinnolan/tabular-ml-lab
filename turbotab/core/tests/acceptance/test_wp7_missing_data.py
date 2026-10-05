@@ -505,7 +505,20 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
     reference = json.loads(REFERENCE.read_text())["configs"]
     _, _, _, now = prediction_run
     assert set(now) == set(reference)
-    worst = max(_numbers(reference[name], now[name], (name,)) for name in reference)
+    # MS6 added the MSE (the regression primary) to every regression fit: it is new beside the
+    # scores the reference holds, which must not move.
+    added = {"mse"}
+    trimmed = {}
+    for name, families in now.items():
+        trimmed[name] = {}
+        for family, got in families.items():
+            if family == "__sealed__":
+                trimmed[name][family] = [r for r in got if r["metric"] not in added]
+                continue
+            assert set(got["cv"]) - set(reference[name][family]["cv"]) == added
+            trimmed[name][family] = {**got, "cv": {k: v for k, v in got["cv"].items()
+                                                   if k not in added}}
+    worst = max(_numbers(reference[name], trimmed[name], (name,)) for name in reference)
     assert worst <= 1e-9, worst
 
 

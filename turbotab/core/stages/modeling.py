@@ -273,7 +273,17 @@ def _estimates(ctx: StageContext, task: str, train_ids: Any, families: Sequence[
     split = ctx.inputs.get("split")
     data = (split.data or {}) if isinstance(split, Bundle) else {}
     # Every fold of every repeat, and each bootstrap refit, is about one fit of the whole table.
-    folds = int(data.get("folds") or 5) * int(data.get("repeats") or 1) + int(data.get("n_boot") or 0)
+    # MS6: under prediction the comparisons' repeated k-fold (≥ 10 × K) is counted too, before the
+    # fit runs, with the split's own repeats as its first ones.
+    from turbotab.core.models.folds import COMPARISON_REPEATS
+
+    k = int(getattr(ctx.state.split, "folds", None) or data.get("folds") or 5)
+    repeats = int(data.get("repeats") or 1)
+    if ctx.state.purpose != "inference" and data.get("fold_scheme") != "time_ordered":
+        own = int(data.get("folds") or k) * repeats if data.get("validation") == "internal_external" else 0
+        folds = k * max(repeats, COMPARISON_REPEATS) + own + int(data.get("n_boot") or 0)
+    else:
+        folds = int(data.get("folds") or 5) * repeats + int(data.get("n_boot") or 0)
     scheme = str((split.data or {}).get("fold_scheme") or "random") if isinstance(split, Bundle) else "random"
     ctx.progress(0.5, "Timing one fit of each family on a sample of the training rows")
     try:
@@ -607,13 +617,32 @@ def baseline_model(task: str) -> Any:
 
 
 def _baseline_cv(task: str, X: Any, y: Any, pairs: Sequence[Any],
-                 repeat_of: Sequence[int] | None = None) -> Any:
+                 repeat_of: Sequence[int] | None = None, horizon: float | None = None) -> Any:
     """The baseline cross-validated on the same fold pairs, scored as the models are."""
     from turbotab.core.models.metrics import cross_validate
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return cross_validate(task, lambda: baseline_model(task), X, y, pairs, repeat_of=repeat_of)
+        return cross_validate(task, lambda: baseline_model(task), X, y, pairs, repeat_of=repeat_of,
+                              horizon=horizon)
+
+
+def follow_up_horizon(state: Any, y: Any) -> tuple[float | None, str | None]:
+    """A time to event's horizon (MS6): the one declared with the follow-up, else the median
+    follow-up time of these rows (the rows the models learn from), stated as such."""
+    spec = getattr(state, "follow_up", None)
+    declared = getattr(spec, "horizon", None) if spec is not None else None
+    column = getattr(spec, "time_column", None) if spec is not None else None
+    named = f"`{column}`" if column else "follow-up"
+    if declared is not None:
+        return float(declared), (f"Scored and calibrated by {named} = `{float(declared):g}`, the "
+                                 f"declared horizon.")
+    times = np.asarray(np.asarray(y)["time"], dtype=float) if len(y) else np.zeros(0)
+    if not len(times):
+        return None, None
+    h = float(np.median(times))
+    return h, (f"Scored and calibrated by {named} = `{h:g}`, the median follow-up time of the "
+               f"training rows, as no horizon was declared with the follow-up.")
 
 
 def _baseline_scores(task: str, X: Any, y: Any, folds: Any, fold_keys: Sequence[int]) -> list[dict[str, float]]:
@@ -647,7 +676,7 @@ def baseline_concern(task: str, metric_label: str, model: float | None, base: fl
     if task == "regression":
         return f"Predicts worse than the outcome's average: CV {metric_label} {m}, against {b} for the average."
     if task == "binary":
-        return f"Separates the classes worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
+        return f"Predicts worse than the class prior: CV {metric_label} {m}, against {b} for the prior."
     if task == "ordinal":
         return (f"Orders the outcome worse than the level prior: CV {metric_label} {m}, against {b} "
                 f"for the prior.")
@@ -658,7 +687,9 @@ def baseline_concern(task: str, metric_label: str, model: float | None, base: fl
             f"for the prior.")
 
 
-RANKING = {"r2": "highest R²", "auc": "highest AUC", "log_loss": "lowest log loss"}
+RANKING = {"r2": "highest R²", "auc": "highest AUC", "log_loss": "lowest log loss",
+           "mse": "lowest MSE", "rps": "lowest ranked probability score",
+           "brier_t": "lowest Brier score at the horizon", "c_index": "highest C-index"}
 
 
 def ranking_phrase(metric: str) -> str:
@@ -706,7 +737,9 @@ def precision_sentence(metric: str, summaries: Mapping[str, Any], labels: Mappin
     if not parts:
         return None
     listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
-    return (f"On these {n_train:,} training rows the cross-validated {LABELS.get(metric, metric)} "
+    from turbotab.core.models.validation import score_words
+
+    return (f"On these {n_train:,} training rows the cross-validated {score_words(metric)} "
             f"has a standard error of {listed}; whether two families differ is read from their "
             f"paired interval, not from either one alone.")
 
@@ -1245,24 +1278,40 @@ def fit_stage(ctx: StageContext) -> Bundle:
     interval on every score and their own calibration, sealed with the scores. The split's
     validation answer adds repeated k-fold (every repeat's folds), bootstrap optimism correction
     (``turbotab.core.models.validation``) or internal–external validation (one fold per cluster).
+
+    MS6 (MODELING_SEQUENCE ruling 4): the primary is strictly proper (``metrics.PRIMARY``), with AUC
+    or C the customary headline beside it; under prediction every family and the baseline are also
+    fit on the comparison substrate, repeated k-fold of at least 10 × K whose first repeats are the
+    split's own (``folds.comparison_folds``), and the comparisons, the baseline verdict and BBC-CV
+    (by whole unit) read it; the result is declared (``selection.declared_result``); calibration is
+    by level, or at a horizon, or said to be not assessed; and the nested cross-validation interval
+    runs when the split asks for it, and is offered where predictors outnumber rows.
     """
     from sklearn.base import clone
 
     from turbotab.core.models import get_family
     from turbotab.core.models.artifacts import FitArtifact, HoldoutDetail
     from turbotab.core.models.base import reports_coefficients
-    from turbotab.core.models.baseline import compare, no_better_concern
+    from turbotab.core.models.artifacts import Comparison, NestedOffer
+    from turbotab.core.models.baseline import no_better_concern, versus_baseline
+    from turbotab.core.models.cost import duration
+    from turbotab.core.models.folds import comparison_folds
     from turbotab.core.models.inference import Outcome, cluster_columns, resolve_clusters
     from turbotab.core.models.inner_cv import fit_pipeline
-    from turbotab.core.models.metrics import (CV_DEFINITION, LABELS, PRIMARY, SE_DEFINITION,
-                                              classes_of, cross_validate, higher_is_better,
-                                              metric_labels, predict, repeated_pairs, score)
-    from turbotab.core.models.performance import calibration, score_intervals
+    from turbotab.core.models.metrics import (CV_DEFINITION, HEADLINE, HEADLINE_LABEL, LABELS,
+                                              SE_DEFINITION, classes_of, cross_validate,
+                                              higher_is_better, metric_labels, predict,
+                                              primary_metric, repeated_pairs, score, tension)
+    from turbotab.core.models.performance import NOT_ASSESSED, calibration, score_intervals
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
-    from turbotab.core.models.selection import OutOfFold, selection_optimism
+    from turbotab.core.models.selection import OutOfFold, declared_result, selection_optimism
     from turbotab.core.models.survival import follow_up_columns, time_to_event_outcome
-    from turbotab.core.models.validation import (family_differences, internal_external,
-                                                 not_applied, optimism_bootstrap)
+    from turbotab.core.models.validation import (COMPARISONS_NOTE, PER_ROW_LOSSES, calibration_by,
+                                                 family_differences, fired_chain, headline_how,
+                                                 internal_external, level_words, nested_cv_fits,
+                                                 nested_cv_interval, not_applied,
+                                                 optimism_bootstrap, performance_sentence,
+                                                 resample_concern, score_words, wide, wide_clause)
     from turbotab.core.seal import SEALED_DETAIL, SEALED_SCORES, sealed_detail_frame, sealed_scores_frame
 
     state = ctx.state
@@ -1386,17 +1435,49 @@ def fit_stage(ctx: StageContext) -> Bundle:
             with_units(model, resampled_units(unit_of, X_b.index))
         return fit_pipeline(model, X_b, y_b, groups=units_b)
 
-    primary = PRIMARY[task]
-    base = _baseline_cv(task, X, y, pairs, repeat_of)
+    # MS6 (MODELING_SEQUENCE ruling 4): the primary is a strictly proper score; AUC and C are the
+    # customary headline beside it. A time to event is scored and calibrated by a horizon.
+    horizon, horizon_note = (follow_up_horizon(state, y) if task == "time_to_event" else (None, None))
+    primary = primary_metric(task, y if task == "time_to_event" else None)
+    # MS6: under prediction the families and the baseline are compared, and the choice among them
+    # corrected, on repeated k-fold (≥ 10 × K) whatever validation supplies the headline; the
+    # split's own folds come first, so the headline's run is a subset of it (models/folds.py).
+    seed = int(split_data.get("seed") or 0)
+    k_folds = int(getattr(state.split, "folds", None) or split_data.get("folds") or 5)
+    strata = (None if task == "regression" else
+              np.asarray(y["event"]).astype(int) if task == "time_to_event" else y)
+    if not inference:
+        sub_columns, shared, sub_note = comparison_folds(
+            fold_columns, validation=validation, scheme=scheme, n=len(y), strata=strata,
+            groups=groups, folds=k_folds, seed=seed)
+    else:  # under inference the scores describe fit: not a comparison (MODELING_SEQUENCE §1 row 11)
+        sub_columns, shared, sub_note = fold_columns, len(fold_columns), None
+    sub_pairs, sub_repeat_of = repeated_pairs(sub_columns, scheme)
+    headline_repeats = list(range(len(fold_columns))) if shared else None
+    base_sub = _baseline_cv(task, X, y, sub_pairs, sub_repeat_of, horizon)
+    base = (base_sub.subset(headline_repeats) if headline_repeats is not None
+            else _baseline_cv(task, X, y, pairs, repeat_of, horizon))
     base_cv = base.summary(task)
+    base_sub_cv = base_sub.summary(task) if not inference else base_cv
     baseline = {"metric": primary, "value": base_cv[primary]["estimate"], "label": BASELINE_LABEL[task]}
+    # The verdict against the baseline is read on R² for regression: the baseline's R² is 0 in every
+    # fold, so a family's R² is its MSE gain as a share of the baseline's (the same comparison).
+    versus_metric = "r2" if task == "regression" else primary
     reference = float(np.mean(y.astype(float))) if task == "regression" and len(y) else None
     n_boot = int(split_data.get("n_boot") or 0) if validation == "bootstrap" else 0
-    units = max(1, len(keys) * (len(pairs) + 2 + n_boot))
+    own_pairs = 0 if headline_repeats is not None else len(pairs)
+    units = max(1, len(keys) * (len(sub_pairs) + own_pairs + 2 + n_boot))
     done = 0
     results: dict[str, Any] = {}
+    substrates: dict[str, Any] = {}
     summaries: dict[str, Any] = {}
     sealed_detail: dict[str, Any] = {}
+    nested_runs: dict[str, Any] = {}
+    n_features = len(spec.inputs)
+    narrow = wide_clause(n_features, len(y)) if wide(n_features, len(y)) else None
+    run_nested = bool(getattr(state.split, "nested_cv", False)) and not inference \
+        and primary in PER_ROW_LOSSES
+    unit_series = (pd.Series(groups, index=X.index) if groups is not None else None)
 
     def share(n: int) -> float:
         return 0.02 + 0.97 * n / units
@@ -1408,8 +1489,9 @@ def fit_stage(ctx: StageContext) -> Bundle:
     imputed_tables: dict[str, Any] = {}  # … and each copy's coefficients and covariance
     sealed: dict[str, Any] = {}  # held-out scores: kept out of the public data (M2_CONTRACT §3)
     # Each family's out-of-fold predictions, for the selection's optimism (models/selection.py):
-    # one repeat's, so each scored row is predicted once (repeated k-fold scores every row again).
-    oof = OutOfFold(task, X, y, [p for p, r in zip(pairs, repeat_of) if r == 0])
+    # the substrate's first repeat, so each scored row is predicted once; resampled by unit.
+    oof = OutOfFold(task, X, y, [p for p, r in zip(sub_pairs, sub_repeat_of) if r == 0],
+                    units=groups, horizon=horizon)
     for key in keys:
         family = get_family(key)
         started = time.perf_counter()
@@ -1427,7 +1509,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                       baseline, started, rows="all" if all_rows else "training",
                                       survey=survey, survey_note=survey_note,
                                       missing=missing if all_rows else None))
-            done += len(pairs) + 2
+            done += len(sub_pairs) + own_pairs + 2
             continue
 
         def before_fold(i: int, n: int, _label: str = family.label) -> None:
@@ -1439,11 +1521,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = cross_validate(task, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
-                                    X, y, pairs,
-                                    fit=oof.wrap(key, fit) if len(keys) > 1 else fit,
-                                    before_fold=before_fold, repeat_of=repeat_of,
-                                    keep_predictions=True)
+            sub_result = cross_validate(task, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
+                                        X, y, sub_pairs,
+                                        fit=oof.wrap(key, fit) if len(keys) > 1 else fit,
+                                        before_fold=before_fold, repeat_of=sub_repeat_of,
+                                        keep_predictions=True, horizon=horizon)
+            result = (sub_result.subset(headline_repeats) if headline_repeats is not None else
+                      cross_validate(task, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
+                                     X, y, pairs, fit=fit, before_fold=before_fold,
+                                     repeat_of=repeat_of, keep_predictions=True, horizon=horizon))
             if ctx.cancelled():
                 raise Cancelled()
             ctx.progress(share(done), f"{family.label}: refitting on all training rows")
@@ -1452,16 +1538,22 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 final[-1].level_names_ = list(levels)
             done += 1
             # R² on the held-out rows is measured against the training rows' mean.
-            holdout = score(task, final, X_hold, y_hold, reference=reference) if len(y_hold) else None
+            holdout = (score(task, final, X_hold, y_hold, reference=reference, horizon=horizon)
+                       if len(y_hold) else None)
             if len(y_hold):  # sealed with the scores: an interval on each, and calibration
                 classes = classes_of(task, final)
-                held_pred = predict(task, final, X_hold)
+                held_pred = predict(task, final, X_hold, horizon=horizon)
+                held_levels, held_horizon, held_note = calibration_by(
+                    task, y_hold, held_pred, classes, levels, hold_groups, horizon,
+                    "on the held-out rows")
                 sealed_detail[key] = HoldoutDetail(
                     intervals=score_intervals(task, y_hold, held_pred, classes=classes,
                                               reference=reference, groups=hold_groups,
-                                              unit=grouped_by),
+                                              unit=grouped_by, horizon=horizon),
                     calibration=calibration(task, y_hold, held_pred, classes=classes,
                                             groups=hold_groups, where="on the held-out rows"),
+                    calibration_levels=held_levels, calibration_horizon=held_horizon,
+                    calibration_note=held_note,
                 ).model_dump(mode="json")
             optimism = None
             if n_boot and not getattr(family, "bootstrap_optimism", True):
@@ -1476,8 +1568,22 @@ def fit_stage(ctx: StageContext) -> Bundle:
 
                 optimism = optimism_bootstrap(
                     task, lambda _k=key: clone(pipelines[_k]), refit_resample, X, y, n_boot=n_boot,
-                    seed=int(split_data.get("seed") or 0), groups=groups, unit=grouped_by,
-                    final=final, progress=boot_progress, cancelled=ctx.cancelled)
+                    seed=seed, groups=groups, unit=grouped_by, final=final, horizon=horizon,
+                    progress=boot_progress, cancelled=ctx.cancelled)
+            nested = None
+            if run_nested:
+                ctx.progress(share(done), f"{family.label}: nested cross-validation")
+
+                def nested_fit(model: Any, X_fit: Any, y_fit: Any) -> Any:
+                    units_fit = (None if unit_series is None
+                                 else unit_series.reindex(X_fit.index).to_numpy())
+                    return fit_pipeline(model, X_fit, y_fit, groups=units_fit)
+
+                nested = nested_cv_interval(
+                    task, primary, lambda _k=key: with_units(clone(pipelines[_k]), unit_of),
+                    nested_fit, X, y, folds=k_folds, seed=seed, groups=groups, horizon=horizon,
+                    cancelled=ctx.cancelled)
+                nested_runs[key] = nested
             ctx.progress(share(done), f"{family.label}: coefficients")
             concerns: list[str] = []
             interval_info = None
@@ -1592,7 +1698,7 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                             task, clusters, outcome,
                                             survey.design if survey is not None else None)
             done += 1
-        concerns = _concerns(caught, len(pairs) + 1) + concerns
+        concerns = _concerns(caught, len(sub_pairs) + own_pairs + 1) + concerns
         if family.key == "linear":
             from turbotab.core.models.linear import collinearity_concern, model_matrix
 
@@ -1605,13 +1711,21 @@ def fit_stage(ctx: StageContext) -> Bundle:
                 singular = None
             if singular and not any("singular" in c for c in concerns):
                 concerns.insert(0, singular)
-        summary = result.summary(task, groups=groups, unit=grouped_by)
-        cv, versus = compare(task, result, base, summary=summary)
-        estimate = cv[primary]["estimate"]
-        worse = baseline_concern(task, LABELS[primary], estimate, baseline["value"],
-                                 lower=not higher_is_better(primary))
-        tie = None if worse else no_better_concern(task, LABELS[primary], versus, estimate,
-                                                   baseline["value"], _two)
+        cv = result.summary(task, groups=groups, unit=grouped_by)
+        sub_cv = sub_result.summary(task, groups=groups, unit=grouped_by) if not inference else cv
+        # The verdict against the baseline, paired over every fold of the substrate (MS6): the
+        # corrected repeated k-fold t, 1/(rK) and rK − 1 df (models/baseline.py).
+        estimate = sub_cv[versus_metric]["estimate"]
+        base_value = base_sub_cv[versus_metric]["estimate"]
+        higher = higher_is_better(versus_metric)
+        gain = ((1.0 if higher else -1.0) * (estimate - base_value)
+                if estimate is not None and base_value is not None else None)
+        versus = versus_baseline(versus_metric, sub_result.folds_of(versus_metric),
+                                 base_sub.folds_of(versus_metric), gain=gain,
+                                 test_share=sub_result.test_share)
+        worse = baseline_concern(task, LABELS[versus_metric], estimate, base_value, lower=not higher)
+        tie = None if worse else no_better_concern(task, LABELS[versus_metric], versus, estimate,
+                                                   base_value, _two)
         if worse or tie:
             concerns.insert(0, worse or tie)
         rows_oof, y_oof, pred_oof = result.out_of_fold(0)
@@ -1620,17 +1734,34 @@ def fit_stage(ctx: StageContext) -> Bundle:
             groups=None if groups is None else groups[rows_oof]) if len(y_oof) else None
         if oof_calibration is not None and oof_calibration.concern:
             concerns.append(oof_calibration.concern)
+        cal_levels, cal_horizon, cal_note = (calibration_by(
+            task, y_oof, pred_oof, classes_of(task, final), levels,
+            None if groups is None else groups[rows_oof], horizon, "out of fold")
+            if len(y_oof) else (None, None, f"{NOT_ASSESSED}: no out-of-fold predictions."))
+        for item in cal_levels or []:
+            if item.calibration is not None and item.calibration.concern:
+                said = item.calibration.concern
+                concerns.append(f"{level_words(task, item.level)}: {said[0].lower()}{said[1:]}")
+        if cal_horizon is not None and cal_horizon.concern:
+            concerns.append(cal_horizon.concern)
+        if task in ("regression", "binary") and oof_calibration is None:
+            cal_note = f"{NOT_ASSESSED}: too few out-of-fold rows, or one class only."
         if optimism is not None and optimism.refused:
             concerns.append(optimism.refused)
+        if n_boot and getattr(family, "bootstrap_optimism", True) and resample_concern(n_boot):
+            concerns.append(resample_concern(n_boot))
+        if nested is not None and nested.refused:
+            concerns.append(nested.refused)
         iecv = None
         if validation == "internal_external" and split_data.get("cluster"):
             iecv = internal_external(task, result, list(split_data.get("fold_labels") or []),
-                                     str(split_data["cluster"]), groups=groups, unit=grouped_by)
+                                     str(split_data["cluster"]), groups=groups, unit=grouped_by,
+                                     metric=primary)
         if survey_note:
             concerns.append(survey_note)
         elif survey is not None and survey.answer == "population" and not survey.refusal:
             concerns.append(POPULATION_SCORES)
-        results[key], summaries[key] = result, cv
+        results[key], substrates[key], summaries[key] = result, sub_result, cv
         fitted[key] = final
         if inference and (same_rows or (on_all and table_fit is not None)):
             # Under inference every estimate reads the fit on every analyzed row (BLUEPRINT §12
@@ -1638,6 +1769,25 @@ def fit_stage(ctx: StageContext) -> Bundle:
             # family with no table is refit on them by the substitution stage, if a curve is asked.
             every_row[key] = table_fit if on_all and table_fit is not None else final
         sealed[key] = holdout
+        entry = cv.get(primary) or {}
+        if nested is not None and nested.estimate is not None:
+            performance = performance_sentence(
+                f"{LABELS[primary]}", nested.estimate, nested.ci_low, nested.ci_high,
+                how=f"nested cross-validation ({nested.reps} repetitions of {nested.folds} folds; "
+                    f"Bates, Hastie & Tibshirani 2023)")
+        else:
+            performance = performance_sentence(
+                f"Cross-validated {score_words(primary)}",
+                entry.get("estimate"), entry.get("ci_low"), entry.get("ci_high"),
+                how=headline_how(validation, scheme, k_folds, len(fold_columns),
+                                  split_data.get("cluster")),
+                narrow=narrow)
+        corrected = ((optimism.estimates.get(primary) if optimism is not None else None))
+        if corrected is not None and corrected.corrected is not None:
+            performance += " " + performance_sentence(
+                f"Optimism-corrected {score_words(primary)}",
+                corrected.corrected, None, None,
+                how=f"Harrell's bootstrap ({optimism.n_ok:,} resamples)")
         models.append({
             "family": key,
             "label": family.label,
@@ -1655,27 +1805,82 @@ def fit_stage(ctx: StageContext) -> Bundle:
             "optimism": optimism.model_dump(mode="json") if optimism is not None else None,
             "internal_external": iecv.model_dump(mode="json") if iecv is not None else None,
             "exposure_tests": form_tests,
+            "calibration_levels": ([c.model_dump(mode="json") for c in cal_levels]
+                                   if cal_levels is not None else None),
+            "calibration_horizon": cal_horizon.model_dump(mode="json") if cal_horizon else None,
+            "calibration_note": cal_note,
+            "compared_on": (sub_cv.get(primary) if not inference else None),
+            "performance": performance,
+            "nested_cv": nested.model_dump(mode="json") if nested is not None else None,
         })
-    # Picking the best of several families by cross-validation flatters it (audit ME-13).
+    # Picking the best of several families by cross-validation flatters it (audit ME-13); under
+    # prediction it is corrected on the substrate's out-of-fold predictions, by whole unit (MS6).
     if len(results) > 1:
         ctx.progress(0.995, "Choosing among the families: bootstrapping the out-of-fold predictions")
     labels = {m["family"]: m["label"] for m in models}
-    selection = selection_optimism(task, primary, results, oof, labels, LABELS[primary])
+    headline = HEADLINE.get(task)
+    extras = [m for m in (headline, "r2" if task == "regression" else None)
+              if m is not None and m != primary]
+    selection = selection_optimism(task, primary, substrates, oof, labels, score_words(primary),
+                                   extras=extras)
     ctx.progress(1.0, "Done")
     n_holdout = int((~train).sum())
-    comparisons = family_differences(task, results, summaries, labels) if len(results) > 1 else []
+    comparisons = (family_differences(task, substrates, summaries, labels, metric=primary)
+                   if len(results) > 1 else [])
     # The event's share beside the table: every analyzed row under inference (ruling 3), the
     # training rows the models learn from under prediction.
     imbalance = (imbalance_sentence(task, y_tab, state.event, "analyzed rows") if inference
                  else imbalance_sentence(task, y, state.event))
-    artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
+    predicting = [m["family"] for m in models if m.get("cv")]
+    result_declared = None
+    if not inference and predicting:
+        only = predicting[0] if len(predicting) == 1 else None
+        one = next((m for m in models if m["family"] == only), None) if only else None
+        result_declared = declared_result(
+            task, primary, n_holdout=n_holdout, families=predicting, labels=labels,
+            summaries=summaries, selection=selection,
+            optimism=(one or {}).get("optimism"),
+            narrow=None if (only and only in nested_runs and nested_runs[only].estimate is not None)
+            else narrow,
+            nested=(nested_runs[only].model_dump() if only in nested_runs else None) if only else None,
+            how_cv=headline_how(validation, scheme, k_folds, len(fold_columns),
+                                 split_data.get("cluster")))
+    comparison = (Comparison(folds=len(sub_pairs) // max(len(sub_columns), 1),
+                             repeats=len(sub_columns), shared=shared,
+                             method=("the corrected repeated k-fold t (Nadeau & Bengio 2003; "
+                                     "Bouckaert & Frank 2004)"), note=sub_note)
+                  if not inference else None)
+    offer = None
+    if narrow and not inference and not run_nested and primary in PER_ROW_LOSSES and predicting:
+        fits_each = nested_cv_fits(k_folds)
+        per_fit = [substrates[k].seconds / max(len(sub_pairs), 1) for k in predicting
+                   if k in substrates]
+        seconds = round(float(sum(per_fit)) * fits_each, 1) if per_fit else None
+        offer = NestedOffer(
+            label=(f"Run the nested cross-validation interval (Bates, Hastie & Tibshirani 2023): "
+                   f"{fits_each:,} refits of each family"),
+            fits=fits_each, seconds=seconds,
+            estimate=duration(seconds) if seconds is not None else "not measured",
+            decision={"kind": "set_split", **state.split.model_dump(mode="json"), "nested_cv": True})
+    chain = fired_chain(task, primary, inference=inference, grouped_by=grouped_by,
+                   families=predicting, n_holdout=n_holdout, comparison=comparison,
+                   selection=selection, result=result_declared, n_boot=n_boot,
+                   horizon_note=horizon_note, notes=[m.get("calibration_note") for m in models],
+                   narrow=narrow, nested=bool(nested_runs))
+    artifact = FitArtifact(task=task, primary_metric=primary, metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,
                            cv_definition=CV_DEFINITION[task], validation=validation,
                            repeats=len(fold_columns), ranking=ranking_phrase(primary),
                            se_definition=SE_DEFINITION, comparisons=comparisons,
                            precision=precision_sentence(primary, summaries, labels, int(train.sum())),
-                           imbalance=imbalance, selection=selection, levels=levels)
+                           imbalance=imbalance, selection=selection, levels=levels,
+                           headline_metric=headline,
+                           headline_label=HEADLINE_LABEL if headline else None,
+                           tension=tension(task, primary), comparison=comparison,
+                           comparisons_note=COMPARISONS_NOTE if comparisons else None,
+                           result=result_declared, horizon=horizon, horizon_note=horizon_note,
+                           wide=narrow, nested_offer=offer, chain=chain)
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     if n_holdout and sealed_detail:
         frames[SEALED_DETAIL] = sealed_detail_frame(sealed_detail)
@@ -1697,7 +1902,6 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                            if inference and missing is not None
                                            and missing.imputations is not None and imputed_fits
                                            else None)})
-
 
 def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
                  final: Any, X: Any, y: Any, task: str, clusters: Any,

@@ -34,17 +34,28 @@ opened, the served fit marks the declared family ``final`` (its held-out score i
 result) and the others ``secondary`` (:func:`mark_final`): the best of several held-out scores,
 picked after seeing them, is optimistic in turn (+0.023 AUC on 150-row holdouts, audit A7).
 
-Importing this module registers the ``open_seal`` validator and completion.
+**With no held-out rows, the result is the selection-corrected estimate** (MODELING_SEQUENCE §1
+row 12 (b), ruling 4, §4; MS6): :func:`declared_result`. Only a family declared before any score
+was seen may report its own corrected score, and here that means the only family fitted. The
+winner's own score as "the result" is refused, which covers its back door too: under prediction
+with no rows held out, dropping families whose scores were compared would leave the winner alone
+and its own score reported as the result, so :func:`_compared_families_stay` refuses it with the
+exit that keeps them. BBC-CV resamples whole units when rows repeat (MODELING_SEQUENCE §2), so no
+unit's rows sit both in a resample and among the rows it is scored on.
+
+Importing this module registers the ``open_seal`` validator and completion, and the
+``select_models`` validator.
 """
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Literal, Mapping, Sequence
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict
 
 from turbotab.core import decisions
-from turbotab.core.decisions import OpenSeal, Refusal
+from turbotab.core.decisions import OpenSeal, Refusal, SelectModels
 
 from turbotab.core.models.metrics import LOWER_IS_BETTER  # noqa: E402 - one list for every score
 METHOD = "bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018)"
@@ -80,11 +91,14 @@ class OutOfFold:
     without keeping its predictions.
     """
 
-    def __init__(self, task: str, X: Any, y: Any, pairs: Sequence[tuple[int, np.ndarray, np.ndarray]]):
+    def __init__(self, task: str, X: Any, y: Any, pairs: Sequence[tuple[int, np.ndarray, np.ndarray]],
+                 *, units: Any = None, horizon: float | None = None):
         self.task = task
         self.X = X
         self.y = np.asarray(y)
         self.pairs = list(pairs)
+        self.units = units  # each row's unit: the resamples take or leave a unit's rows together
+        self.horizon = horizon  # a time to event's: its predictions are [risk score, risk by then]
         n = len(self.y)
         self.scored = np.zeros(n, dtype=bool)
         self.reference = np.full(n, np.nan)
@@ -101,6 +115,10 @@ class OutOfFold:
             fitted = fit(model, X_fit, y_fit, rows)
             test_rows = self._scored_by(rows)
             if test_rows is not None:
+                if self.task == "time_to_event" and getattr(fitted, "survival_baseline_", None) is None:
+                    from turbotab.core.models.metrics import survival_baseline
+
+                    survival_baseline(fitted, X_fit, y_fit)
                 self.keep(key, fitted, test_rows)
             return fitted
         return fit_and_keep
@@ -120,9 +138,15 @@ class OutOfFold:
         """Store ``fitted``'s predictions for the rows ``test_rows`` marks."""
         X_test = _rows(self.X, test_rows)
         n = len(self.y)
-        if self.task in ("regression", "time_to_event"):
+        if self.task == "regression":
             out = self.predictions.setdefault(key, np.full(n, np.nan))
             out[test_rows] = np.asarray(fitted.predict(X_test), dtype=float)
+            return
+        if self.task == "time_to_event":
+            from turbotab.core.models.metrics import predict
+
+            out = self.predictions.setdefault(key, np.full((n, 2), np.nan))
+            out[test_rows] = predict("time_to_event", fitted, X_test, horizon=self.horizon)
             return
         proba = np.asarray(fitted.predict_proba(X_test), dtype=float)
         block = np.zeros((proba.shape[0], len(self.classes)))
@@ -135,7 +159,7 @@ class OutOfFold:
         """``metric`` of family ``key`` on the out-of-fold predictions of ``rows`` (indices, with
         repeats), pooled as Tsamardinos et al. pool them; NaN where it is undefined."""
         return pooled_score(self.task, metric, self.y[rows], self.predictions[key][rows],
-                            self.reference[rows], self.classes)
+                            self.reference[rows], self.classes, horizon=self.horizon)
 
 
 def _auc(positive: np.ndarray, p: np.ndarray) -> float:
@@ -152,7 +176,7 @@ def _auc(positive: np.ndarray, p: np.ndarray) -> float:
 
 
 def pooled_score(task: str, metric: str, y: np.ndarray, pred: np.ndarray, reference: np.ndarray,
-                 classes: Sequence[Any]) -> float:
+                 classes: Sequence[Any], *, horizon: float | None = None) -> float:
     """A metric of ``models/metrics.py`` on pooled out-of-fold predictions."""
     from sklearn import metrics as m
 
@@ -162,6 +186,8 @@ def pooled_score(task: str, metric: str, y: np.ndarray, pred: np.ndarray, refere
         if metric == "r2":
             sst = float(((y - reference) ** 2).sum())
             return 1.0 - float((e ** 2).sum()) / sst if sst > 0 else float("nan")
+        if metric == "mse":
+            return float(np.mean(e ** 2))
         if metric == "rmse":
             return float(np.sqrt(np.mean(e ** 2)))
         if metric == "mae":
@@ -177,12 +203,15 @@ def pooled_score(task: str, metric: str, y: np.ndarray, pred: np.ndarray, refere
         if metric == "log_loss":
             return float(m.log_loss(positive, p, labels=[False, True]))
         raise KeyError(metric)
-    if task == "time_to_event":  # WP12b: Harrell's C of the pooled risk scores
+    if task == "time_to_event":  # Harrell's C of the pooled risk scores (WP12b); the Brier score
+        from turbotab.core.models.performance import brier_at  # at the horizon of their risks (MS6)
         from turbotab.core.models.survival import concordance
 
-        if metric != "c_index":
-            raise KeyError(metric)
-        return float(concordance(y["time"], y["event"], pred))
+        if metric == "c_index":
+            return float(concordance(y["time"], y["event"], pred[:, 0]))
+        if metric == "brier_t":
+            return brier_at(y, pred[:, 1], horizon)
+        raise KeyError(metric)
     if task == "ordinal":  # WP12a: the ordered outcome's scores, on the pooled predictions
         from turbotab.core.models.metrics import ordinal_scores
 
@@ -199,16 +228,23 @@ def pooled_score(task: str, metric: str, y: np.ndarray, pred: np.ndarray, refere
 
 def selection_optimism(task: str, metric: str, results: Mapping[str, Any], oof: OutOfFold,
                        labels: Mapping[str, str] | None = None, metric_label: str | None = None,
-                       replicates: int | None = None, seed: int = SEED) -> dict[str, Any] | None:
+                       replicates: int | None = None, seed: int = SEED,
+                       extras: Sequence[str] = ()) -> dict[str, Any] | None:
     """How much the best family's cross-validated ``metric`` flatters it, by BBC-CV over the
     families' out-of-fold predictions; None with fewer than two families or nothing to resample.
 
     ``results`` maps each family to its :class:`~turbotab.core.models.metrics.CrossValidated`.
-    Returns the ``selection`` artifact field: the best family, its CV score, the corrected estimate
-    with its 95% percentile interval, the optimism (the CV score less the corrected estimate, in the
-    score's units, signed so that positive flatters), how often each family won a resample, and the
-    sentence that states it.
+    Each resample draws whole units (``oof.units``; every row its own unit without them) with
+    ``numpy.random.default_rng(seed).integers(0, U, U)``: the family with the best ``metric`` on the
+    drawn units' rows is chosen and scored on the rows of the units the draw left out. ``extras``
+    are scored on the same chosen family and left-out rows (the customary headline, R²), so they are
+    corrected for the same choice. Returns the ``selection`` artifact field: the best family, its CV
+    score, the corrected estimate with its 95% percentile interval, the optimism (the CV score less
+    the corrected estimate, in the score's units, signed so that positive flatters), how often each
+    family won a resample, the extras' corrected values, and the sentence that states it.
     """
+    from turbotab.core.models.folds import draw_units, unit_rows
+
     keys = [k for k in results if k in oof.predictions]
     if len(keys) < 2:
         return None
@@ -229,17 +265,24 @@ def selection_optimism(task: str, metric: str, results: Mapping[str, Any], oof: 
     n = len(rows)
     if n < 2:
         return None
+    # Each scored row's unit (0 … U − 1, in order of first appearance; every row its own unit
+    # without ``oof.units``): a draw's count of each unit repeats that unit's rows as many times.
+    codes, members = unit_rows(None if oof.units is None
+                               else np.asarray(oof.units, dtype=object)[rows], n)
+    U = len(members)
     B = replicates or (REPLICATES if n <= LARGE else REPLICATES_LARGE)
     rng = np.random.default_rng(seed)
-    left = np.ones(len(oof.y), dtype=bool)
     scores: list[float] = []
+    extra_scores: dict[str, list[float]] = {m: [] for m in extras}
     wins = {k: 0 for k in keys}
     for _ in range(B):
-        draw = rows[rng.integers(0, n, n)]
-        left[:] = True
-        left[draw] = False
-        out = rows[left[rows]]
-        inbag = {k: oof.score(metric, k, draw) for k in keys}
+        draw = draw_units(rng, U)
+        times = np.bincount(draw, minlength=U)[codes]  # how often each scored row was drawn
+        if times.all():
+            continue
+        drawn = np.repeat(rows, times)
+        out = rows[times == 0]
+        inbag = {k: oof.score(metric, k, drawn) for k in keys}
         inbag = {k: v for k, v in inbag.items() if math.isfinite(v)}
         if not inbag or not len(out):
             continue
@@ -248,6 +291,8 @@ def selection_optimism(task: str, metric: str, results: Mapping[str, Any], oof: 
         if math.isfinite(value):
             scores.append(value)
             wins[chosen] += 1
+            for m in extras:
+                extra_scores[m].append(oof.score(m, chosen, out))
     if len(scores) < B / 2:
         return None
     corrected = float(np.mean(scores))
@@ -260,18 +305,124 @@ def selection_optimism(task: str, metric: str, results: Mapping[str, Any], oof: 
     flatter = (f"{family}'s CV {label} of {_num(cv)} is {'low' if lower else 'high'} by about "
                f"{_num(optimism)}" if optimism > 0 else
                f"{family}'s CV {label} of {_num(cv)} shows no optimism from the choice")
+    by = (f"{len(scores):,} resamples of the out-of-fold predictions"
+          + (", by whole unit" if oof.units is not None else ""))
     text = (f"Choosing the best of {len(keys)} families by cross-validated {label} flatters the "
-            f"winner: {flatter}; corrected for the choice, about {_num(corrected)} (95% interval "
-            f"{_num(low)} to {_num(high)}) is expected on new rows ({METHOD}, {len(scores):,} "
-            f"resamples of the out-of-fold predictions). The held-out score of a family declared "
+            f"winner: {flatter}; corrected for the choice, {_num(corrected)} (95% interval "
+            f"{_num(low)} to {_num(high)}) is the expected performance of this modeling procedure "
+            f"at this sample size ({METHOD}, {by}). The held-out score of a family declared "
             f"before the seal is opened carries no such optimism.")
+    extra_out: dict[str, dict[str, float | None]] = {}
+    for m, values in extra_scores.items():
+        finite = [v for v in values if math.isfinite(v)]
+        extra_out[m] = ({"corrected": float(np.mean(finite)),
+                         "corrected_low": float(np.percentile(finite, 2.5)),
+                         "corrected_high": float(np.percentile(finite, 97.5))}
+                        if finite else {"corrected": None, "corrected_low": None,
+                                        "corrected_high": None})
     return {"metric": metric, "families": keys, "best": best, "cv": cv, "optimism": optimism,
             "corrected": corrected, "corrected_low": low, "corrected_high": high,
-            "replicates": len(scores), "wins": wins, "method": METHOD, "text": text}
+            "replicates": len(scores), "wins": wins, "method": METHOD, "text": text,
+            "by_unit": oof.units is not None, "extras": extra_out}
 
 
 def _num(value: float) -> str:
     return f"{value:.3f}".replace("-", "−")
+
+
+# ── the declared result (MODELING_SEQUENCE §1 row 12, ruling 4; MS6) ─────────
+
+
+class DeclaredResult(BaseModel):
+    """What the fit reports as the result, and on what basis (module docstring)."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    basis: Literal["holdout", "own_score", "selection_corrected", "not_declared"]
+    family: str | None  # the family whose fit is deployed (the best by CV when chosen among several)
+    metric: str
+    estimate: float | None
+    ci_low: float | None = None
+    ci_high: float | None = None
+    how: str | None = None  # how the estimate was made, in words
+    narrow: str | None = None  # why its interval is labeled likely too narrow, when it is
+    sentence: str
+
+
+def declared_result(task: str, metric: str, *, n_holdout: int, families: Sequence[str],
+                    labels: Mapping[str, str], summaries: Mapping[str, Any],
+                    selection: Mapping[str, Any] | None, optimism: Mapping[str, Any] | None = None,
+                    narrow: str | None = None, nested: Mapping[str, Any] | None = None,
+                    how_cv: str = "cross-validation") -> DeclaredResult:
+    """The declared result (MODELING_SEQUENCE §1 row 12):
+
+    * held-out rows drawn: the held-out score of the family declared before they are opened
+      (``open_seal``; :func:`mark_final`);
+    * one family, declared before any score was seen: its own score (bootstrap optimism-corrected
+      when the split asked for it, else cross-validated), or the nested cross-validation interval
+      when it ran;
+    * several families and no held-out rows: the selection-corrected estimate (BBC-CV). The
+      winner's own score as the result is refused (MODELING_SEQUENCE §4); with no corrected
+      estimate nothing is declared.
+    """
+    from turbotab.core.models.validation import performance_sentence, score_words
+
+    label = score_words(metric)
+    if n_holdout:
+        return DeclaredResult(basis="holdout", family=None, metric=metric, estimate=None,
+                              sentence=(f"The held-out rows score the final model, declared on "
+                                        f"cross-validation before they are opened; its held-out "
+                                        f"{label} will be the result."))
+    if len(families) == 1:
+        key = families[0]
+        name = labels.get(key, key)
+        if nested and nested.get("estimate") is not None:
+            how = (f"nested cross-validation ({nested['reps']} repetitions of {nested['folds']} "
+                   f"folds; Bates, Hastie & Tibshirani 2023)")
+            said = performance_sentence(label, nested["estimate"], nested.get("ci_low"),
+                                        nested.get("ci_high"), how=how)
+            return DeclaredResult(basis="own_score", family=key, metric=metric,
+                                  estimate=nested["estimate"], ci_low=nested.get("ci_low"),
+                                  ci_high=nested.get("ci_high"), how=how,
+                                  sentence=(f"{name} was the only family fitted, declared before any "
+                                            f"score was seen, so its own score is the result: {said}"))
+        corrected = ((optimism or {}).get("estimates") or {}).get(metric) or {}
+        if corrected.get("corrected") is not None and not (optimism or {}).get("refused"):
+            how = (f"Harrell's bootstrap optimism correction ({optimism['n_ok']:,} resamples)")
+            said = performance_sentence(f"optimism-corrected {label}", corrected["corrected"],
+                                        None, None, how=how)
+            return DeclaredResult(basis="own_score", family=key, metric=metric,
+                                  estimate=corrected["corrected"], how=how,
+                                  sentence=(f"{name} was the only family fitted, declared before any "
+                                            f"score was seen, so its own score is the result: {said}"))
+        entry = (summaries.get(key) or {}).get(metric) or {}
+        said = performance_sentence(f"cross-validated {label}", entry.get("estimate"),
+                                    entry.get("ci_low"), entry.get("ci_high"), how=how_cv,
+                                    narrow=narrow)
+        return DeclaredResult(basis="own_score", family=key, metric=metric,
+                              estimate=entry.get("estimate"), ci_low=entry.get("ci_low"),
+                              ci_high=entry.get("ci_high"), how=how_cv, narrow=narrow,
+                              sentence=(f"{name} was the only family fitted, declared before any "
+                                        f"score was seen, so its own score is the result: {said}"))
+    if not selection:
+        return DeclaredResult(basis="not_declared", family=None, metric=metric, estimate=None,
+                              sentence=(f"No selection-corrected estimate could be computed, so no "
+                                        f"result is declared: the best of {len(families)} families' "
+                                        f"own {label} would flatter the choice."))
+    best = str(selection["best"])
+    how = (f"bootstrap bias-corrected cross-validation over {len(families)} families "
+           f"(Tsamardinos et al. 2018; {selection['replicates']:,} resamples"
+           + (" by whole unit" if selection.get("by_unit") else "") + ")")
+    said = performance_sentence(f"selection-corrected {label}", selection["corrected"],
+                                selection["corrected_low"], selection["corrected_high"], how=how,
+                                narrow=narrow)
+    return DeclaredResult(
+        basis="selection_corrected", family=best, metric=metric, estimate=selection["corrected"],
+        ci_low=selection["corrected_low"], ci_high=selection["corrected_high"], how=how,
+        narrow=narrow,
+        sentence=(f"{labels.get(best, best)} was chosen among {len(families)} families on "
+                  f"cross-validation with no rows held out, so the result is the "
+                  f"selection-corrected estimate, not its own score: {said}"))
 
 
 # ── declaring the final family before the seal is opened ─────────────────────
@@ -307,8 +458,10 @@ def _openable_fit(ctx: Any) -> Mapping[str, Any] | None:
 
 
 def _cv_of(fit: Mapping[str, Any], model: Mapping[str, Any]) -> float | None:
+    """A family's cross-validated primary as the families are compared on it: the comparison
+    substrate's (MS6: every repeat of the repeated k-fold BBC-CV chooses on), else the headline's."""
     metric = fit.get("primary_metric")
-    entry = (model.get("cv") or {}).get(metric) or {}
+    entry = model.get("compared_on") or (model.get("cv") or {}).get(metric) or {}
     value = entry.get("estimate", entry.get("mean"))
     return float(value) if value is not None and math.isfinite(float(value)) else None
 
@@ -365,6 +518,78 @@ decisions.register_validator("open_seal", _a_final_model_is_declared)
 decisions.register_completion("open_seal", _the_only_family_is_the_final_one)
 
 
+# ── the winner's own score as the result, by dropping the others (MS6) ───────
+
+
+def _live(records: Sequence[Any]) -> list[Any]:
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        cancelled = decisions.reverted(ordered)
+    except Refusal:
+        return ordered
+    return [r for r in ordered if r.id not in cancelled]
+
+
+def compared_families(records: Sequence[Any] | None, shown: Any = None) -> list[str]:
+    """The families whose cross-validated scores were compared on the current seal and outcome:
+    those named together in a live ``select_models`` since the latest live ``set_target`` and
+    ``set_split``, and, when the newest fit a client was shown is given, scored in it."""
+    if not records:
+        return []
+    live = _live(records)
+    since = max((r.seq for r in live if r.decision.kind in ("set_target", "set_split")), default=0)
+    named: list[str] = []
+    for r in live:
+        if r.seq > since and r.decision.kind == "select_models" and len(r.decision.models) > 1:
+            named += [k for k in r.decision.models if k not in named]
+    if isinstance(shown, Mapping):
+        scored = {str(m.get("family")) for m in shown.get("models") or [] if m.get("cv")}
+        named = [k for k in named if k in scored]
+    return named if len(named) > 1 else []
+
+
+def _compared_families_stay(decision: Any, ctx: Any) -> None:
+    """MODELING_SEQUENCE §4: "Winner's own corrected score as 'the result' (no holdout): refuse;
+    report the selection-corrected estimate". Under prediction with no rows held out, dropping a
+    family whose score was compared would report the survivors' own score as the result, so it is
+    refused, with the exit that keeps the compared families (the result is then corrected for the
+    choice)."""
+    state = _ctx(ctx, "state")
+    if state is None or getattr(state, "purpose", None) == "inference":
+        return
+    split = getattr(state, "split", None)
+    if split is not None and float(getattr(split, "holdout", 0) or 0) > 0:
+        return  # the held-out rows score the family declared before they are opened
+    records = _ctx(ctx, "records")
+    if callable(records):
+        try:
+            records = records()
+        except Exception:  # noqa: BLE001 - no record: nothing was compared
+            return
+    shown = _ctx(ctx, "shown")
+    if callable(shown):
+        try:
+            shown = shown("fit")
+        except Exception:  # noqa: BLE001 - nothing shown: the record alone says what was compared
+            shown = None
+    compared = compared_families(records, shown)
+    dropped = [k for k in compared if k not in decision.models]
+    if not dropped:
+        return
+    keep = list(decision.models) + [k for k in compared if k not in decision.models]
+    names = ", ".join(f"`{k}`" for k in dropped)
+    raise Refusal(
+        "compared_families_stay",
+        f"These families' scores were compared on these rows with none held out: {names}. "
+        f"Dropping them would make the remaining family's own score the result, which flatters "
+        f"the choice (Tsamardinos et al. 2018). Keep them: the result is then the "
+        f"selection-corrected estimate, and the best family is still the one deployed.",
+        exits=[{"label": "Keep the compared families", "decision": SelectModels(models=keep)}])
+
+
+decisions.register_validator("select_models", _compared_families_stay)
+
+
 # ── the served fit: final and secondary ──────────────────────────────────────
 
 
@@ -416,5 +641,5 @@ def mark_final(out: dict[str, Any], *, opened: bool, family: str | None) -> dict
     return out
 
 
-__all__ = ["LOWER_IS_BETTER", "METHOD", "OutOfFold", "declared_family", "mark_final", "pooled_score",
-           "selection_optimism"]
+__all__ = ["DeclaredResult", "LOWER_IS_BETTER", "METHOD", "OutOfFold", "compared_families",
+           "declared_family", "declared_result", "mark_final", "pooled_score", "selection_optimism"]

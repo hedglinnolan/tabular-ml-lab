@@ -18,6 +18,24 @@ leave a block without one: its AUC is undefined and the fit fails (A17: 34% of r
 For a classification outcome the cuts are moved, as little as possible from the row-balanced ones,
 so that every block (the first training block included) holds every class; when the events are too
 few for ``B`` such blocks, fewer blocks are made and a note says so.
+
+**The comparison substrate** (MODELING_SEQUENCE ruling 4, MS6). Under prediction, whatever
+validation supplies the headline score, families are compared with each other and with the
+no-predictor baseline, and the choice among them is corrected, on **repeated k-fold cross-validation,
+at least :data:`COMPARISON_REPEATS` × K** (:func:`comparison_folds`). Bouckaert & Frank (PAKDD 2004):
+"replicability improved even further by using 10-times 10-fold cross-validation instead of random
+subsampling … for best replicability we recommend the latter one." A one-partition comparison rests
+on df = K − 1 and replicates poorly across partitions. The first repeats are the split's own folds,
+so the headline's one k-fold run is a subset of the substrate; the rest are drawn as the split draws
+its folds (grouped by unit, stratified for classes or events, seeded ``seed + r``). Time-ordered
+folds are the same in every repeat, so they run once. Internal–external validation's folds are the
+clusters, so the substrate is drawn afresh beside them.
+
+**Whole units in every resample.** When rows repeat within a unit, each fold, each bootstrap
+resample (:func:`unit_rows`, :func:`draw_units`) and each nested cross-validation fold
+(:func:`nested_folds`) takes or leaves a unit's rows together, so no unit is on both sides of any
+split (MODELING_SEQUENCE §2: repeated units *imply* grouped folds, a grouped holdout and a bootstrap
+by unit).
 """
 from __future__ import annotations
 
@@ -26,6 +44,9 @@ from typing import Any, Sequence
 import numpy as np
 
 UNDATED = -np.inf  # the order key of a unit with no readable time: earliest, so it only trains
+COMPARISON_REPEATS = 10  # the substrate's repeats at least (Bouckaert & Frank 2004: 10 × 10)
+TIME_ORDERED_ONCE = ("Time-ordered folds are the same in every repeat, so the comparisons rest on one "
+                     "run of them.")
 
 
 def _segments_from_right(classes: Sequence[frozenset], need: frozenset) -> np.ndarray:
@@ -145,4 +166,122 @@ def forward_pairs(blocks: Any) -> list[tuple[np.ndarray, np.ndarray]]:
     return out
 
 
-__all__ = ["UNDATED", "forward_blocks", "forward_pairs"]
+# ── the comparison substrate and whole-unit resampling (module docstring) ─────
+
+
+def unit_labels(groups: Any, n: int) -> np.ndarray | None:
+    """Each row's unit as a string (None: every row its own unit); a missing label is a unit of its
+    own row, as the split maps it."""
+    if groups is None:
+        return None
+    import pandas as pd
+
+    values = np.asarray(groups, dtype=object)
+    if len(values) != n:
+        raise ValueError(f"{len(values)} unit labels for {n} rows")
+    return np.asarray([f"__missing_{i}" if (v is None or (isinstance(v, float) and np.isnan(v))
+                                            or v is pd.NA) else str(v)
+                       for i, v in enumerate(values)], dtype=object)
+
+
+def kfold_assignment(n: int, *, strata: Any = None, groups: Any = None, folds: int = 5,
+                     seed: int = 0) -> np.ndarray:
+    """A fold number per row (``0 … K − 1``), drawn as the split draws its folds: whole units when
+    ``groups`` are given, stratified by ``strata`` (classes, or the event) when given and possible,
+    shuffled by ``seed``."""
+    import warnings
+
+    import pandas as pd
+    from sklearn.model_selection import GroupKFold, KFold, StratifiedGroupKFold, StratifiedKFold
+
+    fold = np.zeros(n, dtype=np.int64)
+    if n < 2:
+        return fold
+    labels = unit_labels(groups, n)
+    units = len(pd.unique(labels)) if labels is not None else n
+    k = max(2, min(int(folds), units))
+    idx = np.arange(n)
+    plain = KFold(k, shuffle=True, random_state=seed)
+    strata = None if strata is None else np.asarray(strata, dtype=object).astype(str)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # a rare class warns; it falls back below
+        if labels is not None and units >= 2:
+            parts = (StratifiedGroupKFold(k, shuffle=True, random_state=seed).split(idx, strata, groups=labels)
+                     if strata is not None else
+                     GroupKFold(k, shuffle=True, random_state=seed).split(idx, groups=labels))
+        elif strata is not None and pd.Series(strata).value_counts().max() >= k:
+            parts = StratifiedKFold(k, shuffle=True, random_state=seed).split(idx, strata)
+        else:
+            parts = plain.split(idx)
+        try:
+            for f, (_, test) in enumerate(parts):
+                fold[test] = f
+        except ValueError:
+            splitter = (GroupKFold(k, shuffle=True, random_state=seed).split(idx, groups=labels)
+                        if labels is not None else plain.split(idx))
+            for f, (_, test) in enumerate(splitter):
+                fold[test] = f
+    return fold
+
+
+def comparison_folds(headline: Sequence[Any], *, validation: str, scheme: str, n: int,
+                     strata: Any = None, groups: Any = None, folds: int = 5, seed: int = 0,
+                     repeats: int = COMPARISON_REPEATS) -> tuple[list[np.ndarray], int, str | None]:
+    """The comparison substrate's fold columns (module docstring); how many of them are the
+    headline's own (they come first, so the headline is their subset); and a note, or None.
+
+    ``headline``: the split's fold columns over the training rows (``fold``, ``fold_r1``, …).
+    """
+    columns = [np.asarray(c).astype(np.int64) for c in headline]
+    if scheme == "time_ordered":
+        return columns[:1], 1, TIME_ORDERED_ONCE
+    want = max(int(repeats), COMPARISON_REPEATS)
+    if validation == "internal_external":
+        return [kfold_assignment(n, strata=strata, groups=groups, folds=folds, seed=seed + r)
+                for r in range(want)], 0, None
+    shared = len(columns)
+    for r in range(shared, want):
+        columns.append(kfold_assignment(n, strata=strata, groups=groups, folds=folds, seed=seed + r))
+    return columns, shared, None
+
+
+def unit_rows(groups: Any, n: int) -> tuple[np.ndarray, list[np.ndarray]]:
+    """(each row's unit code, each unit's rows) with units in order of first appearance; every row
+    is its own unit without ``groups``."""
+    import pandas as pd
+
+    if groups is None:
+        return np.arange(n), [np.asarray([i]) for i in range(n)]
+    codes = pd.factorize(unit_labels(groups, n))[0]
+    order = np.argsort(codes, kind="stable")
+    bounds = np.searchsorted(codes[order], np.arange(codes.max() + 2))
+    return codes, [order[bounds[u]:bounds[u + 1]] for u in range(codes.max() + 1)]
+
+
+def draw_units(rng: np.random.Generator, n_units: int) -> np.ndarray:
+    """One bootstrap draw of whole units: ``n_units`` unit indices with replacement, the one draw
+    every resample here makes (so an independent implementation can replay it)."""
+    return rng.integers(0, n_units, n_units)
+
+
+def nested_folds(n: int, *, groups: Any = None, folds: int = 5,
+                 rng: np.random.Generator) -> np.ndarray:
+    """One repetition's folds for Bates, Hastie & Tibshirani's nested cross-validation: ``1 … K``
+    per row, ``0`` for the units left over (Bates et al.'s ``nested_cv_helper``: the folds are
+    equal in units, and the ``U mod K`` units a shuffle leaves last sit out this repetition)."""
+    codes, rows_of = unit_rows(groups, n)
+    U = len(rows_of)
+    k = int(folds)
+    unit_fold = np.zeros(U, dtype=np.int64)
+    used = (U // k) * k
+    unit_fold[:used] = np.arange(used) % k + 1
+    unit_fold[:used] = unit_fold[:used][rng.permutation(used)]
+    out = np.zeros(n, dtype=np.int64)
+    for u, rows in enumerate(rows_of):
+        out[rows] = unit_fold[u]
+    return out
+
+
+__all__ = ["COMPARISON_REPEATS", "TIME_ORDERED_ONCE", "UNDATED", "comparison_folds", "draw_units",
+           "forward_blocks", "forward_pairs", "kfold_assignment", "nested_folds", "unit_labels",
+           "unit_rows"]

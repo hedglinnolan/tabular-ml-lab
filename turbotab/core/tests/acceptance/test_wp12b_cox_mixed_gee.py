@@ -139,7 +139,9 @@ def test_3_cox_on_the_staggered_entry_fixture_matches_lifelines(tmp_path):
     info = model["inference"]
     assert info["covariance"] == "model" and "Efron ties" in info["caption"]
     assert "log hazard ratios" in info["caption"]
-    assert fit.data["n_train"] == 3000 and fit.data["primary_metric"] == "c_index"
+    # MS6: the Brier score at the horizon is the primary; Harrell's C the customary headline.
+    assert fit.data["n_train"] == 3000 and fit.data["primary_metric"] == "brier_t"
+    assert fit.data["headline_metric"] == "c_index" and fit.data["horizon"] is not None
 
     reference = _lifelines(frame, "followup_years", "cvd_event", ["fiber_g", "age"])
     for name in ("fiber_g", "age"):
@@ -164,9 +166,11 @@ def test_3_cox_on_the_staggered_entry_fixture_matches_lifelines(tmp_path):
     assert fiber["ratio_low"] == pytest.approx(low, rel=1e-12)
     assert fiber["ratio_high"] == pytest.approx(high, rel=1e-12)
     assert fiber["p"] == pytest.approx(0.12, abs=0.01)
-    # Cross-validated Harrell's C beats one risk for everyone (age carries the hazard).
+    # Cross-validated Harrell's C beats one risk for everyone (age carries the hazard), and the
+    # Brier score at the horizon, the primary the verdict reads, is lower than the baseline's.
     assert model["cv"]["c_index"]["estimate"] > 0.55
-    assert model["baseline"]["value"] == 0.5 and model["versus_baseline"]["verdict"] == "better"
+    assert model["baseline"]["metric"] == "brier_t"
+    assert model["cv"]["brier_t"]["estimate"] < model["baseline"]["value"]
 
 
 def test_3_a_time_to_event_outcome_gets_only_a_family_that_declares_it():
@@ -266,7 +270,8 @@ def test_3_the_cox_model_is_reached_through_the_server(tmp_path):
         d.decide({"kind": "select_models", "models": ["cox"]})
         fit = d.artifact("fit")
         view = d.view()
-    assert view["state"]["follow_up"] == {"time_column": "followup_years", "entry_column": None}
+    assert view["state"]["follow_up"] == {"time_column": "followup_years", "entry_column": None,
+                                          "horizon": None}
     said = next(r["sentence"] for r in view["decisions"]
                 if r["decision"]["kind"] == "set_follow_up")
     assert said.startswith("`cvd_event` was analyzed as a time to event, each row followed until "

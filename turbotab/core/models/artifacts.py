@@ -13,8 +13,11 @@ from turbotab.core.consequences import Lineage
 from turbotab.core.decisions import Task
 from turbotab.core.models.base import Fit
 from turbotab.core.models.baseline import VersusBaseline
-from turbotab.core.models.performance import Calibration, Interval
-from turbotab.core.models.validation import FamilyDifference, InternalExternal, Optimism
+from turbotab.core.models.performance import (Calibration, HorizonCalibration, Interval,
+                                               LevelCalibration)
+from turbotab.core.models.selection import DeclaredResult
+from turbotab.core.models.validation import (ChainLink, FamilyDifference, InternalExternal, NestedCV,
+                                             Optimism)
 
 
 class _Model(BaseModel):
@@ -310,6 +313,10 @@ class HoldoutDetail(_Model):
 
     intervals: dict[str, Interval]
     calibration: Calibration | None = None
+    # MS6: by level (ordinal, multiclass), at the horizon (time to event), or "not assessed".
+    calibration_levels: list[LevelCalibration] | None = None
+    calibration_horizon: HorizonCalibration | None = None
+    calibration_note: str | None = None
 
 
 class FittedModel(_Model):
@@ -346,6 +353,20 @@ class FittedModel(_Model):
     internal_external: InternalExternal | None = None
     # Under inference, the tests each spline or quintile exposure carries (WP12a).
     exposure_tests: list[ExposureTest] = []
+    # MS6: an ordinal outcome's calibration at each cut-point, or a multiclass outcome's class by
+    # class; a time to event's at the horizon; and, where none could be computed, the record's
+    # "Calibration not assessed: …" (never the word alone).
+    calibration_levels: list[LevelCalibration] | None = None
+    calibration_horizon: HorizonCalibration | None = None
+    calibration_note: str | None = None
+    # MS6: the primary on the comparison substrate (every repeat of the repeated k-fold the
+    # families and the baseline are compared on, under prediction); null under inference.
+    compared_on: MetricSummary | None = None
+    # MS6: the headline performance in one sentence, worded as the expected performance of this
+    # modeling procedure at this sample size (Bates, Hastie & Tibshirani 2023).
+    performance: str | None = None
+    # MS6: Bates et al.'s nested cross-validation interval for the primary, when the split asked.
+    nested_cv: NestedCV | None = None
 
 
 class Selection(_Model):
@@ -367,6 +388,30 @@ class Selection(_Model):
     wins: dict[str, int]  # how often each family was the one chosen on a resample
     method: str
     text: str
+    by_unit: bool = False  # MS6: each resample took or left a unit's rows together
+    # MS6: other scores of the chosen family on the same left-out rows (the customary headline,
+    # R²), so they are corrected for the same choice: {metric: {corrected, corrected_low, …}}.
+    extras: dict[str, dict[str, float | None]] = {}
+
+
+class Comparison(_Model):
+    """MS6: the repeated k-fold the families and the baseline are compared on (models/folds.py)."""
+
+    folds: int
+    repeats: int
+    shared: int  # how many of the repeats are the headline's own folds (they come first)
+    method: str  # the test, in words
+    note: str | None = None  # time-ordered folds run once
+
+
+class NestedOffer(_Model):
+    """MS6: the nested cross-validation interval, offered where predictors outnumber rows."""
+
+    label: str
+    fits: int  # refits of each family
+    seconds: float | None  # measured from this fit's own folds
+    estimate: str  # "about 4 minutes"
+    decision: dict[str, Any]  # the split answer that runs it
 
 
 class AtOpening(_Model):
@@ -443,6 +488,24 @@ class FitArtifact(_Model):
     # unanswered; else, under inference, the declared estimand the table is captioned from.
     withheld: str | None = None
     estimand: EstimandAnnotation | None = None
+    # MS6 (MODELING_SEQUENCE ruling 4): the customary headline reported beside the strictly proper
+    # primary, and the tension in one line (north star 5).
+    headline_metric: str | None = None
+    headline_label: str | None = None
+    tension: str | None = None
+    # MS6: what the comparisons rest on, and that their pairwise intervals are descriptive.
+    comparison: Comparison | None = None
+    comparisons_note: str | None = None
+    # MS6: what is reported as the result, and on what basis (models/selection.py).
+    result: DeclaredResult | None = None
+    # MS6: a time to event's horizon, and how it was set (declared, or the median follow-up).
+    horizon: float | None = None
+    horizon_note: str | None = None
+    # MS6: p ≫ n: why the intervals are labeled likely too narrow, and the remedy offered.
+    wide: str | None = None
+    nested_offer: NestedOffer | None = None
+    # BLUEPRINT §13: the relations that fired on this fit ("because X, Y").
+    chain: list[ChainLink] = []
 
 
 class SubstitutionModel(_Model):

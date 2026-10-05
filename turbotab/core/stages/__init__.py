@@ -355,7 +355,8 @@ def build_graph() -> Graph:
             # shelf 10 (WP17): its predictors are the adjustment set's and the grouping's.
             # shelf 11 (wave 1): the screened elastic net at p ≫ n under prediction (MS7); under the
             # population answer the families with no design-based estimator rank last (MS4).
-            Stage("shelf", 11, ("working", "cohort", "target_info", "split"),
+            # shelf 12 (MS6): the measured estimate counts the comparisons' repeated k-fold.
+            Stage("shelf", 12, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms",
@@ -429,7 +430,10 @@ def build_graph() -> Graph:
             # the log scale, the energy identity, fixed knots, the design and the clusters in the
             # imputation model, m by the rule); the data's own imputed copies pooled by Rubin's
             # rules; the copies and each family's fit on each kept for the substitution curve.
-            Stage("fit", 18, ("working", "design", "split", "target_info", "cohort"),
+            # fit 19 (MS6): a strictly proper primary with AUC/C the customary headline; the
+            # comparisons, the baseline verdict and BBC-CV on repeated k-fold (≥ 10 × K) by unit;
+            # the declared result; calibration by level and by a horizon; the nested-CV interval.
+            Stage("fit", 19, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
