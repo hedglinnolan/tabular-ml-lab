@@ -307,6 +307,10 @@ class DesignSpec:
     # MS8: the declared scales scored after the fill, each ``{name, items, reverse, low, high,
     # scoring, role}`` (``turbotab.core.methods.scales.ScaleScorer``)
     scales: list[dict[str, Any]] = field(default_factory=list)
+    # The partition methods (partition, all-components): each energy source's kcal per unit as the
+    # readings ledger settled it, ``{column: {"factor", "why", "unit"}}`` (``factor`` None while
+    # unsettled: the energy step then refuses rather than read the name). None: not split.
+    energy_factors: dict[str, dict[str, Any]] | None = None
 
     def multiple_imputation(self) -> bool:
         return bool(self.missing) and self.missing.get("strategy") == "multiple_imputation"
@@ -336,13 +340,17 @@ def input_columns(predictors: Sequence[str], adjustment: EnergyAdjustment | None
 
 def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[str],
                 energy: Any = STATE, column_info: Mapping[str, Any] | None = None,
-                qc: Mapping[str, Any] | None = None) -> DesignSpec:
+                qc: Mapping[str, Any] | None = None,
+                energy_factors: Mapping[str, Any] | None = None) -> DesignSpec:
     """The spec for ``frame`` (raw inputs) under ``state``; ``energy`` overrides the state's slot.
 
     ``column_info`` (the table's column summaries) decides which predictors keep their blanks as
     a level (:func:`level_columns`); without it, ``frame`` does (:func:`frame_level_columns`).
     ``qc`` holds the pooled QCs' standard deviations the working table recorded (MS7), which the
     in-fold D-ratio filter divides by each training fold's own.
+    ``energy_factors`` (``readings.energy_source_factors`` over every row, the design stage's):
+    each energy source's kcal per unit under a partition method; without it, read by the ledger
+    from ``frame`` (a recorded unit, or grams the Atwater test reads in these rows), never the name.
     """
     adj = state.energy_adjustment if isinstance(energy, str) and energy == STATE else energy
     predictors = [c for c in predictors]
@@ -442,7 +450,29 @@ def design_spec(state: ProjectState, frame: pd.DataFrame, predictors: Sequence[s
         batch=design_batch(state, inputs, predictors, normalization),
         d_ratio=design_d_ratio(state, inputs, qc),
         scales=scales,
+        energy_factors=_energy_factors(state, adj, frame, energy_factors),
     )
+
+
+def _energy_factors(state: Any, adj: Any, frame: pd.DataFrame,
+                    given: Mapping[str, Any] | None) -> dict[str, dict[str, Any]] | None:
+    """Each energy source's kcal per unit under a partition method, as the readings ledger holds it
+    (BLUEPRINT §14.3): ``given`` (read over every row), else read from ``frame``."""
+    from turbotab.core.methods.energy import PARTITION_METHODS
+
+    if adj is None or adj.method not in PARTITION_METHODS:
+        return None
+    if given is None:
+        from turbotab.core.readings import energy_source_factors
+
+        given = energy_source_factors(state, list(adj.nutrients), frame=frame)
+    out: dict[str, dict[str, Any]] = {}
+    for column, f in given.items():
+        read = f if isinstance(f, Mapping) else {
+            "factor": f.factor if f.settled else None, "why": f.why, "unit": f.unit}
+        out[str(column)] = {"factor": read.get("factor"), "why": read.get("why"),
+                            "unit": read.get("unit")}
+    return out
 
 
 # ── building ────────────────────────────────────────────────────────────────
@@ -530,7 +560,8 @@ def shared_steps(spec: DesignSpec) -> list[tuple[str, Any]]:
         from turbotab.core.methods.scales import ScaleScorer
 
         steps.append(("score", ScaleScorer([dict(sc) for sc in scales])))
-    step = energy_step(spec.energy_adjustment(), spec.predictors, spec.roles)
+    step = energy_step(spec.energy_adjustment(), spec.predictors, spec.roles,
+                       factors=spec.energy_factors)
     if step is not None:
         steps.append(("energy", step))
     if spec.exposure_forms:

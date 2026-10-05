@@ -225,11 +225,27 @@ def _energy_unit_lines(ctx: AskContext) -> tuple[list[AskGroup], list[AskExit]]:
     return [group], exits
 
 
+def _plan(ctx: AskContext) -> list[Any]:
+    """``estimand._estimand_names_a_predictor`` and the adjustment question: under inference the
+    exposure is chosen among the settled predictors, and every recorded role decides whether its
+    column is a covariate the adjustment set is asked about, so every role that rode along is
+    asked here, before the exposure, rather than at the models question, where confirming it would
+    reopen the adjustment set behind them (the routing gate's p16; BLUEPRINT §14.2: where the first
+    consumer needs it)."""
+    from turbotab.core.readings import unsettled
+
+    if getattr(ctx.state, "purpose", None) != "inference":
+        return []
+    return _roles_of(ctx, unsettled(ctx.state))
+
+
 #: question -> (the consumer its answer feeds, in words; the readings that consumer reads)
 CONSUMERS: dict[str, tuple[str, Callable[[AskContext], list[Any] | Needed]]] = {
     "aggregation": ("combining each unit's rows", _combining),
     "survey": ("the survey design", _survey),
     "exclusions": ("the screens", _screens),
+    "estimand": ("the exposure and its effect", _plan),
+    "adjustment": ("the adjustment set", _plan),
     "energy_adjustment": ("the energy adjustment", _energy),
     "models": ("the fit", _fit),
 }
@@ -295,6 +311,8 @@ def _reads(question: str, ctx: AskContext) -> Callable[[Mapping[str, Any]], bool
         sources = _energy_columns(state) | {c for c, r in roles.items()
                                             if r == "exposure" and energy_bearing(c)}
         return lambda i: i["kind"] in ("role", "unit") and i["column"] in sources
+    if question in ("estimand", "adjustment"):
+        return lambda i: i["kind"] == "role" and i["column"] in roles
     return None
 
 

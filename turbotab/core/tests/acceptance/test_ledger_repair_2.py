@@ -1195,6 +1195,44 @@ def _expected_stage_unit(value: str) -> Any:
             round(ATWATER["alcohol"] * grams, 9) if grams is not None else alcohol.get(value))
 
 
+# The routing gate's ledger residue: the all-components model (and the partition) split each
+# source into kcal by its settled kcal per unit, asked at the energy question and read by the
+# design, never by the name (an `alcohol_g` holding US drinks moved at 7 kcal per unit).
+ENERGY_SOURCES = ("protein_g", "fat_g", "carbohydrate_g", "alcohol")
+
+
+def _energy_model_state(value: str) -> ProjectState:
+    return _confirm(d.SetTarget(column="y"),
+                    d.SetRoles(roles={"energy_kcal": "energy", **{c: "exposure"
+                                                                   for c in ENERGY_SOURCES}}),
+                    d.ConfirmReadings(items=[d.ReadingItem(reading="unit", column=c, value="g")
+                                             for c in ENERGY_SOURCES[:3]]),
+                    kind="unit", column="alcohol", value=value)
+
+
+def _probe_energy_model_validator_unit(value: str) -> Any:
+    ctx = {"state": _energy_model_state(value), "target": "y",
+           "columns": ["energy_kcal", *ENERGY_SOURCES, "y"]}
+    try:
+        d.validate({"kind": "set_energy_adjustment", "method": "all_components",
+                    "energy_column": "energy_kcal", "nutrients": list(ENERGY_SOURCES)}, ctx)
+    except d.Refusal as refused:
+        return refused.code
+    return None
+
+
+def _probe_energy_model_design_unit(value: str) -> Any:
+    """The design's factor for `alcohol` (``models.pipeline._energy_factors``), read from the ledger
+    with no values to read: the recorded unit alone."""
+    from turbotab.core.models.pipeline import _energy_factors
+
+    state = _energy_model_state(value)
+    adj = d.EnergyAdjustment(method="all_components", energy_column="energy_kcal",
+                             nutrients=list(ENERGY_SOURCES))
+    found = _energy_factors(state, adj, pd.DataFrame({"alcohol": [1.0, 2.0]}), None)["alcohol"]
+    return None if found["factor"] is None else round(float(found["factor"]), 9)
+
+
 # The nesting probes' table (LEDGER-REPAIR-3, the sixth gate's q9): `sfa_g` reads as part of
 # `fat_g` by its name and values; a confirmation may name any other column but the outcome, or none.
 NESTED_COLUMNS = ("sfa_g", "fat_g", "carbohydrate_g", "protein_g", "y")
@@ -1392,6 +1430,11 @@ PROBES: dict[tuple[str, str], tuple[Callable[[str], Any], Callable[[str], Any]]]
          lambda v: None if v in FACTORS else "reading_unsettled"),
     ("turbotab.core.stages.modeling:substitution_stage", "unit:factor"):
         (_probe_substitution_stage_unit, _expected_stage_unit),
+    ("turbotab.core.decisions:_energy_adjustment_fits_the_roles", "unit:factor"):
+        (_probe_energy_model_validator_unit,
+         lambda v: None if _expected_stage_unit(v)[1] is not None else "reading_unsettled"),
+    ("turbotab.core.models.pipeline:_energy_factors", "unit:factor"):
+        (_probe_energy_model_design_unit, lambda v: _expected_stage_unit(v)[1]),
     ("turbotab.core.decisions:_substitution_reads_settled_readings", "nested_in"):
         (_probe_substitution_nested, lambda v: "part_of_the_other" if v == "carbohydrate_g"
          else None),

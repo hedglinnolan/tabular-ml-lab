@@ -115,8 +115,14 @@ def seen_from(records: Sequence[Any]) -> int | None:
         cancelled = decisions.reverted(ordered)
     except Refusal:
         cancelled = {}
-    return next((r.seq for r in ordered if r.id not in cancelled
-                 and r.decision.kind in ("open_seal", "lock_plan")), None)
+    first = next((r for r in ordered if r.id not in cancelled
+                  and r.decision.kind in ("open_seal", "lock_plan")), None)
+    if first is None:
+        return None
+    # A lock recorded when the purpose became inference after estimates were displayed under
+    # prediction: they were seen from the record before they were shown (the routing gate's p02).
+    at = getattr(first.decision, "seen_at", None) if first.decision.kind == "lock_plan" else None
+    return min(first.seq, int(at)) if at else first.seq
 
 
 def methods_text(records: Sequence[Any]) -> MethodsText:

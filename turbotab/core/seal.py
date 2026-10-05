@@ -1446,6 +1446,14 @@ def _the_draw_reads_settled_values(decision: Any, ctx: Any) -> None:
     if state.split == SplitSpec(**decision.model_dump(exclude={"kind"})):
         return  # the same answer again draws nothing new
     findings = _fresh_artifact(ctx, "findings")
+    if findings is None and _checks_pending(ctx):
+        # The routing gate (p05): the checks are being read again (a text outcome just read as
+        # numbers), and a draw now would not wait for what they find.
+        raise Refusal(
+            "not_yet",
+            "The checks on the table are being read again after the last answer; the held-out rows "
+            "are drawn once they are, on the values the analysis uses.",
+            exits=[{"label": "Wait for the checks", "decision": None}])
     pending = unsettled_on_the_draw(state, findings) if findings is not None else []
     if not pending:
         return
@@ -1476,6 +1484,19 @@ def _the_draw_reads_settled_values(decision: Any, ctx: Any) -> None:
         f"first, so the seal is drawn once, on the values the analysis uses.",
         exits=exits,
     )
+
+
+def _checks_pending(ctx: Any) -> bool:
+    """Whether the split question waits on the findings stage now (the Router's own reading)."""
+    fn = _ctx(ctx, "interview")
+    if not callable(fn):
+        return False
+    try:
+        steps = list(fn())
+    except Exception:  # noqa: BLE001 - no Router: nothing is waited for
+        return False
+    step = next((st for st in steps if getattr(st, "key", None) == "split"), None)
+    return step is not None and "findings" in (getattr(step, "waiting_on", None) or [])
 
 
 def _option_value_columns(finding: Mapping[str, Any], option: Mapping[str, Any]) -> set[str]:

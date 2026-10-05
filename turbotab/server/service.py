@@ -49,6 +49,11 @@ WORKER_PRELOAD = PRELOAD + (
     "turbotab.packs",
 )
 SOURCE_FILE = "source.json"
+# Audit WP16 (the routing gate): where an estimate was first displayed under prediction, kept beside
+# the project until the purpose becomes inference, when the plan lock records it.
+SHOWN_UNDER_PREDICTION = "estimates_shown.json"
+# Decision kinds the server records itself and a client never posts: the analysis-plan lock.
+SYSTEM_KINDS = ("lock_plan",)
 MAX_REMEMBERED_JOBS = 10_000
 
 
@@ -871,10 +876,24 @@ class ProjectService:
             project_dir=str(self.workspace.project_dir(pid)),
         )
 
-    def decide(self, pid: str, decision: Any) -> dict[str, Any]:
+    def decide(self, pid: str, decision: Any, *, system: bool = False) -> dict[str, Any]:
+        """Validate and record ``decision``. ``system``: recorded by the server itself (the
+        analysis-plan lock, when an estimate is first displayed), never by a client."""
         self.workspace.get(pid)
         ctx = replace(self.decision_context(pid), sealed_scores=lambda: self._fresh_sealed_scores(pid))
         parsed = decisions.validate(decision, ctx)  # raises Refusal
+        if parsed.kind in SYSTEM_KINDS and not system:
+            # Audit WP16 (the routing gate's p14): a lock posted by hand before any estimate was
+            # displayed marked every later answer as made after the estimates were seen, which was
+            # false. The plan locks itself when an estimate is first displayed.
+            raise Refusal(
+                "plan_locks_itself",
+                "The analysis plan is locked by TurboTab itself, the first time an estimate is "
+                "displayed: the plan in force then is recorded with its SHA-256, and every later "
+                "change is marked as made after the estimates were seen. Locked by hand before "
+                "that, answers made before any estimate would be marked as made after one.",
+                exits=[{"label": "Answer the remaining questions; the first estimate shown locks "
+                                 "the plan", "decision": None}])
         log = self.log(pid)
         facts = SentenceFacts(ctx, parsed, log.records())
         # The log leads the sentence with what had been seen: held-out scores, or the inference
@@ -884,6 +903,8 @@ class ProjectService:
         self.bus.publish(pid, "decision", record.model_dump(mode="json"))
         self.engine.on_decision(pid)
         self._restart_stopped(pid, parsed.kind)
+        if parsed.kind == "set_purpose" and parsed.purpose == "inference":
+            self._lock_after_prediction(pid)
         return self.view(pid)
 
     def _restart_stopped(self, pid: str, kind: str) -> None:
@@ -1137,17 +1158,53 @@ class ProjectService:
     def _lock_when_shown(self, pid: str, stage: str, artifact: Any) -> None:
         """Under inference, the first estimate served to a client locks the analysis plan: the
         plan in force is recorded as declared before any estimate was displayed, and every later
-        decision is marked as made after the estimates were seen (audit WP16, RO-12)."""
+        decision is marked as made after the estimates were seen (audit WP16, RO-12).
+
+        Under prediction an estimate shown locks nothing (no coefficient is read as an effect),
+        but that it was shown is kept beside the project (:data:`SHOWN_UNDER_PREDICTION`): should
+        the purpose become inference, the plan is locked at once, as declared after estimates
+        were seen (the routing gate's p02: coefficients seen under prediction, the adjustment set
+        then chosen under inference, and a lock that said nothing had been displayed)."""
         from turbotab.core import plan_lock
 
         if stage not in plan_lock.ESTIMATE_STAGES or not plan_lock.shows_estimates(stage, artifact):
+            return
+        with self._locking:
+            records = self.log(pid).records()
+            state = decisions.fold(records)
+            if state.plan_locked:
+                return
+            if state.purpose == "prediction":
+                path = self.workspace.project_dir(pid) / SHOWN_UNDER_PREDICTION
+                if not path.exists():
+                    _write_json_atomic(path, {
+                        "stage": stage, "target": state.target,
+                        "seq": max((r.seq for r in records), default=0)})
+                return
+            if state.purpose != "inference":
+                return
+            try:
+                self.decide(pid, {"kind": "lock_plan"}, system=True)
+            except Refusal:
+                log.exception("the analysis plan of %s could not be locked", pid)
+
+    def _lock_after_prediction(self, pid: str) -> None:
+        """The purpose just became inference: if estimates were displayed under prediction, the
+        plan is locked now, its record saying where they were shown, so every answer after it is
+        marked as made after the estimates were seen (Gelman & Loken 2013's forking paths)."""
+        path = self.workspace.project_dir(pid) / SHOWN_UNDER_PREDICTION
+        try:
+            shown = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             return
         with self._locking:
             state = self.log(pid).state()
             if state.purpose != "inference" or state.plan_locked:
                 return
             try:
-                self.decide(pid, {"kind": "lock_plan"})
+                self.decide(pid, {"kind": "lock_plan", "seen": "prediction",
+                                  "seen_target": shown.get("target"),
+                                  "seen_at": shown.get("seq")}, system=True)
             except Refusal:
                 log.exception("the analysis plan of %s could not be locked", pid)
 

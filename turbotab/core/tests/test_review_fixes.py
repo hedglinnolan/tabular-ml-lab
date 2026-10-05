@@ -134,8 +134,10 @@ def test_the_validator_refuses_the_partition_before_it_is_recorded(grams):
 
 
 def test_a_partition_the_fit_would_refuse_is_refused_at_the_question():
-    """No protein column: the reconstruction cannot vouch for unmarked grams, so the fit refuses;
-    the validator now refuses first, with the fit's own reason."""
+    """No protein column: the reconstruction cannot vouch for unmarked grams, so the fit refuses.
+    The routing gate (the ledger's repair 3 residue, BLUEPRINT §14.3): the validator asks each
+    source's unit first, one confirmation per unit, and a unit the user records is the one the
+    partition converts by (never the name's)."""
     df = nested_diet(grams=False).drop(columns=["protein", "sugar", "fat_sat", "fat_mon", "fat_poly"])
     with pytest.raises(EnergyAdjustmentNotApplicable):
         EnergyAdjuster("partition", "kcal", ["carb", "fat_total"]).fit(df)
@@ -143,8 +145,16 @@ def test_a_partition_the_fit_would_refuse_is_refused_at_the_question():
                 "nutrients": ["carb", "fat_total"]}
     with pytest.raises(Refusal) as info:
         validate(decision, _context(df, _Store(df)))
-    assert "could not confirm it is grams" in str(info.value)
+    assert info.value.code == "reading_unsettled"
+    assert "unit is not recorded" in str(info.value)
     assert "atwater=" not in str(info.value)  # no machinery in the words
+    asked = {(e["decision"]["column"], e["decision"]["value"]) for e in info.value.exits
+             if (e["decision"] or {}).get("kind") == "confirm_reading"}
+    assert {("carb", "g"), ("fat_total", "g")} <= asked
+    context = _context(df, _Store(df))
+    context["state"] = context["state"].model_copy(update={"column_units": {
+        c: {"unit": "g", "days": None} for c in ("carb", "fat_total")}})
+    validate(decision, context)  # recorded in grams: converted at 4 and 9 kcal per gram
 
 
 def test_sugar_is_carbohydrate_at_four_kcal_a_gram():

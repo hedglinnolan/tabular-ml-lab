@@ -196,9 +196,14 @@ def test_2_the_follow_up_question_fires_and_holds_the_models(tmp_path):
     assert steps["models"].status == "waiting" and steps["models"].waiting_on[0] == "follow_up"
     gate = estimand.served_gate(state, list(steps.values()))
     assert gate is not None and gate["question"] == "follow_up"
-    # a yes/no outcome with nothing that reads as follow-up states the skip, and it reopens
+    # The routing gate (NHANES linked mortality's `PERMTH_INT`, read by no name): under the
+    # clinical lens a yes/no outcome is asked whatever its columns are named; under an assay lens
+    # alone, with nothing that reads as follow-up, the skip is stated.
     plain = dict(info, follow_up=[])
     steps = {s.key: s for s in interview.route(state, fresh, {"target_info": plain})}
+    assert steps["follow_up"].status == "open"
+    assay = state.model_copy(update={"lens": ["metabolomics"]})
+    steps = {s.key: s for s in interview.route(assay, fresh, {"target_info": plain})}
     assert steps["follow_up"].status == "skipped" and "follow-up time" in steps["follow_up"].reason
 
 

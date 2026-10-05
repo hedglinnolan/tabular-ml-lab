@@ -95,6 +95,17 @@ def time_to_event_outcome(state: Any, frame: pd.DataFrame, event: Any) -> np.nda
     time = pd.to_numeric(frame[spec.time_column], errors="coerce").to_numpy(dtype=float)
     entry = (pd.to_numeric(frame[spec.entry_column], errors="coerce").to_numpy(dtype=float)
              if spec.entry_column else np.zeros(len(time)))
+    coded_event = coded.to_numpy(dtype=float)
+    horizon = getattr(spec, "horizon", None)
+    if horizon is not None:
+        # Follow-up ends at the horizon: an event after it is censored there.
+        coded_event = np.where(time > float(horizon), 0.0, coded_event)
+        time = np.minimum(time, float(horizon))
+    landmark = getattr(spec, "landmark", None)
+    if landmark is not None:
+        # Follow-up counted from the landmark: every row is at risk from it (the cohort has left
+        # out the rows whose follow-up ended by then; ``stages.rows.cohort_flow``).
+        entry = np.maximum(entry, float(landmark))
     unknown = ~np.isfinite(time) | ~np.isfinite(entry)
     if unknown.any():
         named = f"`{spec.time_column}`" + (f" or `{spec.entry_column}`" if spec.entry_column else "")
@@ -103,10 +114,11 @@ def time_to_event_outcome(state: Any, frame: pd.DataFrame, event: Any) -> np.nda
                          f"(an eligibility rule on {named} that drops unknown values).")
     bad = entry >= time
     if bad.any():
-        what = (f"start at or after their `{spec.time_column}`" if spec.entry_column
+        what = (f"end their follow-up by the landmark `{float(landmark):g}`" if landmark is not None
+                else f"start at or after their `{spec.time_column}`" if spec.entry_column
                 else f"have a `{spec.time_column}` of zero or less")
         raise ValueError(f"{int(bad.sum()):,} analysis rows {what}, so they are never at risk.")
-    return survival_outcome(coded.to_numpy(), time, entry)
+    return survival_outcome(coded_event, time, entry)
 
 
 # ── the partial likelihood (Efron ties, delayed entry) ───────────────────────

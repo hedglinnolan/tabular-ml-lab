@@ -350,9 +350,14 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     n = told or ranked[0]
     raw = frame[n].to_numpy(dtype=float, na_value=np.nan)
 
+    from turbotab.core.models.pipeline import _energy_factors
+
     def adjusted(adj: Any) -> tuple[str, np.ndarray, Any, str | None]:
-        """The nutrient as ``adj`` leaves it: its output column, values, fitted step, or why not."""
-        step = energy_step(adj, predictors) if adj is not None and adj.method != "none" else None
+        """The nutrient as ``adj`` leaves it: its output column, values, fitted step, or why not.
+        A partition method converts each source by the kcal per unit the readings ledger settled
+        (never its name; the routing gate), so an unsettled unit shows why, not a number."""
+        step = (energy_step(adj, predictors, factors=_energy_factors(state, adj, frame, None))
+                if adj is not None and adj.method != "none" else None)
         if step is None:
             return n, raw, None, None
         inputs = input_columns(predictors, adj)

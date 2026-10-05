@@ -1133,6 +1133,18 @@ def roles_stage(ctx: StageContext) -> dict[str, Any]:
             p["proposed"], p["confidence"] = "excluded", "high"
             p["reason"] = (f"The outcome on its original scale; the analysis reads "
                            f"`{ctx.state.target}`, its natural log.")
+    # The routing gate (RO-03 on NHANES linked mortality): a column the follow-up answer names is
+    # the time half of a time-to-event outcome, never a predictor; the user's own answer settles it
+    # (``PERMTH_INT`` was proposed an exposure).
+    follow_up = getattr(ctx.state, "follow_up", None)
+    if follow_up is not None and getattr(ctx.state, "task", None) == "time_to_event":
+        named = {follow_up.time_column: "follow-up time", follow_up.entry_column: "entry time"}
+        for p in proposals:
+            what = named.get(p["column"])
+            if what:
+                p["proposed"], p["confidence"] = "time", "high"
+                p["reason"] = (f"Named as the outcome's {what} (the follow-up question): part of "
+                               f"the outcome `{ctx.state.target}`, not a predictor.")
     if repeats is not None:
         for p in proposals:
             if p["column"] == repeats["column"]:
@@ -1304,6 +1316,7 @@ def cohort_flow(
     missing_frame: Any | None = None,
     repairs: Sequence[Any] | None = None,
     reference: Sequence[Mapping[str, Any]] | None = None,
+    landmark: tuple[str, float] | None = None,
 ) -> tuple[list[dict[str, Any]], Any]:
     """The participant flow over ``frame`` (indexed by row id): its steps and the kept row ids.
 
@@ -1312,7 +1325,9 @@ def cohort_flow(
     ``predictor_columns`` in ``missing_frame`` (default: ``frame``); columns absent from it are
     taken to have no missing values (the caller leaves them out when the profile says so).
     ``repairs`` are range rules from applied repairs (impossible values, ``repairs.exclusion_rules``):
-    steps ``repair:<i>`` after the eligibility answer's own.
+    steps ``repair:<i>`` after the eligibility answer's own. ``landmark`` (``(time column, L)``,
+    a time-to-event outcome's follow-up counted from L): the rows whose follow-up ended by L leave
+    on a line of their own, not at risk then (never an eligibility rule: it reads the outcome).
     """
     steps: list[dict[str, Any]] = []
     n = len(frame) if n_loaded is None else int(n_loaded)
@@ -1379,6 +1394,17 @@ def cohort_flow(
         steps.append({"key": f"repair:{i}", "label": rule_label(rule), "n": now,
                       "dropped": kept - now, "reason": rule.reason, "decision_id": None})
         kept = now
+    if landmark is not None and landmark[0] in frame.columns:
+        column, at = landmark
+        time = pd.to_numeric(frame[column], errors="coerce")
+        keep &= time > float(at)
+        now = int(keep.sum())
+        steps.append({"key": "landmark", "label": f"Followed past the landmark, `{column}` > "
+                                                  f"`{float(at):g}`",
+                      "n": now, "dropped": kept - now,
+                      "reason": "follow-up ended by the landmark (an event or not): not at risk then",
+                      "decision_id": None})
+        kept = now
     if missing == "complete_case":
         source = frame if missing_frame is None else missing_frame
         present = [c for c in predictor_columns if c in source.columns]
@@ -1416,11 +1442,23 @@ def cohort_inputs(state: Any, ingest: Mapping[str, Any]) -> tuple[list[str], lis
     needed = [state.target] if state.target is not None else []
     for rule in [*(state.exclusions or []), *repair_rules(state)]:
         needed.extend(_as_rule(rule).reads())
+    mark = landmark_of(state)
+    if mark is not None:
+        needed.append(mark[0])
     with_missing = _columns_with_missing(ingest)
     levels = set(level_columns(state, preds, {str(c["name"]): c for c in ingest.get("columns", [])}))
     gappy = ([c for c in preds if c in with_missing and c not in levels]
              if missing_strategy(state) == "complete_case" else [])
     return list(dict.fromkeys(needed)), preds, gappy
+
+
+def landmark_of(state: Any) -> tuple[str, float] | None:
+    """A time-to-event outcome's landmark, ``(time column, L)``, or None (``SetFollowUp``)."""
+    spec = getattr(state, "follow_up", None)
+    if spec is None or getattr(state, "task", None) != "time_to_event":
+        return None
+    at = getattr(spec, "landmark", None)
+    return None if at is None else (str(spec.time_column), float(at))
 
 
 def repair_rules(state: Any) -> list[Any]:
@@ -1459,6 +1497,7 @@ def compute_cohort(
         missing_frame=missing_frame,
         repairs=repair_rules(state),
         reference=ingest.get("reference_rows"),
+        landmark=landmark_of(state),
     )
     return steps, kept, preds
 

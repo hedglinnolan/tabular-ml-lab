@@ -62,6 +62,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
 VANDERWEELE = "VanderWeele 2019, Eur J Epidemiol 34:211–219"
+VALERI = "Valeri & VanderWeele 2013, Psychol Methods 18:137–150"
 PROBAST = "PROBAST explanation and elaboration (Moons et al. 2019), item 4.6"
 
 Gate = tuple[str, str | None] | None
@@ -91,9 +92,17 @@ def _listing(items: Sequence[Any], limit: int = 4) -> str:
 # survival vocabulary (``futime``, ``tte``, person-years). A date (``visit_date``) says when, not how
 # long, so a column whose values are dates or that names a calendar date is not one.
 FOLLOW_UP_WORDS = {"followup", "fu", "futime", "fup", "tte", "survival", "surv", "persontime",
-                   "pyears", "py", "censor", "censored", "censoring", "exit", "observed"}
+                   "pyears", "py", "pyrs", "personyears", "censor", "censored", "censoring",
+                   "exit", "observed", "followed", "tstop",
+                   # NHANES linked mortality: person-months of follow-up from the interview
+                   # (``PERMTH_INT``) or from the examination (``PERMTH_EXM``)
+                   "permth"}
 _DURATION_WORDS = {"years", "yrs", "year", "months", "month", "days", "day", "weeks", "week",
                    "time", "duration"}
+# Words that, beside a duration, say it is how long a row was observed: ``years_to_cvd``,
+# ``time_in_study``, ``time_at_risk``, ``person_years``, ``obs_years``, ``observation_time``.
+_FOLLOW_CONTEXT = {"to", "event", "since", "elapsed", "follow", "up", "observation", "obs",
+                   "study", "risk", "person", "until", "end", "stop"}
 _NOT_A_DURATION = {"date", "datetime", "timestamp", "cycle", "visit", "wave", "round", "recall",
                    "session", "calendar", "baseline", "hour", "hours", "dob", "birth"}
 NUMERIC = ("numeric", "integer")
@@ -101,17 +110,19 @@ NUMERIC = ("numeric", "integer")
 
 def reads_as_follow_up(name: Any) -> bool:
     """The name says how long the row was observed: ``followup_years``, ``fu_days``,
-    ``time_to_event``, ``survival_months``, ``futime``; not a date, a cycle or a visit index."""
-    from turbotab.core.recognizers import is_rate, reads_as_time, tokens
+    ``time_to_event``, ``survival_months``, ``futime``, ``PERMTH_INT``, ``time_in_study``,
+    ``years_to_cvd``, ``length_of_follow_up``; not a date, a cycle or a visit index. A name is a
+    guess the follow-up question leads with, never what decides whether it is asked (the routing
+    gate: NHANES linked mortality's ``PERMTH_INT`` read as no follow-up, and the question skipped)."""
+    from turbotab.core.recognizers import is_rate, tokens
 
     words = set(tokens(name))
     if not words or words & _NOT_A_DURATION or is_rate(name):
         return False
-    if words & FOLLOW_UP_WORDS:
+    if words & FOLLOW_UP_WORDS or {"follow", "up"} <= words:
         return True
-    return bool(words & _DURATION_WORDS) and reads_as_time(name) and (
-        bool(words & {"to", "event", "since", "elapsed", "follow", "up", "observation"})
-        or words <= _DURATION_WORDS)
+    return bool(words & _DURATION_WORDS) and (bool(words & _FOLLOW_CONTEXT)
+                                              or words <= _DURATION_WORDS)
 
 
 def follow_up_candidates(frame: Any, columns: Mapping[str, Mapping[str, Any]],
@@ -146,9 +157,25 @@ def effective_task(state: Any, target_info: Any = None) -> str | None:
     return None
 
 
+# The lenses whose yes/no outcomes are often events followed over time (a death, an incident
+# disease in a cohort), and "something else, or not sure" (no lens): their yes/no outcome is always
+# asked about its follow-up, whatever the columns are named (the routing gate: NHANES linked
+# mortality's ``MORTSTAT`` beside ``PERMTH_INT`` was skipped by a name test and fit as logistic).
+# Under an assay or survey lens alone a yes/no outcome is a status at sampling (a case or a control,
+# an answer), so it is asked only beside a column that reads as a follow-up time.
+FOLLOWED_LENSES = ("clinical", "dietary")
+
+
+def follow_up_asked_always(state: Any) -> bool:
+    lens = list(_get(state, "lens") or [])
+    return not lens or any(k in FOLLOWED_LENSES for k in lens)
+
+
 def follow_up_gate(state: Any, target_info: Any = None) -> Gate:
-    """Whether the follow-up question is asked: a yes/no outcome beside a column that reads as a
-    follow-up time, or a time to event, whose follow-up must be named."""
+    """Whether the follow-up question is asked: a time to event, whose follow-up must be named;
+    a yes/no outcome under the clinical or dietary lens or none (one tap when everyone was followed
+    for the same time, :data:`FOLLOWED_LENSES`); under another lens, a yes/no outcome beside a
+    column that reads as a follow-up time."""
     if _get(state, "target") is None:
         return None
     task = effective_task(state, target_info)
@@ -157,7 +184,7 @@ def follow_up_gate(state: Any, target_info: Any = None) -> Gate:
     if task not in ("binary", "time_to_event"):
         return ("not_applicable", f"The outcome is read as {task.replace('_', ' ')}, so no event "
                                   f"is followed over time.")
-    if task == "time_to_event":
+    if task == "time_to_event" or follow_up_asked_always(state):
         return None
     if target_info is None or _get(target_info, "column") != _get(state, "target"):
         return None
@@ -165,8 +192,9 @@ def follow_up_gate(state: Any, target_info: Any = None) -> Gate:
     if candidates is None:
         return None
     if not candidates:
-        return ("skipped", "no numeric column reads as a follow-up time, so the yes/no outcome is "
-                           "read as counted over one period for everyone.")
+        return ("skipped", "no numeric column reads as a follow-up time, and under this lens a "
+                           "yes/no outcome is a status at sampling, so it is read as counted over "
+                           "one period for everyone.")
     return None
 
 
@@ -207,18 +235,30 @@ def clusters_gate(state: Any, roles: Any = None) -> Gate:
     return None
 
 
+def _withdrawn(state: Any, column: str) -> bool:
+    """Whether the user said, after naming ``column`` as the grouping, that it groups nothing: its
+    ``cluster`` reading confirmed "no" (the answer itself confirmed "yes", so only a later word
+    can say "no"; BLUEPRINT §14.3, every confirmation is honored)."""
+    found = (_get(state, "reading_confirmations") or {}).get(f"cluster:{column}")
+    return found == "no"
+
+
 def cluster_answer(state: Any) -> str | None:
-    """The column the user said groups the participants, whatever the purpose."""
+    """The column the user said groups the participants, whatever the purpose; None once a later
+    confirmation said that column groups nothing."""
     spec = _get(state, "clusters")
-    return _get(spec, "column") if spec is not None else None
+    column = _get(spec, "column") if spec is not None else None
+    return None if column is None or _withdrawn(state, str(column)) else column
 
 
 def fixed_effects_column(state: Any) -> str | None:
-    """Under inference, the grouping the model gives its own intercept per level."""
+    """Under inference, the grouping the model gives its own intercept per level (none once a later
+    confirmation said it groups nothing)."""
     spec = _get(state, "clusters")
     if _get(state, "purpose") != "inference" or spec is None:
         return None
-    return _get(spec, "column") if _get(spec, "adjust") == "fixed_effects" else None
+    column = cluster_answer(state)
+    return column if column and _get(spec, "adjust") == "fixed_effects" else None
 
 
 # ── the exposure and its effect (MODELING_SEQUENCE §1 step 2) ────────────────
@@ -383,6 +423,7 @@ def family_contrast_applies(state: Any) -> bool:
 # ── the adjustment set (MODELING_SEQUENCE §1 step 3) ─────────────────────────
 
 ROLE_WORDS = {
+    "mediator_confounder": "common cause of a mediator and the outcome",
     "confounder": "confounder",
     "exposure_cause": "cause of the exposure",
     "precision": "cause of the outcome only (precision)",
@@ -395,6 +436,7 @@ ROLE_WORDS = {
 }
 # The same, in a sentence: one covariate, then several.
 ROLE_SINGULAR = {
+    "mediator_confounder": "a common cause of a mediator and the outcome",
     "confounder": "a confounder", "exposure_cause": "a cause of the exposure",
     "precision": "a cause of the outcome only", "proxy": "a proxy for an unmeasured common cause",
     "mediator": "a mediator", "collider": "a consequence of the exposure (a possible collider)",
@@ -402,6 +444,7 @@ ROLE_SINGULAR = {
     "not_a_cause": "a cause of neither",
 }
 ROLE_PLURAL = {
+    "mediator_confounder": "common causes of a mediator and the outcome",
     "confounder": "confounders", "exposure_cause": "causes of the exposure",
     "precision": "causes of the outcome only", "proxy": "proxies for an unmeasured common cause",
     "mediator": "mediators", "collider": "consequences of the exposure (possible colliders)",
@@ -433,23 +476,38 @@ def derive(answers: Any, effect: str = "total") -> Derived:
     kept = bool(_get(a, "keep") and _get(a, "acknowledged"))
     further = bool(_get(a, "further"))
     after = _get(a, "after_exposure")
+    direct = effect == "direct"
+    # A direct effect (MODELING_SEQUENCE §1 step 3) also asks whether a covariate the criterion
+    # would leave out is a common cause of a mediator and the outcome.
+    confounds = _get(a, "confounds_mediator") in ("yes", "unknown") if direct else False
     if _get(a, "instrument"):
         return Derived("instrument", False, further,
                        "a known instrument: it moves the outcome only through the exposure, and "
                        "adjusting for it amplifies any confounding left")
     if after == "yes":
         if _get(a, "causes_outcome") == "yes":
-            if effect == "direct":
+            if direct:
                 return Derived("mediator", True, False,
                                "on the path from the exposure to the outcome; a direct effect "
                                "holds it fixed")
             return Derived("mediator", kept, further and not kept,
                            "on the path from the exposure to the outcome: adjusting for it removes "
                            "part of the total effect")
+        if confounds:
+            # Changed by the exposure and a common cause of a mediator and the outcome: a regression
+            # can hold it fixed only as one of the mediators (the controlled direct effect fixing
+            # both), never adjust it as a confounder.
+            return Derived("mediator", True, False,
+                           "changed by the exposure and a common cause of a mediator and the "
+                           "outcome: a direct effect holds it fixed with the mediators")
         return Derived("collider", kept, further and not kept,
                        "changed by the exposure without causing the outcome: adjusting for it can "
                        "open a path that is not causal")
     if after == "unknown":
+        if direct and _get(a, "causes_outcome") != "no":
+            return Derived("timing_unknown", True, False,
+                           "the exposure may have changed it: a mediator a direct effect holds "
+                           "fixed, or a confounder; either way it is adjusted")
         return Derived("timing_unknown", kept, not kept,
                        "the exposure may have changed it, so the estimate is declared without it "
                        "and, beside, with it")
@@ -457,6 +515,10 @@ def derive(answers: Any, effect: str = "total") -> Derived:
         return Derived("proxy", True, False, "a proxy for an unmeasured cause of both")
     ce, co = _get(a, "causes_exposure"), _get(a, "causes_outcome")
     if ce == "no" and co == "no":
+        if confounds:
+            return Derived("mediator_confounder", True, False,
+                           "a possible common cause of a mediator and the outcome: a direct effect "
+                           "adjusts for it")
         return Derived("not_a_cause", False, further,
                        "a cause of neither the exposure nor the outcome: the criterion leaves it out")
     if co == "no":
@@ -514,9 +576,30 @@ def current_answers(state: Any) -> dict[str, Any]:
             if _get(a, "exposure") == exposure}
 
 
+def direct_questions(answers: Any, effect: str) -> list[str]:
+    """What a direct effect still asks of one covariate's answers (MODELING_SEQUENCE §1 step 3 and
+    §2): of a covariate the direct effect holds fixed (a mediator, or one of unknown timing that is
+    adjusted either way), whether the exposure's effect could differ with its level
+    (``interacts``); of one the criterion leaves out (a cause of neither, a consequence of the
+    exposure, an instrument), whether it is a common cause of a mediator and the outcome
+    (``confounds_mediator``). Nothing under a total effect, and nothing whose answer would change
+    nothing (a confounder is adjusted either way)."""
+    if effect != "direct":
+        return []
+    found = derive(answers, effect)
+    if found.adjusted and found.role in ("mediator", "timing_unknown"):
+        return [] if _get(answers, "interacts") is not None else ["interacts"]
+    if found.role in ("not_a_cause", "collider", "instrument"):
+        return [] if _get(answers, "confounds_mediator") is not None else ["confounds_mediator"]
+    return []
+
+
 def unanswered(state: Any) -> list[str]:
     answers = current_answers(state)
-    return [c for c in asked_covariates(state) if c not in answers]
+    spec = current_estimand(state)
+    effect = str(_get(spec, "effect") or "total") if spec is not None else "total"
+    return [c for c in asked_covariates(state)
+            if c not in answers or direct_questions(answers[c], effect)]
 
 
 def derived_roles(state: Any) -> dict[str, Derived]:
@@ -526,6 +609,14 @@ def derived_roles(state: Any) -> dict[str, Derived]:
     answers = current_answers(state)
     effect = str(_get(spec, "effect") or "total")
     return {c: derive(answers[c], effect) for c in covariates(state) if c in answers}
+
+
+def mediators(state: Any) -> list[str]:
+    """Under a direct effect, the covariates it holds fixed: the mediators by the answers."""
+    spec = current_estimand(state)
+    if spec is None or _get(spec, "effect") != "direct":
+        return []
+    return [c for c, d in derived_roles(state).items() if d.role == "mediator" and d.adjusted]
 
 
 def adjustment_left_out(state: Any) -> list[str]:
@@ -652,10 +743,20 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
                        "guess": None, "reason": "The pack says nothing about these; each is asked.",
                        "derived": None, "derived_words": None, "decision": None})
     derived = derived_roles(state)
+    # A direct effect's own questions (MODELING_SEQUENCE §1 step 3 and §2), for each covariate
+    # whose answers so far leave one of them open: one line each, answered with the rest of its
+    # answers (``set_adjustment``).
+    pending = {c: direct_questions(answers[c], effect) for c in asked_covariates(state)
+               if c in answers and direct_questions(answers[c], effect)}
     return {
         "exposure": exposure, "effect": effect, "family": bool(_get(spec, "family")),
-        "questions": QUESTIONS,
+        "questions": {**QUESTIONS, **(DIRECT_QUESTIONS if effect == "direct" else {})},
         "groups": groups,
+        "direct_questions": [{"column": c, "fields": fields,
+                              "answers": answers[c].model_dump(exclude={"exposure"})
+                              if hasattr(answers[c], "model_dump") else dict(answers[c])}
+                             for c, fields in pending.items()],
+        "mediators": mediators(state),
         "answered": {c: {"role": d.role, "words": ROLE_WORDS[d.role], "adjusted": d.adjusted,
                          "secondary": d.secondary, "why": d.why} for c, d in derived.items()},
         "adjusted": [c for c, d in derived.items() if d.adjusted],
@@ -664,6 +765,14 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
         "source": VANDERWEELE,
     }
 
+
+# A direct effect's two further questions (MODELING_SEQUENCE §1 step 3: "A direct effect also asks
+# for mediator–outcome confounders"; §2: "Exposure–mediator interaction routes to counterfactual
+# mediation methods"), each asked only where its answer changes the model (``direct_questions``).
+DIRECT_QUESTIONS = {
+    "confounds_mediator": "Is it a common cause of a mediator and the outcome?",
+    "interacts": "Could the exposure's effect differ with its level?",
+}
 
 # The five questions, as the card asks them (each one line).
 QUESTIONS = {
@@ -682,9 +791,19 @@ def estimand_card(state: Any, task: str | None) -> dict[str, Any] | None:
         return None
     candidates = exposure_candidates(state)
     family = family_exposures(state)
+    # The routing gate (p16): a predictor whose role rode along unconfirmed is not offered as the
+    # exposure until it is confirmed (the step's ask card asks it), but it is named here, so a
+    # client choosing among the offered exposures sees that one is waiting.
+    from turbotab.core.readings import confirm_exits, unsettled
+
+    target = _get(state, "target")
+    recorded = _get(state, "roles") or {}
+    waiting = [c for c in unsettled(state) if recorded.get(c) in PREDICTOR_ROLES and c != target]
     return {
         "exposures": [{"column": c, "energy_contrast": energy_contrast_applies(state, c)}
                       for c in candidates],
+        "unconfirmed": [{"column": c, "role": recorded.get(c), "exits": confirm_exits(state, [c])}
+                        for c in waiting],
         # Every exposure reported in turn, with its multiplicity method (MODELING_SEQUENCE §1 step
         # 2): offered with two or more exposures, as an omics table's features are.
         "family": ({"n": len(family), "energy_contrast": family_contrast_applies(state),
@@ -736,12 +855,30 @@ def caption(state: Any, task: str | None = None) -> str | None:
                 + (f" ({what})" if what else "")
                 + f", as a {MEASURE_WORDS.get(measure, measure)} per unit of {_tick(exposure)}")
     derived = derived_roles(state)
-    adjusted = [c for c, d in derived.items() if d.adjusted]
+    held = mediators(state)
+    if effect == "direct" and held:
+        # The controlled direct effect (Valeri & VanderWeele 2013): the mediators held fixed,
+        # named as such, never listed as covariates "conditioned on".
+        text = text.replace("The direct effect of", "The controlled direct effect of", 1)
+        text += (f", with {'the mediator' if len(held) == 1 else 'the mediators'} "
+                 f"{_listing(held, limit=6)} held fixed")
+    adjusted = [c for c, d in derived.items() if d.adjusted and c not in held]
     fe = fixed_effects_column(state)
     parts = ([_listing(adjusted, limit=6)] if adjusted else []) + (
         [f"an intercept for each {_tick(fe)} (fixed effects)"] if fe else [])
     text += (f", conditional on {' and '.join(parts)}" if parts
              else ", with no covariate adjusted for")
+    if effect == "direct" and held:
+        answers = current_answers(state)
+        open_interaction = [c for c in held if _get(answers.get(c), "interacts") in ("yes", "unknown")]
+        if open_interaction:
+            text += (f"; an exposure–mediator interaction with {_listing(open_interaction)} was "
+                     f"not ruled out, so this is the direct effect at "
+                     f"{'its' if len(open_interaction) == 1 else 'their'} reference level only "
+                     f"(recorded)")
+        else:
+            text += "; it assumes no exposure–mediator interaction, as answered"
+        text += f", and no unmeasured common cause of a mediator and the outcome ({VALERI})"
     out = [c for c, d in derived.items() if not d.adjusted and d.role in ("mediator", "collider")]
     if out:
         text += f"; {_listing(out)} left out as {'a consequence' if len(out) == 1 else 'consequences'} of the exposure"
@@ -969,6 +1106,30 @@ def _same_follow_up_against_the_data(decision: Any, ctx: Any) -> None:
           "decision": decision.model_copy(update={"acknowledged": True})}])
 
 
+def _follow_up_is_no_predictor(decision: Any, ctx: Any) -> None:
+    """A column the follow-up answer names is the time half of a time-to-event outcome: a roles
+    answer that makes it a predictor is refused, with the same answer giving it the role time (the
+    routing gate: ``PERMTH_INT`` proposed an exposure beside its own outcome)."""
+    from turbotab.core.decisions import SetRoles
+
+    state = _state(ctx)
+    spec = _get(state, "follow_up")
+    if spec is None or _get(state, "task") != "time_to_event":
+        return
+    named = [c for c in (_get(spec, "time_column"), _get(spec, "entry_column")) if c]
+    inside = [c for c in named if decision.roles.get(c) in PREDICTOR_ROLES]
+    if not inside:
+        return
+    fixed = {**decision.roles, **{c: "time" for c in inside}}
+    raise _refusal(
+        "follow_up_as_predictor",
+        f"{_listing(inside)} {'is' if len(inside) == 1 else 'are'} named as "
+        f"{_tick(_get(state, 'target'))}'s follow-up (the follow-up question), part of the outcome "
+        f"itself, so {'it' if len(inside) == 1 else 'they'} cannot also predict it.",
+        [{"label": f"Give {_listing(inside)} the role time",
+          "decision": SetRoles(**{**decision.model_dump(exclude={"kind"}), "roles": fixed})}])
+
+
 # set_clusters
 
 
@@ -1020,6 +1181,17 @@ def _clusters_name_a_grouping(decision: Any, ctx: Any) -> None:
               "decision": decision.model_copy(update={"adjust": "fixed_effects"})},
              {"label": f"Cluster the intervals by {_tick(column)} only",
               "decision": decision.model_copy(update={"adjust": "cluster_only"})}])
+
+
+def _no_grouping_names_what_it_denies(decision: Any, ctx: Any) -> Any:
+    """"Nothing groups them" is said over the columns that read as a grouping now: each is denied
+    by it, as its own ``cluster`` confirmation "no" would (``none_of``, the server's, never the
+    client's); a named grouping denies nothing."""
+    if decision.column is not None:
+        return decision.model_copy(update={"none_of": []})
+    state = _state(ctx)
+    found = cluster_candidates(state, _artifact(ctx, "roles")) if state is not None else []
+    return decision.model_copy(update={"none_of": list(found)})
 
 
 def _no_grouping_is_recorded(decision: Any, ctx: Any) -> None:
@@ -1244,6 +1416,82 @@ def _mediators_stay_out_of_a_total_effect(decision: Any, ctx: Any) -> None:
                                                                   a.model_copy(update={"acknowledged": True})}})}])
 
 
+def _a_direct_effect_asks_its_questions(decision: Any, ctx: Any) -> None:
+    """A direct effect (MODELING_SEQUENCE §1 step 3 and §2). Valeri & VanderWeele (2013, *Psychol
+    Methods* 18:137): "In order to ensure identifiability of controlled direct effect, two
+    assumptions are needed: namely those of (i) no unmeasured confounding of the treatment-outcome
+    relationship and (ii) no unmeasured confounding of mediator-outcome relationship"; and with an
+    exposure–mediator interaction the controlled direct effect is (θ₁ + θ₃m)(a − a*), one number
+    per level m of the mediator.
+
+    * A known instrument is no common cause of a mediator and the outcome (it reaches the outcome
+      only through the exposure): the two answers are refused together.
+    * A possible exposure–mediator interaction is block and record: the coefficient is then the
+      direct effect at the mediator's reference level only, and the other effects need
+      counterfactual mediation methods TurboTab does not fit. The exits: the total effect, "no
+      interaction", or the direct effect at the reference level, recorded.
+    * A direct effect needs a mediator to hold fixed: once every covariate is answered and none is
+      one, the answers are refused with the total effect as the exit."""
+    from turbotab.core.decisions import SetEstimand
+
+    state = _state(ctx)
+    spec = current_estimand(state) if state is not None else None
+    if spec is None or _get(spec, "effect") != "direct":
+        return
+    for column, a in decision.answers.items():
+        if a.instrument and a.confounds_mediator == "yes":
+            raise _refusal(
+                "instrument_confounds_mediator",
+                f"{_tick(column)} is answered an instrument and a common cause of a mediator and the "
+                f"outcome; an instrument reaches the outcome only through the exposure.",
+                [{"label": f"{_tick(column)} is not an instrument", "decision": decision.model_copy(
+                    update={"answers": {**decision.answers,
+                                        column: a.model_copy(update={"instrument": False})}})},
+                 {"label": f"{_tick(column)} is no common cause of a mediator and the outcome",
+                  "decision": decision.model_copy(update={"answers": {
+                      **decision.answers, column: a.model_copy(update={"confounds_mediator": "no"})}})}])
+    for column, a in decision.answers.items():
+        d = derive(a, "direct")
+        if not (d.adjusted and d.role in ("mediator", "timing_unknown")):
+            continue
+        if a.interacts not in ("yes", "unknown") or a.interaction_attested:
+            continue
+        maybe = "could" if a.interacts == "unknown" else "does"
+        raise _refusal(
+            "exposure_mediator_interaction",
+            f"The exposure's effect {maybe} differ with {_tick(column)}'s level by your answer: the "
+            f"exposure's coefficient is then the direct effect at {_tick(column)}'s reference level "
+            f"only, and the direct effect at other levels, or a natural direct effect, needs "
+            f"counterfactual mediation methods, which TurboTab does not fit ({VALERI}: the "
+            f"controlled direct effect is (θ₁ + θ₃m)(a − a*), so it changes with the mediator's "
+            f"level m).",
+            [{"label": "Report the total effect instead",
+              "decision": SetEstimand(**{**spec.model_dump(), "effect": "total"})},
+             {"label": f"No exposure–mediator interaction with {_tick(column)}",
+              "decision": decision.model_copy(update={"answers": {
+                  **decision.answers, column: a.model_copy(update={"interacts": "no"})}})},
+             {"label": f"Keep the direct effect at {_tick(column)}'s reference level; record the "
+                       f"interaction as a limitation",
+              "decision": decision.model_copy(update={"answers": {
+                  **decision.answers, column: a.model_copy(update={"interaction_attested": True})}})}])
+    merged = {**current_answers(state), **decision.answers}
+    asked = asked_covariates(state)
+    if any(c not in merged or direct_questions(merged[c], "direct") for c in asked):
+        return  # not every covariate is answered yet: a mediator may still come
+    held = [c for c in covariates(state) if c in merged
+            and derive(merged[c], "direct").role == "mediator"]
+    if held:
+        return
+    raise _refusal(
+        "no_mediator",
+        "A direct effect holds the mediators fixed, and by your answers no covariate is one (a "
+        "covariate the exposure could change that causes the outcome): with nothing held fixed it "
+        "is the total effect.",
+        [{"label": "Report the total effect", "decision": SetEstimand(**{**spec.model_dump(),
+                                                                          "effect": "total"})},
+         {"label": "Answer again: name the mediator among the covariates", "decision": None}])
+
+
 # set_energy_adjustment: the contrast the estimand declares (MODELING_SEQUENCE §2)
 
 SUBSTITUTION_METHODS = ("standard", "residual", "residual_energy_dropped", "all_components",
@@ -1271,6 +1519,14 @@ def _energy_model_fits_the_contrast(decision: Any, ctx: Any) -> None:
     ranked = (("all_components", "standard", "residual") if contrast == "substitution"
               else ("all_components", "partition"))
     whose = "the exposures'" if _get(spec, "family") else f"{_tick(_get(spec, 'exposure'))}'s"
+    # Each exit is a whole answer the user can take: an answer that named no energy column or no
+    # nutrients ("none", say) takes the settled ones the energy question pre-fills.
+    base = decision.model_dump(exclude={"kind"})
+    roles = predictor_roles(state)
+    if not base.get("energy_column"):
+        base["energy_column"] = next((c for c, r in roles.items() if r == "energy"), None)
+    if not base.get("nutrients"):
+        base["nutrients"] = [c for c, r in roles.items() if r == "exposure" and energy_bearing(c)]
     raise _refusal(
         "contrast_mismatch",
         f"The estimand is {'a substitution' if contrast == 'substitution' else 'an addition'} of "
@@ -1278,7 +1534,7 @@ def _energy_model_fits_the_contrast(decision: Any, ctx: Any) -> None:
         f"estimates {'no substitution' if contrast == 'substitution' else 'a substitution, not an addition'} "
         f"(Tomova et al. 2022).",
         [*({"label": METHOD_TABLE[m]["label"],
-            "decision": SetEnergyAdjustment(**{**decision.model_dump(exclude={"kind"}), "method": m})}
+            "decision": SetEnergyAdjustment(**{**base, "method": m})}
            for m in ranked),
          {"label": f"Make the estimand an {other}" if other == "addition" else f"Make the estimand a {other}",
           "decision": SetEstimand(**{**spec.model_dump(), "contrast": other})}])
@@ -1312,12 +1568,14 @@ def _models_fit_the_family(decision: Any, ctx: Any) -> None:
 
 
 def _register() -> None:
-    from turbotab.core.decisions import register_validator
+    from turbotab.core.decisions import register_completion, register_validator
 
+    register_validator("set_roles", _follow_up_is_no_predictor)
     register_validator("set_censoring", _censoring_names_the_outcome)
     register_validator("set_censoring", _same_follow_up_against_the_data)
     register_validator("set_clusters", _clusters_name_a_grouping)
     register_validator("set_clusters", _no_grouping_is_recorded)
+    register_completion("set_clusters", _no_grouping_names_what_it_denies)
     register_validator("set_estimand", _estimand_is_for_inference)
     register_validator("set_estimand", _estimand_names_a_predictor)
     register_validator("set_estimand", _estimand_measure_is_fitted)
@@ -1325,6 +1583,7 @@ def _register() -> None:
     register_validator("set_adjustment", _adjustment_follows_the_estimand)
     register_validator("set_adjustment", _answers_hold_together)
     register_validator("set_adjustment", _mediators_stay_out_of_a_total_effect)
+    register_validator("set_adjustment", _a_direct_effect_asks_its_questions)
     register_validator("set_energy_adjustment", _energy_model_fits_the_contrast)
     register_validator("select_models", _models_fit_the_family)
 
@@ -1337,7 +1596,8 @@ __all__ = [
     "adjustment_card", "asked_covariates",
     "adjustment_gate", "adjustment_left_out", "annotate_fit", "caption", "cluster_answer",
     "cluster_candidates", "clusters_gate", "covariates", "current_answers", "current_estimand",
-    "derive", "derived_roles", "effective_task", "estimand_card", "estimand_gate",
+    "DIRECT_QUESTIONS", "derive", "derived_roles", "direct_questions", "mediators",
+    "effective_task", "estimand_card", "estimand_gate",
     "exposure_candidates", "fixed_effects_column", "follow_up_answer", "follow_up_candidates",
     "follow_up_gate", "guess_of", "measures_offered", "primary_features", "reads_as_follow_up",
     "secondary_columns", "served_gate", "unanswered", "withhold",

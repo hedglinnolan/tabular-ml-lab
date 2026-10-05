@@ -147,8 +147,10 @@ def test_clinical_visits_are_time_points_and_ask_about_temporal_prediction(proje
     assert "different time points" in reading["sentence"]
     assert "90 days apart" in reading["sentence"]
 
+    # The routing gate: a yes/no outcome under the clinical lens is asked its follow-up; `progressed`
+    # is counted over the same follow-up for everyone (the fixture's data card).
     rows = p.at(p.state.model_copy(update={
-        "event": "1", "unit": "row",
+        "event": "1", "unit": "row", "censoring": "same",
         "repeat_kind": decisions.RepeatSpec(repeat_kind="time_points")})).steps()
     assert rows["aggregation"].status == "not_applicable"
     assert rows["temporal"].status == "open"  # time points stay as rows

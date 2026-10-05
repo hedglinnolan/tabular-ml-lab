@@ -193,11 +193,15 @@ def build_graph() -> Graph:
             # else, or not sure" runs the generic checks alone (RO-11).
             # findings 17 (wave 1, MS7): zeros a log cannot take, and a batch column's confounding with
             # the outcome; the pooled-QC finding offers QC-RLSC and its filters beside the exclusion.
+            # findings 18 (the routing gate): a text column the user said holds numbers (its
+            # read-numbers repair applied) is checked as those numbers, so an impossible outcome
+            # value is found before the seal; the lab pack's "numbers stored as text" leaves the
+            # column the app's own finding reads, lever and all.
             Stage(
                 "findings",
-                17,
+                18,
                 ("oriented",),
-                ("lens", "target", "column_units", "sex_codings"),
+                ("lens", "target", "column_units", "sex_codings", "numbers_read"),
                 findings_stage,
                 heavy=True,
                 requires=("lens",),
@@ -257,9 +261,11 @@ def build_graph() -> Graph:
             # target_info 9 (audit WP18, RO-10): the tasks the answer accepts (one 20-class rule), "are
             # these levels ordered?" for 3–10 levels, and the scale of a positive, markedly skewed
             # outcome; the reference rows have left the table it reads (RO-13).
+            # target_info 10 (the routing gate): the columns the follow-up question may name, those
+            # read as a follow-up time first (``PERMTH_INT``, ``time_in_study`` among them).
             Stage(
                 "target_info",
-                9,
+                10,
                 ("working",),
                 ("target", "task", "outcome_unit", "outcome_scale"),
                 target_info_stage,
@@ -289,7 +295,10 @@ def build_graph() -> Graph:
             # test per kind (``readings.by_values``).
             # roles 10 (audit WP18): the column a log-scale outcome is the log of is the outcome, so
             # it is proposed excluded (RO-10).
-            Stage("roles", 10, ("working",), ("lens", "target", "purpose", "grain", "outcome_scale"),
+            # roles 11 (the routing gate): the column named as the outcome's follow-up time is the
+            # outcome's time, proposed "time" by the user's own follow-up answer.
+            Stage("roles", 11, ("working",),
+                  ("lens", "target", "purpose", "grain", "outcome_scale", "follow_up", "task"),
                   roles_stage,
                   heavy=True, label="Reading what each column is"),
             # proposals 3: the declared purpose orders the energy methods by soundness (audit WP6);
@@ -327,7 +336,11 @@ def build_graph() -> Graph:
             # proposals 17 (WP17): every option of the energy, missing-values and exclusions
             # questions labeled customary and sound, ordered by purpose, with a tension line; the
             # estimand and adjustment cards.
-            Stage("proposals", 17, ("working", "roles"),
+            # proposals 18 (the routing gate): the estimand card names the exposures waiting for
+            # their role's confirmation; under a direct effect the adjustment card asks for each
+            # covariate's mediator–outcome answer and each mediator's interaction (MODELING_SEQUENCE
+            # §1 step 3, §2).
+            Stage("proposals", 18, ("working", "roles"),
                   ("lens", *ROLE_READS, "target", "purpose", "column_units", "repeat_kind",
                    "sex_codings", "task", *WP17_READS),
                   proposals_stage, label="Looking up what the field usually does"),
@@ -336,9 +349,11 @@ def build_graph() -> Graph:
             # cohort 4 (WP17): complete cases read the predictors the adjustment answers keep.
             # cohort 5 (audit WP18, RO-13): reference rows the working table excluded are counted first.
             # cohort 6 (wave 1, MS7): the pooled QCs a drift correction read leave as reference rows.
-            Stage("cohort", 6, ("working", "target_info"),
+            # cohort 7 (the routing gate): a time-to-event outcome's landmark leaves the rows whose
+            # follow-up ended by it, on a line of its own.
+            Stage("cohort", 7, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
-                   *WP17_READS), cohort_stage,
+                   *WP17_READS, "follow_up", "task"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.
             # split 4 (audit WP15, IN-24): the chronology counts held-out rows that predate training.
@@ -398,10 +413,13 @@ def build_graph() -> Graph:
             # design 20 (wave 1, MS7): normalization, then values below detection, then the log; the
             # in-fold D-ratio filter and reference ComBat; a batch confounded with the outcome refused;
             # a declared scale's items scored into one column after the fill (MS8).
-            Stage("design", 20, ("working", "split", "target_info"),
+            # design 21 (the routing gate, the ledger's repair 3 residue): the partition methods
+            # convert each energy source by its settled kcal per unit (its recorded unit, so the
+            # design reads the units), never by its name.
+            Stage("design", 21, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
-                   *WP17_READS),
+                   "column_units", *WP17_READS),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -425,7 +443,9 @@ def build_graph() -> Graph:
             # fit 16 (WP17): the intervals cluster by the grouping the cluster question named.
             # fit 17 (wave 1): an exposure family's recorded multiplicity method (MS7); under the
             # population answer every family is design-based or blocked and recorded (MS4).
-            Stage("fit", 17, ("working", "design", "split", "target_info", "cohort"),
+            # fit 18 (the routing gate): each source's average relative effect is per its settled
+            # unit (a standard drink, not the name's gram); a landmark's rows enter at it.
+            Stage("fit", 18, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),

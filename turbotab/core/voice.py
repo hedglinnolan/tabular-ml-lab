@@ -1364,6 +1364,14 @@ def _set_follow_up(d: Any, state: Any, ctx: Any) -> str:
     if d.entry_column:
         text += (f"; a row was at risk only after its {tick(d.entry_column)}, on the same time "
                  f"scale")
+    if getattr(d, "landmark", None) is not None:
+        text += (f"; follow-up was counted from {tick(f'{d.landmark:g}')} on (a landmark): rows "
+                 f"whose follow-up ended by then, by an event or not, were not at risk and left, "
+                 f"so the estimate is among those event-free and followed at "
+                 f"{tick(f'{d.landmark:g}')}")
+    if getattr(d, "horizon", None) is not None:
+        text += (f"; follow-up ended at {tick(f'{d.horizon:g}')}: events after it were censored "
+                 f"there")
     return text
 
 
@@ -1383,7 +1391,14 @@ def _set_clusters(d: Any, state: Any, ctx: Any) -> str:
     # WP17 (audit RO-08): the grouping above the person.
     if d.column is None:
         text = "Nothing groups the participants above the person; each is analyzed as independent"
-        if d.acknowledged:
+        denied = list(getattr(d, "none_of", None) or [])
+        if d.acknowledged and denied:
+            one = len(denied) == 1
+            text += (f", although {listing(denied, limit=3)} {'reads' if one else 'read'} as a "
+                     f"site, centre, household or batch; the answer was kept over that reading, so "
+                     f"the intervals do not cluster by {'it' if one else 'them'}, and it is a "
+                     f"stated limitation")
+        elif d.acknowledged:
             text += (", although a column reads as a site, centre, household or batch; the answer "
                      "was kept over that reading and is a stated limitation")
         return text
@@ -1440,7 +1455,9 @@ def _set_adjustment(d: Any, state: Any, ctx: Any) -> str:
     parts = []
     for (role, adjusted, secondary), columns in by_role.items():
         one = len(columns) == 1
-        if adjusted:
+        if adjusted and effect == "direct" and role in ("mediator", "timing_unknown"):
+            where = "held fixed by the direct effect"
+        elif adjusted:
             where = "adjusted for"
         elif secondary:
             where = "left out of the primary model and adjusted for in a declared secondary one"
@@ -1458,6 +1475,12 @@ def _set_adjustment(d: Any, state: Any, ctx: Any) -> str:
     if kept:
         text += (f". {listing(kept)} {plural(len(kept), 'was', 'were')} kept in the primary set "
                  f"over that reading, as recorded, so the estimate is not a total effect")
+    attested = [c for c, a in d.answers.items() if effect == "direct" and a.interaction_attested
+                and a.interacts in ("yes", "unknown")]
+    if attested:
+        text += (f". An exposure–mediator interaction with {listing(attested)} was not ruled out "
+                 f"and was kept as a recorded limitation: the direct effect is at "
+                 f"{'its' if len(attested) == 1 else 'their'} reference level only")
     return text
 
 
@@ -1665,6 +1688,17 @@ def _lock_plan(d: Any, state: Any, ctx: Any) -> str:
     row 12): never "prespecified" or "preregistered"."""
     digest = getattr(d, "digest", None)
     hashed = f" (SHA-256 {tick(digest[:12])})" if digest else ""
+    if getattr(d, "seen", "inference") == "prediction":
+        # The routing gate (p02): coefficients displayed under prediction, then the purpose made
+        # inference. The plan was declared after they were seen, and the record says so.
+        whose = getattr(d, "seen_target", None)
+        of = f" of the model of {tick(whose)}" if whose else ""
+        at = getattr(d, "seen_at", None)
+        when = f", after decision {tick(f'#{at}')}," if at else ""
+        return (f"Estimates{of} had been displayed under prediction{when} before the purpose "
+                f"became inference, so the analysis plan recorded above was declared in TurboTab "
+                f"after estimates were seen, not before{hashed}; every later change is marked as "
+                f"made after the estimates were seen")
     return (f"The analysis plan recorded above was declared in TurboTab before any estimate was "
             f"displayed{hashed}; every later change is marked as made after the estimates were "
             f"seen")

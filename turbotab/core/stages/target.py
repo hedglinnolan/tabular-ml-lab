@@ -133,6 +133,15 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
                  if c != target and i.get("dtype") in NUMERIC and reads_as_follow_up(c)]
         follow_up = follow_up_candidates(store.materialize(timed) if timed else None,
                                          {c: columns[c] for c in timed}, target)
+        # The columns the follow-up question may name (the routing gate: a follow-up no name
+        # reads, NHANES's ``PERMTH_INT``, is still the user's to name): those read as one first,
+        # then the other numeric columns.
+        named = [str(c["column"]) for c in follow_up]
+        follow_up_options = (named + [c for c, i in columns.items()
+                                      if c != target and c not in named
+                                      and i.get("dtype") in NUMERIC][:30]
+                             if detected_task == "binary" or task in ("binary", "time_to_event")
+                             else [])
 
         histogram = None
         classes = None
@@ -200,4 +209,5 @@ def target_info_stage(ctx: StageContext) -> dict[str, Any]:
         "proposed_unit": proposal["unit"] if proposal else None,
         "unit_candidates": list(proposal["candidates"]) if proposal else [],
         "follow_up": follow_up,
+        "follow_up_options": follow_up_options,
     }

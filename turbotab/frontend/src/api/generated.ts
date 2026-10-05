@@ -595,6 +595,15 @@ export interface components {
              * @default false
              */
             further: boolean;
+            /** Confounds Mediator */
+            confounds_mediator: ("yes" | "no" | "unknown") | null;
+            /** Interacts */
+            interacts: ("yes" | "no" | "unknown") | null;
+            /**
+             * Interaction Attested
+             * @default false
+             */
+            interaction_attested: boolean;
             /** Exposure */
             exposure: string;
         };
@@ -772,6 +781,8 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** None Of */
+            none_of: string[];
         };
         /**
          * CoachAnchor
@@ -1092,6 +1103,15 @@ export interface components {
              * @default false
              */
             further: boolean;
+            /** Confounds Mediator */
+            confounds_mediator?: ("yes" | "no" | "unknown") | null;
+            /** Interacts */
+            interacts?: ("yes" | "no" | "unknown") | null;
+            /**
+             * Interaction Attested
+             * @default false
+             */
+            interaction_attested: boolean;
         };
         /**
          * CovariateAnswers
@@ -1139,6 +1159,15 @@ export interface components {
              * @default false
              */
             further: boolean;
+            /** Confounds Mediator */
+            confounds_mediator: ("yes" | "no" | "unknown") | null;
+            /** Interacts */
+            interacts: ("yes" | "no" | "unknown") | null;
+            /**
+             * Interaction Attested
+             * @default false
+             */
+            interaction_attested: boolean;
         };
         /**
          * CreateProject
@@ -1474,6 +1503,10 @@ export interface components {
             time_column: string;
             /** Entry Column */
             entry_column: string | null;
+            /** Landmark */
+            landmark: number | null;
+            /** Horizon */
+            horizon: number | null;
         };
         /** FrameRow */
         FrameRow: {
@@ -2222,6 +2255,16 @@ export interface components {
             } | null;
             /** Digest */
             digest?: string | null;
+            /**
+             * Seen
+             * @default inference
+             * @enum {string}
+             */
+            seen: "inference" | "prediction";
+            /** Seen Target */
+            seen_target?: string | null;
+            /** Seen At */
+            seen_at?: number | null;
         };
         /**
          * LockPlan
@@ -2245,6 +2288,16 @@ export interface components {
             } | null;
             /** Digest */
             digest: string | null;
+            /**
+             * Seen
+             * @default inference
+             * @enum {string}
+             */
+            seen: "inference" | "prediction";
+            /** Seen Target */
+            seen_target: string | null;
+            /** Seen At */
+            seen_at: number | null;
         };
         /**
          * Mark
@@ -2541,6 +2594,10 @@ export interface components {
                 [key: string]: components["schemas"]["AdjustmentAnswer"];
             } | null;
             outcome_scale: components["schemas"]["OutcomeScaleSpec"] | null;
+            /** Numbers Read */
+            numbers_read: {
+                [key: string]: unknown;
+            } | null;
             /** Joins */
             joins: {
                 [key: string]: components["schemas"]["JoinSpec"];
@@ -3251,7 +3308,13 @@ export interface components {
              */
             acknowledged: boolean;
         };
-        /** SetClusters */
+        /**
+         * SetClusters
+         * @description The grouping above the person (audit RO-08). The answer is also each named column's
+         *     ``cluster`` reading (BLUEPRINT §14.3): a grouping confirms it, "nothing groups them" denies
+         *     each column that read as one (``none_of``, filled by the server), and a later confirmation of
+         *     that reading stands over it, as the answer stands over an earlier one.
+         */
         "SetClusters-Input": {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -3267,8 +3330,16 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** None Of */
+            none_of?: string[];
         };
-        /** SetClusters */
+        /**
+         * SetClusters
+         * @description The grouping above the person (audit RO-08). The answer is also each named column's
+         *     ``cluster`` reading (BLUEPRINT §14.3): a grouping confirms it, "nothing groups them" denies
+         *     each column that read as one (``none_of``, filled by the server), and a later confirmation of
+         *     that reading stands over it, as the answer stands over an earlier one.
+         */
         "SetClusters-Output": {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -3284,6 +3355,8 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** None Of */
+            none_of: string[];
         };
         /**
          * SetColumnUnit
@@ -3559,6 +3632,12 @@ export interface components {
         /**
          * SetFollowUp
          * @description The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.
+         *
+         *     ``landmark``: follow-up counted from this time on (a landmark, or the customary "the first
+         *     years of follow-up excluded" for reverse causation): a row whose follow-up ended at or before
+         *     it, by an event or not, was not at risk then and leaves, and every other row is at risk from
+         *     it (left truncation; the estimate is among those event-free and followed at the landmark).
+         *     ``horizon``: follow-up ends at this time: an event after it counts as censored at it.
          */
         "SetFollowUp-Input": {
             /**
@@ -3572,10 +3651,20 @@ export interface components {
             time_column: string;
             /** Entry Column */
             entry_column?: string | null;
+            /** Landmark */
+            landmark?: number | null;
+            /** Horizon */
+            horizon?: number | null;
         };
         /**
          * SetFollowUp
          * @description The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.
+         *
+         *     ``landmark``: follow-up counted from this time on (a landmark, or the customary "the first
+         *     years of follow-up excluded" for reverse causation): a row whose follow-up ended at or before
+         *     it, by an event or not, was not at risk then and leaves, and every other row is at risk from
+         *     it (left truncation; the estimate is among those event-free and followed at the landmark).
+         *     ``horizon``: follow-up ends at this time: an event after it counts as censored at it.
          */
         "SetFollowUp-Output": {
             /**
@@ -3589,6 +3678,10 @@ export interface components {
             time_column: string;
             /** Entry Column */
             entry_column: string | null;
+            /** Landmark */
+            landmark: number | null;
+            /** Horizon */
+            horizon: number | null;
         };
         /** SetGrain */
         "SetGrain-Input": {
@@ -5444,6 +5537,21 @@ export interface components {
              * @default false
              */
             further: boolean;
+            /**
+             * Confounds Mediator
+             * @default null
+             */
+            confounds_mediator: ("yes" | "no" | "unknown") | null;
+            /**
+             * Interacts
+             * @default null
+             */
+            interacts: ("yes" | "no" | "unknown") | null;
+            /**
+             * Interaction Attested
+             * @default false
+             */
+            interaction_attested: boolean;
         };
         /** CurvePoint */
         CurvePoint: {
@@ -6657,6 +6765,22 @@ export interface components {
              * @default null
              */
             digest: string | null;
+            /**
+             * Seen
+             * @default inference
+             * @enum {string}
+             */
+            seen: "inference" | "prediction";
+            /**
+             * Seen Target
+             * @default null
+             */
+            seen_target: string | null;
+            /**
+             * Seen At
+             * @default null
+             */
+            seen_at: number | null;
         };
         /** MatrixShape */
         MatrixShape: {
@@ -7862,7 +7986,13 @@ export interface components {
              */
             acknowledged: boolean;
         };
-        /** SetClusters */
+        /**
+         * SetClusters
+         * @description The grouping above the person (audit RO-08). The answer is also each named column's
+         *     ``cluster`` reading (BLUEPRINT §14.3): a grouping confirms it, "nothing groups them" denies
+         *     each column that read as one (``none_of``, filled by the server), and a later confirmation of
+         *     that reading stands over it, as the answer stands over an earlier one.
+         */
         SetClusters: {
             /**
              * Kind
@@ -7885,6 +8015,8 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** None Of */
+            none_of: string[];
         };
         /**
          * SetColumnUnit
@@ -8041,6 +8173,12 @@ export interface components {
         /**
          * SetFollowUp
          * @description The follow-up of a time-to-event outcome. Stands only while ``column`` is the target.
+         *
+         *     ``landmark``: follow-up counted from this time on (a landmark, or the customary "the first
+         *     years of follow-up excluded" for reverse causation): a row whose follow-up ended at or before
+         *     it, by an event or not, was not at risk then and leaves, and every other row is at risk from
+         *     it (left truncation; the estimate is among those event-free and followed at the landmark).
+         *     ``horizon``: follow-up ends at this time: an event after it counts as censored at it.
          */
         SetFollowUp: {
             /**
@@ -8058,6 +8196,16 @@ export interface components {
              * @default null
              */
             entry_column: string | null;
+            /**
+             * Landmark
+             * @default null
+             */
+            landmark: number | null;
+            /**
+             * Horizon
+             * @default null
+             */
+            horizon: number | null;
         };
         /** SetGrain */
         SetGrain: {
