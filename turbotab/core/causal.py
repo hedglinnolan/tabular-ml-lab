@@ -184,11 +184,20 @@ RELATIONS: dict[str, Any] = {r.name: r for r in (
               "``models.effects.unmeasured_confounding``."),
     _relation("plan_lock", "implies", "the first causal estimate shown", "lock_plan",
               "The first causal estimate displayed locks the analysis plan, as any estimate does."),
+    # Wave 2a: an exposure that changes within units is the time-varying lane's (g-methods); these
+    # estimators adjust for a point exposure's confounders only, as standard regression does.
+    _relation("time_varying_exposure", "conflicts", "the exposure changes over time within units",
+              "the causal lane",
+              "An exposure that changes over time is estimated by the g-methods of the time-varying "
+              "lane: a confounder that earlier exposure changed biases a point-exposure estimate, "
+              "by these learners as by standard regression.",
+              "Answer the time-varying question (a marginal structural model or the g-formula)",
+              rung="refused"),
 )}
 
 _COMMON = ("prediction_refuses", "plan_enables", "exposure_invalidates", "rung_d",
            "assumptions_first", "positivity_blocks", "clusters_group", "mi_blocks",
-           "sensitivity_required", "plan_lock")
+           "sensitivity_required", "plan_lock", "time_varying_exposure")
 # The leash per purpose (BLUEPRINT §11.3): refused under prediction; under inference rung (d),
 # allowed after the plan, the assumptions declared first, a positivity violation blocked and recorded.
 _LEASH = {"prediction": "refused", "inference": "available"}
@@ -332,7 +341,13 @@ def stated_reason(first: str | None, many: bool, candidates: int, n_limit: int) 
             f"causal estimators are one step away.")
 
 
-def causal_gate(state: Any, design: Any) -> tuple[str, str | None] | None:
+TIME_VARYING_REASON = ("{exposure} changes over time within units, so its effect is estimated by "
+                       "the time-varying lane's g-methods; the causal lane estimates a point "
+                       "exposure's effect.")
+
+
+def causal_gate(state: Any, design: Any,
+                time_varying: Any = None) -> tuple[str, str | None] | None:
     """The Router's gate for the causal question: not applicable (with the reason) under
     prediction or outside the lane; otherwise stated, never asked by default: the primary model is
     the declared analysis and the lane is one step away ("Ask me anyway"), its top-ranked
@@ -343,6 +358,12 @@ def causal_gate(state: Any, design: Any) -> tuple[str, str | None] | None:
     if reason is not None:
         return ("not_applicable", reason)
     from turbotab.core.estimand import adjustment_answer, current_estimand, estimand_gate
+    from turbotab.core.time_varying import exposure_varies
+
+    if exposure_varies(state, time_varying):  # relation ``time_varying_exposure``
+        spec = current_estimand(state)
+        return ("not_applicable",
+                TIME_VARYING_REASON.format(exposure=_tick(_get(spec, "exposure"))))
 
     found = estimand_gate(state)
     if found is not None and found[0] == "not_applicable":
@@ -716,6 +737,26 @@ def _causal_is_for_inference(decision: Any, ctx: Any) -> None:
             [{"label": "Make the purpose inference", "decision": SetPurpose(purpose="inference")}])
 
 
+def _point_exposure_only(decision: Any, ctx: Any) -> None:
+    """Relation ``time_varying_exposure`` (refused): the ``time_varying`` stage read the declared
+    exposure as changing within units, so its effect is the g-methods' (the time-varying lane)."""
+    from turbotab.core.decisions import SetCausal
+    from turbotab.core.sequence import artifact
+    from turbotab.core.time_varying import exposure_varies
+
+    if decision.method == "none" or not exposure_varies(_state(ctx), artifact(ctx, "time_varying")):
+        return
+    raise _refusal(
+        "time_varying_exposure",
+        TIME_VARYING_REASON.format(exposure=_tick(decision.exposure)) + " A confounder that "
+        "earlier exposure changed would bias these learners' estimate as it biases standard "
+        "regression's.",
+        [{"label": "Answer the time-varying question (a marginal structural model or the "
+                   "g-formula)", "decision": None},
+         {"label": "The primary model only",
+          "decision": SetCausal(exposure=decision.exposure, method="none")}])
+
+
 def _causal_follows_the_plan(decision: Any, ctx: Any) -> None:
     from turbotab.core.estimand import adjustment_answer, current_estimand
     from turbotab.core.voice import question_name
@@ -934,6 +975,7 @@ def _register() -> None:
 
     register_validator("set_causal", _causal_is_for_inference)
     register_validator("set_causal", _causal_follows_the_plan)
+    register_validator("set_causal", _point_exposure_only)
     register_validator("set_causal", _causal_fits_the_estimand)
     register_validator("set_causal", _survey_weights_enter)
     register_validator("set_causal", _assumptions_are_declared)

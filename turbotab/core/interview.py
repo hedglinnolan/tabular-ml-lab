@@ -47,6 +47,11 @@ Rules:
   relative to n, why it ranks first: rung (d) ranks high), also while its card computes, so it
   never holds the models question. It is answered by ``set_causal`` for the declared exposure (a
   new exposure re-asks it).
+* V2 causal row (``turbotab/core/time_varying.py``): ``time_varying`` is asked under inference
+  when the rows are a unit's time points kept as rows and one exposure is declared, after the
+  adjustment set; ``not_applicable`` when the ``time_varying`` stage reads the exposure as fixed
+  within every unit. It is answered by the lane for the current exposure, and the weights' lane
+  only once its truncation is declared after the diagnostics.
 * ``open_seal`` is the last step (M2_CONTRACT §12.1): asked once the fit is fresh (it waits on the
   fit until then), ``not_applicable`` when nothing is held out, and answered once opened. Its slot
   is ``seal_opened``.
@@ -77,13 +82,15 @@ from turbotab.core.ask import AskCard, AskContext
 QuestionKey = Literal[
     "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "energy_adjustment", "causal", "models",
+    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "causal",
+    "models",
     "substitution", "open_seal",
 ]
 QUESTION_KEYS: tuple[str, ...] = (
     "lens", "orientation", "target", "event", "task", "follow_up", "purpose", "grain",
     "repeat_kind", "unit", "aggregation", "temporal", "roles", "clusters", "survey", "exclusions",
-    "missing", "split", "estimand", "adjustment", "energy_adjustment", "causal", "models",
+    "missing", "split", "estimand", "adjustment", "time_varying", "energy_adjustment", "causal",
+    "models",
     "substitution", "open_seal",
 )
 # The ProjectState slot a question's answer writes, where it is not the question's own name.
@@ -119,6 +126,9 @@ NEEDS: dict[str, tuple[str, ...]] = {
     # draw it again, so the split waits for the findings, and one that would rewrite a column the
     # draw reads is settled first (``seal._the_draw_reads_settled_values``).
     "split": ("findings",),
+    # V2 causal row: whether the exposure changes within units, the proposal and the diagnostics
+    # are the time_varying stage's (turbotab/core/time_varying.py).
+    "time_varying": ("time_varying",),
     "energy_adjustment": ("proposals",),
     "models": ("shelf",),
     # The causal lane: its card (the options, the assumptions and the outcome-free diagnostics) is
@@ -433,7 +443,7 @@ def route(
     what the open question's ask card may read (the table's summaries and store); without it the
     card reads the state and the artifacts alone.
     """
-    from turbotab.core import causal, estimand
+    from turbotab.core import causal, estimand, time_varying
 
     if energy_bearing is None:
         from turbotab.core.stages.rows import energy_bearing as bearing
@@ -462,7 +472,11 @@ def route(
         "adjustment": lambda: estimand.adjustment_gate(state),
         # The causal lane (turbotab/core/causal.py): never under prediction; else stated, its
         # top-ranked estimator one step away (rung (d) ranks high when candidates are many).
-        "causal": lambda: causal.causal_gate(state, artifacts.get("causal_design")),
+        "causal": lambda: causal.causal_gate(state, artifacts.get("causal_design"),
+                                             artifacts.get("time_varying")),
+        # V2 causal row (turbotab/core/time_varying.py)
+        "time_varying": lambda: time_varying.lane_gate(state, structure,
+                                                       artifacts.get("time_varying")),
     }
     # A question whose answer is not simply its slot's value (WP17): the follow-up is answered by a
     # time to event's follow-up or a yes/no outcome's "same for everyone"; the estimand while its
@@ -472,6 +486,7 @@ def route(
         "estimand": lambda: estimand.current_estimand(state),
         "adjustment": lambda: estimand.adjustment_answer(state),
         "causal": lambda: causal.current_causal(state),
+        "time_varying": lambda: time_varying.lane_answer(state),
     }
     writer_slots = {"follow_up": ("follow_up", "censoring")}
 

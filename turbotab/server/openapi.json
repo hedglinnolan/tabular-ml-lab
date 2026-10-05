@@ -478,6 +478,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCausal-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTimeVarying-Input"
                   }
                 ],
                 "discriminator": {
@@ -534,7 +537,8 @@
                     "set_usual_intake": "#/components/schemas/SetUsualIntake-Input",
                     "set_model_sequence": "#/components/schemas/SetModelSequence-Input",
                     "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
-                    "set_causal": "#/components/schemas/SetCausal-Input"
+                    "set_causal": "#/components/schemas/SetCausal-Input",
+                    "set_time_varying": "#/components/schemas/SetTimeVarying-Input"
                   }
                 },
                 "title": "Decision"
@@ -1049,6 +1053,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCausal-Input"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTimeVarying-Input"
                   }
                 ],
                 "discriminator": {
@@ -1105,7 +1112,8 @@
                     "set_usual_intake": "#/components/schemas/SetUsualIntake-Input",
                     "set_model_sequence": "#/components/schemas/SetModelSequence-Input",
                     "respond_diagnostic": "#/components/schemas/RespondDiagnostic",
-                    "set_causal": "#/components/schemas/SetCausal-Input"
+                    "set_causal": "#/components/schemas/SetCausal-Input",
+                    "set_time_varying": "#/components/schemas/SetTimeVarying-Input"
                   }
                 },
                 "title": "Decision"
@@ -4070,6 +4078,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetCausal-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SetTimeVarying-Output"
               }
             ],
             "title": "Decision",
@@ -4126,6 +4137,7 @@
                 "set_target": "#/components/schemas/SetTarget",
                 "set_task": "#/components/schemas/SetTask",
                 "set_temporal": "#/components/schemas/SetTemporal-Output",
+                "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
                 "set_unit": "#/components/schemas/SetUnit",
                 "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
               }
@@ -4909,6 +4921,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/SetCausal-Output"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SetTimeVarying-Output"
                   }
                 ],
                 "discriminator": {
@@ -4964,6 +4979,7 @@
                     "set_target": "#/components/schemas/SetTarget",
                     "set_task": "#/components/schemas/SetTask",
                     "set_temporal": "#/components/schemas/SetTemporal-Output",
+                    "set_time_varying": "#/components/schemas/SetTimeVarying-Output",
                     "set_unit": "#/components/schemas/SetUnit",
                     "set_usual_intake": "#/components/schemas/SetUsualIntake-Output"
                   }
@@ -6147,6 +6163,7 @@
               "split",
               "estimand",
               "adjustment",
+              "time_varying",
               "energy_adjustment",
               "causal",
               "models",
@@ -8596,6 +8613,16 @@
                 "type": "null"
               }
             ]
+          },
+          "time_varying": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeVaryingSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8650,7 +8677,8 @@
           "multiplicity",
           "model_sequence",
           "diagnostic_responses",
-          "causal"
+          "causal",
+          "time_varying"
         ],
         "title": "ProjectState",
         "description": "The fold of the decision log. Later milestones add slots as fields."
@@ -13194,6 +13222,255 @@
         ],
         "title": "SetTemporal"
       },
+      "SetTimeVarying-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_time_varying",
+            "title": "Kind",
+            "default": "set_time_varying"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "msm_iptw",
+              "gformula",
+              "standard"
+            ],
+            "title": "Method"
+          },
+          "ordering": {
+            "type": "string",
+            "enum": [
+              "exposure_precedes_outcome",
+              "same_time",
+              "unknown"
+            ],
+            "title": "Ordering"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Confounders"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Baseline"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Censoring"
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "switches",
+              "initiation"
+            ],
+            "title": "Pattern",
+            "default": "switches"
+          },
+          "summary": {
+            "type": "string",
+            "enum": [
+              "current",
+              "cumulative"
+            ],
+            "title": "Summary",
+            "default": "cumulative"
+          },
+          "truncation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "p1_p99",
+                  "p5_p95"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncation"
+          },
+          "simulations": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 1000.0,
+            "title": "Simulations",
+            "default": 10000
+          },
+          "bootstrap": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 100.0,
+            "title": "Bootstrap",
+            "default": 500
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "ordering"
+        ],
+        "title": "SetTimeVarying"
+      },
+      "SetTimeVarying-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_time_varying",
+            "title": "Kind",
+            "default": "set_time_varying"
+          },
+          "exposure": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "msm_iptw",
+              "gformula",
+              "standard"
+            ],
+            "title": "Method"
+          },
+          "ordering": {
+            "type": "string",
+            "enum": [
+              "exposure_precedes_outcome",
+              "same_time",
+              "unknown"
+            ],
+            "title": "Ordering"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Confounders"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Baseline"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Censoring"
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "switches",
+              "initiation"
+            ],
+            "title": "Pattern",
+            "default": "switches"
+          },
+          "summary": {
+            "type": "string",
+            "enum": [
+              "current",
+              "cumulative"
+            ],
+            "title": "Summary",
+            "default": "cumulative"
+          },
+          "truncation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "p1_p99",
+                  "p5_p95"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncation"
+          },
+          "simulations": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 1000.0,
+            "title": "Simulations",
+            "default": 10000
+          },
+          "bootstrap": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 100.0,
+            "title": "Bootstrap",
+            "default": 500
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "ordering",
+          "confounders",
+          "baseline",
+          "censoring",
+          "pattern",
+          "summary",
+          "truncation",
+          "simulations",
+          "bootstrap",
+          "acknowledged"
+        ],
+        "title": "SetTimeVarying"
+      },
       "SetUnit": {
         "properties": {
           "kind": {
@@ -14072,6 +14349,7 @@
               "split",
               "estimand",
               "adjustment",
+              "time_varying",
               "energy_adjustment",
               "causal",
               "models",
@@ -14219,6 +14497,127 @@
           "time_column"
         ],
         "title": "TemporalSpec"
+      },
+      "TimeVaryingSpec": {
+        "properties": {
+          "exposure": {
+            "type": "string",
+            "title": "Exposure"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "msm_iptw",
+              "gformula",
+              "standard"
+            ],
+            "title": "Method"
+          },
+          "ordering": {
+            "type": "string",
+            "enum": [
+              "exposure_precedes_outcome",
+              "same_time",
+              "unknown"
+            ],
+            "title": "Ordering"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Confounders"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Baseline"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Censoring"
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "switches",
+              "initiation"
+            ],
+            "title": "Pattern",
+            "default": "switches"
+          },
+          "summary": {
+            "type": "string",
+            "enum": [
+              "current",
+              "cumulative"
+            ],
+            "title": "Summary",
+            "default": "cumulative"
+          },
+          "truncation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "p1_p99",
+                  "p5_p95"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncation"
+          },
+          "simulations": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 1000.0,
+            "title": "Simulations",
+            "default": 10000
+          },
+          "bootstrap": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 100.0,
+            "title": "Bootstrap",
+            "default": 500
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "exposure",
+          "method",
+          "ordering",
+          "confounders",
+          "baseline",
+          "censoring",
+          "pattern",
+          "summary",
+          "truncation",
+          "simulations",
+          "bootstrap",
+          "acknowledged"
+        ],
+        "title": "TimeVaryingSpec"
       },
       "UsualIntakeSpec": {
         "properties": {
@@ -15752,6 +16151,47 @@
           "methods"
         ],
         "title": "CalibrationArtifact",
+        "type": "object"
+      },
+      "Candidate": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "varies": {
+            "title": "Varies",
+            "type": "boolean"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "adjusted": {
+            "title": "Adjusted",
+            "type": "boolean"
+          },
+          "affected": {
+            "title": "Affected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "varies",
+          "role",
+          "adjusted",
+          "affected"
+        ],
+        "title": "Candidate",
         "type": "object"
       },
       "CategoricalProposal": {
@@ -17502,6 +17942,87 @@
         "title": "DiagnosticTest",
         "type": "object"
       },
+      "Diagnostics": {
+        "additionalProperties": false,
+        "properties": {
+          "weights": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "weights_by_time": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WeightsAtTime"
+            },
+            "title": "Weights By Time",
+            "type": "array"
+          },
+          "exposure_weights": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "censoring_weights": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeightSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "truncation": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TruncationOption"
+            },
+            "title": "Truncation",
+            "type": "array"
+          },
+          "positivity": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PositivityAtTime"
+            },
+            "title": "Positivity",
+            "type": "array"
+          },
+          "concerns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Concerns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "weights",
+          "weights_by_time",
+          "exposure_weights",
+          "censoring_weights",
+          "truncation",
+          "positivity",
+          "concerns"
+        ],
+        "title": "Diagnostics",
+        "type": "object"
+      },
       "DismissFinding": {
         "additionalProperties": false,
         "properties": {
@@ -17535,6 +18056,45 @@
           "reason"
         ],
         "title": "DismissFinding",
+        "type": "object"
+      },
+      "EValue": {
+        "additionalProperties": false,
+        "properties": {
+          "reads": {
+            "title": "Reads",
+            "type": "string"
+          },
+          "rr": {
+            "title": "Rr",
+            "type": "number"
+          },
+          "lo": {
+            "title": "Lo",
+            "type": "number"
+          },
+          "hi": {
+            "title": "Hi",
+            "type": "number"
+          },
+          "point": {
+            "title": "Point",
+            "type": "number"
+          },
+          "ci": {
+            "title": "Ci",
+            "type": "number"
+          }
+        },
+        "required": [
+          "reads",
+          "rr",
+          "lo",
+          "hi",
+          "point",
+          "ci"
+        ],
+        "title": "EValue",
         "type": "object"
       },
       "EValueResult": {
@@ -18203,6 +18763,18 @@
             ],
             "default": null,
             "title": "Multiplicity"
+          },
+          "time_varying": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time Varying"
           }
         },
         "required": [
@@ -18216,7 +18788,8 @@
           "secondary",
           "features",
           "appendix",
-          "multiplicity"
+          "multiplicity",
+          "time_varying"
         ],
         "title": "EstimandAnnotation",
         "type": "object"
@@ -18462,6 +19035,169 @@
           "rank"
         ],
         "title": "EstimandMeasure",
+        "type": "object"
+      },
+      "EstimateRow": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "estimate": {
+            "title": "Estimate",
+            "type": "number"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ci High"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Se"
+          },
+          "p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "P"
+          }
+        },
+        "required": [
+          "label",
+          "measure",
+          "estimate",
+          "ci_low",
+          "ci_high",
+          "se",
+          "p"
+        ],
+        "title": "EstimateRow",
+        "type": "object"
+      },
+      "Estimates": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/EstimateRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "curves": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RiskCurve"
+            },
+            "title": "Curves",
+            "type": "array"
+          },
+          "e_value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EValue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "n_rows": {
+            "title": "N Rows",
+            "type": "integer"
+          },
+          "n_units": {
+            "title": "N Units",
+            "type": "integer"
+          },
+          "simulations": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Simulations"
+          },
+          "bootstrap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Bootstrap"
+          },
+          "failed_resamples": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Failed Resamples"
+          }
+        },
+        "required": [
+          "rows",
+          "curves",
+          "e_value",
+          "n_rows",
+          "n_units",
+          "simulations",
+          "bootstrap",
+          "failed_resamples"
+        ],
+        "title": "Estimates",
         "type": "object"
       },
       "ExclusionProposal": {
@@ -18986,6 +19722,7 @@
                   "split",
                   "estimand",
                   "adjustment",
+                  "time_varying",
                   "energy_adjustment",
                   "causal",
                   "models",
@@ -20700,6 +21437,45 @@
           "tension"
         ],
         "title": "LabeledQuestion",
+        "type": "object"
+      },
+      "LaneOption": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "rung": {
+            "title": "Rung",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound",
+          "rung",
+          "order"
+        ],
+        "title": "LaneOption",
         "type": "object"
       },
       "LeaveOut": {
@@ -22514,6 +23290,55 @@
         "title": "Pooled",
         "type": "object"
       },
+      "PositivityAtTime": {
+        "additionalProperties": false,
+        "properties": {
+          "time": {
+            "title": "Time",
+            "type": "integer"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "exposed": {
+            "title": "Exposed",
+            "type": "integer"
+          },
+          "unexposed": {
+            "title": "Unexposed",
+            "type": "integer"
+          },
+          "p_min": {
+            "title": "P Min",
+            "type": "number"
+          },
+          "p_max": {
+            "title": "P Max",
+            "type": "number"
+          },
+          "near_zero": {
+            "title": "Near Zero",
+            "type": "integer"
+          },
+          "near_one": {
+            "title": "Near One",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "rows",
+          "exposed",
+          "unexposed",
+          "p_min",
+          "p_max",
+          "near_zero",
+          "near_one"
+        ],
+        "title": "PositivityAtTime",
+        "type": "object"
+      },
       "PositivityView": {
         "additionalProperties": false,
         "properties": {
@@ -22569,6 +23394,31 @@
           "basis"
         ],
         "title": "ProfileArtifact",
+        "type": "object"
+      },
+      "Proposal": {
+        "additionalProperties": false,
+        "properties": {
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Confounders",
+            "type": "array"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Baseline",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confounders",
+          "baseline"
+        ],
+        "title": "Proposal",
         "type": "object"
       },
       "ProposalsArtifact": {
@@ -23051,6 +23901,52 @@
           "target"
         ],
         "title": "Reseal",
+        "type": "object"
+      },
+      "RiskCurve": {
+        "additionalProperties": false,
+        "properties": {
+          "strategy": {
+            "enum": [
+              "always",
+              "never",
+              "natural",
+              "observed"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "risks": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "mc_se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mc Se"
+          }
+        },
+        "required": [
+          "strategy",
+          "label",
+          "risks",
+          "mc_se"
+        ],
+        "title": "RiskCurve",
         "type": "object"
       },
       "RobustnessResult": {
@@ -25896,6 +26792,137 @@
         "title": "SetTemporal",
         "type": "object"
       },
+      "SetTimeVarying": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "set_time_varying",
+            "default": "set_time_varying",
+            "title": "Kind",
+            "type": "string"
+          },
+          "exposure": {
+            "minLength": 1,
+            "title": "Exposure",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "msm_iptw",
+              "gformula",
+              "standard"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "ordering": {
+            "enum": [
+              "exposure_precedes_outcome",
+              "same_time",
+              "unknown"
+            ],
+            "title": "Ordering",
+            "type": "string"
+          },
+          "confounders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Confounders",
+            "type": "array"
+          },
+          "baseline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Baseline",
+            "type": "array"
+          },
+          "censoring": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Censoring"
+          },
+          "pattern": {
+            "default": "switches",
+            "enum": [
+              "switches",
+              "initiation"
+            ],
+            "title": "Pattern",
+            "type": "string"
+          },
+          "summary": {
+            "default": "cumulative",
+            "enum": [
+              "current",
+              "cumulative"
+            ],
+            "title": "Summary",
+            "type": "string"
+          },
+          "truncation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "p1_p99",
+                  "p5_p95"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Truncation"
+          },
+          "simulations": {
+            "default": 10000,
+            "maximum": 200000,
+            "minimum": 1000,
+            "title": "Simulations",
+            "type": "integer"
+          },
+          "bootstrap": {
+            "default": 500,
+            "maximum": 2000,
+            "minimum": 100,
+            "title": "Bootstrap",
+            "type": "integer"
+          },
+          "acknowledged": {
+            "default": false,
+            "title": "Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "exposure",
+          "method",
+          "ordering",
+          "confounders",
+          "baseline",
+          "censoring",
+          "pattern",
+          "summary",
+          "truncation",
+          "simulations",
+          "bootstrap",
+          "acknowledged"
+        ],
+        "title": "SetTimeVarying",
+        "type": "object"
+      },
       "SetUsualIntake": {
         "additionalProperties": false,
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``.",
@@ -26030,6 +27057,121 @@
           "n_boot"
         ],
         "title": "SetUsualIntake",
+        "type": "object"
+      },
+      "Setting": {
+        "additionalProperties": false,
+        "properties": {
+          "exposure": {
+            "title": "Exposure",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "time_column": {
+            "title": "Time Column",
+            "type": "string"
+          },
+          "time_points": {
+            "title": "Time Points",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "late_units": {
+            "title": "Late Units",
+            "type": "integer"
+          },
+          "gap_units": {
+            "title": "Gap Units",
+            "type": "integer"
+          },
+          "repeat_units": {
+            "title": "Repeat Units",
+            "type": "integer"
+          },
+          "exposure_binary": {
+            "title": "Exposure Binary",
+            "type": "boolean"
+          },
+          "exposure_levels": {
+            "title": "Exposure Levels",
+            "type": "integer"
+          },
+          "exposure_varies": {
+            "title": "Exposure Varies",
+            "type": "boolean"
+          },
+          "exposure_changers": {
+            "title": "Exposure Changers",
+            "type": "integer"
+          },
+          "exposure_stops": {
+            "title": "Exposure Stops",
+            "type": "integer"
+          },
+          "outcome_kind": {
+            "enum": [
+              "event",
+              "repeated_binary",
+              "measure",
+              "other"
+            ],
+            "title": "Outcome Kind",
+            "type": "string"
+          },
+          "units_after_event": {
+            "title": "Units After Event",
+            "type": "integer"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "varies": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Varies",
+            "type": "object"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/Proposal"
+          }
+        },
+        "required": [
+          "exposure",
+          "unit",
+          "time_column",
+          "time_points",
+          "units",
+          "rows",
+          "late_units",
+          "gap_units",
+          "repeat_units",
+          "exposure_binary",
+          "exposure_levels",
+          "exposure_varies",
+          "exposure_changers",
+          "exposure_stops",
+          "outcome_kind",
+          "units_after_event",
+          "candidates",
+          "varies",
+          "proposal"
+        ],
+        "title": "Setting",
         "type": "object"
       },
       "ShelfArtifact": {
@@ -27561,6 +28703,200 @@
         "title": "TimeOrder",
         "type": "object"
       },
+      "TimeVaryingArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "purpose": {
+            "const": "inference",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exposure"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Method"
+          },
+          "setting": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Setting"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "options": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LaneOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "affected": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected",
+            "type": "array"
+          },
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Diagnostics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "estimates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Estimates"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "withheld": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Withheld"
+          },
+          "exits": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Exits",
+            "type": "array"
+          },
+          "relations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Relations",
+            "type": "array"
+          },
+          "methods": {
+            "default": "",
+            "title": "Methods",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "applies",
+          "reason",
+          "exposure",
+          "method",
+          "setting",
+          "options",
+          "affected",
+          "diagnostics",
+          "estimates",
+          "withheld",
+          "exits",
+          "relations",
+          "methods"
+        ],
+        "title": "TimeVaryingArtifact",
+        "type": "object"
+      },
+      "TruncationOption": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "none",
+              "p1_p99",
+              "p5_p95"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "customary": {
+            "title": "Customary",
+            "type": "string"
+          },
+          "sound": {
+            "title": "Sound",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/WeightSummary"
+          },
+          "chosen": {
+            "title": "Chosen",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "customary",
+          "sound",
+          "summary",
+          "chosen"
+        ],
+        "title": "TruncationOption",
+        "type": "object"
+      },
       "TurnCheck": {
         "description": "Whether the table can be turned around: the feature-name column, the columns that describe\nthe features (kept beside them, never turned into samples), and why not.",
         "properties": {
@@ -28589,6 +29925,129 @@
           "level"
         ],
         "title": "VersusBaseline",
+        "type": "object"
+      },
+      "WeightSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "mean": {
+            "title": "Mean",
+            "type": "number"
+          },
+          "sd": {
+            "title": "Sd",
+            "type": "number"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          },
+          "p1": {
+            "title": "P1",
+            "type": "number"
+          },
+          "p25": {
+            "title": "P25",
+            "type": "number"
+          },
+          "median": {
+            "title": "Median",
+            "type": "number"
+          },
+          "p75": {
+            "title": "P75",
+            "type": "number"
+          },
+          "p99": {
+            "title": "P99",
+            "type": "number"
+          },
+          "max": {
+            "title": "Max",
+            "type": "number"
+          }
+        },
+        "required": [
+          "n",
+          "mean",
+          "sd",
+          "min",
+          "p1",
+          "p25",
+          "median",
+          "p75",
+          "p99",
+          "max"
+        ],
+        "title": "WeightSummary",
+        "type": "object"
+      },
+      "WeightsAtTime": {
+        "additionalProperties": false,
+        "properties": {
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "mean": {
+            "title": "Mean",
+            "type": "number"
+          },
+          "sd": {
+            "title": "Sd",
+            "type": "number"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          },
+          "p1": {
+            "title": "P1",
+            "type": "number"
+          },
+          "p25": {
+            "title": "P25",
+            "type": "number"
+          },
+          "median": {
+            "title": "Median",
+            "type": "number"
+          },
+          "p75": {
+            "title": "P75",
+            "type": "number"
+          },
+          "p99": {
+            "title": "P99",
+            "type": "number"
+          },
+          "max": {
+            "title": "Max",
+            "type": "number"
+          },
+          "time": {
+            "title": "Time",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "mean",
+          "sd",
+          "min",
+          "p1",
+          "p25",
+          "median",
+          "p75",
+          "p99",
+          "max",
+          "time"
+        ],
+        "title": "WeightsAtTime",
         "type": "object"
       },
       "WorkingArtifact": {

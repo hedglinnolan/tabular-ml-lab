@@ -129,6 +129,8 @@ export function slotOf(d: Decision, records: DecisionRecord[]): Slot | null {
       return "diagnostic_responses";
     case "set_causal":
       return "causal";
+    case "set_time_varying":
+      return "time_varying";
     case "set_sensitivity":
       return "sensitivity";
     case "set_measurement_error":

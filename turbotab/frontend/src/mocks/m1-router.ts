@@ -24,6 +24,7 @@ const NEEDS: Record<QuestionKey, string[]> = {
   survey: ["proposals"],
   estimand: ["proposals"],
   adjustment: ["proposals"],
+  time_varying: ["time_varying"],
   exclusions: ["proposals"],
   missing: [],
   split: [],

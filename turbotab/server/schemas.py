@@ -1140,3 +1140,7 @@ ARTIFACT_MODELS.update({"effects": EffectsArtifact})
 from turbotab.core.stages.causal import CausalArtifact, CausalDesignArtifact  # noqa: E402
 
 ARTIFACT_MODELS.update({"causal_design": CausalDesignArtifact, "causal": CausalArtifact})
+# V2 causal row: a time-varying exposure by g-methods, diagnostics before estimates.
+from turbotab.core.stages.time_varying import TimeVaryingArtifact  # noqa: E402
+
+ARTIFACT_MODELS.update({"time_varying": TimeVaryingArtifact})

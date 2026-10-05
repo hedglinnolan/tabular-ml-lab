@@ -134,7 +134,8 @@ def answer_estimand(drive: Any, exposure: str, *, effect: str = "total",
     assert r.status_code == 200, ("set_estimand", r.text[:900])
 
 
-WP17_QUESTIONS = ("follow_up", "clusters", "estimand", "adjustment")
+# With the V2 causal row's time-varying exposure question (``turbotab/core/time_varying.py``).
+WP17_QUESTIONS = ("follow_up", "clusters", "estimand", "adjustment", "time_varying")
 
 
 def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
@@ -149,7 +150,10 @@ def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
       (a column, or ``family``), else the card's first; the total effect on the scale the engine
       fits, an energy-bearing exposure's ``contrast``;
     * the adjustment set: each covariate from the fixture's declared causal truth
-      (:func:`answer_plan`)."""
+      (:func:`answer_plan`);
+    * the time-varying exposure (V2 causal row): standard regression, the analysis every drive
+      written before the question runs, with the exposure declared to precede the outcome; where
+      a confounder affected by prior exposure holds it (block and record), its attestation exit."""
     if key not in WP17_QUESTIONS:
         return False
     step = drive.reach(key, timeout=300)
@@ -184,6 +188,15 @@ def answer_wp17(drive: Any, key: str, *, exposure: str | None = None,
                           "contrast": contrast if family["energy_contrast"] else None})
             return True
         answer_estimand(drive, chosen, contrast=drive.truth.get(f"contrast:{chosen}") or contrast)
+    elif key == "time_varying":
+        exposed = (state.get("estimand") or {}).get("exposure")
+        lane = {"kind": "set_time_varying", "exposure": exposed, "method": "standard",
+                "ordering": "exposure_precedes_outcome"}
+        r = post(lane)
+        if r.status_code == 409 and r.json()["error"]["code"] == "affected_confounder":
+            r = post(next(e["decision"] for e in r.json()["error"]["exits"]
+                          if (e["decision"] or {}).get("acknowledged")))
+        assert r.status_code == 200, r.text[:600]
     else:
         from turbotab.core.decisions import EXPOSURE_FAMILY
 

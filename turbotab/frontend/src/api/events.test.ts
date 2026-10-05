@@ -99,6 +99,7 @@ function view(): ProjectView {
       model_sequence: null,
       diagnostic_responses: null,
       causal: null,
+      time_varying: null,
     },
     decisions: [record(1)],
     stages: {

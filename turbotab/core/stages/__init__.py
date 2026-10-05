@@ -114,6 +114,16 @@ The causal lane (V2 definition of done §2; ``turbotab/core/causal.py``):
     families are chosen too: the primary model and the lane are declared together, before either
     estimate is shown, so the plan lock records both.
 
+V2 causal row (turbotab/core/time_varying.py): an exposure that changes over time, by g-methods.
+
+    time_varying heavy   deps: working, split, target_info,       reads the estimand, the adjustment
+                               structure                          answers, the lane …; requires
+                                                                  estimand, unit
+
+    ``time_varying`` reads the setting (the unit, the settled time column, which columns change
+    within units), then the diagnostics (weights, truncation options, positivity per time point),
+    then, once the lane is complete, the marginal structural model or the g-formula's risks.
+
 Each stage is a pure function of its inputs and the slots it reads. The
 statistics are the data layer's and the legacy domain code's; the stages only
 call them and shape the result into the contract's artifact.
@@ -145,6 +155,7 @@ from turbotab.core.stages.effects import EFFECTS_READS, effects_stage
 from turbotab.core.stages.causal import CAUSAL_READS, causal_design_stage, causal_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.stages.usual_intake import USUAL_INTAKE_READS, usual_intake_stage
+from turbotab.core.stages.time_varying import TIME_VARYING_READS, time_varying_stage
 from turbotab.core.stages.working import oriented_stage, structure_stage, working_stage
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
@@ -580,6 +591,12 @@ def build_graph() -> Graph:
             Stage("causal", 1, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
                   causal_stage, heavy=True, requires=("causal", "models"),
                   label="Estimating the effect in the causal lane"),
+            # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
+            # It requires the unit answer, which is set only when units repeat: a table of one row
+            # per unit never runs it (nothing there changes over time).
+            Stage("time_varying", 1, ("working", "split", "target_info", "structure"),
+                  TIME_VARYING_READS, time_varying_stage, heavy=True,
+                  requires=("estimand", "unit"), label="Following the exposure through time"),
         ]
     )
 

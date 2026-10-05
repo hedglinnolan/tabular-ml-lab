@@ -369,6 +369,17 @@ def representative_decisions():
         d.SetCausal(exposure="protein_g", method="pds_lasso", sample_only=True,
                     assumptions=["no_unmeasured_confounding", "positivity", "consistency",
                                  "time_ordering"]),
+        # V2 causal row: a time-varying exposure's lane, each method
+        d.SetTimeVarying(exposure="supplement", method="msm_iptw",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"],
+                         baseline=["age", "sex"], censoring="lost", truncation="p1_p99"),
+        d.SetTimeVarying(exposure="supplement", method="msm_iptw", pattern="initiation",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"]),
+        d.SetTimeVarying(exposure="supplement", method="gformula",
+                         ordering="exposure_precedes_outcome", confounders=["bmi"],
+                         baseline=["age"]),
+        d.SetTimeVarying(exposure="supplement", method="standard",
+                         ordering="exposure_precedes_outcome", acknowledged=True),
     ]
 
 

@@ -1532,6 +1532,14 @@ def _respond_diagnostic(d: Any, state: Any, ctx: Any) -> str:
             f"{ACTION_WORDS[d.action]}")
 
 
+@register_sentence("set_time_varying")
+def _set_time_varying(d: Any, state: Any, ctx: Any) -> str:
+    # V2 causal row: the time-varying exposure's lane (turbotab/core/time_varying.py).
+    from turbotab.core.time_varying import record_sentence
+
+    return record_sentence(d, state)
+
+
 def stated_grain_reason(column: str) -> str:
     """The grain question's stated skip (M2_CONTRACT §10), as the clause after "Not asked:"."""
     return f"every {tick(column)} appears once, so each person is one row."
@@ -1838,6 +1846,7 @@ _QUESTION_NAME = {
     "survey": "the survey question",
     "estimand": "the exposure and effect question",
     "adjustment": "the adjustment-set question",
+    "time_varying": "the time-varying exposure question",
     "exclusions": "the eligibility question",
     "missing": "the missing-values question",
     "split": "the held-out rows question",

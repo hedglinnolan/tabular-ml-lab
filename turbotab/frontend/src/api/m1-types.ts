@@ -42,6 +42,7 @@ const questionKeys = [
   "split",
   "estimand",
   "adjustment",
+  "time_varying",
   "energy_adjustment",
   "causal",
   "models",

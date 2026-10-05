@@ -382,6 +382,8 @@ class EstimandAnnotation(_Model):
     # multiplicity statement (its method, the number of tests, and the two labels)
     appendix: str | None = None
     multiplicity: str | None = None
+    # V2 causal row: what the exposure's row is when it changes over time (turbotab/core/time_varying.py)
+    time_varying: str | None = None
 
 
 class FitArtifact(_Model):

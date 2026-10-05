@@ -17,6 +17,12 @@ places where two of them meet, each a rule one package wrote that the other's me
   ESTIMAND's ``unmeasured_confounding``: the E-value of a difference from the outcome's standard
   deviation, of a yes/no outcome's marginal risk ratio, and post-double selection's robustness value
   with each selected covariate a named benchmark; where an analysis is undefined it says why.
+* **A time-varying exposure is the g-methods' lane** (CAUSAL and TIMEVARY). When the
+  ``time_varying`` stage reads the declared exposure as changing within units, the point-exposure
+  causal lane is not applicable and a ``set_causal`` estimator is refused (relation
+  ``time_varying_exposure``): a confounder that earlier exposure changed biases these learners'
+  estimate as it biases standard regression's. The time-varying lane's E-values are ESTIMAND's one
+  implementation.
 * **A spline exposure is the exposure** (ESTIMAND and WP12a). The Table 2 display shows the
   exposure's rows only; a restricted cubic spline's terms (``x``, ``x'``, ``x''``, as ``rms`` labels
   them) are all the exposure's.
@@ -50,7 +56,8 @@ def _fold(*decisions: d.BaseModel) -> d.ProjectState:
 
 WAVE2A = {"ESTIMAND": ("effect_measure", "g_computation", "model_sequence", "diagnostics",
                        "unmeasured_confounding", "exposure_family", "plan_export"),
-          "CAUSAL": ("dml_plr", "dml_irm", "tmle", "pds_lasso")}
+          "CAUSAL": ("dml_plr", "dml_irm", "tmle", "pds_lasso"),
+          "TIMEVARY": ("time_varying",)}
 
 
 def test_every_wave2a_method_enters_through_the_one_registry():
@@ -279,6 +286,57 @@ def test_the_causal_lane_s_required_sensitivity_is_estimand_s_against_r(tmp_path
     assert causal.sensitivity_sentence(irm).startswith(
         " Sensitivity to unmeasured confounding, required in the causal lane, could not be computed "
         "for this estimate: no robustness value")
+
+
+# ── a time-varying exposure is the g-methods' lane ───────────────────────────
+
+
+def test_a_time_varying_exposure_is_the_g_methods_lane_not_the_causal_lane(tmp_path):
+    """The ``time_varying`` stage, run by the real graph on a long cohort whose diet switches
+    between visits (counted by pandas), reads the exposure as changing within units; the causal
+    question is then not applicable and an estimator is refused with its exits (the time-varying
+    question, or the primary model only), while ``method = none`` is not refused by it. The same
+    cohort with the diet fixed within each person leaves the causal lane to its own gate."""
+    from turbotab.core import causal
+    from turbotab.core.models import time_varying as tv
+    from turbotab.core.tests.acceptance.test_timevary import feedback_state, run_stage
+    from turbotab.core.tests.acceptance.timevary_fixtures import feedback_cohort
+
+    frame = feedback_cohort(n=600, visits=4, seed=5)
+    switches = int((frame.groupby("pid")["dash"].nunique() > 1).sum())
+    assert switches > 0
+    state = feedback_state()
+    art = run_stage(frame, state, tmp_path, "varies")
+    assert art["setting"]["exposure_varies"] is True
+    assert art["setting"]["exposure_changers"] == switches
+    gate = causal.causal_gate(state, None, art)
+    assert gate == ("not_applicable", "`dash` changes over time within units, so its effect is "
+                                      "estimated by the time-varying lane's g-methods; the causal "
+                                      "lane estimates a point exposure's effect.")
+    ctx = {"state": state, "task": "binary",
+           "artifact": lambda name: art if name == "time_varying" else None}
+    with pytest.raises(Refusal) as refused:
+        causal._point_exposure_only(d.SetCausal(exposure="dash", method="tmle",
+                                                assumptions=list(causal.ASSUMPTIONS)), ctx)
+    assert refused.value.code == "time_varying_exposure"
+    assert [e["decision"] for e in refused.value.exits] == [
+        None, d.SetCausal(exposure="dash", method="none").model_dump(mode="json")]
+    causal._point_exposure_only(d.SetCausal(exposure="dash", method="none"), ctx)
+    assert causal.RELATIONS["time_varying_exposure"].rung == "refused"
+
+    fixed = frame.copy()
+    fixed["dash"] = fixed.groupby("pid")["dash"].transform("first")
+    still = run_stage(fixed, state, tmp_path, "fixed")
+    assert still["setting"]["exposure_varies"] is False
+    assert causal.causal_gate(state, None, still) != gate
+    causal._point_exposure_only(d.SetCausal(exposure="dash", method="tmle"),
+                                {**ctx, "artifact": lambda name: still})
+
+    # One E-value implementation: the lane's wrappers are ESTIMAND's ``e_values``.
+    from turbotab.core.models.effects import e_values
+
+    assert tv.e_value_or(1.8, 1.2, 2.6, rare=False)["point"] == e_values(
+        1.8, 1.2, 2.6, measure="OR", rare=False)["point"]
 
 
 # ── a spline exposure is the exposure ────────────────────────────────────────

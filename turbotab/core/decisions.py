@@ -1245,6 +1245,8 @@ class RespondDiagnostic(_DecisionModel):
     exposure: str = Field(min_length=1)
     check: DiagnosticCheck
     action: DiagnosticAction
+
+
 # ── The causal lane (V2 definition of done §2; MODELING_SEQUENCE §0 ruling 1 rung (d)) ─────────
 # The answer lives here so the API and the log can parse it; its leash (inference only, after the
 # plan, the assumptions before any estimate, positivity, the survey design) is in
@@ -1300,6 +1302,57 @@ class SetCausal(_DecisionModel):
         if len(set(value)) != len(value):
             raise ValueError("each assumption may be declared only once")
         return value
+
+
+# V2 causal row: a time-varying exposure estimated by g-methods (``turbotab/core/time_varying.py``,
+# ``turbotab/core/models/time_varying.py``). The method, the declared time ordering, the columns each
+# model reads, and, for the weights, the truncation declared after their diagnostics are read.
+TimeVaryingMethod = Literal["msm_iptw", "gformula", "standard"]
+TimeOrdering = Literal["exposure_precedes_outcome", "same_time", "unknown"]
+ExposurePattern = Literal["switches", "initiation"]  # can stop and restart, or once started stays
+ExposureSummary = Literal["current", "cumulative"]  # the exposure history the MSM is a function of
+WeightTruncation = Literal["none", "p1_p99", "p5_p95"]
+
+
+class TimeVaryingSpec(_Value):
+    exposure: str
+    method: TimeVaryingMethod
+    ordering: TimeOrdering
+    confounders: list[str] = Field(default_factory=list)  # time-varying, measured before the exposure
+    baseline: list[str] = Field(default_factory=list)  # fixed within a unit
+    censoring: str | None = None  # 1 on a unit's last time point before it was lost to follow-up
+    pattern: ExposurePattern = "switches"
+    summary: ExposureSummary = "cumulative"
+    truncation: WeightTruncation | None = None
+    simulations: int = Field(default=10_000, ge=1_000, le=200_000)
+    bootstrap: int = Field(default=500, ge=100, le=2_000)
+    # Standard regression kept over a confounder affected by prior exposure (block and record).
+    acknowledged: bool = False
+
+
+class SetTimeVarying(_DecisionModel):
+    kind: Literal["set_time_varying"] = "set_time_varying"
+    exposure: str = Field(min_length=1)
+    method: TimeVaryingMethod
+    ordering: TimeOrdering
+    confounders: list[str] = Field(default_factory=list)
+    baseline: list[str] = Field(default_factory=list)
+    censoring: str | None = None
+    pattern: ExposurePattern = "switches"
+    summary: ExposureSummary = "cumulative"
+    truncation: WeightTruncation | None = None
+    simulations: int = Field(default=10_000, ge=1_000, le=200_000)
+    bootstrap: int = Field(default=500, ge=100, le=2_000)
+    acknowledged: bool = False
+
+    @model_validator(mode="after")
+    def _columns_once(self) -> "SetTimeVarying":
+        named = [*self.confounders, *self.baseline]
+        if len(set(named)) != len(named):
+            raise ValueError("a column is a time-varying confounder or a baseline covariate, not both")
+        if self.exposure in named or (self.censoring is not None and self.censoring in named):
+            raise ValueError("the exposure and the censoring indicator are not covariates")
+        return self
 
 
 class OpenSeal(_DecisionModel):
@@ -1553,6 +1606,7 @@ Decision = Annotated[
         SetUsualIntake,
         SetModelSequence, RespondDiagnostic,
         SetCausal,
+        SetTimeVarying,
     ],
     Field(discriminator="kind"),
 ]
@@ -1693,6 +1747,8 @@ class ProjectState(BaseModel):
     # The causal lane (``turbotab/core/causal.py``): DML, TMLE or post-double selection beside the
     # primary model, for the exposure it names (holds while that is the declared exposure)
     causal: CausalSpec | None = None
+    # V2 causal row: a time-varying exposure's estimation lane (``turbotab/core/time_varying.py``)
+    time_varying: TimeVaryingSpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -2138,6 +2194,9 @@ register_kind(SetModelSequence, "model_sequence",
 register_kind(RespondDiagnostic, "diagnostic_responses", key=lambda d: d.check,
               value=lambda d: DiagnosticResponse(exposure=d.exposure, action=d.action))
 register_kind(SetCausal, "causal", value=lambda d: CausalSpec(**d.model_dump(exclude={"kind"})))
+# V2 causal row: the time-varying exposure's lane (its refusals are in turbotab/core/time_varying.py)
+register_kind(SetTimeVarying, "time_varying",
+              value=lambda d: TimeVaryingSpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -4704,3 +4763,5 @@ from turbotab.core import scales as _scales  # noqa: E402,F401
 from turbotab.core import usual_intake as _usual_intake  # noqa: E402,F401
 # The causal lane's leash (inference only, after the plan, assumptions first, positivity, survey).
 from turbotab.core import causal as _causal  # noqa: E402,F401
+# V2 causal row: a time-varying exposure by g-methods (its gate, refusals and §13 contract).
+from turbotab.core import time_varying as _time_varying  # noqa: E402,F401

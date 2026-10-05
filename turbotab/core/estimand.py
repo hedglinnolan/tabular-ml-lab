@@ -1217,12 +1217,15 @@ HOLDS: dict[str, tuple[str, ...]] = {
     "clusters": ("inference",),
     "estimand": ("inference",),
     "adjustment": ("inference",),
+    # V2 causal row (turbotab/core/time_varying.py): an exposure that changes over time.
+    "time_varying": ("inference",),
 }
 # ``scales`` (MS8): a declared scale's corrected coefficient and the uncorrected one beside it;
 # ``effects`` (ESTIMAND): Table 2, the marginal risks, the diagnostics and the sensitivity;
-# ``causal``: the causal lane's estimate (``turbotab/core/stages/causal.py``).
+# ``causal``: the causal lane's estimate (``turbotab/core/stages/causal.py``);
+# ``time_varying`` (V2 causal row): the g-methods' estimates (their diagnostics lock nothing).
 ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "scales",
-                   "effects", "causal")
+                   "effects", "causal", "time_varying")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
@@ -1247,6 +1250,8 @@ def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:
                         "means",
             "adjustment": "each covariate's answers decide whether it is adjusted for, left out or "
                           "set beside the primary",
+            "time_varying": "an exposure that changes over time needs its estimation lane, and "
+                            "inverse-probability weights their truncation, before any estimate",
         }[str(key)]
         return {"question": key,
                 "reason": f"No estimate is shown until {name} is answered: {why}.",
@@ -1341,6 +1346,9 @@ def annotate_fit(artifact: Any, state: Any) -> Any:
         "appendix": APPENDIX_TITLE,
         "multiplicity": multiplicity_statement(state, spec, len(exposures)) if family else None,
     }
+    from turbotab.core.time_varying import fit_note  # V2 causal row
+
+    out["estimand"]["time_varying"] = fit_note(state)
     return out
 
 
