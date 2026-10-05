@@ -927,6 +927,13 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
         pools = [k for k in keys if hasattr(get_family(k), "inference")]
         if not pools:
             return TableMissing(info={**base, "note": "No chosen family has a table to pool."})
+        if not any(getattr(get_family(k), "pools_imputations", True) for k in pools):
+            # MS7 repair: a table that cannot pool the copies (feature-wise tests) draws none; it
+            # is held with its ways forward, the censoring-aware single fill among them.
+            from turbotab.core.methods.omics import unpooled_refusal
+
+            reason, exits = unpooled_refusal(get_family(pools[0]).label, state)
+            return TableMissing(refusal=reason, exits=exits)
         seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
         last = [0.0]
 
@@ -1516,6 +1523,23 @@ def fit_stage(ctx: StageContext) -> Bundle:
     # training rows the models learn from under prediction.
     imbalance = (imbalance_sentence(task, y_tab, state.event, "analyzed rows") if inference
                  else imbalance_sentence(task, y, state.event))
+    # MS7: the figure ComBat with the outcome protected serves (inference, batch as a covariate,
+    # figures only; never a test), and each family's methods paragraph, written from what this run
+    # did: the design's steps and its detect step's columns, the working table's QC record, the
+    # table's missing-data and clustering records, and whether the figure exists.
+    from turbotab.core.methods.batch import figure_for
+    from turbotab.core.methods.omics import fit_methods
+
+    batch_figure = (figure_for(state, pipelines[keys[0]], X_tab, y_tab, task)
+                    if inference and keys else None)
+    design_steps = {str(m.get("family")): [str(s.get("key")) for s in m.get("steps") or []]
+                    for m in (getattr(design, "data", None) or {}).get("models") or []}
+    working_input = ctx.inputs.get("working")
+    working_data = getattr(working_input, "data", None) if working_input is not None else None
+    for entry in models:
+        entry["methods"] = fit_methods(state, entry["family"], design_steps.get(entry["family"], []),
+                                       split_data, working_data, entry, spec.censored,
+                                       figure=batch_figure is not None)
     artifact = FitArtifact(task=task, primary_metric=PRIMARY[task], metric_labels=metric_labels(task),
                            n_train=int(train.sum()), n_holdout=n_holdout, models=models,
                            holdout_sealed=n_holdout > 0, fold_scheme=scheme,
@@ -1523,7 +1547,8 @@ def fit_stage(ctx: StageContext) -> Bundle:
                            repeats=len(fold_columns), ranking=ranking_phrase(primary),
                            se_definition=SE_DEFINITION, comparisons=comparisons,
                            precision=precision_sentence(primary, summaries, labels, int(train.sum())),
-                           imbalance=imbalance, selection=selection, levels=levels)
+                           imbalance=imbalance, selection=selection, levels=levels,
+                           batch_figure=batch_figure)
     frames = {SEALED_SCORES: sealed_scores_frame(models, sealed)} if n_holdout else {}
     if n_holdout and sealed_detail:
         frames[SEALED_DETAIL] = sealed_detail_frame(sealed_detail)
@@ -1625,13 +1650,10 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
         elif missing is not None and (missing.refusal or missing.imputations is not None):
             from turbotab.core.models.survey import blocked
 
-            reason = missing.refusal or (
-                f"{family.label} is not pooled over multiple imputations here: its tests run "
-                f"feature by feature over more columns than an imputation model holds. Choose "
-                f"complete cases, or a below-detection fill for values below a limit.")
-            exits = missing.exits if missing.refusal else [
-                {"label": "Complete cases", "decision": {"kind": "set_missing",
-                                                         "strategy": "complete_case"}}]
+            from turbotab.core.methods.omics import unpooled_refusal
+
+            reason, exits = ((missing.refusal, missing.exits) if missing.refusal
+                             else unpooled_refusal(family.label, state))
             table = blocked(reason, exits, estimator="not fitted: the missing-values answer decides it")
         else:
             table = family.inference(final, X, y, task=task,

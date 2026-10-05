@@ -133,11 +133,12 @@ def combat_fit(values: np.ndarray, batch: Sequence[Any], mod: np.ndarray | None 
     (samples in rows, features in columns), returning its estimates.
 
     Line by line from sva 3.60: features that are uniform within a batch of more than one sample
-    are left unchanged; one batch of one sample makes it mean-only; with a reference batch its
-    indicator becomes the intercept, the grand mean is its mean and the pooled variance is its
-    residual variance (divided by its size), and its rows are returned unchanged; otherwise the
-    grand mean weights the batches by size. Covariates in ``mod`` (an intercept column, as
-    ``model.matrix`` writes it, is dropped) are kept in the standardized mean.
+    (every value equal, R's ``var(x) == 0``) are left unchanged and out of the priors; one batch
+    of one sample makes it mean-only; with a reference batch its indicator becomes the intercept,
+    the grand mean is its mean and the pooled variance is its residual variance (divided by its
+    size), and its rows are returned unchanged; otherwise the grand mean weights the batches by
+    size. Covariates in ``mod`` (an intercept column, as ``model.matrix`` writes it, is dropped)
+    are kept in the standardized mean.
     """
     dat = np.asarray(values, dtype=float)
     if not np.isfinite(dat).all():
@@ -151,7 +152,10 @@ def combat_fit(values: np.ndarray, batch: Sequence[Any], mod: np.ndarray | None 
     zero = np.zeros(p, dtype=bool)
     for rows in batches:
         if len(rows) > 1:
-            zero |= _rowvar(dat[rows], 0) == 0
+            # sva's ``var(x) == 0``: R's two-pass variance of a constant vector is exactly 0, while
+            # numpy's is often ~1e-30 (its mean is not the constant to the last bit), so constancy
+            # is tested directly (a metabolite never detected on one plate is constant there).
+            zero |= np.ptp(dat[rows], axis=0) == 0
     keep = ~zero
     dat = dat[:, keep]
     if np.any(n_batches == 1):
@@ -343,6 +347,110 @@ class ReferenceComBat(TransformerMixin, BaseEstimator):
                 for c in self.get_feature_names_out()]
 
 
+# ── the figure ComBat with the outcome protected serves (inference, figures only) ──
+
+
+FIGURE_COMPONENTS = 2
+
+
+def principal_components(values: np.ndarray,
+                         k: int = FIGURE_COMPONENTS) -> tuple[np.ndarray, np.ndarray]:
+    """``(scores, explained)`` as R's ``prcomp(x, center = TRUE)`` gives them: the SVD of the
+    column-centered matrix, scores ``U·D`` for the first ``k`` components, and each component's
+    share of the total variance. A component's sign is arbitrary; here its largest loading is
+    positive, so the figure is the same every time."""
+    X = np.asarray(values, dtype=float)
+    Xc = X - X.mean(axis=0)
+    U, s, Vt = np.linalg.svd(Xc, full_matrices=False)
+    k = min(k, len(s))
+    for i in range(k):
+        j = int(np.argmax(np.abs(Vt[i])))
+        if Vt[i, j] < 0:
+            U[:, i] *= -1.0
+            Vt[i] *= -1.0
+    total = float(np.sum(s ** 2))
+    explained = (s[:k] ** 2 / total) if total > 0 else np.zeros(k)
+    return U[:, :k] * s[:k], explained
+
+
+def outcome_design(outcome: Sequence[Any], task: str | None) -> np.ndarray:
+    """``model.matrix(~ outcome)``: an intercept and the outcome (a number), or one indicator per
+    level after the first in sorted order (a two-level or several-level outcome)."""
+    y = pd.Series(list(outcome))
+    if task == "regression":
+        return np.column_stack([np.ones(len(y)),
+                                pd.to_numeric(y, errors="coerce").to_numpy(dtype=float)])
+    labels = y.map(_label)
+    levels = sorted(labels.unique())
+    return np.column_stack([np.ones(len(y)), *[(labels == lv).to_numpy(dtype=float)
+                                               for lv in levels[1:]]])
+
+
+def batch_figure(values: np.ndarray, batch: Sequence[Any], outcome: Sequence[Any], task: str | None,
+                 *, batch_name: str, outcome_name: str) -> dict[str, Any]:
+    """The figure ComBat with the outcome protected serves under inference, and nothing else
+    (MODELING_SEQUENCE §2: "refused for testing under inference (figures only)"; Nygaard et al.
+    2016): the first two principal components of the features as analyzed, before and after
+    ``sva::ComBat(dat, batch, mod = model.matrix(~ outcome))`` (:func:`combat`), each row with its
+    batch and outcome, and each component's share of the variance. The tests read the values with
+    batch as a covariate; these adjusted values reach no test and no estimate."""
+    X = np.asarray(values, dtype=float)
+    labels = [_label(b) for b in batch]
+    y = list(outcome)
+    adjusted = combat(X, labels, mod=outcome_design(y, task))
+    before, explained_before = principal_components(X)
+    after, explained_after = principal_components(adjusted)
+    points = [{"batch": b, "outcome": _label(v), "before": [float(x) for x in bb],
+               "after": [float(x) for x in aa]} for b, v, bb, aa in zip(labels, y, before, after)]
+    share = lambda e: " and ".join(f"{100 * x:.0f}%" for x in e)  # noqa: E731
+    caption = (f"The first two principal components of {X.shape[1]:,} features on {X.shape[0]:,} "
+               f"rows, colored by `{batch_name}`: as analyzed ({share(explained_before)} of the "
+               f"variance), and after ComBat with `{outcome_name}` protected "
+               f"({share(explained_after)}). For the figure only: every test reads the values "
+               f"with `{batch_name}` as a covariate ({NYGAARD}).")
+    return {"column": batch_name, "outcome": outcome_name, "n_features": int(X.shape[1]),
+            "explained_before": [float(e) for e in explained_before],
+            "explained_after": [float(e) for e in explained_after],
+            "points": points, "caption": caption}
+
+
+def figure_for(state: Any, pipeline: Any, X: pd.DataFrame, y: Any,
+               task: str | None) -> dict[str, Any] | None:
+    """The batch figure for a run whose answer is batch as a covariate with ComBat for figures
+    (``SetBatch(figures=True)``, inference only), on the features as ``pipeline``'s steps before
+    its model leave them (normalized, logged) over the rows ``X``; None otherwise, or when ComBat
+    cannot run on them (a blank, a batch confounded with the outcome)."""
+    from sklearn.base import clone
+
+    spec = _spec(state)
+    if (spec is None or spec.method != "covariate" or not spec.figures
+            or getattr(state, "purpose", None) != "inference" or spec.column not in X.columns
+            or len(getattr(pipeline, "steps", [])) < 2):
+        return None
+    from turbotab.core.readings import settled_roles
+
+    roles = settled_roles(state)
+    try:
+        prepared = clone(pipeline)[:-1].fit_transform(X, y)
+    except Exception:  # noqa: BLE001 - steps that cannot run here draw no figure
+        return None
+    if not isinstance(prepared, pd.DataFrame):
+        return None
+    columns = [c for c in prepared.columns if roles.get(str(c)) == "exposure"]
+    if len(columns) < FIGURE_COMPONENTS:
+        return None
+    values = prepared[columns].to_numpy(dtype=float, na_value=np.nan)
+    keep = np.isfinite(values).all(axis=1)
+    if keep.sum() < 3:
+        return None
+    try:
+        return batch_figure(values[keep], X[spec.column].to_numpy()[keep],
+                            np.asarray(y, dtype=object)[keep], task, batch_name=spec.column,
+                            outcome_name=str(getattr(state, "target", None) or "the outcome"))
+    except (ValueError, np.linalg.LinAlgError):
+        return None
+
+
 # ── what the data say about the batch: descriptive scope ─────────────────────
 
 
@@ -459,12 +567,14 @@ FINDING = "batch_confounding"
 
 
 def batch_columns(frame: pd.DataFrame, target: str | None) -> list[str]:
-    """Columns named as a batch or a plate (the recognizer's whole-word acquisition reading). A
-    name is a guess: what it starts is a question, never a number."""
+    """Columns named as a batch, an analytical run or a plate (the recognizer's whole-word
+    acquisition reading; ``readings.BATCH_KINDS``, the words QC-RLSC reads a batch by too). A name
+    is a guess: what it starts is a question, never a number."""
+    from turbotab.core.readings import BATCH_KINDS
     from turbotab.core.recognizers import acquisition_kind
 
     return [str(c) for c in frame.columns
-            if str(c) != target and acquisition_kind(str(c)) in ("batch", "plate")
+            if str(c) != target and acquisition_kind(str(c)) in BATCH_KINDS
             and frame[c].nunique(dropna=True) >= 2]
 
 
@@ -590,10 +700,11 @@ def design_refusal(state: Any, store: Any, rows: Any, task: str | None) -> str |
 
 
 def batch_columns_of(columns: Sequence[str], target: str | None) -> list[str]:
+    from turbotab.core.readings import BATCH_KINDS
     from turbotab.core.recognizers import acquisition_kind
 
     return [str(c) for c in columns if str(c) != target
-            and acquisition_kind(str(c)) in ("batch", "plate")]
+            and acquisition_kind(str(c)) in BATCH_KINDS]
 
 
 # ── the leash on the batch answer ────────────────────────────────────────────

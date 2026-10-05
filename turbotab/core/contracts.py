@@ -429,7 +429,8 @@ def paragraph(keys: Sequence[str] | Mapping[str, str | None], run: Mapping[str, 
         if said:
             clauses.append(said)
     if grouped:
-        clauses.append(f"within each training fold, {_listed(grouped)} were fitted and applied to "
+        verb = "were" if len(grouped) > 1 else "was"
+        clauses.append(f"within each training fold, {_listed(grouped)} {verb} fitted and applied to "
                        f"the held-out fold")
     if model_clause:
         clauses.append(model_clause)

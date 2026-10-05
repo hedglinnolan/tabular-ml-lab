@@ -9,7 +9,8 @@ fit), records its answers through the decision validators the server runs, and a
   fold) in the working table's record, the participant flow and the design's steps;
 * that every relation of §2 the chain touches fires, and where its consequence shows;
 * the leash rows of §4 it touches, refused or blocked with their exits;
-* the methods paragraph the run writes, verbatim, its first sentence the reviewers' own
+* the methods paragraph the run writes, verbatim, as the fit stage writes it into each fitted
+  model (``FittedModel.methods``), its first sentence the reviewers' own
   (``docs/turbotab-next/audit/modeling-sequence-review.json``, chains 3 and 5).
 
 Expected counts come from the data, computed another way (pandas over the table and the working
@@ -30,6 +31,7 @@ from turbotab.core.methods import qc_drift as Q
 from turbotab.core.contracts import fired, run_order
 from turbotab.core.stages.modeling import read_assignment
 from turbotab.core.tests.acceptance.omics_chains import genomics_batches, metabolomics_run
+from turbotab.core.tests.acceptance.omics_references import needs_r, run_r, uncorrectable_by_hand
 from turbotab.core.tests.graph_runner import GraphRun
 
 CHAIN_3_REVIEWERS = (
@@ -119,9 +121,13 @@ def test_chain_3_before_the_seal_qc_rlsc_runs_on_the_pooled_qcs_and_they_leave_t
 
     References (pandas over the table, not the app): the QC rows are the ``sample_type`` = QC
     rows; the features the detection filter removes are those detected in fewer than 70% of the QC
-    injections of the raw table; the RSD filter's are those whose corrected QC RSD in the working
-    table is 20% or more. Drift is gone: the corrected QCs' median RSD in the working table is at
-    the noise level (at most 8%), against more than twice that in the raw table."""
+    injections of the raw table; the uncorrectable ones are those whose curve would be guessed in
+    some batch (``uncorrectable_by_hand``: fewer than five detected QCs, or a detected study value
+    outside the detected QCs; this table has near-limit features whose first or last QCs of a batch
+    fall below the limit while study samples stay above it, the case the repair closes); the RSD
+    filter's are those whose corrected QC RSD in the working table is 20% or more. Drift is gone:
+    the corrected QCs' median RSD in the working table is at the noise level (at most 8%), against
+    more than twice that in the raw table."""
     frame, out = chain3["frame"], chain3["out"]
     feats = chain3["feats"]
     qc = frame["sample_type"].eq("QC").to_numpy()
@@ -131,7 +137,10 @@ def test_chain_3_before_the_seal_qc_rlsc_runs_on_the_pooled_qcs_and_they_leave_t
     assert set(record["dropped"]["detection"]) == {c for c in feats if not rate[c] >= 0.70}
     qc_rows = pd.read_parquet(out["working"].files[Q.QC_ROWS_FILE]).set_index("__row_id")
     assert sorted(qc_rows.index) == list(np.flatnonzero(qc))
-    kept = [c for c in feats if c not in set(record["dropped"]["detection"])]
+    detected = [c for c in feats if c not in set(record["dropped"]["detection"])]
+    guessed = uncorrectable_by_hand(frame, detected)
+    assert guessed and set(record["dropped"]["uncorrectable"]) == guessed
+    kept = [c for c in detected if c not in guessed]
     corrected_qc = qc_rows[kept].where(qc_rows[kept] > 0)
     rsd = 100 * corrected_qc.std(ddof=1) / corrected_qc.mean()
     assert set(record["dropped"]["rsd"]) == {c for c in kept if not rsd[c] < 20}
@@ -211,35 +220,148 @@ def test_chain_3_every_relation_it_touches_fires_and_shows(chain3):
     assert refused.exits[0]["decision"]["censored_columns"] == named
 
 
-def test_chain_3_writes_the_reviewers_methods_sentence(chain3):
-    """The methods paragraph the run writes, verbatim. Its first sentence is the reviewers' own for
-    chain 3; the details carry this run's counts, each computed here from the data: the QC
-    injections, the features each QC filter removed (pandas over the raw and the working table),
-    the censored features the fill covers, and the grouping of the folds."""
-    out, state, frame, feats = chain3["out"], chain3["state"], chain3["frame"], chain3["feats"]
-    keys = steps_of(out["design"], "elastic_net")
-    said = omics.methods_paragraph(state, keys, "elastic_net", data(out["split"]),
-                                   data(out["working"]))
-    assert said.startswith(CHAIN_3_REVIEWERS + " ")
+def qc_counts_by_hand(frame: pd.DataFrame, feats: list[str], qc_rows: pd.DataFrame,
+                      rsd_max: float = 20.0) -> tuple[list[str], set[str], set[str], list[str]]:
+    """(removed for detection, uncorrectable, removed for RSD, remaining), with pandas over the raw
+    table and the working table's corrected QC rows: the QC filters by their definitions."""
     qc = frame["sample_type"].eq("QC").to_numpy()
     rate = frame.loc[qc, feats].gt(0).sum() / int(qc.sum())
-    detection = sum(1 for c in feats if not rate[c] >= 0.70)
-    record = data(out["working"])["qc_correction"]
-    rsd = len(record["dropped"]["rsd"])
-    remain = len(feats) - detection - rsd - len(record["dropped"]["uncorrectable"])
-    censored = len(state.missing.censored_columns)
+    detection = [c for c in feats if not rate[c] >= 0.70]
+    guessed = uncorrectable_by_hand(frame, [c for c in feats if c not in detection])
+    kept = [c for c in feats if c not in detection and c not in guessed]
+    corrected = qc_rows[kept].where(qc_rows[kept] > 0)
+    rsd = 100 * corrected.std(ddof=1) / corrected.mean()
+    high = {c for c in kept if not rsd[c] < rsd_max}
+    return detection, guessed, high, [c for c in kept if c not in high]
+
+
+def test_chain_3_writes_the_reviewers_methods_sentence(chain3):
+    """The methods paragraph the run writes, verbatim, read from the fit artifact (the fit stage
+    writes it into each fitted model: ``FittedModel.methods``). Its first sentence is the reviewers'
+    own for chain 3; the details carry this run's counts, each computed here from the data with
+    pandas: the QC injections, the features each QC filter removed (``qc_counts_by_hand``), the
+    injection-order and batch columns the chosen option named, and the features whose values below
+    detection the fill covers: the columns with a blank in the raw table (the left-censoring
+    finding's reading) that the QC filters kept, not every censored column the answer named (the
+    QC filters removed some before the seal), and the grouping of the folds."""
+    out, state, frame, feats = chain3["out"], chain3["state"], chain3["frame"], chain3["feats"]
+    qc_rows = pd.read_parquet(out["working"].files[Q.QC_ROWS_FILE]).set_index("__row_id")
+    detection, guessed, high, remain = qc_counts_by_hand(frame, feats, qc_rows)
+    blank = [c for c in feats if frame[c].isna().any()]
+    filled = [c for c in blank if c in set(remain)]
+    assert 0 < len(filled) < len(blank)  # the QC filters removed censored features before the seal
+    detect = next(m for m in data(out["design"])["models"] if m["family"] == "elastic_net")["steps"][1]
+    assert detect["key"] == "detect"
+    assert set(out["design"].objects["spec"]["censored"]["columns"]) == set(filled)
+    said = data(out["fit"])["models"][0]["methods"]
+    assert said.startswith(CHAIN_3_REVIEWERS + " ")
     expected = (
         f"{CHAIN_3_REVIEWERS} QC-RLSC (Dunn et al. 2011) fitted, for each feature and each of the 2 "
-        f"batches, a LOESS of degree 2 over injection order to the 22 pooled QC injections, its "
-        f"span chosen by leave-one-out cross-validation; each injection was divided by the curve "
-        f"and rescaled to the feature's median QC value. Features detected in fewer than 70% of QC "
-        f"injections ({detection}), that could not be corrected (0), or with a QC RSD of 20% or more "
-        f"after correction ({rsd}; the LC-MS criterion) were removed (Broadhurst et al. 2018); "
-        f"{remain} of {len(feats)} remain. Values below detection in {censored} features were filled "
-        f"after normalization and before the log, each by its expected value below the limit under "
-        f"a left-censored normal fitted to the feature's logarithm on the training fold (Lubin et "
-        f"al. 2004). Folds kept each `participant_id`'s rows together.")
+        f"batches of `batch`, a LOESS of degree 2 over the injection order (`injection_order`) to "
+        f"the 22 pooled QC injections, its span chosen by leave-one-out cross-validation; each "
+        f"injection was divided by the curve and rescaled to the feature's median QC value. "
+        f"Features detected in fewer than 70% of QC injections ({len(detection)}), that could not "
+        f"be corrected ({len(guessed)}), or with a QC RSD of 20% or more after correction "
+        f"({len(high)}; the LC-MS criterion) were removed (Broadhurst et al. 2018); {len(remain)} of "
+        f"{len(feats)} remain. Values below detection in {len(filled)} features were filled after "
+        f"normalization and before the log, each by its expected value below the limit under a "
+        f"left-censored normal fitted to the feature's logarithm on the training fold (Lubin et al. "
+        f"2004). Folds kept each `participant_id`'s rows together.")
     assert said == expected
+
+
+def test_chain_3_inference_twin_feature_wise_tests_fill_values_below_detection_censoring_aware(
+        tmp_path):
+    """Chain 3's table under inference, every metabolite tested on its own (feature-wise, BH).
+    Multiple imputation with the censored-normal draw is the leash's first answer for values below
+    detection, but a feature-wise table pools no imputations (more columns than an imputation
+    model holds): the fit holds the table, its reason naming exactly its two exits, complete cases
+    and one censoring-aware fill recorded as a limitation (MODELING_SEQUENCE §4: a single fill
+    under inference is block-and-record). Taking the second, the table is computed and the methods
+    paragraph says what was done: the QC answer's counts (``qc_counts_by_hand``), PQN and log2, the
+    features filled once on the analyzed rows (the censored ones the QC filters kept, pandas), the
+    single fill recorded, the intervals clustered by participant (no folds under inference), and
+    the family's tests with Benjamini–Hochberg (statsmodels' ``multipletests`` over the table's
+    p-values)."""
+    from statsmodels.stats.multitest import multipletests
+
+    frame, _ = metabolomics_run()
+    path = tmp_path / "run.csv"
+    frame.to_csv(path, index=False)
+    run = GraphRun(path, tmp_path / "project")
+    try:
+        base = {"lens": ["metabolomics"], "target": "case", "purpose": "inference",
+                "task": "binary", "event": "1",
+                "grain": {"grain": "repeated", "id_column": "participant_id"}, "unit": "row",
+                "repeat_kind": {"repeat_kind": "repeats"}}
+        feats = [c for c in frame.columns if c.startswith("mz_")]
+        roles = {c: "exposure" for c in feats}
+        roles.update({"participant_id": "identifier", "sample_id": "excluded",
+                      "injection_order": "excluded", "batch": "excluded", "sample_type": "excluded"})
+        first = ProjectState.model_validate({**base, "roles": roles})
+        out = run.run(first, upto=["findings"])
+        findings = {f["id"]: f for f in data(out["findings"])["findings"]}
+        qc = next(o for o in findings[Q.FINDING]["repairs"] if o["key"] == "qc_rlsc_lc")
+        scale = next(o for o in findings["omics_scale"]["repairs"] if o["key"] == "pqn_log2")
+        applied = ProjectState.model_validate({**base, "roles": roles, "findings": {
+            Q.FINDING: {"action": "applied", "option": "qc_rlsc_lc",
+                        "params": qc["decision"]["params"]},
+            "omics_scale": {"action": "applied", "option": "pqn_log2",
+                            "params": scale["decision"]["params"]}}})
+        ctx = ctx_of(applied, frame, out)
+        with pytest.raises(Refusal) as refused:
+            validate(SetMissing(strategy="multiple_imputation"), ctx)
+        drawn = refused.value.exits[0]["decision"]
+        assert (drawn["strategy"], drawn["below_detection"]) == ("multiple_imputation",
+                                                                 "censoring_aware")
+        validate(SetMissing(**{k: v for k, v in drawn.items() if k != "kind"}), ctx)
+        slots = {**applied.model_dump(exclude_none=True),
+                 "missing": {k: v for k, v in drawn.items() if k != "kind"},
+                 "split": {"holdout": 0.0, "folds": 5, "seed": 0, "validation": "kfold"},
+                 "models": ["featurewise"]}
+        out = run.run(ProjectState.model_validate(slots), upto=["fit"])
+        held = data(out["fit"])["models"][0]["inference"]
+        assert held["refused"] == (
+            "Feature-wise regression is not pooled over multiple imputations here: its tests run "
+            "feature by feature over more columns than an imputation model holds. Choose complete "
+            "cases, or fill the values below detection once, censoring-aware, recorded as a "
+            "limitation.")
+        once = held["exits"][1]["decision"]
+        assert [e["decision"]["strategy"] for e in held["exits"]] == ["complete_case", "impute"]
+        assert (once["below_detection"], once["acknowledged"]) == ("censoring_aware", True)
+        validate(SetMissing(**{k: v for k, v in once.items() if k != "kind"}), ctx)
+        slots["missing"] = {k: v for k, v in once.items() if k != "kind"}
+        state = ProjectState.model_validate(slots)
+        out = run.run(state, upto=["fit"])
+        model = data(out["fit"])["models"][0]
+        rows = model["coefficients"]
+        qc_rows = pd.read_parquet(out["working"].files[Q.QC_ROWS_FILE]).set_index("__row_id")
+        detection, guessed, high, remain = qc_counts_by_hand(frame, feats, qc_rows)
+        assert [r["feature"] for r in rows] == remain  # every member of the family shown
+        assert model["inference"]["missing"]["method"] == "single_fill"
+        q = multipletests([r["p"] for r in rows], method="fdr_bh")[1]
+        np.testing.assert_allclose([r["q"] for r in rows], q, rtol=1e-10)
+        filled = [c for c in feats if frame[c].isna().any() and c in set(remain)]
+        assert model["methods"] == (
+            f"Drift was corrected per batch by QC-RLSC fitted to pooled QCs only, which were then "
+            f"removed. QC-RLSC (Dunn et al. 2011) fitted, for each feature and each of the 2 batches "
+            f"of `batch`, a LOESS of degree 2 over the injection order (`injection_order`) to the 22 "
+            f"pooled QC injections, its span chosen by leave-one-out cross-validation; each "
+            f"injection was divided by the curve and rescaled to the feature's median QC value. "
+            f"Features detected in fewer than 70% of QC injections ({len(detection)}), that could "
+            f"not be corrected ({len(guessed)}), or with a QC RSD of 20% or more after correction "
+            f"({len(high)}; the LC-MS criterion) were removed (Broadhurst et al. 2018); "
+            f"{len(remain)} of {len(feats)} remain. Intensities were normalized by probabilistic "
+            f"quotient normalization (Dieterle et al. 2006) and log2-transformed. Values below "
+            f"detection in {len(filled)} features were filled after normalization and before the "
+            f"log, each by its expected value below the limit under a left-censored normal fitted "
+            f"to the feature's logarithm on the analyzed rows (Lubin et al. 2004). A single fill, "
+            f"recorded as a limitation: its intervals are too narrow. Intervals were cluster-robust "
+            f"(CR2) by `participant_id`. Each of the {len(remain)} features was tested in its own "
+            f"linear model with the covariates; Benjamini–Hochberg q-values across the "
+            f"{len(remain)} tests ({int(np.sum(q < 0.05))} below 0.05), every feature shown.")
+    finally:
+        run.close()
 
 
 # ── chain 5 · genomics, p ≫ n, and its inference twin ───────────────────────
@@ -361,11 +483,11 @@ def test_chain_5_prediction_batch_as_a_covariate_with_in_fold_screening_and_pena
     assert names.index("screen") < names.index("scale") < names.index("model")
     fit = data(out["fit"])["models"][0]
     assert len(fit["cv"]["auc"]["folds"]) == 5
-    said = omics.methods_paragraph(state, keys, "screened_elastic_net", data(out["split"]))
-    assert said == ("Batch was included as a covariate; within each training fold, log-CPM with "
-                    "TMM factors, sure independence screening and autoscaling were fitted and "
-                    "applied to the held-out fold; elastic-net parameters were tuned in an inner CV "
-                    "nested in an outer CV.")
+    assert fit["methods"] == ("Batch was included as a covariate; within each training fold, "
+                              "log-CPM with TMM factors, sure independence screening and autoscaling "
+                              "were fitted and applied to the held-out fold; elastic-net parameters "
+                              "were tuned in an inner CV nested in an outer CV.")
+    assert data(out["fit"])["batch_figure"] is None  # no figure under prediction
 
 
 def test_chain_5_prediction_reference_combat_in_fold_precedes_the_screen(chain5):
@@ -382,11 +504,10 @@ def test_chain_5_prediction_reference_combat_in_fold_precedes_the_screen(chain5)
                                                 for f in fired(choices, "prediction")}
     step = out["design"].objects["pipelines"]["screened_elastic_net"].named_steps["batch"]
     assert step.batch == "batch" and step.drop is True
-    said = omics.methods_paragraph(state, keys, "screened_elastic_net", data(out["split"]))
-    assert said == ("Within each training fold, log-CPM with TMM factors, reference-batch ComBat "
-                    "without the outcome, sure independence screening and autoscaling were fitted "
-                    "and applied to the held-out fold; elastic-net parameters were tuned in an inner "
-                    "CV nested in an outer CV.")
+    assert data(out["fit"])["models"][0]["methods"] == (
+        "Within each training fold, log-CPM with TMM factors, reference-batch ComBat without the "
+        "outcome, sure independence screening and autoscaling were fitted and applied to the "
+        "held-out fold; elastic-net parameters were tuned in an inner CV nested in an outer CV.")
 
 
 def test_chain_5_inference_twin_feature_wise_tests_with_bh_batch_as_a_covariate(chain5):
@@ -427,8 +548,9 @@ def test_chain_5_inference_twin_feature_wise_tests_with_bh_batch_as_a_covariate(
         assert row["estimate"] == pytest.approx(reference.params[-1], rel=1e-8)
         assert row["p"] == pytest.approx(reference.pvalues[-1], rel=1e-6)
     found = int(np.sum(q_ref < 0.05))
-    said = omics.methods_paragraph(state, keys, "featurewise", data(out["split"]),
-                                   table={"rows": rows})
+    # The figure the second clause speaks of exists (``test_chain_5_the_combat_figure_...``).
+    assert data(out["fit"])["batch_figure"] is not None
+    said = data(out["fit"])["models"][0]["methods"]
     assert said == (f"{CHAIN_5_REVIEWERS} Counts were transformed to log2 counts per million on "
                     f"library sizes scaled by TMM factors (edgeR, prior count 2; Robinson and "
                     f"Oshlack 2010). Each of the {len(genes)} features was tested in its own linear "
@@ -447,10 +569,75 @@ def test_chain_5_inference_twin_feature_wise_tests_with_bh_batch_as_a_covariate(
     state, out, _ = _chain5(chain5, "inference", {"column": "batch", "method": "covariate",
                                                   "figures": True}, "featurewise",
                             multiplicity={"method": "none", "acknowledged": True})
-    rows = data(out["fit"])["models"][0]["coefficients"]
+    model = data(out["fit"])["models"][0]
+    rows = model["coefficients"]
     assert len(rows) == len(genes) and all(r["q"] is None for r in rows)
-    said = omics.methods_paragraph(state, steps_of(out["design"], "featurewise"), "featurewise",
-                                   data(out["split"]), table={"rows": rows})
+    said = model["methods"]
     assert said.startswith(CHAIN_5_REVIEWERS) and said.endswith(
         f"Each of the {len(genes)} features was tested in its own linear model with the covariates; "
         f"no multiplicity control, recorded as a limitation.")
+    # Through the fit, the caption no longer carries the Benjamini–Hochberg discovery count (the fit
+    # adds "Estimated from all … rows." after it, which an end-anchored edit missed).
+    caption = model["inference"]["caption"]
+    assert "Benjamini–Hochberg q <" not in caption, caption
+    assert (f"No multiplicity control, recorded as a limitation: {len(genes)} tests at p < 0.05 "
+            f"would give about {round(0.05 * len(genes))} false positives by chance alone.") in caption
+    assert caption.endswith(f"Estimated from all {len(frame)} analyzed rows."), caption
+
+
+FIGURE_R = r"""
+suppressPackageStartupMessages({library(edgeR); library(sva)})
+d <- read.csv("counts.csv", check.names = FALSE)
+genes <- grep("^ENSG", names(d), value = TRUE)
+y <- calcNormFactors(DGEList(counts = t(as.matrix(d[, genes]))), method = "TMM")
+lcpm <- cpm(y, log = TRUE, prior.count = 2)
+mod <- model.matrix(~ factor(case), data = d)
+sink(stderr())
+adjusted <- ComBat(lcpm, as.character(d$batch), mod = mod)
+sink()
+pcs <- function(m) {
+  p <- prcomp(t(m), center = TRUE)
+  share <- p$sdev^2 / sum(p$sdev^2)
+  data.frame(pc1 = p$x[, 1], pc2 = p$x[, 2], e1 = share[1], e2 = share[2])
+}
+write.csv(pcs(lcpm), "before.csv", row.names = FALSE)
+write.csv(pcs(adjusted), "after.csv", row.names = FALSE)
+"""
+
+
+@needs_r
+def test_chain_5_the_combat_figure_is_drawn_from_sva_with_the_outcome_protected_and_reaches_no_test(
+        chain5, tmp_path):
+    """"ComBat was used for visualization only" is said only of a figure that exists: under
+    inference, batch as a covariate with ComBat for figures, the fit artifact carries the figure's
+    data (``batch_figure``): the first two principal components of the genes as analyzed and after
+    ComBat with the outcome protected. Reference, all in R: edgeR's ``cpm(calcNormFactors(…),
+    log = TRUE, prior.count = 2)``, ``sva::ComBat(lcpm, batch, mod = model.matrix(~ factor(case)))``
+    and ``prcomp(t(·), center = TRUE)``; the scores agree to 1e-6 (a component's sign is arbitrary,
+    so each is aligned first) and each component's share of the variance to 1e-9. The tests read
+    the values with batch as a covariate (the inference twin's least-squares reference), never
+    these. Without the figures answer no figure is drawn and the clause is not said. (The drawing
+    itself waits for the presentation layer; the artifact holds every point it needs.)"""
+    frame = chain5["frame"]
+    state, out, _ = _chain5(chain5, "inference", {"column": "batch", "method": "covariate",
+                                                  "figures": True}, "featurewise")
+    figure = data(out["fit"])["batch_figure"]
+    assert figure["column"] == "batch" and figure["outcome"] == "case"
+    assert figure["n_features"] == len(chain5["genes"])
+    points = figure["points"]
+    assert [p["batch"] for p in points] == frame["batch"].astype(str).tolist()
+    ref = run_r(FIGURE_R, {"counts": frame}, tmp_path, ("before", "after"))
+    for side in ("before", "after"):
+        mine = np.array([p[side] for p in points])
+        theirs = ref[side][["pc1", "pc2"]].to_numpy()
+        signs = np.sign(np.sum(mine * theirs, axis=0))
+        np.testing.assert_allclose(mine, theirs * signs, rtol=0, atol=1e-6, err_msg=side)
+        np.testing.assert_allclose(figure[f"explained_{side}"],
+                                   ref[side][["e1", "e2"]].iloc[0].to_numpy(), rtol=0, atol=1e-9)
+    assert "every test reads the values with `batch` as a covariate" in figure["caption"]
+    assert data(out["fit"])["models"][0]["methods"].startswith(CHAIN_5_REVIEWERS)
+    state, out, _ = _chain5(chain5, "inference", {"column": "batch", "method": "covariate"},
+                            "featurewise")
+    assert data(out["fit"])["batch_figure"] is None
+    said = data(out["fit"])["models"][0]["methods"]
+    assert said.startswith("Batch was included as a covariate. ") and "visualization" not in said

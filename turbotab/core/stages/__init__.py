@@ -246,9 +246,14 @@ def build_graph() -> Graph:
             # read-numbers repair applied) is checked as those numbers, so an impossible outcome
             # value is found before the seal; the lab pack's "numbers stored as text" leaves the
             # column the app's own finding reads, lever and all.
+            # findings 18 (MS7 repair): each QC-RLSC option names the injection-order and batch
+            # columns it reads, and every other batch reading (a `run`, a plate, one curve) is its
+            # own option; a run order is no intensity; no "no pooled QCs" beside the QC rows found.
+            # findings 19 (wave-1 repairs integrated): both findings 18s, the routing gate's and MS7
+            # repair's.
             Stage(
                 "findings",
-                18,
+                19,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings", "numbers_read"),
                 findings_stage,
@@ -292,7 +297,9 @@ def build_graph() -> Graph:
             # the outcome is read and the seal drawn (RO-13); a log-scale outcome is derived (RO-10).
             # working 8 (wave 1, MS7): QC-RLSC, the QC filters and PQN against the pooled QCs run on
             # every injection before the seal, and then the QC rows leave as reference rows.
-            Stage("working", 8, ("oriented", "findings", "structure"),
+            # working 9 (MS7 repair): a feature with a detected value outside its detected QCs'
+            # span is not corrected (its curve would be extrapolated) and leaves as uncorrectable.
+            Stage("working", 9, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical", "outcome_scale"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -470,7 +477,12 @@ def build_graph() -> Graph:
             # design 21 (the routing gate, the ledger's repair 3 residue): the partition methods
             # convert each energy source by its settled kcal per unit (its recorded unit, so the
             # design reads the units), never by its name.
-            Stage("design", 21, ("working", "split", "target_info"),
+            # design 21 (MS7 repair): QRILC fills a sample too sparse to read by half the column's
+            # minimum, never leaving a blank for the median; a constant feature within a batch is
+            # left as sva leaves it.
+            # design 22 (wave-1 repairs integrated): both design 21s, the routing gate's and MS7
+            # repair's.
+            Stage("design", 22, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS),
@@ -499,7 +511,12 @@ def build_graph() -> Graph:
             # population answer every family is design-based or blocked and recorded (MS4).
             # fit 18 (the routing gate): each source's average relative effect is per its settled
             # unit (a standard drink, not the name's gram); a landmark's rows enter at it.
-            Stage("fit", 18, ("working", "design", "split", "target_info", "cohort"),
+            # fit 18 (MS7 repair): each family's methods paragraph from what the run did; the figure
+            # ComBat with the outcome protected serves; a feature-wise caption under a recorded
+            # multiplicity carries no discovery count; a feature-wise table under multiple
+            # imputation offers the censoring-aware single fill.
+            # fit 19 (wave-1 repairs integrated): both fit 18s, the routing gate's and MS7 repair's.
+            Stage("fit", 19, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),

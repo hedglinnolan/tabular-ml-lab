@@ -18,7 +18,9 @@ one pooled sample; never a participant and never the outcome):
    optimized the smoothing parameter by cross-validation to avoid overfitting). The curve is
    never extrapolated: a batch whose study injections fall before its first QC or after its last
    is refused, as is a batch with fewer than five QCs (Broadhurst et al. 2018: "at least five
-   pooled QCs distributed evenly across a single batch").
+   pooled QCs distributed evenly across a single batch"); and since each feature's curve is fit to
+   its own detected QCs, a feature with a detected value outside them (drift pushing a batch's last
+   QCs below the detection limit) is not corrected and leaves with the uncorrectable ones.
 3. **QC RSD** (Broadhurst et al. 2018: "acceptance criterion for RSD is typically set to < 20%
    … or < 30%"): on the corrected QC responses, a feature whose relative standard deviation is at
    least 20% (LC-MS) or 30% (GC-MS) leaves.
@@ -92,17 +94,26 @@ def smoother_rows(x: np.ndarray, at: np.ndarray, span: float, degree: int = DEGR
     if q < degree + 1:
         raise ValueError(f"span {span:g} keeps {q} of {n} points: too few for degree {degree}")
     rob = np.ones(n) if robustness is None else np.asarray(robustness, dtype=float)
-    out = np.empty((len(at), n))
-    for i, a in enumerate(at):
-        d = np.abs(x - a)
-        rho = np.partition(d, q - 1)[q - 1]
-        u = np.where(d < rho, d / rho if rho > 0 else 0.0, 1.0)
-        w = (1.0 - u ** 3) ** 3 * rob
-        sw = np.sqrt(w)
-        X = np.vander(x - a, degree + 1, increasing=True)
-        # least squares of sqrt(w)·y on sqrt(w)·X: the intercept's row of pinv(√W X) √W
-        out[i] = np.linalg.pinv(X * sw[:, None])[0] * sw
-    return out
+    return _local_rows(np.broadcast_to(x, (len(at), n)), at, q, degree, rob)
+
+
+def _local_rows(X: np.ndarray, at: np.ndarray, q: int, degree: int,
+                rob: np.ndarray | None = None) -> np.ndarray:
+    """The smoother rows at once, one per evaluation point ``at[i]`` over its own data points
+    ``X[i]`` (an ``m × k`` array): the tricube weights of the ``q`` nearest, and the intercept's row
+    of ``pinv(√W V) √W`` with ``V`` the polynomial in ``X[i] − at[i]``, stacked (numpy's ``pinv``
+    over a stack is the same pseudo-inverse, matrix by matrix)."""
+    X = np.asarray(X, dtype=float)
+    at = np.asarray(at, dtype=float)
+    d = np.abs(X - at[:, None])
+    rho = np.partition(d, q - 1, axis=1)[:, q - 1][:, None]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        u = np.where(d < rho, np.where(rho > 0, d / rho, 0.0), 1.0)
+    w = (1.0 - u ** 3) ** 3 * (1.0 if rob is None else rob)
+    sw = np.sqrt(w)
+    V = (X - at[:, None])[..., None] ** np.arange(degree + 1)
+    # least squares of sqrt(w)·y on sqrt(w)·V: the intercept's row of pinv(√W V) √W
+    return np.linalg.pinv(V * sw[..., None])[:, 0, :] * sw
 
 
 def _lowesw(residuals: np.ndarray) -> np.ndarray:
@@ -142,12 +153,13 @@ def _loo_rows(x: np.ndarray, span: float, degree: int) -> np.ndarray | None:
     linear operator shared by every feature measured at the same points. None when the span keeps
     too few of the other points for the degree (one more than it needs, so no fit interpolates)."""
     n = len(x)
-    if _neighbors(n - 1, span) < degree + 2:
+    q = _neighbors(n - 1, span)
+    if q < degree + 2:
         return None
+    idx = np.arange(n)
+    others = np.array([np.delete(idx, i) for i in range(n)])  # row i: every point but the i-th
     L = np.zeros((n, n))
-    for i in range(n):
-        others = np.delete(np.arange(n), i)
-        L[i, others] = smoother_rows(x[others], x[i:i + 1], span, degree)[0]
+    L[idx[:, None], others] = _local_rows(x[others], x, q, degree)
     return L
 
 
@@ -270,8 +282,14 @@ def qc_rlsc(values: np.ndarray, inj: Injections, *, degree: int = DEGREE,
     """QC-RLSC on an ``n × p`` block (rows in any order). ``span`` fixes the span; None chooses
     it per feature and batch by leave-one-out cross-validation (:func:`choose_spans`).
 
-    A feature that a batch cannot fit — fewer than :data:`MIN_QC` detected QCs there, or a curve
-    that reaches zero — is not corrected anywhere and is listed in ``uncorrectable``.
+    Each feature's curve in a batch is fit to that feature's detected QCs only, so the span it can
+    interpolate is the span of those QCs, not of the batch's QCs (:func:`sufficiency` checks the
+    batch). A feature that a batch cannot fit — fewer than :data:`MIN_QC` detected QCs there, a
+    detected value outside its detected QCs' span of injection order (the realistic case: drift
+    pushes a batch's last QCs below the detection limit while some study samples stay above it,
+    and the curve would be extrapolated past its last point), or a curve that reaches zero — is not
+    corrected anywhere and is listed in ``uncorrectable``. No value is ever divided by an
+    extrapolated curve; ``curves`` is blank outside each fit's span.
     """
     values = np.asarray(values, dtype=float)
     n, p = values.shape
@@ -304,6 +322,16 @@ def qc_rlsc(values: np.ndarray, inj: Injections, *, degree: int = DEGREE,
                                    else f"fewer than {MIN_QC} detected QCs")
                 continue
             x = inj.order[use]
+            # The curve interpolates between this pattern's first and last detected QC only.
+            outside = (x_all < x.min()) | (x_all > x.max())
+            if outside.any():
+                past = detected[np.ix_(rows[outside], cols)].sum(axis=0)
+                where = f" in batch `{b}`" if b else ""
+                for c, k in zip(cols, past):
+                    if k:
+                        bad.setdefault(c, f"{int(k)} detected value{'s lie' if k != 1 else ' lies'} "
+                                          f"outside its detected QCs{where}: the curve would be "
+                                          f"extrapolated")
             Y = values[np.ix_(use, cols)]
             if span is None:
                 s, _ = choose_spans(x, Y, degree)
@@ -312,6 +340,7 @@ def qc_rlsc(values: np.ndarray, inj: Injections, *, degree: int = DEGREE,
             for value in np.unique(s[np.isfinite(s)]):
                 these = [c for c, sv in zip(cols, s) if sv == value]
                 rows_op = smoother_rows(x, x_all, float(value), degree)
+                rows_op[outside] = np.nan  # never evaluated past its points
                 curves[np.ix_(rows, these)] = rows_op @ values[np.ix_(use, these)]
                 chosen[these] = value
             for c, sv in zip(cols, s):
@@ -325,7 +354,10 @@ def qc_rlsc(values: np.ndarray, inj: Injections, *, degree: int = DEGREE,
     corrected = values.copy()
     good = np.array([j not in bad for j in range(p)], dtype=bool)
     with np.errstate(divide="ignore", invalid="ignore"):
-        corrected[:, good] = values[:, good] / curves[:, good] * level[good]
+        # A non-detection (blank or zero) stays as it is; only a detected value meets a curve.
+        corrected[:, good] = np.where(detected[:, good],
+                                      values[:, good] / curves[:, good] * level[good],
+                                      values[:, good])
     curves[:, ~good] = np.nan
     return DriftFit(corrected=corrected, curves=curves, spans=spans, level=level,
                     uncorrectable=sorted(bad), reasons=bad)
@@ -568,36 +600,6 @@ ASIDE = "exclude_rows"
 OPTIONS = (*RLSC_OPTIONS, ASIDE)
 
 
-def _order_column(frame: pd.DataFrame, exclude: Sequence[str]) -> str | None:
-    """The injection-order column: an acquisition column read as a run order whose values order
-    the injections (numbers, no blanks), else a column that is a permutation of the rows."""
-    from turbotab.core.recognizers import acquisition_kind
-
-    for c in frame.columns:
-        if str(c) in exclude or acquisition_kind(str(c)) != "run_order":
-            continue
-        values = pd.to_numeric(frame[c], errors="coerce")
-        if values.notna().all() and values.nunique() == len(values):
-            return str(c)
-    try:
-        from turbotab import packs
-
-        found = packs._permutation_column(frame)
-    except Exception:  # noqa: BLE001 - no pack, no permutation reading
-        found = None
-    return found if found not in exclude else None
-
-
-def _batch_column(frame: pd.DataFrame, exclude: Sequence[str]) -> str | None:
-    from turbotab.core.recognizers import acquisition_kind
-
-    for c in frame.columns:
-        if str(c) not in exclude and acquisition_kind(str(c)) == "batch" \
-                and frame[c].nunique(dropna=True) >= 2:
-            return str(c)
-    return None
-
-
 def _features(frame: pd.DataFrame, target: str | None, exclude: Sequence[str]) -> list[str]:
     from turbotab.core.methods.omics import candidate_columns
 
@@ -608,8 +610,15 @@ def _features(frame: pd.DataFrame, target: str | None, exclude: Sequence[str]) -
 def rlsc_offer(finding: dict[str, Any], p: dict[str, Any], oc: Any) -> list[Any]:
     """The QC-RLSC options for the pooled-QC finding (an injection order is needed; none without
     it). The exclusion without correction is offered beside them by the reference-rows family
-    (``reference_rows._offer``), which answers this finding."""
+    (``reference_rows._offer``), which answers this finding.
+
+    The injection order and the batch are readings, not facts (BLUEPRINT §14;
+    ``readings.injection_order_reading`` and ``readings.batch_readings``): every option names the
+    columns it reads, and each other batch reading is offered beside the best guess, the whole run
+    as one batch among them. The leading reading carries the four platform and D-ratio variants,
+    each other reading the two platform variants. The user's choice settles both readings."""
     from turbotab.core.decisions import ApplyRepair
+    from turbotab.core.readings import batch_readings, injection_order_reading
     from turbotab.core.repairs import RepairOption
     from turbotab.core.voice import finish
 
@@ -618,16 +627,16 @@ def rlsc_offer(finding: dict[str, Any], p: dict[str, Any], oc: Any) -> list[Any]
         return []
     frame = oc.frame
     levels = [str(p["qc_value"])]
-    order = _order_column(frame, [column])
-    batch = _batch_column(frame, [column, *([order] if order else [])])
-    features = _features(frame, oc.target, [column, *([order] if order else []),
-                                            *([batch] if batch else [])])
+    skip = [str(column), *([str(oc.target)] if oc.target else [])]
+    read = injection_order_reading(frame, skip)
+    if read is None:
+        return []
+    order = str(read.value)
+    candidates = [str(r.value) for r in batch_readings(frame, skip, order)]
+    features = _features(frame, oc.target, [column, order, *candidates])
     if len(features) < 2:
         return []
-    inj = injections(frame, column, levels, order, batch)
-    n_qc = int(inj.qc.sum())
-    base = {"column": column, "qc_levels": levels, "order_column": order, "batch_column": batch,
-            "features": features, "n_qc": n_qc}
+    n_qc = int(injections(frame, column, levels, order, None).qc.sum())
 
     def option(key: str, label: str, consequence: str, sentence: str, params: dict[str, Any]) -> Any:
         return RepairOption(key=key, label=finish(label, terminal=False),
@@ -638,58 +647,85 @@ def rlsc_offer(finding: dict[str, Any], p: dict[str, Any], oc: Any) -> list[Any]
                                                  params=params))
 
     out: list[Any] = []
-    if order is not None:
+    readings: list[str | None] = [*candidates, None]
+    for i, batch in enumerate(readings):
+        inj = injections(frame, column, levels, order, batch)
+        base = {"column": column, "qc_levels": levels, "order_column": order,
+                "batch_column": batch, "features": features, "n_qc": n_qc}
         problems = sufficiency(inj)
         fitted: dict[str, Any] = {}
+        rsd: dict[str, float] = {}
         if not problems:
             result = run_reference_rows(frame, QCPlan(column, tuple(levels), tuple(features), order,
                                                       batch, platform="lc_ms"))
             fitted = result.record
             rsd = dict(zip(features, result.rsd)) if result.rsd is not None else {}
-        for platform in ("lc_ms", "gc_ms"):
-            for d_ratio in (None, D_RATIO_MAX):
-                key = f"qc_rlsc_{'lc' if platform == 'lc_ms' else 'gc'}{'_dratio' if d_ratio else ''}"
-                # A recorded answer's params hold no empty list (``repairs.admits`` reads a list as
-                # the values chosen from it): an absent key is an empty one.
-                params = {**base, "platform": platform, "d_ratio_max": d_ratio}
-                if problems:
-                    params["problems"] = problems
-                if fitted:
-                    gone = fitted["dropped"]
-                    before = set(gone["detection"]) | set(gone["uncorrectable"])
-                    high = [c for c in features if c not in before
-                            and not (rsd.get(c, np.inf) < RSD_MAX[platform])]
-                    dropped = {"detection": list(gone["detection"]),
-                               "uncorrectable": list(gone["uncorrectable"]), "rsd": high}
-                    dropped = {k: v for k, v in dropped.items() if v}
-                    if dropped:
-                        params["dropped"] = dropped
-                    params["kept"] = len(features) - len(before) - len(high)
-                    params["batches"] = len(inj.batches) if batch else 1
-                words = PLATFORM_WORDS[platform]
+        variants = ([(pl, d) for pl in ("lc_ms", "gc_ms") for d in (None, D_RATIO_MAX)] if i == 0
+                    else [("lc_ms", None), ("gc_ms", None)])
+        for platform, d_ratio in variants:
+            key = f"qc_rlsc_{'lc' if platform == 'lc_ms' else 'gc'}{'_dratio' if d_ratio else ''}"
+            # A recorded answer's params hold no empty list (``repairs.admits`` reads a list as the
+            # values chosen from it): an absent key is an empty one.
+            params = {**base, "platform": platform, "d_ratio_max": d_ratio}
+            if problems:
+                params["problems"] = problems
+            if fitted:
+                gone = fitted["dropped"]
+                before = set(gone["detection"]) | set(gone["uncorrectable"])
+                high = [c for c in features if c not in before
+                        and not (rsd.get(c, np.inf) < RSD_MAX[platform])]
+                dropped = {"detection": list(gone["detection"]),
+                           "uncorrectable": list(gone["uncorrectable"]), "rsd": high}
+                dropped = {k: v for k, v in dropped.items() if v}
+                if dropped:
+                    params["dropped"] = dropped
+                params["kept"] = len(features) - len(before) - len(high)
+                params["batches"] = len(inj.batches) if batch else 1
+            words = PLATFORM_WORDS[platform]
+            if i == 0:
                 label = f"Drift; {words}{'; D-ratio' if d_ratio else ' filters'}"
-                if problems:
-                    consequence = "Cannot run: too few QCs, or study injections outside them."
-                else:
-                    lost = len(features) - params["kept"]
-                    consequence = (f"Corrects drift from `{n_qc}` QCs; drops `{lost}` features; QCs "
-                                   f"leave{'; D-ratio in-fold' if d_ratio else ''}.")
-                out.append(option(key, label, consequence, rlsc_sentence(params), params))
+            else:
+                label = f"Per `{batch}`; {words}" if batch else f"One curve; {words}"
+            curves = (f"Drift curves along `{order}` per `{batch}`" if batch
+                      else f"One drift curve along `{order}`")
+            if problems:
+                consequence = f"{curves} cannot be fit: too few QCs, or injections outside them."
+            else:
+                lost = len(features) - params["kept"]
+                consequence = (f"{curves} from `{n_qc}` QCs; drops `{lost}` features; QCs "
+                               f"leave{'; D-ratio in-fold' if d_ratio else ''}.")
+            out.append(option(key, label, consequence, rlsc_sentence(params), params))
     return out
 
 
+def _per(params: Mapping[str, Any]) -> str:
+    """Where one curve is fit: each batch of the batch column, or the whole run."""
+    batch = params.get("batch_column")
+    batches = int(params.get("batches") or 0)
+    if batch:
+        return (f"each of the {batches} batches of `{batch}`" if batches > 1
+                else f"each batch of `{batch}`")
+    return "the whole run as one batch (no batch column)"
+
+
+def _order(params: Mapping[str, Any]) -> str:
+    order = params.get("order_column")
+    return f"the injection order (`{order}`)" if order else "injection order"
+
+
 def rlsc_sentence(params: Mapping[str, Any]) -> str:
-    """The methods sentence a QC-RLSC answer earns, with its own counts."""
+    """The methods sentence a QC-RLSC answer earns, with its own counts and the injection-order and
+    batch columns it read."""
     n_qc = int(params.get("n_qc") or 0)
     platform = str(params.get("platform") or "lc_ms")
     gone = params.get("dropped") or {}
     n = len(params.get("features") or [])
-    batches = int(params.get("batches") or 1)
-    per = f"each of the {batches} batches" if batches > 1 else "the run"
-    text = (f"Drift was corrected per batch by QC-RLSC ({DUNN}) fitted to the {n_qc} pooled QC "
-            f"injections only, which were then removed: for each feature and {per}, a LOESS of degree "
-            f"2 over injection order, its span chosen by leave-one-out cross-validation, divided "
-            f"each injection's value, rescaled to the feature's median QC value.")
+    how = "per batch" if params.get("batch_column") else "over the whole run"
+    text = (f"Drift was corrected {how} by QC-RLSC ({DUNN}) fitted to the {n_qc} pooled QC "
+            f"injections only, which were then removed: for each feature and {_per(params)}, a "
+            f"LOESS of degree 2 over {_order(params)}, its span chosen by leave-one-out "
+            f"cross-validation, divided each injection's value, rescaled to the feature's median QC "
+            f"value.")
     if params.get("kept") is not None:
         text += (f" Features detected in fewer than 70% of QC injections ({len(gone.get('detection') or [])}), "
                  f"that could not be corrected ({len(gone.get('uncorrectable') or [])}), or with a QC "
@@ -703,18 +739,17 @@ def rlsc_sentence(params: Mapping[str, Any]) -> str:
 
 
 def rlsc_details(params: Mapping[str, Any], record: Mapping[str, Any] | None = None) -> str:
-    """The QC answer's specifics for the methods paragraph, after its first clause."""
+    """The QC answer's specifics for the methods paragraph, after its first clause: the columns it
+    read and the counts the working table recorded."""
     n_qc = int(params.get("n_qc") or 0)
     platform = str(params.get("platform") or "lc_ms")
     gone = (record or {}).get("dropped") or params.get("dropped") or {}
     n = len(params.get("features") or [])
     kept = (record or {}).get("kept", params.get("kept"))
-    batches = int(params.get("batches") or 1)
-    per = f"each of the {batches} batches" if batches > 1 else "the run"
-    text = (f"QC-RLSC ({DUNN}) fitted, for each feature and {per}, a LOESS of degree 2 over "
-            f"injection order to the {n_qc} pooled QC injections, its span chosen by leave-one-out "
-            f"cross-validation; each injection was divided by the curve and rescaled to the "
-            f"feature's median QC value.")
+    text = (f"QC-RLSC ({DUNN}) fitted, for each feature and {_per(params)}, a LOESS of degree 2 "
+            f"over {_order(params)} to the {n_qc} pooled QC injections, its span chosen by "
+            f"leave-one-out cross-validation; each injection was divided by the curve and rescaled "
+            f"to the feature's median QC value.")
     if kept is not None:
         text += (f" Features detected in fewer than 70% of QC injections "
                  f"({len(gone.get('detection') or [])}), that could not be corrected "
@@ -894,6 +929,15 @@ def describe_d_ratio(spec: Mapping[str, Any]) -> tuple[str, str]:
             f"fold's own ({BROADHURST}); the QC side was fixed before the seal.")
 
 
+def _rlsc_clause(run: Mapping[str, Any]) -> str | None:
+    """QC-RLSC's clause in the methods paragraph: per batch, or over the whole run when the chosen
+    option named no batch column (``run["qc_batch"]``)."""
+    if not run.get("qc_rlsc"):
+        return None
+    how = "over the whole run" if "qc_batch" in run and not run["qc_batch"] else "per batch"
+    return f"drift was corrected {how} by QC-RLSC fitted to pooled QCs only, which were then removed"
+
+
 def _register() -> None:
     from turbotab.core.decisions import register_validator
     from turbotab.core.contracts import (CONTRACTS, ContractOption, MethodContract, Relation,
@@ -936,7 +980,9 @@ def _register() -> None:
     register_contract(MethodContract(
         key="qc_rlsc", label="QC-RLSC drift and batch correction", slot="repairs",
         scope="reference_rows", run_order=2.0,
-        needs=("pooled-QC injections", "an injection order", "at least five QCs per batch"),
+        needs=("pooled-QC injections", "an injection order (a reading each option names)",
+               "a batch column, or the whole run as one batch (a reading each option names)",
+               "at least five QCs per batch"),
         question="Pooled QCs and an injection order are here: correct drift from them?",
         options=(
             opt("qc_rlsc_lc", "Drift; LC-MS filters", f"Customary for large LC/GC-MS studies ({DUNN})",
@@ -958,8 +1004,7 @@ def _register() -> None:
                      "QC drift correction precedes every in-fold step."),
         ),
         sources=(DUNN, BROADHURST),
-        clause=lambda run: ("drift was corrected per batch by QC-RLSC fitted to pooled QCs only, "
-                            "which were then removed") if run.get("qc_rlsc") else None,
+        clause=_rlsc_clause,
     ))
     register_contract(MethodContract(
         key="qc_rsd_filter", label="QC-RSD filter", slot="repairs", scope="reference_rows",

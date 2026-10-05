@@ -15803,6 +15803,96 @@
         "title": "Baseline",
         "type": "object"
       },
+      "BatchFigure": {
+        "additionalProperties": false,
+        "description": "The figure ComBat with the outcome protected serves under inference, never a test (the batch\nanswer's ``figures``; ``methods/batch.py``): principal components before and after it.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "n_features": {
+            "title": "N Features",
+            "type": "integer"
+          },
+          "explained_before": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Explained Before",
+            "type": "array"
+          },
+          "explained_after": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Explained After",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/BatchFigurePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "outcome",
+          "n_features",
+          "explained_before",
+          "explained_after",
+          "points",
+          "caption"
+        ],
+        "title": "BatchFigure",
+        "type": "object"
+      },
+      "BatchFigurePoint": {
+        "additionalProperties": false,
+        "description": "One row of the batch figure: its batch, its outcome, and its first two principal-component\nscores before and after ComBat with the outcome protected.",
+        "properties": {
+          "batch": {
+            "title": "Batch",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "before": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Before",
+            "type": "array"
+          },
+          "after": {
+            "items": {
+              "type": "number"
+            },
+            "title": "After",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "outcome",
+          "before",
+          "after"
+        ],
+        "title": "BatchFigurePoint",
+        "type": "object"
+      },
       "BeeswarmInput": {
         "additionalProperties": false,
         "description": "One input's points: its SHAP value, its value (None for a category or a blank), and its\nvalue's percentile among the explained rows for the color (a category: its level's place).",
@@ -20778,6 +20868,17 @@
             "default": null,
             "title": "Levels"
           },
+          "batch_figure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchFigure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "withheld": {
             "anyOf": [
               {
@@ -20826,6 +20927,7 @@
           "precision",
           "imbalance",
           "levels",
+          "batch_figure",
           "withheld",
           "estimand"
         ],
@@ -21015,6 +21117,18 @@
             ],
             "default": null,
             "title": "Adjustment Terms"
+          },
+          "methods": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Methods"
           }
         },
         "required": [
@@ -21035,7 +21149,8 @@
           "optimism",
           "internal_external",
           "exposure_tests",
-          "adjustment_terms"
+          "adjustment_terms",
+          "methods"
         ],
         "title": "FittedModel",
         "type": "object"

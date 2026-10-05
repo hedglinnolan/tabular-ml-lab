@@ -1273,6 +1273,7 @@ export function fit(
       internal_external: null,
       exposure_tests: [],
       adjustment_terms: null,
+      methods: null,
     };
   });
   // The fit computes the held-out scores; as on the server (turbotab/core/seal.py), the route
@@ -1307,6 +1308,7 @@ export function fit(
     levels: null,
     withheld: null,
     estimand: null,
+    batch_figure: null,
   };
 }
 
