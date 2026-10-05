@@ -130,8 +130,9 @@ EnergyMethod = Literal["none", "standard", "residual", "residual_energy_dropped"
 # "multiple_imputation" is inference's: chained equations with the outcome and total energy in the
 # imputation model, pooled by Rubin's rules (BLUEPRINT §12 ruling 4; turbotab/core/methods/missing.py).
 MissingStrategy = Literal["complete_case", "impute", "multiple_imputation"]
-# How a left-censored column's blanks (values below a detection limit) are filled (audit ME-08).
-BelowDetection = Literal["half_minimum", "censoring_aware", "as_missing"]
+# How a left-censored column's blanks (values below a detection limit) are filled (audit ME-08);
+# "qrilc" (MS7): quantile regression imputation of left-censored data, per sample.
+BelowDetection = Literal["half_minimum", "censoring_aware", "as_missing", "qrilc"]
 
 
 class _Value(BaseModel):
@@ -480,6 +481,50 @@ class SetMeasurementError(_DecisionModel):
         if len(set(value)) != len(value):
             raise ValueError("each exposure may be named only once")
         return value
+
+
+# MS7 (MODELING_SEQUENCE §2, "Batch"; turbotab/core/methods/batch.py): how a batch column is
+# handled. "covariate": a term of the outcome model (inference's first); "reference_combat": ComBat
+# with a reference batch fitted in each training fold without the outcome (prediction's first);
+# "outcome_combat": ComBat with the outcome protected (refused for testing and under prediction);
+# "none": left alone; "not_a_batch": the column is not a batch at all (the reading was wrong).
+BatchMethod = Literal["covariate", "reference_combat", "outcome_combat", "none", "not_a_batch"]
+
+
+class BatchSpec(_Value):
+    column: str = Field(min_length=1)
+    method: BatchMethod
+    figures: bool = False  # ComBat with the outcome protected, for figures only (never the tests)
+
+
+class SetBatch(_DecisionModel):
+    """How a batch column is handled, by purpose (``turbotab.core.methods.batch``). ``figures``
+    adds ComBat with the outcome protected for figures only: never the matrix the tests read."""
+
+    kind: Literal["set_batch"] = "set_batch"
+    column: str = Field(min_length=1)
+    method: BatchMethod
+    figures: bool = False
+
+
+# MS7 (MODELING_SEQUENCE §2, "An exposure family"): the multiplicity method of an exposure family.
+MultiplicityMethod = Literal["bh", "stated_count", "none"]
+
+
+class MultiplicitySpec(_Value):
+    method: MultiplicityMethod
+    acknowledged: bool = False  # the attestation that keeps a blocked answer
+
+
+class SetMultiplicity(_DecisionModel):
+    """How an exposure family's tests are adjusted (``turbotab.core.methods.omics``):
+    Benjamini–Hochberg q-values (implied when unanswered), unadjusted with the number of tests
+    stated (a few prespecified hypotheses), or none; the last two beyond a few tests only with the
+    recorded attestation (``acknowledged``)."""
+
+    kind: Literal["set_multiplicity"] = "set_multiplicity"
+    method: MultiplicityMethod
+    acknowledged: bool = False
 
 
 class SetMissing(_DecisionModel):
@@ -885,7 +930,7 @@ Decision = Annotated[
         SetFeatureTable, SetCategorical, SetSurvey,
         SetExposureForm, SetOutcomeOrder, SetFollowUp,
         SetSensitivity, SetMeasurementError, SetOutcomeUnit, SetColumnUnit, ConfirmRole,
-        ConfirmReading, ConfirmReadings,
+        ConfirmReading, ConfirmReadings, SetBatch, SetMultiplicity,
     ],
     Field(discriminator="kind"),
 ]
@@ -981,6 +1026,10 @@ class ProjectState(BaseModel):
     # it (``"female=2,male=1"``, by column), kept apart so the detectors that read it (the CDC
     # growth charts' z-scores) recompute alone
     sex_codings: dict[str, str] | None = None
+    # MS7 (MODELING_SEQUENCE §2): how a batch column is handled, and an exposure family's
+    # multiplicity method (``set_batch``, ``set_multiplicity``)
+    batch: BatchSpec | None = None
+    multiplicity: MultiplicitySpec | None = None
 
     @field_validator("missing", mode="before")
     @classmethod
@@ -1322,6 +1371,9 @@ register_kind(SetColumnUnit, "column_units", key=lambda d: d.column,
 register_kind(SetSensitivity, "sensitivity")
 register_kind(SetMeasurementError, "measurement_error",
               value=lambda d: MeasurementErrorSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetBatch, "batch", value=lambda d: BatchSpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetMultiplicity, "multiplicity",
+              value=lambda d: MultiplicitySpec(**d.model_dump(exclude={"kind"})))
 register_validator("set_target", _target_is_a_column)
 register_validator("set_task", _task_is_for_the_target)
 register_validator("set_split", lambda d, ctx: _cluster_is_a_column_with_levels(d, ctx))
@@ -3048,11 +3100,13 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
             f"Name the columns whose blanks are non-detections; the findings name "
             f"{_and(censored[:6])}{' and more' if len(censored) > 6 else ''}.",
             exits=[{"label": "Those columns", "decision": _missing_base(decision, censored_columns=censored)}])
-    if not censored or decision.strategy == "complete_case" or decision.reason:
-        return
-    if decision.below_detection in ("half_minimum", "censoring_aware"):
-        return
     inference = getattr(state, "purpose", None) == "inference"
+    # MS7 (MODELING_SEQUENCE §4): under inference a reason does not keep a fill that reads values
+    # below a limit as missing at random; under prediction it does, ranked lower.
+    if not censored or decision.strategy == "complete_case" or (decision.reason and not inference):
+        return
+    if decision.below_detection in ("half_minimum", "censoring_aware", "qrilc"):
+        return
     how = ("multiple imputation reads them as missing at random" if decision.strategy ==
            "multiple_imputation" else "the median fill places them in the middle of the distribution")
     aware = ("a censored-normal draw below the limit, given the outcome" if inference else
@@ -3061,14 +3115,16 @@ def _non_detections_are_not_filled_by_the_median(decision: SetMissing, ctx: Any)
         "median_below_detection",
         f"{_and(censored[:6])}{' and others' if len(censored) > 6 else ''} hold values below a "
         f"detection limit: each blank is known to be small, but {how}. Choose how non-detections "
-        f"are filled, or keep this fill with your reason.",
+        f"are filled" + ("; under inference they are never filled as missing at random." if inference
+                         else ", or keep this fill with your reason."),
         exits=[{"label": f"Censoring-aware: {aware}",
                 "decision": _missing_base(decision, below_detection="censoring_aware",
                                           censored_columns=censored)},
                {"label": "Half the smallest detected value (customary)",
                 "decision": _missing_base(decision, below_detection="half_minimum",
                                           censored_columns=censored)},
-               {"label": "Keep this fill: give your reason", "decision": None}])
+               *([] if inference else [{"label": "Keep this fill: give your reason",
+                                        "decision": None}])])
 
 
 def _raw_columns(ctx: Any) -> set[str] | None:

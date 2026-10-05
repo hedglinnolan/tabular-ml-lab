@@ -148,9 +148,11 @@ def build_graph() -> Graph:
             # findings 14 (ledger repair 2, BLUEPRINT §14.3 amendment): the energy unit by the Atwater
             # identity only where its ratio admits one reading; a unit or day count confirmed on its
             # own is read with the recorded ones (one store).
+            # findings 15 (MS7): zeros a log cannot take, and a batch column's confounding with the
+            # outcome; the pooled-QC finding offers QC-RLSC and its filters.
             Stage(
                 "findings",
-                14,
+                15,
                 ("oriented",),
                 ("lens", "target", "column_units", "sex_codings"),
                 findings_stage,
@@ -183,7 +185,8 @@ def build_graph() -> Graph:
             # and first, last and change only by a settled time column.
             # working 4 (BLUEPRINT §14.3): as structure 11.
             # working 5 (ledger repair 2): as structure 12.
-            Stage("working", 5, ("oriented", "findings", "structure"),
+            # working 6 (MS7): QC-RLSC, the QC filters and PQN against the pooled QCs, before the seal.
+            Stage("working", 6, ("oriented", "findings", "structure"),
                   ("findings", "target", "grain", "unit", "aggregation", "repeat_kind", "temporal",
                    "shape_confirmations", "categorical"),
                   working_stage, heavy=True, label="Building the working table"),
@@ -263,7 +266,8 @@ def build_graph() -> Graph:
                   proposals_stage, label="Looking up what the field usually does"),
             # cohort 2: the rows complete cases drop beside those they keep (audit WP7, E14).
             # cohort 3 (the readings ledger, BLUEPRINT §14.1): complete cases read settled roles.
-            Stage("cohort", 3, ("working", "target_info"),
+            # cohort 4 (MS7): pooled QC injections leave first, on a line of their own.
+            Stage("cohort", 4, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),
             # split 4 (WP13): a measurement named as the unit groups the draw but is exploratory.
@@ -278,7 +282,8 @@ def build_graph() -> Graph:
             # says so (BLUEPRINT §12 ruling 3); timing stays on the training rows.
             # shelf 8 (the readings ledger): its predictors are the settled roles'.
             # shelf 9 (BLUEPRINT §14.3): a predictor's codes counted as the user answered, wherever kept.
-            Stage("shelf", 9, ("working", "cohort", "target_info", "split"),
+            # shelf 10 (MS7): the screened elastic net at p ≫ n under prediction.
+            Stage("shelf", 10, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms"),
@@ -311,9 +316,11 @@ def build_graph() -> Graph:
             # design 17 (ledger repair 2): a column the energy answer removes or computes with never
             # reaches the one-hot step as codes; a number with two values is filled by its most
             # frequent value.
-            Stage("design", 17, ("working", "split", "target_info"),
+            # design 18 (MS7): normalization, then values below detection, then the log; the
+            # in-fold D-ratio filter and reference ComBat; a batch confounded with the outcome refused.
+            Stage("design", 18, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
-                   "event", "lens", "findings", "exposure_forms", "follow_up"),
+                   "event", "lens", "findings", "exposure_forms", "follow_up", "batch"),
                   design_stage,
                   heavy=True, requires=("models", "roles"),
                   label="Building each model's pipeline"),
@@ -334,8 +341,10 @@ def build_graph() -> Graph:
             # fit 14 (BLUEPRINT §14.3): the intervals cluster by the grain's unit or a grouping the
             # user confirmed, never by a reader's identifier over the grain answer.
             # fit 15 (ledger repair 2): multiple imputation fills a number with two values as a yes/no.
-            Stage("fit", 15, ("working", "design", "split", "target_info", "cohort"),
-                  ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up"),
+            # fit 16 (MS7): an exposure family's recorded multiplicity method.
+            Stage("fit", 16, ("working", "design", "split", "target_info", "cohort"),
+                  ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
+                   "multiplicity"),
                   fit_stage, heavy=True, requires=("models",),
                   label="Fitting the models"),
             # substitution 6: a swap can move a share of energy (WP12a); a random intercept's band

@@ -180,6 +180,14 @@ def findings_stage(ctx: StageContext) -> dict[str, Any]:
     scale = omics.scale_finding(frame, lens, target)
     if scale is not None:
         own.append(scale)
+    # MS7: zeros a log cannot take where the pack's zeros finding is silent, and each batch
+    # column's confounding with the outcome, read over every row (descriptive scope).
+    zeros = omics.zeros_finding(frame, lens, target, [f["id"] for _, f in spoken])
+    if zeros is not None:
+        own.append(zeros)
+    from turbotab.core.methods.batch import batch_findings
+
+    own.extend(batch_findings(frame, lens, target))
     # WP14 (audit IN-13): the stated lens against the table, answered by changing it or recorded.
     own.extend(detectors.own_findings(frame, lens))
     for _, f in spoken:

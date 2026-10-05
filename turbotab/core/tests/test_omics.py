@@ -58,10 +58,12 @@ def _intensities_with_zeros(folder: Path) -> tuple[pd.DataFrame, dict[str, str],
 @pytest.mark.parametrize("missing,option,refused", [
     ("complete_case", "pqn_log2", True),
     ("complete_case", "log2", True),
-    ("impute", "pqn_log2", False),  # the missing-values answer fills them, and says so
+    # MS7: a fill for missing values never takes a zero a log turned missing; it routes to the
+    # detection-limit question first (this case was accepted before the modeling-sequence review).
+    ("impute", "pqn_log2", True),
     ("complete_case", "declared_normalized", False),  # nothing is logged
 ])
-def test_a_log_never_hands_a_missing_value_to_a_family_that_cannot_take_one(missing, option, refused):
+def test_a_zero_a_log_would_turn_missing_routes_to_the_detection_limit_question(missing, option, refused):
     folder = Path(tempfile.mkdtemp())
     frame, paths, features = _intensities_with_zeros(folder)
     n_zero = int((frame[features] == 0).to_numpy().sum())
@@ -69,19 +71,22 @@ def test_a_log_never_hands_a_missing_value_to_a_family_that_cannot_take_one(miss
                   missing=missing, roles={**{c: "exposure" for c in features}, "sample_id": "identifier"},
                   findings={"omics_scale": FindingDisposition(
                       action="applied", option=option,
-                      params={"kind": "intensities", "columns": features, "n_zero": n_zero})})
+                      params={"kind": "intensities", "columns": features, "n_zero": n_zero,
+                              "zero_columns": {"mz_4": 1, "mz_7": 1}})})
     refusal = omics.zeros_refusal(["elastic_net", "boosted_trees"], st)
     assert (refusal is not None) == refused
     if refused:
-        assert refusal.code == "zeros_cannot_be_logged" and "2 zero values" in refusal.message
-        assert refusal.exits[1]["decision"]["models"] == ["boosted_trees"]
-        assert omics.zeros_refusal(["boosted_trees"], st) is None  # it takes missing values
+        assert refusal.code == "zeros_cannot_be_logged" and "2 zero values in 2 assay columns" in refusal.message
+        assert refusal.exits[0]["label"].startswith("Zeros mean not detected")
+        assert refusal.exits[1]["decision"]["option"] == "declared_normalized"
+        # whatever the families: one that takes missing values would read the zero as missing too
+        assert omics.zeros_refusal(["boosted_trees"], st) is not None
     split = mf.split_bundle(np.arange(len(frame)), holdout=0.0, folds=5, seed=0)
     context = mf.context(st, {"split": split, "target_info": mf.target_info("binary", "case")}, paths)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if refused:
-            with pytest.raises(ValueError, match="zero values in the assay columns cannot be logged"):
+            with pytest.raises(ValueError, match="zero values in 2 assay columns cannot be logged"):
                 design_stage(context)
         else:
             design_stage(context)

@@ -1115,6 +1115,10 @@ MODELS = {
         option("featurewise", "Feature-wise tests",
                "Tests each exposure on its own, adjusted for the covariates, with "
                "Benjamini–Hochberg false-discovery control; no predictions."),
+        # MS7: in-fold screening at p ≫ n before the penalty (methods/omics.py).
+        option("screened_elastic_net", "Screened elastic net",
+               "Keeps the features most tied to the outcome in each training fold, then an "
+               "elastic net."),
         option("proportional_odds", "Proportional-odds model",
                "Cumulative odds ratios for an ordered outcome, the same at every cut-point; "
                "Brant's test checks it."),

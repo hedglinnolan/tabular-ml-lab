@@ -293,6 +293,12 @@ def representative_decisions():
                 reason="implausible energy reports")]),
         ]),
         d.SetMeasurementError(method="regression_calibration", exposures=["protein_g"]),
+        # MS7: how a batch column is handled, and an exposure family's multiplicity
+        d.SetBatch(column="batch", method="covariate", figures=True),
+        d.SetBatch(column="batch", method="reference_combat"),
+        d.SetBatch(column="batch", method="not_a_batch"),
+        d.SetMultiplicity(method="bh"),
+        d.SetMultiplicity(method="none", acknowledged=True),
     ]
 
 

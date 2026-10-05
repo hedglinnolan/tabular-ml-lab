@@ -1281,6 +1281,7 @@ def cohort_flow(
     n_loaded: int | None = None,
     missing_frame: Any | None = None,
     repairs: Sequence[Any] | None = None,
+    reference: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], Any]:
     """The participant flow over ``frame`` (indexed by row id): its steps and the kept row ids.
 
@@ -1289,7 +1290,9 @@ def cohort_flow(
     ``predictor_columns`` in ``missing_frame`` (default: ``frame``); columns absent from it are
     taken to have no missing values (the caller leaves them out when the profile says so).
     ``repairs`` are range rules from applied repairs (impossible values, ``repairs.exclusion_rules``):
-    steps ``repair:<i>`` after the eligibility answer's own.
+    steps ``repair:<i>`` after the eligibility answer's own. ``reference`` names reference rows
+    (pooled QC injections, ``methods.qc_drift.reference_rows``): they leave first, on a line of
+    their own, because they are not participants (MS7).
     """
     steps: list[dict[str, Any]] = []
     n = len(frame) if n_loaded is None else int(n_loaded)
@@ -1297,15 +1300,25 @@ def cohort_flow(
                   "reason": None, "decision_id": None})
     import pandas as pd
 
+    present = pd.Series(True, index=frame.index)
+    if reference is not None and reference.get("column") in frame.columns:
+        from turbotab.core.methods.qc_drift import reference_mask
+
+        present = ~reference_mask(frame, reference)
+        n_left = int(present.sum())
+        steps.append({"key": "reference_rows", "label": str(reference["label"]), "n": n_left,
+                      "dropped": n - n_left, "reason": str(reference["reason"]),
+                      "decision_id": None})
+        n = n_left
     if target is not None:
-        keep = _measured(frame[target])
+        keep = _measured(frame[target]) & present
         kept = int(keep.sum())
         steps.append({"key": "outcome_measured", "label": f"`{target}` recorded", "n": kept,
                       "dropped": n - kept, "reason": f"no value for the outcome `{target}`",
                       "decision_id": None})
     else:
-        keep = pd.Series(True, index=frame.index)
-        kept = len(frame)
+        keep = present.copy()
+        kept = int(keep.sum())
     for i, rule in enumerate(rules or []):
         # STROBE item 13(a) counts who was "confirmed eligible": a row whose value is unknown is
         # not, so it leaves on a line of its own before the range (audit MA-19), and the range's
@@ -1382,6 +1395,11 @@ def cohort_inputs(state: Any, ingest: Mapping[str, Any]) -> tuple[list[str], lis
     needed = [state.target] if state.target is not None else []
     for rule in [*(state.exclusions or []), *repair_rules(state)]:
         needed.extend(_as_rule(rule).reads())
+    from turbotab.core.methods.qc_drift import reference_rows
+
+    reference = reference_rows(state)
+    if reference is not None and reference["column"] in order:
+        needed.append(reference["column"])
     with_missing = _columns_with_missing(ingest)
     levels = set(level_columns(state, preds, {str(c["name"]): c for c in ingest.get("columns", [])}))
     gappy = ([c for c in preds if c in with_missing and c not in levels]
@@ -1409,8 +1427,16 @@ def compute_cohort(
     """
     needed, preds, gappy = cohort_inputs(state, ingest)
     frame = store.materialize(needed, row_ids)
+    from turbotab.core.methods.qc_drift import reference_mask, reference_rows
+
+    reference = reference_rows(state)
+    if reference is not None and reference["column"] not in frame.columns:
+        reference = None
     if measured is not None and state.target is not None:
-        measured.append(frame.index[_measured(frame[state.target]).to_numpy()].to_numpy(dtype=np.int64))
+        recorded = _measured(frame[state.target])
+        if reference is not None:  # a pooled QC is never a participant the holdout can draw
+            recorded &= ~reference_mask(frame, reference)
+        measured.append(frame.index[recorded.to_numpy()].to_numpy(dtype=np.int64))
     missing_frame = None
     if gappy:
         missing_frame = _missing_mask(store, gappy, frame.index)
@@ -1424,6 +1450,7 @@ def compute_cohort(
         predictor_columns=gappy,
         missing_frame=missing_frame,
         repairs=repair_rules(state),
+        reference=reference,
     )
     return steps, kept, preds
 

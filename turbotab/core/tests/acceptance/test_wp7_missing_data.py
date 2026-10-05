@@ -707,7 +707,10 @@ def untargeted():
 def test_6_median_fill_of_non_detections_is_refused_unless_given_a_reason(untargeted):
     """The left-censoring finding names every censored column (not the eight its card shows); a
     fill that treats their blanks as any other blank is refused with half-minimum and a
-    censoring-aware fill as exits, under either purpose; a reason, or complete cases, is accepted."""
+    censoring-aware fill as exits, under either purpose; complete cases are accepted. Under
+    prediction a reason keeps the fill (ranked lower); under inference it does not (MODELING_SEQUENCE
+    §4, MS7: "MAR imputation of detection-limit blanks … refuse, censoring-aware instead"), and the
+    refusal offers no "give your reason" exit."""
     frame, findings = untargeted
     found = next(f for f in findings if f["id"] == "pack::metabolomics::left_censored")
     assert len(found["censored_columns"]) > len(found["affected_columns"]) == 8
@@ -725,8 +728,13 @@ def test_6_median_fill_of_non_detections_is_refused_unless_given_a_reason(untarg
         assert offered == ["censoring_aware", "half_minimum"]
         assert refused.value.exits[0]["decision"]["censored_columns"] == [
             c for c in found["censored_columns"] if c in roles]
-        assert refused.value.exits[-1]["decision"] is None  # keep it: the answer must say why
-        validate(SetMissing(strategy=strategy, reason="the blanks are failed injections"), ctx)
+        if purpose == "prediction":
+            assert refused.value.exits[-1]["decision"] is None  # keep it: the answer must say why
+            validate(SetMissing(strategy=strategy, reason="the blanks are failed injections"), ctx)
+        else:
+            assert all(e["decision"] is not None for e in refused.value.exits)
+            with pytest.raises(Refusal):
+                validate(SetMissing(strategy=strategy, reason="the blanks are failed injections"), ctx)
         validate(SetMissing(strategy="complete_case"), ctx)
         validate(refused.value.exits[0]["decision"], ctx)
 

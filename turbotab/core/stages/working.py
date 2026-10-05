@@ -1778,7 +1778,12 @@ def working_stage(ctx: StageContext) -> Bundle:
     plan = aggregation_plan(ctx.state, set(names), structure)
     base = {"transposed": transposed, "n_source_rows": int(info["n_rows"]),
             "repairs": [{"column": c, "expression": e} for c, e in repairs.items()]}
-    if not repairs and plan is None:
+    # MS7: QC drift and inter-batch correction (QC-RLSC), the QC filters and PQN against the pooled
+    # QCs run here, before the seal, from the pooled-QC rows only (turbotab/core/methods/qc_drift.py).
+    from turbotab.core.methods.qc_drift import reference_plan
+
+    reference = reference_plan(ctx.state)
+    if not repairs and plan is None and reference is None:
         data = {**_dataset_fields(info), **base, "pass_through": True, "aggregation": None,
                 "row_map": "identity"}
         return Bundle(data=data, files={TABLE: _reference(source, ctx, "working")})
@@ -1790,8 +1795,21 @@ def working_stage(ctx: StageContext) -> Bundle:
     map_out = _scratch(ctx, "working", ROW_MAP)
     con, temp = _connect(ctx, "working")
     files: dict[str, Path] = {TABLE: table_out, SIDECAR: sidecar}
+    corrected = qc_out = None
     try:
         aggregation = None
+        if reference is not None:
+            from turbotab.core.methods.qc_drift import QC_FILE, correct_table
+
+            corrected = _scratch(ctx, "working", "reference_rows.parquet")
+            qc_out = _scratch(ctx, "working", QC_FILE)
+            _execute(con, ctx, f"COPY (SELECT * FROM {src_sql} ORDER BY {ROW_ID}) TO "
+                               f"{_lit(corrected)} (FORMAT parquet, COMPRESSION zstd)",
+                     0.05, 0.1, "Reading the pooled QCs")
+            ctx.progress(0.1, "Correcting drift from the pooled QCs")
+            base["reference_rows"] = correct_table(corrected, reference, qc_out)
+            files[QC_FILE] = qc_out
+            src_sql = f"(SELECT * FROM read_parquet({_lit(corrected)}))"
         if plan is None:
             _execute(con, ctx, f"COPY (SELECT * FROM {src_sql} ORDER BY {ROW_ID}) TO "
                                f"{_lit(table_out)} (FORMAT parquet, COMPRESSION zstd)",
@@ -1802,11 +1820,13 @@ def working_stage(ctx: StageContext) -> Bundle:
         ctx.progress(0.85, "Describing the working table")
         described = _describe(table_out, sidecar, started)
     except BaseException:
-        _cleanup(table_out, sidecar, map_out)
+        _cleanup(table_out, sidecar, map_out, *([qc_out] if qc_out is not None else []))
         raise
     finally:
         con.close()
         _cleanup(temp)
+        if corrected is not None:
+            _cleanup(corrected)
     data = {**described, **base, "pass_through": False, "aggregation": aggregation,
             "row_map": ROW_MAP if aggregation is not None else "identity"}
     return Bundle(data=data, files=files)
