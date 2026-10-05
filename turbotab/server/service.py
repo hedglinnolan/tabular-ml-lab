@@ -987,6 +987,9 @@ class ProjectService:
             cohort_row_ids=cohort_ids,
             sealed_row_ids=sealed,
             training_kind=kind,
+            # The log (a preview's state is the log's fold with the answer; a revert's is the
+            # answer it restores) and the project's folder (an added file, a staged codebook).
+            settings={"records": ctx.records, "project_dir": ctx.project_dir},
         )
         pctx.before = lambda: self._before_frame(pid, pctx, stages, used)
         result = consequences.plan(parsed, pctx, basis="")
