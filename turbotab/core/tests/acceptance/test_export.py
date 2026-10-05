@@ -29,6 +29,11 @@ truth (``truths.FIXTURE_TRUTHS``), never a constant:
   items). Which items each journey answers is derived by hand from the item texts and the journey's
   record (:data:`STROBE_NUT_ANSWERED`, :data:`TRIPOD_ANSWERED`).
 * The replay runs as a separate process (``python -m turbotab.replay``) in a fresh TurboTab home.
+* The held-out result of the synthetic table's prediction is R's: ``glm`` fitted on the rows not
+  held out and scored on the sealed ones (skipped where R is not installed).
+* The live checklist's leash (MODELING_SEQUENCE §4) reads the record of the scores shown from its
+  file, and holds the checklist to the caption written out here and to the numbers the served
+  fit printed only later.
 """
 from __future__ import annotations
 
@@ -53,6 +58,7 @@ import pytest
 from turbotab.core.tests.acceptance.server_drive import (WP17_QUESTIONS, _post_when_reached,
                                                          answer_plan, answer_wp17, local_server,
                                                          open_project)
+from turbotab.core.tests.acceptance.r_reference import needs_r, run_r
 from turbotab.core.tests.stage_harness import NHANES, REPO
 from turbotab.core.tests.truths import ASKING, fixture_truth
 from turbotab.core.tests.truths import answers as truth_answers
@@ -826,6 +832,7 @@ RELATION_TESTS = {
     "plan_with_hash": "test_1_the_analysis_plan_is_the_lock_s_with_its_sha256",
     "exposure_rows_only": "test_1_table_2_reports_the_declared_models_as_numpy_refits_them",
     "declared_result_only": "test_1_the_performance_table_reports_the_declared_result_only",
+    "no_unseen_score": "test_1_the_live_checklist_quotes_no_score_until_it_was_shown",
     "unanswered_listed": "test_3_each_checklist_lists_every_item_with_where_or_unanswered",
     "no_fitted_objects": "test_1_the_bundle_holds_every_part_and_no_fitted_object_or_row",
     "replay_reproduces": "test_2_a_fresh_home_replay_reproduces_the_matrix_and_every_estimate",
@@ -969,6 +976,7 @@ def diet(tmp_path_factory) -> dict[str, Any]:
         drive.decide(opening)
         _wait_fresh(drive, ("cohort", "design", "fit"))
         seen["fit"] = drive.artifact("fit")
+        seen["sealed"] = drive.sealed()  # the held-out rows' ids, for R's reference
         seen["prediction"] = _export(drive)
     for name in ("inference", "prediction"):
         if seen[name].status_code == 200:
@@ -1028,6 +1036,46 @@ def test_diet_the_held_out_score_at_the_opening_is_the_one_result(diet):
     assert report["checklist"] == "TRIPOD+AI" and report["counts"]["items"] == 52
 
 
+R_HELD_OUT = """
+d <- read.csv(diet_csv, stringsAsFactors = FALSE)
+s <- read.csv(sealed_csv)
+d$y <- as.integer(d$dm == "yes")
+held <- d$pid %in% s$pid
+m <- glm(y ~ age + sex + smoking + activity + bmi + protein_g, family = binomial(),
+         data = d[!held, ], control = glm.control(epsilon = 1e-14, maxit = 100))
+p <- predict(m, newdata = d[held, ], type = "response")
+y <- d$y[held]
+r <- rank(p)
+n1 <- sum(y == 1); n0 <- sum(y == 0)
+out(list(log_loss = -mean(y * log(p) + (1 - y) * log(1 - p)),
+         auc = (sum(r[y == 1]) - n1 * (n1 + 1) / 2) / (n1 * n0),
+         n_train = sum(!held), n_held = sum(held)))
+"""
+
+
+@needs_r
+def test_diet_the_held_out_result_is_r_s_glm_scored_on_the_sealed_rows(diet, tmp_path):
+    """The one row labeled the result under a holdout is the declared family's held-out score: R's
+    ``glm`` (logistic regression, unpenalized, on the predictors the roles declare, energy left
+    out as "no energy adjustment" says) fitted on the rows not held out and scored on the sealed
+    ones gives the same log loss, and its rank-sum AUC the same AUC, independently of the code
+    under test. The held-out rows are the split stage's sealed frame's, by row position."""
+    fit = diet["fit"]
+    frame = diet["frame"]
+    sealed = frame.iloc[sorted(diet["sealed"])][["pid"]]
+    ref = run_r(R_HELD_OUT, {"diet": frame, "sealed": sealed}, tmp_path / "r")
+    assert (ref["n_train"], ref["n_held"]) == (fit["n_train"], fit["n_holdout"])
+    table = _csv(diet["prediction_files"]["results/performance.csv"]).set_index("key")
+    primary = fit["primary_metric"]
+    assert primary == "log_loss"
+    result = table.loc[f"result/holdout/{primary}"]
+    assert result["role"] == "the result"
+    # The two optimizers stop at their own tolerances (R's IRLS at 1e-14 here); the log loss agrees
+    # well within 1e-6. The AUC reads only the predictions' order, so it agrees exactly.
+    assert result["estimate"] == pytest.approx(ref["log_loss"], abs=1e-6)
+    assert table.loc["linear/holdout/auc", "estimate"] == pytest.approx(ref["auc"], abs=1e-12)
+
+
 @pytest.mark.parametrize("name", ["inference", "prediction"])
 def test_diet_a_fresh_home_replay_reproduces_both_journeys(name, diet):
     """The inference journey read two files: the joined one is given by name, from a copy elsewhere
@@ -1052,3 +1100,143 @@ def test_diet_a_fresh_home_replay_reproduces_both_journeys(name, diet):
     assert est["reproduced"] == est["n_recorded"] == len(prov["estimates"]) > 10
     assert est["max_abs_diff"] <= 1e-12
     assert report["files_different"] == []
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# The live checklist and the scores seen (MODELING_SEQUENCE §4; MS6). The checklist route records
+# nothing, so it may show nothing a client was not already shown: under prediction the performance
+# table's caption is the declared result's sentence, which states a cross-validated score and, with
+# several families, names the one the comparison chose. Read off a checklist and not recorded, it
+# would let the compared families be dropped and the remaining one's own score be declared "before
+# any score was seen" (the verifier's path through GET …/checklist).
+# ═════════════════════════════════════════════════════════════════════════════
+
+PERFORMANCE_TITLE = "Table 2. Performance of each model family, and the declared result"
+# What the live checklist quotes in the declared result's place before the fit's scores were shown,
+# as the repair words it (written out here, never imported from the code under test).
+UNSEEN_RESULT = ("The declared result is not quoted here until the fit's cross-validated scores "
+                 "have been shown (by the fit, or in the bundle): a score read here would count as "
+                 "seen, and which scores were seen decides what may be declared the result.")
+COMPARED_STAY = (
+    "These families' cross-validated scores were shown for `dm` with no rows held out: {names}. "
+    "Dropping them would make the remaining family's own score the result, which flatters the "
+    "choice (Tsamardinos et al. 2018). Keep them: the result is then the selection-corrected "
+    "estimate, and the best family is still the one deployed.")
+
+
+def _seen_on_disk(folder: Path) -> dict[str, list[str]]:
+    """The record of the scores shown, read here from its file beside the project."""
+    path = folder / "scores_seen.json"
+    return json.loads(path.read_text("utf-8"))["targets"] if path.is_file() else {}
+
+
+def _performance_quotes(report: dict[str, Any]) -> dict[str, list[str]]:
+    """Each checklist item that quotes the performance table, with those quotes."""
+    out: dict[str, list[str]] = {}
+    for item in report["items"]:
+        quotes = [w["quote"] for w in item["where"] if w["file"] == "results/performance.md"]
+        if quotes:
+            out[item["id"]] = quotes
+    return out
+
+
+def _decimals(text: str) -> set[str]:
+    """Every decimal number a text prints (a score, its interval)."""
+    return set(re.findall(r"\d+\.\d+", text))
+
+
+def test_1_a_caption_without_its_score_keeps_what_else_it_says():
+    """Which captions the live checklist keeps out, on fits written here: a declared result that
+    states a score (the selection-corrected one, a family's own) has the unseen caption, which keeps
+    the survey's unweighted label; one that states none (a holdout before it is opened, nothing
+    declared) has none, so the checklist quotes it whole."""
+    from turbotab.core.export.tables import performance
+    from turbotab.core.stages.modeling import PREDICTION_POPULATION_SCORES
+
+    unweighted = ("Every score is unweighted: it describes how the models predict these "
+                  "participants, not the population the survey weights stand for.")
+    population = ("The surveyed population's performance, by design-based cross-validation, is "
+                  "not in this table.")
+    for basis, states_a_score in (("selection_corrected", True), ("own_score", True),
+                                  ("holdout", False), ("not_declared", False)):
+        for concerns, after in (([], ""),
+                                ([PREDICTION_POPULATION_SCORES], f" {unweighted} {population}")):
+            fit = {"models": [{"family": "linear", "label": "Linear model", "concerns": concerns,
+                               "cv": {"auc": {"estimate": 0.71}}}],
+                   "primary_metric": "auc", "metric_labels": {"auc": "AUC"},
+                   "result": {"basis": basis, "family": "linear", "metric": "auc",
+                              "estimate": 0.70 if states_a_score else None,
+                              "sentence": "The sentence the fit declared."}}
+            [table] = performance(fit)
+            assert table.caption == f"The sentence the fit declared.{after}"
+            assert table.unseen_caption == (f"{UNSEEN_RESULT}{after}" if states_a_score else None)
+
+
+def test_1_the_live_checklist_quotes_no_score_until_it_was_shown(tmp_path):
+    """Two families compared with nothing held out, the fit computed and never served: the
+    checklist quotes the performance table without the declared result (TRIPOD+AI 12e and 23a)
+    and the record of scores shown stays empty. Dropping a family is then accepted, honestly: no
+    score was seen, so the one left is declared before any was. Once the fit shows its score, the
+    checklist quotes the declared result exactly as the bundle does, still recording nothing of its
+    own, and switching families is refused with the exit that keeps the one seen."""
+    from turbotab.core.tests.acceptance.test_ms6_prediction_validation import _refused
+
+    csv = tmp_path / "diet.csv"
+    _diet().to_csv(csv, index=False)
+    with local_server(tmp_path / "home") as client:
+        drive = _open_diet(client, csv, "prediction")
+        drive.answer("split", {"kind": "set_split", "holdout": 0.0, "seed": 0, "folds": 5})
+        drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "none"})
+        drive.answer("models", {"kind": "select_models", "models": ["linear", "elastic_net"]})
+        _wait_fresh(drive, ("cohort", "design", "fit"))
+        folder = client.app.state.service.workspace.project_dir(drive.pid)
+        url = f"/api/projects/{drive.pid}/checklist"
+        unseen = {"12e": [f"{PERFORMANCE_TITLE}. {UNSEEN_RESULT}"],
+                  "23a": [f"{PERFORMANCE_TITLE}. {UNSEEN_RESULT}"]}
+
+        compared = client.get(url)
+        assert compared.status_code == 200, compared.text[:600]
+        compared = compared.json()
+        assert _performance_quotes(compared) == unseen
+        assert _seen_on_disk(folder) == {}
+
+        # Nothing was shown, so leaving a family out flatters no choice: accepted.
+        drive.decide({"kind": "select_models", "models": ["elastic_net"]})
+        _wait_fresh(drive, ("cohort", "design", "fit"))
+        alone = client.get(url).json()
+        assert _performance_quotes(alone) == unseen
+        assert _seen_on_disk(folder) == {}
+
+        fit = drive.artifact("fit")  # the fit served: its score shown, and recorded
+        assert _seen_on_disk(folder) == {"dm": ["elastic_net"]}
+        result = fit["result"]
+        assert result["basis"] == "own_score" and result["vouched"] is True
+        shown = client.get(url).json()
+        assert _performance_quotes(shown) == {
+            "12e": [f"{PERFORMANCE_TITLE}. {result['sentence']}"],
+            "23a": [f"{PERFORMANCE_TITLE}. {result['sentence']}"]}
+        assert _seen_on_disk(folder) == {"dm": ["elastic_net"]}  # the checklist added nothing
+
+        # The score seen, the leash holds: the switch is refused, its exit keeping the family seen.
+        error = _refused(client, drive.pid, {"kind": "select_models", "models": ["linear"]},
+                         "compared_families_stay")
+        assert error["message"] == COMPARED_STAY.format(names="`elastic_net`")
+        assert sorted(error["exits"][0]["decision"]["models"]) == ["elastic_net", "linear"]
+
+        r = _export(drive)
+        assert r.status_code == 200, r.text[:900]
+        files = _files(r.content)
+        # every score seen, the live checklist is the bundle's own
+        assert json.loads(files["checklist/tripod_ai.json"]) == shown
+        table = _csv(files["results/performance.csv"])
+        row = table[table["role"] == "the result"].set_index("key").loc[
+            f"result/own_score/{fit['primary_metric']}"]
+        assert row["basis"] == "its own score, declared before any score was seen"
+        assert row["estimate"] == result["estimate"]
+        # The numbers the earlier checklists withheld are nowhere in them.
+        printed = _decimals(result["sentence"])
+        assert printed
+        for early in (compared, alone):
+            text = json.dumps(early, ensure_ascii=False)
+            assert result["sentence"] not in text
+            assert not printed & _decimals(text), printed & _decimals(text)

@@ -49,6 +49,9 @@ class Table(_Model):
     columns: list[Column]
     rows: list[dict[str, Any]]  # each with a "key": the row's stable name
     shown: list[str]  # the Markdown's columns, combined where a header says so (:func:`markdown`)
+    # The caption as the live checklist quotes it before a client was shown the scores it states
+    # (:data:`UNSEEN_RESULT`); None when the caption states no score.
+    unseen_caption: str | None = None
 
 
 # ── formatting ───────────────────────────────────────────────────────────────
@@ -321,6 +324,17 @@ BASIS = {
     "own_score": "its own score, declared before any score was seen",
     "holdout": "held-out rows, declared final before they were opened",
 }
+# MS6 (MODELING_SEQUENCE §4): the declared results whose sentence states a cross-validated score,
+# the selection-corrected one naming the family the comparison chose. A score shown counts as seen
+# (``selection.note_seen``), and the scores seen decide what may be declared: a family whose score
+# was seen with no rows held out stays among the families compared, and a family's own score is
+# the result only when no other family's was seen. So the live checklist (GET …/checklist), which
+# records nothing, quotes such a sentence only once the fit has shown its scores
+# (``bundle.live_checklist``); before that it quotes this instead.
+SCORED_BASES = ("selection_corrected", "own_score")
+UNSEEN_RESULT = ("The declared result is not quoted here until the fit's cross-validated scores "
+                 "have been shown (by the fit, or in the bundle): a score read here would count as "
+                 "seen, and which scores were seen decides what may be declared the result.")
 
 
 def _metric_order(fit: Mapping[str, Any]) -> list[str]:
@@ -439,16 +453,19 @@ def performance(fit: Mapping[str, Any]) -> list[Table]:
                          "estimate": score, "ci_low": None, "ci_high": None, "se": None,
                          "role": RESULT})
     caption = result.get("sentence") or "No result is declared."
+    unseen = UNSEEN_RESULT if basis in SCORED_BASES else None
     survey = unweighted(fit)
     if survey is not None:
         for row in rows:
             row["basis"] = f"{row['basis']}, {UNWEIGHTED}"
-        caption = " ".join([caption, UNWEIGHTED_CAPTION,
-                            *([POPULATION_CAPTION] if survey == "population" else [])])
+        said = [UNWEIGHTED_CAPTION, *([POPULATION_CAPTION] if survey == "population" else [])]
+        caption = " ".join([caption, *said])
+        unseen = " ".join([unseen, *said]) if unseen else None
     return [Table(
         name="performance",
         title="Table 2. Performance of each model family, and the declared result",
         caption=caption,
+        unseen_caption=unseen,
         columns=[Column(key="family", header="family", kind="text"),
                  Column(key="score", header="score", kind="text"),
                  Column(key="basis", header="basis", kind="text"),
@@ -476,6 +493,6 @@ def headers_for(table: Table) -> dict[str, str]:
     return PERFORMANCE_HEADERS if table.name == "performance" else TABLE2_HEADERS
 
 
-__all__ = ["BASIS", "Column", "NOT_RESULT", "PERFORMANCE_HEADERS", "RESULT", "TABLE2_HEADERS",
-           "Table", "csv_value", "estimates", "fmt", "fmt_p", "headers_for", "markdown",
-           "performance", "results_tables", "table2", "to_csv"]
+__all__ = ["BASIS", "Column", "NOT_RESULT", "PERFORMANCE_HEADERS", "RESULT", "SCORED_BASES",
+           "TABLE2_HEADERS", "Table", "UNSEEN_RESULT", "csv_value", "estimates", "fmt", "fmt_p",
+           "headers_for", "markdown", "performance", "results_tables", "table2", "to_csv"]

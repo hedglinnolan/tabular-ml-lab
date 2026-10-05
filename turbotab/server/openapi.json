@@ -2376,7 +2376,7 @@
           "export"
         ],
         "summary": "Checklist",
-        "description": "The reporting checklist of the declared purpose (STROBE-nut under inference, TRIPOD+AI\nunder prediction): every item quoted from its source, with where the record answers it or\n\"unanswered — the author must supply this\", and what the export still waits for.",
+        "description": "The reporting checklist of the declared purpose (STROBE-nut under inference, TRIPOD+AI\nunder prediction): every item quoted from its source, with where the record answers it or\n\"unanswered — the author must supply this\", and what the export still waits for. Reading it\nrecords nothing, so it shows no score that was not already shown: under prediction the\ndeclared result is quoted only once the fit's cross-validated scores have been shown.",
         "operationId": "checklist_api_projects__pid__checklist_get",
         "parameters": [
           {
