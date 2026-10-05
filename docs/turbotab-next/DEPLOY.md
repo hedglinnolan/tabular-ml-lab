@@ -84,7 +84,9 @@ ends:
 - when the server restarts.
 
 After 5 failed sign-ins for one account, or 20 from one address, within 15 minutes, further
-attempts wait.
+attempts wait. Each attempt counts as it starts, so a burst sent at once is held to the same
+limits. TurboTab takes a change (a sign-in, a sign-out, an upload, a run) only from its own pages.
+A browser request that a page on another site or on a sibling subdomain sent is refused.
 
 **Workspaces.** Each user works in `/data/users/<name>/`, and no user can list, open or change
 another user's project. Every route that names a project checks that the project belongs to the
@@ -94,9 +96,14 @@ and export downloads. An open event stream ends when its session does. The job w
 
 **TLS.** TurboTab speaks plain HTTP. Publish its port on `127.0.0.1` only, as the example does, and
 let the reverse proxy terminate TLS. Set `TURBOTAB_TRUSTED_PROXIES` to the proxy's address as the
-container sees it. The access log's client column shows that address (often Docker's bridge
-gateway, such as 172.17.0.1). TurboTab then believes the proxy's `X-Forwarded-For` (the address
-the sign-in limits count) and `X-Forwarded-Proto` (https), and nobody else's. An nginx example:
+container sees it. The access log's client column shows that address. The example gives TurboTab
+a network of its own, `172.31.87.0/24`, so a proxy on the host arrives from its gateway,
+`172.31.87.1`, which the example trusts. TurboTab then believes the proxy's `X-Forwarded-For` (the
+address the sign-in limits count) and `X-Forwarded-Proto` (https), and nobody else's. Every other
+process on the host also arrives from the gateway. In password mode that lets them choose the
+address the per-address limit counts and say a request was https, and nothing more: the
+per-account limit still holds. Keep the `Host` line below. A browser too old to send `Sec-Fetch-Site` is checked by comparing its
+`Origin` with the `Host`. An nginx example:
 
 ```nginx
 location / {
@@ -115,10 +122,21 @@ location / {
 Keycloak, oauth2-proxy and the like) sign people in. It names the user in a header,
 `TURBOTAB_PROXY_HEADER` (default `X-Forwarded-User`). TurboTab reads that header only on requests
 whose peer address is in `TURBOTAB_TRUSTED_PROXIES`, and it refuses to start in proxy mode without
-that list. List the proxy's exact address, not a range other machines share. The proxy must set
-the header on every request and overwrite any copy a browser sent. Names are lowercased, and a
-name that could form a path is refused. There is no password and no sign-out in TurboTab in this
-mode; both belong to the SSO.
+that list. Whatever can connect from a trusted address can sign in as anyone, so list the proxy's
+exact address, not a range other machines share. TurboTab refuses to start in proxy mode if a
+trusted network holds more than 256 addresses (`0.0.0.0/0`, a campus range, a Docker network).
+
+A proxy on the same host that reaches TurboTab through a published port cannot be told apart from
+any other process or container on that host: they all arrive from Docker's gateway. So in proxy
+mode, publish no port for TurboTab. Run the SSO proxy as a container on TurboTab's network with a
+fixed address, list that address alone, and let the proxy face the users. The end of
+`docker-compose.example.yml` shows the changes. Without Docker, a proxy on `127.0.0.1` has the same
+problem: every local user's programs arrive from `127.0.0.1` too, so use that only on a host no one
+else signs in to.
+
+The proxy must set the header on every request and overwrite any copy a browser sent. Names are
+lowercased, and a name that could form a path is refused. There is no password and no sign-out in
+TurboTab in this mode; both belong to the SSO.
 
 **Without Docker:** `TURBOTAB_HOME=/srv/turbotab TURBOTAB_USERS=/etc/turbotab/users.toml python -m
 turbotab.server --mode server --host 127.0.0.1 --port 8787`, in an environment with
@@ -132,7 +150,7 @@ turbotab.server --mode server --host 127.0.0.1 --port 8787`, in an environment w
 | `TURBOTAB_HOME` | `~/.turbotab` (`/data` in the image) | where workspaces live |
 | `TURBOTAB_USERS` | `$TURBOTAB_HOME/users.toml` (`/etc/turbotab/users.toml`) | the accounts file |
 | `TURBOTAB_AUTH` | `password` | or `proxy` (single sign-on) |
-| `TURBOTAB_TRUSTED_PROXIES` | none | addresses or networks whose forwarded headers are believed; required for `proxy` |
+| `TURBOTAB_TRUSTED_PROXIES` | none | addresses or networks whose forwarded headers are believed; required for `proxy`, where none may hold more than 256 addresses |
 | `TURBOTAB_PROXY_HEADER` | `X-Forwarded-User` | the header naming the user in `proxy` mode |
 | `TURBOTAB_SECURE_COOKIES` | off | `1`: the session cookie is sent over https only (it is anyway when the request is https) |
 | `TURBOTAB_SESSION_IDLE_MINUTES` | 120 | a session ends after this long without a request |

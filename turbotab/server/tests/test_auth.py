@@ -10,6 +10,7 @@ import re
 import stat
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from urllib.parse import unquote
@@ -21,7 +22,9 @@ from fastapi.testclient import TestClient
 from turbotab.core.config import Settings
 from turbotab.server import users
 from turbotab.server.app import create_app
-from turbotab.server.auth import COOKIE, SECURE_COOKIE, AuthConfig, AuthConfigError, safe_next
+from turbotab.server import auth as signin
+from turbotab.server.auth import (COOKIE, SECURE_COOKIE, AuthConfig, AuthConfigError,
+                                  parse_networks, safe_next)
 from turbotab.server.tenancy import user_home
 from turbotab.server.users import Account, InvalidUsername, check_username, hash_password
 
@@ -148,6 +151,50 @@ def test_a_page_without_a_session_goes_to_the_sign_in_page_and_comes_back(site):
                                  "evil", "/login", "/logout?x=1", "/x\r\nSet-Cookie: a=b", None, ""])
 def test_the_page_to_return_to_is_always_on_this_server(raw):
     assert safe_next(raw) == "/"
+
+
+def test_no_page_but_turbotabs_own_can_sign_in_sign_out_or_change_anything(tmp_path):
+    """Login CSRF: a page elsewhere that posts the sign-in form signs the visitor in to the
+    attacker's account, and the visitor's next upload lands in the attacker's workspace. The
+    sign-in routes are open to everyone, so the check comes before them, not after."""
+    app = server_app(tmp_path)
+    client = TestClient(app, base_url="http://turbotab.univ.example")
+    form = {"username": "bob", "password": PASSWORD, "next": "/"}
+    attacker = {"sec-fetch-site": "cross-site", "origin": "https://attacker.example"}
+    sibling = {"sec-fetch-site": "same-site", "origin": "http://people.univ.example"}
+    old_browser = {"origin": "https://attacker.example"}  # no Sec-Fetch-Site: Origin against Host
+    framed = {"origin": "null"}                            # a sandboxed frame, a file:// page
+    for headers in (attacker, sibling, old_browser, framed):
+        refused = client.post("/login", data=form, headers=headers, follow_redirects=False)
+        assert (refused.status_code, refused.json()["error"]["code"]) == (403, "cross_site"), headers
+        assert "set-cookie" not in refused.headers
+    alice = sign_in(client, "alice")
+    for headers in (attacker, sibling, old_browser, framed):
+        out = client.post("/logout", headers={**as_user(alice), **headers}, follow_redirects=False)
+        assert out.status_code == 403, headers
+        upload = client.post("/api/projects/upload", headers={**as_user(alice), **headers},
+                             files={"file": ("x.csv", CSV, "text/csv")})
+        assert upload.status_code == 403, headers
+    assert client.get("/", headers=as_user(alice), follow_redirects=False).status_code == 200
+    assert not (user_home(tmp_path, "alice") / "projects").exists()  # nothing was uploaded
+
+    # TurboTab's own pages, an old browser on them, and clients that name no page get through.
+    own = {"sec-fetch-site": "same-origin", "origin": "http://turbotab.univ.example"}
+    for headers in (own, {"origin": "http://turbotab.univ.example"}, {}):
+        signed = client.post("/login", data=form, headers=headers, follow_redirects=False)
+        assert signed.status_code == 303 and "set-cookie" in signed.headers, headers
+    out = client.post("/logout", headers={**as_user(alice), **own}, follow_redirects=False)
+    assert out.status_code == 303
+    assert client.get("/", headers=as_user(alice), follow_redirects=False).status_code == 303
+
+    # proxy mode has no sign-in form, and the same rule
+    proxied = server_app(tmp_path / "p", mode="proxy",
+                         trusted_proxies=parse_networks("10.1.2.3"))
+    via_proxy = TestClient(proxied, base_url="http://turbotab.univ.example", client=("10.1.2.3", 1))
+    named = {"x-forwarded-user": "alice"}
+    for headers in (attacker, sibling):
+        assert via_proxy.post("/api/projects/upload", headers={**named, **headers},
+                              files={"file": ("x.csv", CSV, "text/csv")}).status_code == 403
 
 
 def test_the_health_says_who_is_signed_in_and_how(site):
@@ -367,6 +414,50 @@ def test_failed_sign_ins_are_limited_per_username_and_per_address(tmp_path):
     assert attempt(home_net, "bob", PASSWORD) == 303
 
 
+def test_sign_ins_sent_at_once_are_held_to_the_limits(tmp_path, monkeypatch):
+    """Counted only after the hash, every attempt in flight passed the check: a burst of 30
+    tried 30 passwords against a limit of 5. Each attempt now counts as it starts."""
+    app = server_app(tmp_path, user_attempts=5, ip_attempts=8)
+    auth = app.state.auth
+    checked: list[str] = []
+    lock = threading.Lock()
+
+    def slow_and_wrong(password: str, *_: object) -> bool:  # scrypt's time, never a match
+        with lock:
+            checked.append(password)
+        time.sleep(0.2)
+        return False
+
+    monkeypatch.setattr(signin, "verify_password", slow_and_wrong)
+    monkeypatch.setattr(signin, "burn_time", slow_and_wrong)
+
+    def burst(scope: dict, names: list[str]) -> list[str]:
+        notes: list[str] = [""] * len(names)
+
+        def one(i: int) -> None:
+            notes[i] = auth.sign_in(scope, names[i], f"guess-{i}")[1]
+        threads = [threading.Thread(target=one, args=(i,)) for i in range(len(names))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        return notes
+
+    notes = burst({"client": ("198.51.100.7", 1), "headers": []}, ["alice"] * 30)
+    assert len(checked) == 5, f"{len(checked)} passwords were checked against a limit of 5"
+    assert sum("Too many" in n for n in notes) == 25
+    checked.clear()
+    burst({"client": ("198.51.100.8", 1), "headers": []}, [f"nobody{i}" for i in range(30)])
+    assert len(checked) == 8  # per address, across names that do not exist
+
+    # an address's own successful sign-ins are not failures and never use up its limit
+    monkeypatch.undo()
+    client = TestClient(app, base_url="http://turbotab.example", client=("198.51.100.9", 1))
+    for _ in range(12):
+        assert client.post("/login", data={"username": "bob", "password": PASSWORD},
+                           follow_redirects=False).status_code == 303
+
+
 def test_an_unknown_name_and_a_wrong_password_get_the_same_answer(tmp_path):
     client = TestClient(server_app(tmp_path), base_url="http://turbotab.example")
     unknown = client.post("/login", data={"username": "mallory", "password": "x" * 12})
@@ -380,7 +471,7 @@ def test_an_unknown_name_and_a_wrong_password_get_the_same_answer(tmp_path):
 
 
 def test_the_proxy_header_counts_only_from_a_trusted_peer(tmp_path):
-    app = server_app(tmp_path, mode="proxy", trusted_proxies=(ipaddress.ip_network("10.0.0.0/8"),),
+    app = server_app(tmp_path, mode="proxy", trusted_proxies=(ipaddress.ip_network("10.1.2.0/24"),),
                      proxy_header="X-Remote-User")
     proxy = TestClient(app, base_url="http://turbotab.example", client=("10.1.2.3", 1))
     stranger = TestClient(app, base_url="http://turbotab.example", client=("203.0.113.9", 1))
@@ -416,7 +507,8 @@ def test_the_client_address_is_read_from_a_trusted_proxy_only(tmp_path):
     assert address("203.0.113.5", "10.0.0.9") == "203.0.113.5"  # a stranger cannot name another
 
 
-def test_proxy_mode_refuses_to_start_without_trusted_proxies(tmp_path, monkeypatch):
+def test_proxy_mode_refuses_to_start_without_a_narrow_list_of_trusted_proxies(tmp_path, monkeypatch):
+    """In proxy mode a trusted network is everyone in it: each of them can name any user."""
     with pytest.raises(AuthConfigError, match="TURBOTAB_TRUSTED_PROXIES"):
         AuthConfig(mode="proxy")
     settings = Settings(home=tmp_path, mode="server", workers=1, memory_budget_bytes=1 << 30)
@@ -425,17 +517,27 @@ def test_proxy_mode_refuses_to_start_without_trusted_proxies(tmp_path, monkeypat
     with pytest.raises(AuthConfigError, match="not an IP"):
         AuthConfig.from_env(settings, {"TURBOTAB_AUTH": "proxy", "TURBOTAB_TRUSTED_PROXIES": "proxy"})
     config = AuthConfig.from_env(settings, {"TURBOTAB_AUTH": "proxy",
-                                            "TURBOTAB_TRUSTED_PROXIES": "127.0.0.1, 10.0.0.0/8"})
-    assert [str(n) for n in config.trusted_proxies] == ["127.0.0.1/32", "10.0.0.0/8"]
+                                            "TURBOTAB_TRUSTED_PROXIES": "127.0.0.1, 10.0.0.0/24"})
+    assert [str(n) for n in config.trusted_proxies] == ["127.0.0.1/32", "10.0.0.0/24"]
+    for broad in ("0.0.0.0/0", "::/0", "172.16.0.0/12", "172.17.0.0/16", "10.0.0.0/23",
+                  "127.0.0.1, 10.0.0.0/8", "fd00::/64", "fd00::/119"):
+        with pytest.raises(AuthConfigError, match="at most 256 addresses"):
+            AuthConfig(mode="proxy", trusted_proxies=parse_networks(broad))
+        AuthConfig(mode="password", trusted_proxies=parse_networks(broad))  # forwarded-for only
+    AuthConfig(mode="proxy", trusted_proxies=parse_networks("fd00::/120, 192.0.2.7"))
 
     from turbotab.server.__main__ import main
 
     monkeypatch.setenv("TURBOTAB_HOME", str(tmp_path))
     monkeypatch.setenv("TURBOTAB_AUTH", "proxy")
-    monkeypatch.delenv("TURBOTAB_TRUSTED_PROXIES", raising=False)
-    with pytest.raises(SystemExit) as stopped:
-        main(["--mode", "server"])
-    assert stopped.value.code == 2
+    for trusted in (None, "0.0.0.0/0"):
+        if trusted is None:
+            monkeypatch.delenv("TURBOTAB_TRUSTED_PROXIES", raising=False)
+        else:
+            monkeypatch.setenv("TURBOTAB_TRUSTED_PROXIES", trusted)
+        with pytest.raises(SystemExit) as stopped:
+            main(["--mode", "server"])
+        assert stopped.value.code == 2, trusted
 
 
 # ── usernames and the accounts command ─────────────────────────────────────
@@ -529,3 +631,38 @@ def test_the_compose_example_and_the_image_agree_on_paths():
     for needle in ("TURBOTAB_HOME=/data", "TURBOTAB_USERS=/etc/turbotab/users.toml", "8787"):
         assert needle in dockerfile.replace('"', ""), needle
     assert "/etc/turbotab:ro" in compose and ":/data" in compose
+
+
+def test_the_compose_example_trusts_only_the_address_it_means(tmp_path):
+    """The example trusted 172.16.0.0/12, every Docker network and the gateway every host process
+    comes in through, beside "TURBOTAB_AUTH: password  # or: proxy". In proxy mode anyone on the
+    host could then name the user. Its password setup trusts the gateway alone, and its single
+    sign-on setup publishes no port and trusts only the SSO container."""
+    yaml = pytest.importorskip("yaml")
+    text = (REPO / "turbotab" / "deploy" / "docker-compose.example.yml").read_text("utf-8")
+    compose = yaml.safe_load(text)
+    ipam = compose["networks"]["turbotab"]["ipam"]["config"][0]
+    subnet, gateway = ipaddress.ip_network(ipam["subnet"]), ipaddress.ip_address(ipam["gateway"])
+    turbotab = compose["services"]["turbotab"]
+    env = turbotab["environment"]
+    assert env["TURBOTAB_AUTH"] == "password" and "or: proxy" not in text
+    assert turbotab["ports"] == ["127.0.0.1:8787:8787"] and turbotab["networks"] == ["turbotab"]
+    assert parse_networks(env["TURBOTAB_TRUSTED_PROXIES"]) == (ipaddress.ip_network(gateway),)
+
+    # the single sign-on changes, shown at the end of the file as indented comments
+    tail = text.split("Single sign-on instead of passwords", 1)[1]
+    sso = yaml.safe_load("\n".join(line[4:] for line in tail.splitlines() if line.startswith("#   ")))
+    proxied, proxy = sso["services"]["turbotab"], sso["services"]["sso"]
+    assert "ports" not in proxied and proxied["environment"]["TURBOTAB_AUTH"] == "proxy"
+    address = ipaddress.ip_address(proxy["networks"]["turbotab"]["ipv4_address"])
+    assert address in subnet and address != gateway
+    trusted = parse_networks(proxied["environment"]["TURBOTAB_TRUSTED_PROXIES"])
+    assert trusted == (ipaddress.ip_network(address),)
+
+    # run that way, the SSO container names the user and a host process through the gateway cannot
+    app = server_app(tmp_path, mode="proxy", trusted_proxies=trusted)
+    named = {"x-forwarded-user": "alice"}
+    with TestClient(app, base_url="http://turbotab", client=(str(address), 1)) as client:
+        assert client.get("/api/health", headers=named).json()["user"] == "alice"
+    host = TestClient(app, base_url="http://turbotab", client=(str(gateway), 1))
+    assert host.get("/api/health", headers=named).status_code == 401

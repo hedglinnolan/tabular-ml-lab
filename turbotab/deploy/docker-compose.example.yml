@@ -12,9 +12,8 @@
 # and list the proxy's address in TURBOTAB_TRUSTED_PROXIES so the client address and https are
 # read from its X-Forwarded-For and X-Forwarded-Proto. Keep TURBOTAB_SECURE_COOKIES=1 behind TLS.
 #
-# Single sign-on instead of passwords: set TURBOTAB_AUTH=proxy and TURBOTAB_PROXY_HEADER to the
-# header the SSO proxy sets (for example X-Forwarded-User). TurboTab then reads the user from that
-# header only on requests from TURBOTAB_TRUSTED_PROXIES, and refuses to start without that list.
+# This file signs people in with passwords. For single sign-on, see the end of the file: it is
+# not a one-word change.
 
 services:
   turbotab:
@@ -24,13 +23,18 @@ services:
     image: turbotab:2
     ports:
       - "127.0.0.1:8787:8787"     # the TLS proxy on this host connects here
+    networks:
+      - turbotab
     environment:
-      TURBOTAB_AUTH: password       # or: proxy
+      TURBOTAB_AUTH: password
       TURBOTAB_SECURE_COOKIES: "1"  # cookies only over https (the proxy's)
-      # The proxy's address as the container sees it: Docker's bridge gateway for a proxy on this
-      # host (find it with: docker network inspect bridge), or the proxy container's network.
-      TURBOTAB_TRUSTED_PROXIES: "172.16.0.0/12"
-      # TURBOTAB_PROXY_HEADER: X-Forwarded-User   # with TURBOTAB_AUTH=proxy
+      # The TLS proxy on this host comes in through the published port, so TurboTab sees it as
+      # the gateway of its network (below), and believes its X-Forwarded-For and -Proto. Every
+      # other process on the host comes in from the same address. In password mode that only
+      # lets them choose the address the per-address sign-in limit counts and say a request was
+      # https; the per-account limit still holds. A TLS proxy in a container on this network:
+      # list its address instead.
+      TURBOTAB_TRUSTED_PROXIES: "172.31.87.1"
       TURBOTAB_WORKERS: "4"         # job worker processes shared by every user
       # TURBOTAB_MEMORY_BUDGET: 24G  # default: half the memory free at start
       # TURBOTAB_SESSION_IDLE_MINUTES: "120"
@@ -49,5 +53,40 @@ services:
       start_period: 60s
       retries: 3
 
+networks:
+  turbotab:  # TurboTab's own network, so the addresses above are known
+    ipam:
+      config:
+        - subnet: 172.31.87.0/24  # if it overlaps a network you have, change 172.31.87 throughout
+          gateway: 172.31.87.1
+
 volumes:
   turbotab-data:
+
+# ── Single sign-on instead of passwords ─────────────────────────────────────
+#
+# With TURBOTAB_AUTH=proxy, TurboTab believes the user named in TURBOTAB_PROXY_HEADER on any
+# request from TURBOTAB_TRUSTED_PROXIES. Whatever can connect from a trusted address can sign in
+# as anyone. A proxy on the host that comes in through a published port arrives from the gateway,
+# as every other process and container on the host does, and TurboTab cannot tell them apart. So
+# publish no port for TurboTab and do not trust the gateway. Run the SSO proxy as a service on
+# this network with an address of its own, trust that address alone, and let the proxy face the
+# users. TurboTab refuses to start in proxy mode if a trusted network holds more than 256
+# addresses. The changes to the services above:
+#
+#   services:
+#     turbotab:
+#       # delete the ports: entry
+#       environment:
+#         TURBOTAB_AUTH: proxy
+#         TURBOTAB_TRUSTED_PROXIES: "172.31.87.10"   # the sso service, and nothing else
+#         TURBOTAB_PROXY_HEADER: X-Forwarded-User    # the header the SSO proxy sets
+#     sso:                     # oauth2-proxy, a Shibboleth SP, Keycloak's gatekeeper, ...
+#       image: your-institutions-sso-proxy
+#       ports:
+#         - "443:8443"         # it terminates TLS; its upstream is http://turbotab:8787
+#       networks:
+#         turbotab:
+#           ipv4_address: 172.31.87.10
+#
+# The proxy must set the header on every request and overwrite any copy a browser sent.

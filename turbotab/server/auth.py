@@ -8,11 +8,13 @@ Two ways to know who is asking, chosen by ``TURBOTAB_AUTH``:
   when ``TURBOTAB_SECURE_COOKIES`` is set or the request came over https. A session ends after
   ``TURBOTAB_SESSION_IDLE_MINUTES`` without a request (default 120), after
   ``TURBOTAB_SESSION_MAX_HOURS`` however busy (default 12), at sign-out, and when its account is
-  removed or given a new password. Failed sign-ins are limited per username and per client address.
+  removed or given a new password. Sign-in attempts are limited per username and per client
+  address, each counted as it starts, so attempts sent at once count too.
 * ``proxy``: an institution's single sign-on in front of TurboTab names the user in a header
   (``TURBOTAB_PROXY_HEADER``, default ``X-Forwarded-User``). The header is read only from a peer
   in ``TURBOTAB_TRUSTED_PROXIES`` (addresses or networks); from anyone else it is ignored. The
-  server refuses to start in this mode without that list.
+  server refuses to start in this mode without that list, or with a network in it of more than
+  256 addresses: every machine in it could name any user.
 
 ``TURBOTAB_TRUSTED_PROXIES`` also says whose ``X-Forwarded-For`` and ``X-Forwarded-Proto`` to
 believe in password mode, behind a TLS reverse proxy: the client address the limits count, and
@@ -21,7 +23,10 @@ whether the request was https.
 :class:`AuthGate` stands in front of every route: in server mode every ``/api`` route needs a
 signed-in user (the event stream, uploads, export downloads and previews included), a page
 request without one is sent to ``/login``, and a route that names a project answers 404 unless the
-project is in the user's own workspace (``turbotab.server.tenancy``). Statistics never come here
+project is in the user's own workspace (``turbotab.server.tenancy``). Before any of that, it
+refuses a change that a page other than TurboTab's own sent (:func:`foreign_page`), sign-in and
+sign-out included: otherwise another site could sign a visitor in to the attacker's account, and
+the visitor's next upload would land in the attacker's workspace. Statistics never come here
 (BLUEPRINT §1), and nothing in ``turbotab/core`` knows about users.
 """
 from __future__ import annotations
@@ -70,6 +75,9 @@ MAX_FORM_BYTES = 8192
 FONTS = Path(__file__).resolve().parents[2] / "static" / "fonts"
 LOGIN_FONTS = ("inter-latin.woff2",)
 PROJECT_PATH = re.compile(r"^/api/projects/([^/]+)(?:/|$)")
+# In proxy mode a trusted peer names the user, so a trusted network is everyone in it. A proxy or
+# a small pool of them fits in 256 addresses; a LAN, a campus or a Docker network does not.
+MAX_PROXY_ADDRESSES = 256
 
 
 class AuthConfigError(ValueError):
@@ -129,6 +137,15 @@ class AuthConfig:
             raise AuthConfigError(
                 "TURBOTAB_AUTH=proxy needs TURBOTAB_TRUSTED_PROXIES: the addresses of the proxy "
                 "that signs users in. Without it any client could name itself in the header.")
+        if self.mode == "proxy":
+            for network in self.trusted_proxies:
+                if network.num_addresses > MAX_PROXY_ADDRESSES:
+                    raise AuthConfigError(
+                        f"TURBOTAB_AUTH=proxy believes the user named by any address in "
+                        f"TURBOTAB_TRUSTED_PROXIES, and {network} holds {network.num_addresses:,} "
+                        f"addresses: every machine or container among them could sign in as anyone. "
+                        f"List the sign-on proxy's own address (a network of at most "
+                        f"{MAX_PROXY_ADDRESSES} addresses).")
         object.__setattr__(self, "proxy_header", self.proxy_header.strip().lower())
         if not self.proxy_header:
             raise AuthConfigError("TURBOTAB_PROXY_HEADER must name a header")
@@ -210,7 +227,8 @@ class SessionStore:
 
 
 class Attempts:
-    """Failed sign-ins per key in a sliding window; at ``limit`` the key waits."""
+    """Failed sign-ins per key in a sliding window; at ``limit`` the key waits. ``Auth.sign_in``
+    counts each attempt as it starts and forgives the ones that succeed."""
 
     def __init__(self, limit: int, window: float, clock: Callable[[], float], max_keys: int = 10_000):
         self.limit = limit
@@ -239,7 +257,8 @@ class Attempts:
                 return 0.0
             return max(0.0, self.window - (now - fails[-self.limit]))
 
-    def fail(self, key: str) -> None:
+    def fail(self, key: str) -> float:
+        """Count one attempt against ``key``; returns its time, for :meth:`forgive`."""
         now = self.clock()
         with self._lock:
             fails = self._recent(key, now)
@@ -248,6 +267,20 @@ class Attempts:
             self._fails.move_to_end(key)
             while len(self._fails) > self.max_keys:
                 self._fails.popitem(last=False)
+        return now
+
+    def forgive(self, key: str, stamp: float) -> None:
+        """Take back one attempt counted at ``stamp`` (it turned out not to fail)."""
+        with self._lock:
+            fails = self._fails.get(key)
+            if fails is None:
+                return
+            try:
+                fails.remove(stamp)
+            except ValueError:
+                return
+            if not fails:
+                del self._fails[key]
 
     def clear(self, key: str) -> None:
         with self._lock:
@@ -287,6 +320,7 @@ class Auth:
         self.sessions = SessionStore(config.idle_seconds, config.max_seconds, config.clock)
         self.by_user = Attempts(config.user_attempts, config.attempt_window, config.clock)
         self.by_address = Attempts(config.ip_attempts, config.attempt_window, config.clock)
+        self._counting = threading.Lock()  # the limits' check and the count, as one step
 
     # addresses and https, believing forwarded headers only from a trusted proxy
     def trusted(self, address: str | None) -> bool:
@@ -365,7 +399,16 @@ class Auth:
         """(token or None, a message for the page, seconds to wait when refused for attempts)."""
         address = self.client_address(scope)
         name = username.strip().lower()
-        wait = max(self.by_address.wait(address), self.by_user.wait(name) if name else 0.0)
+        # Count the attempt as a failure before checking the password, in the same step as the
+        # limits' check, and take it back if it succeeds. Counted after the hash instead, every
+        # attempt sent at once would pass the check while the others were still hashing.
+        counted = 0.0
+        with self._counting:
+            wait = max(self.by_address.wait(address), self.by_user.wait(name) if name else 0.0)
+            if wait <= 0:
+                counted = self.by_address.fail(address)
+                if name:
+                    self.by_user.fail(name)
         if wait > 0:
             minutes = max(1, int(-(-wait // 60)))
             return None, (f"Too many sign-in attempts for this account or from this address. Try "
@@ -381,11 +424,9 @@ class Auth:
         else:
             ok = verify_password(password, account.hash)
         if not ok or account is None:
-            self.by_address.fail(address)
-            if name:
-                self.by_user.fail(name)
             return None, "That username and password do not match an account on this server.", 0.0
         self.by_user.clear(name)
+        self.by_address.forgive(address, counted)  # an address's own sign-ins never use it up
         return self.sessions.create(name, account.hash), "", 0.0
 
     def cookie(self, scope: Scope, token: str) -> str:
@@ -413,6 +454,40 @@ def current_user(request: Request) -> str:
 UNAUTHENTICATED = ApiError(401, "unauthenticated", "Sign in to use TurboTab on this server.",
                            [{"label": "Sign in", "decision": None}])
 PUBLIC_PATHS = frozenset({"/login", "/logout", "/healthz"})
+FOREIGN_PAGE = ApiError(403, "cross_site", "This request came from a page that is not TurboTab's "
+                        "own. TurboTab takes changes only from its own pages: open it at its own "
+                        "address and do it there.")
+
+
+def _hostname(authority: str | None) -> str | None:
+    try:
+        return urlsplit(f"//{authority}").hostname if authority else None
+    except ValueError:
+        return None
+
+
+def foreign_page(scope: Scope) -> bool:
+    """True when a browser says a page other than TurboTab's own sent this request.
+
+    The rule of Go's ``net/http.CrossOriginProtection``: ``Sec-Fetch-Site``, which every current
+    browser sends, must be ``same-origin`` (or ``none``, typed by the user), so a sibling
+    subdomain's page (``same-site``) is refused as well as another site's. A browser too old to
+    send it sends ``Origin``, whose host must be the request's. A request with neither came from
+    no page (curl, a script); it still needs a session.
+    """
+    site = (_header(scope, b"sec-fetch-site") or "").lower()
+    if site:
+        return site not in ("same-origin", "none")
+    origin = _header(scope, b"origin")
+    if origin is None:
+        return False
+    try:
+        parts = urlsplit(origin)
+        hostname = parts.hostname
+    except ValueError:
+        return True
+    host = _hostname(_header(scope, b"host"))
+    return parts.scheme not in ("http", "https") or hostname is None or hostname != host  # "null"
 
 
 class AuthGate:
@@ -425,17 +500,19 @@ class AuthGate:
             await self.app(scope, receive, send)
             return
         path = scope.get("path") or "/"
+        method = scope.get("method", "GET")
+        # First, and for the sign-in routes too: a page elsewhere that could post the sign-in
+        # form would sign the visitor in to its own account (and could sign them out).
+        if scope["type"] == "http" and method not in SAFE_METHODS and foreign_page(scope):
+            response = JSONResponse(FOREIGN_PAGE.body(), status_code=403)
+            response.headers["Cache-Control"] = "no-store"
+            await response(scope, receive, send)
+            return
         if path in PUBLIC_PATHS or path.startswith("/login/"):
             await self.app(scope, receive, send)
             return
         if scope["type"] == "websocket":  # TurboTab has none; refuse any it does not know
             await send({"type": "websocket.close", "code": 1008})
-            return
-        method = scope.get("method", "GET")
-        if method not in SAFE_METHODS and (_header(scope, b"sec-fetch-site") or "").lower() == "cross-site":
-            body = ApiError(403, "cross_site", "This request came from a page on another website. "
-                            "TurboTab takes changes only from its own pages.").body()
-            await JSONResponse(body, status_code=403)(scope, receive, send)
             return
         user, token = self.auth.identify(scope)
         if user is None:
