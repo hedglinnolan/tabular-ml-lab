@@ -465,7 +465,11 @@ def _weekend(values: pd.Series, spec: Any, column: str, nutrient: str) -> np.nda
 
 
 def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str | None,
-             reason: str | None, rows: np.ndarray) -> UsualIntakeAnalysis:
+             reason: str | None, rows: np.ndarray, *, replicate: bool = True,
+             percentiles: Sequence[int] | None = None) -> UsualIntakeAnalysis:
+    """One answer's analysis. ``replicate`` False leaves out the variance replicates (the consequence
+    preview's point estimates, ``method_previews``: every other number is this analysis's own);
+    ``percentiles`` reports more of them than the default (the preview draws the distribution)."""
     from turbotab.core import usual_intake as ui
     from turbotab.core.methods import usual_intake as nci
     from turbotab.core.stages.working import effective_grain
@@ -563,7 +567,8 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
                 raise Refused(f"`{spec.consumer_column}` holds values other than 0 and 1, so it "
                               f"cannot say who consumes the food.", [whole_population])
             domain = np.where(np.isfinite(flag), flag, 0.0)
-        plan = survey_plan(ctx, store, design_rows, person_rows, spec.n_boot, seed)
+        plan = survey_plan(ctx, store, design_rows, person_rows,
+                           spec.n_boot if replicate else 2, seed)
         rec = nci.Recalls.of(amounts, person, n_persons, later=later, weekend=wk)
         if plan["weights"] is not None:
             w = np.asarray(plan["weights"], dtype=float)
@@ -578,7 +583,10 @@ def analysis(ctx: StageContext, store: Any, nutrient: str, spec: Any, fmt: str |
         ctx.progress(0.1, f"Fitting the usual-intake model of `{nutrient}`")
         cutoff = spec.cutoff
         result = nci.usual_intake(rec, spec.model, weights=plan["weights"], domain=domain,
-                                  replication=plan["replication"], cutoff=cutoff,
+                                  replication=plan["replication"] if replicate else None,
+                                  cutoff=cutoff,
+                                  percentiles=(tuple(percentiles) if percentiles is not None
+                                               else nci.PERCENTILES),
                                   progress=lambda f, m: ctx.progress(0.1 + 0.85 * f, m))
     except Refused as why:
         return refuse(str(why), why.exits)

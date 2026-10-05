@@ -4758,6 +4758,50 @@ def fold(records: Sequence[DecisionRecord]) -> ProjectState:
     return ProjectState(**slots)
 
 
+def fold_onto(state: ProjectState, decision: Any) -> ProjectState:
+    """The state recording ``decision`` would leave, written onto ``state`` as :func:`fold` writes
+    a newest record: its slot (or keyed entry), the slots it writes beside it, and the readings it
+    confirms; a conditional write only while its condition holds on ``state``.
+
+    For a consequence preview, which holds the state but not the log (``state_after`` folds the log
+    when a caller has it). One difference from folding the log: an answer that moves the slot a
+    conditional answer reads (a new outcome) leaves that conditional slot as it was here, where
+    the log's fold would re-read it. A revert, which needs the log, returns ``state`` unchanged."""
+    if decision.kind not in SLOTS:
+        return state
+    slots: dict[str, Any] = {k: getattr(state, k) for k in ProjectState.model_fields}
+
+    def entry(slot: str, key: str, value: Any) -> None:
+        entries = dict(slots.get(slot) or {})
+        entries[key] = value(entries.get(key)) if callable(value) else value
+        slots[slot] = entries
+        _confirmed_role_is_the_role(slots, slot, key, entries[key])
+
+    holds = _HOLDS.get(decision.kind)
+    if holds is not None:
+        if holds(decision, slots):
+            slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
+        return ProjectState(**slots)
+    written = _ENTRIES.get(decision.kind)
+    if written is not None:
+        for slot, key, value in written(decision):
+            entry(slot, key, value)
+        return ProjectState(**slots)
+    keyed = _KEYS.get(decision.kind)
+    if keyed is not None:
+        slot = _SLOT_FOR[decision.kind](decision) if decision.kind in _SLOT_FOR \
+            else SLOTS[decision.kind]
+        entry(slot, keyed(decision), _SLOT_VALUE[decision.kind](decision))
+    else:
+        slots[SLOTS[decision.kind]] = _SLOT_VALUE[decision.kind](decision)
+        for extra, fn in _ALSO.get(decision.kind, {}).items():
+            slots[extra] = fn(decision)
+    confirmed = _CONFIRMS.get(decision.kind)
+    for slot, key, value in (confirmed(decision) if confirmed is not None else ()):
+        entry(slot, key, value)
+    return ProjectState(**slots)
+
+
 def _check_revert(existing: Sequence[DecisionRecord], decision: Revert) -> None:
     _check_revertable(decision.decision_id, {r.id: r for r in existing})
     cancelled = reverted(existing)

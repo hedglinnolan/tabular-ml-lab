@@ -34,6 +34,16 @@ energy adjustment's nutrient-against-energy scatter *is* the method.
 
 Builders register per decision kind; the M1 agents own the builders for their kinds
 (M1_CONTRACT.md §8).
+
+**Every choice previewed** (V2 definition of done §1; wave 2's PREVIEWS package). Every module that
+registers builders is listed in :data:`BUILDER_MODULES` and loaded by :func:`plan`, so the
+registry is whole wherever a preview is planned. A decision kind that changes no row, column, value,
+relationship or model output is on :data:`UNPREVIEWED` with the reason; every other kind has a
+builder, which ``tests/acceptance/test_previews_2_structural.py`` enforces over the decision
+union. The modeling sequence's and the methods' builders (``plan_previews``, ``method_previews``,
+``data_previews``) compute with the downstream stage's own functions on the answer's state
+(:func:`after_state`), over the stage's upstream artifacts (:func:`stage_context`): a preview is
+what will happen, held to the stage's numbers by ``tests/acceptance/test_previews_kinds.py``.
 """
 from __future__ import annotations
 
@@ -883,8 +893,109 @@ def _relationship_change(before: Any, after: Any, candidates: list[str],
     return abs(r_after - r_before), view
 
 
+# ── the registry, whole ──────────────────────────────────────────────────────
+
+# Every module that registers builders, imported by :func:`load_builders` so the registry is whole
+# wherever a preview is planned (the server, a test, a worker): a builder module the server forgot
+# to import would leave its kinds silently without a picture.
+BUILDER_MODULES: tuple[str, ...] = (
+    "turbotab.core.row_previews",
+    "turbotab.core.structure_previews",
+    "turbotab.core.fact_previews",
+    "turbotab.core.models",  # models/previews.py: the energy model and the model families
+    "turbotab.core.seal",
+    "turbotab.core.repairs",
+    "turbotab.core.plan_previews",
+    "turbotab.core.method_previews",
+    "turbotab.core.data_previews",
+)
+_LOADED = False
+
+
+def load_builders() -> None:
+    """Import every builder module once (each registers its kinds on import)."""
+    global _LOADED
+    if _LOADED:
+        return
+    import importlib
+
+    for name in BUILDER_MODULES:
+        importlib.import_module(name)
+    _LOADED = True
+
+
+def registered_kinds() -> set[str]:
+    """The decision kinds with a consequence builder or a transform."""
+    load_builders()
+    return set(_BUILDERS) | set(_TRANSFORMS)
+
+
+# The kinds with no consequence preview, each with the reason nothing on the canvas changes
+# (V2_DEFINITION_OF_DONE §1, "every choice previewed on the canvas"): a choice that changes a row,
+# a column, a value, a relationship or a model's output has a builder; these change none of them.
+# ``tests/acceptance/test_previews_2_structural.py`` fails on a decision kind in neither place, and
+# on one in both.
+UNPREVIEWED: dict[str, str] = {
+    "lock_plan": (
+        "Recorded by the server the first time an estimate is displayed, and refused when a client "
+        "posts it, so it is never an option to preview; it changes no number, only how later "
+        "records are marked."),
+    "reseal": (
+        "Withdraws the opening of the held-out rows: their scores are withheld again. No row, column "
+        "or value changes until a new split draws the rows, and that answer (set_split) previews "
+        "the draw."),
+    "defer_finding": (
+        "Moves a finding to the question it belongs to; nothing in the data or the models changes, "
+        "and the finding resurfaces there with its own evidence and levers."),
+    "dismiss_finding": (
+        "Takes a finding off the list, with its reason; nothing is applied to the data or the "
+        "models, so there is nothing to draw."),
+    "set_outcome_unit": (
+        "Names the outcome's unit for the sentences and labels; no row, column or value changes, "
+        "and the card quotes the sentence it records."),
+    "set_censoring": (
+        "Says that everyone's follow-up covered the same period, so the yes/no outcome stands as "
+        "recorded: no row, column or value changes, and the card quotes the sentence it records."),
+}
+
+
+def after_state(decision: Any, ctx: PreviewContext) -> ProjectState:
+    """The state recording ``decision`` would leave. With the log at hand (``ctx.settings
+    ["records"]``, as the server passes it) it is the log's own fold; otherwise ``decision`` is
+    written onto the recorded state (:func:`turbotab.core.decisions.fold_onto`)."""
+    from turbotab.core import decisions
+
+    records = ctx.settings.get("records")
+    if records is not None:
+        found = decisions.state_after(decision, {"records": records})
+        if found is not None:
+            return found
+    return decisions.fold_onto(ctx.state, decision)
+
+
+def stage_context(ctx: PreviewContext, state: ProjectState, stages: Any) -> Any:
+    """A stage's context over the preview's fresh upstream artifacts, so a builder computes a
+    stage's own numbers with the stage's own functions (preview = what will happen). None while
+    any of ``stages`` is not fresh."""
+    from turbotab.core.graph import StageContext
+
+    inputs: dict[str, Any] = {}
+    for name in stages:
+        found = ctx.artifact(name)
+        if found is None:
+            return None
+        inputs[name] = found
+    store = ctx.datastore
+    paths = {"data": str(getattr(store, "parquet", "")),
+             "project_dir": str(ctx.settings.get("project_dir") or "")}
+    budget = getattr(store, "memory_budget_bytes", None)
+    return StageContext(project_id=ctx.project_id, state=state, inputs=inputs, paths=paths,
+                        settings={"memory_budget_bytes": budget} if budget else {})
+
+
 def plan(decision: Any, ctx: PreviewContext, basis: str) -> PreviewResult:
     """Domain builders first (they know what teaches), then the generic diff fills the rest."""
+    load_builders()
     views: list[Any] = []
     for _, builder in _BUILDERS.get(decision.kind, []):
         views.extend(builder(decision, ctx))
@@ -912,12 +1023,14 @@ def words(text: str) -> int:
 
 
 __all__ = [
-    "CAPTION_WORDS", "COACH_WORDS", "FRAME_WORDS", "MAX_COACH", "MAX_VIEWS", "TITLE_WORDS",
+    "BUILDER_MODULES", "CAPTION_WORDS", "COACH_WORDS", "FRAME_WORDS", "MAX_COACH", "MAX_VIEWS",
+    "TITLE_WORDS", "UNPREVIEWED",
     "Caution", "CautionExit", "CoachAnchor", "CoachNote", "ConsequenceView",
     "DistributionFrame", "DistributionView", "FitLine", "FrameRow", "HistogramData", "Lineage",
     "LineageFrame", "LineageLink", "LineageNode", "LineageView", "Mark", "PreviewContext",
     "PreviewResult", "RelationshipFrame", "RelationshipView", "RowFlowFrame", "RowFlowView",
     "RowStep", "SEAL_CELLS", "SealCells", "TableFocusView", "TableFrame", "TableRow",
-    "clip_words", "diff_views", "fmt_count", "fmt_value", "lineage_of", "plan",
-    "register_consequence", "register_transform", "words",
+    "after_state", "clip_words", "diff_views", "fmt_count", "fmt_value", "lineage_of",
+    "load_builders", "plan", "register_consequence", "register_transform", "registered_kinds",
+    "stage_context", "words",
 ]
