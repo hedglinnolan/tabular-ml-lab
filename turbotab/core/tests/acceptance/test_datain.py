@@ -20,6 +20,17 @@ Acceptance, item by item (each expected value from a path independent of the cod
    many-to-many).
 4. **The methods sentence** names the codebook and the join, asserted verbatim.
 
+The repair round closes what the independent verifier showed open, each against an independent
+path: a code table is checked against every distinct value (pandas' own counts, at 3,758 and 5,413
+distinct values); a documented range holds its bound as the file stores it (NHANES 2015–2016's
+DR1TOT_I, whose twelve maxima are ``np.nextafter`` of their printed bounds) and no further than
+four units in the last place; an energy unit whose Atwater check cannot run is asked, never applied;
+the user's own unit answer stands on the outcome's path too; undoing a join returns the ingest,
+oriented and working tables and the table served to the rows without it (read from their files);
+a join waits for a re-seal once the rows are drawn (the held-out rows by scikit-learn's
+``train_test_split``); and a NaN identifier is blank in the preview and the join alike (pandas'
+merge).
+
 R is used only as an independent reference, by subprocess, on files this test writes; the tests
 that need it skip when ``Rscript`` is absent.
 """
@@ -44,7 +55,7 @@ import pytest
 
 from turbotab.core import assembly, codebook as cb, readings as R, xport
 from turbotab.core import decisions as d
-from turbotab.core.datastore import DataStore, JoinInput, ingest, read_labels
+from turbotab.core.datastore import DataStore, JoinInput, ingest, read_labels, table_file
 from turbotab.core.tests.acceptance.server_drive import local_server, open_project
 from turbotab.core.tests.truths import asked
 
@@ -388,13 +399,14 @@ class Project:
     ``files/<id>/``, ``codebooks/<id>/``) and a decision log, driven through the real validators,
     completions and fold, without the server's job runner."""
 
-    def __init__(self, folder: Path):
+    def __init__(self, folder: Path, primary: Path | None = None,
+                 added: tuple[str, ...] = ("DR1TOT_J", "BMX_J")):
         self.dir = folder / "project"
         (self.dir / "data").mkdir(parents=True)
         self.files: dict[str, str] = {}
         self.records: list[d.DecisionRecord] = []
-        self.primary = unpack(folder, "DEMO_J")
-        for i, name in enumerate(("DR1TOT_J", "BMX_J")):
+        self.primary = primary if primary is not None else unpack(folder, "DEMO_J")
+        for i, name in enumerate(added):
             fid = f"f{i:010x}"
             (self.dir / "files" / fid).mkdir(parents=True)
             info = ingest(unpack(folder, name), self.dir / "files" / fid / "raw.parquet")
@@ -409,7 +421,9 @@ class Project:
 
     @property
     def table(self) -> Path:
-        return self.dir / "data" / "raw.parquet"
+        """The table as the joins recorded so far made it: each set of joins its own file, as
+        the server hands the ingest stage (``Workspace.table_path``)."""
+        return table_file(self.dir / "data", self.state.joins)
 
     def read(self) -> None:
         """The ingest stage: the table and every join recorded so far."""
@@ -419,7 +433,7 @@ class Project:
         ingest(self.primary, self.table, joins=joins)
 
     def ctx(self) -> dict[str, Any]:
-        info = json.loads((self.dir / "data" / "raw.info.json").read_text())["info"]
+        info = json.loads(self.table.with_name(self.table.stem + ".info.json").read_text())["info"]
         return {"project_dir": str(self.dir), "state": self.state, "ingest_status": "fresh",
                 "columns": [c["name"] for c in info["columns"]],
                 "records": lambda: list(self.records)}
@@ -541,9 +555,9 @@ def test_3_one_to_many_and_many_to_one_reproduce_pandas_and_many_to_many_is_refu
         f"row of that value on the other side, so a row's partner would be no single row, and "
         f"every count after it would multiply. Join on a column that names one row in one of the "
         f"two files.")
+    # The one way forward v2 offers (combining a file's rows per identifier is v2.x's).
     assert [e["label"] for e in refused.refusal["exits"]] == [
-        "Join on a column that names one row per unit in one of the files",
-        "Combine the file's rows to one per identifier first (deep assembly, planned for v2.x)"]
+        "Join on a column that names one row per unit in one of the files"]
 
 
 def test_3_blank_identifiers_never_match_and_types_must_agree(tmp_path):
@@ -894,6 +908,267 @@ def test_2_xpt_labels_import_settles_nothing_and_guides_the_guesses(tmp_path):
         "with.")
 
 
+# ── the repair round: what the verifier showed was not yet closed ────────────
+
+
+def as_code(v: Any) -> str:
+    """A value as a code table writes it: a whole number without its ``.0``, any other number
+    in its shortest round-trip form, text as it is."""
+    if isinstance(v, (int, np.integer)):
+        return str(int(v))
+    if isinstance(v, (float, np.floating)):
+        return str(int(v)) if float(v).is_integer() else repr(float(v))
+    return str(v)
+
+
+def shown_and_more(values: list[Any]) -> str:
+    """How a contradiction lists values: the first four, then how many more."""
+    head = ", ".join(f"`{as_code(v)}`" for v in values[:4])
+    return head + (f" and {len(values) - 4:,} more" if len(values) > 4 else "")
+
+
+def wearables(folder: Path, n_steps: int) -> pd.DataFrame:
+    """12,000 rows: whole-number `steps` with exactly ``n_steps`` distinct values (twice, under two
+    names), `intake_mg` with two decimals, `mood` 1–5 and a text `label`."""
+    rng = np.random.default_rng(n_steps)
+    n = 12_000
+    pool = rng.choice(np.arange(3, 40_000), size=n_steps, replace=False)
+    steps = np.concatenate([pool, rng.choice(pool, n - n_steps)])
+    rng.shuffle(steps)
+    return pd.DataFrame({"steps": steps, "steps_coded": steps,
+                         "intake_mg": rng.gamma(2.0, 400.0, n).round(2) + 2.0,
+                         "mood": rng.integers(1, 6, n),
+                         "label": [f"id-{i:05d}" for i in rng.integers(0, 20_000, n)]})
+
+
+WEARABLES_DICTIONARY = [
+    {"variable": "steps", "label": "Steps per day", "unit": "", "type": "",
+     "codes": "77777=Refused; 99999=Don't know"},
+    {"variable": "intake_mg", "label": "Caffeine", "unit": "mg", "type": "",
+     "codes": "0=None; 1=Some"},
+    {"variable": "mood", "label": "Mood", "unit": "", "type": "",
+     "codes": "1=Very low; 2=Low; 3=Neutral; 4=Good; 5=Very good"},
+    {"variable": "label", "label": "Device", "unit": "", "type": "", "codes": "A=First; B=Second"},
+    {"variable": "steps_coded", "label": "Steps band", "unit": "", "type": "",
+     "codes": "1=Low; 2=High"},
+]
+
+
+@pytest.mark.parametrize("n_steps", [3_758, 5_413])
+def test_2_a_code_table_is_checked_against_every_distinct_value(tmp_path, n_steps):
+    """The verifier's case: above 5,000 distinct values the code check was skipped and a code
+    table was applied unasked (``steps`` and ``intake_mg`` reached ``confirmed_codes``, the
+    design's one indicator per level). Now, at 3,758 distinct values and at 5,413 alike: a code
+    table whose categories the values exceed is asked, the values it does not list counted
+    exactly (pandas' own count of the distinct values outside the codes); a table of
+    missing-value codes alone (``77777=Refused; 99999=Don't know``) documents no category, so it
+    settles nothing and the step counts it does not list contradict nothing; a table the values
+    keep to (``mood``) settles codes. Only ``mood`` reaches the design's codes."""
+    frame = wearables(tmp_path, n_steps)
+    assert frame["steps"].nunique() == n_steps
+    frame.to_csv(tmp_path / "wearables.csv", index=False)
+    project = Project(tmp_path, primary=tmp_path / "wearables.csv", added=())
+    csv, _ = write_table(tmp_path, WEARABLES_DICTIONARY, "wearables_dictionary")
+    record = import_codebook(project, csv)
+    state = project.state
+    imported = record.decision
+    assert [(i.reading, i.column, i.value) for i in imported.items] == \
+        [("code_or_count", "mood", "code")]
+    # pandas: the distinct values each code table does not list, in order.
+    outside = {
+        "intake_mg": sorted(set(frame["intake_mg"]) - {0.0, 1.0}),
+        "label": sorted(set(frame["label"]) - {"A", "B"}),
+        "steps_coded": sorted(set(frame["steps_coded"]) - {1, 2}),
+    }
+    assert {x.column: x.values for x in imported.asked} == {
+        c: f"values it does not list: {shown_and_more(v)}" for c, v in outside.items()}
+    assert all(x.field == "codes" and x.checked for x in imported.asked)
+    assert set(R.confirmed_codes(state)) & set(frame.columns) == {"mood"}
+    for column in ("steps", "steps_coded", "intake_mg", "label"):
+        assert R.confirmation(state, "code_or_count", column) is None, column
+    codes = {"intake_mg": "`0`, `1`", "label": "`A`, `B`", "steps_coded": "`1`, `2`"}
+    assert record.sentence == (
+        "The codebook `wearables_dictionary.csv` (a variable table) documents `5` of the table's "
+        "columns. Its structured fields settled `1` column as codes for categories (`mood`), as "
+        "the user's own documentation. `3` of its fields contradict the values and were asked "
+        "instead of applied: "
+        + "; ".join(f"`{c}`'s codes (it says the codes {codes[c]}; the values show values it does "
+                    f"not list: {shown_and_more(outside[c])})" for c in outside)
+        + ". Its labels of `5` columns are shown beside the guesses the questions lead with and "
+          "settle nothing.")
+
+
+def next_up(x: float, k: int, dtype: Any = np.float64) -> float:
+    """``x`` moved up by ``k`` units in the last place of ``dtype`` (NumPy's own nextafter)."""
+    v = dtype(x)
+    for _ in range(k):
+        v = np.nextafter(v, dtype(np.inf))
+    return float(v)
+
+
+def test_2_a_documented_range_holds_its_bound_as_the_file_stores_it(tmp_path):
+    """NHANES 2015–2016's DR1TOT_I: eight rows of the CDC file (``datain_data/build_fixtures.py``)
+    hold the maximum of twelve variables, each, read by pandas' own reader, exactly one unit in the
+    last place above the bound the page prints (``np.nextafter``: 223.75900000000001 against "0 to
+    223.759"). The verifier saw twelve false contradictions written into the methods sentence;
+    the page now asks nothing of these rows. The slack is four units in the last place of the
+    column's own type, no more: a double five units past a bound, a float32 six of its own units
+    past one, and a value a thousandth past, are asked, each quoted with every digit."""
+    xpt, page = unpack(tmp_path, "DR1TOT_I"), unpack(tmp_path, "DR1TOT_I", "htm")
+    html = page.read_text(encoding="utf-8")
+    frame = pd.read_sas(xpt, format="xport")
+    over = {}
+    for c in frame.columns:
+        if f'id="{c}"' not in html:
+            continue
+        _label, rows = page_entry(html, c)
+        ranges = [k for k, v in rows.items() if v == "Range of Values"]
+        if ranges:
+            hi = float(ranges[0].split(" to ")[1].replace(",", ""))
+            if frame[c].max() > hi:
+                over[c] = (hi, float(frame[c].max()))
+    assert len(over) == 12 and all(top == np.nextafter(hi, np.inf) for hi, top in over.values())
+    info = ingest(xpt, tmp_path / "i.parquet")
+    assessed = cb.assess(cb.read(page), tmp_path / "i.parquet", info.to_dict())
+    assert assessed.asked == [] and len(assessed.matched) == frame.shape[1]
+    assert "contradict" not in assessed.to_dict()["sentence"]
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    hi = 223.759
+    far = hi + 0.001
+    columns = {
+        "d_edge": pa.array([0.0, 100.0, next_up(hi, 4)], pa.float64()),
+        "d_past": pa.array([0.0, 100.0, next_up(hi, 5)], pa.float64()),
+        "d_far": pa.array([0.0, 100.0, far], pa.float64()),
+        "f_bound": pa.array(np.array([0.0, 100.0, hi], dtype=np.float32), pa.float32()),
+        "f_past": pa.array([0.0, 100.0, next_up(hi, 6, np.float32)], pa.float32()),
+    }
+    pq.write_table(pa.table(columns), tmp_path / "bounds.parquet")
+    info = ingest(tmp_path / "bounds.parquet", tmp_path / "b.parquet")
+    assert {c.name: c.physical_type for c in info.columns}["f_bound"] == "FLOAT"
+    book = cb.Codebook("bounds.csv", "table", [cb.Entry(c, range=(0.0, hi)) for c in columns])
+    assessed = cb.assess(book, tmp_path / "b.parquet", info.to_dict())
+    # The values as DuckDB reads each column back as a double: float32's own value, widened.
+    widened = float(np.float32(next_up(hi, 6, np.float32)))
+    assert {x["column"]: x["values"] for x in assessed.asked} == {
+        "d_past": f"`1` value outside it, `{next_up(hi, 5)!r}`",
+        "d_far": f"`1` value outside it, `{far!r}`",
+        "f_past": f"`1` value outside it, `{widened!r}`"}
+    assert all(x["says"] == "values from 0 to 223.759" for x in assessed.asked)
+
+
+def energy_project(tmp_path: Path) -> tuple[Project, dict[str, Path]]:
+    """DEMO_J with DR1TOT_J joined, and two one-line dictionaries documenting DR1TKCAL in kcal
+    (right: pandas reads it as 0.9–1.1× its macronutrients' Atwater energy) and in kJ (wrong)."""
+    project = Project(tmp_path, added=("DR1TOT_J",))
+    project.decide(d.JoinFiles(file=project.files["DR1TOT_J"], on="SEQN"))
+    t = pandas_frames(tmp_path)["DR1TOT_J"]
+    atwater = 4 * t["DR1TPROT"] + 4 * t["DR1TCARB"] + 9 * t["DR1TTFAT"] + 7 * t["DR1TALCO"]
+    usable = (atwater > 0) & (t["DR1TKCAL"] > 0)
+    assert 0.9 <= float((t["DR1TKCAL"][usable] / atwater[usable]).median()) <= 1.1
+    files = {}
+    for unit in ("kcal", "kJ"):
+        files[unit], _ = write_table(tmp_path, [{"variable": "DR1TKCAL", "label": "", "unit": unit,
+                                                 "type": "", "codes": ""}], f"energy_{unit}")
+    return project, files
+
+
+def test_2_an_energy_unit_whose_check_cannot_run_is_asked_never_applied(tmp_path, monkeypatch):
+    """A total energy's documented unit is checked by the Atwater identity (the registry's test),
+    which reads the nutrition pack; a tree without Classic's ``ml`` package cannot import it
+    (``methods.energy`` then holds ``_nutrition = None``, as set here). The check that cannot run
+    confirms nothing: the documented unit, kJ or kcal alike, is asked, unchecked, with both units
+    as exits, and never applied; the sentence says it could not be checked."""
+    from turbotab.core.methods import energy
+
+    project, files = energy_project(tmp_path)
+    monkeypatch.setattr(energy, "_nutrition", None)
+    for unit in ("kcal", "kJ"):
+        record = import_codebook(project, files[unit])
+        imported = record.decision
+        assert imported.items == [] and imported.units == {}
+        assert [x.model_dump() for x in imported.asked] == [
+            {"column": "DR1TKCAL", "field": "unit", "says": unit, "values": cb.UNCHECKED_ENERGY,
+             "checked": False}]
+        assert R.confirmation(project.state, "unit", "DR1TKCAL") is None
+        preview = cb.assessment_for(cb.load(project.dir, imported.codebook), project.dir,
+                                    project.state)
+        documented = unit.lower()  # the other unit, then the documented one (as when contradicted)
+        assert [e["decision"]["value"] for e in preview.asked[0]["exits"]] == \
+            [*({"kcal", "kj"} - {documented}), documented]
+        assert record.sentence == (
+            f"The codebook `energy_{unit}.csv` (a variable table) documents `1` of the table's "
+            f"columns. Its structured fields settled no reading. `1` of its fields could not be "
+            f"checked against the values and was asked instead of applied: `DR1TKCAL`'s unit (it "
+            f"says {unit}; the Atwater identity, which tests a total energy's unit against its "
+            f"macronutrients, cannot run in this installation).")
+
+
+def _nutrition_pack() -> Any:
+    from turbotab.core.methods import energy
+
+    return energy._nutrition
+
+
+@pytest.mark.skipif(_nutrition_pack() is None, reason="the Atwater identity needs the nutrition "
+                    "pack, which this tree lacks (Classic's ml/ package)")
+def test_2_with_its_check_a_documented_energy_unit_settles_or_is_contradicted(tmp_path):
+    """With the nutrition pack, the documented kcal (right) settles and the documented kJ
+    (wrong) is contradicted: checked, and asked."""
+    project, files = energy_project(tmp_path)
+    contradicted = import_codebook(project, files["kJ"]).decision
+    assert [(x.field, x.checked) for x in contradicted.asked] == [("unit", True)]
+    settled = import_codebook(project, files["kcal"]).decision
+    assert [(i.reading, i.column, i.value) for i in settled.items] == [("unit", "DR1TKCAL", "kcal")]
+    assert R.confirmation(project.state, "unit", "DR1TKCAL") == "kcal"
+
+
+def test_2_a_documented_unit_gives_way_to_the_users_answer_on_the_outcome(tmp_path):
+    """The verifier's case: the user's own unit answer was kept on the reading path, but the
+    codebook's documented unit still reached the outcome's sentences as the user's "decision".
+    Now, answered before the import (lb against the codebook's kg, with BMXWT the outcome then or
+    later) or after it (the codebook's kg settled, then the user's lb), the outcome is stated in
+    no unit of the codebook's; answered the same as the codebook, it is stated in it."""
+    from turbotab.core.units import outcome_unit, recorded_unit
+
+    csv, _ = write_table(tmp_path, TABLE, "dictionary")
+
+    def outcome(state: d.ProjectState) -> d.ProjectState:
+        return state.model_copy(update={"target": "BMXWT"})
+
+    # Before the import, the outcome set first and after.
+    for target_first in (True, False):
+        project = Project(tmp_path / f"before_{target_first}", added=("BMX_J",))
+        project.decide(d.JoinFiles(file=project.files["BMX_J"], on="SEQN"))
+        if target_first:
+            project.decide(d.SetTarget(column="BMXWT"))
+        project.decide(d.ConfirmReading(reading="unit", column="BMXWT", value="lb"))
+        imported = import_codebook(project, csv).decision
+        assert "unit:BMXWT" in imported.kept and "BMXWT" not in imported.units
+        state = outcome(project.state)
+        assert R.confirmation(state, "unit", "BMXWT") == "lb"
+        assert recorded_unit(state, "BMXWT") is None
+        assert R.confirmation(state, "outcome_unit", "BMXWT") is None
+        assert outcome_unit("BMXWT", recorded=recorded_unit(state, "BMXWT")) == (None, None)
+    # After the import: the codebook's kg settled, then the user's lb.
+    project = Project(tmp_path / "after", added=("BMX_J",))
+    project.decide(d.JoinFiles(file=project.files["BMX_J"], on="SEQN"))
+    imported = import_codebook(project, csv).decision
+    assert ("unit", "BMXWT", "kg") in [(i.reading, i.column, i.value) for i in imported.items]
+    assert recorded_unit(outcome(project.state), "BMXWT") == "kg"
+    project.decide(d.ConfirmReading(reading="unit", column="BMXWT", value="lb"))
+    state = outcome(project.state)
+    assert R.confirmation(state, "unit", "BMXWT") == "lb"
+    assert R.body_unit_reading("BMXWT", "weight", state).evidence == "recorded by the user"
+    assert recorded_unit(state, "BMXWT") is None
+    # The same answer as the codebook's: its unit is the one stated.
+    project.decide(d.ConfirmReading(reading="unit", column="BMXWT", value="kg"))
+    assert outcome_unit("BMXWT", recorded=recorded_unit(outcome(project.state), "BMXWT")) == \
+        ("kg", "decision")
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # 4 · The methods sentences, verbatim
 # ═════════════════════════════════════════════════════════════════════════════
@@ -983,6 +1258,203 @@ def test_chain_upload_join_codebook_card_through_the_server(tmp_path):
         assert labels["form"] == "xpt" and labels["settles"] == []
 
 
+def people_files(folder: Path) -> dict[str, pd.DataFrame]:
+    """200 people, one row each (`pid`, `age`, `y`); their 600 visits, three each (`visit`,
+    `kcal`); and two files of 160 of them (`waist`, `fiber`), so an inner join drops 40 rows."""
+    rng = np.random.default_rng(31)
+    n = 200
+    people = pd.DataFrame({"pid": np.arange(1, n + 1), "age": rng.integers(20, 80, n),
+                           "y": rng.normal(0, 1, n).round(3)})
+    visits = pd.DataFrame({"pid": np.repeat(people["pid"].to_numpy(), 3),
+                           "visit": np.tile([1, 2, 3], n),
+                           "kcal": rng.normal(2000, 300, 3 * n).round()})
+    frames = {"people": people, "visits": visits}
+    for name, mean in (("waist", 90.0), ("fiber", 20.0)):
+        some = np.sort(rng.choice(people["pid"].to_numpy(), 160, replace=False))
+        frames[name] = pd.DataFrame({"pid": some, name: rng.normal(mean, 5, 160).round(1)})
+    for name, frame in frames.items():
+        frame.to_csv(folder / f"{name}.csv", index=False)
+    return frames
+
+
+def add_file(client: Any, pid: str, path: Path) -> str:
+    added = client.post(f"/api/projects/{pid}/files", json={"path": str(path)})
+    assert added.status_code == 200, added.text[:400]
+    return added.json()["id"]
+
+
+def stage_table(client: Any, pid: str, stage: str) -> pd.DataFrame:
+    """The table a stage's fresh artifact holds, read from its file on disk."""
+    from turbotab.core.graph import artifact_dir
+
+    key = client.get(f"/api/projects/{pid}").json()["stages"][stage]["key"]
+    cache = client.app.state.service.workspace.cache_dir(pid)
+    return pd.read_parquet(artifact_dir(cache, stage, key) / "files" / "table.parquet")
+
+
+def test_chain_undoing_a_join_returns_every_stage_to_the_table_without_it(tmp_path):
+    """The relation "invalidates stages_before_the_join", in both directions, through the server.
+    200 people joined one-to-many to their 600 visits (pandas' left merge: 600 rows, 5 columns):
+    the ingest artifact, the table served, and the oriented and working tables hold the joined
+    rows. The same join posted again is refused (already joined) with one exit, the revert; taken,
+    every one of them holds the 200 people and their 3 columns again, read from the files on disk,
+    and a codebook imported then documents none of the visits' columns. The undo undone joins them
+    again. (Before the repair the undo kept the joined rows in the table file under the unjoined
+    table's cached artifact.)"""
+    frames = people_files(tmp_path)
+    joined = frames["people"].merge(frames["visits"], on="pid", how="left")
+    people_columns = list(frames["people"].columns)
+
+    def holds(drive: Any, frame: pd.DataFrame) -> None:
+        info = drive.artifact("ingest")
+        assert (info["n_rows"], [c["name"] for c in info["columns"]]) == \
+            (len(frame), list(frame.columns))
+        for stage in ("oriented", "working"):  # once fresh (while one recomputes, the table
+            assert drive.artifact(stage)["n_rows"] == len(frame), stage  # served is its newest)
+            table = stage_table(drive.c, drive.pid, stage)
+            assert len(table) == len(frame), stage
+            assert [c for c in table.columns if not c.startswith("__")] == list(frame.columns), stage
+        window = drive.c.get(f"/api/projects/{drive.pid}/table", params={"limit": 0}).json()
+        assert (window["total_rows"], window["columns"]) == (len(frame), list(frame.columns))
+
+    with local_server(tmp_path / "home") as client:
+        drive = open_project(client, tmp_path / "people.csv")
+        drive.decide({"kind": "set_lens", "lenses": ["other"]})  # the working table waits for it
+        url = f"/api/projects/{drive.pid}"
+        fid = add_file(client, drive.pid, tmp_path / "visits.csv")
+        preview = client.post(f"{url}/join-preview", json={"file": fid, "on": "pid"}).json()
+        assert (preview["relation"], preview["rows"]) == ("one-to-many", len(joined))
+        assert drive.post({"kind": "join_files", "file": fid, "on": "pid"}).status_code == 200
+        holds(drive, joined)
+        again = drive.post({"kind": "join_files", "file": fid, "on": "pid"})
+        assert again.status_code == 409 and again.json()["error"]["code"] == "already_joined"
+        (undo,) = again.json()["error"]["exits"]
+        join_id = drive.view()["decisions"][-1]["id"]
+        assert undo["decision"] == {"kind": "revert", "decision_id": join_id}
+        assert drive.post(undo["decision"]).status_code == 200
+        assert drive.view()["state"]["joins"] is None
+        holds(drive, frames["people"])
+        rows = [{"variable": c, "label": c, "unit": "", "type": "continuous", "codes": ""}
+                for c in [*people_columns, "visit", "kcal"]]
+        csv, _ = write_table(tmp_path, rows, "people_dictionary")
+        staged = client.post(f"{url}/codebooks", json={"path": str(csv)}).json()
+        assert (staged["n_matched"], staged["unmatched"]) == (3, ["visit", "kcal"])
+        assert {s["column"] for s in staged["settles"]} <= set(people_columns)
+        revert_id = drive.view()["decisions"][-1]["id"]
+        assert drive.post({"kind": "revert", "decision_id": revert_id}).status_code == 200
+        holds(drive, joined)
+
+
+def test_a_join_waits_for_a_reseal_once_the_rows_are_drawn(tmp_path):
+    """The contract's slot (ingest) and place (before the opening sequence), enforced: a join is
+    one of the seal's Decision A. After ``set_split`` (prediction, 20% held out), an inner join
+    (which would drop 40 of 200 rows) and a one-to-many join are refused with the seal's reason and
+    its one exit, the re-seal (withdrawing the split); undoing a join made before the split is
+    refused the same way. The held-out rows, read from the split's parquet, are the same before and
+    after, and nothing is recorded. Taking the exit, the inner join is recorded and the split drawn
+    again holds out, over pandas' 160 joined rows, the rows scikit-learn's ``train_test_split``
+    holds out. (Before the repair the inner join was accepted and moved 116 of 160 held-out
+    people into training.)"""
+    from turbotab.server.tests.conftest import answer_settled, declare, prepare, wait_for
+
+    frames = people_files(tmp_path)
+    inner = frames["people"].merge(frames["fiber"], on="pid", how="inner")
+    split = {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5}
+
+    def accepted(pid: str, decision: dict[str, Any]) -> None:
+        response = answer_settled(client, pid, None, decision)
+        assert response.status_code == 200, response.text[:600]
+
+    def sealed(pid: str) -> set[int]:
+        from turbotab.core.graph import artifact_dir
+
+        view = wait_for(client, pid, {"split": "fresh"}, timeout=240)
+        cache = client.app.state.service.workspace.cache_dir(pid)
+        frame = pd.read_parquet(artifact_dir(cache, "split", view["stages"]["split"]["key"])
+                                / "frames" / "sealed.parquet")
+        return set(frame["row_id"].astype(int))
+
+    with local_server(tmp_path / "home") as client:
+        drive = open_project(client, tmp_path / "people.csv")
+        pid = drive.pid
+        declare(pid, {"code_or_count:age": "amount"}, fixture="people.csv")
+        files = {name: add_file(client, pid, tmp_path / f"{name}.csv")
+                 for name in ("waist", "fiber", "visits")}
+        accepted(pid, {"kind": "join_files", "file": files["waist"], "on": "pid"})
+        waist_join = drive.view()["decisions"][-1]["id"]
+        wait_for(client, pid, {"ingest": "fresh", "profile": "fresh"}, timeout=240)
+        accepted(pid, {"kind": "set_lens", "lenses": ["other"]})
+        accepted(pid, {"kind": "set_target", "column": "y"})
+        prepare(client, pid, {"kind": "set_purpose", "purpose": "prediction"})
+        accepted(pid, {"kind": "set_purpose", "purpose": "prediction"})
+        prepare(client, pid, split, timeout=240)
+        accepted(pid, split)
+        before = sealed(pid)
+        assert len(before) == 40
+        writer = drive.view()["decisions"][-1]["id"]
+        n_records = len(drive.view()["decisions"])
+        message = ("The held-out rows are drawn, and changing the files joined to the table "
+                   "changes what a row is: the seal names rows as they were. Withdraw the seal "
+                   "first, then draw it again.")
+        reseal = {"kind": "revert", "decision_id": writer}
+        for attempt in ({"kind": "join_files", "file": files["fiber"], "on": "pid", "how": "inner"},
+                        {"kind": "join_files", "file": files["visits"], "on": "pid"},
+                        {"kind": "revert", "decision_id": waist_join}):
+            refused = drive.post(attempt)
+            assert refused.status_code == 409, attempt
+            error = refused.json()["error"]
+            assert (error["code"], error["message"]) == ("sealed", message)
+            assert [e["decision"] for e in error["exits"]] == [reseal]
+        assert len(drive.view()["decisions"]) == n_records and sealed(pid) == before
+        # The exit: withdraw the seal, join, draw again.
+        assert drive.post(reseal).status_code == 200
+        accepted(pid, {"kind": "join_files", "file": files["fiber"], "on": "pid", "how": "inner"})
+        assert drive.artifact("ingest")["n_rows"] == len(inner) == 160
+        accepted(pid, split)
+        from sklearn.model_selection import train_test_split
+
+        _, test = train_test_split(np.arange(len(inner)), test_size=0.2, random_state=0)
+        assert sealed(pid) == set(test.tolist())
+
+
+def test_3_a_nan_identifier_is_blank_in_the_preview_and_the_join(tmp_path):
+    """A Parquet table whose float identifier holds NaN (Arrow and Polars writers keep NaN where
+    pandas writes a blank): before the repair the preview, read off the finished table (NaN made
+    blank), said one-to-many and was recorded, while the rebuild joined the raw rows first, where
+    DuckDB holds NaN equal to NaN, refused it as many-to-many, and every stage blocked. Now a NaN
+    identifier is blank on both paths: the preview of the raw file and of the read table agree,
+    the join is read, and its rows are pandas' left merge (which matches NaN to nothing here)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    pids = [1.0, 2.0, 3.0, 4.0, np.nan, np.nan]
+    pq.write_table(pa.table({"pid": pa.array(pids, pa.float64(), from_pandas=False),
+                             "age": pa.array([30, 41, 52, 63, 44, 35], pa.int64())}),
+                   tmp_path / "people_nan.parquet")
+    assert pq.read_table(tmp_path / "people_nan.parquet")["pid"].null_count == 0  # NaN, not null
+    visits = pd.DataFrame({"pid": [1, 1, 2, 3, 3, 3, 7], "kcal": [1800, 2100, 1900, 2500, 2400,
+                                                                  2300, 2000]})
+    visits.to_csv(tmp_path / "visits.csv", index=False)
+    people = pd.read_parquet(tmp_path / "people_nan.parquet")
+    expected = people.merge(visits, on="pid", how="left")
+    ingest(tmp_path / "visits.csv", tmp_path / "visits.parquet")
+    ingest(tmp_path / "people_nan.parquet", tmp_path / "people.parquet")
+    raw = assembly.preview(tmp_path / "people_nan.parquet", tmp_path / "visits.parquet", on="pid")
+    read = assembly.preview(tmp_path / "people.parquet", tmp_path / "visits.parquet", on="pid")
+    assert raw.refusal is None and raw.counts() == read.counts()
+    assert (raw.relation, raw.left.blank_keys, raw.result_rows) == ("one-to-many", 2,
+                                                                     len(expected))
+    with local_server(tmp_path / "home") as client:
+        drive = open_project(client, tmp_path / "people_nan.parquet")
+        fid = add_file(client, drive.pid, tmp_path / "visits.csv")
+        preview = client.post(f"/api/projects/{drive.pid}/join-preview",
+                              json={"file": fid, "on": "pid"}).json()
+        assert (preview["relation"], preview["rows"]) == ("one-to-many", len(expected))
+        assert drive.post({"kind": "join_files", "file": fid, "on": "pid"}).status_code == 200
+        info = drive.artifact("ingest")
+        assert info["n_rows"] == len(expected) == 9
+
+
 def test_contracts_declare_every_field_of_the_method_contract():
     """BLUEPRINT §13: slot, data scope, needs, routing (question, options, leash), storyboard,
     sentence and relations, for the join and the codebook import, each in the one registry."""
@@ -997,3 +1469,17 @@ def test_contracts_declare_every_field_of_the_method_contract():
     assert many.rung == "refused" and many.exits
     assert cb.CONTRACT.relation("contradicted by the values").says == "asked, never applied"
     assert cb.CONTRACT.relation("free-text label").says.startswith("strengthens the guess")
+    assert cb.CONTRACT.relation("its check cannot run").rung == "refused"
+    # The slot and the place are enforced, not only declared: the join is one of the seal's
+    # Decision A (exercised through the server in test_a_join_waits_for_a_reseal_...), and every
+    # relation names code that exists.
+    from importlib import import_module
+
+    from turbotab.core import seal
+
+    sealed = assembly.CONTRACT.relation("conflicts", "sealed")
+    assert sealed.rung == "refused" and assembly.CONTRACT.decision in seal.DECISION_A
+    for contract in (assembly.CONTRACT, cb.CONTRACT):
+        for relation in contract.relations:
+            module, function = relation.enforced_by.split(":")
+            assert callable(getattr(import_module(module), function)), relation.enforced_by

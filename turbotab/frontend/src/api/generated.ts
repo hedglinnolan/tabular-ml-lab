@@ -898,14 +898,21 @@ export interface components {
             says: string;
             /** Values */
             values: string;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
             /** Exits */
             exits: components["schemas"]["Exit"][];
         };
         /**
          * CodebookConflict
-         * @description A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3).
+         * @description A codebook field the values contradict, or one whose check cannot run here (``checked``
+         *     False: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT
+         *     §14.2–§14.3).
          */
-        CodebookConflict: {
+        "CodebookConflict-Input": {
             /** Column */
             column: string;
             /**
@@ -917,6 +924,35 @@ export interface components {
             says: string;
             /** Values */
             values: string;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
+        };
+        /**
+         * CodebookConflict
+         * @description A codebook field the values contradict, or one whose check cannot run here (``checked``
+         *     False: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT
+         *     §14.2–§14.3).
+         */
+        "CodebookConflict-Output": {
+            /** Column */
+            column: string;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "unit" | "codes" | "type" | "range";
+            /** Says */
+            says: string;
+            /** Values */
+            values: string;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
         };
         /**
          * CodebookPreview
@@ -1013,7 +1049,7 @@ export interface components {
                 [key: string]: string;
             };
             /** Asked */
-            asked: components["schemas"]["CodebookConflict"][];
+            asked: components["schemas"]["CodebookConflict-Output"][];
             /** Kept */
             kept: string[];
             /**
@@ -1926,7 +1962,7 @@ export interface components {
                 [key: string]: string;
             };
             /** Asked */
-            asked?: components["schemas"]["CodebookConflict"][];
+            asked?: components["schemas"]["CodebookConflict-Input"][];
             /** Kept */
             kept?: string[];
             /**
@@ -1973,7 +2009,7 @@ export interface components {
                 [key: string]: string;
             };
             /** Asked */
-            asked: components["schemas"]["CodebookConflict"][];
+            asked: components["schemas"]["CodebookConflict-Output"][];
             /** Kept */
             kept: string[];
             /**
@@ -6379,6 +6415,30 @@ export interface components {
              * @default null
              */
             note: string | null;
+        };
+        /**
+         * CodebookConflict
+         * @description A codebook field the values contradict, or one whose check cannot run here (``checked``
+         *     False: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT
+         *     §14.2–§14.3).
+         */
+        CodebookConflict: {
+            /** Column */
+            column: string;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "unit" | "codes" | "type" | "range";
+            /** Says */
+            says: string;
+            /** Values */
+            values: string;
+            /**
+             * Checked
+             * @default true
+             */
+            checked: boolean;
         };
         /** Coefficient */
         Coefficient: {

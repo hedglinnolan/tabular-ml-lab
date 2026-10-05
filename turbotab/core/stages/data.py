@@ -33,17 +33,24 @@ def gigabytes(n: int) -> str:
 def ingest_stage(ctx: StageContext) -> dict[str, Any]:
     """Read the source file once into ``data/raw.parquet``; the artifact is DatasetInfo. The files
     joined to it (``joins``, DATAIN) are joined in answer order on their identifiers, each read
-    from its own ingested copy (``files/<id>/raw.parquet``)."""
+    from its own ingested copy (``files/<id>/raw.parquet``), into the file of that set of joins
+    (``datastore.table_file``), never over the table without them."""
     from turbotab.core.assembly import file_parquet
-    from turbotab.core.datastore import JoinInput, ingest
+    from turbotab.core.datastore import JoinInput, ingest, table_file
 
+    dest = Path(ctx.paths["data"])
+    joined = getattr(ctx.state, "joins", None)
+    if joined and dest != table_file(dest.parent, joined):
+        raise RuntimeError(f"the ingest stage was handed {dest.name}, which is not the file of "
+                           f"these joins ({table_file(dest.parent, joined).name})")
     joins = []
-    for spec in (getattr(ctx.state, "joins", None) or {}).values():
+    for spec in (joined or {}).values():
         joins.append(JoinInput(parquet=file_parquet(Path(ctx.paths["project_dir"]), spec.file),
                                name=spec.name, on=spec.on, right_on=spec.right_on, how=spec.how))
-    info = ingest(Path(ctx.paths["source"]), Path(ctx.paths["data"]), progress=ctx.progress,
-                  joins=joins)
-    return info.to_dict()
+    info = ingest(Path(ctx.paths["source"]), dest, progress=ctx.progress, joins=joins)
+    # The artifact names the file it describes (``data/<table>``): a reader holding only the
+    # artifact (the server's table before an oriented one exists) opens that file, never another.
+    return {**info.to_dict(), "table": dest.name}
 
 
 @remembered()  # packs.suggest reads each shape twice; once is enough (wide data)

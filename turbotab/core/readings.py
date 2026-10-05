@@ -276,15 +276,30 @@ def recorded_evidence(state: Any, kind: str, column: str | None) -> str:
 def codebook_unit(state: Any, column: str | None) -> str | None:
     """The unit the latest imported codebook documents for ``column`` (any unit: ``mg/dL`` as
     well as the reading kinds' ``kg``), or None. A documented unit is the user's own; an outcome
-    whose unit it documents is stated in it (:func:`confirmation`, kind ``outcome_unit``)."""
+    whose unit it documents is stated in it (:func:`confirmation`, kind ``outcome_unit``).
+
+    A recorded answer stands (BLUEPRINT §14.2): when the user's own answer to the column's unit
+    reading says otherwise, given before the import or after it, the codebook documents no unit a
+    sentence states (None), never its own in place of the user's."""
     if column is None:
         return None
     for spec in reversed(_codebooks(state)):
         unit = (_get(spec, "units") or {}).get(column) or \
             (_get(spec, "settled") or {}).get(key("unit", column))
         if unit:
-            return str(unit)
+            return None if _unit_answered_otherwise(state, column, str(unit)) else str(unit)
     return None
+
+
+def _unit_answered_otherwise(state: Any, column: str, documented: str) -> bool:
+    """Whether the column's unit reading holds the user's own answer (not a codebook's), and it
+    differs from ``documented``."""
+    recorded = confirmation(state, "unit", column)
+    if recorded is None or codebook_source(state, "unit", column) is not None:
+        return False
+    from turbotab.core.codebook import unit_value
+
+    return str(recorded) != (unit_value(documented) or documented)
 
 
 def codebook_label(state: Any, column: str | None) -> str | None:

@@ -3057,6 +3057,11 @@
             "type": "string",
             "title": "Values"
           },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": true
+          },
           "exits": {
             "items": {
               "$ref": "#/components/schemas/Exit"
@@ -3071,11 +3076,12 @@
           "field",
           "says",
           "values",
+          "checked",
           "exits"
         ],
         "title": "CodebookAsk"
       },
-      "CodebookConflict": {
+      "CodebookConflict-Input": {
         "properties": {
           "column": {
             "type": "string",
@@ -3098,6 +3104,11 @@
           "values": {
             "type": "string",
             "title": "Values"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -3109,7 +3120,49 @@
           "values"
         ],
         "title": "CodebookConflict",
-        "description": "A codebook field the values contradict: asked, never applied (BLUEPRINT §14.2–§14.3)."
+        "description": "A codebook field the values contradict, or one whose check cannot run here (``checked``\nFalse: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT\n§14.2–§14.3)."
+      },
+      "CodebookConflict-Output": {
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "codes",
+              "type",
+              "range"
+            ],
+            "title": "Field"
+          },
+          "says": {
+            "type": "string",
+            "title": "Says"
+          },
+          "values": {
+            "type": "string",
+            "title": "Values"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "column",
+          "field",
+          "says",
+          "values",
+          "checked"
+        ],
+        "title": "CodebookConflict",
+        "description": "A codebook field the values contradict, or one whose check cannot run here (``checked``\nFalse: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT\n§14.2–§14.3)."
       },
       "CodebookPreview": {
         "properties": {
@@ -3295,7 +3348,7 @@
           },
           "asked": {
             "items": {
-              "$ref": "#/components/schemas/CodebookConflict"
+              "$ref": "#/components/schemas/CodebookConflict-Output"
             },
             "type": "array",
             "title": "Asked"
@@ -6059,7 +6112,7 @@
           },
           "asked": {
             "items": {
-              "$ref": "#/components/schemas/CodebookConflict"
+              "$ref": "#/components/schemas/CodebookConflict-Input"
             },
             "type": "array",
             "title": "Asked"
@@ -6154,7 +6207,7 @@
           },
           "asked": {
             "items": {
-              "$ref": "#/components/schemas/CodebookConflict"
+              "$ref": "#/components/schemas/CodebookConflict-Output"
             },
             "type": "array",
             "title": "Asked"
@@ -17338,6 +17391,48 @@
           "note"
         ],
         "title": "ClusterScore",
+        "type": "object"
+      },
+      "CodebookConflict": {
+        "additionalProperties": false,
+        "description": "A codebook field the values contradict, or one whose check cannot run here (``checked``\nFalse: a check that cannot run confirms nothing): asked, never applied (BLUEPRINT\n§14.2–§14.3).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "unit",
+              "codes",
+              "type",
+              "range"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "says": {
+            "title": "Says",
+            "type": "string"
+          },
+          "values": {
+            "title": "Values",
+            "type": "string"
+          },
+          "checked": {
+            "default": true,
+            "title": "Checked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "field",
+          "says",
+          "values",
+          "checked"
+        ],
+        "title": "CodebookConflict",
         "type": "object"
       },
       "Coefficient": {
