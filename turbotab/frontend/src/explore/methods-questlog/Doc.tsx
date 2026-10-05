@@ -14,7 +14,7 @@ const READ_FROM = "Read from the values, no question asked:";
 
 const sentenceCase = (t: string) => (/^[a-z]/.test(t) ? t[0]!.toUpperCase() + t.slice(1) : t);
 
-function Sentence({ text, kind }: { text: string; kind: string | null }) {
+function Sentence({ text, kind, onPhrase }: { text: string; kind: string | null; onPhrase?: (kind: string) => void }) {
   const [open, setOpen] = useState(false);
   let body = text;
   let folded: string | null = null;
@@ -29,9 +29,21 @@ function Sentence({ text, kind }: { text: string; kind: string | null }) {
       {parts ? (
         <>
           <Rich text={parts[0]} />
-          <span className={s.phrase} title="A stated phrase: press to see the alternatives on the canvas">
-            <Rich text={parts[1]} />
-          </span>
+          {onPhrase && kind ? (
+            <button
+              type="button"
+              className={s.phrase}
+              title="A stated phrase: press to open its slot and play the alternatives on the canvas"
+              onClick={() => onPhrase(kind)}
+              data-testid={`phrase-${kind}`}
+            >
+              <Rich text={parts[1]} />
+            </button>
+          ) : (
+            <span className={s.phrase}>
+              <Rich text={parts[1]} />
+            </span>
+          )}
           <Rich text={parts[2]} />
         </>
       ) : (
@@ -58,12 +70,15 @@ export function MethodsDoc({
   lines,
   title,
   locked,
+  onPhrase,
 }: {
   guideline: Guideline;
   sections: Section[];
   lines: MethodsLine[];
   title: string;
   locked: string | null;
+  /** Opens the slot a stated phrase belongs to. */
+  onPhrase?: (kind: string) => void;
 }) {
   const kindOf = (sentence: string) => lines.find((l) => l.sentence === sentence)?.kind ?? null;
   const silent = sections.reduce((n, sec) => n + sec.silent, 0);
@@ -94,7 +109,7 @@ export function MethodsDoc({
               if (i.tier === "stated")
                 return i.sentences
                   .filter((t) => !/^The analysis plan recorded above/.test(t))
-                  .map((t) => <Sentence key={t} text={t} kind={kindOf(t)} />);
+                  .map((t) => <Sentence key={t} text={t} kind={kindOf(t)} onPhrase={onPhrase} />);
               if (i.tier === "engine")
                 // Stated by the engine without asking: its reason, as a sentence of the paragraph.
                 return i.sentences.map((t) => (

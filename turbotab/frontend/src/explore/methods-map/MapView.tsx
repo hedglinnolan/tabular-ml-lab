@@ -3,22 +3,26 @@
  * the estimate — with the rows as a ribbon above and the columns as lanes below. Regions are the
  * reporting guideline's sections (STROBE-nut under inference, TRIPOD+AI under prediction).
  *
- * A stated decision is a small solid dot with its phrase; an asked one a hollow ring with its guess
- * (the current objective breathes, gently, unless motion is reduced); a waiting one a dashed ring;
+ * A stated decision is a small solid dot with its phrase; an asked one a hollow ring with its guess,
+ * pulsing while it needs your answer (the current objective most, and none when motion is reduced);
+ * a waiting one a dashed ring;
  * a silent one is not drawn, only counted in its region's footer. Clicking any node opens it.
  */
 import { useMemo, type KeyboardEvent } from "react";
-import { FX, INF, PRED, fmtCi, fmtInt } from "./fixture";
-import { specsOf } from "./Results";
+import { fmtCI, fmtEst } from "../methods-shared/results";
+import { FX, INF, PRED, fmtInt } from "./fixture";
+import { matteredOf } from "./Results";
 import { H, LABEL_W, RAIL_Y, RIBBON_Y, layout } from "./geometry";
 import {
   INITIAL,
   MAP_TITLE,
   NODE_TITLE,
   REGIONS,
+  EXPOSURE,
   answered,
   derive,
   fitFor,
+  readingKeys,
   tierOf,
   unconfirmed,
   type Answers,
@@ -65,9 +69,9 @@ export function phraseOf(n: NodeId, a: Answers, purpose: Purpose): { text: strin
     case "grain":
       return { text: "one row per unit", kind: "value" };
     case "readings": {
-      const left = unconfirmed(a).length + (a.unit ? 0 : 1);
-      return answered(a, "readings")
-        ? { text: `${INF.readings.items.length + 1} confirmed`, kind: "value" }
+      const left = unconfirmed(a, purpose).length + (a.unit ? 0 : 1);
+      return answered(a, "readings", purpose)
+        ? { text: `${readingKeys(purpose).length + 1} confirmed`, kind: "value" }
         : { text: `${left} to confirm`, kind: "guess" };
     }
     case "exclusions":
@@ -106,9 +110,12 @@ export function phraseOf(n: NodeId, a: Answers, purpose: Purpose): { text: strin
     case "energy":
       return { text: TEACH_LABEL("energy_adjustment", a.energy), kind: "value" };
     case "form":
-      return { text: INF.form.options.find((o) => o.value === a.form)?.label ?? a.form, kind: "value" };
+      // none recorded: the engine fits a straight line (the phrase says what is fitted)
+      return { text: INF.form.options.find((o) => o.value === (a.form ?? "linear"))?.label ?? a.form ?? "", kind: "value" };
     case "missing":
-      return { text: "waits on the adjustment", kind: "wait" };
+      return a.missing
+        ? { text: INF.missing.labels.options.complete_case!.label, kind: "value" }
+        : { text: "asked of you", kind: "guess" };
     case "model1":
       return a.model1 === "guess"
         ? { text: INF.model_1.guess.join(", "), kind: "value" }
@@ -136,7 +143,7 @@ export function phraseOf(n: NodeId, a: Answers, purpose: Purpose): { text: strin
       if (pick?.kind !== "fit") return { text: "after the lock", kind: "wait" };
       return pick.fit.tests.length
         ? { text: "curves: none to line up", kind: "value" }
-        : { text: `${specsOf(pick.fit, a).length} declared`, kind: "value" };
+        : { text: `${matteredOf(pick.fit, a).length} declared`, kind: "value" };
     }
     case "p_missing":
       return a.pMissing
@@ -157,7 +164,7 @@ export function phraseOf(n: NodeId, a: Answers, purpose: Purpose): { text: strin
 }
 
 /** Steps that change no number (not applicable here), by region: the export's silent lines. */
-export function silentByRegion(a: Answers, purpose: Purpose): Record<string, { key: string; reason: string }[]> {
+export function silentByRegion(purpose: Purpose): Record<string, { key: string; reason: string }[]> {
   const steps = purpose === "inference" ? INF.steps : PRED.steps;
   const where: Record<string, string> = {
     orientation: "data",
@@ -180,8 +187,6 @@ export function silentByRegion(a: Answers, purpose: Purpose): Record<string, { k
     if (!r) continue;
     (out[r] ??= []).push({ key: s.key, reason: s.reason });
   }
-  if (purpose === "inference" && answered(a, "adjustment"))
-    (out.methods ??= []).push({ key: "missing", reason: INF.missing.sentences.complete_case! });
   return out;
 }
 
@@ -205,15 +210,20 @@ export function MapView({ purpose, answers, preview, focus, walking, objective, 
     const before = new Map(recordedDrawing.segs.map((s) => [s.key, s.d + s.tone + s.dashed]));
     return new Set(drawing.segs.filter((s) => before.get(s.key) !== s.d + s.tone + s.dashed).map((s) => s.key));
   }, [drawing, recordedDrawing]);
-  const silent = silentByRegion(answers, purpose);
+  const silent = silentByRegion(purpose);
   const regions = REGIONS[purpose];
   // The estimate, where the lanes end: once the plan is locked, and only for a fit captured.
   const pick = purpose === "inference" && answers.locked ? fitFor(answers) : null;
+  const m2effects = pick?.kind === "fit" ? pick.fit.sequence.find((s) => s.key === "model_2")!.effects : [];
+  // the exposure's term (`sugar_adj` once the residual method replaced it)
+  const m2 = m2effects.find((e) => e.feature === EXPOSURE) ?? m2effects[0];
   const estimate =
     pick?.kind === "fit"
       ? pick.fit.tests.length
-        ? "sugar: a curve of 3 terms"
-        : `β ${fmtCi(pick.fit.sequence.find((s) => s.key === "model_2")!.effects[0]!)}`
+        ? `${EXPOSURE}: a curve of 3 terms`
+        : m2
+          ? `β ${fmtEst(m2.estimate)} (${fmtCI(m2.ci_low, m2.ci_high)})`
+          : null
       : null;
   const lit = (n: NodeId) => !walking || walking === n;
 
@@ -392,9 +402,10 @@ function tierWord(t: Tier): string {
 function Glyph({ tier, objective }: { tier: Tier; objective: boolean }) {
   switch (tier) {
     case "asked":
+      // every asked node pulses while it needs your answer; the current objective most
       return (
         <>
-          {objective ? <circle r={13} className={m.halo} /> : null}
+          <circle r={13} className={m.halo} data-objective={objective || undefined} />
           <circle r={8} className={m.ring} />
         </>
       );

@@ -1,7 +1,8 @@
 /**
- * The real-data fixture for /lab/methods-map (capture.py drives the real server; trim.py keeps
- * what the prototype shows). Every sentence, guess, evidence line and number on the page comes from
- * here; the prototype writes only its own controls' labels.
+ * The real-data fixture for /lab/methods-map (capture.py drives the real server through the three
+ * prototypes' shared scenario, ../methods-shared/SCENARIO.md; trim.py keeps what the prototype
+ * shows). Every sentence, guess, evidence line and number on the page comes from here; the
+ * prototype writes only its own controls' labels.
  */
 import type { PreviewResult } from "../../api/m1-stage-types";
 import raw from "./fixture.json";
@@ -151,7 +152,11 @@ export interface Inference {
       previews: { confirm: Preview; two_days: Preview };
     };
     single: Record<string, Md>;
+    /** The role readings' block: its sentence for each set it can list (a base-36 bit mask over
+     *  `items`, the role readings in the card's order). */
     block: { items: string[]; sentences: Md[]; by_mask: Record<string, number> };
+    /** The fit's card: its one block of the code-or-amount readings, as the engine recorded it. */
+    codes: { items: string[]; consumer: string; sentence: Md };
     read_from_data: { kind: string; column: string; value: string; words: string; evidence: Md }[];
     read_sentence: Md;
   };
@@ -177,20 +182,25 @@ export interface Inference {
     measures: { measure: string; label: string; fitted: boolean; reason: Md; rank: number | null }[];
     which_contrast: Md;
     sentence: Md;
-    preview_note: Md;
-    preview_basis: Md;
+    /** On the scenario's whole plan (at its own question the engine cannot draw it yet). */
+    preview: Preview;
   };
   adjustment: {
     questions: Record<"causes_exposure" | "causes_outcome" | "after_exposure" | "instrument" | "proxy", string>;
     source: string;
     groups: AdjustGroup[];
+    /** A group's one-tap sentence (empty here: the scenario answered every group from the truth). */
     group_sentences: Record<string, Md>;
+    /** Every set_adjustment the scenario recorded, in order: the columns it answered, their three
+     *  answers (the declared truth; a guessed group's equals its guess) and the engine's sentence. */
     unguessed: { columns: string[]; answers: Answer3[]; sentence: Md }[];
     per_column: { sentences: Md[]; by_column: Record<string, Record<string, number>> };
     derive: Record<string, Derived>;
     after: { adjusted: string[]; left_out: string[]; secondary: string[] };
     mediator_kept: { message: Md; exits: Md[] };
-    preview_note: Md;
+    /** Each group's scenario answers, previewed on the state the groups before it (in the card's
+     *  order) leave. */
+    previews: Record<string, Preview>;
   };
   energy: {
     labels: Labels;
@@ -203,15 +213,17 @@ export interface Inference {
     refusals: Record<string, { code: string; message: Md; exits: Md[] }>;
     previews: Record<string, Preview>;
   };
-  form: { options: FormOption[]; sentences: Record<string, Md>; after: Record<string, Md>; preview_note: Md };
+  /** `previews`: each form on the scenario's plan (no form recorded). */
+  form: { options: FormOption[]; sentences: Record<string, Md>; after: Record<string, Md>; previews: Record<string, Preview> };
   missing: {
     labels: Labels;
-    sentences: Record<string, Md>;
-    before_adjustment: Md;
+    /** The scenario's answer (complete cases), as the engine recorded it at the missing question. */
+    sentence: Md;
     previews: Record<string, Preview>;
     columns: { column: string; n_missing: number; share: number; likely_not_asked: boolean; reason: Md }[];
   };
-  model_1: { guess: string[]; allowed: string[]; reason: Md; sentences: { guess: Md; empty: Md } };
+  /** `previews`: the declared sequence with and without Model 1, on the scenario's whole plan. */
+  model_1: { guess: string[]; allowed: string[]; reason: Md; sentences: { guess: Md; empty: Md }; previews: { guess: Preview; empty: Preview } };
   shelf: { key: string; label: string; rank: number; fit: string | null; inductive_bias: Md | null }[];
   /** Previews taken on the other recordable states ("<exclusions>|<form>"): only those that
    *  differ, each view equal to an earlier state's given as {ref, from}. */
@@ -224,10 +236,27 @@ export interface Inference {
 
 export interface Prediction {
   steps: Step[];
+  n_base: number;
+  /** Its own readings: the role readings (the inference card's items) and the code-or-amount
+   *  ones its one block also settles; every sentence the engine's on the prediction project. */
+  readings: {
+    codes: ReadingItem[];
+    consumer: string;
+    unit_sentence: Md;
+    single: Record<string, Md>;
+    /** The block's sentence for each set it can list: a base-36 bit mask over `items`. */
+    block: { items: string[]; sentences: Md[]; by_mask: Record<string, number> };
+  };
   steps_after_seal: Step[];
   stated: { lens: Md; target: Md; purpose: Md; roles: Md };
   exclusions: { labels: Labels; sentence_none: Md; previews: Record<string, Preview> };
-  missing: { labels: Labels; sentence_impute: Md; previews: Record<string, Preview> };
+  missing: {
+    labels: Labels;
+    columns: { column: string; n_missing: number; share: number; likely_not_asked: boolean; reason: Md }[];
+    guess: string;
+    sentence_impute: Md;
+    previews: Record<string, Preview>;
+  };
   seal: {
     reason: Md;
     options: { holdout: number; label: string; n_holdout: number; measures: Md }[];
@@ -240,7 +269,7 @@ export interface Prediction {
 }
 
 export interface Fixture {
-  meta: { file: string; rows: number; cols: number; captured: string };
+  meta: { file: string; rows: number; cols: number; captured: string; scenario: string };
   teaching: Record<string, Teach>;
   inference: Inference;
   prediction: Prediction;

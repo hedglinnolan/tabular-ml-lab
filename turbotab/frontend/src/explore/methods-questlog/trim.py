@@ -3,17 +3,23 @@
     venv/bin/python turbotab/frontend/src/explore/methods-questlog/trim.py <raw dir>
 
 Nothing is written by hand: every sentence, guess, piece of evidence and number in fixture.json is
-the server's own, from the two drives (inference and prediction) on the NHANES export. Floats are
-rounded to six significant digits and the preview scatters keep the server's own sample.
+the server's own, from the shared scenario's two drives (inference and prediction) on the NHANES
+export. Fields the prototype never reads are dropped, artifacts that repeat across moments are
+stored once, and floats are rounded to six significant digits.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
+BANNER = ("ingest", "oriented", "working", "cohort", "split", "design", "fit", "shelf")
+STATUS_KEEP = (*BANNER, "substitution")
+TEACHING = ("purpose", "lens", "target", "roles", "exclusions", "missing", "split", "estimand",
+            "adjustment", "energy_adjustment", "models", "substitution", "survey")
 
 
 def rnd(o: Any) -> Any:
@@ -30,112 +36,172 @@ def load(path: Path) -> Any:
     return json.loads(path.read_text())
 
 
-def view_of(snap: dict[str, Any]) -> dict[str, Any]:
-    v = snap["view"]
+def pick(d: dict[str, Any] | None, keys: tuple[str, ...]) -> dict[str, Any] | None:
+    return None if d is None else {k: d.get(k) for k in keys if k in d}
+
+
+def slim_ask(ask: dict[str, Any] | None) -> dict[str, Any] | None:
+    return None if ask is None else {k: v for k, v in ask.items() if k != "read_from_data"}
+
+
+def slim_view(v: dict[str, Any]) -> dict[str, Any]:
     return {
         "summary": v["summary"],
         "state": v["state"],
-        "stages": v["stages"],
-        "interview": v["interview"],
-        "decisions": [{k: d[k] for k in ("id", "seq", "at", "sentence", "post_seal", "after_estimates",
-                                         "decision", "note")} for d in v["decisions"]],
+        "stages": {k: pick(s, ("stage", "status", "key", "fresh", "error", "cancelled"))
+                   for k, s in v["stages"].items() if k in STATUS_KEEP},
+        "interview": [{**{k: s.get(k) for k in ("key", "status", "decision_id", "reason",
+                                                 "waiting_on")}, "ask": slim_ask(s.get("ask"))}
+                      for s in v["interview"]],
     }
 
 
-BANNER = ("ingest", "oriented", "working", "cohort", "split", "design", "fit", "shelf")
+def slim_artifact(stage: str, a: dict[str, Any]) -> dict[str, Any]:
+    """What the banner and the canvas read of each stage artifact."""
+    if stage == "ingest":
+        return pick(a, ("n_rows", "n_cols"))
+    if stage == "oriented":
+        return pick(a, ("n_rows", "n_cols", "transposed"))
+    if stage == "working":
+        return pick(a, ("n_rows", "n_source_rows"))
+    if stage == "cohort":
+        return pick(a, ("steps", "n_final", "predictors", "n_base"))
+    if stage == "design":
+        lineage = a.get("lineage") or {}
+        return {"lineage": {"nodes": [pick(n, ("id", "lane", "count", "column"))
+                                      for n in lineage.get("nodes", [])], "links": []},
+                "matrix": pick(a.get("matrix") or {}, ("n_cols",))}
+    return a
 
 
-def stages_of(snap: dict[str, Any], fit: Any = None) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    statuses = snap["view"]["stages"]
-    for st in BANNER:
-        art = fit if st == "fit" and fit is not None else snap.get(st)
-        if art is None:
-            continue
-        s = statuses.get(st, {})
-        out[st] = {"stage": st, "key": s.get("key"), "fresh": True, "status": s.get("status", "fresh"),
-                   "artifact": art}
-    return out
+class Store:
+    def __init__(self) -> None:
+        self.artifacts: dict[str, Any] = {}
+
+    def put(self, stage: str, result: dict[str, Any]) -> str:
+        slim = {**pick(result, ("stage", "key", "fresh", "status")),
+                "artifact": slim_artifact(stage, result["artifact"])}
+        blob = json.dumps(slim, sort_keys=True)
+        ref = hashlib.sha1(blob.encode()).hexdigest()[:10]
+        self.artifacts.setdefault(ref, slim)
+        return ref
 
 
-def moment(snap: dict[str, Any], fit: Any = None) -> dict[str, Any]:
-    return {"view": view_of(snap), "methods": snap["methods"], "stages": stages_of(snap, fit)}
+def moment(snap: dict[str, Any], store: Store) -> dict[str, Any]:
+    stages = {st: store.put(st, snap["stages"][st]) for st in BANNER if st in snap["stages"]}
+    lines = [pick(l, ("record_id", "seq", "kind", "sentence", "in_force", "post_seal",
+                      "after_estimates")) for l in snap["methods"]["lines"]]
+    return {"view": slim_view(snap["view"]), "methods": {"lines": lines}, "stages": stages}
+
+
+def sugar_only(coefs: list[dict[str, Any]], exposure: str) -> list[dict[str, Any]]:
+    return [c for c in coefs if c["feature"] == exposure]
 
 
 def main(raw: Path) -> None:
     inf, pred = raw / "inference", raw / "prediction"
-    snaps = {p.stem.split("_", 2)[2]: load(p) for p in sorted(inf.glob("snap_*.json"))}
-    psnaps = {p.stem.split("_", 2)[2]: load(p) for p in sorted(pred.glob("snap_*.json"))}
-    fit = load(inf / "fit.json")
-    pfit = load(pred / "fit.json")
+    order = load(inf / "order.json")
+    snaps = {name: load(inf / f"snap_{name}.json") for name in order}
+    store = Store()
+    moments = {name: moment(s, store) for name, s in snaps.items()}
+
+    def proposals(name: str) -> dict[str, Any]:
+        return snaps[name]["stages"]["proposals"]["artifact"]
 
     previews = {}
     for p in sorted(inf.glob("preview_*.json")):
-        name = p.stem[len("preview_"):]
         got = load(p)
-        previews[name] = {"status": got["status"], "decision": got["decision"], "body": got["body"]}
-    evidence = {p.stem[len("evidence_"):]: load(p) for p in sorted(inf.glob("evidence_*.json"))}
+        previews[p.stem[len("preview_"):]] = {"status": got["status"], "decision": got["decision"],
+                                              "body": got["body"]}
+    evidence = {}
+    for name in ("evidence_readings", "evidence_codes"):
+        for fid, e in load(inf / f"{name}.json").items():
+            evidence[fid] = {"columns": e["finding"]["affected_columns"],
+                             "summary": e["finding"]["summary"], "evidence": e["evidence"]}
 
-    teaching = [{k: e.get(k) for k in ("key", "title", "question", "one_liner", "why", "consumer", "options",
-                                       "terms", "drawer")} for e in load(inf / "teaching.json")]
+    teaching = [{k: e.get(k) for k in ("key", "title", "question", "one_liner", "why", "consumer",
+                                       "options", "terms", "drawer")}
+                for e in load(inf / "teaching.json") if e["key"] in TEACHING]
 
-    sensitivity = load(inf / "stage_sensitivity.json")
-    sens_fits = []
-    for fam in sensitivity["families"]:
-        for f in fam["fits"]:
-            sugar = next(c for c in f["coefficients"] if c["feature"] == "sugar")
-            sens_fits.append({"family": fam["family"], "label": f["label"], "n_rows": f["n_rows"],
-                              "coefficient": sugar})
+    exclusions = proposals("exclusions")
+    split_plan = snaps["split"]["stages"]["seal_plan"]["artifact"]
+    energy = proposals("energy")
+    shelf = (snaps["models"]["stages"].get("shelf") or {}).get("artifact")
+
+    fit = load(inf / "stage_fit.json")
     effects = load(inf / "stage_effects.json")
+    exposure = effects["exposure"]
     for fam in effects["families"]:
         for s in fam["sequence"]:
             s.pop("inference", None)
-    plan = load(inf / "plan.json")["body"]
+            s["effects"] = sugar_only(s["effects"], exposure)
+    sensitivity = load(inf / "stage_sensitivity.json")
+    for fam in sensitivity["families"]:
+        for f in fam["fits"]:
+            f["coefficients"] = sugar_only(f["coefficients"], exposure)
+            f.pop("inference", None)
+    secondary = load(inf / "stage_secondary.json")
+    plan = load(inf / "plan.json")
+    m0 = fit["models"][0]
+
+    pstore = Store()
+    psnap = load(pred / "snap_fitted.json")
+    pfit = load(pred / "fit.json")
 
     fixture = {
         "meta": {
             "source": "_tt_tmp_nhanes.csv (the real NHANES export), driven through the real server "
-                      "(turbotab.server, 2 workers, fresh TURBOTAB_HOME) by capture_drive.py",
-            "generated": "2026-10-05",
-            "answers": "every answer from the fixture's declared truth (truths.FIXTURE_TRUTHS)",
+                      "(turbotab.server, 2 workers, fresh TURBOTAB_HOME) along the shared scenario "
+                      "(methods-shared/scenario.py) by capture_drive.py",
+            "answers": "the scenario's; every reading from the fixture's declared truth "
+                       "(truths.FIXTURE_TRUTHS)",
         },
         "teaching": teaching,
         "inference": {
-            "moments": {
-                "m1": moment(snaps["before_roles"]),
-                "m2": moment(snaps["before_exclusions"]),
-                "m3": moment(snaps["before_estimand"]),
-                "m4": moment(snaps["before_adjustment"]),
-                "m5": moment(snaps["before_models"]),
-                "m6": moment(snaps["after_fit"], fit),
-            },
+            "order": order,
+            "moments": moments,
+            "artifacts": store.artifacts,
             "roles": load(inf / "roles_proposals.json"),
-            "readings": snaps["before_exclusions"]["readings"],
-            "asks": {
-                "models_0": load(inf / "ask_models_0.json")["error"],
-                "models_1": load(inf / "ask_models_1.json")["error"],
-                "sensitivity_0": load(inf / "ask_sensitivity_0.json")["error"],
+            "cards": {
+                "exclusions": {"offered": [pick(o, ("key", "label", "affected", "evidence",
+                                                    "refused")) for o in exclusions["exclusions"]],
+                               "labels": exclusions["labels"]["exclusions"]},
+                "missing": {"card": proposals("missing")["missing"],
+                            "labels": proposals("missing")["labels"].get("missing")},
+                "seal_plan": pick(split_plan, ("options", "reason", "basis", "cv_first", "floor")),
+                "estimand": proposals("estimand")["estimand"],
+                "adjustment": proposals("adjustment")["adjustment"],
+                # The scenario's answers to that card, in the order it records them.
+                "adjustment_answers": load(inf / "adjustment_answers.json"),
+                "energy": {"card": pick(energy["energy"], ("energy_column", "nutrients",
+                                                           "applicability", "usual", "ranking")),
+                           "labels": energy["labels"]["energy_adjustment"]},
+                "model_sequence": proposals("model_sequence")["model_sequence"],
+                "shelf": shelf,
             },
-            "singles": [load(inf / f"single_{i}.json") for i in range(3)],
-            "estimand_card": load(inf / "estimand_card.json"),
-            "adjustment_card": load(inf / "adjustment_card.json"),
             "previews": previews,
             "evidence": evidence,
-            "fit": fit,
-            "effects": effects,
-            "secondary_methods": load(inf / "stage_secondary.json")["methods"],
-            "sensitivity": {"analyses": sensitivity["analyses"], "fits": sens_fits,
-                            "methods": sensitivity["methods"]},
-            "plan": {k: plan[k] for k in ("declared_at", "plan_sha256", "sha256", "status", "text",
-                                          "through_record")},
+            "fit": {"n_train": fit["n_train"], "models": [{
+                "family": m0["family"], "label": m0["label"],
+                "adjustment_terms": m0.get("adjustment_terms") or [],
+                "inference": pick(m0.get("inference") or {}, ("caption",)),
+                "concerns": m0.get("concerns") or []}]},
+            "effects": {k: effects[k] for k in ("exposure", "appendix_title", "rows",
+                                                "measure_label", "families", "model_1")},
+            "secondary_methods": secondary.get("methods"),
+            "sensitivity": {k: sensitivity[k] for k in ("analyses", "families", "methods")
+                            if k in sensitivity},
+            "plan": pick(plan, ("declared_at", "plan_sha256", "sha256", "status",
+                                "through_record")),
         },
         "prediction": {
-            "moment": moment(psnaps["after_fit"], pfit),
+            "moment": moment(psnap, pstore),
+            "artifacts": pstore.artifacts,
             "fit": pfit,
         },
     }
     out = HERE / "fixture.json"
-    out.write_text(json.dumps(rnd(fixture), separators=(",", ":")))
+    out.write_text(json.dumps(rnd(fixture), separators=(",", ":"), ensure_ascii=False))
     print(out, out.stat().st_size)
 
 

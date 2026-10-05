@@ -7,7 +7,7 @@
  * engine label (an energy method, a derived role), never a claim of the prototype's own.
  */
 import { INF, PRED, fmtInt } from "./fixture";
-import { derive, routeOf, rowsKept, type Answers, type Purpose } from "./model";
+import { answered, derive, routeOf, rowsKept, type Answers, type Purpose } from "./model";
 import { LABEL_W, laneY, type LaneId, type Layout, RAIL_Y } from "./geometry";
 
 export type Tone = "ink" | "accent" | "muted" | "ok";
@@ -173,7 +173,7 @@ function inference(L: Layout, a: Answers): Drawing {
   const yI = laneY("ids");
   const ids = INF.roles.filter((r) => r.proposed === "identifier" || r.proposed === "flag");
   labels.push({ key: "ids", y: yI, label: `SEQN, ${ids.length - 1} flags`, count: ids.length, tone: "muted" });
-  const settled = a.unit && INF.readings.items.every((i) => a.readings[i.key]);
+  const settled = answered(a, "readings");
   segs.push(seg("ids", x0, yI, x.readings!, yI, "muted", W(ids.length), settled ? {} : { dashed: true }));
   caps.push({ key: "ids-out", x: x.readings!, y: yI, label: settled ? "not predictors" : "waits on the readings", tone: "muted" });
 
@@ -341,7 +341,7 @@ function prediction(L: Layout, a: Answers): Drawing {
     ["body", "body size · 4", 4],
     ["unguessed", "7 more covariates", 7],
   ];
-  const missingCols = INF.missing.columns.map((c) => c.column);
+  const missingCols = PRED.missing.columns.map((c) => c.column);
   for (const [id, label, n] of groups) {
     const y = laneY(id);
     labels.push({ key: id, y, label, count: n, tone: "ink" });
@@ -369,7 +369,7 @@ function prediction(L: Layout, a: Answers): Drawing {
     sub: "waits on the seal",
     dashed: true,
   });
-  const base = INF.exclusions.n_base;
+  const base = PRED.n_base;
   const hold = a.pSeal ? (PRED.seal.options.find((o) => String(o.holdout) === a.pSeal)?.n_holdout ?? 0) : 0;
   const share = (base - hold) / base;
   const xs = x.p_seal!;

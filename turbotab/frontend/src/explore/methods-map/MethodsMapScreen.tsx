@@ -8,8 +8,10 @@
  * expert clicks anywhere.
  *
  * Every sentence and number is the real engine's, captured from the server on the NHANES export
- * (capture.py). State is client-side and kept in this browser; Reset clears it. URL parameters pick
- * a state for review captures: ?demo=draft|unlock|exposure|adjust|energy|locked|matter|after|prediction.
+ * through the three prototypes' shared scenario (capture.py; ../methods-shared/SCENARIO.md). State is
+ * client-side and kept in this browser; Reset clears it. Nothing here touches the network, so the
+ * page runs in the static build (hash routes) as under dev:mock. A URL parameter picks a state for
+ * review captures: ?demo=draft|unlock|exposure|adjust|energy|locked|matter|after|prediction.
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { Header } from "../../components/Header";
@@ -21,16 +23,23 @@ import { MapView, silentByRegion } from "./MapView";
 import { Methods } from "./Methods";
 import {
   ASKED,
+  CODE_KEYS,
   INITIAL,
   NODE_TERMS,
   NODE_TITLE,
   REGIONS,
+  ROLE_KEYS,
+  adjustmentPreview,
+  estimandPreview,
   fitFor,
+  formPreview,
   guessTriple,
+  model1Preview,
   objectives,
   previewFor,
   record as recordOf,
   reduce,
+  scenarioAnswers,
   truthTriple,
   type Action,
   type Answers,
@@ -41,10 +50,18 @@ import {
 import { Mattered, Table2 } from "./Results";
 import c from "./screen.module.css";
 
-const STORE = "turbotab.methods-map.v1";
+// v2: the shared scenario's answers (a recorded missing-data answer, no form unless chosen)
+const STORE = "turbotab.methods-map.v2";
 
+/** A query parameter, from the URL's search or, under a hash route, the hash's own query. */
 function param(name: string): string | null {
-  return new URLSearchParams(window.location.search).get(name);
+  const hashQuery = window.location.hash.split("?")[1] ?? "";
+  return new URLSearchParams(window.location.search).get(name) ?? new URLSearchParams(hashQuery).get(name);
+}
+
+/** This page's URL with no review parameter: the path, and the hash route if there is one. */
+function plainUrl(): string {
+  return window.location.pathname + window.location.hash.split("?")[0];
 }
 
 function load(): { a: Answers; purpose: Purpose } | null {
@@ -58,34 +75,30 @@ function load(): { a: Answers; purpose: Purpose } | null {
   }
 }
 
-// ── review presets: each is a real path through the reducer ─────────────────
-
-const ROLE_KEYS = INF.readings.items.map((i) => i.key);
+// ── review presets: each is a real path through the reducer (the scenario's answers) ──
 
 function play(actions: Action[]): Answers {
   return actions.reduce(reduce, INITIAL);
 }
 
+/** The three role readings the scenario confirms one at a time (the first three the card lists). */
 const READ3: Action[] = ROLE_KEYS.slice(0, 3).map((key) => ({ type: "reading", key }));
-const READ_ALL: Action[] = [...READ3, { type: "block" }, { type: "unit" }];
-/** The fixture's answers for a group: the pack's guess where it has one, else the declared truth. */
+const READ_ALL: Action[] = [...READ3, { type: "block" }, ...(CODE_KEYS.length ? [{ type: "codes" } as const] : []), { type: "unit" }];
+/** The scenario's answers for a group: the pack's guess where it has one, else the declared truth. */
 const TRUTH = (g: string): Record<string, Triple> => {
   const grp = INF.adjustment.groups.find((x) => x.key === g)!;
   return Object.fromEntries(grp.columns.map((col) => [col, guessTriple(g) ?? truthTriple(col)!]));
 };
 const ADJ_ALL: Action[] = INF.adjustment.groups.map((g) => ({ type: "adjust", group: g.key, answers: TRUTH(g.key) }));
-const ALL: Action[] = [
-  ...READ_ALL,
+/** Every row kept, both screens reported beside it, complete cases (SCENARIO.md). */
+const ROWS: Action[] = [
   { type: "exclusions", key: "none" },
-  { type: "sensitivity", key: "willett_2013_by_sex" },
-  { type: "sensitivity", key: "nhs_hpfs_by_sex" },
-  { type: "sensitivity", key: "sex_neutral_500_5000" },
-  { type: "exposure" },
-  ...ADJ_ALL,
-  { type: "model1", value: "guess" },
+  ...INF.sensitivity.keys.map((key): Action => ({ type: "sensitivity", key })),
+  { type: "missing" },
 ];
+const ALL: Action[] = [...READ_ALL, ...ROWS, { type: "exposure" }, ...ADJ_ALL, { type: "model1", value: "guess" }];
 
-const WALKED: NodeId[] = ["readings", "exclusions", "exposure", "adjustment", "model1"];
+const WALKED: NodeId[] = ASKED.inference;
 
 const PRESETS: Record<
   string,
@@ -94,17 +107,17 @@ const PRESETS: Record<
   draft: { a: INITIAL, focus: null },
   readings: { a: INITIAL, focus: "readings", walking: true },
   unlock: { a: play(READ3), focus: "readings" },
-  exposure: { a: play([...READ_ALL, { type: "exclusions", key: "none" }]), focus: "exposure", walking: true, visited: ["readings", "exclusions"] },
+  exposure: { a: play([...READ_ALL, ...ROWS]), focus: "exposure", walking: true, visited: ["readings", "exclusions", "missing"] },
   adjust: {
-    a: play([...READ_ALL, { type: "exclusions", key: "none" }, { type: "exposure" }, ...ADJ_ALL.slice(0, 3)]),
+    a: play([...READ_ALL, ...ROWS, { type: "exposure" }, ...ADJ_ALL.slice(0, 3)]),
     focus: "adjustment",
-    visited: ["readings", "exclusions", "exposure"],
+    visited: ["readings", "exclusions", "missing", "exposure"],
   },
   energy: { a: play(ALL), focus: "energy", visited: WALKED },
   locked: { a: play([...ALL, { type: "lock" }]), focus: "estimate", visited: WALKED },
   matter: { a: play([...ALL, { type: "lock" }]), focus: "matter", visited: WALKED },
   after: { a: play([...ALL, { type: "lock" }, { type: "energy", method: "residual_energy_dropped" }]), focus: "energy", visited: WALKED },
-  prediction: { a: play(READ_ALL), focus: "p_seal", purpose: "prediction", visited: ["readings"] },
+  prediction: { a: play([...READ3, { type: "block", purpose: "prediction" }, { type: "unit" }]), focus: "p_seal", purpose: "prediction", visited: ["readings"] },
 };
 
 export function MethodsMapScreen() {
@@ -200,8 +213,10 @@ export function MethodsMapScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Reset: the first draft, under inference, with nothing kept in this browser.
   const reset = () => {
     dispatch({ type: "reset" });
+    setPurpose("inference");
     setFocus(null);
     setWalking(null);
     setReceipt(null);
@@ -213,7 +228,8 @@ export function MethodsMapScreen() {
     } catch {
       /* nothing kept */
     }
-    if (demo) window.history.replaceState(null, "", window.location.pathname);
+    // Drop a review parameter, keeping the route (a hash route in the static build).
+    if (demo) window.history.replaceState(null, "", plainUrl());
   };
 
   const switchPurpose = (p: Purpose) => {
@@ -283,7 +299,7 @@ export function MethodsMapScreen() {
       }
     : null;
 
-  const regionsSilent = silentByRegion(a, purpose);
+  const regionsSilent = silentByRegion(purpose);
   const doneCount = objs.filter((o) => o.done).length;
   const freshText = receipt?.texts[receipt.texts.length - 1] ?? null;
 
@@ -317,7 +333,7 @@ export function MethodsMapScreen() {
                 Whole map
               </button>
             ) : null}
-            <button type="button" className={c.ghost} onClick={reset} data-testid="reset">
+            <button type="button" className={c.ghost} onClick={reset} data-testid="proto-reset">
               Reset
             </button>
           </div>
@@ -398,15 +414,29 @@ function defaultScene(focus: NodeId, a: Answers, purpose: Purpose): Scene | null
     case "seal":
       return sceneOf("seal", "0", INF.seal.options.find((o) => o.holdout === 0)!.label, previewFor("split", "0.0", a), true);
     case "missing":
-      return sceneOf("missing", "complete_case", INF.missing.labels.options.complete_case!.label, previewFor("missing", "complete_case", a), true);
+      return sceneOf("missing", "complete_case", INF.missing.labels.options.complete_case!.label, previewFor("missing", "complete_case", a), a.missing);
     case "readings":
-      return { kind: "note", group: "readings", key: "unit", label: `${INF.readings.unit.column}: ${INF.readings.unit.guess_words}?`, note: INF.readings.unit.previews.confirm.result?.note ?? "", basis: INF.readings.unit.previews.confirm.result?.basis, aside: "the map shows which columns the readings send on" };
+      // the reading the screens read first: kcal's unit, drawn on the rows
+      return sceneOf("readings", "unit", `${INF.readings.unit.column}: ${INF.readings.unit.guess_words}?`, INF.readings.unit.previews.confirm, a.unit);
     case "exposure":
-      return { kind: "note", group: "estimand", key: "estimand", label: "The exposure and its estimand", note: INF.estimand.preview_note, basis: INF.estimand.preview_basis, aside: "the map shows the exposure's lane" };
-    case "adjustment":
-      return { kind: "note", group: "adjustment", key: "adj", label: "The adjustment set", note: INF.adjustment.preview_note, aside: "the map shows where each column goes" };
-    case "form":
-      return { kind: "note", group: "form", key: a.form, label: INF.form.options.find((o) => o.value === a.form)!.label, note: INF.form.preview_note, aside: "as recorded" };
+      return sceneOf("estimand", "estimand", "The exposure and its estimand", estimandPreview(a), a.exposure);
+    case "adjustment": {
+      // the next group the card asks (when the pack guesses it), else the set as answered
+      const groups = INF.adjustment.groups;
+      const next = groups.find((g) => !a.adjustment[g.key]);
+      const g = next ?? groups[groups.length - 1]!;
+      const answers = next ? (guessTriple(g.key) ? scenarioAnswers(g.key) : null) : a.adjustment[g.key]!;
+      if (!a.exposure || !answers) return null;
+      return sceneOf("adjustment", g.key, `The adjustment set · ${g.label}`, adjustmentPreview(a, g.key, answers), !next);
+    }
+    case "form": {
+      const form = a.form ?? "linear";
+      return sceneOf("form", form, INF.form.options.find((o) => o.value === form)!.label, formPreview(a, form), a.form !== null);
+    }
+    case "model1": {
+      const v = a.model1 ?? "guess";
+      return sceneOf("model1", v, v === "guess" ? `Model 1: ${INF.model_1.guess.join(", ")}` : "No Model 1", model1Preview(a, v), a.model1 !== null);
+    }
     default:
       return null;
   }

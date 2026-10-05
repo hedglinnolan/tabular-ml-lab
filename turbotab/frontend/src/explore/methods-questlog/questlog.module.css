@@ -1381,36 +1381,6 @@
   overflow-y: auto;
 }
 
-/* ── dev switcher (not in review shots) ────────────────────────────────────── */
-
-.switcher {
-  position: fixed;
-  left: 12px;
-  bottom: 12px;
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  z-index: 20;
-}
-
-.switcher a {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 3px 6px;
-  border-radius: 6px;
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.switcher a[aria-current="page"] {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
 /* ── narrow (1024): the rail keeps its objectives, the canvas narrows ──────── */
 
 @media (max-width: 1180px) {
@@ -1509,3 +1479,122 @@
   background: var(--accent-tint);
   margin-left: 3px;
 }
+
+/* ── the walk: controls that record, and what they disable ─────────────────── */
+
+.btn:disabled,
+.btnPrimary:disabled,
+.btnQuiet:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn:disabled:hover {
+  border-color: var(--line);
+}
+
+.headActions,
+.footActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A multi-select option's box (the screens beside the primary, the model families). */
+.check {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1.5px solid var(--faint);
+  align-self: center;
+}
+
+.check[data-on] {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.check[data-recorded] {
+  border-color: var(--ok);
+  background: var(--ok);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.option:focus-visible,
+.optCard:focus-visible,
+.pickChip:focus-visible,
+.segBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The unguessed covariates: each answer the scenario records, its three questions in a row. */
+.asked {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.asked .colRows {
+  grid-template-columns: max-content max-content;
+  justify-content: start;
+  column-gap: 14px;
+}
+
+.resFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.resFoot .footNote {
+  flex: 1 1 220px;
+}
+
+/* The field's guess beside a chip: suggested, never pre-selected. */
+.guessDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+/* A stated phrase in the methods section opens its slot. */
+button.phrase {
+  all: unset;
+  display: inline;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+}
+
+button.phrase:hover {
+  background: var(--accent-tint);
+  border-radius: 3px;
+}
+
+button.phrase:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.objective[data-objective] .objMark {
+  color: var(--accent);
+}
+

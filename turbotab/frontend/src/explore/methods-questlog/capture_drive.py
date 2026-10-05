@@ -1,247 +1,222 @@
-"""Drive the real TurboTab server through the NHANES reference journey and keep what the
-methods-questlog prototype shows (not part of the app; a review harness).
+"""Drive the real TurboTab server through the shared scenario and keep what the methods-questlog
+prototype shows at each moment (not part of the app; a review harness).
 
-    TURBOTAB_HOME=<fresh> TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 venv/bin/python -m turbotab.server --port 8947
+    TURBOTAB_HOME=<fresh> TURBOTAB_WORKERS=2 OMP_NUM_THREADS=2 \
+        venv/bin/python -m turbotab.server --port 8972                          # repo root
     venv/bin/python turbotab/frontend/src/explore/methods-questlog/capture_drive.py \
-        --base http://127.0.0.1:8947 --out <raw dir> [--purpose inference|prediction]
+        --base http://127.0.0.1:8972 --out <raw dir>
+    venv/bin/python turbotab/frontend/src/explore/methods-questlog/trim.py <raw dir>
 
-Every answer comes from the fixture's declared truth (``truths.FIXTURE_TRUTHS``) through the same
-helpers the acceptance drive uses (``server_drive``), never a constant. At each question it saves the
-ProjectView, the methods text and the stage artifacts the prototype reads; at the energy question it
-asks the server to preview every method; every refusal that only asks for readings is kept (the ask
-card's real content). ``trim.py`` then cuts the raw dumps down to the prototype's fixture.
+The path is the one all three prototypes share (``methods-shared/scenario.py``, SCENARIO.md): the
+scenario records every answer; this script only watches. At each moment it saves the ProjectView,
+the methods text, the readings and the stage artifacts the banner and the canvas read (no estimate
+stage before the plan is locked: fetching one is what records the lock), and the cards, previews
+and finding evidence of the slot that moment opens. A preview records nothing.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
-import httpx
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "methods-shared"))
 
-REPO = Path(__file__).resolve().parents[5]
-sys.path.insert(0, str(REPO))
+import scenario as S  # noqa: E402
 
-from turbotab.core.interview import QUESTION_KEYS  # noqa: E402
-from turbotab.core.tests.acceptance.server_drive import (  # noqa: E402
-    WP17_QUESTIONS, Drive, _post_when_reached, answer_wp17, settle_post)
-from turbotab.core.tests.truths import ASKING, answers as truth_answers, fixture_truth  # noqa: E402
-from turbotab.core.tests.truths import answer_adjustment  # noqa: E402
-
-NHANES = Path("/Users/nhedglin/tabular-ml-lab/_tt_tmp_nhanes.csv")
-ORDER = ["lens", "orientation", "target", "event", "task", "purpose", "grain", "repeat_kind",
-         "unit", "aggregation", "temporal", "roles", "survey", "exclusions", "missing", "split",
-         "energy_adjustment", "models"]
-NUTRIENTS = ["sugar", "protein", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly"]
+BANNER = ("ingest", "oriented", "working", "cohort", "split", "design", "fit", "shelf")
+CARDS = ("roles", "proposals", "findings", "seal_plan")
+ENERGY_METHODS = ("standard", "residual", "residual_energy_dropped", "density_multivariate",
+                  "density", "partition", "all_components", "none")
+EXCLUSION_KEYS = ("willett_2013_by_sex", "nhs_hpfs_by_sex", "sex_neutral_500_5000",
+                  "sex_neutral_500_3500", "goldberg_schofield")
 
 
-class Client:
-    """The TestClient surface ``server_drive`` uses, over HTTP to a running server."""
+class Watch:
+    def __init__(self, out: Path):
+        self.out = out
+        out.mkdir(parents=True, exist_ok=True)
+        self.order: list[str] = []
 
-    def __init__(self, base: str):
-        self.h = httpx.Client(base_url=base, timeout=600)
+    def save(self, name: str, obj: Any) -> None:
+        (self.out / f"{name}.json").write_text(json.dumps(obj, default=str))
 
-    def get(self, url: str) -> httpx.Response:
-        return self.h.get(url)
+    def snap(self, moment: str, j: S.Journey, **extra: Any) -> dict[str, Any]:
+        j.wait_quiet()
+        view = j.view()
+        stages: dict[str, Any] = {}
+        for st in (*BANNER, *CARDS):
+            status = (view["stages"].get(st) or {}).get("status")
+            if status in (None, "idle", "blocked"):
+                continue
+            got = j.stage(st)  # None for an estimate stage before the lock
+            if got and got.get("artifact") is not None:
+                stages[st] = got
+        snap = {"moment": moment, "view": view, "methods": j.methods(), "readings": j.readings(),
+                "stages": stages, **extra}
+        name = moment.replace(":", "_")
+        self.save(f"snap_{name}", snap)
+        self.order.append(name)
+        first = next((s for s in view["interview"] if s["status"] in ("open", "waiting")), None)
+        print(f"  {moment:24s} {len(view['decisions']):3d} decisions · open "
+              f"{first and first['key']}{' (ask)' if first and first.get('ask') else ''}",
+              flush=True)
+        return snap
 
-    def post(self, url: str, json: Any = None) -> httpx.Response:  # noqa: A002
-        return self.h.post(url, json=json)
+    def preview(self, name: str, j: S.Journey, decision: dict[str, Any]) -> None:
+        self.save(f"preview_{name}", j.preview(decision))
 
 
-def plan_for(purpose: str) -> dict[str, dict[str, Any]]:
-    out = {"lens": {"kind": "set_lens", "lenses": ["dietary"]},
-           "target": {"kind": "set_target", "column": "glucose"},
-           "task": {"kind": "set_task", "column": "glucose", "task": "regression"},
-           "purpose": {"kind": "set_purpose", "purpose": purpose},
-           "grain": {"kind": "set_grain", "grain": "one_row_per_unit"},
-           "temporal": {"kind": "set_temporal", "temporal": False},
-           "survey": {"kind": "set_survey", "estimand": "sample"},
-           "exclusions": {"kind": "set_exclusions", "rules": []},
-           "missing": {"kind": "set_missing", "strategy": "complete_case"},
-           "split": {"kind": "set_split", "holdout": 0.2, "seed": 0, "folds": 5},
-           "energy_adjustment": {"kind": "set_energy_adjustment", "method": "none"},
-           "models": {"kind": "select_models", "models": ["linear"]},
-           "unit": {"kind": "set_unit", "unit": "unit"},
-           "aggregation": {"kind": "set_aggregation", "method": "mean"}}
-    if purpose == "inference":
-        out["energy_adjustment"] = {"kind": "set_energy_adjustment", "method": "standard",
-                                    "energy_column": "kcal", "nutrients": NUTRIENTS}
-    else:
-        out["models"] = {"kind": "select_models", "models": ["linear", "boosted_trees"]}
+def evidence_of(j: S.Journey, columns: set[str]) -> dict[str, Any]:
+    """The findings the readings canvas shows: each finding about a column the card asks of."""
+    got = j.stage("findings")
+    findings = (got or {}).get("artifact") or {}
+    out: dict[str, Any] = {}
+    for f in findings.get("findings", []):
+        fid = f.get("id") or ""
+        cols = set(f.get("affected_columns") or [])
+        # A finding about the asked column itself (a flag names its base column beside it), not
+        # one that sweeps many columns at once.
+        if not (cols & columns) or len(cols) > 2:
+            continue
+        r = j.c.get(f"/api/projects/{j.pid}/findings/{fid}/evidence")
+        if r.status_code == 200:
+            out[fid] = {"finding": f, "evidence": r.json()}
     return out
+
+
+def inference(base: str, out: Path) -> None:
+    w = Watch(out)
+    client = S.Client(base)
+    w.save("teaching", client.get("/api/teaching").json())
+
+    def at(moment: str, j: S.Journey) -> None:
+        if moment == "draft":
+            snap = w.snap(moment, j)
+            roles = snap["stages"]["roles"]["artifact"]
+            w.save("roles_proposals", roles)
+            w.preview("roles", j, {"kind": "set_roles",
+                                   "roles": {c["column"]: c["proposed"] for c in roles["columns"]}})
+        elif moment == "roles":
+            w.snap(moment, j)
+        elif moment == "unit_ask":
+            ask = j.ask("exclusions")
+            for e in (ask or {}).get("exits", []):
+                d = e.get("decision") or {}
+                if d.get("kind") == "set_column_unit":
+                    w.preview(f"unit_{d.get('unit')}_{d.get('days')}", j, d)
+        elif moment == "exclusions":
+            snap = w.snap(moment, j)
+            proposals = snap["stages"]["proposals"]["artifact"]
+            w.preview("exclusions_none", j, {"kind": "set_exclusions", "rules": []})
+            for key in EXCLUSION_KEYS:
+                if any(o["key"] == key for o in proposals["exclusions"]):
+                    w.preview(f"exclusions_{key}", j, {"kind": "set_exclusions",
+                                                       "rules": [S.screen_rule(proposals, key)]})
+        elif moment == "missing":
+            snap = w.snap(moment, j)
+            card = (snap["stages"]["proposals"]["artifact"].get("missing") or {})
+            for m in card.get("methods", []):
+                d = m.get("decision") or {}
+                if d:
+                    w.preview(f"missing_{d.get('strategy')}", j, {"kind": "set_missing", **d})
+        elif moment == "split":
+            snap = w.snap(moment, j)
+            plan = (snap["stages"].get("seal_plan") or {}).get("artifact") or {}
+            for o in plan.get("options", []):
+                w.preview(f"split_{o['holdout']}", j, {"kind": "set_split", "holdout": o["holdout"],
+                                                       "seed": 0, "folds": 5})
+        elif moment == "readings":
+            w.snap(moment, j)
+            ask = j.ask("estimand") or {}
+            cols = {c for g in ask.get("groups", []) for c in g["columns"]}
+            w.save("evidence_readings", evidence_of(j, cols))
+        elif moment.startswith("single:"):
+            w.snap(moment, j)
+        elif moment == "estimand":
+            w.snap(moment, j)
+            for exp, contrast in (("sugar", "substitution"), ("sugar", "addition"),
+                                  ("protein", "substitution")):
+                w.preview(f"estimand_{exp}_{contrast}", j, S.estimand(exp, contrast))
+        elif moment == "adjustment":
+            snap = w.snap(moment, j)
+            card = snap["stages"]["proposals"]["artifact"]["adjustment"]
+            # Each answer the scenario will record for this card (the group's one tap where the
+            # pack guesses, else the truth's per-column answers), previewed, never recorded.
+            n = [0]
+
+            def preview_only(d: dict[str, Any]) -> Any:
+                key = next((g["key"] for g in card["groups"] if g.get("decision") == d),
+                           f"answers_{n[0]}")
+                n[0] += 1
+                got = j.preview(d)
+                w.save(f"preview_adjust_{key}", got)
+                return type("R", (), {"status_code": got["status"], "text": json.dumps(got)})()
+
+            from turbotab.core.tests.truths import answer_adjustment
+
+            w.save("adjustment_answers", answer_adjustment(preview_only, card, j.truth))
+        elif moment == "energy":
+            w.snap(moment, j)
+            for m in ENERGY_METHODS:
+                w.preview(f"energy_{m}", j, S.energy(m))
+        elif moment == "model_sequence":
+            w.snap(moment, j)
+            w.preview("model_sequence", j, S.model_sequence())
+        elif moment == "models":
+            snap = w.snap(moment, j)
+            ask = j.ask("models") or {}
+            cols = {c for g in ask.get("groups", []) for c in g["columns"]}
+            w.save("evidence_codes", evidence_of(j, cols))
+            w.preview("models_linear", j, {"kind": "select_models",
+                                           "models": list(S.INFERENCE_MODELS)})
+            if "shelf" not in snap["stages"]:
+                got = j.stage("shelf")
+                if got:
+                    w.save("shelf", got)
+        elif moment == "ready":
+            w.snap(moment, j)
+        elif moment == "locked":
+            w.snap(moment, j)
+            for st in ("fit", "effects", "secondary", "sensitivity"):
+                w.save(f"stage_{st}", j.artifact(st))
+            w.save("plan", j.get("/plan"))
+
+    print("inference", flush=True)
+    j = S.run_inference(client, at)
+    w.save("order", w.order)
+    w.save("pid", j.pid)
+
+
+def prediction(base: str, out: Path) -> None:
+    w = Watch(out)
+    client = S.Client(base)
+
+    def at(moment: str, j: S.Journey) -> None:
+        if moment == "fitted":
+            w.snap(moment, j)
+            w.save("fit", j.artifact("fit"))
+
+    print("prediction", flush=True)
+    j = S.run_prediction(client, at)
+    w.save("order", w.order)
+    w.save("pid", j.pid)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base", default="http://127.0.0.1:8947")
+    ap.add_argument("--base", default="http://127.0.0.1:8972")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--purpose", default="inference")
+    ap.add_argument("--only", choices=["inference", "prediction"])
     args = ap.parse_args()
-    out = Path(args.out) / args.purpose
-    out.mkdir(parents=True, exist_ok=True)
-    c = Client(args.base)
-    truth = fixture_truth(NHANES.name)
-    plan = plan_for(args.purpose)
-    log: list[dict[str, Any]] = []
-
-    def save(name: str, obj: Any) -> None:
-        (out / f"{name}.json").write_text(json.dumps(obj, indent=1, default=str))
-
-    r = c.post("/api/projects", json={"path": str(NHANES)})
-    assert r.status_code == 200, r.text
-    pid = r.json()["id"]
-    drive = Drive(c, pid, truth)
-    drive.artifact("ingest")
-    save("teaching", c.get("/api/teaching").json())
-    url = f"/api/projects/{pid}/decisions"
-
-    def snap(label: str, stages: tuple[str, ...] = ()) -> None:
-        view = drive.view()
-        got: dict[str, Any] = {"view": view,
-                               "methods": c.get(f"/api/projects/{pid}/methods").json(),
-                               "readings": c.get(f"/api/projects/{pid}/readings").json()}
-        for st in ("ingest", "oriented", "working", *stages):
-            status = view["stages"].get(st, {}).get("status")
-            if status == "fresh":
-                got[st] = c.get(f"/api/projects/{pid}/stages/{st}").json()["artifact"]
-        save(f"snap_{len(log):02d}_{label}", got)
-        log.append({"snap": label, "at": time.time()})
-
-    def settled(timeout: float = 600.0) -> None:
-        """Wait until no stage a preview reads is computing (a preview answers on fresh artifacts
-        only; mid-recompute it says nothing can be shown yet, which is true but not the picture)."""
-        end = time.monotonic() + timeout
-        while time.monotonic() < end:
-            stages = drive.view()["stages"]
-            busy = [s for s in ("working", "cohort", "split", "design", "roles", "proposals")
-                    if stages.get(s, {}).get("status") in ("queued", "running")]
-            if not busy:
-                return
-            time.sleep(0.1)
-
-    def preview(name: str, decision: dict[str, Any]) -> None:
-        settled()
-        r = c.post(f"/api/projects/{pid}/preview", json=decision)
-        save(f"preview_{name}", {"status": r.status_code, "decision": decision, "body": r.json()})
-
-    for key in [k for k in QUESTION_KEYS if k in ORDER or k in WP17_QUESTIONS]:
-        if key in ("event", "task"):
-            drive.artifact("target_info", timeout=600)
-        step = drive.reach(key, timeout=600)
-        if step["status"] not in ("open", "waiting"):
-            continue
-        snap(f"before_{key}", ("roles", "proposals", "target_info", "findings", "cohort", "structure"))
-        if key == "adjustment":
-            # The card as the user sees it, then the author's answers (one tap per group the pack
-            # guesses alike).
-            card = drive.artifact("proposals").get("adjustment")
-            save("adjustment_card", card)
-            for g in card["groups"]:
-                if g.get("decision"):
-                    preview(f"adjust_{g['key']}", g["decision"])
-            posted = answer_adjustment(lambda d: c.post(url, json=d), card, truth)
-            save("adjustment_answers", posted)
-            continue
-        if key == "estimand":
-            save("estimand_card", drive.artifact("proposals").get("estimand"))
-            base = {"kind": "set_estimand", "effect": "total", "measure": "mean_difference"}
-            preview("estimand_sugar_substitution", base | {"exposure": "sugar", "contrast": "substitution"})
-            preview("estimand_sugar_addition", base | {"exposure": "sugar", "contrast": "addition"})
-            preview("estimand_protein_substitution", base | {"exposure": "protein", "contrast": "substitution"})
-        if key in WP17_QUESTIONS:
-            answer_wp17(drive, key)
-            continue
-        body = plan.get(key)
-        if key == "models" and args.purpose == "inference":
-            # The declared secondaries (MODELING_SEQUENCE §1 row 11): the field's Model 1, and the
-            # primary on the plausible energy reporters only, both declared before any estimate.
-            declared = (
-                ("model_sequence", {"kind": "set_model_sequence", "exposure": "sugar",
-                                    "model_1": ["age", "gender", "kcal"]}),
-                ("sensitivity", {"kind": "set_sensitivity", "analyses": [{
-                    "label": "Plausible energy reporters only",
-                    "rules": [{"kind": "range", "column": "kcal", "by": {
-                        "column": "gender", "ranges": {"female": [500, 3500], "male": [800, 4000]}},
-                        "reason": "Willett's plausible range: 500 to 3,500 kcal for women, "
-                                  "800 to 4,000 kcal for men"}]}]}))
-            for name, d in declared:
-                rr = c.post(url, json=d)
-                save(f"declared_{name}", {"status": rr.status_code, "decision": d,
-                                          "body": rr.json() if rr.status_code != 200 else None})
-                if rr.status_code == 409 and rr.json()["error"]["code"] in ASKING:
-                    # The screen's bounds read the energy column's unit and days: asked, and
-                    # answered from the fixture's truth (one day's intake, in kcal).
-                    save(f"ask_{name}_0", {"body": d, "error": rr.json()["error"]})
-                    rr = settle_post(c, pid, d, truth)
-                    assert rr.status_code == 200, (name, rr.text[:600])
-        if key == "roles":
-            proposals = drive.artifact("roles")["columns"]
-            save("roles_proposals", drive.artifact("roles"))
-            body = {"kind": "set_roles", "roles": {p["column"]: p["proposed"] for p in proposals}}
-            for column, role in body["roles"].items():
-                truth.setdefault(f"role:{column}", role)
-        if key == "energy_adjustment":
-            for m in ("standard", "residual", "residual_energy_dropped", "density",
-                      "density_multivariate", "partition", "all_components", "none"):
-                d = {"kind": "set_energy_adjustment", "method": m}
-                if m != "none":
-                    d |= {"energy_column": "kcal", "nutrients": NUTRIENTS}
-                preview(f"energy_{m}", d)
-
-        def reopened(body: dict = body) -> bool:
-            return drive.answer_wp17_before(body)
-
-        if key == "roles":
-            preview("roles", body)
-        r = _post_when_reached(c, url, body, unblock=reopened)
-        n_ask = 0
-        while r.status_code == 409 and r.json()["error"]["code"] in ASKING:
-            save(f"ask_{key}_{n_ask}", {"body": body, "error": r.json()["error"]})
-            if n_ask == 0 and key == "models":
-                # BLUEPRINT §11.4 rule 4, as a user would play it: three readings confirmed one at
-                # a time (each from the fixture's truth), then the ask again, whose block confirm
-                # lists exactly what is left.
-                exits = r.json()["error"]["exits"]
-                singles = [e["decision"] for e in exits
-                           if (e["decision"] or {}).get("kind") == "confirm_reading"
-                           and e["decision"]["reading"] == "role"
-                           and e["decision"]["value"] == truth.answer("role", e["decision"]["column"])][:3]
-                for i, d in enumerate(singles):
-                    preview(f"single_{i}", d)
-                    rr = c.post(url, json=d)
-                    assert rr.status_code == 200, (d, rr.text[:600])
-                    save(f"single_{i}", {"decision": d, "record": rr.json()["decisions"][-1]})
-                n_ask += 1
-                r = _post_when_reached(c, url, body, unblock=reopened)
-                continue
-            n_ask += 1
-            for decision in truth_answers(r.json()["error"], truth):
-                rr = c.post(url, json=decision)
-                assert rr.status_code == 200, (decision, rr.text[:600])
-            r = _post_when_reached(c, url, body, unblock=reopened)
-        if r.status_code != 200:
-            save(f"refused_{key}", {"body": body, "status": r.status_code, "error": r.json()})
-        assert r.status_code == 200, (key, r.text[:800])
-        if key == "purpose":
-            snap("after_purpose", ("roles", "proposals", "target_info", "findings"))
-
-    fit = drive.artifact("fit", timeout=1200)
-    save("fit", fit)
-    if args.purpose == "inference":
-        for st in ("effects", "secondary", "sensitivity"):
-            try:
-                save(f"stage_{st}", drive.artifact(st, timeout=900))
-            except AssertionError as e:
-                save(f"stage_{st}", {"error": str(e)})
-    snap("after_fit", ("proposals", "cohort", "split", "design", "shelf", "findings", "substitution"))
-    if args.purpose == "inference":
-        r = c.get(f"/api/projects/{pid}/plan")
-        save("plan", {"status": r.status_code, "body": r.json() if r.status_code == 200 else r.text})
-    save("log", log)
-    print("done", pid)
+    out = Path(args.out)
+    if args.only in (None, "inference"):
+        inference(args.base, out / "inference")
+    if args.only in (None, "prediction"):
+        prediction(args.base, out / "prediction")
+    print("done", flush=True)
 
 
 if __name__ == "__main__":

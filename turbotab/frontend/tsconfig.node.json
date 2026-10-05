@@ -13,5 +13,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "eslint.config.js", "e2e"]
+  "include": ["vite.config.ts", "vite.protos.config.ts", "playwright.config.ts", "eslint.config.js", "e2e"]
 }

@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:mock": "VITE_MOCK=1 vite --mode mock",
     "build": "tsc --noEmit -p tsconfig.app.json && vite build",
+    "build:protos": "tsc --noEmit -p tsconfig.app.json && vite build --config vite.protos.config.ts",
     "preview": "vite preview",
     "check": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && eslint . && vitest run",
     "test": "vitest run",

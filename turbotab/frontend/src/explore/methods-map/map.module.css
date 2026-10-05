@@ -250,10 +250,29 @@
     transform: scale(1.06);
   }
 }
+/* an asked node that is not the current objective pulses more quietly */
+.halo:not([data-objective]) {
+  opacity: 0.18;
+  animation-name: breatheQuiet;
+}
+@keyframes breatheQuiet {
+  0%,
+  100% {
+    opacity: 0.05;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 0.24;
+    transform: scale(1);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .halo {
     animation: none;
     opacity: 0.35;
+  }
+  .halo:not([data-objective]) {
+    opacity: 0.15;
   }
   .seg,
   .ribbonBand,

@@ -11,6 +11,7 @@
  */
 import { useState } from "react";
 import { Rich } from "../../../components/stage/text";
+import { fmtCI, fmtEst, matteredAttrs, type MatteredRow } from "../../methods-shared/results";
 import s from "../doc.module.css";
 
 export interface SpecRow {
@@ -24,8 +25,11 @@ export interface SpecRow {
   n: number;
   primary: boolean;
   source: string;
+  /** The shared row it draws (the cross-prototype check reads its marks). */
+  row: MatteredRow;
 }
 
+/** Axis ticks and the span: three decimals. Each row's estimate prints as every prototype does. */
 const fmt = (x: number) => (x < 0 ? `−${Math.abs(x).toFixed(3)}` : x.toFixed(3));
 
 export function SpecCurve({ rows, unit, exposure }: { rows: SpecRow[]; unit: string; exposure: string }) {
@@ -44,7 +48,7 @@ export function SpecCurve({ rows, unit, exposure }: { rows: SpecRow[]; unit: str
   const below = rows.every((r) => r.high < 0);
   const above = rows.every((r) => r.low > 0);
   return (
-    <figure className={s.spec} data-purpose="spec_curve">
+    <figure className={s.spec} data-purpose="spec_curve" data-testid="mattered">
       <div className={s.specHead}>
         <span className={s.specKicker}>Sensitivity, not a choice</span>
         <p className={s.specLead}>
@@ -85,6 +89,7 @@ export function SpecCurve({ rows, unit, exposure }: { rows: SpecRow[]; unit: str
             data-hover={hover === r.key || undefined}
             onPointerEnter={() => setHover(r.key)}
             onPointerLeave={() => setHover(null)}
+            {...matteredAttrs(r.row)}
           >
             <span role="cell" className={s.specLabel}>
               <span className={s.specName}>
@@ -97,7 +102,7 @@ export function SpecCurve({ rows, unit, exposure }: { rows: SpecRow[]; unit: str
               className={s.specPlot}
               viewBox={`0 0 ${W} 30`}
               preserveAspectRatio="none"
-              aria-label={`${r.label}: ${fmt(r.estimate)} (${fmt(r.low)} to ${fmt(r.high)})`}
+              aria-label={`${r.label}: ${fmtEst(r.estimate)} (${fmtCI(r.low, r.high)})`}
             >
               {ticks.map((t) => (
                 <line key={t} x1={x(t)} x2={x(t)} y1={0} y2={30} className={t === 0 ? s.specZero : s.specGridLine} />
@@ -109,7 +114,7 @@ export function SpecCurve({ rows, unit, exposure }: { rows: SpecRow[]; unit: str
               <circle cx={x(r.estimate)} cy={15} r={r.primary ? 5.5 : 4.5} className={s.specDot} />
             </svg>
             <span role="cell" className={s.specNum}>
-              {fmt(r.estimate)} <span className={s.specCi}>({fmt(r.low)}, {fmt(r.high)})</span>
+              {fmtEst(r.estimate)} <span className={s.specCi}>({fmtCI(r.low, r.high)})</span>
               <span className={s.specN}>n {r.n.toLocaleString("en-US")}</span>
             </span>
             {hover === r.key ? (

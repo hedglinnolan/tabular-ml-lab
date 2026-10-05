@@ -3,11 +3,15 @@
  * (BLUEPRINT §11.4). Left: the methods section as an objective list, sections in the reporting
  * guideline's order, each with its open slots counted and finished ones collapsed to their
  * sentence. Center: the current objective as one focused card. Right: the canvas (the production
- * stage's pieces). The whole document is one press away (M). Above it all, the pipeline banner.
+ * stage's pieces). The whole document is one press away. Above it all, the pipeline banner.
  *
- * Every sentence, guess, piece of evidence and number is the real server's, captured on the
- * NHANES export (fixture.json; capture_drive.py, trim.py). `?m=` picks the moment under review:
- * 1–9, with 8a and 8b for the two encounters of one concept.
+ * Walked by clicks: from the first draft, each card's own control records the shared scenario's
+ * answer (methods-shared/SCENARIO.md) and the quest log moves to the next captured moment, until
+ * the fit locks the plan and Table 2 and "Which of my decisions mattered?" are on the canvas.
+ * Reset returns to the first draft. Every sentence, guess, piece of evidence and number is the
+ * real server's, captured on the NHANES export (fixture.json; capture_drive.py, trim.py); nothing
+ * is fetched. `?m=<moment>` (with `&doc`, `&mattered`, `&appendix`, `&variant=prediction`, `&shot`)
+ * opens a moment for review captures; nothing requires it.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { FitArtifact, PreviewResult, ShelfArtifact, SplitArtifact } from "../../api/m1-stage-types";
@@ -17,93 +21,101 @@ import { deriveBanner, type BannerInput } from "../../components/banner/derive";
 import { Header } from "../../components/Header";
 import { ColumnsContext } from "../../components/stage/text";
 import { StageFocusProvider } from "../../state/focus";
-import { adjustmentLineage, ComparisonCanvas, exposureLineage, PreviewCanvas, ResultsCanvas } from "./Canvas";
-import { AdjustmentCard, EstimandCard, energyPreview, Frame, PhraseCard, ReadingsCard, RolesCard } from "./Cards";
-import { FX, INF, isPreview, type MethodsLine, type Moment } from "./data";
+import { fmtEst, table2Rows } from "../methods-shared/results";
+import { ComparisonCanvas, exposureLineage, NoteCanvas, PreviewCanvas, ResultsCanvas, ShelfCanvas } from "./Canvas";
+import {
+  AdjustmentCard,
+  EnergyCard,
+  EstimandCard,
+  ExclusionsCard,
+  Frame,
+  ItemCard,
+  LockCard,
+  LockedCard,
+  MissingCard,
+  missingPreviewKey,
+  ModelsCard,
+  ReadingsCard,
+  RolesCard,
+  SequenceCard,
+  SplitCard,
+  splitPreviewKey,
+  type Mode,
+} from "./Cards";
+import { FX, INF, isPreview, PREDICTION, type Moment } from "./data";
 import { MethodsDoc } from "./Doc";
-import { Rail } from "./Rail";
+import {
+  ADJUSTMENT_ANSWERS,
+  advance,
+  askOf,
+  idOf,
+  isLocked,
+  linesOf,
+  loadWalk,
+  momentOf,
+  nextSentence,
+  nextSingle,
+  objectiveItem,
+  saveWalk,
+  SCENARIO,
+  singlesDone,
+  START,
+  walkAt,
+  type Walk,
+} from "./journey";
 import { readingSlots } from "./readings";
-import { sectionsOf, type Extras, type Guideline, type Section } from "./sections";
+import { KINDS, sectionsOf, STROBE, TRIPOD, type Extras, type Guideline, type Item } from "./sections";
+import { Rail } from "./Rail";
 import s from "./questlog.module.css";
 
-export const MOMENTS = ["1", "2", "3", "4", "5", "6", "7", "8a", "8b", "9"] as const;
-export type MomentKey = (typeof MOMENTS)[number];
+type Current = { section: string; item: string } | null;
+type Variant = "inference" | "prediction";
 
-interface Config {
-  guideline: Guideline;
-  moment: Moment;
-  extras: Extras;
-  current: { section: string; item: string } | null;
-  doc: boolean;
+/** Review presets, read once: from the query, or from a hash route's own query (#/questlog?m=…). */
+function readPreset() {
+  const q = new URLSearchParams(window.location.search);
+  const hash = window.location.hash;
+  const h = hash.includes("?") ? new URLSearchParams(hash.slice(hash.indexOf("?") + 1)) : null;
+  const get = (k: string) => q.get(k) ?? h?.get(k) ?? null;
+  const has = (k: string) => q.has(k) || !!h?.has(k);
+  const rest = get("rest");
+  return {
+    m: get("m"),
+    shot: has("shot"),
+    doc: has("doc"),
+    appendix: has("appendix"),
+    mattered: has("mattered"),
+    variant: (get("variant") === "prediction" ? "prediction" : "inference") as Variant,
+    rest: (rest === null ? undefined : rest === "now" || rest === "with" ? rest : Number(rest)) as number | "now" | "with" | undefined,
+  };
 }
 
-const SLOTS = readingSlots();
-const ROLE_AND_CODE = SLOTS.filter((r) => r.kind !== "unit").length;
+const sectionKey = (item: string, guideline: Guideline = "STROBE-nut") =>
+  (guideline === "STROBE-nut" ? STROBE : TRIPOD).find((d) => d.items.includes(item))?.key ?? "data";
 
-/** M9's state: the M2 state with the three readings the drive confirmed one at a time. */
-function withSingles(m: Moment): Moment {
-  const extra: MethodsLine[] = INF.singles.map((x, i) => ({
-    record_id: `single-${i}`,
-    seq: x.record.seq,
-    kind: "confirm_reading",
-    sentence: x.record.sentence,
-    in_force: true,
-    post_seal: false,
-    after_estimates: false,
-  }));
-  return { ...m, methods: { ...m.methods, lines: [...m.methods.lines, ...extra] } };
+function objectiveOf(w: Walk): Current {
+  const item = objectiveItem(w);
+  return item ? { section: sectionKey(item), item } : null;
 }
+
+const answered = (m: Moment, key: string) => m.view.interview.find((x) => x.key === key)?.status === "answered";
 
 function analyzedOf(m: Moment): number | null {
-  const missing = m.view.interview.find((x) => x.key === "missing");
   const cohort = m.stages.cohort?.artifact as { n_final?: number } | undefined;
-  return missing?.status === "answered" && cohort?.n_final ? cohort.n_final : null;
+  return answered(m, "missing") && cohort?.n_final ? cohort.n_final : null;
 }
 
-function configOf(key: MomentKey): Config {
-  const M = INF.moments;
-  const ex = (m: Moment, open: number, waiting = false): Extras => ({ readings: { open, waiting }, analyzed: analyzedOf(m) });
-  switch (key) {
-    case "1":
-      return { guideline: "STROBE-nut", moment: M.m1, extras: ex(M.m1, 0, true), current: { section: "data", item: "roles" }, doc: false };
-    case "2":
-      return { guideline: "STROBE-nut", moment: M.m2, extras: ex(M.m2, SLOTS.length), current: { section: "data", item: "readings" }, doc: false };
-    case "9": {
-      const m = withSingles(M.m2);
-      return { guideline: "STROBE-nut", moment: m, extras: ex(m, SLOTS.length - INF.singles.length), current: { section: "data", item: "readings" }, doc: false };
-    }
-    case "3":
-    case "8a":
-      return { guideline: "STROBE-nut", moment: M.m3, extras: ex(M.m3, ROLE_AND_CODE), current: { section: "variables", item: "estimand" }, doc: false };
-    case "4":
-      return { guideline: "STROBE-nut", moment: M.m4, extras: ex(M.m4, ROLE_AND_CODE), current: { section: "variables", item: "adjustment" }, doc: false };
-    case "5":
-    case "8b":
-      return {
-        guideline: "STROBE-nut",
-        moment: M.m5,
-        extras: ex(M.m5, ROLE_AND_CODE),
-        current: { section: "quantitative", item: "energy_adjustment" },
-        doc: false,
-      };
-    case "6":
-      return { guideline: "STROBE-nut", moment: M.m6, extras: ex(M.m6, 0), current: null, doc: true };
-    case "7": {
-      const m = FX.prediction.moment;
-      return { guideline: "TRIPOD+AI", moment: m, extras: ex(m, 0), current: null, doc: true };
-    }
-  }
-}
-
-function readParams() {
-  const q = new URLSearchParams(window.location.search);
-  const m = q.get("m");
-  return {
-    key: (MOMENTS as readonly string[]).includes(m ?? "") ? (m as MomentKey) : ("1" as MomentKey),
-    shot: q.has("shot"),
-    appendix: q.has("appendix"),
-    rest: q.get("rest"),
-  };
+/** What the walk recorded locally since its moment was captured, as the items' tiers. */
+function overridesOf(w: Walk): Extras["overrides"] {
+  const id = idOf(w);
+  if (id === "adjustment") return { adjustment: { count: ADJUSTMENT_ANSWERS.length - w.adjusted.length } };
+  if (id === "model_sequence")
+    return {
+      model_sequence: { tier: "asked", count: 1, optional: false },
+      ...(w.codes ? { models: { tier: "waiting", waitingOn: ["Model sequence"], count: 0 } } : {}),
+    };
+  if (id === "models" && w.codes) return { models: { tier: "asked", count: 1, waitingOn: [] } };
+  return {};
 }
 
 function banner(m: Moment) {
@@ -122,50 +134,100 @@ function banner(m: Moment) {
   // The production banner states a cross-validated MSE under inference, where MODELING_SEQUENCE
   // §1 row 11 shows none: under inference the result is the exposure's primary estimate.
   const result = model.segments[3];
-  if (m.view.state.purpose === "inference" && result.value !== null) {
-    const primary = INF.effects.families[0]!.sequence.find((f) => f.key === "model_2")!.effects[0]!;
+  const primary = table2Rows(INF.effects).find((r) => r.primary);
+  if (m.view.state.purpose === "inference" && result.value !== null && primary) {
     model.segments[3] = {
       ...result,
-      metric: "sugar",
+      metric: INF.effects.exposure ?? "the exposure",
       value: primary.estimate,
       basis: "Model 2",
       family: "per unit",
-      summary: `Result: the primary estimate for sugar, ${primary.estimate.toFixed(4)} per unit.`,
+      summary: `Result: the primary estimate for ${INF.effects.exposure ?? "the exposure"}, ${fmtEst(primary.estimate)} per unit.`,
     };
   }
   return model;
 }
 
-function findSection(sections: Section[], key: string | undefined) {
-  return sections.find((x) => x.key === key);
-}
+const KIND_ITEM: Record<string, string> = Object.fromEntries(Object.entries(KINDS).flatMap(([item, kinds]) => kinds.map((k) => [k, item])));
 
 export function QuestScreen() {
-  const [params] = useState(readParams);
-  const key = params.key;
-  const cfg = useMemo(() => configOf(key), [key]);
-  const sections = useMemo(() => sectionsOf(cfg.moment, cfg.extras, cfg.guideline), [cfg]);
-  const [current, setCurrent] = useState(cfg.current);
-  const [doc, setDoc] = useState(cfg.doc);
-  const [appendix, setAppendix] = useState(params.appendix);
-  const [readingFocus, setReadingFocus] = useState<string | null>(
-    key === "9"
-      ? (SLOTS.find((r) => r.columns.length > 1)?.id ?? null)
-      : (SLOTS.find((r) => r.kind === "role" && r.columns[0] === "cycle_begin_year")?.id ?? null),
-  );
-  const [adjFocus, setAdjFocus] = useState("body");
-  const [energyHover, setEnergyHover] = useState("residual");
+  const [preset] = useState(readPreset);
+  const [first] = useState<Walk>(() => (preset.m ? walkAt(preset.m) : (loadWalk() ?? START)));
+  const [walk, setWalk] = useState<Walk>(first);
+  const [variant, setVariant] = useState<Variant>(preset.variant);
+  const [current, setCurrent] = useState<Current>(() => objectiveOf(first));
+  const [doc, setDoc] = useState(preset.doc || isLocked(first));
+  const [peek, setPeek] = useState<string | null>(null);
+  const [readingFocus, setReadingFocus] = useState<string | null>(null);
+  const [families, setFamilies] = useState<string[]>([]);
+  const [appendix, setAppendix] = useState(preset.appendix);
+  const [mattered, setMattered] = useState(preset.mattered);
 
-  const locked = INF.moments.m6.methods.lines.find((l) => l.kind === "lock_plan")?.sentence ?? null;
-  const isLocked = key === "6";
+  useEffect(() => {
+    if (!preset.m) saveWalk(walk);
+  }, [walk, preset.m]);
+
+  const prediction = variant === "prediction";
+  const guideline: Guideline = prediction ? "TRIPOD+AI" : "STROBE-nut";
+  const moment = prediction ? PREDICTION : momentOf(walk);
+  const lines = useMemo(() => (prediction ? PREDICTION.methods.lines : linesOf(walk)), [prediction, walk]);
+  const ask = prediction ? null : askOf(walk);
+  const locked = !prediction && isLocked(walk);
+  const id = idOf(walk);
+  const objective = prediction ? null : objectiveItem(walk);
+
+  const sections = useMemo(() => {
+    const extras: Extras = {
+      readings: { open: ask?.groups.length ?? 0, waiting: !answered(moment, "roles") },
+      analyzed: analyzedOf(moment),
+      overrides: prediction ? {} : overridesOf(walk),
+    };
+    return sectionsOf(moment, lines, extras, guideline);
+  }, [moment, lines, ask, guideline, prediction, walk]);
+
+  /** Every record moves the quest log: the new moment, its objective in focus. */
+  const go = useCallback((next: Walk) => {
+    setWalk(next);
+    setCurrent(objectiveOf(next));
+    setDoc(isLocked(next));
+    setPeek(null);
+    setReadingFocus(null);
+    setFamilies([]);
+  }, []);
+  const record = useCallback(() => go(advance(walk)), [go, walk]);
+  const toObjective = useCallback(() => {
+    setCurrent(objectiveOf(walk));
+    setDoc(isLocked(walk));
+    setPeek(null);
+  }, [walk]);
+  const reset = () => {
+    saveWalk(null);
+    setVariant("inference");
+    setMattered(false);
+    setAppendix(false);
+    go(START);
+  };
+  const onAdjust = (i: number) => {
+    const next = { ...walk, adjusted: [...walk.adjusted, i] };
+    if (ADJUSTMENT_ANSWERS.every((a) => next.adjusted.includes(a.index))) go(advance(next));
+    else {
+      setWalk(next);
+      setPeek(null);
+    }
+  };
 
   const next = useCallback(() => {
     const flat = sections.flatMap((sec) => sec.items.filter((i) => i.tier === "asked" && !i.optional).map((i) => ({ section: sec.key, item: i.key })));
-    if (!flat.length) return;
-    const at = flat.findIndex((f) => f.section === current?.section && f.item === current?.item);
-    setCurrent(flat[(at + 1) % flat.length]!);
+    const obj = objectiveOf(walk);
+    if (obj && (doc || current?.item !== obj.item)) {
+      setCurrent(obj);
+    } else if (flat.length) {
+      const at = flat.findIndex((f) => f.item === current?.item);
+      setCurrent(flat[(at + 1) % flat.length]!);
+    }
     setDoc(false);
-  }, [sections, current]);
+    setPeek(null);
+  }, [sections, walk, doc, current]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -173,144 +235,288 @@ export function QuestScreen() {
       if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "m" || e.key === "M") setDoc((d) => !d);
-      if (e.key === "n" || e.key === "N") next();
-      if (key === "5" || key === "8b") {
-        const order = ["standard", "residual", "residual_energy_dropped", "density_multivariate", "density", "partition", "all_components", "none"];
-        const i = order.indexOf(energyHover);
-        const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
-        if (step) {
-          e.preventDefault();
-          setEnergyHover(order[Math.min(order.length - 1, Math.max(0, i + step))]!);
-        }
-      }
+      if ((e.key === "n" || e.key === "N") && !prediction) next();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [next, key, energyHover]);
+  }, [next, prediction]);
 
-  const known = useMemo(() => new Set(Object.keys(cfg.moment.view.state.roles ?? {}).concat(["glucose"])), [cfg]);
-  const sec = findSection(sections, current?.section);
+  const known = useMemo(() => new Set(Object.keys(moment.view.state.roles ?? {}).concat(["glucose"])), [moment]);
+  const sec = prediction ? undefined : sections.find((x) => x.key === current?.section);
   const item = sec?.items.find((i) => i.key === current?.item);
-  const position = sec
-    ? `objective ${Math.max(1, sec.items.findIndex((i) => i.key === item?.key) + 1)} of ${sec.items.length}`
-    : "";
-  const nextAsked = sections
-    .flatMap((x) => x.items.filter((i) => i.tier === "asked" && !i.optional).map((i) => ({ sec: x, i })))
-    .find((x) => !(x.sec.key === current?.section && x.i.key === current?.item));
-  const nextLine = nextAsked ? (
-    <>
-      <span className={s.kicker}>Then</span>
-      <span>
-        <b>{nextAsked.i.title}</b> · {nextAsked.sec.title}
-        {nextAsked.i.count > 1 ? ` · ${nextAsked.i.count} open` : ""}
-      </span>
-    </>
-  ) : null;
 
   // ── the center ──
+  const stated = (it: Item): Mode => (it.tier === "stated" || it.tier === "engine" ? "stated" : "open");
+  const sentenceOf = (kind: string) => lines.find((l) => l.kind === kind && l.in_force)?.sentence ?? nextSentence(walk, kind);
+  const slots = readingSlots(ask);
+  // The row in focus: the single the walk confirms next, else the first whose column the engine
+  // raised a finding about (its evidence is what the canvas shows), else the first.
+  const hasEvidence = (cols: string[]) => Object.values(INF.evidence).some((e) => e.columns.some((c) => cols.includes(c)));
+  const focusSlot =
+    readingFocus ??
+    slots.find((r) => r.columns[0] === nextSingle(walk))?.id ??
+    slots.find((r) => hasEvidence(r.columns))?.id ??
+    slots[0]?.id ??
+    null;
+  const backLabel = locked ? "Back to the results" : "Go to the open slot";
+
+  function cardFor(it: Item): ReactNode {
+    const mode = stated(it);
+    switch (it.key) {
+      case "roles":
+        if (mode === "stated" || id === "draft") return <RolesCard mode={mode} sentence={sentenceOf("set_roles")} onRecord={record} onBack={toObjective} />;
+        break;
+      case "readings":
+        if (it.tier !== "waiting")
+          return (
+            <ReadingsCard
+              ask={ask}
+              singles={singlesDone(walk).map((l) => l.sentence)}
+              next={nextSingle(walk)}
+              focus={focusSlot}
+              onFocus={setReadingFocus}
+              onSingle={record}
+              onBlock={() => (ask?.consumer === "the fit" ? go({ ...walk, codes: true }) : record())}
+              stated={lines.filter((l) => KINDS.readings!.includes(l.kind)).map((l) => l.sentence)}
+              onBack={toObjective}
+            />
+          );
+        break;
+      case "exclusions":
+        if (mode === "stated" || id === "exclusions")
+          return (
+            <ExclusionsCard
+              mode={mode}
+              sentences={[sentenceOf("set_exclusions"), sentenceOf("set_sensitivity")]}
+              onRecord={record}
+              onBack={toObjective}
+              onPeek={setPeek}
+            />
+          );
+        break;
+      case "missing":
+        if (mode === "stated" || id === "missing")
+          return <MissingCard mode={mode} sentence={sentenceOf("set_missing")} onRecord={record} onBack={toObjective} onPeek={(k) => setPeek(missingPreviewKey(k))} />;
+        break;
+      case "split":
+        if (mode === "stated" || id === "split")
+          return <SplitCard mode={mode} sentence={sentenceOf("set_split")} onRecord={record} onBack={toObjective} onPeek={(h) => setPeek(splitPreviewKey(h))} />;
+        break;
+      case "estimand":
+        if (mode === "stated" || id === "estimand")
+          return <EstimandCard mode={mode} sentence={sentenceOf("set_estimand")} onRecord={record} onBack={toObjective} onPeek={(c) => setPeek(`exposure:${c}`)} />;
+        break;
+      case "adjustment":
+        if (mode === "stated" || id === "adjustment")
+          return <AdjustmentCard mode={mode} adjusted={walk.adjusted} focus={peek} onFocus={setPeek} onAnswer={onAdjust} onBack={toObjective} />;
+        break;
+      case "energy_adjustment":
+        if (mode === "stated" || id === "energy")
+          return (
+            <EnergyCard
+              mode={mode}
+              sentence={sentenceOf("set_energy_adjustment")}
+              hovered={peek?.startsWith("energy_") ? peek.slice("energy_".length) : null}
+              onPeek={(v) => setPeek(`energy_${v}`)}
+              onRecord={record}
+              onBack={toObjective}
+            />
+          );
+        break;
+      case "model_sequence":
+        if (mode === "stated" || id === "model_sequence")
+          return <SequenceCard mode={mode} sentence={sentenceOf("set_model_sequence")} onRecord={record} onBack={toObjective} />;
+        break;
+      case "models":
+        if (mode === "stated" || id === "models" || id === "model_sequence")
+          return (
+            <ModelsCard
+              mode={mode}
+              sentence={sentenceOf("select_models")}
+              ready={id === "models" && walk.codes}
+              onRecord={record}
+              onBack={toObjective}
+              onChosen={setFamilies}
+            />
+          );
+        break;
+      case "lock":
+        if (id === "ready") {
+          const declared = ["set_estimand", "set_model_sequence", "set_sensitivity"].map((k) => lines.find((l) => l.kind === k)?.sentence).filter((x): x is string => !!x);
+          return <LockCard sentence={nextSentence(walk, "lock_plan")} declared={declared} onRecord={record} />;
+        }
+        break;
+    }
+    const isObjective = it.key === objective;
+    return (
+      <ItemCard
+        tier={it.tier}
+        title={it.title}
+        sentences={it.sentences}
+        waitingOn={it.waitingOn}
+        ask={it.ask}
+        onBack={isObjective ? null : toObjective}
+        backLabel={backLabel}
+      />
+    );
+  }
+
   let center: ReactNode = null;
-  let canvas: ReactNode = null;
-  const lines = cfg.moment.methods.lines;
-  if (doc) {
-    const pred = cfg.guideline === "TRIPOD+AI";
+  const lockSentence = lines.find((l) => l.kind === "lock_plan")?.sentence ?? null;
+  if (prediction || doc) {
     center = (
       <MethodsDoc
-        guideline={cfg.guideline}
+        guideline={guideline}
         sections={sections}
         lines={lines}
-        title={pred ? "Methods, as drafted: predicting `glucose`" : "Methods, as drafted: `sugar` and `glucose`"}
-        locked={isLocked ? locked : null}
+        title={prediction ? "Methods, as drafted: predicting `glucose`" : "Methods, as drafted: `sugar` and `glucose`"}
+        locked={locked ? lockSentence : null}
+        onPhrase={
+          prediction
+            ? undefined
+            : (kind) => {
+                const it = KIND_ITEM[kind];
+                if (!it) return;
+                setCurrent({ section: sectionKey(it), item: it });
+                setDoc(false);
+                setPeek(null);
+              }
+        }
       />
     );
   } else if (sec && item) {
-    const frame = (body: ReactNode) => (
-      <Frame section={sec.title} refText={sec.ref} position={position} next={nextLine}>
-        {body}
+    const position =
+      item.key === objective
+        ? `objective ${Math.max(1, sec.items.findIndex((i) => i.key === item.key) + 1)} of ${sec.items.length}`
+        : stated(item) === "stated"
+          ? "a stated phrase: its alternatives play on the canvas"
+          : `${item.tier === "waiting" ? "waiting" : "objective"} ${Math.max(1, sec.items.findIndex((i) => i.key === item.key) + 1)} of ${sec.items.length}`;
+    const nextAsked = sections
+      .flatMap((x) => x.items.filter((i) => i.tier === "asked" && !i.optional).map((i) => ({ sec: x, i })))
+      .find((x) => x.i.key !== item.key);
+    const then = nextAsked ? (
+      <>
+        <span className={s.kicker}>Then</span>
+        <span>
+          <b>{nextAsked.i.title}</b> · {nextAsked.sec.title}
+          {nextAsked.i.count > 1 ? ` · ${nextAsked.i.count} open` : ""}
+        </span>
+      </>
+    ) : null;
+    center = (
+      <Frame section={sec.title} refText={sec.ref} position={position} next={then}>
+        {cardFor(item)}
       </Frame>
     );
-    if (item.key === "roles" && key === "1") center = frame(<RolesCard />);
-    else if (item.key === "readings")
-      center = frame(
-        <ReadingsCard
-          focus={readingFocus}
-          onFocus={setReadingFocus}
-          confirmed={key === "9" ? INF.singles.map((x) => x.record.sentence) : []}
-          unlocked={key === "9"}
-        />,
-      );
-    else if (item.key === "estimand" && (key === "3" || key === "8a")) center = frame(<EstimandCard hovered="sugar" teach />);
-    else if (item.key === "adjustment" && key === "4") center = frame(<AdjustmentCard focus={adjFocus} onFocus={setAdjFocus} />);
-    else if (item.key === "energy_adjustment" && (key === "5" || key === "8b")) {
-      const sentence = lines.find((l) => l.kind === "set_energy_adjustment")!.sentence;
-      center = (
-        <Frame section={sec.title} refText={sec.ref} position="editing a stated phrase" next={nextLine}>
-          <PhraseCard sentence={sentence} hovered={energyHover} onHover={setEnergyHover} conceptOpen={key === "8b" ? "substitution" : null} />
-        </Frame>
-      );
-    } else
-      center = frame(
-        <>
-          <p className={s.draft}>
-            {item.sentences.length ? item.sentences.join(" ") : item.tier === "waiting" ? `${item.title} waits on ${item.waitingOn.join(" and ")}.` : item.title}
-          </p>
-          <p className={s.why}>This objective's card is not drawn in the prototype; the moments under review are M1 to M9.</p>
-        </>,
-      );
+  } else if (locked) {
+    center = (
+      <Frame section="Results" refText="STROBE 14–17" position="the plan is locked">
+        <LockedCard sentence={lockSentence} onDoc={() => setDoc(true)} />
+      </Frame>
+    );
   }
 
   // ── the canvas ──
   const composedNote = (
     <p className={s.composed}>
-      Composed by the prototype from your recorded roles; for this question the engine says: “Nothing about this choice can be shown on your
-      data yet.”
+      Composed by the prototype from your recorded roles; for this question the engine says: “
+      {(INF.previews.estimand_sugar_substitution?.body as PreviewResult | undefined)?.note ?? "Nothing about this choice can be shown on your data yet."}”
     </p>
   );
-  const rest = params.rest === null ? undefined : params.rest === "now" || params.rest === "with" ? params.rest : Number(params.rest);
-  if (key === "1") {
-    canvas = (
-      <PreviewCanvas
-        result={INF.previews.roles!.body as PreviewResult}
-        pill="Preview"
-        label="Record the roles as proposed"
-        aside="nothing is recorded"
-      />
-    );
-  } else if (key === "2" || key === "9") {
-    const ev = key === "9" ? INF.evidence["voice__flag__imputed_bmi"] : INF.evidence["voice__pooled_cycles__cycle_begin_year"];
-    const label =
-      key === "9"
-        ? "`imputed_bmi` flags `306` imputed values of `bmi`; it describes the data, not the participant."
-        : "`cycle_begin_year` pools `9` survey cycles, `2001` to `2017`; methods may differ across them.";
-    canvas = ev ? (
-      <PreviewCanvas result={ev} pill="Evidence" label={label} aside="your data as loaded" promote={key === "2" ? "distribution" : undefined} />
-    ) : null;
-  } else if (key === "3" || key === "8a") {
-    canvas = <PreviewCanvas result={exposureLineage("sugar")} pill="Preview" label="`sugar` as the exposure" aside="nothing is recorded" note={composedNote} />;
-  } else if (key === "4") {
-    const g = INF.adjustment_card.groups.find((x) => x.key === adjFocus);
-    const leave = g && g.derived && g.derived !== "confounder" ? g.columns : [];
-    canvas = (
-      <PreviewCanvas
-        result={adjustmentLineage(leave)}
-        pill="Preview"
-        label={g ? `${g.label} as ${g.derived_words ?? "asked"}` : "The adjustment set"}
-        aside="nothing is recorded"
-        note={composedNote}
-        rest={rest}
-      />
-    );
-  } else if (key === "5" || key === "8b") {
-    const p = energyPreview(energyHover);
-    const t = FX.teaching.find((x) => x.key === "energy_adjustment")!;
-    const label = t.options.find((o) => o.value === energyHover)?.label ?? energyHover;
-    canvas =
-      p && isPreview(p.body) ? (
-        <PreviewCanvas result={p.body} pill="Preview" label={label} aside="nothing is recorded" rest={rest} />
-      ) : null;
-  } else if (key === "6") {
-    canvas = <ResultsCanvas appendix={appendix} onAppendix={() => setAppendix((a) => !a)} />;
-  } else if (key === "7") {
-    const st = FX.prediction.moment.stages;
+  function previewCanvas(key: string | null, label: string, fallback?: string): ReactNode {
+    const p = key ? INF.previews[key] : undefined;
+    if (p && !isPreview(p.body))
+      return (
+        <NoteCanvas pill="Preview" label={label} aside="refused here">
+          <p className={s.caption}>{p.body.error.message.replace(/`/g, "")}</p>
+        </NoteCanvas>
+      );
+    if (p && isPreview(p.body)) return <PreviewCanvas result={p.body} pill="Preview" label={label} aside="nothing is recorded" rest={preset.rest} />;
+    return fallback && fallback !== key ? previewCanvas(fallback, label) : null;
+  }
+  const itemByKey = (k: string | undefined) => sections.flatMap((x) => x.items).find((i) => i.key === k);
+  function canvasFor(key: string | undefined): ReactNode {
+    const it = itemByKey(key);
+    const isStated = !!it && stated(it) === "stated";
+    switch (key) {
+      case "roles":
+        return previewCanvas("roles", "Record the roles as proposed");
+      case "readings": {
+        if (ask?.consumer === "the screens") {
+          const exit = ask.exits[0];
+          return previewCanvas("unit_kcal_1", exit?.label ?? "`kcal` read in kcal a day");
+        }
+        const slot = slots.find((r) => r.id === focusSlot);
+        const cols = slot ? slot.columns : slots.flatMap((r) => r.columns);
+        const ev = Object.values(INF.evidence).find((e) => e.columns.some((c) => cols.includes(c)));
+        if (!ev) return <NoteCanvas pill="Evidence" label="Evidence" aside="your data as loaded"><p className={s.caption}>The engine raised no finding about this column; its guess and evidence are on the card.</p></NoteCanvas>;
+        return <PreviewCanvas result={ev.evidence} pill="Evidence" label={ev.summary} aside="your data as loaded" promote="distribution" />;
+      }
+      case "exclusions": {
+        const k = peek ?? "exclusions_none";
+        const label = k === "exclusions_none" ? "Keep every row" : (INF.cards.exclusions.labels.options.find((o) => `exclusions_${o.key}` === k)?.label ?? k);
+        return previewCanvas(k, label, "exclusions_none");
+      }
+      case "missing": {
+        const methods = INF.cards.missing.card.methods as { key: string; label: string }[];
+        const k = peek ?? (isStated ? missingPreviewKey(methods.find((m) => m.key === "complete_case")?.key ?? "") : missingPreviewKey(methods[0]?.key ?? ""));
+        const m = methods.find((x) => missingPreviewKey(x.key) === k);
+        return previewCanvas(k, m?.label ?? "Missing values");
+      }
+      case "split": {
+        const k = peek ?? splitPreviewKey(SCENARIO.holdout ?? 0);
+        const o = INF.cards.seal_plan.options.find((x) => splitPreviewKey(x.holdout) === k);
+        return previewCanvas(k, o?.label ?? "Held-out rows");
+      }
+      case "estimand": {
+        const exposure = peek?.startsWith("exposure:") ? peek.slice("exposure:".length) : isStated ? (SCENARIO.estimand?.exposure ?? null) : null;
+        return (
+          <PreviewCanvas
+            result={exposureLineage(exposure)}
+            pill="Preview"
+            label={exposure ? `\`${exposure}\` as the exposure` : "The exposure"}
+            aside="nothing is recorded"
+            note={composedNote}
+            rest={preset.rest}
+          />
+        );
+      }
+      case "adjustment": {
+        const k = peek ?? "adjust_demographic";
+        const g = INF.cards.adjustment.groups.find((x) => `adjust_${x.key}` === k);
+        const a = ADJUSTMENT_ANSWERS.find((x) => `adjust_answers_${x.index}` === k);
+        const label = g ? `${g.label} as ${g.derived_words ?? "asked"}` : a ? `${a.columns.map((c) => `\`${c}\``).join(", ")} as the scenario answers` : "The adjustment set";
+        return previewCanvas(k, label);
+      }
+      case "energy_adjustment": {
+        const v = peek?.startsWith("energy_") ? peek.slice("energy_".length) : (isStated ? SCENARIO.energy : INF.cards.energy.card.ranking.first);
+        const label = INF.cards.energy.labels.options.find((o) => o.key === v)?.label ?? v ?? "Energy adjustment";
+        return previewCanvas(`energy_${v}`, label);
+      }
+      case "model_sequence": {
+        const p = INF.previews.model_sequence?.body as PreviewResult | undefined;
+        return (
+          <NoteCanvas pill="Preview" label="The declared model sequence" aside="nothing is recorded">
+            <p className={s.caption}>The engine: “{p?.note ?? "Nothing about this choice can be shown on your data yet."}” Each model is fit once, when the plan is locked.</p>
+          </NoteCanvas>
+        );
+      }
+      case "models":
+        return INF.cards.shelf ? <ShelfCanvas shelf={INF.cards.shelf as unknown as ShelfArtifact} chosen={isStated ? SCENARIO.models : families} /> : null;
+      case "lock":
+        return (
+          <NoteCanvas pill={null} label="The declared plan" aside="nothing is estimated yet">
+            <p className={s.caption}>No estimate is computed or shown before the plan is locked; fitting it serves the first one.</p>
+          </NoteCanvas>
+        );
+      default:
+        return null;
+    }
+  }
+
+  let canvas: ReactNode;
+  if (prediction) {
+    const st = PREDICTION.stages;
     canvas = (
       <ComparisonCanvas
         fit={FX.prediction.fit as unknown as FitArtifact}
@@ -318,50 +524,75 @@ export function QuestScreen() {
         split={(st.split?.artifact ?? null) as unknown as SplitArtifact | null}
       />
     );
+  } else if (locked && (doc || !item || !peek)) {
+    canvas = <ResultsCanvas appendix={appendix} onAppendix={() => setAppendix((a) => !a)} mattered={mattered} onMattered={() => setMattered((m) => !m)} />;
+  } else {
+    canvas = (!doc && canvasFor(item?.key)) || canvasFor(objective ?? undefined);
   }
 
-  const summary = cfg.moment.view.summary;
+  const summary = moment.view.summary;
   return (
     <StageFocusProvider>
       <ColumnsContext.Provider value={known}>
-        <div className={s.screen} data-moment={key}>
-          <Header>
+        <div className={s.screen} data-moment={prediction ? "prediction" : id} data-shot={preset.shot || undefined}>
+          <Header
+            jobs={
+              <span className={s.headActions}>
+                <button
+                  type="button"
+                  className={s.btnQuiet}
+                  aria-pressed={prediction}
+                  onClick={() => {
+                    setVariant(prediction ? "inference" : "prediction");
+                    setPeek(null);
+                  }}
+                  data-testid="proto-variant"
+                  title="The same opening and readings under prediction, captured to its fit (TRIPOD+AI)"
+                >
+                  {prediction ? "Back to the inference walk" : "Prediction variant (TRIPOD+AI)"}
+                </button>
+                <button
+                  type="button"
+                  className={s.btn}
+                  onClick={reset}
+                  data-testid="proto-reset"
+                  title="Back to the first draft: every answer of this walk is cleared"
+                >
+                  Reset
+                </button>
+              </span>
+            }
+          >
             <span style={{ fontFamily: "var(--serif)", fontSize: 15, fontWeight: 700 }}>{summary.name}</span>
             <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--muted)" }}>
               {summary.n_rows?.toLocaleString("en-US")} rows × {summary.n_cols} columns
             </span>
           </Header>
-          <BannerView model={banner(cfg.moment)} />
-          <div className={s.window} data-doc={doc || undefined}>
+          <BannerView model={banner(moment)} />
+          <div className={s.window} data-doc={doc || prediction || undefined}>
             <Rail
-              guideline={cfg.guideline}
+              guideline={guideline}
               sections={sections}
-              current={doc ? null : current}
-              locked={isLocked}
-              docOpen={doc}
+              current={doc || prediction ? null : current}
+              objective={objective}
+              locked={locked}
+              docOpen={doc || prediction}
               onPick={(section, it) => {
+                if (prediction) return;
                 setCurrent({ section, item: it });
                 setDoc(false);
+                setPeek(null);
               }}
               onNext={next}
-              onDoc={() => setDoc((d) => !d)}
+              onDoc={() => !prediction && setDoc((d) => !d)}
             />
-            <main className={s.center} aria-label={doc ? "The methods section" : "The current objective"} data-testid="center">
+            <main className={s.center} aria-label={doc || prediction ? "The methods section" : "The current objective"} data-testid="center">
               {center}
             </main>
             <aside className={s.canvas} aria-label="The canvas">
               {canvas}
             </aside>
           </div>
-          {params.shot ? null : (
-            <nav className={s.switcher} aria-label="Moments under review">
-              {MOMENTS.map((m) => (
-                <a key={m} href={`?m=${m}`} aria-current={m === key ? "page" : undefined}>
-                  M{m}
-                </a>
-              ))}
-            </nav>
-          )}
         </div>
       </ColumnsContext.Provider>
     </StageFocusProvider>

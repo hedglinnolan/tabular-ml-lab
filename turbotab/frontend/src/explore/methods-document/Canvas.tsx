@@ -19,8 +19,8 @@ import { Rich } from "../../components/stage/text";
 import { createPlayerStore, PlayerContext } from "../../components/stage/usePlayer";
 import { Lineage } from "../../components/stage/views/Lineage";
 import type { StageFocus } from "../../state/focus";
-import { artifactOf, FX, isPreview, type AdjustmentCard, type Moment } from "./fixture";
-import { AdjustmentLanes } from "./views/AdjustmentLanes";
+import { artifactOf, isPreview, moment, type AdjustmentCard, type Moment } from "./fixture";
+import { AdjustmentLanes, type Lane } from "./views/AdjustmentLanes";
 import { ReadingEvidence, type EvidenceItem } from "./views/ReadingEvidence";
 import { SpecCurve } from "./views/SpecCurve";
 import { specRows } from "./Results";
@@ -47,6 +47,8 @@ export function Canvas({
   evidence,
   exposure,
   adjustmentGroup,
+  placed,
+  confirmed,
 }: {
   mode: CanvasMode;
   pid: string;
@@ -56,6 +58,9 @@ export function Canvas({
   evidence: { title: string; items: EvidenceItem[]; label: string } | null;
   exposure: { column: string; contrast: string; effect: string } | null;
   adjustmentGroup: string | null;
+  /** The adjustment slot's answers so far (nothing recorded). */
+  placed: Record<string, Lane>;
+  confirmed: string[];
 }) {
   const view = m.view;
   if (mode === "evidence" && evidence) {
@@ -74,7 +79,13 @@ export function Canvas({
     if (card)
       return (
         <Frame pill="Preview" label="Where the answers send each covariate" aside="nothing is recorded">
-          <AdjustmentLanes card={card} outcome={view.state.target ?? ""} focusGroup={adjustmentGroup} />
+          <AdjustmentLanes
+            card={card}
+            outcome={view.state.target ?? ""}
+            focusGroup={adjustmentGroup}
+            placed={placed}
+            confirmed={confirmed}
+          />
           {last ? (
             <p className={s.readout}>
               <span className={s.readoutKicker}>Rows now</span>
@@ -133,7 +144,11 @@ function ExposureCanvas({ m, choice }: { m: Moment; choice: { column: string; co
   );
   const sentence = recordedEstimand(choice);
   return (
-    <Frame pill="Preview" label={`\`${choice.column}\` · ${choice.effect} effect · ${choice.contrast}`} aside="nothing is recorded">
+    <Frame
+      pill="Preview"
+      label={[`\`${choice.column}\``, choice.effect && `${choice.effect} effect`, choice.contrast].filter(Boolean).join(" · ")}
+      aside="nothing is recorded"
+    >
       {note ? (
         <p className={s.canvasNote}>
           <Rich text={note} />
@@ -161,10 +176,11 @@ function ExposureCanvas({ m, choice }: { m: Moment; choice: { column: string; co
   );
 }
 
-/** The server's sentence for an estimand, captured when the journey recorded it (moment m4). Only
- *  the choice that was recorded has one; any other choice shows none rather than a composed one. */
+/** The server's sentence for an estimand, captured when the journey recorded it (the moment after
+ *  it, "adjustment"). Only the choice that was recorded has one; any other choice shows none
+ *  rather than a composed one. */
 function recordedEstimand(choice: { column: string; contrast: string; effect: string }): string | null {
-  const rec = FX.moments.m4.view.decisions.find((d) => {
+  const rec = moment("adjustment").view.decisions.find((d) => {
     const x = d.decision as { kind: string; exposure?: string; contrast?: string; effect?: string };
     return x.kind === "set_estimand" && x.exposure === choice.column && x.contrast === choice.contrast && x.effect === choice.effect;
   });

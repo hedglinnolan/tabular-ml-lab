@@ -20,12 +20,13 @@ import {
   teaching,
   type AskCard,
   type EstimandCard,
+  type ModelSequenceCard,
   type Moment,
 } from "./fixture";
 
 export type Tier = "recorded" | "stated" | "asked" | "waiting" | "author" | "silent";
 export type Guideline = "STROBE-nut" | "TRIPOD+AI";
-export type SlotKind = "readings" | "estimand" | "adjustment" | "question";
+export type SlotKind = "readings" | "estimand" | "adjustment" | "question" | "model_sequence" | "lock";
 export type ConceptKey = "substitution" | "mediator";
 
 export interface Mark {
@@ -81,7 +82,8 @@ type Row =
   | { author: string; head: string; item: string; prompt: string }
   | { readings: true; head: string; item?: string }
   | { stage: string; head: string; item: string }
-  | { results: "flow" | "table2" | "other" | "performance"; head: string; item: string };
+  | { results: "flow" | "table2" | "other" | "performance"; head: string; item: string }
+  | { sequence: true; head: string; item: string };
 
 interface Blueprint {
   id: string;
@@ -159,6 +161,7 @@ const STROBE_NUT: Blueprint[] = [
       { q: "split", head: "Validation", item: "12" },
       { q: "causal", head: "Estimator", item: "12" },
       { q: "models", head: "Model", item: "12" },
+      { sequence: true, head: "Model sequence", item: "12" },
       { stage: "effects", head: "Estimation and reporting", item: "12" },
       { stage: "secondary", head: "Secondary model", item: "12e" },
       { stage: "sensitivity", head: "Sensitivity analysis", item: "12e" },
@@ -279,7 +282,7 @@ const PHRASE: Partial<Record<QuestionKey, RegExp>> = {
   grain: /each person is one row/,
   clusters: /no column reads as a site, centre, household or batch/,
   survey: /no surveyed population to weight to|not weighted to a population/,
-  exclusions: /Willett 2013's sex-specific cut-offs/,
+  exclusions: /No rows were excluded|Willett 2013's sex-specific cut-offs/,
   missing: /complete-case analysis|imputed in each training fold without the outcome/,
   split: /No rows were held out|A random `20%` of the rows/,
   estimand: /total effect of `[^`]+`/,
@@ -332,11 +335,10 @@ export function openAsk(view: ProjectView): AskCard | null {
   return view.interview.find((s) => (s.status === "open" || s.status === "waiting") && s.ask)?.ask ?? null;
 }
 
-/** Confirmations made one reading at a time (a unit and its days, or a single reading). */
+/** Readings confirmed one at a time (each a confirm_reading; the screens' unit question is its
+ *  own answer and does not count toward the unlock). */
 export function singleConfirmations(view: ProjectView): DecisionRecord[] {
-  return view.decisions.filter(
-    (d) => d.decision.kind === "confirm_reading" || d.decision.kind === "set_column_unit",
-  );
+  return view.decisions.filter((d) => d.decision.kind === "confirm_reading");
 }
 
 /**
@@ -519,6 +521,9 @@ function resultsPara(m: Moment, row: { results: string; head: string; item: stri
     const named = m.view.interview.some((s) => s.key === "estimand" && s.status === "answered");
     if (!named && m.view.state.purpose !== "prediction")
       return para({ ...base, tier: "waiting", text: teaching("estimand")?.one_liner ?? null });
+    // Every asked question answered: showing the estimates is the one act left, and it locks the plan.
+    const chosen = m.view.interview.some((s) => s.key === "models" && s.status === "answered");
+    if (chosen && m.view.state.purpose !== "prediction") return para({ ...base, tier: "asked", slot: "lock" });
     return para({ ...base, tier: "waiting", waitingOn: waitingText(m.view, "models") });
   }
   if (row.results === "other") {
@@ -529,6 +534,19 @@ function resultsPara(m: Moment, row: { results: string; head: string; item: stri
     return fitted ? para({ ...base, tier: "recorded" }) : para({ ...base, tier: "waiting", waitingOn: "the fit" });
   }
   return null;
+}
+
+/** The declared model sequence (MODELING_SEQUENCE §1 row 11): recorded once declared; asked once
+ *  the proposals carry its card (Model 1's guess, with its reason); until then it waits. */
+function sequencePara(m: Moment, row: { head: string; item: string }): Para | null {
+  if (m.view.state.purpose === "prediction") return null;
+  const base = { id: "model_sequence", head: row.head, item: row.item };
+  const rec = latest(m.view, "set_model_sequence");
+  if (rec)
+    return para({ ...base, tier: "recorded", text: rec.sentence, seq: rec.seq, afterEstimates: rec.after_estimates ?? false });
+  const card = artifactOf<{ model_sequence?: ModelSequenceCard | null }>(m, "proposals")?.model_sequence;
+  if (card && !card.declared) return para({ ...base, tier: "asked", slot: "model_sequence", text: card.reason });
+  return para({ ...base, tier: "waiting", waitingOn: titleOf("energy_adjustment") });
 }
 
 export function buildDoc(m: Moment): Doc {
@@ -550,6 +568,7 @@ export function buildDoc(m: Moment): Doc {
           p = para({ id: `stage-${row.stage}`, head: row.head, item: row.item, tier: "recorded", text, marks: marksFor(null, text) });
       }
       else if ("results" in row) p = resultsPara(m, row);
+      else if ("sequence" in row) p = sequencePara(m, row);
       else {
         const rec = latest(m.view, row.kind);
         if (rec)

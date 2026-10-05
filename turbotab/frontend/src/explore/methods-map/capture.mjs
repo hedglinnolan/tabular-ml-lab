@@ -4,8 +4,9 @@
  *   npx vite --port 5473 --strictPort --host 127.0.0.1          # in turbotab/frontend
  *   node src/explore/methods-map/capture.mjs [base-url] [out-dir]
  *
- * Drives the prototype as a person would — the newcomer's walk through the asked nodes, the
- * expert's clicks, the lock, the results, an edit after the lock, the prediction version — and
+ * Drives the prototype as a person would, on the three prototypes' shared scenario
+ * (../methods-shared/SCENARIO.md) — the newcomer's walk through the asked nodes, the expert's
+ * clicks, the lock, the results, an edit after the lock, the prediction version — and
  * takes a 1440×900 screenshot at each key moment, in light and in dark. It fails on any page error,
  * so it doubles as the prototype's smoke test. Writes <out-dir>/<nn>-<name>-<theme>.png and
  * README.md (the captions).
@@ -59,8 +60,9 @@ async function journey(theme) {
   await shot(3, "mastery-block-unlocked", "Mastery unlock: after three readings confirmed one at a time, a block confirm appears. It lists exactly the readings it settles, each with the value it shows, and settles nothing else (BLUEPRINT §14.2). Each single confirmation is already in the record as the engine's own sentence.");
   await click(tid("confirm-unit"));
   await click(tid("confirm-block"));
+  await click(tid("confirm-codes"));
   await page.locator(tid("receipt")).scrollIntoViewIfNeeded();
-  await shot(4, "readings-receipt", "Recorded: the receipt at the control quotes the engine's sentence for the block, which names what it settled. The Readings node turns solid with a check, the identifier and flags lane ends at \"not predictors\", the record gains the same sentence, and \"Next asked: Exclusions →\" offers the next objective without moving the page.");
+  await shot(4, "readings-receipt", "Recorded: the receipt at the control quotes the engine's sentence for the last block confirmed (the fit's two code-or-amount readings), which names what it settled. The Readings node turns solid with a check, the identifier and flags lane ends at \"not predictors\", the record gains the same sentence, and \"Next asked: Exclusions →\" offers the next objective without moving the page.");
 
   await click(tid("receipt-next"));
   await page.hover(tid("opt-willett_2013_by_sex"));
@@ -68,10 +70,12 @@ async function journey(theme) {
   await click(tid("opt-none"));
   await click(tid("beside-willett_2013_by_sex"));
   await click(tid("beside-nhs_hpfs_by_sex"));
-  await click(tid("beside-sex_neutral_500_5000"));
 
   await click(tid("next"));
-  await shot(6, "exposure-first-encounter", "The exposure and its estimand. The guess (sugar) comes with its evidence from the readings. Two concepts are met here first and are taught in full (estimand, substitution); the engine's own question about substitution or addition is asked before recording, as the engine asks it. The canvas says what the engine says: nothing about this choice can be shown on the data yet; the map draws its consequence instead.");
+  await click(tid("opt-complete_case"));
+
+  await click(tid("next"));
+  await shot(6, "exposure-first-encounter", "The exposure and its estimand. The guess (sugar) comes with its evidence from the readings. Two concepts are met here first and are taught in full (estimand, substitution); the engine's own question about substitution or addition is asked before recording, as the engine asks it. The canvas plays the engine's lineage on the scenario's plan: sugar's column emphasized on its way into the model; the map forks it out of the nutrients' bundle.");
   await click(tid("contrast-substitution"));
   await click(tid("record-exposure"));
 
@@ -79,7 +83,7 @@ async function journey(theme) {
   for (const g of ["demographic", "dietary", "body"]) await click(tid(`record-adj-${g}`));
   await click(tid("adj-truth"));
   await page.locator(tid("record-adj-unguessed")).scrollIntoViewIfNeeded();
-  await shot(7, "adjustment-set", "The adjustment set: 19 covariates in four groups, three of them one tap (the pack's guess with its reason). The seven with no guess are asked per column by the disjunctive cause criterion; the role each derives updates as you answer. On the map the lanes re-route as a preview: cycle_begin_year joins the model, six mediators leave, body size goes beside to Model 3, and Model 2 counts 11 columns.");
+  await shot(7, "adjustment-set", "The adjustment set: 19 covariates in four groups, three of them one tap (the pack's guess with its reason). The seven with no guess are asked per column by the disjunctive cause criterion; the role each derives updates as you answer, and the canvas plays the engine's lineage of each group's answers. On the map the lanes re-route as a preview: cycle_begin_year joins the model, six mediators leave, body size goes beside to Model 3, and Model 2 counts 11 columns.");
   await click(tid("keep-mediator"));
   await shot(8, "leash-refusal", "The leash: keeping hdl, a mediator by these answers, in a total-effect set is the engine's refusal (VanderWeele 2019), shown on the canvas with its two exits.");
   await click(tid("record-adj-unguessed"));
@@ -92,7 +96,7 @@ async function journey(theme) {
   await click(tid("node-model1"));
   await click(tid("model1-guess"));
   await click(tid("next"));
-  await shot(10, "lock-ready", "Every asked slot is answered: the lock gate. Missing data was waiting on the adjustment set; with no blank in any model column it changes no number, so it has left the map (its region now counts it as silent, export only).");
+  await shot(10, "lock-ready", "Every asked slot is answered: the lock gate. Missing data was asked after the exclusions and answered with complete cases; the engine's sentence says no row is missing a predictor, so all 21,849 rows remain.");
   await click(tid("lock"));
   await click(tid("node-estimate"));
   await shot(11, "table-2", "The plan locked; Table 2, the exposure only: unadjusted, Model 1, Model 2 (primary) and Model 3 (further adjusted, not a total effect), the engine's numbers on all 21,849 rows, with its caption and interval method. The lock's sentence carries its SHA-256, and on the map the lanes end in the estimate, β with its interval.");
@@ -100,7 +104,7 @@ async function journey(theme) {
   await page.locator(tid("appendix")).scrollIntoViewIfNeeded();
   await shot(12, "appendix", "The appendix, one press away: every other coefficient, per model, under its title \"adjustment terms, not effect estimates\" (Westreich & Greenland 2013), each marked with the engine's reason it is not an effect. Below Table 2, the influence check and the unmeasured-confounding sensitivity (E-value, robustness value).");
   await click(tid("tab-matter"));
-  await shot(13, "which-decisions-mattered", "\"Which of my decisions mattered?\" The estimate of sugar under each declared alternative (the adjustment sequence and the three screens reported beside), with its 95% interval, sorted, and an indicator of which decision each varies. Sensitivity, never a way to choose.");
+  await shot(13, "which-decisions-mattered", "\"Which of my decisions mattered?\" The estimate of sugar under each declared alternative (the adjustment sequence and the two screens reported beside), with its 95% interval, sorted, and an indicator of which decision each varies. Sensitivity, never a way to choose.");
 
   await click(tid("node-energy"));
   await click(tid("opt-residual_energy_dropped"));

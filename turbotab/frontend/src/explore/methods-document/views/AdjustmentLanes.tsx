@@ -13,7 +13,7 @@ import { useSize } from "../../../components/stage/views/geometry";
 import type { AdjustmentCard } from "../fixture";
 import s from "../doc.module.css";
 
-type Lane = "confounder" | "timing_unknown" | "mediator" | "asked";
+export type Lane = "confounder" | "timing_unknown" | "mediator" | "asked";
 
 const LANES: { lane: Lane; title: string; note: string }[] = [
   { lane: "confounder", title: "Primary model", note: "confounders, adjusted for" },
@@ -31,7 +31,21 @@ function laneOf(derived: string | null | undefined): Lane {
   return "asked";
 }
 
-export function AdjustmentLanes({ card, outcome, focusGroup }: { card: AdjustmentCard; outcome: string; focusGroup: string | null }) {
+export function AdjustmentLanes({
+  card,
+  outcome,
+  focusGroup,
+  placed = {},
+  confirmed = [],
+}: {
+  card: AdjustmentCard;
+  outcome: string;
+  focusGroup: string | null;
+  /** Where the slot's answers send each covariate the pack does not guess (nothing recorded). */
+  placed?: Record<string, Lane>;
+  /** The guessed groups confirmed in the slot: drawn solid. */
+  confirmed?: string[];
+}) {
   const [ref, { w }] = useSize<HTMLDivElement>();
   // Left: each group, a heading then its columns.
   let y = 0;
@@ -41,13 +55,14 @@ export function AdjustmentLanes({ card, outcome, focusGroup }: { card: Adjustmen
     y += HEAD;
     for (const c of g.columns) {
       const answered = card.answered?.[c];
+      const mine = placed[c];
       left.push({
         key: c,
         column: c,
         y,
-        lane: laneOf(answered ? null : g.derived),
+        lane: mine ?? laneOf(answered ? null : g.derived),
         group: g.key,
-        proposed: !answered,
+        proposed: !mine && !answered && !confirmed.includes(g.key),
       });
       y += ROW;
     }
@@ -139,7 +154,7 @@ export function AdjustmentLanes({ card, outcome, focusGroup }: { card: Adjustmen
       </svg>
       </div>
       <figcaption className={s.lanesCaption}>
-        Dashed: the pack&rsquo;s guess, nothing recorded. The role is derived from three answers per covariate, never
+        Dashed: the pack&rsquo;s guess; solid: confirmed or answered here. Nothing is recorded until the set is. The role is derived from three answers per covariate, never
         from the data ({card.source}).
       </figcaption>
     </figure>

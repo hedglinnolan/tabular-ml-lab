@@ -8,6 +8,7 @@
 import { useState } from "react";
 import type { CohortArtifact } from "../../api/m1-types";
 import { Rich } from "../../components/stage/text";
+import { fmtCI, fmtEst, matteredRows, t2Attrs, table2Rows } from "../methods-shared/results";
 import {
   artifactOf,
   type EffectsArtifact,
@@ -69,8 +70,10 @@ export function TableTwo({ m }: { m: Moment }) {
   if (!effects || !family) return null;
   const terms = fit?.models[0]?.adjustment_terms ?? [];
   const seq = family.sequence;
+  // The estimates every prototype prints the same (methods-shared/results.ts), one cell per model.
+  const rows = table2Rows(effects);
   return (
-    <figure className={s.t2}>
+    <figure className={s.t2} data-testid="table2">
       <figcaption className={s.t2Title}>
         <span className={s.t2No}>Table 2.</span> <Rich text={fit?.estimand?.caption ?? ""} />
       </figcaption>
@@ -79,9 +82,9 @@ export function TableTwo({ m }: { m: Moment }) {
           <thead>
             <tr>
               <th scope="col" />
-              {seq.map((x) => (
-                <th key={x.key} scope="col" data-primary={x.key === "model_2" || undefined}>
-                  {x.label}
+              {rows.map((r) => (
+                <th key={r.key} scope="col" data-primary={r.primary || undefined}>
+                  {r.label}
                 </th>
               ))}
             </tr>
@@ -91,22 +94,17 @@ export function TableTwo({ m }: { m: Moment }) {
               <th scope="row">
                 <code className="v">{effects.exposure}</code>
               </th>
-              {seq.map((x) => {
-                const e = x.effects[0];
-                return (
-                  <td key={x.key} data-primary={x.key === "model_2" || undefined}>
-                    <span className={s.t2Est}>{est(e?.estimate)}</span>
-                    <span className={s.t2Ci}>
-                      ({est(e?.ci_low)}, {est(e?.ci_high)})
-                    </span>
-                  </td>
-                );
-              })}
+              {rows.map((r) => (
+                <td key={r.key} data-primary={r.primary || undefined} {...t2Attrs(r)}>
+                  <span className={s.t2Est}>{fmtEst(r.estimate)}</span>
+                  <span className={s.t2Ci}>{fmtCI(r.lo, r.hi)}</span>
+                </td>
+              ))}
             </tr>
             <tr className={s.t2N}>
               <th scope="row">n</th>
-              {seq.map((x) => (
-                <td key={x.key}>{n(x.n_rows)}</td>
+              {rows.map((r) => (
+                <td key={r.key}>{n(r.n)}</td>
               ))}
             </tr>
           </tbody>
@@ -149,47 +147,39 @@ export function TableTwo({ m }: { m: Moment }) {
   );
 }
 
+/** The declared alternatives (methods-shared/results.ts), each with the one decision it changes
+ *  from the primary, in words drawn from the server's own labels. */
 export function specRows(m: Moment): { rows: SpecRow[]; unit: string; exposure: string } | null {
   const effects = artifactOf<EffectsArtifact>(m, "effects");
   const sens = artifactOf<SensitivityArtifact>(m, "sensitivity");
   const family = effects?.families[0];
   if (!effects || !family) return null;
-  const rows: SpecRow[] = [];
   const primary = family.sequence.find((x) => x.key === "model_2");
-  for (const x of family.sequence) {
-    const e = x.effects[0];
-    if (!e || e.ci_low === null || e.ci_high === null) continue;
+  const rows: SpecRow[] = [];
+  for (const r of matteredRows(effects, sens)) {
+    if (r.lo === null || r.hi === null) continue;
+    const model = family.sequence.find((x) => x.key === r.key);
+    const changes =
+      r.varies === "primary"
+        ? "the reported estimate"
+        : r.varies === "rows"
+          ? "rows: this screen's, not every row"
+          : r.key === "crude"
+            ? "adjustment set: none"
+            : (model?.adjusted_for.length ?? 0) < (primary?.adjusted_for.length ?? 0)
+              ? `adjustment set: only ${model?.adjusted_for.join(", ")}`
+              : `adjustment set: + ${model?.adjusted_for.filter((c) => !primary?.adjusted_for.includes(c)).join(", ")}`;
     rows.push({
-      key: x.key,
-      label: x.label,
-      changes:
-        x.key === "crude"
-          ? "adjustment set: none"
-          : x.key === "model_2"
-            ? "the reported estimate"
-            : `adjustment set: + ${x.adjusted_for.filter((c) => !primary?.adjusted_for.includes(c)).join(", ")}`,
-      estimate: e.estimate,
-      low: e.ci_low,
-      high: e.ci_high,
-      n: x.n_rows,
-      primary: x.key === "model_2",
-      source: x.note,
-    });
-  }
-  for (const fit of sens?.families[0]?.fits ?? []) {
-    if (fit.label === "Primary") continue;
-    const e = fit.coefficients?.find((c) => c.feature === effects.exposure);
-    if (!e || e.ci_low === null || e.ci_high === null) continue;
-    rows.push({
-      key: `sens:${fit.label}`,
-      label: fit.label,
-      changes: "eligibility: no exclusion",
-      estimate: e.estimate,
-      low: e.ci_low,
-      high: e.ci_high,
-      n: fit.n_rows,
-      primary: false,
-      source: sens?.methods ?? "",
+      key: r.key,
+      label: r.label,
+      changes,
+      estimate: r.estimate,
+      low: r.lo,
+      high: r.hi,
+      n: r.n,
+      primary: r.varies === "primary",
+      source: model?.note ?? sens?.methods ?? "",
+      row: r,
     });
   }
   const unit = family.sequence[0]?.inference?.effect ?? "";
@@ -206,8 +196,8 @@ export function OtherAnalyses({ m, onSpec, specOn }: { m: Moment; onSpec: () => 
         <button type="button" className={s.teaser} onClick={onSpec} aria-pressed={specOn} data-testid="spec-teaser">
           <span className={s.teaserQ}>Which of my decisions mattered?</span>
           <span className={s.teaserA}>
-            {spec.rows.length} declared specifications, from {est(Math.min(...spec.rows.map((r) => r.estimate)))} to{" "}
-            {est(Math.max(...spec.rows.map((r) => r.estimate)))}
+            {spec.rows.length} declared specifications, from {fmtEst(Math.min(...spec.rows.map((r) => r.estimate)))} to{" "}
+            {fmtEst(Math.max(...spec.rows.map((r) => r.estimate)))}
           </span>
         </button>
       ) : null}

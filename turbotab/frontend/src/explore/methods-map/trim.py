@@ -139,17 +139,21 @@ def term(row: dict[str, Any]) -> list[Any]:
             WHYS.index(why)]
 
 
+
+
 ENERGY_CODES = ["standard", "residual", "residual_energy_dropped", "density_multivariate", "density"]
-SENS_KEYS = ["willett_2013_by_sex", "nhs_hpfs_by_sex", "sex_neutral_500_5000"]
+SENS_KEYS = ["willett_2013_by_sex", "nhs_hpfs_by_sex"]
+FORM_CODES = {"unset": "d", "linear": "l", "spline": "s"}
 
 
 def lock_key(key: str) -> str:
-    """``none|linear|standard|willett_2013_by_sex+nhs_hpfs_by_sex|guess`` → ``nl0-3g``: the
-    exclusions (n/w), the form (l/s), the energy method's index, the screens beside it as a bit
-    mask over SENS_KEYS, and Model 1 (g guess, e none, u unanswered)."""
+    """``none|unset|standard|willett_2013_by_sex+nhs_hpfs_by_sex|guess`` → ``nd0-3g``: the
+    exclusions (n/w), the form (d: none recorded, the engine's straight line; l; s), the energy
+    method's index, the screens beside it as a bit mask over SENS_KEYS, and Model 1 (g guess,
+    e none, u unanswered)."""
     excl, form, method, sens, m1 = key.split("|")
     mask = sum(1 << SENS_KEYS.index(s) for s in sens.split("+") if s != "none")
-    return (f"{'n' if excl == 'none' else 'w'}{form[0]}{ENERGY_CODES.index(method)}-{mask}"
+    return (f"{'n' if excl == 'none' else 'w'}{FORM_CODES[form]}{ENERGY_CODES.index(method)}-{mask}"
             f"{ {'guess': 'g', 'empty': 'e', 'unset': 'u'}[m1]}")
 
 
@@ -203,16 +207,21 @@ def fit(bundle: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
 def readings_items(main: dict[str, Any]) -> list[dict[str, Any]]:
-    """The readings the card asks about, in its order: the roles proposed below high confidence,
-    then the fit's code-or-amount questions. The kcal unit is its own item (``unit``)."""
+    """The readings the cards ask about, in their order: the role readings the exposure's card
+    lists (a family's columns in turn), then the fit's code-or-amount questions. The kcal unit is
+    its own item (``unit``)."""
     by_col = {c["column"]: c for c in main["roles_stage"]["columns"]}
     items = []
-    for col in main["unconfirmed"]:
-        c = by_col[col]
-        items.append({"key": f"role:{col}", "reading": "role", "column": col,
-                      "value": c["proposed"], "confidence": c["confidence"],
-                      "evidence": c["reason"], "consumer": None})
+    for g in main["ask_roles"]["groups"]:
+        if g["kind"] != "role":
+            continue
+        for col in g["columns"]:
+            c = by_col[col]
+            items.append({"key": f"role:{col}", "reading": "role", "column": col,
+                          "value": g["guess"], "confidence": c["confidence"],
+                          "evidence": c["reason"], "consumer": None})
     for g in main["ask_codes"]["groups"]:
         col = g["columns"][0]
         items.append({"key": f"code_or_count:{col}", "reading": "code_or_count", "column": col,
@@ -223,7 +232,8 @@ def readings_items(main: dict[str, Any]) -> list[dict[str, Any]]:
 
 def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, Any],
          pred: dict[str, Any], ip: dict[str, Any]) -> dict[str, Any]:
-    S = main["sentences"]
+    S = main["sentences"]  # the scenario's own record
+    B = branches["sentences"]  # the side project's: what the map offers besides
     P = main["previews"]
     prop = main["proposals"]
     energy = prop["energy"]
@@ -232,6 +242,18 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
     est = main["estimand_card"]
     roles_by = {c["column"]: c for c in main["roles_stage"]["columns"]}
     adj = main["adjustment_card"]
+    both = "+".join(SENS_KEYS)
+    # The scenario's fit is the main project's; the other combinations are the side project's,
+    # whose canonical one must be the same numbers.
+    fits = dict(branches["fits"])
+    canon = {"fit": main["fit"], "effects": main["effects"], "secondary": main["secondary"],
+             "sensitivity": main["sensitivity_stage"]}
+    side = fits["none|linear|standard"]
+    for a, b in zip(canon["effects"]["families"][0]["sequence"],
+                    side["effects"]["families"][0]["sequence"]):
+        assert a["key"] == b["key"] and abs(a["effects"][0]["estimate"]
+                                            - b["effects"][0]["estimate"]) < 1e-12, (a, b)
+    fits["none|linear|standard"] = canon
 
     inference = {
         "summary": {"rows": main["draft_view"]["summary"]["n_rows"],
@@ -256,11 +278,15 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
                      "sentence": S["unit_kcal"]["sentence"],
                      "previews": {"confirm": preview(P["unit"]), "two_days": preview(P["unit_2days"])}},
             "single": ip["single"],
-            # the block's sentence for each set it can list: a base-36 bit mask over ``items``
-            # (the readings' keys, in the card's order) → an index into ``sentences``
+            # the role block's sentence for each set it can list: a base-36 bit mask over
+            # ``items`` (the role readings' keys, in the card's order) → an index into ``sentences``
             "block": {"items": ip["blocks"]["items"], "sentences": ip["blocks"]["sentences"],
                       "by_mask": {format_36(int(k)): v
                                   for k, v in ip["blocks"]["by_mask"].items()}},
+            # the fit's card: its one block of the code-or-amount readings
+            "codes": {"items": [f"code_or_count:{i['column']}" for i in S["reading_codes"]["items"]],
+                      "consumer": main["ask_codes"]["consumer"],
+                      "sentence": S["reading_codes"]["sentence"]},
             "read_from_data": [{k: x[k] for k in ("kind", "column", "value", "words", "evidence")}
                                for x in main["readings"]["read_from_data"]],
             "read_sentence": main["readings"]["sentence"],
@@ -271,11 +297,14 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
                          "evidence": o["evidence"]["status"]} for o in prop["exclusions"]],
             "n_base": prop["n_base"],
             "basis": prop["basis"],
-            "sentences": {k: sentence(v) for k, v in S["exclusions"].items()},
+            "sentences": {"none": S["exclusions_none"]["sentence"],
+                          **{k: sentence(v) for k, v in B["exclusions"].items()},
+                          "goldberg_schofield": None},
             "previews": {k: preview(v) for k, v in P["exclusions"].items()},
         },
-        "sensitivity": {"keys": ["willett_2013_by_sex", "nhs_hpfs_by_sex", "sex_neutral_500_5000"],
-                        "sentences": {k: sentence(v) for k, v in S["sensitivity"].items()}},
+        "sensitivity": {"keys": SENS_KEYS,
+                        "sentences": {**{k: sentence(v) for k, v in B["sensitivity"].items()},
+                                      both: S["sensitivity_both"]["sentence"]}},
         "seal": {
             "reason": main["seal_plan"]["reason"],
             "options": [{k: o[k] for k in ("holdout", "label", "n_holdout", "measures")}
@@ -293,8 +322,8 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
                          for m in est["measures"]],
             "which_contrast": main["refusals"]["which_contrast"]["message"],
             "sentence": S["estimand"]["sentence"],
-            "preview_note": P["estimand"]["result"]["note"],
-            "preview_basis": P["estimand"]["result"]["basis"],
+            # on the whole plan (at its own question the engine cannot draw it yet)
+            "preview": preview(P["estimand"]),
         },
         "adjustment": {
             "questions": adj["questions"],
@@ -309,7 +338,8 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
             "after": {k: main["adjustment_after"][k] for k in ("adjusted", "left_out", "secondary")},
             "mediator_kept": {"message": main["refusals"]["mediator_kept"]["message"],
                               "exits": [x["label"] for x in main["refusals"]["mediator_kept"]["exits"]]},
-            "preview_note": P["adjustment"]["result"]["note"],
+            # each group's answers, previewed on the state the groups before it (card order) leave
+            "previews": {k: preview(v) for k, v in branches["adjustment_previews"].items()},
         },
         "energy": {
             "labels": labels(lab["energy_adjustment"]),
@@ -317,7 +347,8 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
             "ranking": energy["ranking"],
             "usual": energy["usual"],
             "r_with_energy": r6(energy["r_with_energy"]),
-            "sentences": {k: sentence(v) for k, v in S["energy"].items()},
+            "sentences": {**{k: sentence(v) for k, v in B["energy"].items()},
+                          "standard": S["energy_standard"]["sentence"]},
             "after": {k: sentence(v) for k, v in branches["after"]["energy"].items()},
             "refusals": {m: {"code": main["refusals"][f"energy_{m}"]["code"],
                              "message": main["refusals"][f"energy_{m}"]["message"],
@@ -327,14 +358,14 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
         },
         "form": {
             "options": prop["exposure_forms"],
-            "sentences": {k: sentence(v) for k, v in S["form"].items()},
+            "sentences": {k: sentence(v) for k, v in B["form"].items()},
             "after": {k: sentence(v) for k, v in branches["after"]["form"].items()},
-            "preview_note": P["form"]["linear"]["result"]["note"],
+            # on the scenario's plan, no form recorded
+            "previews": {k: preview(v) for k, v in P["form"].items()},
         },
         "missing": {
             "labels": labels(lab["missing"]),
-            "sentences": {k: sentence(v) for k, v in S["missing"].items()},
-            "before_adjustment": S["missing_before_adjustment"]["sentence"],
+            "sentence": S["missing"]["sentence"],
             "previews": {k: preview(v) for k, v in P["missing"].items()},
             "columns": prop["missing"]["columns"],
         },
@@ -342,14 +373,16 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
                     "allowed": main["model_sequence"]["allowed"],
                     "reason": main["model_sequence"]["reason"],
                     "sentences": {"guess": S["model_sequence"]["guess"]["sentence"],
-                                  "empty": ip["model_1_empty"]}},
+                                  "empty": ip["model_1_empty"]},
+                    # on the whole plan (at its own question the engine cannot draw it yet)
+                    "previews": {k: preview(v) for k, v in main["preview_model_sequence"].items()}},
         "shelf": [{k: f.get(k) for k in ("key", "label", "rank", "fit", "inductive_bias")}
                   for f in main["shelf"]["families"]],
         # previews taken on the other recordable states ("<exclusions>|<form>"), as differences
-        "previews_var": variants(P, main["previews_var"]),
+        "previews_var": variants(P, branches["previews_var"]),
         "lock": {"digests": {lock_key(k): v for k, v in ip["lock"].items()},
                  "template": ip["lock_template"]},
-        "fits": {k: fit(v) for k, v in branches["fits"].items()},
+        "fits": {k: fit(v) for k, v in fits.items()},
         "appendix_whys": WHYS,
         "methods_at_lock": [{k: ln[k] for k in ("seq", "kind", "after_estimates", "sentence")}
                             for ln in main["methods"]["lines"]],
@@ -357,8 +390,27 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
 
     ps = pred["sentences"]
     plab = pred["proposals"]["labels"]
+    split = ps["split_recorded"]
+    pask = pred["ask_block"]
+    pip = ip["prediction"]
+    by_group = {g["columns"][0]: g for g in pask["groups"] if g["kind"] == "code_or_count"}
     prediction = {
         "steps": pred["view"]["steps"],
+        "n_base": pred["proposals"]["n_base"],
+        # its own readings: the role readings (the same items) and the four code-or-amount ones
+        # its one block also settles; each sentence the engine's on the prediction project's state
+        "readings": {
+            "codes": [{"key": f"code_or_count:{c['column']}", "reading": "code_or_count",
+                       "column": c["column"], "value": c["value"],
+                       "words": by_group[c["column"]]["guess_words"], "confidence": None,
+                       "evidence": by_group[c["column"]]["evidence"], "consumer": pask["consumer"]}
+                      for c in pip["codes"]],
+            "consumer": pask["consumer"],
+            "unit_sentence": ps["unit_kcal"]["sentence"],
+            "single": pip["single"],
+            "block": {"items": pip["block"]["items"], "sentences": pip["block"]["sentences"],
+                      "by_mask": {format_36(int(k)): v for k, v in pip["block"]["by_mask"].items()}},
+        },
         "steps_after_seal": pred["view_after_seal"]["steps"],
         "stated": {"lens": ps["lens"]["sentence"], "target": ps["target"]["sentence"],
                    "purpose": ps["purpose"]["sentence"], "roles": ps["roles"]["sentence"]},
@@ -366,6 +418,8 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
                        "sentence_none": ps["exclusions_none"]["sentence"],
                        "previews": {k: preview(v) for k, v in pred["previews"]["exclusions"].items()}},
         "missing": {"labels": labels(plab["missing"]),
+                    "columns": pred["proposals"]["missing"]["columns"],
+                    "guess": ps["missing"]["decision"]["strategy"],
                     "sentence_impute": ps["missing"]["sentence"],
                     "previews": {k: preview(v) for k, v in pred["previews"]["missing"].items()}},
         "seal": {"reason": pred["seal_plan"]["reason"],
@@ -374,9 +428,10 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
                  "validation": [{k: o[k] for k in ("validation", "label", "measures")}
                                 for o in pred["seal_plan"]["validation"]["options"]],
                  "previews": {k: preview(v) for k, v in pred["previews"]["split"].items()},
-                 "sentences": {k: v["sentence"] for k, v in ps["split"].items()}},
+                 # the scenario's seal, recorded; the others are previewed only
+                 "sentences": {str(float(split["decision"]["holdout"])): split["sentence"]}},
         "energy": {"labels": labels(plab["energy_adjustment"]),
-                   "ranking": pred["proposals"]["energy"]["ranking"]},
+                   "ranking": pred["proposals_after_seal"]["energy"]["ranking"]},
         "shelf": [{k: f.get(k) for k in ("key", "label", "rank", "fit", "inductive_bias",
                                          "estimate")} for f in pred["shelf"]["families"]],
     }
@@ -384,7 +439,8 @@ def trim(teach: list[dict[str, Any]], main: dict[str, Any], branches: dict[str, 
         "meta": {"file": main["draft_view"]["summary"]["source_name"],
                  "rows": main["draft_view"]["summary"]["n_rows"],
                  "cols": main["draft_view"]["summary"]["n_cols"],
-                 "captured": main["draft_view"]["summary"]["created_at"]},
+                 "captured": main["draft_view"]["summary"]["created_at"],
+                 "scenario": "../methods-shared/SCENARIO.md"},
         "teaching": teaching(teach),
         "inference": inference,
         "prediction": prediction,

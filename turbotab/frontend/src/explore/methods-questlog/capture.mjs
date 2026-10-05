@@ -1,10 +1,12 @@
 /**
  * Review captures for the methods-questlog design prototype (not part of the app bundle).
  *
- *   npx vite --port 5461 --strictPort --host 127.0.0.1      # in turbotab/frontend
- *   node src/explore/methods-questlog/capture.mjs [base-url] [--only 05] [--out dir]
+ *   npm run dev:mock -- --port 5461 --strictPort --host 127.0.0.1      # in turbotab/frontend
+ *   node src/explore/methods-questlog/capture.mjs [base-url] [--only 05] [--theme dark] [--out dir]
  *
- * Writes NN-moment-theme.png at 1440x900 (M1 and M4 also at 1024x768) in light and dark.
+ * Opens each moment of the walk by its review preset (?m=<moment>; the walk itself needs none) and
+ * writes NN-name-theme.png at 1440x900 (the first draft and the adjustment also at 1024x768), in
+ * light and dark.
  */
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
@@ -17,24 +19,33 @@ const themeOnly = args.includes("--theme") ? args[args.indexOf("--theme") + 1] :
 const OUT = args.includes("--out") ? args[args.indexOf("--out") + 1] : "/private/tmp/turbotab-fix/proto-questlog";
 mkdirSync(OUT, { recursive: true });
 
+const hover = (sel) => async (page) => {
+  await page.locator(sel).first().hover();
+  await page.waitForTimeout(900);
+};
 const scrollTo = (sel) => async (page) => {
-  await page.evaluate((s) => document.querySelector(s)?.scrollIntoView({ block: "start" }), sel);
+  await page.locator(sel).first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
 };
 
 const shots = [
-  { name: "01-draft", m: "1", narrow: true },
-  { name: "02-readings", m: "2" },
-  { name: "03-estimand", m: "3" },
-  { name: "04-adjustment", m: "4", narrow: true },
-  { name: "05-phrase-edit", m: "5" },
-  { name: "05b-storyboard-step", m: "5", q: "&rest=1", themes: ["light"] },
-  { name: "06-locked", m: "6" },
-  { name: "06b-appendix", m: "6", q: "&appendix", themes: ["light"] },
-  { name: "07-prediction", m: "7" },
-  { name: "08a-first-encounter", m: "8a", run: scrollTo("[data-testid=teach-first]") },
-  { name: "08b-later-encounter", m: "8b" },
-  { name: "09-mastery-unlock", m: "9" },
+  { name: "01-draft", m: "draft", narrow: true },
+  { name: "02-unit", m: "roles" },
+  { name: "03-eligibility", m: "exclusions", run: hover("[data-testid=primary-willett_2013_by_sex]") },
+  { name: "04-missing", m: "missing" },
+  { name: "05-split", m: "split" },
+  { name: "06-readings", m: "readings" },
+  { name: "07-mastery-unlock", m: "single_cycle_begin_year", run: scrollTo("[data-testid=unlock]") },
+  { name: "08-estimand-first-encounter", m: "estimand", run: scrollTo("[data-testid=teach-first]") },
+  { name: "09-adjustment", m: "adjustment", narrow: true },
+  { name: "10-energy-phrase", m: "energy", run: hover("[data-testid=option-residual]") },
+  { name: "11-model-sequence", m: "model_sequence" },
+  { name: "12-models", m: "models" },
+  { name: "13-lock", m: "ready" },
+  { name: "14-table2", m: "locked" },
+  { name: "15-mattered", m: "locked", q: "&mattered", run: scrollTo("[data-testid=mattered]") },
+  { name: "16-document", m: "locked", q: "&doc" },
+  { name: "17-prediction", m: "locked", q: "&variant=prediction" },
 ];
 
 const browser = await chromium.launch();

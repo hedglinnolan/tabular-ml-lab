@@ -13,6 +13,9 @@ import { INF, PRED, type Answer3, type Fit, type Md, type Preview } from "./fixt
 
 export type Purpose = "inference" | "prediction";
 
+/** The scenario's exposure (scenario.EXPOSURE; SCENARIO.md). */
+export const EXPOSURE = "sugar";
+
 export type NodeId =
   | "source"
   | "lens"
@@ -169,21 +172,25 @@ export const NODE_TERMS: Partial<Record<NodeId, { teach: string; term: string }[
 export type Triple = [Answer3, Answer3, Answer3];
 
 export interface Answers {
-  /** Readings confirmed, by key, and how: one at a time or in the block. */
+  /** Readings confirmed, by key, and how: one at a time or in a block. */
   readings: Record<string, "single" | "block">;
-  /** The order the singles came in (the block unlocks after three). */
+  /** The order the singles came in (the role block unlocks after three role readings). */
   singles: string[];
   unit: boolean;
   exclusions: string | null;
   sensitivity: string[];
+  /** Missing data: complete cases, recorded at its question (the scenario's answer). */
+  missing: boolean;
   exposure: boolean;
   /** Each adjustment group, once recorded: each column's three answers. */
   adjustment: Record<string, Record<string, Triple>>;
   energy: string;
-  form: string;
+  /** The exposure's form, once recorded; null: none recorded (the engine fits a straight line,
+   *  and the record says nothing of it). */
+  form: string | null;
   model1: "guess" | "empty" | null;
   /** The plan as it stood at the lock (the energy method and form an edit after it changes). */
-  locked: { energy: string; form: string; key: string } | null;
+  locked: { energy: string; form: string | null; key: string } | null;
   /** Answers recorded after the lock, in order (their sentences say so). */
   after: { node: NodeId; value: string }[];
   // prediction
@@ -198,10 +205,12 @@ export const INITIAL: Answers = {
   unit: false,
   exclusions: null,
   sensitivity: [],
+  missing: false,
   exposure: false,
   adjustment: {},
-  energy: "standard",
-  form: "linear",
+  // the energy model the engine ranks first (scenario.energy_default): written in until changed
+  energy: INF.energy.ranking.order[0]!,
+  form: null,
   model1: null,
   locked: null,
   after: [],
@@ -214,10 +223,12 @@ export const SINGLES_TO_UNLOCK = 3;
 
 export type Action =
   | { type: "reading"; key: string }
-  | { type: "block" }
+  | { type: "block"; purpose?: Purpose }
+  | { type: "codes" }
   | { type: "unit" }
   | { type: "exclusions"; key: string }
   | { type: "sensitivity"; key: string }
+  | { type: "missing" }
   | { type: "exposure" }
   | { type: "adjust"; group: string; answers: Record<string, Triple> }
   | { type: "energy"; method: string }
@@ -231,33 +242,81 @@ export type Action =
   | { type: "reset" };
 
 export const READING_KEYS = INF.readings.items.map((i) => i.key);
+/** The role readings, in the exposure's card's order (the block's mask is over these). */
+export const ROLE_KEYS = INF.readings.items.filter((i) => i.reading === "role").map((i) => i.key);
+/** The fit's code-or-amount readings under inference (its own card, its own block). */
+export const CODE_KEYS = INF.readings.items.filter((i) => i.reading === "code_or_count").map((i) => i.key);
+/** Under prediction the code-or-amount readings come in the role readings' one block. */
+export const PRED_CODE_KEYS = PRED.readings.codes.map((i) => i.key);
 
-/** What is still to confirm, in the card's order. */
-export function unconfirmed(a: Answers): string[] {
-  return READING_KEYS.filter((k) => !a.readings[k]);
+/** The readings a purpose asks, in the cards' order. */
+export function readingKeys(purpose: Purpose = "inference"): string[] {
+  return purpose === "inference" ? READING_KEYS : [...ROLE_KEYS, ...PRED_CODE_KEYS];
 }
 
-/** The block's readings, its sentence, or null when the block is not unlocked (or not captured). */
-export function blockOffer(a: Answers): { keys: string[]; sentence: Md } | null {
-  if (a.singles.length < SINGLES_TO_UNLOCK) return null;
-  const keys = unconfirmed(a);
-  if (keys.length < 2) return null;
+/** What is still to confirm, in the cards' order. */
+export function unconfirmed(a: Answers, purpose: Purpose = "inference"): string[] {
+  return readingKeys(purpose).filter((k) => !a.readings[k]);
+}
+
+/** The role readings confirmed one at a time (the mastery the block unlocks after). */
+export const roleSingles = (a: Answers) => a.singles.filter((k) => ROLE_KEYS.includes(k));
+
+/** The block's sentence for a set of readings it lists, under a purpose (null: not captured). */
+function blockSentence(keys: string[], purpose: Purpose): Md | null {
+  const block = purpose === "inference" ? INF.readings.block : PRED.readings.block;
   let mask = 0;
-  for (const k of keys) mask |= 1 << INF.readings.block.items.indexOf(k);
-  const idx = INF.readings.block.by_mask[mask.toString(36)];
-  if (idx === undefined) return null;
-  return { keys, sentence: INF.readings.block.sentences[idx]! };
+  for (const k of keys) {
+    const i = block.items.indexOf(k);
+    if (i < 0) return null;
+    mask |= 1 << i;
+  }
+  const idx = block.by_mask[mask.toString(36)];
+  return idx === undefined ? null : block.sentences[idx]!;
 }
+
+/** The block's readings, its sentence, or null when it is not unlocked (or not captured): under
+ *  inference the role readings left; under prediction every reading left (its codes too). */
+export function blockOffer(a: Answers, purpose: Purpose = "inference"): { keys: string[]; sentence: Md } | null {
+  if (roleSingles(a).length < SINGLES_TO_UNLOCK) return null;
+  const keys = (purpose === "inference" ? ROLE_KEYS : readingKeys("prediction")).filter((k) => !a.readings[k]);
+  if (keys.length < 2) return null;
+  const sentence = blockSentence(keys, purpose);
+  return sentence ? { keys, sentence } : null;
+}
+
+/** The fit's card's block: every code-or-amount reading, as the card shows it (none confirmed yet). */
+export function codesOffer(a: Answers): { keys: string[]; sentence: Md } | null {
+  const keys = CODE_KEYS.filter((k) => !a.readings[k]);
+  if (keys.length < 2 || keys.length !== CODE_KEYS.length) return null;
+  return { keys, sentence: INF.readings.codes.sentence };
+}
+
+/** Answers that are part of the plan: once it is locked they stand (only stated phrases change). */
+const PLAN: ReadonlySet<Action["type"]> = new Set([
+  "reading",
+  "block",
+  "codes",
+  "unit",
+  "exclusions",
+  "sensitivity",
+  "missing",
+  "exposure",
+  "adjust",
+  "model1",
+]);
 
 export function reduce(a: Answers, e: Action): Answers {
   const post = (node: NodeId, value: string): Answers["after"] =>
     a.locked ? [...a.after, { node, value }] : a.after;
+  if (a.locked && PLAN.has(e.type)) return a;
   switch (e.type) {
     case "reading":
       if (a.readings[e.key]) return a;
       return { ...a, readings: { ...a.readings, [e.key]: "single" }, singles: [...a.singles, e.key] };
-    case "block": {
-      const offer = blockOffer(a);
+    case "block":
+    case "codes": {
+      const offer = e.type === "block" ? blockOffer(a, e.purpose) : codesOffer(a);
       if (!offer) return a;
       const next = { ...a.readings };
       for (const k of offer.keys) next[k] = "block";
@@ -274,6 +333,8 @@ export function reduce(a: Answers, e: Action): Answers {
           ? a.sensitivity.filter((s) => s !== e.key)
           : INF.sensitivity.keys.filter((k) => k === e.key || a.sensitivity.includes(k)),
       };
+    case "missing":
+      return { ...a, missing: true };
     case "exposure":
       return { ...a, exposure: true };
     case "adjust":
@@ -297,6 +358,8 @@ export function reduce(a: Answers, e: Action): Answers {
           return { ...a, readings: {}, singles: [], unit: false };
         case "exclusions":
           return { ...a, exclusions: null, sensitivity: [] };
+        case "missing":
+          return { ...a, missing: false };
         case "exposure":
           return { ...a, exposure: false, adjustment: {} };
         case "adjustment":
@@ -325,9 +388,15 @@ export function reduce(a: Answers, e: Action): Answers {
 
 export const ADJ_FIELDS = ["causes_exposure", "causes_outcome", "after_exposure"] as const;
 
-/** The fixture's declared causal truth for the columns the pack has no guess for (truths.py). */
+/** The scenario's adjustment decisions as the engine recorded them, in order: the columns each
+ *  answered, their three answers (the fixture's declared truth, truths.py) and its sentence. The
+ *  fixture keeps them under `unguessed`: every group was answered column by column from the truth,
+ *  the guessed groups included (their truth is the pack's guess). */
+const RECORDED = INF.adjustment.unguessed;
+
+/** The fixture's declared causal truth for a column (truths.py), as the scenario answered it. */
 export function truthTriple(col: string): Triple | null {
-  for (const u of INF.adjustment.unguessed) if (u.columns.includes(col)) return u.answers as Triple;
+  for (const u of RECORDED) if (u.columns.includes(col)) return u.answers as Triple;
   return null;
 }
 
@@ -338,29 +407,28 @@ export function guessTriple(group: string): Triple | null {
 
 export const derive = (t: Triple) => INF.adjustment.derive[t.join(",")]!;
 
-/** Each recorded group's sentences: the group's one tap, the fixture's grouped answers, or one
- *  per column (any other answer), each the engine's own. */
+/** Each recorded group's sentences: the scenario's own (the same answers, so the same decisions),
+ *  or one per column (any other answer), each the engine's own. */
 export function adjustmentSentences(group: string, answers: Record<string, Triple>): Md[] {
   const g = INF.adjustment.groups.find((x) => x.key === group)!;
-  const guess = guessTriple(group);
-  const same = (t: Triple, u: Triple | null) => !!u && t.join() === u.join();
-  if (guess && g.columns.every((c) => same(answers[c]!, guess))) return [INF.adjustment.group_sentences[group]!];
-  if (!guess && g.columns.every((c) => same(answers[c]!, truthTriple(c)))) return INF.adjustment.unguessed.map((u) => u.sentence);
-  return g.columns.map((c) => {
-    const idx = INF.adjustment.per_column.by_column[c]![answers[c]!.join(",")]!;
+  const mine = RECORDED.filter((u) => u.columns.every((col) => g.columns.includes(col)));
+  const covered = g.columns.every((col) => mine.some((u) => u.columns.includes(col)));
+  if (covered && mine.every((u) => u.columns.every((col) => answers[col]?.join() === u.answers.join())))
+    return mine.map((u) => u.sentence);
+  return g.columns.map((col) => {
+    const idx = INF.adjustment.per_column.by_column[col]![answers[col]!.join(",")]!;
     return INF.adjustment.per_column.sentences[idx]!;
   });
 }
 
-/** Whether every recorded answer derives what the fixture's do (only those fits were captured). */
+/** Whether every recorded answer derives what the scenario's do (only those fits were captured). */
 export function adjustmentAsCaptured(a: Answers): boolean {
   for (const g of INF.adjustment.groups) {
     const rec = a.adjustment[g.key];
     if (!rec) return false;
     for (const c of g.columns) {
-      const ref = g.guess ? guessTriple(g.key)! : truthTriple(c)!;
       const mine = derive(rec[c]!);
-      const theirs = derive(ref);
+      const theirs = derive(truthTriple(c)!);
       if (mine.role !== theirs.role || mine.adjusted !== theirs.adjusted || mine.secondary !== theirs.secondary)
         return false;
     }
@@ -382,17 +450,20 @@ export function routeOf(a: Answers, col: string): "model" | "secondary" | "left_
 
 // ── tiers and objectives ────────────────────────────────────────────────────
 
+/** The decisions asked of you, in the order "Next asked" walks them. */
 export const ASKED: Record<Purpose, NodeId[]> = {
-  inference: ["readings", "exclusions", "exposure", "adjustment", "model1"],
+  inference: ["readings", "exclusions", "missing", "exposure", "adjustment", "model1"],
   prediction: ["readings", "exclusions", "p_missing", "p_seal"],
 };
 
-export function answered(a: Answers, n: NodeId): boolean {
+export function answered(a: Answers, n: NodeId, purpose: Purpose = "inference"): boolean {
   switch (n) {
     case "readings":
-      return a.unit && unconfirmed(a).length === 0;
+      return a.unit && unconfirmed(a, purpose).length === 0;
     case "exclusions":
-      return a.exclusions !== null;
+      return purpose === "prediction" ? a.pExclusions : a.exclusions !== null;
+    case "missing":
+      return a.missing;
     case "exposure":
       return a.exposure;
     case "adjustment":
@@ -412,18 +483,13 @@ export function tierOf(a: Answers, n: NodeId, purpose: Purpose): Tier {
   if (n === "source") return "anchor";
   if (n === "lock") return "gate";
   if (n === "estimate" || n === "matter" || n === "p_score") return "result";
-  if (purpose === "prediction" && n === "exclusions") return a.pExclusions ? "recorded" : "asked";
-  if (ASKED[purpose].includes(n)) return answered(a, n) ? "recorded" : "asked";
-  if (n === "missing") return answered(a, "adjustment") ? "silent" : "waiting";
-  if (n === "p_energy" || n === "p_models") return a.pSeal !== null ? "waiting" : "waiting";
+  if (ASKED[purpose].includes(n)) return answered(a, n, purpose) ? "recorded" : "asked";
+  if (n === "p_energy" || n === "p_models") return "waiting";
   return "stated";
 }
 
 export function objectives(a: Answers, purpose: Purpose): { node: NodeId; done: boolean }[] {
-  return ASKED[purpose].map((node) => ({
-    node,
-    done: purpose === "prediction" && node === "exclusions" ? a.pExclusions : answered(a, node),
-  }));
+  return ASKED[purpose].map((node) => ({ node, done: answered(a, node, purpose) }));
 }
 
 export function lockReady(a: Answers): { ready: boolean; waiting: NodeId[] } {
@@ -434,11 +500,15 @@ export function lockReady(a: Answers): { ready: boolean; waiting: NodeId[] } {
 // ── the captured fit a plan selects ─────────────────────────────────────────
 
 const ENERGY_CODES = ["standard", "residual", "residual_energy_dropped", "density_multivariate", "density"];
+/** The form in a lock key: d — none recorded (the engine's straight line); l — linear; s — spline. */
+const FORM_CODE = (form: string | null) => (form === null ? "d" : form[0]!);
 
+/** trim.py's key for a plan's SHA-256: exclusions · form · energy method · the screens beside it
+ *  (a bit mask over the sensitivity keys) · Model 1 (g guess, e none, u unanswered). */
 export function lockKey(a: Answers): string {
   const mask = INF.sensitivity.keys.reduce((m, k, i) => (a.sensitivity.includes(k) ? m | (1 << i) : m), 0);
   const m1 = a.model1 === "guess" ? "g" : a.model1 === "empty" ? "e" : "u";
-  return `${a.exclusions === "willett_2013_by_sex" ? "w" : "n"}${a.form[0]}${ENERGY_CODES.indexOf(a.energy)}-${mask}${m1}`;
+  return `${a.exclusions === "willett_2013_by_sex" ? "w" : "n"}${FORM_CODE(a.form)}${ENERGY_CODES.indexOf(a.energy)}-${mask}${m1}`;
 }
 
 export type FitPick =
@@ -446,13 +516,16 @@ export type FitPick =
   | { kind: "error"; message: Md; key: string }
   | { kind: "uncaptured"; reason: string };
 
+/** The captured fit for the answers. With no form recorded the engine fits a straight line: the
+ *  fixture keeps the scenario's own fit under the linear key (trim.py checks its numbers are the
+ *  side project's straight line's), and the side project's for the other states. */
 export function fitFor(a: Answers): FitPick {
   if (a.exclusions !== "none" && a.exclusions !== "willett_2013_by_sex")
     return { kind: "uncaptured", reason: "this exclusion screen" };
   if (!adjustmentAsCaptured(a)) return { kind: "uncaptured", reason: "these adjustment answers" };
-  if (!ENERGY_CODES.includes(a.energy) || (a.form !== "linear" && a.form !== "spline"))
+  if (!ENERGY_CODES.includes(a.energy) || (a.form !== null && a.form !== "linear" && a.form !== "spline"))
     return { kind: "uncaptured", reason: "this form" };
-  const key = `${a.exclusions}|${a.form}|${a.energy}`;
+  const key = `${a.exclusions}|${a.form ?? "linear"}|${a.energy}`;
   const fit = INF.fits[key];
   if (!fit) return { kind: "uncaptured", reason: "this combination" };
   if (fit.error) return { kind: "error", message: fit.error, key };
@@ -486,19 +559,27 @@ export function statedReason(key: string, purpose: Purpose): Md | null {
   return r ? r.charAt(0).toUpperCase() + r.slice(1) : null;
 }
 
+/** The readings' lines, in the engine's order: the roles as set, the kcal unit, the readings
+ *  confirmed one at a time, the block, the fit's codes block (under inference); each sentence the
+ *  one the purpose's own drive recorded or would. */
 function readingsLines(a: Answers, purpose: Purpose): Line[] {
-  const out: Line[] = [{ node: "readings", text: purpose === "inference" ? INF.stated.roles : PRED.stated.roles, tier: "stated" }];
-  const singles = a.singles.map((k) => INF.readings.single[k]!).filter(Boolean);
-  for (const s of singles) out.push({ node: "readings", text: s, tier: "recorded" });
-  const blockKeys = READING_KEYS.filter((k) => a.readings[k] === "block");
-  if (blockKeys.length) {
-    let mask = 0;
-    for (const k of blockKeys) mask |= 1 << INF.readings.block.items.indexOf(k);
-    const idx = INF.readings.block.by_mask[mask.toString(36)];
-    if (idx !== undefined) out.push({ node: "readings", text: INF.readings.block.sentences[idx]!, tier: "recorded" });
+  const inf = purpose === "inference";
+  const out: Line[] = [{ node: "readings", text: inf ? INF.stated.roles : PRED.stated.roles, tier: "stated" }];
+  if (a.unit) out.push({ node: "readings", text: inf ? INF.readings.unit.sentence : PRED.readings.unit_sentence, tier: "recorded" });
+  const asked = readingKeys(purpose);
+  const single = inf ? INF.readings.single : PRED.readings.single;
+  for (const k of a.singles) {
+    const s = asked.includes(k) ? single[k] : undefined;
+    if (s) out.push({ node: "readings", text: s, tier: "recorded" });
   }
-  if (a.unit) out.push({ node: "readings", text: INF.readings.unit.sentence, tier: "recorded" });
-  if (!answered(a, "readings")) out.push({ node: "readings", text: null, tier: "asked" });
+  const block = (inf ? ROLE_KEYS : asked).filter((k) => a.readings[k] === "block");
+  if (block.length) {
+    const s = blockSentence(block, purpose);
+    if (s) out.push({ node: "readings", text: s, tier: "recorded" });
+  }
+  if (purpose === "inference" && CODE_KEYS.length && CODE_KEYS.every((k) => a.readings[k] === "block"))
+    out.push({ node: "readings", text: INF.readings.codes.sentence, tier: "recorded" });
+  if (!answered(a, "readings", purpose)) out.push({ node: "readings", text: null, tier: "asked" });
   return out;
 }
 
@@ -506,8 +587,8 @@ export function record(a: Answers, purpose: Purpose): { region: string; lines: L
   if (purpose === "prediction") return predictionRecord(a);
   const L = (node: NodeId, text: Md | null, tier: Tier, after = false): Line => ({ node, text, tier, after });
   const sections: { region: string; lines: Line[] }[] = [];
-  const declaredEnergy = a.locked?.energy ?? a.energy;
-  const declaredForm = a.locked?.form ?? a.form;
+  const declaredEnergy = a.locked ? a.locked.energy : a.energy;
+  const declaredForm = a.locked ? a.locked.form : a.form;
   const afterLines = (node: NodeId): Line[] =>
     a.after
       .filter((x) => x.node === node)
@@ -554,14 +635,12 @@ export function record(a: Answers, purpose: Purpose): { region: string; lines: L
             lines.push(L(n, null, "waiting"));
             break;
           }
-          let any = false;
           for (const g of INF.adjustment.groups) {
             const rec = a.adjustment[g.key];
             if (!rec) continue;
-            any = true;
             for (const s of adjustmentSentences(g.key, rec)) lines.push(L(n, s, "recorded"));
           }
-          if (!answered(a, "adjustment")) lines.push(L(n, null, any ? "asked" : "asked"));
+          if (!answered(a, "adjustment")) lines.push(L(n, null, "asked"));
           break;
         }
         case "energy":
@@ -569,12 +648,12 @@ export function record(a: Answers, purpose: Purpose): { region: string; lines: L
           lines.push(...afterLines("energy"));
           break;
         case "form":
-          lines.push(L(n, INF.form.sentences[declaredForm] ?? null, "stated"));
+          // No form recorded: the engine fits a straight line and the record says nothing of it.
+          if (declaredForm !== null) lines.push(L(n, INF.form.sentences[declaredForm] ?? null, "recorded"));
           lines.push(...afterLines("form"));
           break;
         case "missing":
-          if (answered(a, "adjustment")) lines.push(L(n, INF.missing.sentences.complete_case!, "silent"));
-          else lines.push(L(n, null, "waiting"));
+          lines.push(L(n, a.missing ? INF.missing.sentence : null, a.missing ? "recorded" : "asked"));
           break;
         case "model1":
           lines.push(
@@ -582,18 +661,10 @@ export function record(a: Answers, purpose: Purpose): { region: string; lines: L
           );
           break;
         case "family":
-          lines.push(L(n, firstSentence(INF.models_sentence), "stated"));
+          lines.push(L(n, INF.models_sentence, "stated"));
           break;
         case "lock":
           lines.push(L(n, lockSentence(a), a.locked ? "recorded" : "waiting"));
-          break;
-        case "estimate": {
-          // The fit's own methods paragraph (captured with Model 1 declared, so said only then).
-          const pick = a.locked ? fitFor(a) : null;
-          if (pick?.kind === "fit" && a.model1 === "guess") lines.push(L(n, pick.fit.methods, "recorded"));
-          break;
-        }
-        case "matter":
           break;
         default:
           break;
@@ -653,12 +724,61 @@ function resolveViews(p: Preview, group: PreviewGroup, key: string): Preview {
 }
 
 /** The captured preview of an option, taken on the recordable state nearest the answers (the
- *  exclusions and the exposure's form are the only recorded answers a preview here depends on). */
+ *  exclusions and the exposure's form are the only recorded answers a preview here depends on;
+ *  with no form recorded, or a straight line, the base previews are the scenario's own). */
 export function previewFor(group: PreviewGroup, key: string, a: Answers): Preview | null {
   const base = basePreviews(group)[key] ?? null;
   const state = `${a.exclusions === "willett_2013_by_sex" ? "willett_2013_by_sex" : "none"}|${a.form === "spline" ? "spline" : "linear"}`;
   const v = INF.previews_var[state]?.[group]?.[key];
   return v ? resolveViews(v, group, key) : base;
+}
+
+// ── previews taken on the scenario's own plan ──────────────────────────────
+
+/** Whether the answers keep the scenario's rows and form (every row, no form recorded or a
+ *  straight line): the state the estimand's, the adjustment's and Model 1's previews were taken on. */
+export function onScenarioPlan(a: Answers): boolean {
+  return (a.exclusions === null || a.exclusions === "none") && (a.form === null || a.form === "linear");
+}
+
+/** The exposure and its estimand, drawn (null: not on the state it was taken on). */
+export function estimandPreview(a: Answers): Preview | null {
+  return onScenarioPlan(a) ? INF.estimand.preview : null;
+}
+
+/** The scenario's answers for one adjustment group. */
+export function scenarioAnswers(group: string): Record<string, Triple> {
+  const g = INF.adjustment.groups.find((x) => x.key === group)!;
+  return Object.fromEntries(g.columns.map((col) => [col, truthTriple(col)!]));
+}
+
+const sameAnswers = (x: Record<string, Triple> | undefined, y: Record<string, Triple>) =>
+  !!x && Object.keys(y).every((col) => x[col]?.join() === y[col]!.join());
+
+/** A group's answers, drawn: captured for the scenario's answers, on the state the groups before it
+ *  (in the card's order) leave with theirs and the ones after it unanswered. */
+export function adjustmentPreview(a: Answers, group: string, answers: Record<string, Triple>): Preview | null {
+  if (!onScenarioPlan(a) || !sameAnswers(answers, scenarioAnswers(group))) return null;
+  const groups = INF.adjustment.groups;
+  const at = groups.findIndex((g) => g.key === group);
+  for (const [i, g] of groups.entries()) {
+    if (i === at) continue;
+    const rec = a.adjustment[g.key];
+    if (i < at ? !sameAnswers(rec, scenarioAnswers(g.key)) : rec) return null;
+  }
+  return INF.adjustment.previews[group] ?? null;
+}
+
+/** The declared sequence with or without Model 1, drawn. */
+export function model1Preview(a: Answers, value: "guess" | "empty"): Preview | null {
+  return onScenarioPlan(a) ? INF.model_1.previews[value] : null;
+}
+
+/** An exposure form, drawn on the scenario's rows from no form recorded (the state it was taken on;
+ *  or, once that form is recorded, the change that recorded it). */
+export function formPreview(a: Answers, form: string): Preview | null {
+  const rows = a.exclusions === null || a.exclusions === "none";
+  return rows && (a.form === null || a.form === form) ? (INF.form.previews[form] ?? null) : null;
 }
 
 /** The rows a fit reports on, and the rows the exclusions keep, for the ribbon. */

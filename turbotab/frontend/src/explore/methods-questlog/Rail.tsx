@@ -12,6 +12,8 @@ interface Props {
   guideline: Guideline;
   sections: Section[];
   current: { section: string; item: string } | null;
+  /** The item whose card moves the walk on. */
+  objective: string | null;
   locked: boolean;
   docOpen: boolean;
   onPick: (section: string, item: string) => void;
@@ -107,7 +109,7 @@ function objectiveNote(i: Item) {
   return null;
 }
 
-export function Rail({ guideline, sections, current, locked, docOpen, onPick, onNext, onDoc }: Props) {
+export function Rail({ guideline, sections, current, objective, locked, docOpen, onPick, onNext, onDoc }: Props) {
   const p = progressOf(sections);
   const ticks = sections.flatMap((sec) =>
     sec.items
@@ -152,12 +154,13 @@ export function Rail({ guideline, sections, current, locked, docOpen, onPick, on
           const expand = isCurrent && !docOpen;
           const summary = sec.done ? summaryOf(sec) : null;
           const wait = !sec.done && !sec.open && !isCurrent ? waitingOf(sec) : null;
-          const firstObjective = sec.items.find((i) => i.tier === "asked") ?? sec.items[0]!;
+          const firstObjective = sec.items.find((i) => i.key === objective) ?? sec.items.find((i) => i.tier === "asked") ?? sec.items[0]!;
           return (
             <li key={sec.key} className={s.section} data-current={isCurrent || undefined} data-state={state}>
               <button
                 type="button"
                 className={s.sectionButton}
+                data-testid={`section-${sec.key}`}
                 onClick={() => onPick(sec.key, firstObjective.key)}
                 aria-current={isCurrent ? "step" : undefined}
                 aria-label={`${sec.title}: ${sec.open ? `${sec.open} open` : sec.done ? "done" : "waiting"}. Go there.`}
@@ -175,6 +178,8 @@ export function Rail({ guideline, sections, current, locked, docOpen, onPick, on
                         className={s.objective}
                         data-tier={i.tier}
                         data-now={current?.item === i.key || undefined}
+                        data-objective={i.key === objective || undefined}
+                        data-testid={`item-${i.key}`}
                         onClick={() => onPick(sec.key, i.key)}
                       >
                         <span className={s.objMark} data-tier={i.tier} aria-hidden="true">
@@ -200,11 +205,11 @@ export function Rail({ guideline, sections, current, locked, docOpen, onPick, on
       <div className={s.railFoot}>
         {!locked && p.open ? (
           <button type="button" className={s.railButtonPrimary} onClick={onNext} data-testid="next-objective">
-            Next open slot <span className={s.key}>N</span>
+            Next objective <span className={s.key}>N</span>
           </button>
         ) : null}
         <button type="button" className={s.railButton} onClick={onDoc} aria-pressed={docOpen} data-testid="open-doc">
-          {docOpen ? "Back to the objective" : "Read the whole methods section"} <span className={s.key}>M</span>
+          {docOpen ? (locked ? "Back to the results" : "Back to the objective") : "Read the whole methods section"} <span className={s.key}>M</span>
         </button>
       </div>
     </nav>

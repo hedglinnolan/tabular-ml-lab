@@ -175,6 +175,8 @@ export interface Extras {
   readings: ReadingsState;
   /** Analyzed rows, when the cohort holds them (Study size). */
   analyzed: number | null;
+  /** What the walk has recorded locally since the moment was captured (an item's tier and count). */
+  overrides?: Record<string, Partial<Item>>;
 }
 
 function linesOf(lines: MethodsLine[], kinds: string[]): MethodsLine[] {
@@ -189,9 +191,14 @@ function waitingNames(step: Step): string[] {
 }
 
 /** One item at one moment: its tier from the Router's step and the record's sentences. */
-export function itemOf(key: string, moment: Moment, extras: Extras): Item {
+export function itemOf(key: string, moment: Moment, lines: MethodsLine[], extras: Extras): Item {
+  const item = baseItem(key, moment, lines, extras);
+  const o = extras.overrides?.[key];
+  return o ? { ...item, ...o } : item;
+}
+
+function baseItem(key: string, moment: Moment, lines: MethodsLine[], extras: Extras): Item {
   const title = TITLES[key] ?? key;
-  const lines = moment.methods.lines;
   const base: Item = { key, title, tier: "silent", sentences: [], waitingOn: [], count: 0 };
   if (key.startsWith("author:")) return { ...base, tier: "author", ask: AUTHOR_ASKS[key] };
   if (key === "readings") {
@@ -206,18 +213,30 @@ export function itemOf(key: string, moment: Moment, extras: Extras): Item {
   }
   const kinds = KINDS[key] ?? [];
   const said = linesOf(lines, kinds).map((l) => l.sentence);
+  const steps = moment.view.interview;
+  const answered = (k: string) => steps.find((s) => s.key === k)?.status === "answered";
   if (key === "model_sequence" || key === "sensitivity" || key === "lock") {
     // Not Router questions: declared beside the primary, or recorded by the server at the first
     // estimate. Before that they wait on the fit's inputs (the lock: on the first estimate).
     if (said.length) return { ...base, tier: "stated", sentences: said };
-    if (key === "lock") return { ...base, tier: "waiting", waitingOn: ["the first estimate"] };
-    const est = moment.view.interview.find((s) => s.key === "estimand");
-    return est?.status === "answered"
+    if (key === "lock")
+      return answered("models")
+        ? { ...base, tier: "asked", count: 1 }
+        : { ...base, tier: "waiting", waitingOn: ["Model family"] };
+    if (key === "sensitivity")
+      // Offered on the eligibility card: the screens reported beside the primary.
+      return answered("exclusions")
+        ? { ...base, tier: "silent" }
+        : { ...base, tier: "waiting", waitingOn: ["Eligibility"] };
+    return answered("estimand")
       ? { ...base, tier: "asked", count: 0, optional: true }
       : { ...base, tier: "waiting", waitingOn: ["Exposure and effect"] };
   }
-  const step = moment.view.interview.find((s) => s.key === key);
+  const step = steps.find((s) => s.key === key);
   if (!step) return { ...base, tier: "silent" };
+  // A question held by readings it needs settled waits on them (the Data section's slots).
+  if (step.status === "open" && step.ask)
+    return { ...base, tier: "waiting", waitingOn: ["Column readings"], sentences: said };
   switch (step.status) {
     case "answered":
       return { ...base, tier: "stated", sentences: said };
@@ -232,10 +251,10 @@ export function itemOf(key: string, moment: Moment, extras: Extras): Item {
   }
 }
 
-export function sectionsOf(moment: Moment, extras: Extras, guideline: Guideline): Section[] {
+export function sectionsOf(moment: Moment, lines: MethodsLine[], extras: Extras, guideline: Guideline): Section[] {
   const defs = guideline === "STROBE-nut" ? STROBE : TRIPOD;
   return defs.map((d) => {
-    const items = d.items.map((k) => itemOf(k, moment, extras));
+    const items = d.items.map((k) => itemOf(k, moment, lines, extras));
     const open = items.reduce((n, i) => n + (i.tier === "asked" ? i.count : 0), 0);
     const waiting = items.filter((i) => i.tier === "waiting").length;
     const author = items.filter((i) => i.tier === "author").length;
@@ -278,10 +297,10 @@ const PHRASES: Record<string, RegExp> = {
   set_energy_adjustment: /the standard \(multivariate\) model|the residual method[^:]*|No energy adjustment/,
   set_missing: /complete-case analysis|multiple imputation/,
   set_exclusions: /No rows were excluded/,
-  set_split: /`20%`/,
+  set_split: /No rows were held out|A random `20%`/,
   select_models: /linear regression and gradient-boosted trees|linear regression/,
   set_model_sequence: /Model 1, adjusted for `age`, `gender` and `kcal`/,
-  set_sensitivity: /`Plausible energy reporters only`/,
+  set_sensitivity: /`2` sensitivity analyses/,
 };
 
 export function phraseOf(kind: string, sentence: string): [string, string, string] | null {

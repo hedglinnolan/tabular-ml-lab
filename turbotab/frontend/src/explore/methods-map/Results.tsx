@@ -3,13 +3,28 @@
  * press away (Westreich & Greenland 2013: "adjustment terms, not effect estimates"), the checks,
  * and "Which of my decisions mattered?" — the estimate across the declared alternatives, as
  * sensitivity, never as a way to choose (BLUEPRINT §11.4).
+ *
+ * The rows are the three prototypes' shared ones (../methods-shared/results.ts): Table 2 from the
+ * fit's effects stage, the alternatives from it and its sensitivity stage, each printed by one rule
+ * and marked for the cross-prototype check.
  */
 import { useState } from "react";
 import { scaleLinear } from "d3-scale";
 import { Rich } from "../../components/stage/text";
 import { useSize } from "../../components/stage/views/geometry";
-import { INF, fmt3, fmtCi, fmtInt, fmtP, type EffectRow, type Fit } from "./fixture";
-import type { Answers } from "./model";
+import {
+  fmtCI,
+  fmtEst,
+  matteredAttrs,
+  matteredRows,
+  t2Attrs,
+  table2Rows,
+  type EffectsLike,
+  type MatteredRow,
+  type SensitivityLike,
+} from "../methods-shared/results";
+import { INF, fmt3, fmtCi, fmtInt, fmtP, type Fit } from "./fixture";
+import { EXPOSURE, type Answers } from "./model";
 import r from "./screen.module.css";
 
 const PRIME = (f: string) => f.replace(/''/g, "″").replace(/'/g, "′");
@@ -17,14 +32,65 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** An axis tick: as short as the value allows. */
 const fmtTick = (v: number) => (v === 0 ? "0" : String(+v.toPrecision(3)).replace("-", "−"));
 
+/** The declared sequence: Model 1 only when the plan declared one. */
 function rowsOf(fit: Fit, a: Answers) {
   return fit.sequence.filter((s) => s.key !== "model_1" || a.model1 === "guess");
+}
+
+/** The exposure's term as the fit names it: `sugar`, or `sugar_adj` once the residual method
+ *  replaced it by its energy-adjusted values. */
+function exposureTerm(fit: Fit): string {
+  const effects = fit.sequence[0]?.effects ?? [];
+  return (effects.find((e) => e.feature === EXPOSURE) ?? effects[0])?.feature ?? EXPOSURE;
+}
+
+/** The fit's effects stage, in the shape the shared rows read. */
+export function effectsOf(fit: Fit, a: Answers): EffectsLike {
+  return {
+    exposure: exposureTerm(fit),
+    families: [
+      {
+        family: "linear",
+        label: fit.measure_label,
+        sequence: rowsOf(fit, a).map((s) => ({
+          key: s.key,
+          label: s.label,
+          adjusted_for: s.adjusted_for,
+          n_rows: s.n_rows,
+          effects: s.effects,
+        })),
+      },
+    ],
+  };
+}
+
+/** The primary analysis's rows, as the alternatives name them. */
+const primaryRowsOf = (a: Answers) => (a.exclusions === "willett_2013_by_sex" ? "Willett 2013, by sex" : "Every row");
+
+/** The fit's sensitivity stage, in the shape the shared rows read: the screens the plan declared
+ *  beside the primary (and any the engine added), never the primary's own rows fit again. */
+export function sensitivityOf(fit: Fit, a: Answers): SensitivityLike {
+  const declared = new Set(a.sensitivity.map((k) => INF.exclusions.labels.options[k]?.label));
+  const primaryRows = primaryRowsOf(a);
+  const kept = fit.sensitivity.analyses.filter(
+    (an) => an.primary || ((an.added || declared.has(an.label)) && an.label !== primaryRows),
+  );
+  return {
+    analyses: kept.map((an) => ({ label: an.label, primary: an.primary, n_rows: an.n_rows, refused: an.refused })),
+    families: [{ family: "linear", fits: kept.map((an) => ({ label: an.label, n_rows: an.n_rows, coefficients: an.effects })) }],
+  };
+}
+
+/** "Which of my decisions mattered?": the shared rows for this fit and plan. */
+export function matteredOf(fit: Fit, a: Answers): MatteredRow[] {
+  return matteredRows(effectsOf(fit, a), sensitivityOf(fit, a));
 }
 
 export function Table2({ fit, a }: { fit: Fit; a: Answers }) {
   const [appendix, setAppendix] = useState(false);
   const curve = fit.tests.length > 0;
-  const rows = rowsOf(fit, a);
+  const seq = rowsOf(fit, a);
+  const rows = table2Rows(effectsOf(fit, a));
   return (
     <div className={r.results} data-testid="table2">
       <p className={r.kicker}>Table 2 · the exposure only</p>
@@ -53,39 +119,51 @@ export function Table2({ fit, a }: { fit: Fit; a: Answers }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((s) => (
-            <tr key={s.key} data-primary={s.key === "model_2" || undefined}>
-              <th scope="row">
-                <span className={r.model}>{s.label}</span>
-                <span className={r.modelNote}>
-                  <Rich text={s.note} />
-                </span>
-              </th>
-              <td className={r.num}>{fmtInt(s.n_rows)}</td>
-              <td className={r.num}>
-                {s.effects.map((e) => (
-                  <span key={e.feature} className={r.est}>
-                    {curve ? <span className={r.termName}>{PRIME(e.feature)}</span> : null}
-                    {fmtCi(e)}
+          {rows.map((row) => {
+            const s = seq.find((x) => x.key === row.key)!;
+            // a curve has one row per term; a straight line the exposure's one estimate
+            const term = exposureTerm(fit);
+            const terms = curve ? s.effects : s.effects.filter((e) => e.feature === term).slice(0, 1);
+            return (
+              <tr key={row.key} data-primary={row.primary || undefined} {...t2Attrs(row)}>
+                <th scope="row">
+                  <span className={r.model}>{row.label}</span>
+                  <span className={r.modelNote}>
+                    <Rich text={s.note} />
                   </span>
-                ))}
-              </td>
-              <td className={r.num}>
-                {s.effects.map((e) => (
-                  <span key={e.feature} className={r.est}>
-                    {fmtP(e.p)}
-                  </span>
-                ))}
-              </td>
-            </tr>
-          ))}
+                </th>
+                <td className={r.num}>{fmtInt(row.n)}</td>
+                <td className={r.num}>
+                  {curve ? (
+                    terms.map((e) => (
+                      <span key={e.feature} className={r.est}>
+                        <span className={r.termName}>{PRIME(e.feature)}</span>
+                        {fmtEst(e.estimate)} ({fmtCI(e.ci_low, e.ci_high)})
+                      </span>
+                    ))
+                  ) : (
+                    <span className={r.est}>
+                      {fmtEst(row.estimate)} ({fmtCI(row.lo, row.hi)})
+                    </span>
+                  )}
+                </td>
+                <td className={r.num}>
+                  {terms.map((e) => (
+                    <span key={e.feature} className={r.est}>
+                      {fmtP(e.p)}
+                    </span>
+                  ))}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <p className={r.caption}>
         <Rich text={fit.caption} />
       </p>
       <p className={r.inference}>
-        <Rich text={rows.find((s) => s.key === "model_2")!.inference} />
+        <Rich text={seq.find((s) => s.key === "model_2")!.inference} />
       </p>
       <button
         type="button"
@@ -147,61 +225,42 @@ function Appendix({ fit, a }: { fit: Fit; a: Answers }) {
 
 // ── which of my decisions mattered ──────────────────────────────────────────
 
+const MODEL_NAME: Record<string, string> = { crude: "Unadjusted", model_1: "Model 1", model_2: "Model 2", model_3: "Model 3" };
+
 interface Spec {
-  key: string;
-  label: string;
-  n: number;
-  e: EffectRow;
+  row: MatteredRow;
   primary: boolean;
   adjustment: string;
   rows: string;
-}
-
-export function specsOf(fit: Fit, a: Answers): Spec[] {
-  const out: Spec[] = [];
-  const primaryRows = a.exclusions === "willett_2013_by_sex" ? "Willett 2013, by sex" : "Every row";
-  for (const s of rowsOf(fit, a)) {
-    const e = s.effects[0];
-    if (!e) continue;
-    out.push({
-      key: s.key,
-      label: s.label,
-      n: s.n_rows,
-      e,
-      primary: s.key === "model_2",
-      adjustment: s.key === "crude" ? "Unadjusted" : s.key === "model_1" ? "Model 1" : s.key === "model_2" ? "Model 2" : "Model 3",
-      rows: primaryRows,
-    });
-  }
-  const declared = new Set(a.sensitivity.map((k) => INF.exclusions.labels.options[k]?.label));
-  for (const an of fit.sensitivity.analyses) {
-    if (an.primary || !an.effects[0] || an.refused) continue;
-    if (an.label === primaryRows) continue; // the primary's own rows, fit again
-    if (!an.added && !declared.has(an.label)) continue;
-    out.push({ key: `rows:${an.label}`, label: an.label, n: an.n_rows, e: an.effects[0], primary: false, adjustment: "Model 2", rows: an.label });
-  }
-  return out;
 }
 
 export function Mattered({ fit, a }: { fit: Fit; a: Answers }) {
   const [ref, { w }] = useSize<HTMLDivElement>();
   if (fit.tests.length) {
     return (
-      <div className={r.results}>
+      <div className={r.results} data-testid="mattered">
         <p className={r.kicker}>Which of my decisions mattered?</p>
         <p className={r.empty}>
-          With <code className="v">sugar</code> as a curve there is no single estimate to line up across the declared
+          With <code className="v">{EXPOSURE}</code> as a curve there is no single estimate to line up across the declared
           alternatives; each is a curve of three terms. Change the exposure's form to a straight line to see them side by
           side.
         </p>
       </div>
     );
   }
-  const specs = specsOf(fit, a).sort((p, q) => p.e.estimate - q.e.estimate);
+  const primaryRows = primaryRowsOf(a);
+  const specs: Spec[] = matteredOf(fit, a)
+    .map((row) => ({
+      row,
+      primary: row.varies === "primary",
+      adjustment: row.varies === "rows" ? MODEL_NAME.model_2! : (MODEL_NAME[row.key] ?? row.label),
+      rows: row.varies === "rows" ? row.label : primaryRows,
+    }))
+    .sort((p, q) => p.row.estimate - q.row.estimate);
   const dims: { name: string; values: string[]; of: (s: Spec) => string }[] = [
     {
       name: "Adjustment set",
-      values: ["Unadjusted", "Model 1", "Model 2", "Model 3"].filter((v) => specs.some((s) => s.adjustment === v)),
+      values: Object.values(MODEL_NAME).filter((v) => specs.some((s) => s.adjustment === v)),
       of: (s) => s.adjustment,
     },
     { name: "Rows", values: [...new Set(specs.map((s) => s.rows))], of: (s) => s.rows },
@@ -212,8 +271,8 @@ export function Mattered({ fit, a }: { fit: Fit; a: Answers }) {
   const H = plotH + 18 + nDims * rowH;
   const pad = { l: 150, r: 16, t: 12 };
   const width = Math.max(420, w);
-  const lo = Math.min(0, ...specs.map((s) => s.e.ci_low ?? s.e.estimate));
-  const hi = Math.max(0, ...specs.map((s) => s.e.ci_high ?? s.e.estimate));
+  const lo = Math.min(0, ...specs.map((s) => s.row.lo ?? s.row.estimate));
+  const hi = Math.max(0, ...specs.map((s) => s.row.hi ?? s.row.estimate));
   const y = scaleLinear().domain([lo, hi]).nice().range([plotH, pad.t]);
   const x = (i: number) => pad.l + ((width - pad.l - pad.r) * (i + 0.5)) / specs.length;
   // each dimension: its name on a row of its own, then one row per value it takes
@@ -231,7 +290,7 @@ export function Mattered({ fit, a }: { fit: Fit; a: Answers }) {
     <div className={r.results} data-testid="mattered">
       <p className={r.kicker}>Which of my decisions mattered?</p>
       <p className={r.lede}>
-        The estimate of <code className="v">sugar</code> under each declared alternative, with its 95% interval.
+        The estimate of <code className="v">{EXPOSURE}</code> under each declared alternative, with its 95% interval.
         Sensitivity, not a choice: the primary was declared before any of these was seen.
       </p>
       <div ref={ref} className={r.curveWrap}>
@@ -245,10 +304,10 @@ export function Mattered({ fit, a }: { fit: Fit; a: Answers }) {
             </g>
           ))}
           {specs.map((s, i) => (
-            <g key={s.key} data-primary={s.primary || undefined} className={r.spec}>
-              <line x1={x(i)} x2={x(i)} y1={y(s.e.ci_low ?? s.e.estimate)} y2={y(s.e.ci_high ?? s.e.estimate)} />
-              <circle cx={x(i)} cy={y(s.e.estimate)} r={s.primary ? 5.5 : 4} />
-              <title>{`${s.label}: ${fmtCi(s.e)}, n ${fmtInt(s.n)}`}</title>
+            <g key={s.row.key} data-primary={s.primary || undefined} className={r.spec}>
+              <line x1={x(i)} x2={x(i)} y1={y(s.row.lo ?? s.row.estimate)} y2={y(s.row.hi ?? s.row.estimate)} />
+              <circle cx={x(i)} cy={y(s.row.estimate)} r={s.primary ? 5.5 : 4} />
+              <title>{`${s.row.label}: ${fmtEst(s.row.estimate)} (${fmtCI(s.row.lo, s.row.hi)}), n ${fmtInt(s.row.n)}`}</title>
             </g>
           ))}
           {lines.map((ln) =>
@@ -264,7 +323,7 @@ export function Mattered({ fit, a }: { fit: Fit; a: Answers }) {
                 <line x1={pad.l} x2={width - pad.r} y1={0} y2={0} className={r.grid} />
                 {specs.map((s, i) =>
                   ln.d.of(s) === ln.v ? (
-                    <circle key={s.key} cx={x(i)} cy={0} r={4} className={s.primary ? r.dimOnPrimary : r.dimOn} />
+                    <circle key={s.row.key} cx={x(i)} cy={0} r={4} className={s.primary ? r.dimOnPrimary : r.dimOn} />
                   ) : null,
                 )}
               </g>
@@ -274,10 +333,12 @@ export function Mattered({ fit, a }: { fit: Fit; a: Answers }) {
       </div>
       <ul className={r.specList}>
         {specs.map((s) => (
-          <li key={s.key} data-primary={s.primary || undefined}>
-            <span className={r.specLabel}>{s.label}</span>
-            <span className="num">{fmtCi(s.e)}</span>
-            <span className={r.specN}>n {fmtInt(s.n)}</span>
+          <li key={s.row.key} data-primary={s.primary || undefined} {...matteredAttrs(s.row)}>
+            <span className={r.specLabel}>{s.row.label}</span>
+            <span className="num">
+              {fmtEst(s.row.estimate)} ({fmtCI(s.row.lo, s.row.hi)})
+            </span>
+            <span className={r.specN}>n {fmtInt(s.row.n)}</span>
           </li>
         ))}
       </ul>

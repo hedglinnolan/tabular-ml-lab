@@ -2068,3 +2068,285 @@
     height: 760px;
   }
 }
+
+/* ── the walk: each slot's own controls (walk.ts) ──────────────────────────── */
+
+.walkStep {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.headBtn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.headBtn:hover {
+  border-color: var(--accent);
+}
+
+.headBtn[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.primary:disabled,
+.confirm:disabled,
+.confirmChip:disabled,
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.confirmChip:disabled:hover,
+.confirm:disabled:hover {
+  border-color: var(--line);
+}
+
+.confirmChip[data-next] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-tint);
+}
+
+.confirm[data-on] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.derived[data-on] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.actionNote[data-hold] {
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 12.5px;
+}
+
+.pick {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.pick:hover {
+  border-color: var(--line);
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.chip[data-guess] {
+  border-style: dotted;
+  border-color: var(--accent);
+}
+
+.chip[data-guess][aria-pressed="true"] {
+  border-style: solid;
+}
+
+.seqGuess {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0 0;
+}
+
+/* the alternatives as choices */
+.altPick {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.altPick .altTop {
+  display: flex;
+}
+
+.altPick .altWhat:not([data-clamp]),
+.altPick .altLabels {
+  display: block;
+}
+
+.alt[data-chosen] {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.alt[data-chosen] .altLabel {
+  color: var(--accent-ink);
+}
+
+.alt[data-chosen] .altLabel::before {
+  content: "● ";
+}
+
+.alt[data-static] {
+  cursor: default;
+}
+
+.altAside {
+  margin-top: 5px;
+}
+
+.altsFoot {
+  padding: 2px 12px 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.beside {
+  border: 1px dashed var(--line);
+  background: none;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.beside:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.beside[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.beside[aria-pressed="true"]::before {
+  content: "✓ ";
+}
+
+/* the roles */
+.roleList {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.roleLine {
+  display: grid;
+  grid-template-columns: minmax(96px, 22%) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.roleName {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.roleCount {
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.roleCols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.roleCols :global(.v)[data-unsure] {
+  border-style: dashed;
+  border-color: var(--faint);
+}
+
+/* a derived role's tag wraps rather than clips in a narrow table */
+.adj .adjRole {
+  white-space: normal;
+}
+
+.adj .adjRole .derived,
+.adj .adjRole .derivedAsk {
+  display: inline-block;
+  line-height: 1.35;
+}
+
+/* the adjustment set: three answers per unguessed covariate */
+.adjAsk th,
+.adjAsk td {
+  padding: 3px 8px 3px 0;
+  vertical-align: middle;
+}
+
+.adjPickCell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.yn {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.yn button {
+  border: 0;
+  border-left: 1px solid var(--line-soft);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  min-width: 22px;
+}
+
+.yn button:first-child {
+  border-left: 0;
+}
+
+.yn button:hover {
+  color: var(--accent-ink);
+}
+
+.yn button[data-on] {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+/* the lock */
+.lockQuote {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--line);
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* The canvas watches; the paper records (the walk's records are each slot's own controls). */
+.canvasCol [data-testid="stage-record"] {
+  display: none;
+}

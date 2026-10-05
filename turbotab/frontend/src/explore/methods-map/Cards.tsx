@@ -10,23 +10,29 @@ import type { Scene } from "./Canvas";
 import { FX, INF, PRED, fmtInt, type Answer3, type Preview } from "./fixture";
 import {
   ADJ_FIELDS,
+  EXPOSURE,
   NODE_TEACH,
   NODE_TERMS,
   NODE_TITLE,
   REGIONS,
   SINGLES_TO_UNLOCK,
+  adjustmentPreview,
   answered,
   blockOffer,
+  codesOffer,
   derive,
+  estimandPreview,
   fitFor,
+  formPreview,
   lockSentence,
   guessTriple,
   lockReady,
+  model1Preview,
   previewFor,
   reduce,
+  roleSingles,
   statedReason,
   truthTriple,
-  unconfirmed,
   type Action,
   type Answers,
   type NodeId,
@@ -64,6 +70,18 @@ export function sceneOf(group: string, key: string, label: string, p: Preview | 
   const res = p.result!;
   if (!res.views.length) return { kind: "note", group, key, label, note: res.note ?? "", basis: res.basis };
   return { kind: "preview", group, key, label, result: res, recorded };
+}
+
+/** The canvas when no preview was taken on the answers' state: said so, never borrowed. */
+export function notTaken(group: string, key: string, label: string): Scene {
+  return {
+    kind: "note",
+    group,
+    key,
+    label,
+    note: "This prototype took this preview on the scenario's own plan only; the map above draws the change.",
+    aside: "nothing is recorded",
+  };
 }
 
 function Shell({ ctx, node, children, tag }: { ctx: Ctx; node: NodeId; children: ReactNode; tag?: ReactNode }) {
@@ -132,7 +150,7 @@ function TierTag({ tier }: { tier: "asked" | "stated" | "recorded" | "waiting" |
 }
 
 function Undo({ ctx, node }: { ctx: Ctx; node: NodeId }) {
-  if (ctx.a.locked || !answered(ctx.a, node)) return null;
+  if (ctx.a.locked || !answered(ctx.a, node, ctx.purpose)) return null;
   return (
     <button type="button" className={c.undo} onClick={() => ctx.record({ type: "undo", node }, node)} data-testid={`undo-${node}`}>
       Undo this answer
@@ -207,14 +225,47 @@ function SourceCard({ ctx }: { ctx: Ctx }) {
 // ── readings ────────────────────────────────────────────────────────────────
 
 function ReadingsCard({ ctx }: { ctx: Ctx }) {
-  const { a } = ctx;
-  const items = INF.readings.items;
+  const { a, purpose } = ctx;
+  const roles = INF.readings.items.filter((i) => i.reading === "role");
+  // the code-or-amount readings: under inference the fit's card asks them in a block of their
+  // own; under prediction its drive asks them in the role readings' one block
+  const inf = purpose === "inference";
+  const codes = inf ? INF.readings.items.filter((i) => i.reading === "code_or_count") : PRED.readings.codes;
+  const codesBy = inf ? INF.readings.codes.consumer : PRED.readings.consumer;
+  const items = [...roles, ...codes];
   const unit = INF.readings.unit;
-  const offer = blockOffer(a);
-  const left = unconfirmed(a);
+  const offer = blockOffer(a, purpose);
+  const codeOffer = inf ? codesOffer(a) : null;
+  const singles = roleSingles(a).length;
   const [showRead, setShowRead] = useState(false);
-  const tier = answered(a, "readings") ? "recorded" : "asked";
+  const tier = answered(a, "readings", purpose) ? "recorded" : "asked";
   const valueWords = (i: (typeof items)[number]) => i.words ?? `a ${i.value}`;
+  const one = (it: (typeof items)[number]) => {
+    const done = a.readings[it.key];
+    return (
+      <li key={it.key} className={c.reading} data-done={done || undefined} data-testid={`reading-${it.key}`}>
+        <p className={c.readingHead}>
+          <code className="v">{it.column}</code>: {valueWords(it)}?
+          {it.confidence ? <span className={c.conf}>{it.confidence}</span> : null}
+        </p>
+        <p className={c.evidence}>
+          <Rich text={it.evidence} />
+        </p>
+        {done ? (
+          <span className={c.done}>{done === "single" ? "confirmed on its own" : "confirmed in the block"}</span>
+        ) : (
+          <button
+            type="button"
+            className={c.confirmSmall}
+            onClick={() => ctx.record({ type: "reading", key: it.key }, "readings")}
+            data-testid={`confirm-${it.key}`}
+          >
+            Confirm
+          </button>
+        )}
+      </li>
+    );
+  };
   return (
     <Shell ctx={ctx} node="readings" tag={<TierTag tier={tier} />}>
       <Ask teach="roles" first={ctx.first} question="Tell me about these columns" />
@@ -269,47 +320,45 @@ function ReadingsCard({ ctx }: { ctx: Ctx }) {
                 );
               })}
             </ul>
-            <button type="button" className={c.confirm} onClick={() => ctx.record({ type: "block" }, "readings")} data-testid="confirm-block">
+            <button type="button" className={c.confirm} onClick={() => ctx.record({ type: "block", purpose }, "readings")} data-testid="confirm-block">
               Confirm these {offer.keys.length} as shown
             </button>
           </div>
         ) : null}
-        <ul className={c.readings}>
-          {items.map((it) => {
-            const done = a.readings[it.key];
-            return (
-              <li key={it.key} className={c.reading} data-done={done || undefined} data-testid={`reading-${it.key}`}>
-                <p className={c.readingHead}>
-                  <code className="v">{it.column}</code>: {valueWords(it)}?
-                  {it.confidence ? <span className={c.conf}>{it.confidence}</span> : null}
-                  {it.consumer ? <span className={c.conf}>read by {it.consumer}</span> : null}
-                </p>
-                <p className={c.evidence}>
-                  <Rich text={it.evidence} />
-                </p>
-                {done ? (
-                  <span className={c.done}>{done === "single" ? "confirmed on its own" : "confirmed in the block"}</span>
-                ) : (
-                  <button
-                    type="button"
-                    className={c.confirmSmall}
-                    onClick={() => ctx.record({ type: "reading", key: it.key }, "readings")}
-                    data-testid={`confirm-${it.key}`}
-                  >
-                    Confirm
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        {!offer && left.length && a.singles.length < SINGLES_TO_UNLOCK ? (
+        <ul className={c.readings}>{roles.map(one)}</ul>
+        {!offer && items.some((i) => !a.readings[i.key]) && singles < SINGLES_TO_UNLOCK ? (
           <p className={c.hint}>
-            Confirm {SINGLES_TO_UNLOCK - a.singles.length} more on {SINGLES_TO_UNLOCK - a.singles.length === 1 ? "its" : "their"} own to unlock a block
+            Confirm {SINGLES_TO_UNLOCK - singles} more on {SINGLES_TO_UNLOCK - singles === 1 ? "its" : "their"} own to unlock a block
             confirm for the rest.
           </p>
         ) : null}
       </section>
+      {codes.length ? (
+        <section className={c.group}>
+          <h3 className={c.sub}>
+            Read by {codesBy} <span className={c.subNote}>— amounts or codes</span>
+          </h3>
+          {codeOffer ? (
+            <div className={c.block} data-testid="codes-offer">
+              <p className={c.blockHead}>It settles exactly these, each as shown:</p>
+              <ul className={c.blockList}>
+                {codeOffer.keys.map((k) => {
+                  const it = items.find((i) => i.key === k)!;
+                  return (
+                    <li key={k}>
+                      <code className="v">{it.column}</code> {valueWords(it)}
+                    </li>
+                  );
+                })}
+              </ul>
+              <button type="button" className={c.confirm} onClick={() => ctx.record({ type: "codes" }, "readings")} data-testid="confirm-codes">
+                Confirm these {codeOffer.keys.length} as shown
+              </button>
+            </div>
+          ) : null}
+          <ul className={c.readings}>{codes.map(one)}</ul>
+        </section>
+      ) : null}
       <button type="button" className={c.disclose} aria-expanded={showRead} onClick={() => setShowRead((v) => !v)}>
         {showRead ? "Hide" : "Show"} what was read from your data ({INF.readings.read_from_data.length})
       </button>
@@ -356,7 +405,9 @@ function ExclusionsCard({ ctx }: { ctx: Ctx }) {
         ? refused.message
         : captured || !ex.sentences[k]
           ? null
-          : "This prototype captured the fits for keeping every row and for Willett 2013 only; this screen is previewed, and can be reported beside the primary.",
+          : INF.sensitivity.keys.includes(k)
+            ? "This prototype captured the fits for keeping every row and for Willett 2013 only; this screen is previewed, and can be reported beside the primary."
+            : "This prototype captured the fits for keeping every row and for Willett 2013 only; this screen is previewed only.",
     };
   });
   const recordedKey = a.exclusions;
@@ -417,10 +468,12 @@ function ExposureCard({ ctx }: { ctx: Ctx }) {
   const [contrast, setContrast] = useState<string | null>(a.exposure ? "substitution" : null);
   const captured = exp === "sugar" && effect === "total" && contrast === "substitution";
   const measure = E.measures.find((m) => m.fitted)!;
+  const guessed = E.exposures.find((x) => x.column === EXPOSURE)!;
   const nutrients = E.exposures.filter((x) => x.energy_contrast);
   const others = E.exposures.filter((x) => !x.energy_contrast);
+  const label = "The exposure and its estimand";
   const note = () =>
-    ctx.show("estimand", { kind: "note", group: "estimand", key: "estimand", label: "The exposure and its estimand", note: E.preview_note, basis: E.preview_basis }, reduce(a, { type: "exposure" }));
+    ctx.show("estimand", sceneOf("estimand", "estimand", label, estimandPreview(a), a.exposure) ?? notTaken("estimand", "estimand", label), reduce(a, { type: "exposure" }));
   return (
     <Shell ctx={ctx} node="exposure" tag={<TierTag tier={a.exposure ? "recorded" : "asked"} />}>
       <Ask teach="estimand" first={ctx.first} />
@@ -445,7 +498,7 @@ function ExposureCard({ ctx }: { ctx: Ctx }) {
           ))}
         </div>
         <p className={c.evidence}>
-          Guess <code className="v">sugar</code>, from your roles: <Rich text={E.exposures[0]!.evidence ?? ""} />
+          Guess <code className="v">{EXPOSURE}</code>, from your roles: <Rich text={guessed.evidence ?? ""} />
         </p>
         <p className={c.subNote}>
           {others.length} more columns could be the exposure ({others.map((o) => o.column).slice(0, 3).join(", ")}, …).
@@ -536,7 +589,8 @@ function AdjustmentCard({ ctx }: { ctx: Ctx }) {
   const triple = (g: string, col: string): Triple => draft[col] ?? a.adjustment[g]?.[col] ?? guessTriple(g) ?? (["unknown", "unknown", "unknown"] as Triple);
   const groupAnswers = (g: string) => Object.fromEntries(A.groups.find((x) => x.key === g)!.columns.map((col) => [col, triple(g, col)]));
   const previewWith = (g: string, answers: Record<string, Triple>) => {
-    ctx.show(`adj:${g}`, { kind: "note", group: "adjustment", key: g, label: "The adjustment set", note: A.preview_note, aside: "the map shows where each column goes" }, reduce(a, { type: "adjust", group: g, answers }));
+    const label = `The adjustment set · ${A.groups.find((x) => x.key === g)!.label}`;
+    ctx.show(`adj:${g}`, sceneOf("adjustment", g, label, adjustmentPreview(a, g, answers)) ?? notTaken("adjustment", g, label), reduce(a, { type: "adjust", group: g, answers }));
   };
   const setAnswer = (g: string, col: string, i: number, v: Answer3) => {
     const t = [...triple(g, col)] as Triple;
@@ -752,66 +806,82 @@ function EnergyCard({ ctx }: { ctx: Ctx }) {
 function FormCard({ ctx }: { ctx: Ctx }) {
   const { a } = ctx;
   const F = INF.form;
+  const declared = a.locked ? a.locked.form : a.form;
   const options: Opt[] = F.options.map((o) => ({
     key: o.value,
     label: o.label,
     line: o.consequence,
     customary: o.customary,
     sound: o.sound,
-    tags: o.value === F.options[0]!.value ? [{ text: "ranked first", tone: "usual" as const }] : [],
+    tags: [
+      ...(o.value === F.options[0]!.value ? [{ text: "ranked first", tone: "usual" as const }] : []),
+      ...(a.form === null && o.value === "linear" ? [{ text: "fitted now", tone: "badge" as const }] : []),
+    ],
     blocked: o.value === "quintiles" ? "This prototype captured the straight line and the spline; the quintile table is previewed only." : null,
   }));
   const show = (k: string) =>
-    ctx.show(k, { kind: "note", group: "form", key: k, label: F.options.find((o) => o.value === k)!.label, note: F.preview_note }, reduce(a, { type: "form", form: k }));
+    ctx.show(k, sceneOf("form", k, F.options.find((o) => o.value === k)!.label, formPreview(a, k), k === a.form) ?? notTaken("form", k, F.options.find((o) => o.value === k)!.label), reduce(a, { type: "form", form: k }));
   const rec = (k: string, via: "pointer" | "key") => {
     if (via === "pointer") ctx.onPointerRecord();
     if (k === "quintiles") return show(k);
     ctx.record({ type: "form", form: k }, "form");
   };
   return (
-    <Shell ctx={ctx} node="form" tag={<TierTag tier="stated" />}>
+    <Shell ctx={ctx} node="form" tag={<TierTag tier={a.form === null ? "stated" : "recorded"} />}>
       <Ask teach={undefined} first={ctx.first} question="In what form does the exposure enter the models?" />
-      <p className={c.statedNow}>
-        <span className={c.statedKey}>written in</span>
-        <Rich text={F.sentences[a.locked?.form ?? a.form] ?? ""} />
-      </p>
+      {declared !== null ? (
+        <p className={c.statedNow}>
+          <span className={c.statedKey}>{a.locked ? "locked" : "recorded"}</span>
+          <Rich text={F.sentences[declared] ?? ""} />
+        </p>
+      ) : (
+        <p className={c.statedNow} data-testid="form-unrecorded">
+          <span className={c.statedKey}>not in the record</span>
+          No form is recorded, so the models fit a straight line; choosing one records it.
+        </p>
+      )}
       {a.locked ? <p className={c.afterNote}>The plan is locked: a change now is recorded as made after the estimates were seen.</p> : null}
       <Opts options={options} shown={ctx.shown} recorded={a.form} onShow={show} onRecord={rec} label="Form" />
     </Shell>
   );
 }
 
-// ── missing data (silent here) ──────────────────────────────────────────────
+// ── missing data ────────────────────────────────────────────────────────────
 
 function MissingCard({ ctx }: { ctx: Ctx }) {
   const { a } = ctx;
-  const ready = answered(a, "adjustment");
+  const M = INF.missing;
+  const first = M.labels.customary_first;
+  const keys = [...(first ? [first] : []), ...Object.keys(M.labels.options).filter((k) => k !== first)];
+  const options: Opt[] = keys.map((k) => {
+    const lab = M.labels.options[k]!;
+    return {
+      key: k,
+      label: lab.label,
+      customary: lab.customary,
+      sound: lab.sound,
+      verdict: lab.verdict,
+      tags: k === first ? [{ text: "the field's usual", tone: "usual" as const }] : [],
+      blocked: k === "complete_case" ? null : M.previews[k] ? "Previewed only in this prototype." : "Not captured in this prototype.",
+    };
+  });
+  const show = (k: string) =>
+    ctx.show(k, sceneOf("missing", k, M.labels.options[k]!.label, previewFor("missing", k, a), k === "complete_case" && a.missing), k === "complete_case" ? reduce(a, { type: "missing" }) : null);
+  const rec = (k: string, via: "pointer" | "key") => {
+    if (via === "pointer") ctx.onPointerRecord();
+    if (k !== "complete_case") return show(k);
+    ctx.record({ type: "missing" }, "missing");
+  };
   return (
-    <Shell ctx={ctx} node="missing" tag={<TierTag tier={ready ? "silent" : "waiting"} />}>
+    <Shell ctx={ctx} node="missing" tag={<TierTag tier={a.missing ? "recorded" : "asked"} />}>
       <Ask teach="missing" first={ctx.first} />
-      {ready ? (
-        <>
-          <p className={c.statedNow}>
-            <span className={c.statedKey}>in the export</span>
-            <Rich text={INF.missing.sentences.complete_case!} />
-          </p>
-          <p className={c.subNote}>
-            It changes no number here, so it is not drawn on the map. Before the adjustment set was answered, the engine had
-            said:
-          </p>
-          <p className={c.quoteOld}>
-            <Rich text={INF.missing.before_adjustment} />
-          </p>
-        </>
-      ) : (
-        <p className={c.waitNote}>
-          Which columns can be missing depends on which enter the model: it waits on{" "}
-          <button type="button" className={c.link} onClick={() => ctx.focus("adjustment")}>
-            the adjustment set
-          </button>
-          .
+      {M.labels.tension ? (
+        <p className={c.tension}>
+          <Rich text={M.labels.tension} />
         </p>
-      )}
+      ) : null}
+      <Opts options={options} shown={ctx.shown} recorded={a.missing ? "complete_case" : null} onShow={show} onRecord={rec} label="Missing data" />
+      <Undo ctx={ctx} node="missing" />
     </Shell>
   );
 }
@@ -821,6 +891,9 @@ function MissingCard({ ctx }: { ctx: Ctx }) {
 function Model1Card({ ctx }: { ctx: Ctx }) {
   const { a } = ctx;
   const M = INF.model_1;
+  const label = (v: "guess" | "empty") => (v === "guess" ? `Model 1: ${M.guess.join(", ")}` : "No Model 1");
+  const play = (v: "guess" | "empty") =>
+    ctx.show(v, sceneOf("model1", v, label(v), model1Preview(a, v), a.model1 === v) ?? notTaken("model1", v, label(v)), reduce(a, { type: "model1", value: v }));
   return (
     <Shell ctx={ctx} node="model1" tag={<TierTag tier={a.model1 ? "recorded" : "asked"} />}>
       <Ask teach={undefined} first={ctx.first} question="Which columns does Model 1 adjust for?" />
@@ -837,10 +910,24 @@ function Model1Card({ ctx }: { ctx: Ctx }) {
       </div>
       {!a.locked ? (
         <div className={c.actions}>
-          <button type="button" className={c.primary} onClick={() => ctx.record({ type: "model1", value: "guess" }, "model1")} data-testid="model1-guess">
+          <button
+            type="button"
+            className={c.primary}
+            onPointerEnter={() => play("guess")}
+            onFocus={() => play("guess")}
+            onClick={() => ctx.record({ type: "model1", value: "guess" }, "model1")}
+            data-testid="model1-guess"
+          >
             Confirm Model 1: {M.guess.join(", ")}
           </button>
-          <button type="button" className={c.secondaryBtn} onClick={() => ctx.record({ type: "model1", value: "empty" }, "model1")} data-testid="model1-none">
+          <button
+            type="button"
+            className={c.secondaryBtn}
+            onPointerEnter={() => play("empty")}
+            onFocus={() => play("empty")}
+            onClick={() => ctx.record({ type: "model1", value: "empty" }, "model1")}
+            data-testid="model1-none"
+          >
             No Model 1
           </button>
         </div>
@@ -928,7 +1015,8 @@ function ResultsCard({ ctx, node }: { ctx: Ctx; node: NodeId }) {
           Which decisions mattered?
         </button>
       </div>
-      {lockSentence(ctx.a) ? (
+      {/* the lock's sentence, unless the receipt just above says it */}
+      {lockSentence(ctx.a) && !(ctx.receipt?.node === node && ctx.receipt.texts.includes(lockSentence(ctx.a)!)) ? (
         <p className={c.statedNow}>
           <span className={c.statedKey}>the lock</span>
           <Rich text={lockSentence(ctx.a)!} />

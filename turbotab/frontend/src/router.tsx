@@ -61,7 +61,17 @@ export function useRoute(): Route {
   return parseRoute(useSyncExternalStore(subscribe, getPath, () => "/"));
 }
 
+/**
+ * A host that routes by hash (the static prototypes build, src/explore/protos-main.tsx) takes over
+ * every in-app navigation; it returns true when it handled `to`.
+ */
+let override: ((to: string) => boolean) | null = null;
+export function setNavigateOverride(fn: ((to: string) => boolean) | null): void {
+  override = fn;
+}
+
 export function navigate(to: string): void {
+  if (override?.(to)) return;
   if (to === window.location.pathname) return;
   window.history.pushState(null, "", to);
   window.dispatchEvent(new Event(EVENT));
