@@ -588,7 +588,10 @@ def build_graph() -> Graph:
             # quote a score are named (withheld from a client under inference, ruling 13); the
             # comparison substrate is kept for the evaluation stage; under prediction with the
             # population answer, the note points to the design-based scores.
-            Stage("fit", 23, ("working", "design", "split", "target_info", "cohort"),
+            # fit 24 (REPAIR-MULTISUB): the missing-values answer's block of the table under
+            # inference is kept with its exits for the curves on the same rows; a design with no
+            # degrees of freedom left offers the sample-only attestation as the table's exit.
+            Stage("fit", 24, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -618,7 +621,12 @@ def build_graph() -> Graph:
             # substitution 15 (SURVEY repair): a blocked curve's exit keeps every other chosen family.
             # substitution 16 (wave-1 repairs on wave 1b): both substitution 15s; a blocked pooled
             # curve's exit keeps every other chosen family too.
-            Stage("substitution", 16, ("working", "fit", "design"),
+            # substitution 17 (REPAIR-MULTISUB, MS3): under inference no curve follows one fill:
+            # with the missing-values answer blocked, or no imputed copies drawn, every curve (one
+            # per class or one) is blocked with the table's refusal and exits; a family with no
+            # table is refit on each copy and pooled; a design with no degrees of freedom left
+            # draws no curve over the surveyed population.
+            Stage("substitution", 17, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),

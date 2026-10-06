@@ -2082,7 +2082,15 @@ def fit_stage(ctx: StageContext) -> Bundle:
                                             "fits": imputed_fits, "tables": imputed_tables}
                                            if inference and missing is not None
                                            and missing.imputations is not None and imputed_fits
-                                           else None)})
+                                           else None),
+                           # MS3 (MULTISUB repair): the missing-values answer's block of the
+                           # table under inference, with its exits. A curve on the same rows takes
+                           # it too: it would otherwise follow one fill of their blanks.
+                           "missing_refused": ({"refused": missing.refusal,
+                                                "exits": [dict(e) for e in missing.exits]}
+                                               if inference and missing is not None
+                                               and missing.refusal else None)})
+
 
 def _energy_rows(coefficients: list[dict[str, Any]], design: Any, spec: Any, family: Any,
                  final: Any, X: Any, y: Any, task: str, clusters: Any,
@@ -2389,7 +2397,41 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
     band_seconds = 0.0
     band_failed = 0
     estimate = 0.0
-    for i, key in enumerate(keys):
+    # MS3 (MODELING_SEQUENCE §2): under inference a curve never follows one fill of the blanks.
+    # Where the missing-values answer blocks the coefficient table on these rows, or no imputed
+    # copies were drawn for the fit, every curve is blocked and recorded with the table's refusal
+    # and exits, one curve per family or one per class alike.
+    held = None
+    if on_every_row and drawable:
+        from turbotab.core.methods.substitution import missing_values_block
+
+        inputs = [c for c in spec.inputs if c in X_fit.columns]
+        held = missing_values_block(
+            objects.get("missing_refused"), answer=spec.missing,
+            blanks=[c for c in inputs if X_fit[c].isna().any()],
+            gaps=[c for c in inputs if c not in (spec.levels or []) and X_fit[c].isna().any()],
+            copies=imputed is not None, models=chosen, task=task)
+    if held is not None:
+        refused_why, refused_exits, _ = held
+        blank = substitution_curve(lambda frame: np.zeros(len(frame)), X, donor=sub.donor,
+                                   recipient=sub.recipient, kcal_per_unit=kcal_per_unit, ks=ks,
+                                   total_kind="variable", nested=nested, total=total_energy,
+                                   scale=scale, shift=shift)
+        note = blank["note"]
+        support = {"total": blank["total"], "n_rows": blank["n_rows"],
+                   "not_recorded": blank["n_not_recorded"], "off_amount": blank["n_off_amount"],
+                   "off_share": blank["n_off_share"],
+                   "fixed_rows": blank["fixed_population"]["n_rows"],
+                   "fixed_through": blank["fixed_population"]["through"]}
+        for key in keys:
+            models.append({"family": key, "label": get_family(key).label, "level": None,
+                           "delta": [None] * len(ks), "ci_low": None, "ci_high": None,
+                           "on_support_fraction": blank["on_support_fraction"],
+                           "stopped_at": blank["stopped_at"], "effect_label": None,
+                           "fixed_delta": [None] * len(ks), "fixed_ci_low": None,
+                           "fixed_ci_high": None, "band_ok": None, "refused": refused_why,
+                           "exits": [dict(e) for e in refused_exits]})
+    for i, key in enumerate(keys if held is None else []):
         if ctx.cancelled():
             raise Cancelled()
         family = get_family(key)
@@ -2435,7 +2477,10 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             band_failed += drawn.failed
             estimate += drawn.estimate
             continue
-        if imputed is not None and (imputed.get("fits") or {}).get(key):
+        if imputed is not None and ((imputed.get("fits") or {}).get(key)
+                                    or pipelines.get(key) is not None):
+            # MS3: a family whose table drew no copy fits of its own (boosted trees, a penalized
+            # family) is refit on each copy, never drawn on one fill beside the pooled ones.
             ctx.progress(start, f"{family.label}: each copy's curve")
 
             def copy_progress(done: int, total: int, _lo: float = start, _w: float = slot,
@@ -2590,7 +2635,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             # The user's unit, and the kcal per unit it sets (the sixth gate: no record said what a
             # unit of alcohol moved).
             notes.append(f"{c} moves at {reading.factor:g} kcal per unit, {reading.why}.")
-    if pooled_entries and task == "multiclass":
+    if held is not None:
+        notes.extend([held[2], held[0]])  # why no curve, then the refusal every family takes
+    elif pooled_entries and task == "multiclass":
         from turbotab.core.stages.class_substitution import pooled_note as class_pooled_note
 
         notes.append(class_pooled_note(len(imputed.get("frames") or []), n_boot,
@@ -2604,13 +2651,25 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         if any(e.get("pooled") == "per_k" for e in pooled_entries):
             notes.append("Support counts are the first copy's; the share of rows on support at each "
                          "k is the mean over the copies.")
-    elif spec.multiple_imputation() and X_fit.isna().any().any():
-        # WP7: the coefficient table pools the multiple imputations; the curve does not.
-        which = ("the fit on every analyzed row, whose blanks are filled once without the outcome"
-                 if on_every_row else "the training fit, whose blanks are filled once in each "
-                                      "fold without the outcome")
-        notes.append(f"The curve follows {which}; it is not pooled over the multiple imputations "
-                     f"the coefficient table uses, so its band leaves out their uncertainty.")
+    if pooled_entries and held is None:
+        # MS3: a family with no copy fits of its own was refit on each copy (said, not hidden).
+        from turbotab.core.voice import listing
+
+        pooled_keys = {e["family"] for e in pooled_entries}
+        refit = [get_family(k).label for k in keys
+                 if k in pooled_keys and not (imputed.get("fits") or {}).get(k)]
+        if refit:
+            one = len(refit) == 1
+            notes.append(f"{listing(refit, ticked=False)} {'has' if one else 'have'} no "
+                         f"coefficient table of {'its' if one else 'their'} own, so "
+                         f"{'it was' if one else 'they were'} refit on each completed copy.")
+    gaps = [c for c in spec.inputs if c not in (spec.levels or []) and X_fit[c].isna().any()]
+    if not on_every_row and spec.multiple_imputation() and gaps:
+        # WP7: under prediction no imputed copies are drawn (multiple imputation is the inference
+        # table's); under inference the curve is pooled or blocked above (MS3), never one fill.
+        notes.append("The curve follows the training fit, whose blanks are filled once in each "
+                     "fold without the outcome; under prediction no imputed copies are drawn, so "
+                     "its band leaves out the imputations' uncertainty.")
     if skipped and task == "ordinal":
         notes.append("An ordinal outcome has one curve per level, which is not drawn yet.")
     elif skipped:
@@ -2621,7 +2680,7 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
         from turbotab.core.models.survey import curve_caption, pooled_design_caption
 
         for entry in models:
-            if entry.get("refused"):
+            if entry.get("refused") and held is None:  # a held curve's refusal is said once
                 notes.append(f"{entry['label']}: no curve. {entry['refused']}")
         design_bands = bands or pooled_design
         if design_bands:
@@ -2664,7 +2723,9 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
                 "min_ok_share": MIN_REFIT_SHARE, "caption": caption}
     if task == "binary" and keys:
         # the event the user named was coded 1 (``coded_outcome``); else the level sorting last
-        positive = ctx.state.event if ctx.state.event is not None else fitted[keys[0]].classes_[1]
+        # (a held curve refits nothing on every row: the training fit holds the same classes)
+        positive = (ctx.state.event if ctx.state.event is not None
+                    else fitted.get(keys[0], trained[keys[0]]).classes_[1])
         outcome = f"the predicted probability that {target} is {positive}"
     else:
         outcome = f"predicted {target}" + (f" (in {outcome_unit})" if outcome_unit else "")
@@ -2785,17 +2846,37 @@ def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], 
                                                     substitution_curve)
 
     frames = list(imputed["frames"])
-    fits = list((imputed.get("fits") or {}).get(key) or [])
+    given = list((imputed.get("fits") or {}).get(key) or [])
     tables = list((imputed.get("tables") or {}).get(key) or [])
     outcomes = imputed.get("outcomes")
-    m = len(fits)
-    curve_ids = set(int(i) for i in np.asarray(train_ids))
-    curves, shifts, rows_of = [], [], []
-    design_bands: list[dict[str, Any]] = []  # under the population answer: each copy's
-    for k_copy, (X_all, fitted) in enumerate(zip(frames, fits)):
-        if survey_design is not None:
-            from turbotab.core.models.survey import domain_of, population_curve
+    m = len(given) or len(frames)
 
+    def copy_fit(j: int, X_all: pd.DataFrame) -> Any:
+        """Copy j's fit: the table's own, or (a family with no table of its own) this family refit
+        on the completed copy, as its single fit is on every analyzed row (MS3)."""
+        if given:
+            return given[j]
+        from turbotab.core.models.inner_cv import fit_pipeline
+
+        y_j = np.asarray(outcomes[j]) if outcomes is not None else y_fit
+        units = (group_of.reindex(X_all.index).to_numpy() if group_of is not None
+                 and outcomes is None else None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return fit_pipeline(clone(pipeline), X_all, y_j, groups=units)
+
+    curve_ids = set(int(i) for i in np.asarray(train_ids))
+    curves, shifts, rows_of, fits = [], [], [], []
+    design_bands: list[dict[str, Any]] = []  # under the population answer: each copy's
+    for k_copy, X_all in enumerate(frames[:m]):
+        if survey_design is not None:
+            from turbotab.core.models.survey import (domain_of, has_design_estimator,
+                                                     population_curve)
+
+            # A family with no design-based estimator is blocked before any copy is refit for it.
+            fitted = (copy_fit(k_copy, X_all) if given or has_design_estimator(family, task)
+                      else None)
+            fits.append(fitted)
             # Every row of the copy in the design's domain, none sampled away (as the single fit's
             # population curve reads them).
             domain = domain_of(X_all.index, survey_design)
@@ -2824,6 +2905,8 @@ def _pooled_curve(key: str, family: Any, task: str, imputed: Mapping[str, Any], 
             shifts.append(shift)
             rows_of.append(rows)
             continue
+        fitted = copy_fit(k_copy, X_all)
+        fits.append(fitted)
         rows = [i for i, rid in enumerate(X_all.index) if int(rid) in curve_ids]
         if outcomes is not None or not rows:  # a supplied copy: its own rows
             rows = list(range(min(len(X_all), SUBSTITUTION_ROWS)))
