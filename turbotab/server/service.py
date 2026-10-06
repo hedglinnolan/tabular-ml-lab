@@ -191,6 +191,21 @@ class SentenceFacts:
         return None
 
     @cached_property
+    def grouping_guesses(self) -> dict[str, str] | None:
+        """The grouping question's guess for each column it asks about (LEASH): "nothing groups
+        them" states as a limitation only the columns that read as a grouping."""
+        state = self._ctx.state
+        if state is None or getattr(self._decision, "kind", None) != "set_clusters":
+            return None
+        try:
+            from turbotab.core.estimand import grouping_candidates
+
+            return {str(c["column"]): str(c["guess"])
+                    for c in grouping_candidates(state, self._artifact("roles"))}
+        except Exception:  # noqa: BLE001 - a sentence never fails a decision; it says less
+            return None
+
+    @cached_property
     def n_cohort(self) -> int | None:
         cohort = self._artifact("cohort")
         return int(cohort["n_final"]) if isinstance(cohort, dict) and "n_final" in cohort else None

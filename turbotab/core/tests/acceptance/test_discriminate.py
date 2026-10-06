@@ -482,7 +482,22 @@ def test_a1_a_household_line_number_never_clusters_the_intervals_through_the_ser
         wrong.decide(plan["models"])
         said = " ".join(strings(wrong.artifact("fit")))
         assert "by `PID`" not in said and "G = 19" not in said
-        assert "The grain answer names `DUPERSID` as the unit" in said
+        # LEASH (the verifier's seed 99): the grouping question no longer drops a whole number
+        # whose counts fall away from the middle, so it asks `PID` (pandas: 19 values, 46 rows on
+        # the median one), guessed "no" from its values, and the answer that nothing groups the
+        # participants denies it. Nothing clusters by `PID` by that answer, not by the grain's
+        # precedence, so the fit has no note about it (the note for a repeating column the question
+        # does not ask about is test_readings_ledger's), and the record states it as asked and
+        # answered, never as a limitation kept over a reading.
+        view = wrong.view()
+        record = next(r for r in reversed(view["decisions"])
+                      if r["decision"]["kind"] == "set_clusters")
+        assert "PID" in record["decision"]["none_of"]
+        assert view["state"]["reading_confirmations"]["cluster:PID"] == "no"
+        assert record["sentence"].endswith(
+            "; `PID` was asked whether it groups the participants, and the answer was that it does "
+            "not.")
+        assert "The grain answer names" not in said
 
 
 def test_a1_a_rosters_line_number_never_wins_over_the_household_the_user_confirmed(tmp_path):

@@ -15,8 +15,10 @@ that varies, it is refused until attested (block and record), and the fit carrie
 
 **The grouping above the person** (RO-08). A column read as a site, centre, household or batch is
 asked about after the roles: does it group the participants? Under inference so is any column that
-can structurally group rows, whatever its name, with its guess shown (the routing gate's leash note;
-``turbotab/core/groupings.py``); a sex, an age or any category of ten values or fewer never is.
+can structurally group rows, whatever its name or the shape of its counts, with its guess shown (the
+routing gate's leash note; ``turbotab/core/groupings.py``); a sex, an age or any category of ten
+values or fewer never is. "No grouping" over a column guessed to group the participants from its
+values alone offers the honest answer too: its reading confirmed "no", recorded as the user's word.
 Under inference the recommended answer
 gives each group its own intercept (fixed effects) and clusters the intervals by it (CR2 with
 Bell–McCaffrey df, ``models/inference.py``); clustering alone is offered with its concern; "no
@@ -56,10 +58,11 @@ answers from its name under the exposure–outcome pairing (``turbotab/core/cova
 NUTRITION_PACK §08, "The adjustment card's guesses"): demographics and lifestyle are confounders,
 other nutrients possible confounders, body size, clinical measurements and medications measured
 with the exposure possible mediators (the declared with-and-without pair), a measurement of the
-outcome's own kind another measure of it. Covariates with the same guess form one block, confirmed
-with one tap (one ``set_adjustment`` naming exactly its columns), every member's guess shown with
-its reason and source; a multi-select answer settles exactly the covariates it lists; a covariate
-the packs say nothing about is asked without a guess.
+outcome's own kind at the same visit another measure of it, left out and recorded in those words
+(at baseline beside an outcome over follow-up it is the pair). Covariates with the same guess form
+one block, confirmed with one tap (one ``set_adjustment`` naming exactly its columns), every
+member's guess shown with its reason and source; a multi-select answer settles exactly the
+covariates it lists; a covariate the packs say nothing about is asked without a guess.
 
 **No estimate before the plan.** Under inference no coefficient, curve or contrast is served while
 the exposure, the effect or a covariate's answers are missing (``served_gate``, read by the server
@@ -245,7 +248,7 @@ def grouping_candidates(state: Any, roles: Any = None) -> list[dict[str, Any]]:
     named = cluster_candidates(state, roles)
     out = [{"column": c, "guess": "yes", "why": "named like a group of participants (a site, a "
                                                 "centre, a household or a batch)",
-            "structural": False} for c in named]
+            "by": "name", "structural": False} for c in named]
     out += [c for c in candidates(state, roles) if c["column"] not in named]
     return out
 
@@ -570,6 +573,24 @@ ROLE_PLURAL = {
     "instrument": "instruments", "timing_unknown": "of unknown timing",
     "not_a_cause": "causes of neither",
 }
+# A consequence of the exposure whose answers took the packs' guess "another measure of the
+# outcome's own kind" (``covariate_guesses.outcome_measures``): the record and the card say what
+# the card's guess said, not the criterion's generic "possible collider".
+OUTCOME_KIND_WORDS = "another measure of the outcome's own kind"
+OUTCOME_KIND_SINGULAR = ("another measure of the outcome's own kind, which the exposure could have "
+                         "changed as it could the outcome")
+OUTCOME_KIND_PLURAL = ("other measures of the outcome's own kind, which the exposure could have "
+                       "changed as it could the outcome")
+
+
+def outcome_kind_columns(answers: Mapping[str, Any], state: Any) -> set[str]:
+    """The answered covariates the criterion leaves out as consequences of the exposure whose
+    answers took the packs' guess "another measure of the outcome's own kind"."""
+    from turbotab.core.covariate_guesses import outcome_measures
+
+    if not answers or current_estimand(state) is None:
+        return set()
+    return set(outcome_measures(answers, state))
 
 
 @dataclass(frozen=True)
@@ -790,7 +811,8 @@ GUESS_WORDS = {
     "timing_unknown": "possible mediator, or measured after the exposure: the estimate is declared "
                       "without it and, beside, with it",
     "mediator": "a mediator: left out of a total effect",
-    "collider": "another measure of the outcome, or a consequence of the exposure: left out",
+    "collider": "another measure of the outcome's own kind, which the exposure could have changed: "
+                "left out",
     "not_a_cause": "a cause of neither: left out",
     "instrument": "an instrument: left out",
     "proxy": "a proxy for an unmeasured common cause: adjusted for",
@@ -883,6 +905,11 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
         g["estimand_note"] = (precision_note(measure, g["columns"])
                               if g.get("derived") == "precision" else None)
     precision = [c for c, d in derived.items() if d.role == "precision" and d.adjusted]
+    measures = outcome_kind_columns(answers, state)
+
+    def words(c: str, d: Derived) -> str:
+        return OUTCOME_KIND_WORDS if d.role == "collider" and c in measures else ROLE_WORDS[d.role]
+
     return {
         "exposure": exposure, "effect": effect, "family": bool(_get(spec, "family")),
         "questions": {**QUESTIONS, **(DIRECT_QUESTIONS if effect == "direct" else {})},
@@ -892,7 +919,7 @@ def adjustment_card(state: Any) -> dict[str, Any] | None:
                               if hasattr(answers[c], "model_dump") else dict(answers[c])}
                              for c, fields in pending.items()],
         "mediators": mediators(state),
-        "answered": {c: {"role": d.role, "words": ROLE_WORDS[d.role], "adjusted": d.adjusted,
+        "answered": {c: {"role": d.role, "words": words(c, d), "adjusted": d.adjusted,
                          "secondary": d.secondary, "why": d.why,
                          "estimand_note": (precision_note(measure, [c])
                                            if d.role == "precision" and d.adjusted else None)}
@@ -1655,21 +1682,45 @@ def _no_grouping_is_recorded(decision: Any, ctx: Any) -> None:
         return
     # The named groupings, then the columns whose values read as a grouping (the guess "yes"); a
     # category with many labels (the guess "no") is asked, and "nothing" over it needs no record.
-    candidates = [c["column"] for c in grouping_candidates(state, _artifact(ctx, "roles"))
-                  if c["guess"] == "yes"]
-    if not candidates:
+    found = [c for c in grouping_candidates(state, _artifact(ctx, "roles")) if c["guess"] == "yes"]
+    if not found:
         return
+    candidates = [c["column"] for c in found]
+    # A guess that rests on the values alone (uniform whole numbers such as a birth year, codes
+    # with digits) can be wrong: the user's word that the column marks no group is the honest
+    # answer, a reading confirmed "no" (BLUEPRINT §14.3), never a limitation kept over a reading.
+    by_values = [c["column"] for c in found if c.get("by") == "values"]
     shown = _listing(candidates, limit=3)
-    raise _refusal(
-        "grouping_reads",
-        f"{shown} {'reads' if len(candidates) == 1 else 'read'} as a group of participants. People "
-        f"in one site or household are more alike than people across them, so intervals that "
-        f"treat them as independent are too narrow, and between-group differences can confound "
-        f"the exposure.",
-        [*({"label": f"Adjust for {_tick(c)} and cluster by it",
-            "decision": SetClusters(column=c, adjust="fixed_effects")} for c in candidates[:2]),
-         {"label": "They group nothing; record that",
-          "decision": decision.model_copy(update={"acknowledged": True})}])
+    message = (f"{shown} {'reads' if len(candidates) == 1 else 'read'} as a group of participants. "
+               f"People in one site or household are more alike than people across them, so "
+               f"intervals that treat them as independent are too narrow, and between-group "
+               f"differences can confound the exposure.")
+    exits: list[dict[str, Any]] = [{"label": f"Adjust for {_tick(c)} and cluster by it",
+                                    "decision": SetClusters(column=c, adjust="fixed_effects")}
+                                   for c in candidates[:2]]
+    if by_values:
+        one = len(by_values) == 1
+        said = _listing(by_values, limit=3)
+        message += (f" {said} {'is' if one else 'are'} guessed from {'its' if one else 'their'} "
+                    f"values alone: if {'it holds' if one else 'they hold'} a measured value or a "
+                    f"characteristic rather than a group's label, say so, and nothing is recorded "
+                    f"as a limitation.")
+        exits.append({"label": f"{said} {'marks' if one else 'mark'} no group of participants",
+                      "decision": _marks_no_group(by_values)})
+    exits.append({"label": "They group nothing; record that",
+                  "decision": decision.model_copy(update={"acknowledged": True})})
+    raise _refusal("grouping_reads", message, exits)
+
+
+def _marks_no_group(columns: Sequence[str]) -> Any:
+    """Each column's ``cluster`` reading confirmed "no": one confirmation for one column, a block
+    confirmation that settles exactly the columns it lists for several (BLUEPRINT §14.2)."""
+    from turbotab.core.decisions import ConfirmReading, ConfirmReadings, ReadingItem
+
+    if len(columns) == 1:
+        return ConfirmReading(reading="cluster", column=columns[0], value="no")
+    return ConfirmReadings(items=[ReadingItem(reading="cluster", column=c, value="no")
+                                  for c in columns])
 
 
 # set_estimand
@@ -2168,13 +2219,16 @@ _register()
 
 __all__ = [
     "DIRECT_QUESTIONS", "Derived", "ESTIMATE_STAGES", "FIT_SCORES", "GUESSES", "GUESS_WORDS",
-    "HOLDS", "MEASURE_OF_TASK", "MODEL_SCORES", "MEASURE_WORDS", "NOT_FITTED", "QUESTIONS", "ROLE_PLURAL", "ROLE_SINGULAR",
+    "HOLDS", "MEASURE_OF_TASK", "MODEL_SCORES", "MEASURE_WORDS", "NOT_FITTED",
+    "OUTCOME_KIND_PLURAL", "OUTCOME_KIND_SINGULAR", "OUTCOME_KIND_WORDS", "QUESTIONS", "ROLE_PLURAL",
+    "ROLE_SINGULAR",
     "ROLE_WORDS", "adjustment_answer", "adjustment_card", "adjustment_gate", "adjustment_left_out",
     "annotate_fit", "asked_covariates", "caption", "cluster_answer", "cluster_candidates",
     "clusters_gate", "covariates", "current_answers", "current_estimand", "derive",
     "derived_roles", "direct_questions", "effective_task", "estimand_card", "estimand_gate",
     "exposure_candidates", "fixed_effects_column", "follow_up_answer", "follow_up_candidates",
     "follow_up_gate", "grouping_candidates", "grouping_card", "guess_blocks", "guess_of",
-    "measures_offered", "mediators", "primary_features", "reads_as_follow_up", "secondary_columns",
+    "measures_offered", "mediators", "outcome_kind_columns", "primary_features",
+    "reads_as_follow_up", "secondary_columns",
     "served_gate", "unanswered", "withhold", "without_scores",
 ]
