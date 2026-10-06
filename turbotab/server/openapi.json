@@ -19138,6 +19138,18 @@
             "default": null,
             "title": "P"
           },
+          "naive_refit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Naive Refit"
+          },
           "estimate": {
             "anyOf": [
               {
@@ -19283,6 +19295,7 @@
           "naive_ci_low",
           "naive_ci_high",
           "p",
+          "naive_refit",
           "estimate",
           "se",
           "ci_low",
@@ -19442,6 +19455,18 @@
             "default": null,
             "title": "Reason"
           },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Blocked"
+          },
           "exits": {
             "default": [],
             "items": {
@@ -19598,6 +19623,11 @@
             "title": "N Persons",
             "type": "integer"
           },
+          "n_primary": {
+            "default": 0,
+            "title": "N Primary",
+            "type": "integer"
+          },
           "n_boot": {
             "default": 0,
             "title": "N Boot",
@@ -19658,6 +19688,7 @@
           "purpose",
           "applies",
           "reason",
+          "blocked",
           "exits",
           "family",
           "rows",
@@ -19675,6 +19706,7 @@
           "attenuation",
           "within_covariance",
           "n_persons",
+          "n_primary",
           "n_boot",
           "n_boot_ok",
           "recalls",

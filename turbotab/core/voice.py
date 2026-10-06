@@ -338,7 +338,10 @@ def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, 
     decision = parse_decision(decision)
     kind = decision.kind
     if kind in _RESTATED_WHOLE:
-        before, after = sentence_for(decision, then), sentence_for(decision, now)
+        # A stage's facts for this kind, when the methods text passes them (``counts[kind]``; the
+        # calibration stage's block, REPAIR-RC), are read on the answers as they stand.
+        facts = (_get(ctx, "counts") or {}).get(kind)
+        before, after = sentence_for(decision, then), sentence_for(decision, now, facts)
         if before == after:
             return sentence
         return disclose(after, post_seal=post_seal, after_estimates=after_estimates) or sentence
@@ -1499,11 +1502,25 @@ def _set_measurement_error(d: Any, state: Any, ctx: Any) -> str:
     # calibrated jointly, its interval from a bootstrap over the whole chain; under the surveyed
     # population the fits are weighted and PSUs are resampled within strata. The methods text
     # restates this sentence whole when the survey answer changes (:func:`restate`).
+    from turbotab.core.stages.calibration import reasked_clause
+
+    head = (f"Regression calibration of {which} from the repeated recalls was declared as a "
+            f"secondary analysis beside the uncorrected estimate")
+    # REPAIR-RC (MODELING_SEQUENCE §2, §4): a change to the adjustment set re-asks it, and a
+    # declared calibration the stage could not run is blocked and recorded. The first is read from
+    # the answers; the second from the calibration stage, which the methods text passes as
+    # ``ctx["blocked"]`` (``stages.calibration.record_facts``).
+    reasked = reasked_clause(getattr(d, "adjustment", None), state)
+    if reasked:
+        return f"{head} {reasked}"
+    blocked = _get(ctx, "blocked")
+    if blocked:
+        return (f"{head}, but {blocked}; it was blocked and recorded, and the estimates are "
+                f"uncorrected")
     over = (", resampling PSUs within strata with the fits survey-weighted"
             if population_answer(state) else "")
-    return (f"Regression calibration of {which} from the repeated recalls was declared as a "
-            f"secondary analysis beside the uncorrected estimate, with intervals from "
-            f"{count(d.n_boot)} bootstrap resamples of the whole chain{over}")
+    return (f"{head}, with intervals from {count(d.n_boot)} bootstrap resamples of the whole "
+            f"chain{over}")
 
 
 restated_whole("set_measurement_error")

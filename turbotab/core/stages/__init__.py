@@ -673,7 +673,10 @@ def build_graph() -> Graph:
             # calibration 10 (MS5): every error-prone intake calibrated jointly inside each imputed
             # copy, a declared secondary with a whole-chain bootstrap (PSUs within strata, clusters
             # or people), the adjustment set it was declared under kept.
-            Stage("calibration", 10,
+            # calibration 11 (REPAIR-RC): the uncorrected estimate beside it is the primary's on
+            # every participant it analyzes; a lonely PSU is drawn twice or not at all; refused
+            # below the cluster floor; every block says why in the methods' words, with an exit.
+            Stage("calibration", 11,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),

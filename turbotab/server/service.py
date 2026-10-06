@@ -1262,8 +1262,13 @@ class ProjectService:
         # A restated sentence reads what its record's sentence read besides the answers: the
         # detected task, for the families' estimators under the survey answer (MS4).
         facts = SentenceFacts(self.decision_context(pid), None, records)
-        return methods_text(records, {"detected_task": facts.detected_task,
-                                      "counts": self._flow_counts(pid)})
+        # REPAIR-RC: a declared calibration the stage blocked is said to be blocked
+        # (``stages.calibration.record_facts``; block and record, MODELING_SEQUENCE §4).
+        from turbotab.core.stages.calibration import record_facts
+
+        stages = {**self._flow_counts(pid),
+                  **record_facts(self._fresh(pid, "calibration", public=True))}
+        return methods_text(records, {"detected_task": facts.detected_task, "counts": stages})
 
     def _flow_counts(self, pid: str) -> dict[str, Any]:
         """The counts the participant flow has now, by the decision kind whose sentence states them

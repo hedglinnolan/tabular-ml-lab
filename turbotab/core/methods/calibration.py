@@ -56,7 +56,8 @@ a survey design or clusters it knows nothing of them.
 
 **Intervals** come from a bootstrap over the **whole chain**: each replicate redraws the people
 (whole PSUs within strata under a survey design, Rao & Wu 1988's rescaling bootstrap with n_h − 1
-PSUs; whole clusters under repeated units; people otherwise, each with all their recalls) and
+PSUs, a stratum with a single PSU by :data:`LONELY_RULE`; whole clusters under repeated units, never
+fewer than the cluster floor; people otherwise, each with all their recalls) and
 repeats every step that learns from the data: the imputations, the energy model, the within-person
 covariance, the calibration and the outcome model. Under multiple imputation this is Schomaker &
 Heumann's (2018, *Stat Med* 37:2252) "Boot MI": "B bootstrap samples D*_b (including missing data)
@@ -97,12 +98,27 @@ FREEDMAN = "Freedman et al. 2011, J Natl Cancer Inst 103:1086"
 SCHOMAKER = "Schomaker & Heumann 2018, Stat Med 37:2252"
 RAO_WU = "Rao & Wu 1988, J Am Stat Assoc 83:231"
 KEOGH = "Keogh, Shaw & Gustafson 2020, Stat Med 39:2197"
+# A stratum with a single PSU (a lonely PSU) in the bootstrap by PSU within strata. The primary's
+# design-based table follows R survey's ``lonely.psu = "adjust"`` (``models.survey.LONELY_RULE``):
+# the lonely PSU's total is centered at the grand mean, which for an estimating equation (scores
+# summing to zero) is zero, and its n_h/(n_h − 1) is taken as 1, so it adds its total's square to
+# the variance. Rao & Wu's draw has nothing to draw from in such a stratum (R's ``subbootweights``
+# gives it no finite weight), so the bootstrap gives the lonely PSU the weight multiplier that adds
+# the same: it is drawn twice or not at all, each with chance 1/2 (mean 1, variance 1; the
+# generalized bootstrap's matching of a variance estimator's quadratic form, Beaumont & Patak 2012,
+# Int Stat Rev 80:127). Kept whole in every replicate instead, it would add no variance at all.
+LONELY_RULE = ("drawn twice or not at all, each with chance 1/2, so its PSU total varies about "
+               "zero as R survey's lonely.psu \"adjust\" centers it")
+# The way past any refusal of the data's: no correction, which keeps the primary as it is.
+NO_CALIBRATION = {"label": "Record no calibration",
+                  "decision": {"kind": "set_measurement_error", "method": "none"}}
 
 
 class CalibrationRefused(ValueError):
-    """The data cannot support the calibration; the message says why, ``exits`` the ways forward."""
+    """The data cannot support the calibration; the message says why, ``exits`` the ways forward
+    (no correction unless another is given)."""
 
-    def __init__(self, message: str, exits: Sequence[Mapping[str, Any]] = ()):
+    def __init__(self, message: str, exits: Sequence[Mapping[str, Any]] = (NO_CALIBRATION,)):
         super().__init__(message)
         self.exits = [dict(e) for e in exits]
 
@@ -545,7 +561,8 @@ def psu_draw(stratum: np.ndarray, psu: np.ndarray, rng: np.random.Generator,
     n_h − 1 are drawn with replacement and each drawn person's weight is multiplied by
     n_h/(n_h − 1) (R ``survey``'s ``subbootstrap``). ``stratum`` and ``psu`` are each person's;
     ``design_psus`` maps every PSU of the design (those with no analyzed person too) to its stratum,
-    so n_h counts them. A stratum with a single PSU is kept as it is in every replicate."""
+    so n_h counts them. A stratum with a single PSU is :data:`LONELY_RULE`: its PSU is drawn twice
+    or not at all, each with chance 1/2, its weight unchanged."""
     stratum = np.asarray(stratum, dtype=np.int64)
     psu = np.asarray(psu, dtype=np.int64)
     every = dict(design_psus) if design_psus is not None else {}
@@ -564,8 +581,8 @@ def psu_draw(stratum: np.ndarray, psu: np.ndarray, rng: np.random.Generator,
         if n_h >= 2:
             drawn = [units[i] for i in rng.integers(0, n_h, n_h - 1)]
             scale = n_h / (n_h - 1)
-        else:
-            drawn, scale = units, 1.0
+        else:  # a lonely PSU: twice or not at all, each with chance 1/2 (LONELY_RULE)
+            drawn, scale = (units * 2 if rng.random() < 0.5 else []), 1.0
         for u in drawn:
             m = members[u] if u < len(members) else np.zeros(0, dtype=np.int64)
             rows.append(m)
@@ -588,7 +605,7 @@ class Resampling:
     stratum: np.ndarray | None = None  # PSUs: each person's stratum and PSU
     psu: np.ndarray | None = None
     design_psus: Mapping[int, int] | None = None
-    lonely: int = 0  # strata with a single PSU, kept whole in every replicate
+    lonely: int = 0  # strata with a single PSU, each drawn by LONELY_RULE
 
     def draw(self, rng: np.random.Generator) -> Draw:
         if self.kind == "psu_within_strata":
@@ -878,18 +895,41 @@ def _register_contract() -> None:
                      "blocked and recorded, the sample-only attestation its exit.",
                      purposes=inference, condition="the surveyed-population answer",
                      enforced_by=f"{_STAGE}:resampling_of", id="psu_within_strata"),
+            Relation("implies", "a lonely PSU resampled as the primary centers it",
+                     f"A stratum with a single PSU is {LONELY_RULE}, so the calibrated interval "
+                     "treats it as the primary's design-based table does, never as a stratum "
+                     "with no variance.", purposes=inference,
+                     condition="the surveyed-population answer, a stratum with a single PSU",
+                     enforced_by="turbotab.core.methods.calibration:psu_draw", id="lonely_psu"),
+            Relation("conflicts", "fewer clusters than the floor",
+                     "Refused: with fewer whole clusters than cluster-robust intervals require, a "
+                     "bootstrap of clusters cannot carry the calibrated coefficient's interval, "
+                     "as the fit reports none for the uncorrected one.", purposes=inference,
+                     rung="refused", exits=("no correction",),
+                     condition="repeated units below the cluster floor",
+                     enforced_by=f"{_STAGE}:cluster_floor", id="cluster_floor"),
             Relation("implies", "a declared secondary analysis beside the uncorrected estimate",
-                     "The calibrated estimate sits beside the uncorrected one, whose test of no "
-                     f"association stays the primary's; it {LABEL}.", purposes=inference,
-                     condition="regression calibration declared",
+                     "The calibrated estimate sits beside the uncorrected one, whose estimate, "
+                     f"interval and test of no association are the primary's; it {LABEL}.",
+                     purposes=inference, condition="regression calibration declared",
                      enforced_by=f"{_STAGE}:calibration_stage", id="secondary_beside_uncorrected"),
+            Relation("implies", "the calibration in the manuscript bundle",
+                     "The calibrated estimates, their label and the methods paragraph reach the "
+                     "export; a declared calibration that was not run is said to be blocked, "
+                     "there and in the record.", purposes=inference,
+                     condition="regression calibration declared",
+                     enforced_by="turbotab.core.export.tables:calibration_table",
+                     id="in_the_export"),
             Relation("invalidates", "the calibration's declaration",
-                     "Declared again under the current adjustment set, never silently kept.",
+                     "Declared again under the current adjustment set, never silently kept; "
+                     "until then the record says it is re-asked and the export waits for it.",
                      purposes=inference, condition="a change to the adjustment set",
                      enforced_by=f"{_STAGE}:current_calibration", id="adjustment_set_invalidates"),
         ),
         sources=(ROSNER_1989, ROSNER_1990, CARROLL, FREEDMAN, SCHOMAKER, RAO_WU, KEOGH,
-                 "Boe et al. 2023, Am J Epidemiol 192:1406"),
+                 "Boe et al. 2023, Am J Epidemiol 192:1406",
+                 "R survey 4.5, lonely.psu \"adjust\" (onestage, onestrat)",
+                 "Beaumont & Patak 2012, Int Stat Rev 80:127"),
         decision="set_measurement_error", stage="calibration",
         place="MODELING_SEQUENCE §1 step 4 (planned), run as a declared secondary analysis (row 11)",
         leash={"inference": "recommended", "prediction": "refused"},
@@ -902,8 +942,9 @@ _register_contract()
 
 __all__ = [
     "BOOT_COPIES", "Bootstrap", "CARROLL", "Calibration", "CalibrationRefused", "Corrected", "Draw",
-    "FREEDMAN", "INTERVALS", "INTERVAL_REFUSALS", "KEOGH", "LABEL", "LEVEL", "RAO_WU", "ROSNER_1989",
-    "ROSNER_1990", "Recalls", "Replicates", "Resampling", "Result", "SCHOMAKER", "WithinPerson",
+    "FREEDMAN", "INTERVALS", "INTERVAL_REFUSALS", "KEOGH", "LABEL", "LEVEL", "LONELY_RULE",
+    "NO_CALIBRATION", "RAO_WU", "ROSNER_1989", "ROSNER_1990", "Recalls", "Replicates",
+    "Resampling", "Result", "SCHOMAKER", "WithinPerson",
     "calibrate", "cluster_draw", "correct", "delta_covariance", "interval_refusal",
     "logistic_fit", "model_covariance", "ols_fit", "person_draw", "psu_draw",
     "regression_calibration", "whole_chain", "within_person", "within_person_variance",

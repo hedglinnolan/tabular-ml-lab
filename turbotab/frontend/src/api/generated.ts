@@ -6912,6 +6912,11 @@ export interface components {
              */
             p: number | null;
             /**
+             * Naive Refit
+             * @default null
+             */
+            naive_refit: number | null;
+            /**
              * Estimate
              * @default null
              */
@@ -7053,6 +7058,11 @@ export interface components {
              */
             reason: string | null;
             /**
+             * Blocked
+             * @default null
+             */
+            blocked: string | null;
+            /**
              * Exits
              * @default []
              */
@@ -7141,6 +7151,11 @@ export interface components {
              * @default 0
              */
             n_persons: number;
+            /**
+             * N Primary
+             * @default 0
+             */
+            n_primary: number;
             /**
              * N Boot
              * @default 0

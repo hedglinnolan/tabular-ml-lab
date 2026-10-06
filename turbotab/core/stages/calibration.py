@@ -34,11 +34,22 @@ Model-based and Rubin-only intervals are refused for a calibrated coefficient.
 no association stays the uncorrected model's (Freedman et al. 2011), and it is labeled with what it
 corrects and what it assumes (:data:`~turbotab.core.methods.calibration.LABEL`).
 
+**The uncorrected estimate beside it is the primary's**: its estimate, interval and test of no
+association are those of the outcome model on every participant the primary analyzes (the fit
+stage's table). A participant with no recall day on which every calibrated intake is recorded has
+no replicate and is left out of the calibration (Carroll et al. 2006, §4.4); the artifact then says
+how many, and gives the uncorrected coefficient refit on the calibrated participants beside it
+(``naive_refit``), so the two estimates can be read on the same people.
+
 **Where it refuses** (the artifact's ``reason`` and ``exits`` say which): under prediction (the
 model is used on recalls measured the same way); without the linear family; outside a continuous
 or yes/no outcome; on rows not combined from repeated recalls by the mean; on time points; on an
 error-prone column with a declared spline or quintiles (the calibration corrects a linear term);
-and when the survey design has no stratum with two PSUs (no bootstrap by PSU within strata).
+when the survey design has no stratum with two PSUs (no bootstrap by PSU within strata); with
+fewer clusters than the cluster floor (no bootstrap by cluster); and when the data cannot carry the
+calibration (no one with two recalls, the true intakes' covariance not positive). Each refusal of a
+declared calibration is blocked and recorded: ``blocked`` says why in the methods' words, the
+record's sentence says it (``voice``, through :func:`record_facts`), and the export carries it.
 """
 from __future__ import annotations
 
@@ -49,8 +60,9 @@ import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
 from turbotab.core.graph import Bundle, StageContext
-from turbotab.core.methods.calibration import (BOOT_COPIES, CARROLL, FREEDMAN, LABEL, RAO_WU,
-                                               ROSNER_1989, ROSNER_1990, SCHOMAKER)
+from turbotab.core.methods.calibration import (BOOT_COPIES, CARROLL, FREEDMAN, LABEL, LONELY_RULE,
+                                               NO_CALIBRATION, RAO_WU, ROSNER_1989, ROSNER_1990,
+                                               SCHOMAKER)
 
 # The energy step's outputs the recalls measure (``methods.energy``'s lineage operations).
 ERROR_PRONE_OPERATIONS = ("residual", "density", "kept", "partition", "partition-other")
@@ -70,6 +82,39 @@ POPULATION = ("Under the surveyed population a calibrated coefficient's interval
               "blocked and recorded. To calibrate for these participants instead, answer the survey "
               "question \"these participants\" (the sample-only attestation).")
 UNCORRECTED_EXIT = "Keep the population's estimates uncorrected: record no calibration"
+# Why a declared calibration was not run, in the methods' words (``blocked``; MODELING_SEQUENCE §4,
+# block and record): the record's sentence restates it and the export carries it.
+POPULATION_BLOCKED = ("under the surveyed population no stratum held two PSUs with analyzed "
+                      "participants, leaving no bootstrap by PSU within strata for its interval")
+BLOCKED_NO_LINEAR = ("the linear model, the only family whose coefficient it corrects, was not "
+                     "fitted")
+BLOCKED_NOT_COMBINED = ("each analysis row was one record, not the mean of a person's repeated "
+                        "recalls")
+BLOCKED_TIME_POINTS = ("the rows repeated as time points, not as repeated recalls of one usual "
+                       "intake")
+BLOCKED_NONE = "no column of the outcome model was measured by the recalls"
+BLOCKED_UNSETTLED = "a question it rests on was not settled"
+BLOCKED_MISSING = "the handling of missing values it rests on was blocked"
+BLOCKED_PREDICTION = ("under prediction the model is used on recalls measured the same way, so "
+                      "there is no coefficient to correct")
+REASKED = ("Regression calibration was declared under another adjustment set, so it is re-asked "
+           "and was not run; the estimates are uncorrected.")
+
+
+def not_run_sentence(blocked: str) -> str:
+    """The methods text of a declared calibration that was not run."""
+    return (f"Regression calibration was declared as a secondary analysis, but {blocked}; it was "
+            f"blocked and recorded, and the estimates are uncorrected.")
+
+
+def record_facts(artifact: Any) -> dict[str, Any]:
+    """What the record's sentence of ``set_measurement_error`` reads from the calibration stage
+    when the methods text is assembled (``voice.restate``; ``ProjectService.methods``): why a
+    declared calibration was not run, by the fresh artifact as served; empty otherwise."""
+    if not isinstance(artifact, Mapping) or artifact.get("applies"):
+        return {}
+    blocked = artifact.get("blocked")
+    return {"set_measurement_error": {"blocked": str(blocked)}} if blocked else {}
 
 
 def population_exits() -> list[dict[str, Any]]:
@@ -112,10 +157,13 @@ class CalibratedExposure(_Model):
     feature: str  # the model-matrix column (``protein_adj``, ``kcal_from_fat``)
     source: str  # the raw nutrient column
     operation: str  # the energy step's operation ("residual", "partition", …; "as is")
-    naive: float | None
+    naive: float | None  # the primary's estimate: every participant it analyzes
     naive_ci_low: float | None = None
     naive_ci_high: float | None = None
-    p: float | None = None  # the uncorrected test of no association (Freedman 2011)
+    p: float | None = None  # the primary's test of no association (Freedman 2011)
+    # The uncorrected coefficient refit on the calibrated participants, when they are fewer than
+    # the primary's (None when they are the same people): the like-for-like comparison.
+    naive_refit: float | None = None
     estimate: float | None = None  # calibrated
     se: float | None = None  # the whole-chain bootstrap's standard deviation
     ci_low: float | None = None  # its percentile interval
@@ -150,6 +198,9 @@ class CalibrationArtifact(_Model):
     purpose: Literal["inference", "prediction"]
     applies: bool
     reason: str | None = None  # why nothing was calibrated
+    # Why a declared calibration was not run, in the methods' words (block and record): the
+    # record's sentence and the export say it. None when it ran, or when none was declared.
+    blocked: str | None = None
     # The ways past a block, each a decision the client can post (BLUEPRINT §11.3).
     exits: list[dict[str, Any]] = []
     family: str | None = None
@@ -167,7 +218,8 @@ class CalibrationArtifact(_Model):
     boot_copies: int = 0  # each bootstrap replicate's own imputations (0: none)
     attenuation: list[list[float]] | None = None  # Γ at the most common k, in ``calibrated`` order
     within_covariance: list[list[float]] | None = None  # Σ_uu, in ``calibrated`` order
-    n_persons: int = 0
+    n_persons: int = 0  # the participants calibrated
+    n_primary: int = 0  # the participants the primary analyzes (the uncorrected estimate's)
     n_boot: int = 0
     n_boot_ok: int = 0
     recalls: dict[str, int] = {}  # number of recalls -> people (energy recorded on each)
@@ -204,6 +256,21 @@ def current_calibration(state: Any) -> tuple[Any, list[str] | None]:
     if recorded is None:
         return spec, None
     return spec, (None if sorted(recorded) == declared_adjustment(state) else list(recorded))
+
+
+def reasked_clause(adjustment: Sequence[str] | None, state: Any) -> str | None:
+    """The record's clause when the adjustment set a calibration was declared under
+    (``adjustment``, the answer's own) is no longer the outcome model's under ``state``: it is
+    re-asked and not run (MODELING_SEQUENCE §2). None while the set stands."""
+    if adjustment is None or getattr(state, "purpose", None) != "inference":
+        return None
+    if sorted(adjustment) == declared_adjustment(state):
+        return None
+    from turbotab.core.voice import listing
+
+    was = listing(list(adjustment), limit=8) if adjustment else "no covariate"
+    return (f"when the model adjusted for {was}; the adjustment set has changed since, so the "
+            f"declaration is re-asked and was not run, and the estimates are uncorrected")
 
 
 def invalidated(spec: Any, recorded: Sequence[str], state: Any) -> tuple[str, list[dict[str, Any]]]:
@@ -443,6 +510,11 @@ def methods_sentence(method: str, exposures: Sequence[Mapping[str, Any]], recall
     by_copy = " by each imputed copy's own energy model" if run.get("imputed") else ""
     per_day = (f" Energy was adjusted on each recall day{by_copy} before calibration."
                if run.get("per_day") else "")
+    n_primary = int(run.get("n_primary") or 0)
+    left = (f" Of the {n_primary:,} participants the primary analyzes, {n_primary - n_persons:,} "
+            f"had no recall day with every calibrated intake recorded and were left out of the "
+            f"calibration; the uncorrected estimate beside it is the primary's, on all "
+            f"{n_primary:,}." if n_primary > n_persons else "")
     spread = "covariance" if run.get("calibration") == "multivariate" else "variance"
     weighted = (" The calibration and the outcome model were survey-weighted, PSUs resampled by "
                 f"Rao and Wu's bootstrap ({RAO_WU})." if run.get("weighted") else "")
@@ -458,7 +530,8 @@ def methods_sentence(method: str, exposures: Sequence[Mapping[str, Any]], recall
         interval = (f" Only {boot:,} of {int(run.get('n_boot') or 0):,} bootstrap resamples could "
                     f"be calibrated, too few for an interval, so none is reported.")
     return (f"{clause}. Calibration ({source}; {CARROLL}) used the within-person {spread} of the "
-            f"recalls of the {n_repeat:,} participants with two or more ({days}).{per_day}{weighted}"
+            f"recalls of the {n_repeat:,} participants with two or more ({days}).{left}{per_day}"
+            f"{weighted}"
             f"{interval} It is a declared secondary analysis beside the uncorrected estimate, whose "
             f"test of no association is the primary's; it {LABEL}.")
 
@@ -492,6 +565,65 @@ def resampling_of(survey: Any, clusters: Any, row_ids: np.ndarray) -> Any:
     return Resampling("persons", n)
 
 
+def cluster_floor(clusters: Any, persons: np.ndarray) -> tuple[str, str] | None:
+    """``(reason, blocked)`` when the analyzed participants ``persons`` (positions among the
+    clusters' rows) lie in fewer whole clusters than the floor (``models.inference.min_clusters``,
+    the one the fit refuses cluster-robust intervals below, MODELING_SEQUENCE §2 "repeated units or
+    clusters ... with refusal below a floor"); else None. A bootstrap that redraws so few clusters
+    rests on a handful of units, so the calibrated coefficient has no interval to carry."""
+    from turbotab.core.models.inference import min_clusters
+
+    if clusters is None or not getattr(clusters, "clustered", False):
+        return None
+    G = int(len(np.unique(np.asarray(clusters.codes)[persons])))
+    floor = min_clusters()
+    if G >= floor:
+        return None
+    column = clusters.column
+    return ((f"The analyzed participants lie in {G} `{column}` units, fewer than the {floor} "
+             f"TurboTab requires for cluster-robust intervals (the fit reports none for the "
+             f"uncorrected estimate either). A calibrated coefficient's interval would come from a "
+             f"bootstrap redrawing {G} whole clusters, which rests on a handful of units, so "
+             f"regression calibration is refused here."),
+            (f"the participants lay in {G} `{column}` units, fewer than the {floor} that "
+             f"cluster-robust intervals require, too few for a bootstrap of whole clusters to "
+             f"carry its interval"))
+
+
+def analysis_design(ctx: Any, state: Any, index: Any) -> tuple[Any, Any, np.ndarray,
+                                                                 np.ndarray | None]:
+    """``(clusters, survey, keep, weights)`` for the analysis rows ``index`` (row ids): the units
+    the intervals cluster by (a confirmed grouping; settled readings only), the survey answer as
+    the fit applies it (``stages.modeling._survey``), which rows the calibration may hold (the
+    survey domain under the population answer, else all) and their survey weights (None unless
+    the population answer). The stage and its preview (``method_previews.calibration_numbers``)
+    both read the design through this, so the preview's λ is the stage's."""
+    from turbotab.core.models.inference import INDEPENDENT, cluster_columns, resolve_clusters
+    from turbotab.core.models.pipeline import modeling_frame
+    from turbotab.core.stages.data import open_store
+    from turbotab.core.stages.modeling import _survey
+
+    rows = np.asarray(index, dtype=np.int64)
+    with open_store(ctx) as store:
+        unit_columns = cluster_columns(state, store.columns)
+        units = modeling_frame(store, unit_columns, rows) if unit_columns else None
+    clusters = resolve_clusters(state, units) if units is not None else INDEPENDENT
+    if clusters.refusal:
+        clusters = INDEPENDENT
+    survey, _ = _survey(ctx, clusters)
+    keep = np.ones(len(rows), dtype=bool)
+    weights: np.ndarray | None = None
+    if survey is not None and survey.answer == "population" and survey.design is not None \
+            and not survey.refusal:
+        from turbotab.core.models.survey import domain_of
+
+        domain = domain_of(rows, survey.design)
+        keep &= np.asarray(domain.keep, dtype=bool)
+        weights = np.full(len(rows), np.nan)
+        weights[np.flatnonzero(domain.keep)] = domain.weight
+    return clusters, survey, keep, weights
+
+
 def _impute(spec: Any, X: pd.DataFrame, y: Any, task: str, m: int, seed: int, survey: Any,
             clusters: Any, nested: Any, factors: Any,
             time_invariant: Sequence[str] | None = None) -> list[pd.DataFrame]:
@@ -523,13 +655,12 @@ def calibration_stage(ctx: StageContext) -> Bundle:
                                                    logistic_fit, model_covariance, ols_fit,
                                                    whole_chain)
     from turbotab.core.methods.missing import copy_template
-    from turbotab.core.models.inference import (INDEPENDENT, Clusters, cluster_columns,
-                                                inference_table, resolve_clusters)
+    from turbotab.core.models.inference import INDEPENDENT, Clusters, inference_table
     from turbotab.core.models.inner_cv import fit_pipeline
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
     from turbotab.core.stages.data import open_store
-    from turbotab.core.stages.modeling import (_missing_for_table, _settled_factors, _survey, _task,
+    from turbotab.core.stages.modeling import (_missing_for_table, _settled_factors, _task,
                                                coded_outcome)
     from turbotab.core.stages.working import effective_repeat_kind
 
@@ -542,6 +673,12 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     structure = getattr(structure, "data", structure)
 
     def done(**fields: Any) -> Bundle:
+        # A declared calibration that does not run is blocked and recorded (MODELING_SEQUENCE §4):
+        # ``blocked`` says why in the methods' words, and the methods text is that sentence.
+        if method == "none" or fields.get("applies"):
+            fields.pop("blocked", None)
+        elif fields.get("blocked"):
+            fields.setdefault("methods", not_run_sentence(str(fields["blocked"])))
         fields.setdefault("methods", methods_sentence(method, [], fields.get("recalls") or {},
                                                       int(fields.get("n_persons") or 0)))
         artifact = CalibrationArtifact(method=method, purpose="inference" if inference else "prediction",
@@ -550,15 +687,15 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         return Bundle(data=artifact.model_dump(mode="json"))
 
     if not inference:
-        return done(applies=False, reason=PREDICTION)
+        return done(applies=False, reason=PREDICTION, blocked=BLOCKED_PREDICTION)
     spec_now, recorded = current_calibration(state)
     if recorded is not None:
         reason, exits = invalidated(spec_now, recorded, state)
-        return done(applies=False, reason=reason, exits=exits)
+        return done(applies=False, reason=reason, exits=exits, methods=REASKED)
     if working.get("aggregation") is None:
-        return done(applies=False, reason=NOT_COMBINED)
+        return done(applies=False, reason=NOT_COMBINED, blocked=BLOCKED_NOT_COMBINED)
     if effective_repeat_kind(state, structure) == "time_points":
-        return done(applies=False, reason=TIME_POINTS)
+        return done(applies=False, reason=TIME_POINTS, blocked=BLOCKED_TIME_POINTS)
 
     task = _task(ctx)
     design = ctx.inputs["design"]
@@ -571,14 +708,10 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     ctx.progress(0.03, "Reading the analysis rows and each person's recalls")
     with open_store(ctx) as store:
         frame = modeling_frame(store, [*spec.inputs, state.target], rows, outcome=state.target)
-        unit_columns = cluster_columns(state, store.columns)
-        units = modeling_frame(store, unit_columns, rows) if unit_columns else None
-    clusters = resolve_clusters(state, units) if units is not None else INDEPENDENT
-    if clusters.refusal:
-        clusters = INDEPENDENT
-    survey, _ = _survey(ctx, clusters)
+    clusters, survey, keep, weights_all = analysis_design(ctx, state, frame.index)
     if survey is not None and survey.refusal and method != "none":
-        return done(applies=False, reason=survey.refusal, exits=list(survey.exits))
+        return done(applies=False, reason=survey.refusal, exits=list(survey.exits),
+                    blocked=BLOCKED_UNSETTLED)
     y_all = coded_outcome(task, frame[state.target].to_numpy(), state.event)
     X_all = frame[list(spec.inputs)]
     raw_columns = list(dict.fromkeys([*spec.inputs, *([energy] if energy else [])]))
@@ -598,31 +731,25 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         return done(applies=False, reason="Not corrected, as answered.", recalls=recalls,
                     n_persons=n_persons)
     if "linear" not in (state.models or []) or "linear" not in pipelines:
-        return done(applies=False, reason=NO_LINEAR, recalls=recalls, n_persons=n_persons)
+        return done(applies=False, reason=NO_LINEAR, recalls=recalls, n_persons=n_persons,
+                    blocked=BLOCKED_NO_LINEAR)
     if task not in ("regression", "binary"):
+        outcome = task.replace("_", "-")
         return done(applies=False, reason=(
             f"Regression calibration here corrects a least-squares or logistic coefficient; a "
-            f"{task.replace('_', '-')} outcome's coefficients are not corrected."),
-            recalls=recalls, n_persons=n_persons)
+            f"{outcome} outcome's coefficients are not corrected."),
+            recalls=recalls, n_persons=n_persons,
+            blocked=f"it corrects a least-squares or logistic coefficient, not a {outcome} one")
 
     # ── the rows: the domain under the population answer, the imputations under MI ──
     population = survey is not None and survey.answer == "population" and survey.design is not None
-    keep = np.ones(n_persons, dtype=bool)
-    weights_all: np.ndarray | None = None
-    if population:
-        from turbotab.core.models.survey import domain_of
-
-        domain = domain_of(frame.index, survey.design)
-        keep &= np.asarray(domain.keep, dtype=bool)
-        weights_all = np.full(n_persons, np.nan)
-        weights_all[np.flatnonzero(domain.keep)] = domain.weight
     resampling = resampling_of(survey, clusters, frame.index.to_numpy(dtype=np.int64))
     if resampling.kind == "psu_within_strata":
         per = pd.Series(list((resampling.design_psus or {}).values())).value_counts()
         present = set(resampling.stratum[keep].tolist())
         if not any(int(per.get(s, 0)) >= 2 for s in present):
             return done(applies=False, reason=POPULATION, exits=population_exits(),
-                        recalls=recalls, n_persons=n_persons)
+                        recalls=recalls, n_persons=n_persons, blocked=POPULATION_BLOCKED)
     from turbotab.core.readings import nesting
 
     nested = nesting(state, dict((design.objects or {}).get("nested") or {}), columns=spec.inputs)
@@ -631,7 +758,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
                                  clusters=clusters if clustered else None, nested=nested)
     if missing is not None and missing.refusal:
         return done(applies=False, reason=missing.refusal, exits=list(missing.exits),
-                    recalls=recalls, n_persons=n_persons)
+                    recalls=recalls, n_persons=n_persons, blocked=BLOCKED_MISSING)
     imputations = getattr(missing, "imputations", None) if missing is not None else None
     imputed = imputations is not None and getattr(imputations, "method", "") != "supplied"
     plan = dict(getattr(imputations, "plan", None) or {}) if imputed else {}
@@ -650,19 +777,20 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     items = error_prone(first, columns, spec.roles, energy)
     if not items:
         return done(applies=False, reason=NONE_ERROR_PRONE, family="linear", recalls=recalls,
-                    n_persons=n_persons)
+                    n_persons=n_persons, blocked=BLOCKED_NONE)
     shaped = [i["feature"] for i in items if _nonlinear(columns, i["feature"])]
     if shaped:
         from turbotab.core.voice import listing
 
+        has = "has" if len(shaped) == 1 else "have"
         return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
-            f"{listing(shaped)} {'has' if len(shaped) == 1 else 'have'} a "
+            f"{listing(shaped)} {has} a "
             f"declared spline or quintiles; regression calibration here corrects a linear term, so "
             f"E[X | W̄, Z] would be put through a curve it was not fit for."),
             exits=[{"label": "Calibrate the linear form of the intake (the form question)",
-                    "decision": None},
-                   {"label": "Record no calibration",
-                    "decision": {"kind": "set_measurement_error", "method": "none"}}])
+                    "decision": None}, dict(NO_CALIBRATION)],
+            blocked=(f"{listing(shaped)} had a declared spline or quintiles, and it corrects a "
+                     f"linear term"))
     raw = list(dict.fromkeys(c for i in items for c in i["inputs"]))
     by_mean = {c: combine_rule(state, working, c) for c in raw}
     other = sorted(c for c, rule in by_mean.items() if rule != "mean")
@@ -670,11 +798,13 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         from turbotab.core.voice import listing
 
         c = other[0]
+        combined = (f"{listing(other)} {'was' if len(other) == 1 else 'were'} combined "
+                    f"by {'its' if len(other) == 1 else 'their'} {by_mean[c]} record, not the mean "
+                    f"of the recalls")
         return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
-            f"{listing(other)} {'was' if len(other) == 1 else 'were'} combined "
-            f"by {'its' if len(other) == 1 else 'their'} {by_mean[c]} record, not the mean of the "
-            f"recalls, so the error is a single day's; combine by the mean to calibrate."),
-            exits=[{"label": "Combine the recalls by the mean", "decision": None}])
+            f"{combined}, so the error is a single day's; combine by the mean to calibrate."),
+            exits=[{"label": "Combine the recalls by the mean", "decision": None},
+                   dict(NO_CALIBRATION)], blocked=combined)
     features = [i["feature"] for i in items]
     J = [columns.index(f) for f in features]
     covariates = [c for c in columns if c not in set(features)]
@@ -684,9 +814,11 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     named = [i for i in items if i["source"] in wanted or i["feature"] in wanted]
     if wanted and not named:
         names = ", ".join(f"`{c}`" for c in sorted(wanted))
+        are = "is" if len(wanted) == 1 else "are"
         return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons, reason=(
-            f"{names} {'is' if len(wanted) == 1 else 'are'} not among the model's intakes the "
-            f"recalls measure."))
+            f"{names} {are} not among the model's intakes the recalls measure."),
+            exits=[dict(NO_CALIBRATION)],
+            blocked=f"{names} {are} not among the model's intakes the recalls measure")
     exposure_roles = {c for c, r in spec.roles.items() if r == "exposure"}
     reported = named or [i for i in items if i["source"] in exposure_roles] or list(items)
 
@@ -699,6 +831,10 @@ def calibration_stage(ctx: StageContext) -> Bundle:
             "complete_case":
         keep &= ~X_all.isna().any(axis=1).to_numpy()
     persons = np.flatnonzero(keep)
+    floor = cluster_floor(clusters, persons) if resampling.kind == "clusters" else None
+    if floor is not None:
+        return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons,
+                    reason=floor[0], exits=[dict(NO_CALIBRATION)], blocked=floor[1])
     remap = np.full(n_persons, -1)
     remap[persons] = np.arange(len(persons))
     day_mask = remap[day_of] >= 0
@@ -745,12 +881,15 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     try:
         results = chain(X_rows, yv, day_frame, day_of, w)
     except CalibrationRefused as refused:
+        said = str(refused).rstrip(".")
         return done(applies=False, family="linear", recalls=recalls, n_persons=n_persons,
-                    reason=str(refused), exits=refused.exits)
+                    reason=str(refused), exits=refused.exits or [dict(NO_CALIBRATION)],
+                    blocked=f"{said[:1].lower()}{said[1:]}")
     point = quantities(results)
     cal0 = results[0][2].calibration
     p = len(J)
-    n_ok = len(persons)
+    n_ok = len(persons)  # the participants the primary analyzes
+    n_cal = int(cal0.n)  # those with a recall day of every calibrated intake: the calibration's
 
     # ── the whole-chain bootstrap ──
     design_obj = survey.design if population else None
@@ -809,24 +948,22 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     low, high = boot.interval()
     se = boot.se()
 
-    # ── the uncorrected model's own test (the primary's) ──
+    # ── the uncorrected estimate beside it: the primary's, on every participant it analyzes ──
     tables = []
-    for _, matrix, corrected in results:
-        m_rows = matrix.iloc[corrected.rows] if len(corrected.rows) != len(matrix) else matrix
-        m_rows = m_rows.copy()
-        m_rows.index = frame.index[persons][corrected.rows]
+    for _, matrix, _ in results:
+        m_rows = matrix.copy()
+        m_rows.index = frame.index[persons]
         if population:
             from turbotab.core.models.survey import survey_table
 
-            table = survey_table(task, m_rows, y_all[persons][corrected.rows], classes,
-                                 survey.design)
+            table = survey_table(task, m_rows, y_all[persons], classes, survey.design)
         else:
             cl = INDEPENDENT
             if clustered:
-                codes = np.asarray(clusters.codes)[persons][corrected.rows]
+                codes = np.asarray(clusters.codes)[persons]
                 cl = Clusters(column=clusters.column, codes=codes,
                               n_clusters=int(len(np.unique(codes))))
-            table = inference_table(task, m_rows, y_all[persons][corrected.rows], classes, cl)
+            table = inference_table(task, m_rows, y_all[persons], classes, cl)
         tables.append(table.rows)
     if len(tables) > 1:
         from turbotab.core.methods.imputation import pool_rows
@@ -850,9 +987,11 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         row = rows_naive.get(i["feature"], {})
         out.append({
             "feature": i["feature"], "source": i["source"], "operation": i["operation"],
-            "naive": float(point[p + (1 if contrast else 0) + j]),
+            "naive": _f(row["estimate"]) if row.get("estimate") is not None else None,
             "naive_ci_low": row.get("ci_low"), "naive_ci_high": row.get("ci_high"),
-            "p": row.get("p"), "estimate": float(point[j]),
+            "p": row.get("p"),
+            "naive_refit": float(point[p + (1 if contrast else 0) + j]) if n_cal < n_ok else None,
+            "estimate": float(point[j]),
             "se": _f(se[j]) if enough else None,
             "ci_low": _f(low[j]) if enough else None,
             "ci_high": _f(high[j]) if enough else None,
@@ -860,16 +999,18 @@ def calibration_stage(ctx: StageContext) -> Bundle:
             "attenuation": float(gamma[j, j]),
             "within_variance": float(cal0.sigma_uu[j, j]),
             "between_variance": float(cal0.conditional[j, j]),
-            "n_persons": int(cal0.n), "n_repeat": int(cal0.within.n_repeat), "recalls": rec_counts,
+            "n_persons": n_cal, "n_repeat": int(cal0.within.n_repeat), "recalls": rec_counts,
             "n_boot": n_boot, "n_boot_ok": boot.n_ok})
     contrasts = []
     if contrast is not None:
         a, b, step = contrast
         k = p
-        naive_c = step * (point[p + 1 + features.index(a)] - point[p + 1 + features.index(b)])
+        primary = [rows_naive.get(f, {}).get("estimate") for f in (a, b)]
+        naive_c = (step * (float(primary[0]) - float(primary[1]))
+                   if None not in primary else None)
         contrasts.append({
             "donor": items[features.index(b)]["source"], "recipient": items[features.index(a)]["source"],
-            "step_kcal": float(step), "naive": float(naive_c), "estimate": float(point[k]),
+            "step_kcal": float(step), "naive": naive_c, "estimate": float(point[k]),
             "se": _f(se[k]) if enough else None,
             "ci_low": _f(low[k]) if enough else None,
             "ci_high": _f(high[k]) if enough else None})
@@ -878,13 +1019,19 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         why = "; ".join(f"{n:,} {FAILURE_WORDS.get(k, k)}" for k, n in sorted(boot.failures.items()))
         rests = ("the interval rests on those" if enough else
                  f"fewer than {MIN_BOOT_SHARE:.0%} of them, so no interval is shown")
+        # A resample with no positive true-intake covariance is one whose day-to-day error swamped
+        # the spread between people: its attenuation was at or past zero, where the correction
+        # 1/λ is largest, so leaving it out trims the tail away from zero (said, REPAIR-RC).
+        tail = (" Those left out are resamples whose day-to-day error swamped the spread between "
+                "people, where the correction is largest, so the interval's end away from zero "
+                "may be too near." if enough and boot.failures.get("CalibrationRefused") else "")
         concerns.append(f"{boot.n_ok:,} of {n_boot:,} bootstrap resamples could be calibrated "
-                        f"({why}); {rests}.")
+                        f"({why}); {rests}.{tail}")
     if resampling.kind == "psu_within_strata" and resampling.lonely:
         one = resampling.lonely == 1
         concerns.append(f"{resampling.lonely:,} {'stratum has' if one else 'strata have'} a single "
-                        f"PSU, kept whole in every resample: {'it adds' if one else 'they add'} no "
-                        f"between-PSU variance, so the interval may be too narrow.")
+                        f"PSU, {'its PSU' if one else 'each PSU'} {LONELY_RULE} in the primary's "
+                        f"table: this overstates rather than understates the variance.")
     if p > 1:
         concerns.append("With several error-prone intakes the uncorrected test of one can be off, "
                         "because the error in the others leaves some confounding uncorrected "
@@ -893,10 +1040,14 @@ def calibration_stage(ctx: StageContext) -> Bundle:
         concerns.append("For a logistic outcome model, substituting E[X | W̄, Z] is an "
                         "approximation (Carroll et al. 2006, §4.2), close when the effect is "
                         "moderate.")
-    if n_ok < n_persons:
-        concerns.append(f"{n_persons - n_ok:,} of {n_persons:,} participants have no recall day "
-                        f"with every calibrated intake recorded (or lie outside the analysis) and "
-                        f"are not in the calibration.")
+    if n_cal < n_ok:
+        filled = " (the primary fills their intakes in each imputed copy)" if imputed else ""
+        concerns.append(f"{n_ok - n_cal:,} of the {n_ok:,} participants the primary analyzes have "
+                        f"no recall day with every calibrated intake recorded{filled}, so they are "
+                        f"not in the calibration: the calibrated estimate describes the other "
+                        f"{n_cal:,}, while the uncorrected estimate beside it, with its interval "
+                        f"and test, is the primary's on all {n_ok:,}. Refit on the same "
+                        f"{n_cal:,}, the uncorrected coefficient is given beside it.")
     per_day = adj is not None and adj.method in ("residual", "residual_energy_dropped", "density",
                                                  "density_multivariate")
     m = len(copies) if imputed else 0
@@ -905,7 +1056,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
            "calibrated": features, "contrast": contrast is not None,
            "resampling": resampling.kind, "imputed": imputed, "per_day": per_day,
            "weighted": population, "n_boot_ok": boot.n_ok, "m": m, "interval": enough,
-           "n_boot": n_boot}
+           "n_boot": n_boot, "n_primary": n_ok}
     copy = " on each copy" if imputed else ""
     order = [*([f"multiple imputation compatible with the analysis model (m = {m})"]
                if imputed else []),
@@ -916,14 +1067,15 @@ def calibration_stage(ctx: StageContext) -> Bundle:
              "the outcome model" + (" in each copy" if imputed else ""),
              "the whole-chain bootstrap" + (" (Boot MI)" if imputed else "")]
     return done(
-        applies=True, family="linear", recalls=rec_counts, n_persons=int(cal0.n), exposures=out,
+        applies=True, family="linear", recalls=rec_counts, n_persons=n_cal, n_primary=n_ok,
+        exposures=out,
         contrasts=contrasts, calibration=run["calibration"], calibrated=features,
         covariates=covariates, order=order, resampling=resampling.kind, weighted=population,
         imputations=m, boot_copies=BOOT_COPIES if imputed else 0,
         attenuation=[[float(v) for v in r] for r in gamma],
         within_covariance=[[float(v) for v in r] for r in cal0.sigma_uu],
         n_boot=n_boot, n_boot_ok=boot.n_ok, assumptions=list(ASSUMPTIONS), concerns=concerns,
-        methods=methods_sentence(method, out, rec_counts, int(cal0.n), run))
+        methods=methods_sentence(method, out, rec_counts, n_cal, run))
 
 
 def _f(value: Any) -> float | None:
@@ -952,8 +1104,10 @@ CALIBRATION_READS = ("measurement_error", "purpose", "models", "task", "event", 
 
 __all__ = [
     "ASSUMPTIONS", "CALIBRATION_READS", "CalibratedContrast", "CalibratedExposure",
-    "CalibrationArtifact", "POPULATION", "TEST", "UNCORRECTED_EXIT", "adjusted_exposures",
-    "calibration_stage", "combine_rule", "current_calibration", "day_rows", "declared_adjustment",
-    "error_prone", "invalidated", "main_clause", "methods_sentence", "population_exits",
-    "recall_matrix", "replicate_values", "resampling_of",
+    "CalibrationArtifact", "POPULATION", "POPULATION_BLOCKED", "REASKED", "TEST",
+    "UNCORRECTED_EXIT", "adjusted_exposures", "analysis_design", "calibration_stage",
+    "cluster_floor", "combine_rule", "current_calibration", "day_rows", "declared_adjustment",
+    "error_prone", "invalidated", "main_clause", "methods_sentence", "not_run_sentence",
+    "population_exits", "recall_matrix", "record_facts", "reasked_clause", "replicate_values",
+    "resampling_of",
 ]
