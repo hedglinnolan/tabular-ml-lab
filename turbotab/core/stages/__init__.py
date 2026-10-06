@@ -473,10 +473,12 @@ def build_graph() -> Graph:
             # shelf 14 (wave 2b integration): shelf 13 of REPAIR-VALID and of EXPLORE, one engine;
             # under prediction Riley's minimum runs before the ranking; below it the regression
             # families rank first (``models.selection.shelf_order``).
-            Stage("shelf", 14, ("working", "cohort", "target_info", "split"),
+            # shelf 15 (EXPLORE repair): a form rule set in Explore (``set_levers``) counts its
+            # spline columns among the candidate predictor parameters Riley's minimum reads.
+            Stage("shelf", 15, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
-                   "outcome_order", "exposure_forms",
+                   "outcome_order", "exposure_forms", "levers",
                    # MS4: under the population answer the families with no design-based
                    # estimator rank last, their block said before they are chosen.
                    "survey", *WP17_READS),
@@ -588,7 +590,10 @@ def build_graph() -> Graph:
             # quote a score are named (withheld from a client under inference, ruling 13); the
             # comparison substrate is kept for the evaluation stage; under prediction with the
             # population answer, the note points to the design-based scores.
-            Stage("fit", 23, ("working", "design", "split", "target_info", "cohort"),
+            # fit 24 (EXPLORE repair): the in-fold rules' logistic fits (nonlinearity by inner
+            # cross-validation, the imbalance correction's recalibration) converge as R's glm does
+            # whatever the size of a coefficient.
+            Stage("fit", 24, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -756,7 +761,9 @@ def build_graph() -> Graph:
             # explain 2 (wave 1b, MS6): the floor quotes the fit's own primary score.
             # explain 3 (wave 2a repair): the explained rows are a seeded random permutation, never
             # the file's order; the paragraph names only the families that drew curves.
-            Stage("explain", 3, ("working", "fit", "design", "target_info"),
+            # explain 4 (EXPLORE repair, ruling 13): under inference no cross-validated score is
+            # read, so no floor gates a curve or quotes a score.
+            Stage("explain", 4, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models"),
                   label="Explaining each fitted model"),
@@ -781,12 +788,17 @@ def build_graph() -> Graph:
             # the interpretable model against the flexible ones, draws the decision curve, scores
             # subgroups, offers shrinkage, runs internal–external CV and design-based CV, and under
             # inference shows no cross-validated score (only a declared selection sensitivity).
-            Stage("explore", 1, ("working", "cohort", "split", "target_info"),
+            # explore 2 (EXPLORE repair): a group column's groups are its code-or-amount reading's
+            # (BLUEPRINT §14.3), asked while unsettled.
+            Stage("explore", 2, ("working", "cohort", "split", "target_info"),
                   (*EXPLORE_READS, *ROLE_READS, *WP17_READS), explore_stage, heavy=True,
                   requires=("target", "split"), label="Exploring the rows Explore may read"),
             # evaluation 2 (wave 2b integration): the seal's opening left its reads, as nothing it
             # computes reads it (a re-seal withholds scores and changes no number, wave 2c).
-            Stage("evaluation", 2, ("working", "fit", "design", "split", "target_info"),
+            # evaluation 3 (EXPLORE repair): subgroups by the settled code-or-amount reading; the
+            # shrunk intercept by Newton with step halving, the recalibrated model's coefficients
+            # shrunk, and a failure said in the record, never the whole stage.
+            Stage("evaluation", 3, ("working", "fit", "design", "split", "target_info"),
                   (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
                   requires=("models",),
                   label="Fitting the benchmark and weighing the models"),

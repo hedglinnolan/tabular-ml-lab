@@ -16,7 +16,9 @@ holdout covers whatever Explore leads to. Under inference every analyzed row (BL
   pairs* — outcome-free; their levers are the in-fold variance filter and the selection menu;
 * *data quality across sociodemographic groups* (TRIPOD+AI 7: data-quality checks compared across
   groups) — each candidate predictor's missing share in each group of the columns named like sex,
-  age, race or ethnicity, and income, quoted as their headers read; its lever names the groups for
+  age, race or ethnicity, and income, quoted as their headers read; the groups are the column's
+  levels when its numbers are codes and its thirds when they are an amount, as the readings ledger
+  holds it (BLUEPRINT §14.3), and asked while that is unsettled; its lever names the groups for
   subgroup performance.
 
 **Outcome views are recorded as looked at, under both purposes** (``view_outcome``), and never
@@ -53,7 +55,9 @@ from turbotab.core.stages.data import open_store
 EXPLORE_READS: tuple[str, ...] = ("target", "purpose", "task", "event", "outcome_order", "lens",
                                   "outcome_views", "levers",
                                   "selection", "exposure_forms", "intended_use", "missing", "split",
-                                  "outcome_scale")
+                                  "outcome_scale",
+                                  # each group column's code-or-amount reading (BLUEPRINT §14.3)
+                                  "categorical", "aggregation", "codebooks")
 MAX_SHOWN = 12  # BLUEPRINT §11 rule 3: wide data shows what the choice touched (≤ 12)
 BINS = 10
 RARE_CLASS = 0.20  # a convention: the rarer class below a fifth of the rows is called rare here
@@ -299,12 +303,6 @@ def subgroup_candidates(columns: Sequence[str], skip: Sequence[str] = ()) -> dic
     return out
 
 
-def _group_labels(values: pd.Series) -> np.ndarray:
-    from turbotab.core.models.decision_curve import subgroup_labels
-
-    return subgroup_labels(values.to_numpy())[0]
-
-
 def _lever(question: str, options: Sequence[LeverOption]) -> Lever:
     return Lever(question=question, options=list(options))
 
@@ -391,6 +389,10 @@ def explore_stage(ctx: StageContext) -> Bundle:
         wanted = list(dict.fromkeys([*predictors, *candidates, target]))
         frame = modeling_frame(store, [c for c in wanted if c in set(store.columns)], ids,
                                outcome=target)
+        from turbotab.core.readings import whole_facts
+
+        # Each group column's code-or-amount question, read on the whole column (BLUEPRINT §14.3).
+        group_facts = whole_facts(list(candidates), None, store)
     y_raw = frame[target].to_numpy()
     coded = coded_outcome(task, y_raw, state.event, order=state.outcome_order)
     y = (pd.to_numeric(pd.Series(np.asarray(coded)), errors="coerce").to_numpy(dtype=float)
@@ -459,7 +461,8 @@ def explore_stage(ctx: StageContext) -> Bundle:
     for column, kind in candidates.items():
         if column not in frame.columns:
             continue
-        finding = _quality_finding(state, frame, predictors, column, kind, word)
+        finding = _quality_finding(state, frame, predictors, column, kind, word,
+                                   group_facts.get(column) if column in group_facts else None)
         if finding is not None:
             findings.append(finding)
 
@@ -684,14 +687,40 @@ def _collinear(frame: pd.DataFrame, numeric: Sequence[str]) -> list[tuple[str, s
 
 
 def _quality_finding(state: Any, frame: pd.DataFrame, predictors: Sequence[str], column: str,
-                     kind: str, word: str) -> ExploreFinding | None:
+                     kind: str, word: str, facts: Mapping[str, Any] | None = None
+                     ) -> ExploreFinding | None:
     """TRIPOD+AI 7: the share of rows with any candidate predictor blank, in each group of a
-    column named like a sociodemographic group."""
+    column named like a sociodemographic group. The groups are the column's levels when its numbers
+    are codes and its thirds when they are an amount, as the readings ledger holds it
+    (``decision_curve.grouping_of``); while that reading is unsettled the finding asks it and shows
+    no groups."""
+    from turbotab.core.models.decision_curve import grouping_of, subgroup_labels
+
     others = [c for c in predictors if c in frame.columns and c != column]
     if not others:
         return None
+    how, waiting = grouping_of(state, column, facts)
+    if how is None:
+        from turbotab.core.readings import ask_exits, guess_words
+
+        exits = ask_exits([waiting], state)
+        return ExploreFinding(
+            id=f"explore::quality::{column}", kind="quality_by_group",
+            summary=f"`{column}`'s groups wait on whether its numbers are codes or amounts",
+            columns=[column], view="table_focus",
+            detail=(f"Named like {kind}: a proposal from the header `{column}`. Its groups are its "
+                    f"levels if its numbers are codes and its thirds if they are an amount, and "
+                    f"that is not settled (best guess: {guess_words(waiting)}; "
+                    f"{waiting.evidence}). Checked on the {word} rows once answered (TRIPOD+AI 7)."),
+            lever=_lever(f"Are `{column}`'s numbers codes or amounts?", [
+                LeverOption(key=str(e["decision"]["value"]), label=e["label"],
+                            customary="Groups are often read off a column's count of values",
+                            sound="Its levels as codes, its thirds as an amount, as you confirm "
+                                  "(BLUEPRINT §14.3)",
+                            rung="recommended", decision=e["decision"])
+                for e in exits if (e.get("decision") or {}).get("kind") == "confirm_reading"]))
     blank = frame[others].isna().any(axis=1).to_numpy()
-    labels = _group_labels(frame[column])
+    labels = subgroup_labels(frame[column].to_numpy(), how)
     groups = []
     for level in sorted(set(labels.tolist()), key=lambda v: (v == "(blank)", v)):
         rows = labels == level
@@ -724,8 +753,9 @@ def _quality_finding(state: Any, frame: pd.DataFrame, predictors: Sequence[str],
     return ExploreFinding(
         id=f"explore::quality::{column}", kind="quality_by_group", summary=summary,
         columns=[column], view="table_focus", groups=groups,
-        detail=(f"Named like {kind}: a proposal from the header `{column}`, its groups as the "
-                f"column reads; checked on the {word} rows (TRIPOD+AI 7)."),
+        detail=(f"Named like {kind}: a proposal from the header `{column}`, its groups "
+                f"{'its own levels (codes)' if how == 'levels' else 'its thirds (an amount)'}; "
+                f"checked on the {word} rows (TRIPOD+AI 7)."),
         lever=lever)
 
 

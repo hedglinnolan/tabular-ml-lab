@@ -1071,7 +1071,15 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")
-    if d.holdout == 0:
+    if getattr(state, "purpose", None) == "inference":
+        # MODELING_SEQUENCE ruling 13 and §1 row 11 (EXPLORE repair): under inference no
+        # cross-validated score is shown, so the record says none was estimated, never how.
+        compared, boot, r2 = (f"no cross-validated score is reported under inference: the declared "
+                              f"model is reported by its estimates"), "", ""
+        if d.holdout == 0:
+            return (f"No rows were held out: every analyzed row estimates the coefficients, and "
+                    f"{compared}")
+    elif d.holdout == 0:
         return f"No rows were held out; performance was estimated by {folds}{manner}{boot}{r2}"
     share = tick(f"{d.holdout:.0%}")
     # No count: the held-out rows are drawn over every row with the outcome recorded, and the

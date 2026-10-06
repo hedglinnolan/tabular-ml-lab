@@ -114,9 +114,16 @@ def test_5_the_regression_with_splines_benchmark_and_the_baseline_are_always_fit
     """The review: "Always fit the no-predictor baseline and a properly specified regression benchmark
     with splines". The benchmark is least squares with every continuous predictor a restricted cubic
     spline, k by Harrell's rule on each training fold (5 knots above 100 rows) at Harrell's
-    percentiles, on the families' own folds. Reference: each fold refit by hand (``numpy.linalg.lstsq``
-    on the basis written out from RMS eq. 2.25), its mean squared error to 10⁻⁸; the baseline's fold
-    means likewise."""
+    percentiles, on the families' own folds. Reference: every fold of the comparison substrate (5
+    folds drawn 10 times) refit here by hand, never through the app's pipeline: the benchmark by
+    ``numpy.linalg.lstsq`` on the basis written out from RMS eq. 2.25, the baseline as each training
+    fold's mean, the linear family as least squares on the raw predictors. The evaluation stage's
+    served numbers are held to them (to 10⁻¹⁰): the benchmark's MSE (the mean of its folds'; the 260
+    rows make five equal folds of 52, so pooled and averaged agree), its gain over the baseline (each
+    fold's R² against the training fold's mean, which is 1 − the benchmark's MSE over the
+    baseline's, the baseline's own R² there being 0) with Nadeau & Bengio's corrected interval, and
+    its paired difference from the linear family on the same folds. (EXPLORE repair: the test used
+    to compare its hand folds with a re-run of the app's own pipeline, never the served score.)"""
     rng = np.random.default_rng(12)
     n = 260
     X = rng.normal(size=(n, 2))
@@ -129,46 +136,48 @@ def test_5_the_regression_with_splines_benchmark_and_the_baseline_are_always_fit
     rows = frame.set_index(frame.index.astype(np.int64)).loc[comparison["train_ids"]]
     bench = out["evaluation"].data["benchmark"]
     assert bench["label"] == "Regression with splines (benchmark)"
-    # The first repeat's five folds, refit by hand.
     from turbotab.core.stages.evaluation import BENCHMARK
 
-    fold_mse = []
-    for _, fit_rows, test_rows in comparison["pairs"][:5]:
+    mse_bench, mse_base, mse_linear, shares = [], [], [], []
+    for _, fit_rows, test_rows in comparison["pairs"]:
         tr, te = rows[fit_rows], rows[test_rows]
         k = ref.harrell_k(len(tr))
-        A_tr = np.column_stack([np.ones(len(tr))] + [ref.rcs_columns(tr[c].to_numpy(),
-                                                                      ref.harrell_knots(tr[c], k))
+        knots = {c: ref.harrell_knots(tr[c], k) for c in ("p1", "p2")}
+        A_tr = np.column_stack([np.ones(len(tr))] + [ref.rcs_columns(tr[c].to_numpy(), knots[c])
                                                      for c in ("p1", "p2")])
-        A_te = np.column_stack([np.ones(len(te))] + [ref.rcs_columns(te[c].to_numpy(),
-                                                                      ref.harrell_knots(tr[c], k))
+        A_te = np.column_stack([np.ones(len(te))] + [ref.rcs_columns(te[c].to_numpy(), knots[c])
                                                      for c in ("p1", "p2")])
         beta = np.linalg.lstsq(A_tr, tr["y"].to_numpy(), rcond=None)[0]
-        fold_mse.append(float(np.mean((te["y"].to_numpy() - A_te @ beta) ** 2)))
-    # the stage's own fold scores, recomputed from what it served (its versus-baseline gains)
+        mse_bench.append(float(np.mean((te["y"].to_numpy() - A_te @ beta) ** 2)))
+        mse_base.append(float(np.mean((te["y"].to_numpy() - tr["y"].mean()) ** 2)))
+        L_tr = np.column_stack([np.ones(len(tr)), tr[["p1", "p2"]].to_numpy()])
+        L_te = np.column_stack([np.ones(len(te)), te[["p1", "p2"]].to_numpy()])
+        b = np.linalg.lstsq(L_tr, tr["y"].to_numpy(), rcond=None)[0]
+        mse_linear.append(float(np.mean((te["y"].to_numpy() - L_te @ b) ** 2)))
+        shares.append(len(te) / len(tr))
+    mse_bench, mse_base, mse_linear = map(np.asarray, (mse_bench, mse_base, mse_linear))
+    assert len(mse_bench) == 50 and set(shares) == {52 / 208}
+    assert bench["metric"] == "mse"
+    assert bench["estimate"] == pytest.approx(float(mse_bench.mean()), rel=1e-10, abs=0)
+    # against the baseline: each fold's R² of the benchmark against the training fold's mean
+    gain, se = ref.corrected_t(1.0 - mse_bench / mse_base, float(np.mean(shares)))
     vb = bench["versus_baseline"]
     assert vb["metric"] == "r2" and vb["verdict"] == "better"
+    assert vb["gain"] == pytest.approx(gain, rel=1e-10, abs=0)
+    assert vb["se"] == pytest.approx(se, rel=1e-10, abs=0)
+    # against the linear family, paired on the same folds (a lower MSE favors the benchmark)
     differences = {(x["a"], x["b"]): x for x in bench["differences"]}
-    assert (BENCHMARK, "linear") in differences
-    # The benchmark's MSE over all fifty folds is the mean of its folds' (MS6's estimator), so the
-    # first five folds' mean bounds nothing; check the folds themselves through the substrate.
-    from sklearn.base import clone
-
-    from turbotab.core.models.inner_cv import fit_pipeline
-    from turbotab.core.models.linear import LINEAR
-    from turbotab.core.models.pipeline import DesignSpec, build_pipeline
-    from dataclasses import replace
-
-    spec = DesignSpec.from_dict(out["design"].objects["spec"])
-    pipe = build_pipeline(replace(spec, levers={"forms": "rule"}), LINEAR, "regression",
-                          "prediction", n, 2)
-    for (_, fit_rows, test_rows), want in zip(comparison["pairs"][:5], fold_mse):
-        model = fit_pipeline(clone(pipe), rows.loc[fit_rows, ["p1", "p2"]], rows.loc[fit_rows, "y"])
-        got = float(np.mean((rows.loc[test_rows, "y"] - model.predict(rows.loc[test_rows, ["p1", "p2"]])) ** 2))
-        assert abs(got - want) < 1e-8
-    assert bench["sentence"].startswith(
+    linear = differences[(BENCHMARK, "linear")]
+    mean, se = ref.corrected_t(mse_linear - mse_bench, float(np.mean(shares)))
+    assert linear["folds"] == 50 and linear["repeats"] == 10
+    assert linear["difference"] == pytest.approx(mean, rel=1e-10, abs=0)
+    assert linear["se"] == pytest.approx(se, rel=1e-10, abs=0)
+    assert linear["difference"] > 0  # the sine bends: the splines are ahead
+    assert bench["sentence"] == (
         "The regression-with-splines benchmark (every continuous predictor a restricted cubic "
         "spline, knots by Harrell's rule, on the same in-fold preprocessing) scored cross-validated "
-        "MSE ")
+        f"MSE {bench['estimate']:.3f} on the families' 50 paired folds, better than the no-predictor "
+        "baseline.")
     run.close()
 
 

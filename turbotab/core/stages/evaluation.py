@@ -41,7 +41,9 @@ EVALUATION_READS: tuple[str, ...] = ("target", "purpose", "task", "event", "outc
                                      "intended_use",
                                      "updating", "selection", "levers", "survey",
                                      "models", "split", "follow_up", "outcome_views",
-                                     "exposure_forms", "outcome_scale")
+                                     "exposure_forms", "outcome_scale",
+                                     # each subgroup column's code-or-amount reading (§14.3)
+                                     "categorical", "aggregation", "codebooks")
 BENCHMARK = "spline_benchmark"
 BENCHMARK_LABEL = "Regression with splines (benchmark)"
 SUPPORTED = ("regression", "binary")
@@ -310,14 +312,20 @@ def _prediction(ctx: StageContext, task: str, fit: Any, comparison: Mapping[str,
         from turbotab.core.models.decision_curve import subgroup_performance
         from turbotab.core.models.metrics import HEADLINE
 
+        from turbotab.core.readings import whole_facts
+
         ok = np.isfinite(reported_oof if reported_oof.ndim == 1 else reported_oof.sum(axis=1))
         metrics = [m for m in (metric, HEADLINE.get(task), "r2" if task == "regression" else None)
                    if m]
         columns = {c: frame[c].to_numpy()[ok] for c in use.subgroups if c in frame.columns}
+        # Each column's grouping is its code-or-amount reading as the ledger holds it (BLUEPRINT
+        # §14.3), the store reading the whole column's values for the question.
+        with open_store(ctx) as store:
+            facts = whole_facts(list(columns), None, store)
         out.subgroups = subgroup_performance(task, y[ok], reported_oof[ok], columns,
                                              classes=classes or None, metrics=metrics,
                                              reference=oof.reference[ok] if task == "regression"
-                                             else None)
+                                             else None, state=state, facts=facts)
 
     # ── shrinkage, offered as model updating ──
     out.shrinkage = _shrinkage(state, task, data, fit, X, y)
@@ -426,14 +434,32 @@ def _shrinkage(state: Any, task: str, data: Mapping[str, Any], fit: Any, X: pd.D
     if state.updating is None or state.updating.method != "shrinkage":
         offer["sentence"] = None
         return offer
+    from turbotab.core.models.decision_curve import deployed_coefficients
     from turbotab.core.models.linear import model_matrix
 
-    model = final.steps[-1][1]
-    coef = np.asarray(model.coef_, dtype=float).ravel()
+    # The deployed model's coefficients: with an imbalance correction, the recalibrated ones
+    # (a + b·(β₀ + xβ) on the log-odds scale), whose predictions the slope was measured on.
+    deployed = deployed_coefficients(final.steps[-1][1])
+    coef = None if deployed is None else deployed[1]
     matrix = model_matrix(final, X)
     yy = y.astype(float) if task == "regression" else (
         y == sorted(pd.unique(y).tolist(), key=lambda v: str(v))[-1]).astype(float)
-    done = shrinkage(task, matrix, yy, coef, slope)
+    if coef is None:
+        offer["note"] = "The regression's coefficients could not be read, so nothing was shrunk."
+        offer["sentence"] = None
+        return offer
+    try:
+        done = shrinkage(task, matrix, yy, coef, slope)
+    except ValueError as exc:
+        # Never the whole stage: the benchmark, the curve and the subgroups stand, and the record
+        # says why the updating was not applied, with the way forward.
+        offer["note"] = f"{exc} The model was not updated."
+        offer["exit"] = {"label": "No model updating",
+                         "decision": {"kind": "set_updating", "method": "none"}}
+        offer["sentence"] = (f"Shrinkage by the calibration slope ({slope:.3f}) was declared as "
+                             f"model updating but not applied, as {str(exc)[0].lower()}"
+                             f"{str(exc)[1:]}")
+        return offer
     offer.update(done)
     offer["sentence"] = (f"As model updating, the regression's coefficients were multiplied by "
                          f"{slope:.3f}, {how}, and its intercept re-estimated with the shrunk "

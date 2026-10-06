@@ -51,6 +51,11 @@ RELATION_TESTS = {
     "shrinkage_offered": "test_explore_chain:test_chain_a_prediction",
     "design_based_scores": "test_explore_chain:test_chain_a_prediction",
     "no_cv_score_under_inference": "test_explore_8_design_cv:test_8_under_inference_no_cross_validated_score_is_shown",
+    # EXPLORE repair
+    "stepwise_needs_rows": "test_explore_repair:test_3_stepwise_is_refused_exactly_where_the_smallest_fold_cannot_fit_every_column",
+    "spline_rule_counted_by_riley": "test_explore_repair:test_5_rileys_minimum_counts_the_spline_rules_columns_among_the_candidate_parameters",
+    "inner_cv_counted_by_riley": "test_explore_repair:test_5_rileys_minimum_counts_the_spline_rules_columns_among_the_candidate_parameters",
+    "subgroups_read_the_ledger": "test_explore_repair:test_4_subgroups_are_grouped_by_the_settled_reading_never_by_the_count_of_values",
 }
 
 

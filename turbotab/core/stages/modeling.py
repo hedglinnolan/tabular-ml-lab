@@ -156,8 +156,14 @@ def shelf_stage(ctx: StageContext) -> dict[str, Any]:
     from turbotab.core.readings import confirmed_codes
 
     # A spline or quintile exposure puts several columns in the model (WP12a); a sample-size
-    # criterion counts them as parameters too (WP8).
-    terms = model_terms(predictors, ctx.state.exposure_forms)
+    # criterion counts them as parameters too (WP8), and so are the spline columns of a form rule
+    # set in Explore (``set_levers``; EXPLORE repair): the rule's k on the training rows' effective
+    # size, the rarer class's count for a yes/no outcome.
+    effective = n if task in ("regression", "time_to_event") else (
+        n_events if task == "binary" and n_events else
+        min(class_counts) if class_counts else n)
+    terms = (model_terms(predictors, ctx.state.exposure_forms)
+             + rule_spline_terms(ctx.state, predictors, column_info, int(effective or n)))
     situation = Situation(task=task, purpose=ctx.state.purpose, n_rows=n,
                           n_features=terms, n_events=n_events, n_classes=n_classes,
                           n_parameters=predictor_parameters(predictors, column_info,
@@ -215,10 +221,48 @@ def predictor_parameters(predictors: Sequence[str], column_info: Mapping[str, An
     total = 0
     for column in predictors:
         info = column_info.get(column)
-        dtype = getattr(info, "dtype", None)
-        levels = int(getattr(info, "n_unique", 0) or 0)
+        dtype = _summary(info, "dtype")
+        levels = int(_summary(info, "n_unique") or 0)
         total += max(1, levels - 1) if (dtype in CATEGORY_DTYPES or column in codes) else 1
     return total
+
+
+def _summary(info: Any, field: str) -> Any:
+    """A column summary's field, from the store's ``ColumnInfo`` or the server's dict of it."""
+    if isinstance(info, Mapping):
+        return info.get(field)
+    return getattr(info, field, None)
+
+
+def rule_spline_terms(state: Any, predictors: Sequence[str], column_info: Mapping[str, Any],
+                      n_effective: int) -> int:
+    """The nonlinear spline columns a ``set_levers`` form rule puts among the candidate predictor
+    parameters under prediction (Riley et al., *BMJ* 2020;368:m441: the candidate predictor
+    parameters count "non-linear terms" as well as the predictors). Splines by Harrell's rule bend
+    every continuous predictor; the inner cross-validated choice may bend any of them, so each is a
+    candidate too. Each adds k − 2 columns beside its linear one, k by Harrell's rule on the
+    effective size the fit's rule reads (``methods.levers``): a predictor whose summaries read as a
+    number with at least ``MIN_DISTINCT`` values, not declared or confirmed as codes, and not already
+    given a declared form (``exposure_forms``, counted by ``model_terms``)."""
+    from turbotab.core.methods.levers import MIN_DISTINCT, knots_by_rule
+    from turbotab.core.readings import confirmed_codes
+
+    if getattr(state, "purpose", None) == "inference":
+        return 0
+    levers = getattr(state, "levers", None)
+    if levers is None or getattr(levers, "forms", "none") not in ("rule", "inner_cv"):
+        return 0
+    formed = set(getattr(state, "exposure_forms", None) or {})
+    codes = set(confirmed_codes(state))
+    bendable = 0
+    for column in predictors:
+        info = column_info.get(column)
+        dtype = _summary(info, "dtype")
+        levels = int(_summary(info, "n_unique") or 0)
+        if (column not in formed and column not in codes and dtype in ("numeric", "integer")
+                and levels >= MIN_DISTINCT):
+            bendable += 1
+    return (knots_by_rule(int(n_effective)) - 2) * bendable
 
 
 def _assay_concern(ctx: StageContext, task: str, row_ids: Any) -> str | None:
