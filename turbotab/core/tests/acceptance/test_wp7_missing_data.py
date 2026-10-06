@@ -458,20 +458,30 @@ PREDICTION_CONFIGS = {
 
 
 def _numbers(a, b, path=()):
-    """Every number of ``a`` against ``b`` (the same shape): the largest absolute difference."""
+    """Every number of ``a`` against ``b`` (the same shape), as (absolute difference, path, the
+    reference's value, the run's value)."""
     if isinstance(a, dict):
         assert set(a) == set(b), (path, set(a) ^ set(b))
-        return max([_numbers(a[k], b[k], (*path, k)) for k in a] or [0.0])
+        return [d for k in a for d in _numbers(a[k], b[k], (*path, k))]
     if isinstance(a, list):
         assert len(a) == len(b), path
-        return max([_numbers(u, v, (*path, i)) for i, (u, v) in enumerate(zip(a, b))] or [0.0])
+        return [d for i, (u, v) in enumerate(zip(a, b)) for d in _numbers(u, v, (*path, i))]
     if isinstance(a, (int, float)) and not isinstance(a, bool):
         if isinstance(a, float) and np.isnan(a):
             assert b is None or np.isnan(b), path
-            return 0.0
-        return abs(float(a) - float(b))
+            return []
+        return [(abs(float(a) - float(b)), path, a, b)]
     assert a == b, (path, a, b)
-    return 0.0
+    return []
+
+
+def _worst_first(diffs, tolerance: float, shown: int = 12) -> str:
+    """The differences above ``tolerance``, the worst first, one per line, with their path."""
+    over = sorted((d for d in diffs if d[0] > tolerance), key=lambda d: -d[0])
+    lines = [f"{len(over)} numbers differ by more than {tolerance:g}; the worst first:"]
+    lines += [f"{diff:.3g} at {'/'.join(map(str, path))}: reference {ref!r}, now {got!r}"
+              for diff, path, ref, got in over[:shown]]
+    return "\n".join(lines)
 
 
 @pytest.fixture(scope="module")
@@ -518,8 +528,8 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
             assert set(got["cv"]) - set(reference[name][family]["cv"]) == added
             trimmed[name][family] = {**got, "cv": {k: v for k, v in got["cv"].items()
                                                    if k not in added}}
-    worst = max(_numbers(reference[name], trimmed[name], (name,)) for name in reference)
-    assert worst <= 1e-9, worst
+    diffs = [d for name in reference for d in _numbers(reference[name], trimmed[name], (name,))]
+    assert max(d[0] for d in diffs) <= 1e-9, _worst_first(diffs, 1e-9)
 
 
 def test_2_the_linear_scores_match_scikit_learn_alone(prediction_run):
