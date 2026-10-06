@@ -740,8 +740,11 @@ None declared.
 | conflicts | `model-based or Rubin-only intervals` (id `model_or_rubin_intervals`) | any option | inference | Refused for a calibrated coefficient: the outcome model's own standard errors are too small (Keogh, Shaw & Gustafson 2020, Stat Med 39:2197, §6.1.2). *(rung: refused, with an exit)* Exits: the whole-chain bootstrap interval; no correction. | `turbotab.core.decisions:_calibrated_interval_is_the_whole_chain` |
 | implies | `multiple_imputation_compatible` (id `inside_each_copy`) | any option; when multiple imputation under inference | inference | The calibration runs inside each completed copy, after the copy's energy model, and each bootstrap resample is imputed again (Boot MI, Schomaker & Heumann 2018, Stat Med 37:2252). | `turbotab.core.stages.calibration:calibration_stage` |
 | implies | `survey_population` (id `psu_within_strata`) | any option; when the surveyed-population answer | inference | The calibration and the outcome model are survey-weighted, and PSUs are resampled within strata (Rao & Wu 1988, J Am Stat Assoc 83:231); with no stratum of two PSUs it is blocked and recorded, the sample-only attestation its exit. | `turbotab.core.stages.calibration:resampling_of` |
-| implies | `a declared secondary analysis beside the uncorrected estimate` (id `secondary_beside_uncorrected`) | any option; when regression calibration declared | inference | The calibrated estimate sits beside the uncorrected one, whose test of no association stays the primary's; it corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption). | `turbotab.core.stages.calibration:calibration_stage` |
-| invalidates | `the calibration's declaration` (id `adjustment_set_invalidates`) | any option; when a change to the adjustment set | inference | Declared again under the current adjustment set, never silently kept. | `turbotab.core.stages.calibration:current_calibration` |
+| implies | `a lonely PSU resampled as the primary centers it` (id `lonely_psu`) | any option; when the surveyed-population answer, a stratum with a single PSU | inference | A stratum with a single PSU is drawn twice or not at all, each with chance 1/2, so its PSU total varies about zero as R survey's lonely.psu "adjust" centers it, so the calibrated interval treats it as the primary's design-based table does, never as a stratum with no variance. | `turbotab.core.methods.calibration:psu_draw` |
+| conflicts | `fewer clusters than the floor` (id `cluster_floor`) | any option; when repeated units below the cluster floor | inference | Refused: with fewer whole clusters than cluster-robust intervals require, a bootstrap of clusters cannot carry the calibrated coefficient's interval, as the fit reports none for the uncorrected one. *(rung: refused, with an exit)* Exits: no correction. | `turbotab.core.stages.calibration:cluster_floor` |
+| implies | `a declared secondary analysis beside the uncorrected estimate` (id `secondary_beside_uncorrected`) | any option; when regression calibration declared | inference | The calibrated estimate sits beside the uncorrected one, whose estimate, interval and test of no association are the primary's; it corrects only within-person random error, assuming recalls are unbiased for usual intake (customary; sound under that assumption). | `turbotab.core.stages.calibration:calibration_stage` |
+| implies | `the calibration in the manuscript bundle` (id `in_the_export`) | any option; when regression calibration declared | inference | The calibrated estimates, their label and the methods paragraph reach the export; a declared calibration that was not run is said to be blocked, there and in the record. | `turbotab.core.export.tables:calibration_table` |
+| invalidates | `the calibration's declaration` (id `adjustment_set_invalidates`) | any option; when a change to the adjustment set | inference | Declared again under the current adjustment set, never silently kept; until then the record says it is re-asked and the export waits for it. | `turbotab.core.stages.calibration:current_calibration` |
 
 **Primary sources:**
 
@@ -753,6 +756,8 @@ None declared.
 - Rao & Wu 1988, J Am Stat Assoc 83:231
 - Keogh, Shaw & Gustafson 2020, Stat Med 39:2197
 - Boe et al. 2023, Am J Epidemiol 192:1406
+- R survey 4.5, lonely.psu "adjust" (onestage, onestrat)
+- Beaumont & Patak 2012, Int Stat Rev 80:127
 
 ### A domain transform of the exposure (log, energy model, scale scoring, omics normalization) (`exposure_transform`)
 
@@ -847,6 +852,9 @@ None declared.
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
 | implies | `the knots` (id `k-by-rule`) | any option; when a spline declared without k | prediction, inference | k is Harrell's rule on the effective sample size, the rule stated in the record | `turbotab.core.methods.exposure_form:complete_spec` |
+| invalidates | `the knots` (id `rows-rederive-k`) | any option; when a spline whose k the rule set, then a change of the analyzed rows (an exclusion, the complete cases, the consumers-only domain) | inference | k and the effective sample size the record states are re-derived on the rows the fit sees: the form question asks again, never keeping them | `turbotab.core.methods.exposure_form:rule_stale` |
+| conflicts | `a form of a column read as codes` (id `codes-take-no-form`) | any option; when a whole-numbered column whose code-or-amount reading is unsettled, or recorded as codes | prediction, inference | the reading is asked first (the card proposes no form on a guess); a column recorded as codes enters as indicators and takes no form *(rung: refused, with an exit)* Exits: confirm it holds amounts; confirm it holds codes. | `turbotab.core.methods.exposure_form:_form_reads_a_settled_reading` |
+| implies | `penalized likelihood-ratio tests` (id `separation-plr`) | any option; when a logistic model the data separate (Firth's penalized likelihood) | inference | the test of association, the nonlinearity and the global tests are penalized likelihood-ratio tests on the full design, as the table's own p-values are | `turbotab.core.methods.exposure_form:firth_lr_test` |
 | disables | `a linear refit after the nonlinearity test` (id `no-silent-linear-refit`) | any option; when a non-significant nonlinearity test | inference | the overall test stays the test of association; a switch is recorded after the estimates were seen | `turbotab.core.methods.exposure_form:exposure_tests` |
 | implies | `the quintile table` (id `quintiles-beside`) | any option; when the declared exposure's spline under inference | inference | the quintiles are produced beside it, boundaries and reference stated, the p for linear trend (customary) from category medians | `turbotab.core.methods.exposure_form:design_forms` |
 | implies | `D1 pooling` (id `form-mi-d1`) | any option; when multiple imputation | inference | the overall, nonlinearity and global tests are pooled by D1 at knots fixed on the observed values | `turbotab.core.stages.modeling:_pool_form_tests` |
@@ -1147,6 +1155,7 @@ None declared.
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
 | implies | `in_fold_rule` (id `spline_rule_in_fold`) | any option | prediction | the spline's knots are placed again in every training fold and resample, so its optimism is in the corrected score | `turbotab.core.methods.levers:RuleSplines` |
+| implies | `candidate_parameters` (id `spline_rule_counted_by_riley`) | any option | prediction | the rule's spline columns count among the candidate predictor parameters Riley's minimum sample size reads before the shelf | `turbotab.core.stages.modeling:rule_spline_terms` |
 
 **Primary sources:**
 
@@ -1186,6 +1195,7 @@ None declared.
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
 | implies | `in_fold_choice` (id `form_chosen_in_fold`) | any option | prediction | each predictor's form is chosen anew in every training fold, so the choice's optimism is in the corrected score | `turbotab.core.methods.levers:InnerCVForms` |
+| implies | `candidate_parameters` (id `inner_cv_counted_by_riley`) | any option | prediction | every spline the inner choice may keep counts among the candidate predictor parameters Riley's minimum sample size reads | `turbotab.core.stages.modeling:rule_spline_terms` |
 
 **Primary sources:**
 
@@ -1309,6 +1319,7 @@ None declared.
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
 | conflicts | `selection_outside_resampling` (id `selection_outside_refused`) | any option; when where = outside, or a pre-selection on these rows' outcome (TRIPOD+AI 9a) | prediction | selection on every row before the resampling gives a false performance number, so it is refused *(rung: refused, with an exit)* Exits: Run it in-fold. | `turbotab.core.models.variable_selection:_selection_runs_in_fold` |
+| conflicts | `too_few_rows_for_every_column` (id `stepwise_needs_rows`) | `stepwise`; when candidate columns at least the smallest training fold's rows less one | prediction | backward elimination starts from every candidate column and an intercept, so it is refused where the smallest training fold has too few rows to fit them *(rung: refused, with an exit)* Exits: Elastic net, in each training fold; In-fold screening by correlation with the outcome; No selection; Keep every predictor linear. | `turbotab.core.models.variable_selection:_stepwise_has_rows` |
 | implies | `inclusion_frequencies` | any option; when any selection method | prediction | each candidate's inclusion frequency across the folds and resamples is reported | `turbotab.core.models.variable_selection:inclusion_frequencies` |
 | conflicts | `selection_as_primary` (id `selection_only_sensitivity`) | any option; when a selection answer under inference without sensitivity | inference | under inference selection is not offered for the reported model; it runs as a labeled sensitivity analysis only *(rung: refused, with an exit)* Exits: Run it as a labeled sensitivity analysis. | `turbotab.core.models.variable_selection:_selection_is_sensitivity_under_inference` |
 | implies | `rubins_rules_wald` (id `selection_pooled_wald`) | any option; when multiple imputation | inference | the sensitivity analysis's Wald tests are pooled across the imputed copies by Rubin's rules (D1 for several coefficients) | `turbotab.core.models.variable_selection:backward_wald` |
@@ -1434,7 +1445,8 @@ None declared.
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
 | implies | `the with-and-without pair` (id `guess-pair-for-measurements`) | any option; when a body measure, a clinical measurement or a medication measured with the exposure, its block's guess accepted | inference | the primary leaves it out and the declared secondary adds it (Model 3) | `turbotab.core.covariate_guesses:guess` |
-| implies | `left out` (id `guess-outcome-measure-out`) | any option; when a clinical measurement of the outcome's own group (HbA1c beside glucose) | inference | another measure of the outcome is a consequence of it, so the criterion leaves it out | `turbotab.core.covariate_guesses:guess` |
+| implies | `left out` (id `guess-outcome-measure-out`) | any option; when a measurement of the outcome's own group taken at the same visit (HbA1c beside glucose, HDL beside LDL) | inference | it measures the state the outcome measures, so the criterion leaves it out, and the card and the record call it another measure of the outcome's own kind, never a consequence of the outcome or a possible collider | `turbotab.core.covariate_guesses:guess` |
+| implies | `the with-and-without pair` (id `guess-baseline-outcome-kind-pair`) | any option; when a baseline measurement of the outcome's own group beside an outcome over follow-up (HbA1c beside incident diabetes, blood pressure beside incident hypertension, LDL beside LDL at twelve months) | inference | measured before the outcome it is no consequence of it, so it takes its class's guess: declared without it and, beside, with it | `turbotab.core.covariate_guesses:guess` |
 | implies | `exactly the listed covariates` (id `block-settles-listed`) | any option; when a block's tap or a multi-select answer | inference | the answer settles exactly the columns it lists, never another | `turbotab.core.decisions:fold` |
 | conflicts | `a mediator in a total-effect set` (id `mediator-kept-blocked`) | any option; when a covariate guessed a possible mediator answered to be kept in the primary | inference | blocked and recorded: the exits leave it out with the secondary beside, or keep it recorded as not a total effect *(rung: blocked until recorded)* Exits: leave it out, further adjusted for it beside; keep it, recorded: not a total effect. | `turbotab.core.estimand:_mediators_stay_out_of_a_total_effect` |
 | implies | `the settled roles and the adjustment answers` (id `bulk-roles-keep-confirmations`) | any option; when a bulk roles answer that re-records a settled role unchanged | inference | a role confirmed one by one stays confirmed, so the adjustment set is not reopened | `turbotab.core.decisions:_roles_record_what_rode_along` |
@@ -1663,7 +1675,7 @@ None declared.
 
 **Methods sentence:**
 
-- Written by `turbotab.core.methods.interaction:sentence`: The methods sentence one declared modifier writes (verbatim in the record and the artifact).
+- Written by `turbotab.core.methods.interaction:sentence`: The methods sentence one declared modifier writes (verbatim in the record and the artifact). One that no family could estimate says so and why, in place of a contrast, a reference and scales it does not have (the FORM repair: never "`region` at " nor a difference of differences for an odds ratio).
 
 **Relations:**
 
@@ -1674,6 +1686,9 @@ None declared.
 | implies | `the family of tests` (id `post-hoc-labeled`) | any option; when a modifier declared after the estimates were seen | inference | it is labeled suggested by data inspection and counted in the family | `turbotab.core.methods.interaction:family_count` |
 | implies | `SMC-FCS with the product terms` (id `modification-mi-compatible`) | any option; when multiple imputation | inference | the imputation model holds the products; every scalar is pooled by Rubin's rules and the heterogeneity test by D1 | `turbotab.core.methods.interaction:impute_with_products` |
 | implies | `the analysis-plan lock` (id `modification-in-plan`) | any option; when a declared modifier | inference | it is part of the plan; one declared after the estimates were seen is marked so | `turbotab.core.plan_lock:plan_of` |
+| conflicts | `a stratum that cannot carry the effect` (id `stratum-estimable`) | any option; when a modifier stratum with one row, one exposure value, or no event (or only events) | inference | refused with the reason, never fit to an overflow; if the rows change later, the stage says it in plain words and the family names it *(rung: refused, with an exit)* Exits: another modifier. | `turbotab.core.methods.interaction:_strata_hold_the_effect` |
+| implies | `the family of tests` (id `withdrawn-still-counted`) | any option; when a modifier withdrawn after the estimates were seen | inference | it is no longer estimated and still counted in the family the record states | `turbotab.core.methods.interaction:family_count` |
+| implies | `profile intervals and a penalized likelihood-ratio heterogeneity test` (id `separation-profile`) | any option; when a logistic model the data separate | inference | each effect, combination and ratio of odds ratios carries its profile penalized-likelihood interval, the heterogeneity test is the penalized likelihood-ratio test, the RERI is given without an interval | `turbotab.core.methods.interaction:firth_contrast` |
 | implies | `the exposure's adjustment set` (id `modification-own-set`) | any option; when effect modification | inference | the model is the exposure's own, the modifier beside it | `turbotab.core.methods.interaction:adjusted_sets` |
 
 **Primary sources:**
@@ -1761,9 +1776,9 @@ None declared.
 
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
-| implies | `the grouping question` (id `structure-asks`) | any option; when a column with more than ten repeating values and several rows on each, under inference, whatever its name | inference | the grouping question is asked of it, with its guess | `turbotab.core.groupings:candidates` |
+| implies | `the grouping question` (id `structure-asks`) | any option; when a column with more than ten repeating values and several rows on each, under inference, whatever its name or the shape of its counts (a measurement's shape turns the guess to no; a measured word beside a grouping word lets the values lead) | inference | the grouping question is asked of it, with its guess; only a name read as a measured quantity and no grouping scopes a column out | `turbotab.core.groupings:candidates` |
 | implies | `cluster-robust intervals` (id `grouping-implies-cr2`) | any option; when a grouping answered under inference | inference | the intervals are CR2 by it with Bell–McCaffrey degrees of freedom | `turbotab.core.models.inference:resolve_clusters` |
-| conflicts | `independent intervals over a grouping` (id `none-over-grouping`) | any option; when "nothing groups them" over a column guessed to group the participants | inference | blocked and recorded: the exits adjust and cluster, or record the answer *(rung: blocked until recorded)* Exits: adjust for it and cluster by it; record that they group nothing. | `turbotab.core.estimand:_no_grouping_is_recorded` |
+| conflicts | `independent intervals over a grouping` (id `none-over-grouping`) | any option; when "nothing groups them" over a column guessed to group the participants | inference | blocked and recorded: the exits adjust and cluster, say that a column guessed from its values alone marks no group (its reading confirmed no), or record the answer *(rung: blocked until recorded)* Exits: adjust for it and cluster by it; a column guessed from its values alone marks no group; record that they group nothing. | `turbotab.core.estimand:_no_grouping_is_recorded` |
 
 **Primary sources:**
 
@@ -1798,7 +1813,7 @@ None declared.
 
 **Methods sentence:**
 
-- Written by `turbotab.core.methods.interaction:sentence`: The methods sentence one declared modifier writes (verbatim in the record and the artifact).
+- Written by `turbotab.core.methods.interaction:sentence`: The methods sentence one declared modifier writes (verbatim in the record and the artifact). One that no family could estimate says so and why, in place of a contrast, a reference and scales it does not have (the FORM repair: never "`region` at " nor a difference of differences for an odds ratio).
 
 **Relations:**
 
@@ -1809,6 +1824,9 @@ None declared.
 | implies | `the family of tests` (id `post-hoc-labeled`) | any option; when a modifier declared after the estimates were seen | inference | it is labeled suggested by data inspection and counted in the family | `turbotab.core.methods.interaction:family_count` |
 | implies | `SMC-FCS with the product terms` (id `modification-mi-compatible`) | any option; when multiple imputation | inference | the imputation model holds the products; every scalar is pooled by Rubin's rules and the heterogeneity test by D1 | `turbotab.core.methods.interaction:impute_with_products` |
 | implies | `the analysis-plan lock` (id `modification-in-plan`) | any option; when a declared modifier | inference | it is part of the plan; one declared after the estimates were seen is marked so | `turbotab.core.plan_lock:plan_of` |
+| conflicts | `a stratum that cannot carry the effect` (id `stratum-estimable`) | any option; when a modifier stratum with one row, one exposure value, or no event (or only events) | inference | refused with the reason, never fit to an overflow; if the rows change later, the stage says it in plain words and the family names it *(rung: refused, with an exit)* Exits: another modifier. | `turbotab.core.methods.interaction:_strata_hold_the_effect` |
+| implies | `the family of tests` (id `withdrawn-still-counted`) | any option; when a modifier withdrawn after the estimates were seen | inference | it is no longer estimated and still counted in the family the record states | `turbotab.core.methods.interaction:family_count` |
+| implies | `profile intervals and a penalized likelihood-ratio heterogeneity test` (id `separation-profile`) | any option; when a logistic model the data separate | inference | each effect, combination and ratio of odds ratios carries its profile penalized-likelihood interval, the heterogeneity test is the penalized likelihood-ratio test, the RERI is given without an interval | `turbotab.core.methods.interaction:firth_contrast` |
 | invalidates | `the adjustment set for the second exposure` (id `interaction-reasks-adjustment`) | any option; when an interaction | inference | the disjunctive cause criterion is asked again with the second exposure as the exposure; its confounders join the model | `turbotab.core.methods.interaction:missing_answers` |
 
 **Primary sources:**
@@ -2618,7 +2636,7 @@ None declared.
 
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
-| implies | `performance_floor` | any option | prediction, inference | A family whose cross-validated score does not beat the no-predictor baseline draws no curve, and says why. |  |
+| implies | `performance_floor` | any option | prediction | A family whose cross-validated score does not beat the no-predictor baseline draws no curve, and says why. |  |
 | implies | `unit_resampling` | any option | prediction, inference | Rows that repeat within a unit are resampled as whole units in the refits that measure stability. |  |
 | implies | `domain_transform` | any option | prediction, inference | Each curve is drawn on the exposure's final scale, as the model reads it after energy adjustment or normalization, the scale its form is declared on. |  |
 | conflicts | `effect_estimate` | `as_effect` | prediction, inference | An explanation describes a fitted model's predictions, not what changing an intake would do, so it is never reported as an effect. *(rung: refused, with an exit)* |  |
@@ -2842,9 +2860,11 @@ None declared.
 |---|---|---|---|---|---|
 | implies | `class_probabilities_sum_to_one` (id `curves_sum_to_zero`) | any option | prediction, inference | The class curves sum to zero at every k, because each row's class probabilities sum to one before and after the move; a set that does not is a defect, raised and never drawn. | `turbotab.core.methods.substitution:check_sums_to_zero` |
 | implies | `refit_band` | any option; when a band asked for (n_boot > 0) with no surveyed population | prediction, inference | Each class's band comes from refits of the model on bootstrap resamples of the rows it was fit on (whole units when rows repeat), its interval read from that class's refits. | `turbotab.core.methods.substitution:class_refit_band` |
-| implies | `multiple_imputation_compatible` (id `pooled_per_k`) | any option; when multiple imputation under inference | inference | Each completed copy's class curves are drawn on that copy's rows and fit, and pooled at each k by Rubin's rules; a curve from one fill is never shown. | `turbotab.core.methods.substitution:pool_class_curves` |
+| implies | `multiple_imputation_compatible` (id `pooled_per_k`) | any option; when multiple imputation under inference | inference | Each completed copy's class curves are drawn on that copy's rows through that copy's own fit (a family with no coefficient table refit on each copy), and pooled at each k by Rubin's rules; a curve from one fill is never shown. | `turbotab.core.methods.substitution:pool_class_curves` |
+| conflicts | `imputation_blocked` (id `blocked_with_the_table`) | any option; when multiple imputation under inference with blanks among the analyzed rows, blocked and recorded or with no copies drawn | inference | While the missing-values answer blocks the coefficient table under inference (passive imputation with a declared nonlinear term, single-level imputation on clustered rows, imputation that cannot run on these data), or no imputed copies were drawn for the fit, no class curve is drawn: each family's curves are blocked and recorded with the table's own refusal and exits, never drawn on one fill of the blanks. *(rung: blocked until recorded)* Exits: the coefficient table's own exits (complete cases, with their assumption stated, among them); with no copies drawn: the linear model added, whose coefficient table draws them. | `turbotab.core.methods.substitution:missing_values_block` |
 | implies | `survey_population` (id `design_based`) | any option; when the survey answer "the surveyed population" | inference | Each class's curve comes from the survey-weighted multinomial fit, averaged with the weights, and its band is Taylor linearization over the survey design; refits on bootstrap resamples of rows are not drawn. | `turbotab.core.methods.substitution:design_class_curves` |
 | conflicts | `survey_population` (id `blocked_family`) | any option; when the survey answer "the surveyed population" and a family with no design-based estimator | inference | A family with no design-based estimator draws no class curves under the surveyed population: blocked and recorded. *(rung: blocked until recorded)* Exits: the design-based family in its place, every other chosen family kept; the sample-only attestation. | `turbotab.core.stages.class_substitution:population_blocked` |
+| conflicts | `survey_population` (id `no_design_df`) | any option; when the survey answer "the surveyed population" with no design degrees of freedom (every PSU alone in its stratum) | inference | A design whose analysis rows lie in no more PSUs than strata leaves no degrees of freedom for an interval: the coefficient table is refused, and no class curve is drawn either, blocked and recorded, never shown as points under a caption that promises intervals. *(rung: blocked until recorded)* Exits: the sample-only attestation. | `turbotab.core.methods.substitution:no_design_df` |
 | conflicts | `omitted_energy_sources` (id `omitted_sources`) | any option; when energy sources left out above MAX_OMITTED_SHARE of total energy | inference | Energy sources left out of the model, above the stated share of total energy, block the swap under inference until it is recorded: the curves carry the confounding of the sources total energy holds as one composite. *(rung: blocked until recorded)* Exits: add each missing energy source to the model as an exposure; Keep this swap; the curve carries their confounding; Choose another swap. | `turbotab.core.decisions:_substitution_has_every_energy_source` |
 | implies | `omitted_energy_sources` (id `omitted_stated`) | any option; when energy sources left out of the model | prediction | Under prediction the curves are model contrasts: the sources the model leaves out are named as a concern, never blocked. | `turbotab.core.methods.energy:omitted_sentence` |
 | implies | `estimand_label` | any option | prediction, inference | The estimand names the probability scale, the isocaloric move and the population the curves average over; each class's label is the change in its probability at the stated k, an average over that population, since a multinomial model's change depends on k and on each person's intake (MODELING_SEQUENCE §2). | `turbotab.core.methods.substitution:class_estimand` |
@@ -3051,6 +3071,7 @@ None declared.
 | enables | `decision_curve` (id `decision_support_curve`) | `decision_support`; when decision support with a yes/no outcome | prediction | the decision curve is drawn over the declared threshold range, beside treat all and treat none | `turbotab.core.models.decision_curve:decision_curve` |
 | implies | `threshold_in_fold` (id `threshold_chosen_in_fold`) | `decision_support`; when decision support | prediction | a named threshold is chosen in each training fold and scored on the fold its model never saw | `turbotab.core.models.decision_curve:threshold_in_fold` |
 | implies | `subgroup_performance` (id `subgroups_scored`) | any option; when subgroup columns named | prediction | performance with intervals in each named sociodemographic subgroup (TRIPOD+AI 23a), the fairness approach recorded (item 14) | `turbotab.core.models.decision_curve:subgroup_performance` |
+| implies | `code_or_count_reading` (id `subgroups_read_the_ledger`) | any option; when subgroup columns named | prediction | each named column's groups are its levels when its numbers are codes and its thirds when they are an amount, as its settled reading says; while it is unsettled the column is asked, never grouped by its count of values | `turbotab.core.models.decision_curve:grouping_of` |
 | enables | `model_updating` (id `shrinkage_offered`) | any option; when an unpenalized regression family | prediction | uniform shrinkage by the calibration slope is offered as model updating | `turbotab.core.models.decision_curve:shrinkage` |
 
 **Primary sources:**

@@ -194,8 +194,14 @@ def usual_answer(client: TestClient, pid: str, key: str, view: dict) -> dict:
     if key == "adjustment":  # each covariate's answers, from the fixture's declared truth
         return {"kind": "__adjustment__"}
     if key == "form":  # FORM: each column the card asks about keeps its form (else a line)
-        from turbotab.core.tests.truths import forms_answer
+        from turbotab.core.tests.truths import asked, forms_answer
 
+        # A column whose code-or-amount reading is unsettled is asked first, in the question's ask
+        # card (BLUEPRINT §14.2): answered from the fixture's declared truth, as a user would.
+        step = next((s for s in view["interview"] if s["key"] == "form"), {})
+        exits = (step.get("ask") or {}).get("exits") or []
+        if asked(exits):
+            return {"kind": "__ask__", "exits": exits}
         found = forms_answer(_artifact(client, pid, "forms"), state.get("exposure_forms"),
                              truth_of(pid))
         return found or {"kind": "__wait__"}  # nothing asked: the Router is about to say so
@@ -236,6 +242,13 @@ def prepare(client: TestClient, pid: str, decision: dict, timeout: float = 120.0
             continue
         if answer["kind"] == "__wait__":
             time.sleep(0.05)
+            continue
+        if answer["kind"] == "__ask__":
+            from turbotab.core.tests.truths import answers
+
+            for reading in answers({"exits": answer["exits"]}, truth_of(pid)):
+                r = client.post(f"/api/projects/{pid}/decisions", json=reading)
+                assert r.status_code == 200, (first["key"], r.text)
             continue
         response = answer_settled(client, pid, first["key"], answer)
         assert response.status_code == 200, (first["key"], response.text)

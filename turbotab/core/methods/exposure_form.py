@@ -298,7 +298,9 @@ def rule_words(k: int, n_effective: float | None, task: str | None) -> str:
     rule = (f"Harrell's rule (3 knots below an effective sample size of {HARRELL_SMALL}, 5 from "
             f"{HARRELL_LARGE}, else 4")
     if n_effective is None:
-        return f"k = {k} by {rule})"
+        # The rule was not applied (no effective sample size was read): its default, said so,
+        # never "by the rule" with a result it did not compute (the FORM repair, item 2a).
+        return f"k = {k}, the default of {rule}; no effective sample size was read)"
     size = f"{n_effective:,.0f}" if abs(n_effective - round(n_effective)) < 1e-9 else f"{n_effective:,.1f}"
     return f"k = {k} by {rule}; here {size}, {EFFECTIVE_WORDS.get(str(task), 'the analyzed rows')})"
 
@@ -861,21 +863,52 @@ def _forms_of(state: Any) -> dict[str, Any]:
 
 
 def is_current(state: Any, column: str, spec: Any) -> bool:
-    """A form stands on the scale it was declared on (a form recorded without one stands)."""
+    """A form stands on the scale it was declared on (a form recorded without one stands), while
+    its column is an amount: a column the user later recorded as codes for categories enters as
+    one indicator per level and takes no form (BLUEPRINT §14.3: every confirmation is honored)."""
+    from turbotab.core.readings import confirmed_codes
+
+    if column in confirmed_codes(state):
+        return False
     scale = _field(spec, "scale")
     return scale is None or scale == transform_signature(state, column)
 
 
+def rule_stale(spec: Any, card: Mapping[str, Any] | None) -> bool:
+    """A spline whose k was set by Harrell's rule on an effective sample size the analyzed rows no
+    longer have (the card's, read on the rows the fit sees now): an exclusion, the complete cases
+    or the consumers-only domain changed them. Its k and the n its record states are re-derived
+    by asking again, never kept (the FORM repair, item 2b)."""
+    if card is None or _form_of(spec)[0] not in SPLINE_FORMS or \
+            _field(spec, "knots_rule") != "harrell":
+        return False
+    present = card.get("n_effective")
+    if present is None:
+        return False
+    said = _field(spec, "n_effective")
+    return said is None or abs(float(said) - float(present)) > 1e-9 * max(1.0, abs(float(present)))
+
+
 def current_forms(state: Any) -> dict[str, Any]:
-    """Each declared form that still stands: declared on the exposure's present scale. A form a
-    later transform left stale is not applied, its knots and cut points not kept: the form question
-    asks it again (MODELING_SEQUENCE §2)."""
+    """Each declared form that still stands: declared on the exposure's present scale, of a column
+    still read as an amount. A form a later transform left stale is not applied, its knots and cut
+    points not kept: the form question asks it again (MODELING_SEQUENCE §2)."""
     return {c: f for c, f in _forms_of(state).items() if is_current(state, c, f)}
 
 
-def stale_forms(state: Any) -> dict[str, Any]:
-    """Each declared form a later domain transform of its column left stale (re-asked)."""
-    return {c: f for c, f in _forms_of(state).items() if not is_current(state, c, f)}
+def stale_forms(state: Any, card: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Each declared form a later domain transform of its column left stale, and, given the form
+    card read on the present rows, each whose k by the rule was read on other rows (re-asked). A
+    column since recorded as codes is in neither: it takes no form, so nothing is asked again."""
+    codes = _codes(state)
+    return {c: f for c, f in _forms_of(state).items()
+            if c not in codes and (not is_current(state, c, f) or rule_stale(f, card))}
+
+
+def _codes(state: Any) -> set[str]:
+    from turbotab.core.readings import confirmed_codes
+
+    return set(confirmed_codes(state))
 
 
 def estimand_unit(state: Any, column: str) -> str:
@@ -1091,20 +1124,63 @@ def _info_of(info: Mapping[str, Any] | None, column: str) -> Mapping[str, Any] |
     return {"dtype": getattr(found, "dtype", None), "n_unique": getattr(found, "n_unique", None)}
 
 
-def form_needs(state: Any, info: Mapping[str, Any] | None) -> tuple[list[dict[str, str]],
-                                                                    list[dict[str, str]]]:
-    """Under inference, the columns whose form is declared before estimates (the declared exposure
-    and each adjusted continuous confounder: numeric, not codes, at least :data:`CONTINUOUS`
-    distinct values), and those stated instead, each with why. ``info``: column → ``{dtype,
-    n_unique}``."""
+def form_candidates(state: Any) -> list[str]:
+    """The columns the form question reads under inference: the declared exposure and each
+    adjusted covariate (an exposure family's members and total energy are stated, never read)."""
     from turbotab.core import estimand as est
-    from turbotab.core.readings import confirmed_codes
 
     if getattr(state, "purpose", None) != "inference":
-        return [], []
+        return []
     spec = est.current_estimand(state)
     if spec is None:
-        return [], []
+        return []
+    exposure = None if _field(spec, "family") else str(_field(spec, "exposure"))
+    roles = est.predictor_roles(state)
+    fe = est.fixed_effects_column(state)
+    out = [exposure] if exposure is not None else []
+    out += [c for c, d in est.derived_roles(state).items()
+            if d.adjusted and c != exposure and c != fe and c in roles
+            and roles.get(c) != "energy"]
+    return out
+
+
+def code_reading(state: Any, column: str, facts: Mapping[str, Any] | None) -> Any:
+    """``column``'s code-or-amount reading while the ledger holds it unsettled (BLUEPRINT §14.1:
+    the form of a column is a number-changing consumer of whether its numbers are codes or
+    amounts, and only ``readings.py`` decides that kind); None when it is settled or not asked:
+    the values settle it (decimals that read as amounts), an answer settled it, or another answer
+    reads the column as an amount (the energy model computing with it, a scale summing it, an assay
+    lens's exposure)."""
+    from turbotab.core import readings as R
+
+    if facts is None:
+        return None
+    left, amounts = R.energy_plan(state, [column])
+    if column in left | amounts | R.scale_items(state):
+        return None
+    found = R.unsettled_codes(state, [column], {column: facts})
+    return found[0] if found else None
+
+
+def form_plan(state: Any, info: Mapping[str, Any] | None,
+              facts: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, list[Any]]:
+    """Under inference, the columns whose form is declared before estimates (``needs``: the
+    declared exposure and each adjusted continuous confounder, an amount by the readings ledger
+    with at least :data:`CONTINUOUS` distinct values), those stated instead, each with why
+    (``stated``), and those whose code-or-amount reading the ledger still holds unsettled
+    (``waiting``: the question asks the reading first, BLUEPRINT §14.2, never proposing a form on
+    a guess). ``info``: column → ``{dtype, n_unique}``; ``facts``: column → the readings ledger's
+    whole-number facts (``readings.whole_facts``)."""
+    from turbotab.core import estimand as est
+    from turbotab.core.readings import confirmed_codes, guess_words
+
+    plan: dict[str, list[Any]] = {"needs": [], "stated": [], "waiting": []}
+    if getattr(state, "purpose", None) != "inference":
+        return plan
+    spec = est.current_estimand(state)
+    if spec is None:
+        return plan
+    needs, stated, waiting = plan["needs"], plan["stated"], plan["waiting"]
     roles = est.predictor_roles(state)
     codes = set(confirmed_codes(state))
     adj = getattr(state, "energy_adjustment", None)
@@ -1112,10 +1188,8 @@ def form_needs(state: Any, info: Mapping[str, Any] | None) -> tuple[list[dict[st
         _field(adj, "method") in ("partition", "all_components") else set()
     scales = {_field(sc, "name"): sc for sc in getattr(state, "scales", None) or []}
     fe = est.fixed_effects_column(state)
-    needs: list[dict[str, str]] = []
-    stated: list[dict[str, str]] = []
 
-    def continuous(column: str) -> tuple[bool, str]:
+    def continuous(column: str, role: str) -> tuple[bool, str]:
         if column in scales:
             return True, ""
         if column in codes:
@@ -1123,9 +1197,21 @@ def form_needs(state: Any, info: Mapping[str, Any] | None) -> tuple[list[dict[st
         found = _info_of(info, column)
         if found is None:
             return False, "not read yet"
+        n = int(found.get("n_unique") or 0)
+        # The reading is asked only where its answers differ here: with fewer than CONTINUOUS
+        # values a column takes no declared form either way (codes: indicators; amounts: as
+        # recorded), so the fit asks it, not this question (BLUEPRINT §14.2: ask where it matters).
+        reading = (code_reading(state, column, (facts or {}).get(column)) if n >= CONTINUOUS
+                   else None)
+        if reading is not None:
+            waiting.append({"column": column, "role": role,
+                            "guess": str(reading.value),
+                            "why": (f"its code-or-amount reading is not settled ("
+                                    f"{guess_words(reading)}? {reading.evidence}): codes enter "
+                                    f"as indicators and take no form; an amount takes one")})
+            return False, ""
         if str(found.get("dtype")) not in ("numeric", "integer"):
             return False, "a category: it enters as indicators"
-        n = int(found.get("n_unique") or 0)
         if n < CONTINUOUS:
             return False, f"{n} distinct values: it enters as recorded"
         return True, ""
@@ -1137,14 +1223,15 @@ def form_needs(state: Any, info: Mapping[str, Any] | None) -> tuple[list[dict[st
             stated.append({"column": c, "why": "a member of the exposure family: each member "
                                                "enters as a straight line, one test per member"})
     elif exposure is not None:
-        ok, why = continuous(exposure)
         if exposure in partitioned:
             stated.append({"column": exposure, "why": "the energy partition replaces it by its "
                                                       "kcal, a straight line"})
-        elif ok:
-            needs.append({"column": exposure, "role": "exposure"})
         else:
-            stated.append({"column": exposure, "why": why})
+            ok, why = continuous(exposure, "exposure")
+            if ok:
+                needs.append({"column": exposure, "role": "exposure"})
+            elif why:
+                stated.append({"column": exposure, "why": why})
     derived = est.derived_roles(state)
     for c, r in roles.items():
         if r == "energy" and c not in derived:
@@ -1158,12 +1245,21 @@ def form_needs(state: Any, info: Mapping[str, Any] | None) -> tuple[list[dict[st
         if c in partitioned:
             stated.append({"column": c, "why": "the energy partition replaces it by its kcal"})
             continue
-        ok, why = continuous(c)
+        ok, why = continuous(c, "confounder")
         if ok:
             needs.append({"column": c, "role": "confounder"})
-        else:
+        elif why:
             stated.append({"column": c, "why": why})
-    return needs, stated
+    return plan
+
+
+def form_needs(state: Any, info: Mapping[str, Any] | None,
+               facts: Mapping[str, Mapping[str, Any]] | None = None
+               ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """``form_plan``'s columns asked about and those stated instead (a column waiting for its
+    reading is in neither)."""
+    plan = form_plan(state, info, facts)
+    return plan["needs"], plan["stated"]
 
 
 def form_gate(state: Any, card: Mapping[str, Any] | None) -> tuple[str, str | None] | None:
@@ -1188,28 +1284,40 @@ def form_gate(state: Any, card: Mapping[str, Any] | None) -> tuple[str, str | No
         return None
     if card.get("purpose") != "inference" or not card.get("ready", True):
         return None
-    if not card.get("needs"):
+    if not card.get("needs") and not card.get("waiting"):
         return ("not_applicable", "No continuous exposure or confounder is in the model, so no "
                                   "form is declared; each enters as recorded.")
     return None
 
 
+def standing_forms(state: Any, card: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The declared forms that stand on the present scale, codes and rows (:func:`current_forms`,
+    less those whose k by the rule the card's rows re-derive)."""
+    return {c: f for c, f in current_forms(state).items() if not rule_stale(f, card)}
+
+
 def unanswered_forms(state: Any, card: Mapping[str, Any] | None) -> list[str]:
-    """The columns the card asks about with no standing form."""
+    """The columns the card asks about with no standing form, and every declared spline whose k
+    by the rule was read on other rows than the card's."""
     if card is None:
         return []
-    standing = current_forms(state)
-    return [str(n["column"]) for n in card.get("needs") or [] if str(n["column"]) not in standing]
+    standing = standing_forms(state, card)
+    asked = [str(n["column"]) for n in card.get("needs") or [] if str(n["column"]) not in standing]
+    return list(dict.fromkeys([*asked, *(c for c, f in current_forms(state).items()
+                                         if rule_stale(f, card))]))
 
 
 def form_answer(state: Any, card: Mapping[str, Any] | None) -> Any:
     """The form question's answer: the standing forms, once every column the card asks about has
-    one (a stale form is no answer); None otherwise, and while the card is not read."""
+    one (a stale form is no answer) and no column waits for its code-or-amount reading; None
+    otherwise, and while the card is not read for the present answers (the Router hands it only
+    a fresh card: an answer on the card last computed could let a later question be answered
+    before this one reopens)."""
     if card is None or getattr(state, "purpose", None) != "inference":
         return None
-    if unanswered_forms(state, card):
+    if card.get("waiting") or unanswered_forms(state, card):
         return None
-    return current_forms(state) or None
+    return standing_forms(state, card) or None
 
 
 def zero_share(values: Any) -> tuple[float, bool]:
@@ -1264,6 +1372,16 @@ class FormStated(_Card):
     why: str
 
 
+class FormWaiting(_Card):
+    """A column the question would ask about if it holds amounts, while its code-or-amount reading
+    is unsettled: the reading is asked first (the question's ask card), and no form is proposed."""
+
+    column: str
+    role: Literal["exposure", "confounder"]
+    guess: str  # the reading's best guess, "code" or "amount" (never a settlement)
+    why: str
+
+
 class FormsArtifact(_Card):
     """The ``forms`` stage: the functional-form question's card (MODELING_SEQUENCE §1 row 5)."""
 
@@ -1276,6 +1394,7 @@ class FormsArtifact(_Card):
     rule: str
     needs: list[FormNeed]
     stated: list[FormStated]
+    waiting: list[FormWaiting] = []
     answer: dict[str, Any] | None  # the card's one-tap ``set_forms``: every proposal
     beside: str | None
 
@@ -1284,20 +1403,23 @@ FORMS_READS = ("purpose", "target", "task", "event", "estimand", "adjustment", "
                "energy_adjustment", "scales", "findings", "batch", "categorical", "lens",
                "missing", "aggregation", "outcome_order", "roles", "roles_unconfirmed",
                "role_confirmations", "reading_confirmations", "shape_confirmations",
-               "column_units")
+               "column_units", "form_domains")
 
 
 def forms_card(state: Any, frame: pd.DataFrame | None, info: Mapping[str, Any] | None,
-               y: Any = None, task: str | None = None) -> dict[str, Any]:
+               y: Any = None, task: str | None = None,
+               facts: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """The form question's card: each column it asks about, the column the form receives, its
     present scale and unit, whether a mass at zero is there, k by the rule on the effective sample
     size, the options labeled for its role, the proposal, and on a residual its label and the
-    route to the substitution curve; and the columns stated instead, with why."""
+    route to the substitution curve; the columns stated instead, with why; and those waiting for
+    their code-or-amount reading (``facts``: the ledger's whole-number facts)."""
     purpose = getattr(state, "purpose", None)
     task = task or getattr(state, "task", None)
     n_eff = effective_n(task, y, getattr(state, "event", None)) if y is not None else None
     k = knots_by_rule(n_eff)
-    needs, stated = form_needs(state, info)
+    plan = form_plan(state, info, facts)
+    needs, stated = plan["needs"], plan["stated"]
     adj = getattr(state, "energy_adjustment", None)
     entries = []
     for need in needs:
@@ -1315,7 +1437,9 @@ def forms_card(state: Any, frame: pd.DataFrame | None, info: Mapping[str, Any] |
             "n_effective": n_eff, "rule_knots": k, "rule": rule_words(k, n_eff, task),
             "options": options(purpose, "exposure" if role == "exposure" else "confounder",
                                mass_at_zero=bool(mass), residual=residual),
-            "proposal": proposal(role, purpose, k, mass_at_zero=bool(mass)),
+            "proposal": {**proposal(role, purpose, k, mass_at_zero=bool(mass)),
+                         # a consumers-only domain stands in the one-tap answer (never reset)
+                         **({"domain": "consumers"} if c in domain_columns(state) else {})},
             "label": (residual_label(c, _field(adj, "energy_column")) if residual else None),
             "route": (substitution_route(c, _field(adj, "energy_column"),
                                          list(_field(adj, "nutrients") or []), k)
@@ -1326,6 +1450,7 @@ def forms_card(state: Any, frame: pd.DataFrame | None, info: Mapping[str, Any] |
     card = {"purpose": purpose, "ready": True, "exposure": exposure_of(state),
             "task": task, "n_effective": n_eff, "rule_knots": k,
             "rule": rule_words(k, n_eff, task), "needs": entries, "stated": stated,
+            "waiting": plan["waiting"],
             "answer": ({"kind": "set_forms", "forms": answer} if answer else None),
             "beside": ("Quintiles are produced beside the exposure's spline, their boundaries and "
                        "reference stated, with the p for linear trend (customary)."
@@ -1345,9 +1470,15 @@ def forms_stage(ctx: Any) -> dict[str, Any]:
     cohort = ctx.inputs.get("cohort")
     rows = (cohort.frames["rows"]["row_id"].to_numpy(dtype=np.int64)
             if cohort is not None and "rows" in (cohort.frames or {}) else None)
+    from turbotab.core.readings import whole_facts
+
     with open_store(ctx) as store:
         info = {c.name: {"dtype": c.dtype, "n_unique": c.n_unique} for c in store.info().columns}
-        wanted, _ = form_needs(state, info)
+        # BLUEPRINT §14.1: whether a candidate's numbers are codes or amounts is the readings
+        # ledger's, read from the working table's whole numbers (the values' own facts).
+        candidates = [c for c in form_candidates(state) if c in store.columns]
+        facts = whole_facts(candidates, info, store)
+        wanted, _ = form_needs(state, info, facts)
         columns = [n["column"] for n in wanted if n["column"] in store.columns]
         target = state.target if state.target in store.columns else None
         frame = store.materialize(list(dict.fromkeys([*columns, *([target] if target else [])])),
@@ -1356,7 +1487,7 @@ def forms_stage(ctx: Any) -> dict[str, Any]:
     target_info = ctx.inputs.get("target_info")
     data = getattr(target_info, "data", target_info) or {}
     task = state.task or (data.get("task") if isinstance(data, Mapping) else None)
-    return Bundle(data=forms_card(state, frame, info, y, task))
+    return Bundle(data=forms_card(state, frame, info, y, task, facts))
 
 
 # ── tests under inference ────────────────────────────────────────────────────
@@ -1432,6 +1563,79 @@ def wald_test(estimates: np.ndarray, cov: np.ndarray, idx: Sequence[int], info: 
             "p": float(stats.chi2.sf(W, q)), "basis": words}
 
 
+FIRTH_PLR = ("the penalized likelihood-ratio test of the Firth-penalized fit, the restricted fit "
+             "keeping the full model's penalty (Heinze & Schemper 2002)")
+
+
+def firth_lr_test(X: np.ndarray, y: np.ndarray, idx: Sequence[int],
+                  full: Any = None) -> dict[str, Any] | None:
+    """The penalized likelihood-ratio test that the coefficients ``idx`` are all zero, for a
+    logistic model the data separate (a Firth-penalized fit has no Wald covariance to test on,
+    its intervals being profile ones): ``2 (l*(β̂) − max_{β: β_idx = 0} l*(β))`` on χ²(q), with
+    ``l*`` the penalized log-likelihood ``l(β) + ½ log |I(β)|`` of the full design, as the table's
+    own per-coefficient p-values are (``models.inference.firth_profile``) and as logistf's
+    nested tests are."""
+    from scipy import stats
+
+    from turbotab.core.models.inference import firth_fit
+
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=float)
+    idx = [int(j) for j in idx]
+    if not idx:
+        return None
+    fit = full if full is not None else firth_fit(X, y)
+    start = np.array(fit.beta, dtype=float)
+    start[idx] = 0.0
+    restricted = firth_fit(X, y, fixed={j: 0.0 for j in idx}, start=start)
+    if not (math.isfinite(fit.loglik) and math.isfinite(restricted.loglik)):
+        return None
+    statistic = max(0.0, 2.0 * (fit.loglik - restricted.loglik))
+    return {"statistic": statistic, "df_num": len(idx), "df_den": None, "distribution": "chi2",
+            "p": float(stats.chi2.sf(statistic, len(idx))), "basis": FIRTH_PLR,
+            "converged": bool(fit.converged and restricted.converged)}
+
+
+def pooled_chi_square(statistics: Sequence[float], k: int) -> dict[str, Any] | None:
+    """Li, Meng, Raghunathan & Rubin's (1991) D2: χ²(k) statistics, one per imputed copy, pooled
+    where the copies give no covariance for D1 (a penalized likelihood-ratio test under separation;
+    van Buuren, *Flexible Imputation of Missing Data*, 2nd ed., §5.3.4):
+    ``r₂ = (1 + 1/m) var(√dₘ)``, ``D₂ = (d̄/k − (m + 1)/(m − 1) r₂) / (1 + r₂)`` on F(k, ν₂),
+    ``ν₂ = k^(−3/m) (m − 1)(1 + 1/r₂)²``. None for fewer than two copies."""
+    from scipy import stats
+
+    d = np.asarray(statistics, dtype=float)
+    m = len(d)
+    if m < 2 or k < 1 or not np.all(np.isfinite(d)):
+        return None
+    r2 = (1.0 + 1.0 / m) * float(np.var(np.sqrt(np.clip(d, 0.0, None)), ddof=1))
+    D2 = max(0.0, (float(d.mean()) / k - (m + 1) / (m - 1) * r2) / (1.0 + r2))
+    if r2 <= 1e-12:
+        return {"statistic": D2, "df_num": k, "df_den": None,
+                "p": float(stats.chi2.sf(D2 * k, k)), "r2": r2}
+    nu2 = k ** (-3.0 / m) * (m - 1) * (1.0 + 1.0 / r2) ** 2
+    return {"statistic": D2, "df_num": k, "df_den": nu2, "p": float(stats.f.sf(D2, k, nu2)),
+            "r2": r2}
+
+
+def firth_design(matrix: pd.DataFrame, y: Any, classes: Sequence[Any] | None
+                 ) -> tuple[list[str], np.ndarray, np.ndarray] | None:
+    """The column names, the design and the 0/1 outcome a Firth table is fit on: the model matrix
+    with its intercept first (``models.inference._table``), the event the second class."""
+    classes = list(classes or [])
+    if len(classes) != 2:
+        return None
+    names = ["(intercept)", *(str(c) for c in matrix.columns)]
+    design = np.column_stack([np.ones(len(matrix)), matrix.to_numpy(dtype=float)])
+    return names, design, (np.asarray(y) == classes[1]).astype(float)
+
+
+def joint_test_name(result: Mapping[str, Any]) -> str:
+    """"Wald test", or the penalized likelihood-ratio test a separated logistic model takes."""
+    return ("Penalized likelihood-ratio test" if result.get("basis") == FIRTH_PLR
+            else "Wald test")
+
+
 def _statistic_words(test: Mapping[str, Any]) -> str:
     from turbotab.core.models.inference import format_p
 
@@ -1498,6 +1702,40 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
                     "level has its own curve."]
     if info.get("refused"):
         return [], []
+    held: dict[str, Any] = {}
+
+    def joint(chosen: Sequence[int]) -> dict[str, Any] | None:
+        """The joint test on the table's covariance; for a logistic model the data separate (a
+        Firth table, profile intervals and no Wald covariance), the penalized likelihood-ratio
+        test on the same design (the FORM repair: the test of association under separation)."""
+        result = wald_test(estimates, cov, chosen, info, rows)
+        if result is not None or info.get("covariance") != "profile":
+            return result
+        from turbotab.core.models.linear import model_matrix
+
+        if "design" not in held:
+            classes = list(getattr(pipeline[-1], "classes_", []))
+            held["design"] = firth_design(model_matrix(pipeline, X), y, classes)
+            held["fit"] = None
+        found = held["design"]
+        if found is None:
+            return None
+        design_names, design, event = found
+        at = {n: i for i, n in enumerate(design_names)}
+        try:
+            picked = [at[names[i]] for i in chosen]
+        except KeyError:
+            return None
+        if held["fit"] is None:
+            from turbotab.core.models.inference import firth_fit
+
+            held["fit"] = firth_fit(design, event)
+        result = firth_lr_test(design, event, picked, held["fit"])
+        if result is not None and not result.get("converged", True):
+            concerns.append("A penalized fit behind a likelihood-ratio test stopped before "
+                            "converging; treat that test with care.")
+        return result
+
     plan = step._plan()
     for column, (form, _) in plan.items():
         outputs = step._outputs(column)
@@ -1514,7 +1752,7 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
                                              f"term{'s' if len(nonlinear) > 1 else ''} of "
                                              f"`{column}`{among} "
                                              f"{'are' if len(nonlinear) > 1 else 'is'}")):
-                result = wald_test(estimates, cov, chosen, info, rows)
+                result = joint(chosen)
                 if result is None:
                     if test_kind == "overall":
                         concerns.append(f"The spline tests for `{column}` need a Wald covariance, "
@@ -1526,8 +1764,9 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
                         f" A non-significant result does not refit a straight line: dropping the "
                         f"curve after its test inflates the test of association's type I error "
                         f"({GRAMBSCH}).")
-                caption = (f"{lead}Wald test that {what} zero ({result['basis']}): "
-                           f"{_statistic_words(result)}. {knots[0].upper()}{knots[1:]}.{tail}")
+                caption = (f"{lead}{joint_test_name(result)} that {what} zero "
+                           f"({result['basis']}): {_statistic_words(result)}. "
+                           f"{knots[0].upper()}{knots[1:]}.{tail}")
                 tests.append(_test(column, form, test_kind, result,
                                    knots=[float(v) for v in step.knots_[column]],
                                    caption=caption))
@@ -1541,7 +1780,7 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
         if form in ("quintiles", "categories"):
             # MS2: the global test that every indicator is zero, a multi-df Wald test on the
             # table's own covariance (pooled by D1 under multiple imputation).
-            result = wald_test(estimates, cov, idx, info, rows)
+            result = joint(idx)
             word = "quintile" if form == "quintiles" else "category"
             if result is not None:
                 tests.append(_test(
@@ -1549,8 +1788,9 @@ def exposure_tests(family: Any, pipeline: Any, X: pd.DataFrame, y: Any, *, task:
                     medians=[float(v) for v in step.medians_[column]],
                     boundaries=[float(v) for v in step.cuts_[column]],
                     reference=f"{word} 1, `{column}` ≤ {step.cuts_[column][0]:.4g}",
-                    caption=(f"Wald test that all {len(idx)} {word} indicators of `{column}` are "
-                             f"zero ({result['basis']}): {_statistic_words(result)}. "
+                    caption=(f"{joint_test_name(result)} that all {len(idx)} {word} indicators "
+                             f"of `{column}` are zero ({result['basis']}): "
+                             f"{_statistic_words(result)}. "
                              f"{boundaries_words(column, step.cuts_[column], word).capitalize()}.")))
             if form == "categories":
                 continue
@@ -1909,7 +2149,11 @@ def _form_kind_fits(decision: Any, ctx: Any) -> None:
                           f"population of another effect.",
                           exits=[{"label": f"Keep everyone; a form of `{column}`", "decision":
                                   decision.model_copy(update={"domain": "all"})}])
-    if decision.form == "zero_spline" or decision.domain == "consumers":
+    # A consumers-only domain already in force leaves no zero among the analyzed rows: answering
+    # it again (the form question's one-tap answer keeps it) is not a domain without consumers.
+    kept = (decision.domain == "consumers" and decision.form != "zero_spline"
+            and state is not None and column in domain_columns(state))
+    if (decision.form == "zero_spline" or decision.domain == "consumers") and not kept:
         values = _values_of(ctx, column)
         if values is not None:
             share, negative = zero_share(values)
@@ -1937,6 +2181,45 @@ def _form_kind_fits(decision: Any, ctx: Any) -> None:
                           "and the copies' estimates would not be of one variable.",
                           exits=[spline, {"label": "Declare the cut points from outside these data",
                                           "decision": None}])
+
+
+def _form_reads_a_settled_reading(decision: Any, ctx: Any) -> None:
+    """BLUEPRINT §14.1–§14.2: a form is a number-changing consumer of whether the column's numbers
+    are codes or amounts (codes enter as one indicator per level and take no form). A form of a
+    column recorded as codes is refused, its way forward the reading's other answer; one whose
+    whole numbers the ledger holds unsettled asks the reading first, never recording a form on a
+    guess (the FORM repair: a spline recorded for a 1–12 band later confirmed as codes)."""
+    from turbotab.core import readings as R
+    from turbotab.core.decisions import Refusal, _ctx, _store_of
+
+    state = _state(ctx)
+    if state is None:
+        return
+    column = decision.column
+    if column in _codes(state):
+        raise Refusal(
+            "codes_take_no_form",
+            f"`{column}` is recorded as codes for categories: it enters the models as one "
+            f"indicator per level, so it takes no form. If its numbers are amounts, say so first.",
+            exits=[R.confirm_exit("code_or_count", column, "amount",
+                                  f"`{column}` is a count or an amount (it then takes a form)")])
+    if column in {sc for sc in (_field(s, "name") for s in getattr(state, "scales", None) or [])}:
+        return  # a scale's score: an amount by the scales answer
+    info = _ctx(ctx, "column_info")
+    store = _store_of(ctx)
+    if not info and store is None:
+        return  # nothing reads the values here: the fit asks
+    facts = R.whole_facts([column], info, store).get(column)
+    reading = code_reading(state, column, facts)
+    if reading is None:
+        return
+    readings = R.labeled([reading], state)
+    raise Refusal(
+        "reading_unsettled",
+        f"`{column}`'s numbers may be codes for categories (one indicator per level, no form) "
+        f"or amounts (a form); the form waits for the answer. "
+        f"{R.ask_text(readings, state)}",
+        exits=R.ask_exits(readings, state))
 
 
 def _cuts_are_declared_or_recorded(decision: Any, ctx: Any) -> None:
@@ -2002,33 +2285,61 @@ def _forms_each_fit(decision: Any, ctx: Any) -> None:
             raise d.Refusal(refused.code, f"`{column}`: {refused.message}", exits=exits) from None
 
 
-def _n_effective(ctx: Any, state: Any) -> float | None:
-    """The effective sample size the rule reads: the form card's (the analyzed rows' outcome),
-    else read from the analyzed rows' outcome here; None when neither can be read."""
+def _n_effective(ctx: Any, state: Any) -> tuple[float | None, bool]:
+    """The effective sample size the rule reads, and whether the context reads rows at all (the
+    server's does): the fresh form card's (read on the analyzed rows' outcome); else read here
+    from the outcome on the analyzed rows, once those rows are known (a fresh cohort or split)
+    and the task is (answered, else the target stage's detected task). ``(None, True)`` while the
+    rows are being read: never the whole table's rows in their place, nor a task left unread."""
     from turbotab.core.decisions import _ctx
     from turbotab.core.sequence import artifact
 
     card = artifact(ctx, "forms") or {}
     if card.get("n_effective") is not None:
-        return float(card["n_effective"])
+        return float(card["n_effective"]), True
     target = getattr(state, "target", None)
     store_fn, analyzed = _ctx(ctx, "store"), _ctx(ctx, "analyzed")
-    if not target or not callable(store_fn):
-        return None
+    if not callable(store_fn):
+        return None, False
+    task = getattr(state, "task", None) or _task_of_ctx(ctx)
+    rows = None
+    try:
+        rows = analyzed() if callable(analyzed) else None
+    except Exception:  # noqa: BLE001 - rows that cannot be read are not known yet
+        rows = None
+    if not target or task is None or rows is None:
+        return None, True
     try:
         store = store_fn()
         if store is None or target not in store.columns:
-            return None
-        raw = store.materialize([target], analyzed() if callable(analyzed) else None)[target]
-    except Exception:  # noqa: BLE001 - a rule that cannot read the rows gives k its default
-        return None
-    return effective_n(getattr(state, "task", None), raw, getattr(state, "event", None))
+            return None, True
+        raw = store.materialize([target], rows)[target]
+    except Exception:  # noqa: BLE001 - rows that cannot be read are not known yet
+        return None, True
+    return effective_n(task, raw, getattr(state, "event", None)), True
+
+
+def _rows_not_read(column: str, spec: Mapping[str, Any]) -> Any:
+    """The rule cannot be applied while the analyzed rows (or the outcome's task) are being read:
+    refused for now, with the spline at a k the user gives as the way forward."""
+    from turbotab.core.decisions import Refusal, SetExposureForm
+
+    base = {k: v for k, v in spec.items() if k not in ("knots", "knots_rule", "n_effective")}
+    return Refusal(
+        "not_yet",
+        f"k by Harrell's rule reads the effective sample size of the analyzed rows, and they are "
+        f"being read for the answers just given; declare `{column}`'s spline again in a moment, or "
+        f"give its k.",
+        exits=[{"label": f"A spline of `{column}` with {k} knots, k given",
+                "decision": SetExposureForm(column=column, **{**base, "knots": k})}
+               for k in KNOT_CHOICES])
 
 
 def complete_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
     """A declaration as it is recorded: k by Harrell's rule when a spline gives none (the rule and
     the effective sample size it read kept with it), and the scale and the estimand's unit it was
-    declared on."""
+    declared on. Under inference, while the context reads rows but they are not read yet, the
+    rule waits (refused ``not_yet``) rather than state a k it did not compute."""
     state = _state(ctx)
     out = dict(spec)
     if state is None:
@@ -2036,7 +2347,9 @@ def complete_spec(column: str, spec: Any, ctx: Any) -> dict[str, Any]:
     form = out.get("form")
     if form in SPLINE_FORMS and (out.get("knots") is None or out.get("knots_rule") == "harrell"):
         # The rule's k, read here on the analyzed rows (a client's own k is kept, without the rule).
-        n_eff = _n_effective(ctx, state)
+        n_eff, reads_rows = _n_effective(ctx, state)
+        if n_eff is None and reads_rows and getattr(state, "purpose", None) == "inference":
+            raise _rows_not_read(column, out)
         out.update(knots=knots_by_rule(n_eff), knots_rule="harrell", n_effective=n_eff)
     elif form not in SPLINE_FORMS:
         out.update(knots_rule=None, n_effective=None)
@@ -2051,10 +2364,26 @@ def _form_records_its_scale(decision: Any, ctx: Any) -> Any:
 
 
 def _forms_record_their_scale(decision: Any, ctx: Any) -> Any:
-    from turbotab.core.decisions import ExposureFormSpec
+    from turbotab.core.decisions import ExposureFormSpec, Refusal
 
-    forms = {c: ExposureFormSpec(**complete_spec(c, s.model_dump(), ctx))
-             for c, s in decision.forms.items()}
+    forms = {}
+    for c, s in decision.forms.items():
+        try:
+            forms[c] = ExposureFormSpec(**complete_spec(c, s.model_dump(), ctx))
+        except Refusal as refused:
+            # The one-tap answer's way forward keeps the other columns' forms (as its validator's).
+            exits = []
+            for e in refused.exits:
+                taken = e.get("decision")
+                taken = taken.model_dump(mode="json") if hasattr(taken, "model_dump") else taken
+                if taken and taken.get("kind") == "set_exposure_form":
+                    every = {k: v.model_dump(mode="json") for k, v in decision.forms.items()}
+                    every[c] = {k: v for k, v in taken.items() if k not in ("kind", "column")}
+                    exits.append({"label": e["label"],
+                                  "decision": {"kind": "set_forms", "forms": every}})
+                else:
+                    exits.append(e)
+            raise Refusal(refused.code, refused.message, exits=exits) from None
     return decision.model_copy(update={"forms": forms})
 
 
@@ -2084,13 +2413,34 @@ def _task_of_ctx(ctx: Any) -> str | None:
 
 
 def _sentence(d: Any, state: Any, ctx: Any) -> str:
-    return form_sentence(d.column, d, state, _task_of_ctx(ctx))
+    text = form_sentence(d.column, d, state, _task_of_ctx(ctx))
+    standing = _forms_standing(d, state, ctx)
+    return f"{text}. {standing}" if standing else text
 
 
 def _forms_sentence(d: Any, state: Any, ctx: Any) -> str:
     parts = [form_sentence(c, s, state, _task_of_ctx(ctx)) for c, s in d.forms.items()]
-    return "; ".join(p[0].lower() + p[1:] if i and p[:1] != "`" else p
+    text = "; ".join(p[0].lower() + p[1:] if i and p[:1] != "`" else p
                      for i, p in enumerate(parts))
+    standing = _forms_standing(d, state, ctx)
+    return f"{text}. {standing}" if standing else text
+
+
+def _forms_standing(d: Any, state: Any, ctx: Any) -> str | None:
+    """The declaration's standing clause (``voice.register_standing``): the columns it gave a form
+    that the user has since recorded as codes for categories, which enter as one indicator per
+    level and take no form. The record keeps the sentence as said; the methods text, which says
+    what the analysis is now, ends it with this (BLUEPRINT §14.3: every confirmation is honored)."""
+    from turbotab.core.voice import listing
+
+    columns = [d.column] if getattr(d, "column", None) else list(getattr(d, "forms", {}) or {})
+    coded = [c for c in columns if c in _codes(state)]
+    if not coded:
+        return None
+    one = len(coded) == 1
+    return (f"{listing(coded)} {'was' if one else 'were'} then recorded as codes for categories, "
+            f"so {'it' if one else 'each'} entered the models as one indicator per level, not in "
+            f"the form declared here")
 
 
 # ── the method contract (BLUEPRINT §13) ──────────────────────────────────────
@@ -2203,6 +2553,24 @@ def _register_contracts() -> None:
             _relation("k-by-rule", "implies", "the knots", "a spline declared without k",
                       "k is Harrell's rule on the effective sample size, the rule stated in the "
                       "record", enforced_by=f"{me}:complete_spec"),
+            _relation("rows-rederive-k", "invalidates", "the knots",
+                      "a spline whose k the rule set, then a change of the analyzed rows (an "
+                      "exclusion, the complete cases, the consumers-only domain)",
+                      "k and the effective sample size the record states are re-derived on the "
+                      "rows the fit sees: the form question asks again, never keeping them",
+                      purposes=("inference",), enforced_by=f"{me}:rule_stale"),
+            _relation("codes-take-no-form", "conflicts", "a form of a column read as codes",
+                      "a whole-numbered column whose code-or-amount reading is unsettled, or "
+                      "recorded as codes",
+                      "the reading is asked first (the card proposes no form on a guess); a "
+                      "column recorded as codes enters as indicators and takes no form",
+                      rung="refused", exits=("confirm it holds amounts", "confirm it holds codes"),
+                      enforced_by=f"{me}:_form_reads_a_settled_reading"),
+            _relation("separation-plr", "implies", "penalized likelihood-ratio tests",
+                      "a logistic model the data separate (Firth's penalized likelihood)",
+                      "the test of association, the nonlinearity and the global tests are "
+                      "penalized likelihood-ratio tests on the full design, as the table's own "
+                      "p-values are", purposes=("inference",), enforced_by=f"{me}:firth_lr_test"),
             _relation("no-silent-linear-refit", "disables", "a linear refit after the nonlinearity "
                       "test", "a non-significant nonlinearity test",
                       "the overall test stays the test of association; a switch is recorded "
@@ -2260,8 +2628,9 @@ def _register_contracts() -> None:
 
 def _register() -> None:
     from turbotab.core.decisions import register_completion, register_validator
-    from turbotab.core.voice import register_sentence
+    from turbotab.core.voice import register_sentence, register_standing
 
+    register_validator("set_exposure_form", _form_reads_a_settled_reading)
     register_validator("set_exposure_form", _form_kind_fits)
     register_validator("set_exposure_form", _cuts_are_declared_or_recorded)
     register_validator("set_forms", _forms_each_fit)
@@ -2270,13 +2639,38 @@ def _register() -> None:
     register_completion("set_forms", _forms_record_their_scale)
     register_sentence("set_exposure_form")(_sentence)
     register_sentence("set_forms")(_forms_sentence)
+    register_standing("set_exposure_form")(_forms_standing)
+    register_standing("set_forms")(_forms_standing)
+    _register_ask()
     _register_contracts()
+
+
+def _form_readings(ctx: Any) -> list[Any]:
+    """The form question's ask card (``turbotab.core.ask``): the code-or-amount readings of the
+    columns its card waits on, each with its guess, its evidence and its answers."""
+    from turbotab.core import readings as R
+
+    card = ctx.artifact("forms") or {}
+    waiting = [str(w["column"]) for w in card.get("waiting") or []]
+    if not waiting:
+        return []
+    facts = R.whole_facts(waiting, ctx.info(), ctx.table())
+    found = [code_reading(ctx.state, c, facts.get(c)) for c in waiting]
+    return [r for r in found if r is not None]
+
+
+def _register_ask() -> None:
+    from turbotab.core.ask import CONSUMERS
+
+    CONSUMERS["form"] = ("the functional form", _form_readings)
 
 
 _register()
 
 __all__ = [
-    "ABOVE_SUFFIX", "CONSUMER_SUFFIX", "CONTINUOUS", "DEFAULT_KNOTS", "ExposureForms", "FORMS",
+    "ABOVE_SUFFIX", "CONSUMER_SUFFIX", "CONTINUOUS", "DEFAULT_KNOTS", "ExposureForms", "FIRTH_PLR",
+    "FORMS", "code_reading", "firth_design", "firth_lr_test", "form_candidates", "form_plan",
+    "joint_test_name", "rule_stale", "standing_forms",
     "FORMS_READS", "FRACTIED", "Form", "HARRELL_LARGE", "HARRELL_SMALL", "KNOT_CHOICES",
     "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "SPLINE_MIN_VALUES",
     "TREND_LABEL",

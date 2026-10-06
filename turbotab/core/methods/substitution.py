@@ -66,6 +66,12 @@ anything. Under multiple imputation each copy's class curves are pooled at each 
 including substitution curves (per copy, pooled per k)"). Under a surveyed population the curves
 come from the survey-weighted multinomial fit, averaged with the weights, and their band is the
 design's linearization (:func:`design_class_curves`; Graubard & Korn 1999).
+
+**Under inference a curve never follows one fill** (MS3: "A single-fill curve under inference is a
+defect"). Where the missing-values answer blocks the coefficient table, or no imputed copies were
+drawn for the fit, every curve on the same rows is blocked and recorded with the table's refusal
+and exits (:func:`missing_values_block`), for one curve and for one per class alike; and a design
+with no degrees of freedom left draws no curve over the surveyed population (:func:`no_design_df`).
 """
 from __future__ import annotations
 
@@ -81,7 +87,8 @@ import pandas as pd
 __all__ = ["Shift", "refit_band", "substitution_curve", "PERCENTILE_MIN_REFITS",
            "MIN_REFIT_SHARE", "CLASS_SUM_TOLERANCE", "check_sums_to_zero", "class_curves",
            "class_estimand", "class_refit_band", "design_class_curves", "level_name",
-           "pool_class_curves", "class_clause", "CLASS_CONTRACT"]
+           "missing_values_block", "no_design_df", "pool_class_curves", "class_clause",
+           "CLASS_CONTRACT"]
 
 TotalKind = Literal["fixed", "variable"]
 Scale = Literal["kcal", "percent_energy"]
@@ -1157,7 +1164,10 @@ def design_class_curves(matrix_of: Callable[[pd.DataFrame], pd.DataFrame], X: pd
 
     Raises ValueError, saying why, where no design-based fit exists: a class with no weighted row,
     too few rows for the coefficients, or a fit that does not converge (a column separating the
-    classes). Returns ``{curves, band}``: the :func:`class_curves` dict, and ``band`` with per class
+    classes); and where no design degrees of freedom are left for an interval (the rows' PSUs no
+    more than their strata, :func:`no_design_df`): the curves are then blocked and recorded, as the
+    coefficient table is refused, never drawn as points with no band. Returns ``{curves, band}``:
+    the :func:`class_curves` dict, and ``band`` with per class
     ``{level, ci_low, ci_high, se, fixed_ci_low, fixed_ci_high, fixed_se}``, the ``df`` and the
     ``variance`` (:class:`~turbotab.core.models.survey.DesignVariance`).
     """
@@ -1243,8 +1253,11 @@ def design_class_curves(matrix_of: Callable[[pd.DataFrame], pd.DataFrame], X: pd
     u = np.zeros((design.n_rows, 2 * K * n_k))
     u[domain.at] = z
     var = total_variance(u, design, domain.mask(design))
+    none_left = no_design_df(var)
+    if none_left:
+        raise ValueError(none_left)
     se = np.sqrt(np.clip(np.diag(var.meat), 0, None))
-    t = float(stats.t.ppf(0.5 + level / 2, var.df)) if var.df >= 1 else float("nan")
+    t = float(stats.t.ppf(0.5 + level / 2, var.df))
 
     def band(half: int, c: int) -> tuple:
         low, high, errors = [], [], []
@@ -1269,6 +1282,87 @@ def design_class_curves(matrix_of: Callable[[pd.DataFrame], pd.DataFrame], X: pd
                     "fixed_se": fixed_errors})
     return {"curves": curves, "band": {"classes": out, "df": int(var.df), "variance": var,
                                        "level": float(level)}}
+
+
+def no_design_df(var: Any) -> Optional[str]:
+    """Why a design leaves no interval (its PSUs no more than its strata: ``var.df`` < 1), in the
+    coefficient table's own words (:func:`~turbotab.core.models.survey.design_table`), else None.
+    A curve over the surveyed population with no design degrees of freedom has no interval and no
+    population's uncertainty, so it is blocked and recorded as the table is, never drawn as points
+    under a caption that promises intervals."""
+    if var.df >= 1:
+        return None
+    psu, strata = int(var.domain_psu), int(var.domain_strata)
+    return (f"The analysis rows lie in {psu} PSU{'s' if psu != 1 else ''} of {strata} "
+            f"strat{'a' if strata != 1 else 'um'}: no design degrees of freedom are left for an "
+            f"interval.")
+
+
+# ── a curve under inference never follows one fill (MODELING_SEQUENCE §2, MS3) ──
+
+MISSING_BLOCK_NOTE = ("No curve is drawn while the missing-values answer is blocked: the curve "
+                      "reads the same rows as the coefficient table, and on them it would follow "
+                      "one fill of their blanks, which under inference is never shown "
+                      "(MODELING_SEQUENCE §2).")
+NO_COPIES_NOTE = ("No curve is drawn: under multiple imputation every estimate shown under "
+                  "inference is pooled over the imputed copies, and a curve on one fill of the "
+                  "blanks would leave out the imputations' uncertainty (MODELING_SEQUENCE §2).")
+COMPLETE_CASES_EXIT = "Complete cases, with their assumption stated"
+TABLE_DRAWS_COPIES_EXIT = "Add the linear model, whose coefficient table draws the imputed copies"
+
+
+def missing_values_block(refused: Optional[Mapping[str, Any]], *,
+                         answer: Optional[Mapping[str, Any]], blanks: Sequence[str],
+                         gaps: Sequence[str], copies: bool, models: Sequence[str],
+                         task: str) -> Optional[tuple]:
+    """(why, exits, note) when, under inference, no substitution curve may be drawn because of how
+    the analyzed rows' blanks are handled, else None (MODELING_SEQUENCE §2: "Multiple imputation
+    implies pooling of every estimate shown under inference, including substitution curves (per
+    copy, pooled per k). A single-fill curve under inference is a defect (MS3)").
+
+    ``refused`` is the fit stage's record of the missing-values answer's block of the coefficient
+    table (``{refused, exits}``: passive imputation with a declared nonlinear term, single-level
+    imputation on clustered rows, imputation that cannot run, the time-invariance question open, an
+    unrecorded single fill). With blanks among the curve's inputs (``blanks``) the curves are
+    blocked with the table's own refusal and exits, since the curve reads the same rows: no copies
+    were drawn, so it would follow one fill of their blanks.
+
+    With no such block, ``answer`` multiple imputation, blanks to impute (``gaps``: those that are
+    not a level of their own) and no copies drawn for the fit (``copies`` False: no chosen family
+    has a coefficient table, which is where the copies are drawn, or none could be fit on them),
+    the curves are blocked too, their exits a family whose table draws the copies (the linear
+    model, added to the chosen ones) and complete cases."""
+    if refused and refused.get("refused") and blanks:
+        return str(refused["refused"]), [dict(e) for e in refused.get("exits") or []], \
+            MISSING_BLOCK_NOTE
+    if copies or not gaps or (answer or {}).get("strategy") != "multiple_imputation":
+        return None
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.models import get_family
+    from turbotab.core.voice import listing
+
+    def has_table(key: str) -> bool:
+        try:
+            return hasattr(get_family(key), "inference")
+        except KeyError:
+            return False
+
+    columns = listing(list(gaps), limit=4)
+    why = ("no chosen family has a coefficient table, and the copies are drawn with the table"
+           if not any(has_table(k) for k in models)
+           else "the coefficient table could not be fit on them")
+    reason = (f"Under inference with multiple imputation each curve is pooled over the imputed "
+              f"copies, and none were drawn for this fit: {why}. A curve on one fill of the blanks "
+              f"in {columns} would leave out the imputations' uncertainty.")
+    exits: List[Dict[str, Any]] = []
+    linear = get_family("linear")
+    if "linear" not in models and task in getattr(linear, "tasks", ()):
+        exits.append({"label": TABLE_DRAWS_COPIES_EXIT,
+                      "decision": {"kind": "select_models", "models": [*models, "linear"]}})
+    exits.append({"label": COMPLETE_CASES_EXIT,
+                  "decision": {**dict(answer or {}), "kind": "set_missing",
+                               "strategy": "complete_case"}})
+    return reason, exits, NO_COPIES_NOTE
 
 
 # ── what the curves estimate, in words ───────────────────────────────────────
@@ -1407,11 +1501,28 @@ def _register_contract() -> None:
                      condition="a band asked for (n_boot > 0) with no surveyed population",
                      id="refit_band"),
             Relation("implies", "multiple_imputation_compatible",
-                     "Each completed copy's class curves are drawn on that copy's rows and fit, "
+                     "Each completed copy's class curves are drawn on that copy's rows through "
+                     "that copy's own fit (a family with no coefficient table refit on each copy), "
                      "and pooled at each k by Rubin's rules; a curve from one fill is never shown.",
                      purposes=("inference",),
                      enforced_by="turbotab.core.methods.substitution:pool_class_curves",
                      condition="multiple imputation under inference", id="pooled_per_k"),
+            Relation("conflicts", "imputation_blocked",
+                     "While the missing-values answer blocks the coefficient table under inference "
+                     "(passive imputation with a declared nonlinear term, single-level imputation "
+                     "on clustered rows, imputation that cannot run on these data), or no imputed "
+                     "copies were drawn for the fit, no class curve is drawn: each family's curves "
+                     "are blocked and recorded with the table's own refusal and exits, never drawn "
+                     "on one fill of the blanks.",
+                     purposes=("inference",), rung="block_and_record",
+                     exits=("the coefficient table's own exits (complete cases, with their "
+                            "assumption stated, among them)",
+                            "with no copies drawn: the linear model added, whose coefficient "
+                            "table draws them"),
+                     enforced_by="turbotab.core.methods.substitution:missing_values_block",
+                     condition="multiple imputation under inference with blanks among the "
+                               "analyzed rows, blocked and recorded or with no copies drawn",
+                     id="blocked_with_the_table"),
             Relation("implies", "survey_population",
                      "Each class's curve comes from the survey-weighted multinomial fit, averaged "
                      "with the weights, and its band is Taylor linearization over the survey "
@@ -1430,6 +1541,17 @@ def _register_contract() -> None:
                      condition="the survey answer \"the surveyed population\" and a family with "
                                "no design-based estimator",
                      id="blocked_family"),
+            Relation("conflicts", "survey_population",
+                     "A design whose analysis rows lie in no more PSUs than strata leaves no "
+                     "degrees of freedom for an interval: the coefficient table is refused, and "
+                     "no class curve is drawn either, blocked and recorded, never shown as points "
+                     "under a caption that promises intervals.",
+                     purposes=("inference",), rung="block_and_record",
+                     exits=("the sample-only attestation",),
+                     enforced_by="turbotab.core.methods.substitution:no_design_df",
+                     condition="the survey answer \"the surveyed population\" with no design "
+                               "degrees of freedom (every PSU alone in its stratum)",
+                     id="no_design_df"),
             Relation("conflicts", "omitted_energy_sources",
                      "Energy sources left out of the model, above the stated share of total "
                      "energy, block the swap under inference until it is recorded: the curves "

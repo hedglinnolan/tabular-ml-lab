@@ -548,10 +548,13 @@ def test_3_energy_is_adjusted_on_each_recall_day_and_then_calibrated(protein):
 def test_4_the_bootstrap_draws_whole_psus_within_strata_as_rao_and_wu_do():
     """Rao & Wu's (1988) rescaling bootstrap with n_h − 1 PSUs (R survey's ``subbootstrap``):
     every replicate draws n_h − 1 of a stratum's n_h PSUs with replacement, each drawn person
-    whole and weighted n_h/(n_h − 1); a stratum with a single PSU is kept as it is. Over 4,000
-    replicates the bootstrap variance of a weighted total is the linearization variance by hand,
-    Σ_h n_h/(n_h − 1) Σ_j (t_hj − t̄_h)² (exact in expectation for a linear statistic), to 6% (the
-    Monte Carlo error is about 2%). Clusters: every replicate holds whole clusters."""
+    whole and weighted n_h/(n_h − 1); a stratum with a single PSU is drawn twice or not at all,
+    each with chance 1/2 (REPAIR-RC: kept as it was, it added no variance; ``test_rc_repair.py``
+    holds the rule to R survey's lonely.psu "adjust"). Over 4,000 replicates the bootstrap variance
+    of a weighted total is the variance by hand, Σ_h n_h/(n_h − 1) Σ_j (t_hj − t̄_h)² over the
+    strata with two or more PSUs plus the lonely PSU's t² (its weight multiplier has variance 1),
+    exact in expectation for a linear statistic, to 6% (the Monte Carlo error is about 2%).
+    Clusters: every replicate holds whole clusters."""
     rng = np.random.default_rng(9)
     strata = np.repeat(np.arange(6), 40)
     # strata 0–2: two PSUs of 20; strata 3–4: three PSUs (12, 14, 14); stratum 5: one PSU (lonely)
@@ -565,16 +568,20 @@ def test_4_the_bootstrap_draws_whole_psus_within_strata_as_rao_and_wu_do():
     for h, t in totals.groupby(of):
         if len(t) > 1:
             lin += len(t) / (len(t) - 1) * float(((t - t.mean()) ** 2).sum())
-    estimates = []
+        else:
+            lin += float(t.iloc[0]) ** 2
+    estimates, lonely = [], []
     for _ in range(4000):
         d = RC.psu_draw(strata, psu, rng)
         estimates.append(float(np.sum(w[d.rows] * d.factor * v[d.rows])))
-        assert set(np.unique(strata[d.rows])) == set(range(6))
+        assert set(range(5)) <= set(np.unique(strata[d.rows])) <= set(range(6))
+        lonely.append(len(np.unique(d.unit[strata[d.rows] == 5])))
     assert np.var(estimates, ddof=1) == pytest.approx(lin, rel=0.06)
+    assert set(lonely) == {0, 2} and abs(np.mean(lonely) - 1.0) < 0.05
     d = RC.psu_draw(strata, psu, rng)
-    for h, (draws, factor) in enumerate([(1, 2.0)] * 3 + [(2, 1.5)] * 2 + [(1, 1.0)]):
+    for h, (draws, factor) in enumerate([(1, 2.0)] * 3 + [(2, 1.5)] * 2):
         on = strata[d.rows] == h
-        assert len(np.unique(d.unit[on])) == draws  # n_h − 1 draws (one for a lonely stratum)
+        assert len(np.unique(d.unit[on])) == draws  # n_h − 1 draws
         assert np.all(d.factor[on] == factor)
         for u in np.unique(d.unit[on]):  # each drawn PSU whole
             members = d.rows[d.unit == u]
@@ -612,10 +619,12 @@ def test_4_under_repeated_units_the_whole_chain_resamples_whole_clusters(tmp_pat
            "model." in cal["methods"]
     # A resample the calibration cannot carry (here one, whose true-intake covariance estimate is
     # not positive definite) is left out and said, never silently: at least 90% of them must stand
-    # for an interval to be shown.
+    # for an interval to be shown. REPAIR-RC: what leaving it out does to the interval is said too.
     assert cal["n_boot_ok"] == 49 and cal["concerns"][0] == (
         "49 of 50 bootstrap resamples could be calibrated (1 had no positive true-intake "
-        "covariance); the interval rests on those.")
+        "covariance); the interval rests on those. Those left out are resamples whose day-to-day "
+        "error swamped the spread between people, where the correction is largest, so the "
+        "interval's end away from zero may be too near.")
     assert fit["models"][0]["inference"]["grouped_by"] == "household"
     D, names, people = kcal_days(frame)
     Z = np.column_stack([(people["sex"] == "M").astype(float), people["age"], people["bmi"]])

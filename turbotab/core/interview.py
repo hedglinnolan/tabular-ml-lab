@@ -51,8 +51,10 @@ Rules:
   energy model, step 4), so knots, cut points and the estimand's unit belong to the exposure's
   final scale. Under inference it is asked of the declared exposure and each adjusted continuous
   confounder the ``forms`` stage's card lists, and answered while each has a form declared on its
-  present scale; a later transform leaves a form stale, and the question opens again
-  (``followup`` "stale"), never keeping it. Under prediction it is stated (``skipped``).
+  present scale; a later transform leaves a form stale, as does a change of the analyzed rows for
+  a spline whose k Harrell's rule read on other rows, and the question opens again (``followup``
+  "stale"), never keeping it. It reads only the fresh card: while the card recomputes it waits,
+  and no later question is answered meanwhile. Under prediction it is stated (``skipped``).
   ``modification`` is stated until an effect modifier or a second exposure is declared, then
   answered once an interaction's second exposure has its adjustment answers (``followup``
   "adjustment" while it waits); not applicable under prediction or for an exposure family.
@@ -478,6 +480,16 @@ def route(
     target_info = artifacts.get("target_info")
     oriented = artifacts.get("oriented")
     structure = artifacts.get("structure")
+    # FORM (the repair of the Router race): the form question reads only the card computed for the
+    # present answers. The card last computed answered for other answers (a confirmed reading that
+    # makes `bmi` a continuous confounder, a changed row set that re-derives k), so while the
+    # fresh one computes the question waits on it and no later question is answered meanwhile.
+    # Only when the card's stage failed or was cancelled does the card last computed stand in.
+    forms_status = _get(stages.get("forms"), "status")
+    forms_card = artifacts.get("forms")
+    if forms_card is None and (forms_status == "error"
+                               or _get(stages.get("forms"), "cancelled", False)):
+        forms_card = artifacts.get("forms_shown")
     gates: dict[str, Callable[[], Gate]] = {
         "orientation": lambda: _orientation_gate(state, oriented),
         "event": lambda: _event_gate(state, target_info),
@@ -503,7 +515,7 @@ def route(
         # FORM (turbotab/core/methods/exposure_form.py, interaction.py): the form is asked after
         # the domain transforms, on the exposure's final scale; the modifiers are stated until
         # one is declared.
-        "form": lambda: exposure_form.form_gate(state, artifacts.get("forms")),
+        "form": lambda: exposure_form.form_gate(state, forms_card),
         "modification": lambda: interaction.modification_gate(state),
     }
     # A question whose answer is not simply its slot's value (WP17): the follow-up is answered by a
@@ -516,11 +528,10 @@ def route(
         "causal": lambda: causal.current_causal(state),
         # Re-asked when the fresh artifact's diagnostics are not the ones its declaration came after.
         "time_varying": lambda: time_varying.lane_answer(state, artifacts.get("time_varying")),
-        # FORM: answered while every column the card asks about has a form declared on its present
-        # scale (a stale one is asked again), and once every declared modifier is complete.
-        # (the card last computed while a fresh one is under way: an answer stands meanwhile)
-        "form": lambda: exposure_form.form_answer(
-            state, artifacts.get("forms") or artifacts.get("forms_shown")),
+        # FORM: answered while every column the fresh card asks about has a form declared on its
+        # present scale and rows (a stale one is asked again) and no column waits for its
+        # code-or-amount reading; the modifiers once every declared modifier is complete.
+        "form": lambda: exposure_form.form_answer(state, forms_card),
         "modification": lambda: interaction.modification_answer(state),
     }
     writer_slots = {"follow_up": ("follow_up", "censoring")}
@@ -556,8 +567,10 @@ def route(
             # need its scale or its order waits for the reading rather than standing answered.
             undecided = (followup is None and value is not None and "target_info" in pending
                          and task_followup_possible(state))
-        if key == "form" and value is None and exposure_form.stale_forms(state):
-            followup = "stale"  # asked again: a domain transform left a declared form stale
+        if key == "form" and value is None and exposure_form.stale_forms(state, forms_card):
+            # asked again: a domain transform left a declared form stale, or the analyzed rows
+            # changed under a spline whose k the rule read on other rows
+            followup = "stale"
         if key == "modification" and value is None:
             followup = interaction.modification_followup(state)
         if value is not None and followup is None and not undecided:

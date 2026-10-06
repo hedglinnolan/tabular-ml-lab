@@ -591,8 +591,10 @@ class SubstitutionModel(_Model):
     fixed_ci_low: list[float | None] | None = None
     fixed_ci_high: list[float | None] | None = None
     band_ok: int | None = None  # refits of this family's band that succeeded
-    # Under the surveyed population (MS4) a family with no design-based estimator draws no curve:
-    # blocked and recorded, with why and the ways forward.
+    # Under the surveyed population (MS4) a family with no design-based estimator draws no curve,
+    # and under inference no curve follows one fill of the blanks (MS3: the missing-values answer
+    # blocks the table, or no imputed copies were drawn): blocked and recorded, with why and the
+    # ways forward.
     refused: str | None = None
     exits: list[InferenceExit] = []
     # Under multiple imputation (MS3): how the curve was pooled over the copies — "contrast" (a

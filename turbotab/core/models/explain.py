@@ -50,9 +50,11 @@ ranked by the interaction's own size on the model's scale, the root mean square 
 ``ĝ(x) = Σ_{k ≤ k(x)} mean_{i ∈ N(k)} [f(z_k, x_i,\\j) − f(z_{k−1}, x_i,\\j)]``, centered by
 subtracting ``(1/n) Σ_i ĝ(x_ij)``, on a grid of the input's observed quantiles shared by every
 family. A segment with fewer than :data:`MIN_SEGMENT_ROWS` rows is masked: no curve is drawn where
-the data are absent. A family whose cross-validated score does not beat the no-predictor baseline
-draws no curve, with that reason (Molnar et al. 2022, LNCS 13200: "interpreting models that do not
-generalize well").
+the data are absent. Under prediction a family whose cross-validated score does not beat the
+no-predictor baseline draws no curve, with that reason (Molnar et al. 2022, LNCS 13200: "interpreting
+models that do not generalize well"). Under inference no cross-validated score is shown
+(MODELING_SEQUENCE ruling 13; §1 row 11), so there is no floor: the declared model is described as
+fitted, beside its estimate, never gated or ranked by how it predicts.
 
 **What they are not.** Every explanation describes the fitted model's predictions. None is a
 causal effect (Molnar et al. 2022: "making unjustified causal interpretations"), and under
@@ -1109,7 +1111,12 @@ def _fmt(value: float | None) -> str:
 
 
 def floor_of(fam: FamilyFit, s: Setting) -> Floor:
-    """Whether the family's held-out (cross-validated) score beats the no-predictor baseline."""
+    """Whether the family's held-out (cross-validated) score beats the no-predictor baseline. Under
+    inference no cross-validated score is read or shown (ruling 13), so every family passes and the
+    explanation serves no floor (:func:`explain`)."""
+    if s.purpose == "inference":
+        return Floor(passed=True, verdict="not_assessed", metric=s.metric_label, model=None,
+                     baseline=None, reason=None)
     versus = dict(fam.versus or {})
     verdict = str(versus.get("verdict") or "unscored")
     passed = verdict == "better"
@@ -1388,7 +1395,8 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
         explained.append(FamilyExplanation(
             family=fam.key, label=fam.label, explained=True,
             method=METHOD_WORDS[model_kind(w.anat.model) or "linear"], scale=scale, base=w.base,
-            floor=w.floor, importance=importance_rows, beeswarm=beeswarm,
+            floor=None if s.purpose == "inference" else w.floor, importance=importance_rows,
+            beeswarm=beeswarm,
             observations=observations, stability=_stability(w, s, again, main),
             interactions=interactions,
             architecture=_architecture(w, s, outcome_unit, units, roles, scale)))
@@ -1403,7 +1411,7 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
     if not inference and works:
         notes.append(SELECTION_NOTE)
     fired = []  # each relation of the contract, said where it took effect
-    if curves:
+    if curves and not inference:
         fired.append(FLOOR_SAYS)
     if works and s.units is not None and s.reseeds > 0:
         fired.append(UNITS_SAYS)
@@ -1613,7 +1621,7 @@ CONTRACT = register_contract(MethodContract(
                 "Pairs ranked by their interaction",
                 "Each exposure's curve per family, where it beats the baseline"),
     relations=(
-        Relation("implies", "performance_floor", FLOOR_SAYS),
+        Relation("implies", "performance_floor", FLOOR_SAYS, purposes=("prediction",)),
         Relation("implies", "unit_resampling", UNITS_SAYS),
         Relation("implies", "domain_transform", SCALE_SAYS),
         Relation("conflicts", "effect_estimate", EFFECT_SAYS, rung="refused", when=("as_effect",)),
@@ -1725,12 +1733,15 @@ def decision_sentence(d: Any, state: Any) -> str:
     stability = (f", with their stability over {d.reseeds} refits on bootstrap resamples"
                  if d.reseeds else ", without a check of their stability across refits")
     tail = "these describe the models' predictions, not causal effects"
+    # Under inference no cross-validated score is read (MODELING_SEQUENCE ruling 13; §1 row 11), so
+    # no floor gates a curve and the sentence names none (EXPLORE repair).
+    drawn = "drawn only for families whose cross-validated score beats the no-predictor baseline"
     if getattr(state, "purpose", None) == "inference":
         tail += ", and are not effect estimates"
+        drawn = "drawn for every fitted family"
     return (f"The fitted models were described by their SHAP values{stability}, by a ranking of "
             f"pairwise interactions (Friedman and Popescu's H statistic), and by {curves} of {of}, "
-            f"drawn only for families whose cross-validated score beats the no-predictor "
-            f"baseline; {tail}.")
+            f"{drawn}; {tail}.")
 
 
 __all__ = [

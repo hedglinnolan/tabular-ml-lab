@@ -473,10 +473,12 @@ def build_graph() -> Graph:
             # shelf 14 (wave 2b integration): shelf 13 of REPAIR-VALID and of EXPLORE, one engine;
             # under prediction Riley's minimum runs before the ranking; below it the regression
             # families rank first (``models.selection.shelf_order``).
-            Stage("shelf", 14, ("working", "cohort", "target_info", "split"),
+            # shelf 15 (EXPLORE repair): a form rule set in Explore (``set_levers``) counts its
+            # spline columns among the candidate predictor parameters Riley's minimum reads.
+            Stage("shelf", 15, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
-                   "outcome_order", "exposure_forms",
+                   "outcome_order", "exposure_forms", "levers",
                    # MS4: under the population answer the families with no design-based
                    # estimator rank last, their block said before they are chosen.
                    "survey", *WP17_READS),
@@ -588,7 +590,15 @@ def build_graph() -> Graph:
             # quote a score are named (withheld from a client under inference, ruling 13); the
             # comparison substrate is kept for the evaluation stage; under prediction with the
             # population answer, the note points to the design-based scores.
-            Stage("fit", 23, ("working", "design", "split", "target_info", "cohort"),
+            # fit 24 (EXPLORE repair): the in-fold rules' logistic fits (nonlinearity by inner
+            # cross-validation, the imbalance correction's recalibration) converge as R's glm does
+            # whatever the size of a coefficient.
+            # fit 24 (REPAIR-MULTISUB): the missing-values answer's block of the table under
+            # inference is kept with its exits for the curves on the same rows; a design with no
+            # degrees of freedom left offers the sample-only attestation as the table's exit.
+            # fit 25 (wave 2b repairs' integration): fit 24 of REPAIR-EXPLORE and of REPAIR-MULTISUB,
+            # one stage.
+            Stage("fit", 25, ("working", "design", "split", "target_info", "cohort"),
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
@@ -618,7 +628,12 @@ def build_graph() -> Graph:
             # substitution 15 (SURVEY repair): a blocked curve's exit keeps every other chosen family.
             # substitution 16 (wave-1 repairs on wave 1b): both substitution 15s; a blocked pooled
             # curve's exit keeps every other chosen family too.
-            Stage("substitution", 16, ("working", "fit", "design"),
+            # substitution 17 (REPAIR-MULTISUB, MS3): under inference no curve follows one fill:
+            # with the missing-values answer blocked, or no imputed copies drawn, every curve (one
+            # per class or one) is blocked with the table's refusal and exits; a family with no
+            # table is refit on each copy and pooled; a design with no degrees of freedom left
+            # draws no curve over the surveyed population.
+            Stage("substitution", 17, ("working", "fit", "design"),
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
@@ -673,7 +688,10 @@ def build_graph() -> Graph:
             # calibration 10 (MS5): every error-prone intake calibrated jointly inside each imputed
             # copy, a declared secondary with a whole-chain bootstrap (PSUs within strata, clusters
             # or people), the adjustment set it was declared under kept.
-            Stage("calibration", 10,
+            # calibration 11 (REPAIR-RC): the uncorrected estimate beside it is the primary's on
+            # every participant it analyzes; a lonely PSU is drawn twice or not at all; refused
+            # below the cluster floor; every block says why in the methods' words, with an exit.
+            Stage("calibration", 11,
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
@@ -753,15 +771,17 @@ def build_graph() -> Graph:
             # explain 2 (wave 1b, MS6): the floor quotes the fit's own primary score.
             # explain 3 (wave 2a repair): the explained rows are a seeded random permutation, never
             # the file's order; the paragraph names only the families that drew curves.
-            Stage("explain", 3, ("working", "fit", "design", "target_info"),
+            # explain 4 (EXPLORE repair, ruling 13): under inference no cross-validated score is
+            # read, so no floor gates a curve or quotes a score.
+            Stage("explain", 4, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models"),
                   label="Explaining each fitted model"),
             # ── Wave 2, FORM (MODELING_SEQUENCE §1 rows 5 and 7) ──
             # forms: the functional-form question's card, read on the analyzed rows: the declared
             # exposure and each adjusted continuous confounder on its final scale, k by Harrell's
-            # rule on the effective sample size, a mass at zero, the options for each role. It reads
-            # no form answer, so answering it never recomputes it.
+            # rule on the effective sample size, a mass at zero, the options for each role. Of the
+            # form answers it reads only the consumers-only domain (the rows it is read on).
             Stage("forms", 1, ("working", "cohort", "target_info"), FORMS_READS, forms_stage,
                   heavy=True, requires=("purpose",),
                   label="Reading which continuous terms take a declared form"),
@@ -778,12 +798,17 @@ def build_graph() -> Graph:
             # the interpretable model against the flexible ones, draws the decision curve, scores
             # subgroups, offers shrinkage, runs internal–external CV and design-based CV, and under
             # inference shows no cross-validated score (only a declared selection sensitivity).
-            Stage("explore", 1, ("working", "cohort", "split", "target_info"),
+            # explore 2 (EXPLORE repair): a group column's groups are its code-or-amount reading's
+            # (BLUEPRINT §14.3), asked while unsettled.
+            Stage("explore", 2, ("working", "cohort", "split", "target_info"),
                   (*EXPLORE_READS, *ROLE_READS, *WP17_READS), explore_stage, heavy=True,
                   requires=("target", "split"), label="Exploring the rows Explore may read"),
             # evaluation 2 (wave 2b integration): the seal's opening left its reads, as nothing it
             # computes reads it (a re-seal withholds scores and changes no number, wave 2c).
-            Stage("evaluation", 2, ("working", "fit", "design", "split", "target_info"),
+            # evaluation 3 (EXPLORE repair): subgroups by the settled code-or-amount reading; the
+            # shrunk intercept by Newton with step halving, the recalibrated model's coefficients
+            # shrunk, and a failure said in the record, never the whole stage.
+            Stage("evaluation", 3, ("working", "fit", "design", "split", "target_info"),
                   (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
                   requires=("models",),
                   label="Fitting the benchmark and weighing the models"),

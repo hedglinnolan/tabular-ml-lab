@@ -11,7 +11,8 @@ a way forward for each (BLUEPRINT §3's refusal shape):
 * **a required question is unanswered**: any question the Router has open or waiting, except the
   ones that only add a display nothing declared depends on (:data:`OPTIONAL_QUESTIONS`: the
   substitution curve, drawn or not at the analyst's choice) and the opening of the held-out rows,
-  which declares the result and is named below as the open plan (:data:`PLAN_QUESTIONS`);
+  which declares the result and is named below as the open plan (:data:`PLAN_QUESTIONS`); a
+  regression calibration declared under another adjustment set is re-asked, so it counts too;
 * **the plan is open**:
   - under inference, the analysis plan is not locked: it locks the first time an estimate is
     displayed (``plan_lock``), so a bundle exported before that would report estimates no plan was
@@ -40,7 +41,8 @@ OPTIONAL_QUESTIONS = ("substitution",)
 PLAN_QUESTIONS = ("open_seal",)
 # What the refusal calls each stage the bundle reports.
 STAGE_NAMES = {"cohort": "The participant flow", "design": "The model matrix",
-               "fit": "The fit", "effects": "Table 2 (the declared models)"}
+               "fit": "The fit", "effects": "Table 2 (the declared models)",
+               "calibration": "The regression calibration (the declared secondary analysis)"}
 OPEN = ("open", "waiting")
 
 
@@ -58,11 +60,21 @@ class Missing:
         self.message = finish(self.message)
 
 
+def calibration_declared(state: Any) -> bool:
+    """Regression calibration is declared as a secondary analysis under inference (MS5)."""
+    spec = getattr(state, "measurement_error", None)
+    return (getattr(state, "purpose", None) == "inference" and spec is not None
+            and getattr(spec, "method", "none") != "none")
+
+
 def result_stages(state: Any) -> tuple[str, ...]:
     """The stages whose artifacts the bundle reports: the participant flow, the design (the lineage
-    and the model matrix), the fit, and under inference the declared model sequence (Table 2)."""
+    and the model matrix), the fit, and under inference the declared model sequence (Table 2) and
+    a declared regression calibration (REPAIR-RC: the declared secondary reaches the bundle)."""
     stages = ("cohort", "design", "fit")
-    return (*stages, "effects") if getattr(state, "purpose", None) == "inference" else stages
+    if getattr(state, "purpose", None) != "inference":
+        return stages
+    return (*stages, "effects", *(("calibration",) if calibration_declared(state) else ()))
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -111,6 +123,15 @@ def missing(source: Any) -> list[Missing]:
     state = source.state
     purpose = getattr(state, "purpose", None)
     fit = source.artifact("fit")
+    if calibration_declared(state):
+        # REPAIR-RC (MODELING_SEQUENCE §2): a calibration declared under another adjustment set is
+        # re-asked, so it is an unanswered question until it is declared again or recorded as none.
+        from turbotab.core.stages.calibration import current_calibration, invalidated
+
+        spec, recorded = current_calibration(state)
+        if recorded is not None:
+            reason, exits = invalidated(spec, recorded, state)
+            out.append(Missing("unanswered_questions", reason, exits))
     if purpose == "inference" and not getattr(state, "plan_locked", None):
         out.append(Missing("plan_open", (
             "The analysis plan is still open: under inference it is locked the first time an "
@@ -180,5 +201,5 @@ def check(source: Any) -> None:
         raise refusal(found)
 
 
-__all__ = ["Missing", "OPTIONAL_QUESTIONS", "PLAN_QUESTIONS", "check", "missing", "refusal",
-           "result_stages"]
+__all__ = ["Missing", "OPTIONAL_QUESTIONS", "PLAN_QUESTIONS", "calibration_declared", "check",
+           "missing", "refusal", "result_stages"]

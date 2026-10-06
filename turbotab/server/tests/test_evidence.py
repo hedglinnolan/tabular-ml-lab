@@ -147,6 +147,10 @@ def test_a_by_sex_rule_marks_each_level(client, nhanes):
     rule = {"column": "kcal", "by": {"column": "gender", "ranges": {"female": [500, 3500], "male": [800, 4200]}},
             "reason": "Willett"}
     decision = {"kind": "set_exclusions", "rules": [rule]}
+    # The questions before the exclusions (the purpose first), answered as usual: alone, or on an
+    # xdist worker that did not run the missing-values test first, nothing else answers them, and
+    # the preview's 409 not_yet is the purpose question's.
+    prepare(client, nhanes, decision)
     settle_reads(client, nhanes, decision)  # `kcal`'s days, answered from the export's truth
     body = client.post(f"/api/projects/{nhanes}/preview", json=decision).json()
     dist = valid(body).views[1]

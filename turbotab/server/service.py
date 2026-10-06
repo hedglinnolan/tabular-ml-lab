@@ -191,6 +191,21 @@ class SentenceFacts:
         return None
 
     @cached_property
+    def grouping_guesses(self) -> dict[str, str] | None:
+        """The grouping question's guess for each column it asks about (LEASH): "nothing groups
+        them" states as a limitation only the columns that read as a grouping."""
+        state = self._ctx.state
+        if state is None or getattr(self._decision, "kind", None) != "set_clusters":
+            return None
+        try:
+            from turbotab.core.estimand import grouping_candidates
+
+            return {str(c["column"]): str(c["guess"])
+                    for c in grouping_candidates(state, self._artifact("roles"))}
+        except Exception:  # noqa: BLE001 - a sentence never fails a decision; it says less
+            return None
+
+    @cached_property
     def n_cohort(self) -> int | None:
         cohort = self._artifact("cohort")
         return int(cohort["n_final"]) if isinstance(cohort, dict) and "n_final" in cohort else None
@@ -838,9 +853,9 @@ class ProjectService:
             if status is not None and status.status == "fresh" and status.key:
                 artifacts[stage] = self._artifact(pid, stage, status.key, public=True)
         if "forms" not in artifacts:
-            # FORM: while the card recomputes (a new exclusion, say), an answered form question
-            # stays answered on the card last computed; it is asked again once the fresh card
-            # lists a column with no form.
+            # FORM: the card last computed, which the Router reads only when the card's stage
+            # failed or was cancelled; while it recomputes the form question waits on it
+            # (``interview.route``), so no later question is answered on an older card.
             shown = self._shown(pid, "forms")
             if isinstance(shown, dict):
                 artifacts["forms_shown"] = shown
@@ -1268,8 +1283,13 @@ class ProjectService:
         # A restated sentence reads what its record's sentence read besides the answers: the
         # detected task, for the families' estimators under the survey answer (MS4).
         facts = SentenceFacts(self.decision_context(pid), None, records)
-        return methods_text(records, {"detected_task": facts.detected_task,
-                                      "counts": self._flow_counts(pid)})
+        # REPAIR-RC: a declared calibration the stage blocked is said to be blocked
+        # (``stages.calibration.record_facts``; block and record, MODELING_SEQUENCE §4).
+        from turbotab.core.stages.calibration import record_facts
+
+        stages = {**self._flow_counts(pid),
+                  **record_facts(self._fresh(pid, "calibration", public=True))}
+        return methods_text(records, {"detected_task": facts.detected_task, "counts": stages})
 
     def _flow_counts(self, pid: str) -> dict[str, Any]:
         """The counts the participant flow has now, by the decision kind whose sentence states them

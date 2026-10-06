@@ -38,6 +38,12 @@ M2 keys (the opening sequence, the seal and findings; each optional like the res
     repair           the repair option applied: ``{key, label, consequence, row_local}`` (the
                      repair registry's); a family may register its own sentence with
                      :func:`register_repair_sentence`
+
+LEASH keys:
+
+    grouping_guesses ``{column: "yes" | "no"}``, the grouping question's guess for each column it
+                     asks about (``estimand.grouping_candidates``): "nothing groups them" states
+                     as a limitation only the columns that read as a grouping
 """
 from __future__ import annotations
 
@@ -338,7 +344,10 @@ def restate(decision: Any, sentence: str, then: Any, now: Any, ctx: Any = None, 
     decision = parse_decision(decision)
     kind = decision.kind
     if kind in _RESTATED_WHOLE:
-        before, after = sentence_for(decision, then), sentence_for(decision, now)
+        # A stage's facts for this kind, when the methods text passes them (``counts[kind]``; the
+        # calibration stage's block, REPAIR-RC), are read on the answers as they stand.
+        facts = (_get(ctx, "counts") or {}).get(kind)
+        before, after = sentence_for(decision, then), sentence_for(decision, now, facts)
         if before == after:
             return sentence
         return disclose(after, post_seal=post_seal, after_estimates=after_estimates) or sentence
@@ -1068,7 +1077,15 @@ def _set_split(d: Any, state: Any, ctx: Any) -> str:
     # How a cross-validated or held-out R² is measured (audit MA-09; models/metrics.py).
     r2 = ("; R² was measured against the training rows' mean and pooled over every out-of-fold "
           "prediction" if task == "regression" else "")
-    if d.holdout == 0:
+    if getattr(state, "purpose", None) == "inference":
+        # MODELING_SEQUENCE ruling 13 and §1 row 11 (EXPLORE repair): under inference no
+        # cross-validated score is shown, so the record says none was estimated, never how.
+        compared, boot, r2 = (f"no cross-validated score is reported under inference: the declared "
+                              f"model is reported by its estimates"), "", ""
+        if d.holdout == 0:
+            return (f"No rows were held out: every analyzed row estimates the coefficients, and "
+                    f"{compared}")
+    elif d.holdout == 0:
         return f"No rows were held out; performance was estimated by {folds}{manner}{boot}{r2}"
     share = tick(f"{d.holdout:.0%}")
     # No count: the held-out rows are drawn over every row with the outcome recorded, and the
@@ -1499,11 +1516,25 @@ def _set_measurement_error(d: Any, state: Any, ctx: Any) -> str:
     # calibrated jointly, its interval from a bootstrap over the whole chain; under the surveyed
     # population the fits are weighted and PSUs are resampled within strata. The methods text
     # restates this sentence whole when the survey answer changes (:func:`restate`).
+    from turbotab.core.stages.calibration import reasked_clause
+
+    head = (f"Regression calibration of {which} from the repeated recalls was declared as a "
+            f"secondary analysis beside the uncorrected estimate")
+    # REPAIR-RC (MODELING_SEQUENCE §2, §4): a change to the adjustment set re-asks it, and a
+    # declared calibration the stage could not run is blocked and recorded. The first is read from
+    # the answers; the second from the calibration stage, which the methods text passes as
+    # ``ctx["blocked"]`` (``stages.calibration.record_facts``).
+    reasked = reasked_clause(getattr(d, "adjustment", None), state)
+    if reasked:
+        return f"{head} {reasked}"
+    blocked = _get(ctx, "blocked")
+    if blocked:
+        return (f"{head}, but {blocked}; it was blocked and recorded, and the estimates are "
+                f"uncorrected")
     over = (", resampling PSUs within strata with the fits survey-weighted"
             if population_answer(state) else "")
-    return (f"Regression calibration of {which} from the repeated recalls was declared as a "
-            f"secondary analysis beside the uncorrected estimate, with intervals from "
-            f"{count(d.n_boot)} bootstrap resamples of the whole chain{over}")
+    return (f"{head}, with intervals from {count(d.n_boot)} bootstrap resamples of the whole "
+            f"chain{over}")
 
 
 restated_whole("set_measurement_error")
@@ -1592,20 +1623,27 @@ def _set_clusters(d: Any, state: Any, ctx: Any) -> str:
     if d.column is None:
         text = "Nothing groups the participants above the person; each is analyzed as independent"
         denied = list(getattr(d, "none_of", None) or [])
-        if d.acknowledged and denied:
-            one = len(denied) == 1
-            text += (f", although {listing(denied, limit=3)} {'reads' if one else 'read'} as "
+        # LEASH: kept over a reading only where the column read as a grouping (the guess "yes");
+        # a column asked with the guess "no" (a category with many labels, whole numbers shaped as
+        # a measurement) was asked and answered, and is no limitation. Without the guesses (an
+        # older context) every denied column is said to have read as one, as before.
+        guesses = _get(ctx, "grouping_guesses") or {}
+        read = [c for c in denied if guesses.get(c, "yes") == "yes"] if d.acknowledged else []
+        asked = [c for c in denied if c not in read]
+        if read:
+            one = len(read) == 1
+            text += (f", although {listing(read, limit=3)} {'reads' if one else 'read'} as "
                      f"{'a possible grouping' if one else 'possible groupings'} of the participants "
                      f"(a site, centre, household or batch, by name or by values); the answer was "
                      f"kept over that reading, so the intervals do not cluster by "
                      f"{'it' if one else 'them'}, and it is a stated limitation")
-        elif denied:
+        if asked:
             # The leash note: columns asked by their values alone (a category with many labels).
-            one = len(denied) == 1
-            text += (f"; {listing(denied, limit=3)} {'was' if one else 'were'} asked whether "
+            one = len(asked) == 1
+            text += (f"; {listing(asked, limit=3)} {'was' if one else 'were'} asked whether "
                      f"{'it groups' if one else 'they group'} the participants, and the answer "
                      f"was that {'it does' if one else 'they do'} not")
-        elif d.acknowledged:
+        elif d.acknowledged and not read:
             text += (", although a column reads as a site, centre, household or batch; the answer "
                      "was kept over that reading and is a stated limitation")
         return text
@@ -1670,18 +1708,30 @@ def _set_estimand(d: Any, state: Any, ctx: Any) -> str:
 @register_sentence("set_adjustment")
 def _set_adjustment(d: Any, state: Any, ctx: Any) -> str:
     # WP17 (MODELING_SEQUENCE §1 step 3): roles derived from the disjunctive cause criterion.
-    from turbotab.core.estimand import ROLE_PLURAL, ROLE_SINGULAR, derive
+    from turbotab.core.estimand import (
+        OUTCOME_KIND_PLURAL,
+        OUTCOME_KIND_SINGULAR,
+        ROLE_PLURAL,
+        ROLE_SINGULAR,
+        derive,
+        outcome_kind_columns,
+    )
 
     spec = getattr(state, "estimand", None)
     effect = getattr(spec, "effect", None) or "total"
-    by_role: dict[tuple[str, bool, bool], list[str]] = {}
+    # LEASH: a consequence of the exposure whose answers took the card's guess "another measure of
+    # the outcome's own kind" is said so, as the card said it, never "a possible collider".
+    measures = outcome_kind_columns(d.answers, state)
+    by_role: dict[tuple[str, bool, bool, bool], list[str]] = {}
     derived = {}
     for column, answers in d.answers.items():
         found = derive(answers, effect)
         derived[column] = found
-        by_role.setdefault((found.role, found.adjusted, found.secondary), []).append(column)
+        measure = found.role == "collider" and column in measures
+        by_role.setdefault((found.role, found.adjusted, found.secondary, measure),
+                           []).append(column)
     parts = []
-    for (role, adjusted, secondary), columns in by_role.items():
+    for (role, adjusted, secondary, measure), columns in by_role.items():
         one = len(columns) == 1
         if adjusted and effect == "direct" and role in ("mediator", "timing_unknown"):
             where = "held fixed by the direct effect"
@@ -1691,7 +1741,10 @@ def _set_adjustment(d: Any, state: Any, ctx: Any) -> str:
             where = "left out of the primary model and adjusted for in a declared secondary one"
         else:
             where = "left out"
-        noun = ROLE_SINGULAR[role] if one else ROLE_PLURAL[role]
+        if measure:
+            noun = OUTCOME_KIND_SINGULAR if one else OUTCOME_KIND_PLURAL
+        else:
+            noun = ROLE_SINGULAR[role] if one else ROLE_PLURAL[role]
         parts.append(f"{listing(columns, limit=5)} {'is' if one else 'are'} {noun}, {where}")
     kept = [c for c, a in d.answers.items() if a.keep and a.acknowledged and not
             (derived[c].role == "mediator" and effect == "direct")

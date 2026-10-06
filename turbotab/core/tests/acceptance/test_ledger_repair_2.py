@@ -1359,6 +1359,35 @@ def _probe_design_nesting(value: str) -> Any:
 TEXT_BMI = ["27.1", ".", "31.4", "22.0", ".", "25.5", "29.9", "24.3"]
 
 
+def _band_folded(value: str) -> ProjectState:
+    return _confirm(d.SetTarget(column="y"), d.SetPurpose(purpose="inference"),
+                    d.SetRoles(roles={"band": "exposure"}),
+                    d.SetEstimand(exposure="band", effect="total", measure="mean_difference"),
+                    kind="code_or_count", column="band", value=value)
+
+
+BAND_FACTS = {"band": {"whole": True, "zero_one": False, "n_values": 12, "min": 1, "max": 12}}
+BAND_INFO = {"band": {"dtype": "integer", "n_unique": 12}}
+
+
+def _probe_form_plan(value: str) -> Any:
+    from turbotab.core.methods.exposure_form import form_plan
+
+    plan = form_plan(_band_folded(value), BAND_INFO, BAND_FACTS)
+    assert plan["waiting"] == []
+    return ([n["column"] for n in plan["needs"]],
+            [s["column"] for s in plan["stated"] if s["why"].startswith("declared codes")])
+
+
+def _probe_form_declared(value: str) -> Any:
+    try:
+        d.validate({"kind": "set_exposure_form", "column": "band", "form": "linear"},
+                   {"state": _band_folded(value), "column_info": BAND_INFO})
+    except d.Refusal as refused:
+        return refused.code
+    return None
+
+
 def _probe_text_amounts(value: str) -> Any:
     """The working table's reading of a text BMI with SAS `.` marks (``working.text_amounts``,
     evaluated by the SQL the working table runs): numbers, or the text as recorded."""
@@ -1504,6 +1533,12 @@ PROBES: dict[tuple[str, str], tuple[Callable[[str], Any], Callable[[str], Any]]]
         (_probe_design_nesting, lambda v: {} if v == R.NOT_NESTED else {"sfa_g": v}),
     ("turbotab.core.stages.working:text_amounts", "code_or_count"):
         (_probe_text_amounts, _expected_text_amounts),
+    # FORM (repair round): a 1–12 `band`, the declared exposure: codes are stated (indicators,
+    # no form) and a form declared on them refused; an amount is asked its form and takes one.
+    ("turbotab.core.methods.exposure_form:form_plan", "code_or_count"):
+        (_probe_form_plan, lambda v: ([], ["band"]) if v == "code" else (["band"], [])),
+    ("turbotab.core.methods.exposure_form:_form_reads_a_settled_reading", "code_or_count"):
+        (_probe_form_declared, lambda v: "codes_take_no_form" if v == "code" else None),
 }
 
 

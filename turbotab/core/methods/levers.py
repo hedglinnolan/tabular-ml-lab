@@ -200,14 +200,28 @@ def _ols_loss(Z_fit: np.ndarray, y_fit: np.ndarray, Z_test: np.ndarray, y_test: 
     return float(np.mean((y_test - Z_test @ beta) ** 2))
 
 
+def logistic_coefficients(Z: np.ndarray, y: np.ndarray, offset: np.ndarray | None = None
+                          ) -> np.ndarray | None:
+    """The logistic maximum-likelihood coefficients of ``y`` on the columns of ``Z`` (R's
+    ``glm(family = binomial)``): Newton–Raphson with step halving to a score below 10⁻¹² of the
+    rows (``models.causal.logistic_fit``). None only when it does not converge. The size of a
+    coefficient is no failure: a spline basis on a 0–1 share or a predictor in grams converges to
+    coefficients far from 0, as R's ``glm`` does."""
+    from turbotab.core.models.causal import logistic_fit
+
+    try:
+        beta = logistic_fit(Z, y, offset=offset)
+    except ValueError:
+        return None
+    return beta if np.all(np.isfinite(beta)) else None
+
+
 def _logistic_loss(Z_fit: np.ndarray, y_fit: np.ndarray, Z_test: np.ndarray,
                    y_test: np.ndarray) -> float:
-    from turbotab.core.models.performance import logistic_fit
-
-    fitted = logistic_fit(Z_fit, y_fit)
-    if fitted is None:
+    beta = logistic_coefficients(Z_fit, y_fit)
+    if beta is None:
         return float("inf")
-    eta = Z_test @ fitted[0]
+    eta = Z_test @ beta
     p = np.clip(1.0 / (1.0 + np.exp(-eta)), 1e-15, 1 - 1e-15)
     return float(-np.mean(y_test * np.log(p) + (1 - y_test) * np.log(1 - p)))
 
@@ -446,10 +460,9 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
         self.estimator_ = self._fit_one(X, y, rng)
         self.calibration_ = (0.0, 1.0)
         self.n_features_in_ = getattr(self.estimator_, "n_features_in_", None)
+        self.recalibration_note_: str | None = None
         if not self.recalibrate:
             return self
-        from turbotab.core.models.performance import logistic_fit
-
         lp = np.full(len(y), np.nan)
         for train, test in inner_folds(len(y), self.cv, int(self.seed)):
             if len(np.unique(y[train])) < 2:
@@ -458,10 +471,26 @@ class ImbalanceCorrected(ClassifierMixin, BaseEstimator):
             lp[test] = _logit(_positive(inner, _take(X, test), self.classes_[1]))
         ok = np.isfinite(lp)
         event = (y == self.classes_[1]).astype(float)
-        fitted = logistic_fit(np.column_stack([np.ones(int(ok.sum())), lp[ok]]), event[ok])
+        fitted = logistic_coefficients(np.column_stack([np.ones(int(ok.sum())), lp[ok]]), event[ok])
         if fitted is not None:
-            self.calibration_ = (float(fitted[0][0]), float(fitted[0][1]))
+            self.calibration_ = (float(fitted[0]), float(fitted[1]))
+        else:
+            self.recalibration_note_ = ("The recalibration did not converge on the inner "
+                                        "predictions, so the corrected model's log-odds stand "
+                                        "as fitted.")
         return self
+
+    def deployed_coefficients(self) -> tuple[float, np.ndarray] | None:
+        """The deployed model's intercept and coefficients on the log-odds scale when the wrapped
+        model is linear in its inputs: the recalibration's ``a + b·(β₀ + xβ)`` gives ``a + b·β₀``
+        and ``b·β``. None for a model with no coefficients."""
+        inner = self.__dict__.get("estimator_")
+        if inner is None or not hasattr(inner, "coef_"):
+            return None
+        a, b = self.calibration_
+        coef = np.asarray(inner.coef_, dtype=float).ravel()
+        intercept = float(np.ravel(getattr(inner, "intercept_", [0.0]))[0])
+        return a + b * intercept, b * coef
 
     def predict_proba(self, X: Any) -> np.ndarray:
         a, b = self.calibration_
@@ -583,7 +612,13 @@ def _register_contracts() -> None:
                             "the spline's knots are placed again in every training fold and "
                             "resample, so its optimism is in the corrected score",
                             purposes=prediction, enforced_by=f"{here}:RuleSplines",
-                            id="spline_rule_in_fold"),),
+                            id="spline_rule_in_fold"),
+                   Relation("implies", "candidate_parameters",
+                            "the rule's spline columns count among the candidate predictor "
+                            "parameters Riley's minimum sample size reads before the shelf",
+                            purposes=prediction,
+                            enforced_by="turbotab.core.stages.modeling:rule_spline_terms",
+                            id="spline_rule_counted_by_riley"),),
         short="splines with knots by Harrell's rule",
         sources=("Harrell, Regression Modeling Strategies 2nd ed. §2.4.6",),
         sentence=f"{here}:decision_sentence")
@@ -603,7 +638,13 @@ def _register_contracts() -> None:
         relations=(Relation("implies", "in_fold_choice",
                             "each predictor's form is chosen anew in every training fold, so the "
                             "choice's optimism is in the corrected score", purposes=prediction,
-                            enforced_by=f"{here}:InnerCVForms", id="form_chosen_in_fold"),),
+                            enforced_by=f"{here}:InnerCVForms", id="form_chosen_in_fold"),
+                   Relation("implies", "candidate_parameters",
+                            "every spline the inner choice may keep counts among the candidate "
+                            "predictor parameters Riley's minimum sample size reads",
+                            purposes=prediction,
+                            enforced_by="turbotab.core.stages.modeling:rule_spline_terms",
+                            id="inner_cv_counted_by_riley"),),
         short="each predictor's form by inner cross-validation",
         sources=("Harrell, Regression Modeling Strategies, Validation",
                  "Varma & Simon, BMC Bioinformatics 2006;7:91"),
@@ -723,6 +764,27 @@ def _levers_fit_the_task(decision: Any, ctx: Any) -> None:
             f"multiply the parameters; at p ≫ n a filter or selection comes first.",
             exits=[{"label": "Keep every predictor linear",
                     "decision": decision.model_copy(update={"forms": "none"})}])
+    selection = getattr(state, "selection", None) if state is not None else None
+    if (selection is not None and selection.method == "stepwise" and not selection.sensitivity
+            and getattr(state, "purpose", None) != "inference"):
+        # Backward elimination starts from every column the rule makes (``variable_selection``):
+        # the splines must leave the smallest training fold room to fit them all.
+        from turbotab.core.decisions import LeverSpec
+        from turbotab.core.models.variable_selection import stepwise_room
+
+        probe = state.model_copy(update={"levers": LeverSpec(
+            **decision.model_dump(exclude={"kind"}))})
+        room = stepwise_room(probe, ctx, task)
+        if room is not None and room[0] >= room[1] - 1:
+            raise Refusal(
+                "stepwise_needs_rows",
+                f"With these splines backward elimination would start from all {room[0]:,} "
+                f"candidate columns, and the smallest training fold has {room[1]:,} rows: a model "
+                f"with every column and an intercept needs more rows than that.",
+                exits=[{"label": "Keep every predictor linear",
+                        "decision": decision.model_copy(update={"forms": "none"})},
+                       {"label": "Choose the elastic net in the selection question",
+                        "decision": None}])
 
 
 def _register_validators() -> None:
@@ -767,5 +829,5 @@ def decision_sentence(d: Any, state: Any) -> str:
 __all__ = ["HARRELL_LARGE", "HARRELL_SMALL", "INNER_FOLDS", "ImbalanceCorrected", "InnerCVForms",
            "MIN_DISTINCT", "NZV_FREQ", "NZV_UNIQUE", "RuleSplines", "SPLINE_RULE", "VarianceFilter",
            "balanced_weights", "curve_candidates", "effective_size", "form_losses", "inner_folds",
-           "decision_sentence", "describe_step", "infer_task", "knots_by_rule", "lever_steps", "near_zero_variance", "resampled_rows",
-           "wrap_model"]
+           "decision_sentence", "describe_step", "infer_task", "knots_by_rule", "lever_steps",
+           "logistic_coefficients", "near_zero_variance", "resampled_rows", "wrap_model"]

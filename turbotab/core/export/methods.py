@@ -189,7 +189,8 @@ def _said(text: str) -> str:
 def analysis_paragraphs(source: Any) -> list[MethodsEntry]:
     """The paragraphs the analysis wrote on these answers, once each, in a fixed order: the
     declared model sequence's (inference), each family's multiple-imputation and omics-chain
-    paragraphs, and (prediction) what a cross-validated score and its standard error are."""
+    paragraphs, (prediction) what a cross-validated score and its standard error are, and
+    (inference) a declared regression calibration that ran."""
     out: list[MethodsEntry] = []
     seen: set[str] = set()
 
@@ -212,6 +213,12 @@ def analysis_paragraphs(source: Any) -> list[MethodsEntry]:
         if source.purpose == "prediction":
             add("fit", fit.get("cv_definition"))
             add("fit", fit.get("se_definition"))
+    # REPAIR-RC: the declared secondary analysis's own paragraph (MODELING_SEQUENCE §6 chain 2's
+    # reviewers' sentence and what it rests on). One that was blocked is said by the record's own
+    # sentence, restated with the block (``voice``), so it is not said twice.
+    calibration = source.artifact("calibration") if source.purpose == "inference" else None
+    if isinstance(calibration, dict) and calibration.get("applies"):
+        add("calibration", calibration.get("methods"))
     return out
 
 

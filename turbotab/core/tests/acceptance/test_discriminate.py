@@ -396,6 +396,19 @@ def fit_refused_without_a_number(drive: Any, body: dict[str, Any]) -> dict[str, 
     return error
 
 
+def age_asked(drive: Any) -> None:
+    """`age`'s code-or-amount reading was asked by the functional-form question (its ask card,
+    recorded by ``server_drive.answer_forms``) before any fit was computed, guessed an amount, both
+    answers offered (BLUEPRINT §14.2: the first consumer asks)."""
+    asks = [a for a in drive.form_asks if ("code_or_count", "age") in asked(a["ask"]["exits"])]
+    assert asks, drive.form_asks
+    assert not asks[0]["fit_artifact"], "a fit computed a number on an unsettled reading"
+    offered = {(e["decision"]["column"], e["decision"]["value"]) for e in asks[0]["ask"]["exits"]
+               if (e.get("decision") or {}).get("kind") == "confirm_reading"}
+    assert {("age", "amount"), ("age", "code")} <= offered, offered
+    assert next(g for g in asks[0]["ask"]["groups"] if "age" in g["columns"])["guess"] == "amount"
+
+
 def coefficients(fit: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Every coefficient the fit computed: under inference the exposure's rows and the appendix of
     adjustment terms the Table 2 display sets apart (``server_drive.every_row``)."""
@@ -482,7 +495,22 @@ def test_a1_a_household_line_number_never_clusters_the_intervals_through_the_ser
         wrong.decide(plan["models"])
         said = " ".join(strings(wrong.artifact("fit")))
         assert "by `PID`" not in said and "G = 19" not in said
-        assert "The grain answer names `DUPERSID` as the unit" in said
+        # LEASH (the verifier's seed 99): the grouping question no longer drops a whole number
+        # whose counts fall away from the middle, so it asks `PID` (pandas: 19 values, 46 rows on
+        # the median one), guessed "no" from its values, and the answer that nothing groups the
+        # participants denies it. Nothing clusters by `PID` by that answer, not by the grain's
+        # precedence, so the fit has no note about it (the note for a repeating column the question
+        # does not ask about is test_readings_ledger's), and the record states it as asked and
+        # answered, never as a limitation kept over a reading.
+        view = wrong.view()
+        record = next(r for r in reversed(view["decisions"])
+                      if r["decision"]["kind"] == "set_clusters")
+        assert "PID" in record["decision"]["none_of"]
+        assert view["state"]["reading_confirmations"]["cluster:PID"] == "no"
+        assert record["sentence"].endswith(
+            "; `PID` was asked whether it groups the participants, and the answer was that it does "
+            "not.")
+        assert "The grain answer names" not in said
 
 
 def test_a1_a_rosters_line_number_never_wins_over_the_household_the_user_confirmed(tmp_path):
@@ -575,9 +603,11 @@ def test_a2_the_gates_two_headers_through_the_server_state_no_parsed_unit(tmp_pa
 def test_a3_the_users_codes_reach_the_fit_as_one_indicator_per_level(tmp_path):
     """Gate item 3 (smoking 1/2/3, p3_code_confirm.py rng 43003). Before: the user picked the fit's
     own exit "holds codes for categories (one indicator per level)" and the fit still entered one
-    slope, 1.074. Expected: the fit asks (smoking guessed codes, age an amount), computes nothing
-    until answered, and then follows the answer: codes give the NumPy indicator fit (5.761 and
-    0.812), an amount gives the NumPy single slope (1.074)."""
+    slope, 1.074. Expected: the fit asks (smoking guessed codes), computes nothing until answered,
+    and then follows the answer: codes give the NumPy indicator fit (5.761 and 0.812), an amount
+    gives the NumPy single slope (1.074). `age` (30 whole-number values, a confounder) is asked
+    first by the functional-form question, its first consumer under inference (the FORM repair: an
+    amount takes a declared form, codes none), guessed an amount, before any fit."""
     frame = smoking()
     y = frame["crp_mg_l"].to_numpy(float)
     one = np.ones(len(frame))
@@ -598,7 +628,8 @@ def test_a3_the_users_codes_reach_the_fit_as_one_indicator_per_level(tmp_path):
             block = error["exits"][0]["decision"]
             assert block["kind"] == "confirm_readings"
             shown = {(i["column"], i["value"]) for i in block["items"]}
-            assert {("smoking", "code"), ("age", "amount")} <= shown, shown
+            assert ("smoking", "code") in shown, shown
+            age_asked(drive)
             drive.decide(plan["models"])
             coef = coefficients(drive.artifact("fit"))
             assert {k for k in coef if k.startswith("smoking")} == set(want)
@@ -611,10 +642,13 @@ def test_a4_codes_after_a_blank_and_beyond_ten_levels_are_asked_and_fit_as_indic
     "a hierarchical tree-structured dictionary which uses integers to represent categories or
     special values"; BRFSS 2022 ``_STATE`` "State FIPS Code" (1 Alabama, 2 Alaska, 4 Arizona …);
     pandas: with a value missing "the original data type will be coerced to np.float64". Before:
-    each entered as one slope, unasked. Expected: the fit asks about all four whole-valued
-    predictors (any type, any count of values) and computes nothing until answered; with the truth
-    (three code lists, age an amount) each code list enters as one indicator per level beyond the
-    first, and the education indicators equal a NumPy least-squares fit with every indicator."""
+    each entered as one slope, unasked. Expected: all four whole-valued predictors (any type, any
+    count of values) are asked before any number is computed: `age`, a confounder whose role is
+    settled, by the functional-form question (its first consumer under inference), the three code
+    lists, whose roles ride along unconfirmed, by the fit, which computes nothing until answered;
+    with the truth (three code lists, age an amount) each code list enters as one indicator per
+    level beyond the first, and the education indicators equal a NumPy least-squares fit with
+    every indicator."""
     frame = coded()
     assert frame["education"].dtype == np.float64 and frame["_STATE"].nunique() == 51
     assert frame["ethnic_background"].nunique() == 22
@@ -628,7 +662,8 @@ def test_a4_codes_after_a_blank_and_beyond_ten_levels_are_asked_and_fit_as_indic
         drive_unsettled(drive, plan, roles={"eid": "identifier"})
         error = fit_refused_without_a_number(drive, plan["models"])
         assert {c for k, c in asked(error["exits"]) if k == "code_or_count"} == \
-            {"ethnic_background", "education", "_STATE", "age"}
+            {"ethnic_background", "education", "_STATE"}
+        age_asked(drive)
         drive.decide(plan["models"])
         coef = coefficients(drive.artifact("fit"))
     rows = frame.dropna(subset=["education"])

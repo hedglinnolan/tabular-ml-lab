@@ -805,13 +805,7 @@ def test_3f_the_top_exposures_are_the_exposures_the_best_family_leans_on(regress
     assert E.SCALE_SAYS in regression.art["relations"]
 
 
-def test_3g_curves_drawn_by_some_families_name_only_those():
-    """Under inference, a linear model above the floor and boosted trees not shown to beat it
-    (MSE 24.92 against 25.01, MS6's primary for a regression: below the baseline's number, lower
-    being better, yet not shown to beat it): the paragraph
-    names the linear model as the one that drew curves, says the trees drew none and ranked no
-    interaction, and calls a covariate's curve an adjustment term. Whole paragraph, verbatim; the
-    trees' curves are withheld with their reason."""
+def _two_families(purpose: str):
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.linear_model import LinearRegression
     from sklearn.pipeline import Pipeline
@@ -828,12 +822,21 @@ def test_3g_curves_drawn_by_some_families_name_only_those():
                     versus={"verdict": "better"}, score=0.62, baseline=0.0),
         E.FamilyFit(key="boosted_trees", label="Boosted trees", fitted=trees, unfitted=trees,
                     versus={"verdict": "no_better"}, score=24.92, baseline=25.01)]
-    art = E.explain(families, E.Setting(
-        task="regression", purpose="inference", target="glucose", event=None, X=X, y=y,
-        declared=["protein"], exposures=["protein", "age"], reseeds=0, metric_label="MSE",
-        baseline_label="the outcome's average"), lambda *a: None)
-    assert [(c.input, c.role) for c in art.curves] == [("protein", "exposure"),
-                                                        ("age", "adjustment")]
+    return E.explain(families, E.Setting(
+        task="regression", purpose=purpose, target="glucose", event=None, X=X, y=y,
+        declared=["protein"] if purpose == "inference" else [], exposures=["protein", "age"],
+        reseeds=0, metric_label="MSE", baseline_label="the outcome's average"), lambda *a: None)
+
+
+def test_3g_curves_drawn_by_some_families_name_only_those():
+    """Under prediction, a linear model above the floor and boosted trees not shown to beat it
+    (MSE 24.92 against 25.01, MS6's primary for a regression: below the baseline's number, lower
+    being better, yet not shown to beat it): the paragraph names the linear model as the one that
+    drew curves and says the trees drew none and ranked no interaction. Whole paragraph, verbatim;
+    the trees' curves are withheld with their reason."""
+    art = _two_families("prediction")
+    assert [(c.input, c.role) for c in art.curves] == [("protein", "predictor"),
+                                                        ("age", "predictor")]
     for curve in art.curves:
         drawn = {k.family: k for k in curve.curves}
         assert drawn["linear"].drawn and not drawn["boosted_trees"].drawn
@@ -841,16 +844,45 @@ def test_3g_curves_drawn_by_some_families_name_only_those():
             "Boosted trees draws no curve: its cross-validated MSE of 24.920 is not shown to beat "
             "the MSE of the outcome's average, 25.010, so a curve would describe noise.")
     assert art.methods == (
-        "SHAP values were computed for all 300 analyzed rows on each model's own scale: exact "
+        "SHAP values were computed for all 300 training rows on each model's own scale: exact "
         "linear SHAP values for the linear model; path-dependent TreeSHAP values for the boosted "
         "trees. The linear model adds its inputs' effects, so no interaction was found to rank. "
         "Accumulated local effects (Apley and Zhu 2020) of `protein` and `age` were drawn for the "
         "linear model on one grid of the inputs' quantiles, with no curve where an interval held "
-        "fewer than 5 rows. `age` is an adjustment term, not an effect estimate: its curve "
-        "describes the models. No curve was drawn and no interaction was ranked for the boosted "
+        "fewer than 5 rows. No curve was drawn and no interaction was ranked for the boosted "
         "trees, whose cross-validated MSE was not shown to beat the outcome's average. These "
-        "explanations describe each model's predictions, not causal effects. Under inference "
-        "they were not used as effect estimates.")
+        "explanations describe each model's predictions, not causal effects.")
+
+
+def test_3g_under_inference_no_floor_reads_or_quotes_a_cross_validated_score():
+    """MODELING_SEQUENCE ruling 13 and §1 row 11 (EXPLORE repair): under inference no
+    cross-validated score is shown, so the explanation reads none: no family carries a floor, the
+    declared exposure's curve is drawn for every family whatever its score would have been, the
+    floor's relation does not fire, and the paragraph never mentions a cross-validated score.
+    Whole paragraph, verbatim."""
+    art = _two_families("inference")
+    assert all(f.floor is None for f in art.families)
+    assert E.FLOOR_SAYS not in art.relations
+    assert [(c.input, c.role) for c in art.curves] == [("protein", "exposure"),
+                                                        ("age", "adjustment")]
+    for curve in art.curves:
+        assert all(k.drawn and k.reason is None for k in curve.curves)
+    assert "cross-validated" not in art.methods
+    assert art.methods == (
+        "SHAP values were computed for all 300 analyzed rows on each model's own scale: exact "
+        "linear SHAP values for the linear model; path-dependent TreeSHAP values for the boosted "
+        "trees. Pairwise interactions among each model's 2 most important inputs were ranked by "
+        "the root mean square of their interaction part, with Friedman and Popescu's H² beside it, "
+        "on a seeded random sample of 150 of the 300 rows. The linear model adds its inputs' "
+        "effects, so no interaction "
+        "was found to rank. Accumulated local effects (Apley and Zhu 2020) of `protein` and `age` "
+        "were drawn for each family on one grid of the inputs' quantiles, with no curve where an "
+        "interval held fewer than 5 rows. `age` is an adjustment term, not an effect estimate: its "
+        "curve describes the models. These explanations describe each model's predictions, not "
+        "causal effects. Under inference they were not used as effect estimates.")
+    from turbotab.core.models.selection import explained_in
+
+    assert explained_in(art.model_dump(mode="json")) == []
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1184,9 +1216,8 @@ def test_6c_the_decision_sentence_is_verbatim():
         "stability across refits, by a ranking of pairwise interactions (Friedman and Popescu's H "
         "statistic), and by partial dependence curves (Friedman 2001), the customary choice, "
         "which average over combinations of the inputs the data may not contain, of `protein`, "
-        "drawn only for families whose cross-validated score beats the no-predictor baseline; "
-        "these describe the models' predictions, not causal effects, and are not effect "
-        "estimates.")
+        "drawn for every fitted family; these describe the models' predictions, not causal "
+        "effects, and are not effect estimates.")
 
 
 def test_6d_one_refit_or_a_column_outside_the_model_is_refused_with_ways_forward():

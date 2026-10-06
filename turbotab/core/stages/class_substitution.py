@@ -193,7 +193,9 @@ def class_family_entries(key: str, family: Any, *, task: str, pipeline: Any, tem
                       ks=ks, total_kind="variable", nested=nested, total=total_energy,
                       scale=scale)
     say = progress or (lambda fraction, message: None)
-    if imputed is not None and (imputed.get("fits") or {}).get(key):
+    if imputed is not None and ((imputed.get("fits") or {}).get(key) or template is not None):
+        # MS3: a family whose table drew no copy fits of its own (boosted trees, a penalized
+        # family) is refit on each copy, never drawn on one fill beside the pooled ones.
         return _pooled(key, family, task=task, imputed=imputed, train_ids=train_ids, state=state,
                        sub=sub, ks=ks, kcal_per_unit=kcal_per_unit, nested=nested,
                        total_energy=total_energy, scale=scale, percent=percent, n_boot=n_boot,
@@ -320,21 +322,33 @@ def _pooled(key: str, family: Any, *, task: str, imputed: Mapping[str, Any], tra
                                                shift_for)
 
     frames = list(imputed["frames"])
-    fits = list((imputed.get("fits") or {}).get(key) or [])
+    given = list((imputed.get("fits") or {}).get(key) or [])
     outcomes = imputed.get("outcomes")
-    m = len(fits)
-    classes = list(fits[0].classes_)
-    if any(list(f.classes_) != classes for f in fits):
-        raise ValueError("The imputed copies' fits do not hold the same classes.")
+    m = len(given) or len(frames)
+    supplied = outcomes is not None
     curve_args = dict(donor=sub.donor, recipient=sub.recipient, kcal_per_unit=kcal_per_unit,
                       ks=ks, total_kind="variable", nested=nested, total=total_energy,
                       scale=scale)
+
+    def copy_fit(j: int, X_all: pd.DataFrame, y_all: Any) -> Any:
+        """Copy j's fit: the table's own, or (a family with no table of its own) this family
+        refit on the completed copy, as its single fit is on every analyzed row."""
+        if given:
+            return given[j]
+        progress(0.6 * j / max(m, 1), f"{family.label}: fitting copy {j + 1} of {m}")
+        units = (group_of.reindex(X_all.index).to_numpy() if group_of is not None
+                 and not supplied else None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return fit_pipeline(clone(template), X_all, y_all, groups=units)
+
     curve_ids = set(int(i) for i in np.asarray(train_ids))
     curves: list[dict[str, Any]] = []
-    shifts, rows_of, ys = [], [], []
+    shifts, rows_of, ys, fits = [], [], [], []
+    classes: list[Any] | None = None
     design_bands: list[dict[str, Any]] = []
     started = time.perf_counter()
-    for j, (X_all, fitted) in enumerate(zip(frames, fits)):
+    for j, X_all in enumerate(frames[:m]):
         progress(0.6 * j / max(m, 1), f"{family.label}: copy {j + 1} of {m}")
         y_all = np.asarray(outcomes[j]) if outcomes is not None else np.asarray(y_fit)
         if survey_design is not None:
@@ -349,6 +363,13 @@ def _pooled(key: str, family: Any, *, task: str, imputed: Mapping[str, Any], tra
                 support = _support_only(X_k, domain.raw, {**curve_args, "shift": shift})
                 return ClassDraw(entries=[_blocked_entry(key, family, len(ks), refused, exits)],
                                  curve=support, m=m)
+        fitted = copy_fit(j, X_all, y_all)
+        if classes is None:
+            classes = list(fitted.classes_)
+        elif list(fitted.classes_) != classes:
+            raise ValueError("The imputed copies' fits do not hold the same classes.")
+        fits.append(fitted)
+        if survey_design is not None:
             try:
                 drawn = design_class_curves(lambda frame, _f=fitted: model_matrix(_f, frame), X_k,
                                             y_all[rows], classes, survey_design, domain,

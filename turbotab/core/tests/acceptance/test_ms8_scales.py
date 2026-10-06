@@ -753,6 +753,10 @@ def chain4(tmp_path_factory) -> dict:
     with local_server(home / "srv") as client:
         drive = open_project(client, home / "chain4.csv",
                              Truth({"code_or_count:age": "amount",
+                                    # (FORM repair: a form declared on an item before the scales
+                                    # answer reads its code-or-amount reading, asked then; a PSS
+                                    # item is an answer on the 0–4 response scale, an amount)
+                                    "code_or_count:pss_3": "amount",
                                     **{f"adjust:{c}": CONFOUNDS
                                        for c in ("age", "sex", *PSS_ITEMS, *DQ_ITEMS)}},
                                    fixture="survey_scale_table"))
