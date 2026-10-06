@@ -1,14 +1,58 @@
 /**
- * The quest log (#/quest): a placeholder until its structure agent replaces this file. It shows the
- * kit's reference wiring (../calm-kit/ReferenceScreen.tsx) so the walker contract
- * (e2e/calm-protos/quest.ts) and the cross-check of the four Table 2s run from the start. Build it
- * from ../calm-kit only: the only difference between the four structures is structure.
+ * The quest log (calm.html#/quest; dev /lab/calm/quest): the open questions as a list of
+ * objectives, walked one at a time. Where the kit puts its chain, the objective line lists the
+ * methods section by its guideline sections (STROBE 6, 7, 8, 12, 13–17), each with how many of its
+ * objectives are recorded; choosing a section discloses its objectives and choosing one opens it
+ * on the card. The card names the section and the objective it fills. The card and the canvas are
+ * the kit's, at the kit's widths; the manuscript opens from the kit's rail, as in the Q&A card (at
+ * 900 px and narrower, the kit's column below the canvas). A newcomer answers the card in front of
+ * them and continues, watching the counts fill; an expert jumps to any recorded objective from the
+ * line or the manuscript and comes back with "Next objective". Every part, word and number is the
+ * kit's (../calm-kit).
+ *
+ * The line stays on top rather than becoming a vertical rail: at 1440 px a 220 px rail beside the
+ * card would leave the canvas 48% of the screen, short of the 60% FOUNDATION §3 gives it.
  */
-import { ReferenceScreen } from "../calm-kit/ReferenceScreen";
+import { useEffect, useState } from "react";
+import { Canvas, Card, Shell, useWalk } from "../calm-kit";
+import { kickerOf } from "./objectives";
+import { ObjectiveLine } from "./ObjectiveLine";
 
-/** Marks this file as the placeholder; the chooser reads it. Delete it with the placeholder. */
-export const PLACEHOLDER = true;
+const NARROW = "(max-width: 900px)";
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && !!window.matchMedia?.(NARROW).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia?.(NARROW);
+    if (!mq) return;
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return narrow;
+}
+
+/** The chooser: calm.html's hash route, or the dev app's /lab/calm. */
+const home = () =>
+  typeof window !== "undefined" && window.location.pathname.startsWith("/lab/calm")
+    ? "/lab/calm"
+    : "#/";
 
 export function Screen() {
-  return <ReferenceScreen name="The shared reference walk (this structure is not built yet)" />;
+  const walk = useWalk();
+  const narrow = useNarrow();
+  return (
+    <Shell
+      walk={walk}
+      name="The quest log"
+      home={home()}
+      manuscript={narrow ? "column" : "rail"}
+      chain={<ObjectiveLine walk={walk} />}
+      card={<Card walk={walk} kicker={kickerOf(walk.state.open) ?? undefined} />}
+      canvas={<Canvas walk={walk} />}
+    />
+  );
 }
