@@ -13,6 +13,8 @@ the outcome perfectly and explain nothing, and
 `GUIDED-097` — THE FIXTURE RULE. Two target shapes, and the shapes not covered
 are named below.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import numpy as np
@@ -186,42 +188,6 @@ def test_the_model_is_not_fed_the_identifier(shape):
         "the exclusion removed more than the identifier")
 
 
-def test_every_path_that_feeds_a_model_goes_through_one_door():
-    """`_feature_frame` takes three loose arguments and four call sites passed
-    them, which is four places that have to remember the same rule.
-    `GUIDED-108` is what happened when one forgot, and the prediction that
-    *somebody will pass the loose one next time* is one this codebase has been
-    right about repeatedly."""
-    import ast
-    import pathlib
-
-    # THE POSITIVE CONTROL. An absence assertion over a tree gets easier to
-    # satisfy as the tree empties (`GUIDED-045`), so this checks the scan can
-    # SEE the thing it is asserting is absent before asserting it.
-    scanned = 0
-    seen_the_door = False
-    offenders = []
-    for path in sorted(pathlib.Path("turbotab").glob("*.py")):
-        if path.name.startswith("test_") or path.name == "training.py":
-            continue
-        tree = ast.parse(path.read_text())
-        scanned += 1
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and node.attr == "_feature_frame":
-                offenders.append(path.name)
-            if isinstance(node, ast.Attribute) and node.attr == "feature_frame":
-                seen_the_door = True
-    assert scanned > 20, f"the scan read {scanned} modules; it is not reading the package"
-    assert seen_the_door, (
-        "the scan found no call to `training.feature_frame` anywhere, so it "
-        "cannot see the name it is asserting the absence of a sibling for — "
-        "the assertion below would pass against an empty package")
-    assert not offenders, (
-        f"{sorted(set(offenders))} call `_feature_frame` directly instead of "
-        f"`training.feature_frame(project)`, so identifier exclusion — and "
-        f"whatever rule is added next — does not apply there")
-
-
 # ═══════════ THE SHELF IS NEVER SHORTENED ═══════════
 
 @pytest.mark.parametrize("shape", sorted(TARGET_SHAPES))
@@ -283,35 +249,6 @@ def test_no_identifiers_means_no_card_rather_than_an_empty_one():
     p = _sealed("clinical_longitudinal.csv", "sbp", "regression")
     assert ID.detect(p.df, "sbp") == []
     assert ID.receipt(p) is None
-
-
-def test_the_receipt_reaches_the_features_payload():
-    """`LOOP.md` §05: ships with its consumer."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    name, target, task, column, _ = TARGET_SHAPES["continuous regression"]
-    p = _sealed(name, target, task)
-    api.STORE.add(p)
-    client = TestClient(api.app)
-
-    body = client.get(f"/project/{p.id}/features").json()
-    assert body["identifiers"], "the Features payload carries no receipt"
-    assert body["identifiers"]["excluded"] == [column]
-
-    ok = client.post(f"/project/{p.id}/decision", json={
-        "kind": "keep_identifier", "subject": column,
-        "payload": {"column": column, "kept": True}})
-    assert ok.status_code == 200, ok.text
-    after = client.get(f"/project/{p.id}/features").json()
-    assert after["identifiers"]["kept"] == [column]
-    assert after["identifiers"]["excluded"] == []
-
-    bad = client.post(f"/project/{p.id}/decision", json={
-        "kind": "keep_identifier", "subject": "age",
-        "payload": {"column": "age", "kept": True}})
-    assert bad.status_code == 400, "a column nobody excluded was accepted"
 
 
 # ═══════════ L40-A2 · `GUIDED-120` — ONE CORE, NO FORKS ═══════════

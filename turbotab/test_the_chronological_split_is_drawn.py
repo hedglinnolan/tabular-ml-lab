@@ -37,13 +37,13 @@ test for this one, so the invariant here is stated over last-observations.
    shortened. So the line is: **named-and-unusable refuses; unnamed
    discloses.**
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
-from turbotab import api
 from turbotab import engine
 from turbotab import repeats as R
 
@@ -211,166 +211,6 @@ def test_no_time_column_named_discloses_rather_than_refusing():
 
 
 # ═══════════ DRIVEN, END TO END, THROUGH THE REAL ROUTES ═══════════
-
-@pytest.fixture(scope="module")
-def sealed():
-    """The whole journey through the API, twice: once with a time column and
-    once without. Driven rather than constructed — trap 5."""
-    out = {}
-    for label, with_column in (("with a time column", True),
-                               ("without one", False)):
-        client = TestClient(api.app)
-        with open(DATA / FIXTURE, "rb") as fh:
-            pid = client.post("/project", files={
-                "file": (FIXTURE, fh, "text/csv")}).json()["id"]
-
-        def decide(kind, payload):
-            return client.post(f"/project/{pid}/decision",
-                               json={"kind": kind, "payload": payload})
-
-        for kind, payload in (
-                ("set_target", {"column": "sbp"}),
-                ("set_purpose", {"answer": "prediction"}),
-                ("set_grain", {"answer": "people_repeat",
-                               "group_col": "subject_id"}),
-                ("set_repeat_kind", {"kind": "time_points"}),
-                ("set_unit_of_analysis", {"unit": "record"})):
-            r = decide(kind, payload)
-            assert r.status_code == 200, (kind, r.text[:250])
-        if with_column:
-            r = decide("set_time_column", {"column": "visit_date"})
-            assert r.status_code == 200, r.text[:250]
-        assert decide("set_temporal_prediction", {"temporal": True}) \
-            .status_code == 200
-        assert decide("set_eligibility", {"answer": "everyone"}) \
-            .status_code == 200
-        sealing = decide("seal", {"fraction": 0.25})
-        out[label] = (client, pid, sealing)
-    return out
-
-
-def test_the_recorded_objective_reaches_the_draw(sealed):
-    """`GUIDED-143`'s mechanism, closed. `repeats.split_strategy` had exactly
-    one caller — the setter that wrote the sentence — and `draw_holdout` never
-    took the answer as an argument."""
-    client, pid, sealing = sealed["with a time column"]
-    assert sealing.status_code == 200, sealing.text[:300]
-    lockbox = client.get(f"/project/{pid}").json()["lockbox"]
-    assert lockbox["temporal_basis"] == R.CHRONOLOGICAL_GROUPED
-    assert lockbox["temporal_honored"] is True
-    assert lockbox["n_test_groups"], "no groups were held out"
-
-
-def test_without_a_time_column_the_seal_still_happens_and_says_so(sealed):
-    """The shelf is not shortened by the build."""
-    client, pid, sealing = sealed["without one"]
-    assert sealing.status_code == 200, sealing.text[:300]
-    lockbox = client.get(f"/project/{pid}").json()["lockbox"]
-    assert lockbox["temporal_basis"] == R.CHRONOLOGICAL_NOT_DRAWN
-    assert lockbox["temporal_honored"] is False
-    assert "not drawn that way" in (lockbox.get("temporal_sentence") or "")
-
-
-def test_the_time_column_is_asked_and_never_inferred(sealed):
-    """The constitution's own answer for grain, applied here.
-
-    `repeats._date_columns` can tell which columns parse as dates — it is used
-    to OFFER candidates — but this table carries one date column and a real one
-    could carry an enrollment date, a visit date and a lab-draw date. Which one
-    the outcome comes *after* is a domain fact.
-    """
-    client, pid, _ = sealed["with a time column"]
-    decisions = client.get(f"/project/{pid}").json()["decisions"]
-    kinds = [d["kind"] for d in decisions]
-    assert "set_time_column" in kinds, (
-        "the time column reached the draw without being recorded as a "
-        "decision, so nothing in the transcript says the user chose it")
-    recorded = next(d for d in decisions if d["kind"] == "set_time_column")
-    assert recorded["subject"] == "visit_date"
-
-
-def test_a_date_column_that_does_not_parse_is_refused_at_the_question():
-    """The refusal lands where the user can act on it — at the question —
-    rather than four steps later at the seal.
-
-    On a FRESH project deliberately: the sealed fixtures refuse for the
-    barrier instead, and a test that accepted either message would pass on
-    the wrong refusal.
-    """
-    client = TestClient(api.app)
-    with open(DATA / FIXTURE, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": (FIXTURE, fh, "text/csv")}).json()["id"]
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "set_time_column", "payload": {"column": "sex"}})
-    assert r.status_code == 400
-    assert "parse as a date" in r.json()["detail"], r.json()["detail"][:200]
-
-    missing = client.post(f"/project/{pid}/decision", json={
-        "kind": "set_time_column", "payload": {"column": "no_such_column"}})
-    assert missing.status_code == 400
-    assert "No column named" in missing.json()["detail"]
-
-
-def test_it_is_refused_after_the_seal(sealed):
-    """`set_temporal_prediction`'s own precedent: after the seal the split was
-    drawn under what was recorded then, and changing this would describe a
-    chronology that was not drawn."""
-    client, pid, _ = sealed["with a time column"]
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "set_time_column", "payload": {"column": "visit_date"}})
-    assert r.status_code == 400
-    assert "already sealed" in r.json()["detail"]
-
-
-def test_the_pre_seal_order_is_untouched(sealed):
-    """Constitution §01 is fixed, and a build that reordered the opening
-    sequence to fit a new question would be the kind of change this project
-    refuses. The time-column question sits inside the repeated-measures chain
-    that already exists; it adds no step before the seal that was not already
-    reachable."""
-    client, pid, _ = sealed["with a time column"]
-    kinds = [d["kind"] for d in client.get(f"/project/{pid}").json()["decisions"]]
-    for earlier, later in (("set_target", "set_grain"),
-                           ("set_grain", "set_repeat_kind"),
-                           ("set_repeat_kind", "set_unit_of_analysis"),
-                           ("set_eligibility", "seal_lockbox")):
-        assert kinds.index(earlier) < kinds.index(later), (
-            f"{earlier} no longer precedes {later}")
-    assert kinds.index("set_time_column") < kinds.index("seal_lockbox")
-    assert kinds.index("set_time_column") > kinds.index("set_unit_of_analysis"), (
-        "the time-column question moved ahead of the chain that decides "
-        "whether it applies at all")
-
-
-def test_the_seal_reports_the_draw_and_not_the_answer(sealed):
-    """**A revert probe found this, and it is the sharpest thing in the file.**
-
-    L42's seal wrote `temporal_basis` from `temporal_prediction` — the record
-    of what was *asked* — because at the time nothing else could say. When
-    L43-C removed the `temporal=` argument from the seal's call to
-    `draw_holdout` as a probe, the draw went back to random and **the lockbox
-    still reported `chronological_grouped`**.
-
-    That is `GUIDED-143`'s own defect, reintroduced by the fix for it, and the
-    check for it came back `GREEN — NOT LOAD-BEARING` because it was reading
-    the answer rather than the draw.
-
-    So the disclosure outranks the answer, and this pins it: a lockbox that
-    says a chronological split was drawn must have a draw that says so too.
-    """
-    client, pid, _ = sealed["with a time column"]
-    lockbox = client.get(f"/project/{pid}").json()["lockbox"]
-    assert lockbox["temporal_drawn"] is True, (
-        "the seal reports a chronological basis and the draw did not report "
-        "drawing one — the record and the draw have come apart again")
-    assert lockbox["temporal_basis"] == R.CHRONOLOGICAL_GROUPED
-
-    without, wpid, _ = sealed["without one"]
-    lb2 = without.get(f"/project/{wpid}").json()["lockbox"]
-    assert lb2["temporal_drawn"] is False
-    assert lb2["temporal_basis"] == R.CHRONOLOGICAL_NOT_DRAWN
-    assert lb2["temporal_honored"] is False
 
 
 def test_an_honored_answer_over_a_random_draw_is_corrected_to_not_drawn():

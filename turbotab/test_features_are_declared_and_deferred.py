@@ -16,6 +16,8 @@ selection on the full dataset"* is a named leak in Kapoor & Narayanan's
 taxonomy, and it is subtle enough to ship: no held-out row is copied anywhere,
 and yet the selected SET encodes test signal.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -396,142 +398,6 @@ def test_selection_evidence_without_a_mask_says_it_saw_everything():
     ev = S.evidence(p.df, "outcome", ["age", "chol"])
     assert ev["scope"] == "all rows"
     assert "exploratory" in ev["note"]
-
-
-# ── drivable over HTTP: the whole step, as a browser can do it ───────────────
-
-@pytest.fixture(scope="module")
-def client():
-    from fastapi.testclient import TestClient
-    from turbotab.api import app
-    return TestClient(app)
-
-
-def _drive_to_sealed(client) -> str:
-    df = study()
-    pid = client.post("/project", files={
-        "file": ("study.csv", df.to_csv(index=False).encode(), "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": "outcome"}})
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_grain",
-                      "payload": {"answer": G.ONE_ROW_PER_PERSON}})
-    # Clause 01's sequence, over HTTP: grain -> eligibility -> SEAL. "Everyone"
-    # is a recorded answer, not a skip.
-    r = client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_eligibility",
-                          "payload": {"answer": E.EVERYONE}})
-    assert r.status_code == 200, r.text
-    r = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
-    assert r.status_code == 200, r.text
-    return pid
-
-
-def test_a_driver_reaches_the_end_of_feature_work_without_leaving_guided(client):
-    pid = _drive_to_sealed(client)
-
-    # the interview asks, and both questions state their consumer
-    iv = client.get(f"/project/{pid}/interview?step=features").json()
-    keys = {q["key"]: q for q in iv["questions"]}
-    assert "choose_features" in keys and "choose_selection" in keys
-    for q in keys.values():
-        assert q["consumer"], f"{q['key']} is a FACT with no stated consumer"
-
-    # the catalogue arrives split, and every entry says why
-    cat = client.get(f"/project/{pid}/features").json()
-    assert {t["key"] for t in cat["row_local"]} >= {"ratio", "log", "product"}
-    assert {t["key"] for t in cat["deferred"]} >= {"bin_quantile", "pca"}
-    for t in cat["row_local"] + cat["deferred"]:
-        assert t["because"], f"{t['key']} does not say why it is {t['scope']}"
-
-    # a CHOICE gets a real before/after
-    pv = client.get(f"/project/{pid}/feature/preview",
-                    params={"transform": "ratio",
-                            "columns": "weight_kg,height_m"}).json()
-    assert pv["rows"] and pv["applied"] is False
-    assert pv["new_column"] == "weight_kg_per_height_m"
-
-    # applying it lands the column and cascades
-    r = client.post(f"/project/{pid}/decision",
-                    json={"kind": "add_feature",
-                          "payload": {"transform": "ratio",
-                                      "columns": ["weight_kg", "height_m"]}})
-    assert r.status_code == 200, r.text
-    stale = r.json()["stale_downstream"]
-    assert stale and "weight_kg_per_height_m" in stale[-1]["why"], (
-        f"the stale cascade did not fire, or did not name its cause: {stale}")
-    assert any(e["column"] == "weight_kg_per_height_m"
-               for e in r.json()["engineered"])
-
-    # a stateful one is refused as an application and accepted as a decision
-    bad = client.post(f"/project/{pid}/decision",
-                      json={"kind": "add_feature",
-                            "payload": {"transform": "bin_quantile",
-                                        "columns": ["age"],
-                                        "params": {"n_bins": 3}}})
-    assert bad.status_code == 400
-    assert "distribution" in bad.json()["detail"]
-
-    ok = client.post(f"/project/{pid}/decision",
-                     json={"kind": "defer_feature",
-                           "payload": {"transform": "bin_quantile",
-                                       "columns": ["age"],
-                                       "params": {"n_bins": 3}}})
-    assert ok.status_code == 200
-    assert ok.json()["deferred_transforms"][-1]["fit_on"] == "training folds only"
-    assert "bin_quantile" not in str(ok.json()["columns"])
-
-    # selection: evidence on training rows, then a recorded spec
-    ev = client.get(f"/project/{pid}/selection/evidence").json()
-    assert ev["preview_not_applied"] is True
-    assert ev["n_rows_seen"] < len(study()), "the ranking saw the sealed rows"
-
-    sel = client.post(f"/project/{pid}/decision",
-                      json={"kind": "set_selection",
-                            "payload": {"method": "mutual_info",
-                                        "candidates": ["age", "chol", "weight_kg"],
-                                        "n_features": 2}})
-    assert sel.status_code == 200, sel.text
-    spec = sel.json()["selection_spec"]
-    assert spec["selected"] is None
-    # `GUIDED-104`. This used to assert "within each training fold" and the
-    # door did not fit one — it fits once, over the training rows, and the run
-    # had to correct the record in a note afterwards. The API records the scope
-    # it actually fits now, so the sentence is true when it is written rather
-    # than true after a correction. `S.declare`'s own default is unchanged and
-    # is still fold-local; the test above covers that caller.
-    assert "once over the training rows" in spec["sentence"]
-    assert "held-out rows excluded" in spec["sentence"]
-    assert spec["scope"] == "train_rows"
-
-    # and the step ends, recorded
-    done = client.post(f"/project/{pid}/decision",
-                       json={"kind": "settle_features"})
-    assert done.json()["features_settled"] is True
-    iv = client.get(f"/project/{pid}/interview?step=features").json()
-    assert "choose_features" not in [q["key"] for q in iv["questions"]]
-
-
-def test_a_driver_can_skip_the_whole_step(client):
-    pid = _drive_to_sealed(client)
-    r = client.post(f"/project/{pid}/decision",
-                    json={"kind": "settle_features", "payload": {"skipped": True}})
-    assert r.status_code == 200
-    assert r.json()["features_settled"] is True
-    assert not r.json()["engineered"]
-
-
-def test_selecting_every_column_is_a_recorded_answer_not_an_absence(client):
-    """"Use everything" and "nobody answered" must not look the same."""
-    pid = _drive_to_sealed(client)
-    r = client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_selection", "payload": {}})
-    assert r.status_code == 200
-    assert r.json()["selection_spec"] is None
-    kinds = [d["kind"] for d in r.json()["decisions"]]
-    assert "set_selection" in kinds, (
-        "choosing every column left no trace, so it is indistinguishable from "
-        "never having been asked")
 
 
 # ── the gap that became routing ──────────────────────────────────────────────

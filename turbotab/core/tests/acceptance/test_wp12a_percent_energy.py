@@ -342,5 +342,5 @@ def test_b24_the_methods_sentence_states_the_share_and_the_pack_names_the_figure
                                                 scale="percent_energy", step_percent=5),
                               mf.state(roles=SHARE_ROLES, target="y"), None)
     assert "steps of `5`% of each participant's own total energy" in text
-    pack = (REPO / "docs" / "turbotab" / "research" / "NUTRITION_PACK.md").read_text()
+    pack = (REPO / "docs" / "turbotab-next" / "reference" / "research" / "NUTRITION_PACK.md").read_text()
     assert '"5% of energy from X replaced by Y"' in " ".join(pack.split())

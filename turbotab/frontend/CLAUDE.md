@@ -1,7 +1,7 @@
 # TurboTab Next — frontend
 
 Vite + React 19 + TypeScript (strict). Read `docs/turbotab-next/BLUEPRINT.md` (§0, §7) and
-`docs/turbotab/DESIGN_LANGUAGE.md` (§02–§06, §09) before changing anything visible.
+`docs/turbotab-next/reference/DESIGN_LANGUAGE.md` (§02–§06, §09) before changing anything visible.
 
 ## Layout
 

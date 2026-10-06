@@ -28,6 +28,8 @@ whether the harness is usable at all:
 Run:  TURBOTAB_DEV_CHECKS=1 venv/bin/python -m pytest \\
           turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py -q
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import json
@@ -461,110 +463,6 @@ def test_a_check_that_raises_does_not_end_the_battery(on):
 
     vs = devchecks._guard(explodes, {})
     assert [v.check for v in vs] == ["check_itself_failed"]
-
-
-# ── end to end, through the API, with a bug planted ──────────────────────────
-
-def test_a_planted_wrong_number_in_a_disclosure_is_caught_over_http(on, monkeypatch):
-    """The whole harness, driven, against a deliberately planted defect.
-
-    The bug is the most plausible one in this app's design space: a disclosure
-    sentence stating a number the record does not hold. The seal is drawn
-    correctly, the basis is correct, the count is a count — only the sentence is
-    wrong about it. Nothing in the suite constructs this state, which is exactly
-    why the harness exists.
-
-    **This test is also the record of a bug in the harness itself.** The first
-    version of `every_number_displayed_traces_to_the_record` built ONE supported
-    set from the entire project payload — findings, profile, every column
-    summary, several hundred numbers on a real table — so almost any small
-    integer was "supported" and the check could not fail. Driven against this
-    exact planted bug it reported nothing: a green line asserting something
-    false, inside the instrument built to catch green lines asserting something
-    false. Scoping each claim to the part of the record it is ABOUT is the
-    repair, and this is the test that would have caught it.
-    """
-    from fastapi.testclient import TestClient
-    from turbotab import api, grain as grain_mod
-
-    real = grain_mod.seal_disclosure
-
-    def bugged(lockbox):
-        # One digit. 90 rows sealed, "40" reported.
-        return real(lockbox).replace(f"{lockbox.get('n_test', 0):,}", "40", 1)
-
-    monkeypatch.setattr(grain_mod, "seal_disclosure", bugged)
-
-    client = TestClient(api.app)
-    fixture = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "sample_data", "dietary_recalls.csv")
-    with open(fixture, "rb") as fh:
-        project = client.post("/project",
-                              files={"file": ("dietary_recalls.csv", fh, "text/csv")}).json()
-    pid = project["id"]
-
-    def decide(kind, payload):
-        return client.post(f"/project/{pid}/decision",
-                           json={"kind": kind, "subject": "", "payload": payload})
-
-    decide("set_target", {"column": "hba1c"})
-    decide("set_grain", {"answer": "people_repeat", "group_col": "participant_id"})
-    # People repeat, so clause 01's bracketed steps come before the seal. The
-    # unit is the RECORD, so the 600 rows survive and 90 of them are held out.
-    decide("set_repeat_kind", {"kind": "repeats"})
-    decide("set_unit_of_analysis", {"unit": "record"})
-    decide("set_eligibility", {"answer": "everyone"})
-    sealed = decide("seal", {"fraction": 0.15, "seed": 42})
-
-    assert sealed.status_code == 200
-    body = sealed.json()
-    assert body["lockbox"]["n_test"] == 90
-    assert body["disclosures"]["seal"].startswith("40 rows")
-
-    caught = [v for v in on.violations if v["check"] == "number_with_no_source"]
-    assert caught, "the planted wrong number was not caught"
-    assert any(v["detail"]["number"] == 40.0 for v in caught)
-    assert any(v["message"].startswith("disclosure::seal") for v in caught)
-
-    # AND THE DRIVE CONTINUES. One bug must not end it — the driver is looking
-    # for the second and third bug too.
-    assert decide("settle_features", {"skipped": True}).status_code == 200
-    assert decide("settle_preprocess", {"skipped": True}).status_code == 200
-
-
-def test_the_same_drive_with_no_planted_bug_is_clean(on):
-    """The other half, and the half that decides whether the harness is usable.
-
-    A check that fires on a correct drive gets switched off within a day, and
-    then it is not a check. This is the same sequence with nothing planted.
-    """
-    from fastapi.testclient import TestClient
-    from turbotab import api
-
-    client = TestClient(api.app)
-    fixture = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "sample_data", "dietary_recalls.csv")
-    with open(fixture, "rb") as fh:
-        pid = client.post("/project",
-                          files={"file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
-
-    def decide(kind, payload):
-        return client.post(f"/project/{pid}/decision",
-                           json={"kind": kind, "subject": "", "payload": payload})
-
-    decide("set_target", {"column": "hba1c"})
-    decide("set_grain", {"answer": "people_repeat", "group_col": "participant_id"})
-    decide("set_repeat_kind", {"kind": "repeats"})
-    decide("set_unit_of_analysis", {"unit": "record"})
-    decide("set_eligibility", {"answer": "everyone"})
-    decide("seal", {"fraction": 0.15, "seed": 42})
-    client.get(f"/project/{pid}/interview?step=explore")
-    decide("defer_feature", {"transform": "standardize", "columns": ["energy_kcal"]})
-    decide("settle_features", {"skipped": False})
-    decide("settle_preprocess", {"skipped": True})
-
-    assert on.violations == [], [v["message"] for v in on.violations]
-    assert len(on.actions) >= 8, "the capture recorded nothing"
 
 
 # ── STATE-111 · the defect the harness found on its first drive ──────────────

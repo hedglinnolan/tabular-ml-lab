@@ -17,7 +17,7 @@ not done.
    sentence needed to answer it; a *why?* that opens in place; and **the consequence shown on the
    user's own data in the pipeline panel**. The pipeline panel is the main teaching surface: *what
    did my choice just do to my rows, my columns, my model?* Deeper concept pages open in a drawer and
-   are never required. The packs (`docs/turbotab/research/`) are the source of what is taught, with
+   are never required. The packs (`docs/turbotab-next/reference/research/`) are the source of what is taught, with
    their evidence badges.
 3. **The design communicates.** Motion shows cause and effect, type separates the app's voice from
    the user's actions and the data, every color is a claim. A milestone that works but reads badly is
@@ -84,7 +84,11 @@ turbotab/core/tests/      pytest
 turbotab/server/          FastAPI app (HTTP + SSE only; no statistics here)
 turbotab/server/tests/    pytest (TestClient)
 turbotab/frontend/        Vite + React app; builds to turbotab/frontend/dist, served by the server
+turbotab/*.py             legacy domain modules Classic or turbotab/core imports (§9.1), and their tests
 docs/turbotab-next/       BLUEPRINT.md (this), INBOX.md, milestone notes
+docs/turbotab-next/reference/   the binding material carried from the legacy app (§9.1; README there)
+docs/turbotab/archive/    the legacy app's record: history, not instructions
+docs/turbotab/data/, tools/, DOMAIN_SCIENCE.md   the part of that record Classic's tests read on import (§9.1)
 ```
 
 Python: `venv/bin/python` (3.13; pandas 2.3, sklearn 1.9, duckdb, pyarrow, fastapi, lightgbm,
@@ -195,7 +199,7 @@ Launch: `venv/bin/python -m turbotab.server --port 8787 [--open] [--mode local|s
   TanStack Table + `@tanstack/react-virtual`, `d3-scale`/`d3-shape`/`d3-array` (math only — React
   renders the SVG), Radix primitives, CSS Modules + `tokens.css`. Vitest + Testing Library;
   Playwright for real-browser journeys. ESLint (typescript-eslint, react-hooks) + Prettier.
-- **Design language carries over** from `docs/turbotab/DESIGN_LANGUAGE.md`: §02 color tokens (every
+- **Design language carries over** from `docs/turbotab-next/reference/DESIGN_LANGUAGE.md`: §02 color tokens (every
   hue is a claim — `--accent` now, `--ok` recorded, `--warn` coach, `--stop` invalid-downstream
   only), §03 three voices (app speaks serif, user acts sans, data speaks mono; Inter and JetBrains
   Mono are vendored in `static/fonts/`), §04 components, §09 question grammar. Light and dark are
@@ -247,6 +251,24 @@ the opening sequence, the lockbox constitution, the design language, and the res
 curated into `docs/turbotab-next/reference/`. The rest of `docs/turbotab/` becomes
 `docs/turbotab/archive/`, marked as history, not instructions. Git keeps everything. Classic on
 `main` is untouched.
+
+**Done 2026-10-05.** Gone: `api.py`, `web/`, `pageharness.py`, the 18 modules only they used
+(figures, manuscript, jobs, rankings and the rest), the legacy tests that reach them, the page or
+the gates (79 files whole, and those tests alone from 77 more), the ledger, register, copy-deck and
+evidence gates, the pre-push routing check, and the legacy launcher (`scripts/serve_turbotab.py`,
+`make turbotab`). Kept: the 32 legacy modules that Classic or `turbotab/core` imports, computed
+from the import graph, with their tests (97 files; every kept module is imported by a test,
+`turbotab/core/tests/test_kept_legacy_modules_keep_their_tests.py`). The
+pre-commit hook runs two gates, `python parses` (`.githooks/parsecheck.py`) and American spelling.
+The binding documents are in `docs/turbotab-next/reference/` (its README lists them, and
+`turbotab/core/tests/test_docs_paths.py` keeps every cited path and section resolvable). The lockbox
+constitution is extracted there from the archived roadmap. Classic's `tests/` and README were not
+edited. Their legacy meta-tests of the retired machinery, and the README's "Running TurboTab"
+section, are listed in INBOX.md. Classic's tests read `docs/turbotab/data/`, `docs/turbotab/tools/`
+and `docs/turbotab/DOMAIN_SCIENCE.md` when pytest imports them, and a collection error stops a CI
+tier before any test runs, so those three stay at their old paths until Nolan rules on those tests;
+`turbotab/core/tests/test_classic_ci_collects.py` collects each tier of `ci.yml`. The legacy tests
+read the packs from the reference folder.
 
 ## 10 · Source control — so v2 ships as one clean merge
 

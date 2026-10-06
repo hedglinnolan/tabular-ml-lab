@@ -1,5 +1,5 @@
-"""The seal: the held-out rows every held-out claim rests on (M2_CONTRACT §3; ROADMAP "The lockbox
-constitution" §01–§05).
+"""The seal: the held-out rows every held-out claim rests on (M2_CONTRACT §3; the lockbox
+constitution §01–§05).
 
 What this module decides, and where each piece runs:
 

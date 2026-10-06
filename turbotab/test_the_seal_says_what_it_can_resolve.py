@@ -15,6 +15,8 @@ verdict rather than by computing a wrong number.
 at least two fixtures of different target shape, and the shapes not covered are
 named in the file.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import math
@@ -23,7 +25,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from turbotab import draft as draft_mod
 from turbotab import resolution as R
 
 #: `GUIDED-097`. Two target shapes, both real fixtures, both driven end to end.
@@ -239,46 +240,6 @@ def test_a_class_missing_from_the_holdout_is_undefined_not_imprecise():
 
 # ═══════════ RULE 4 · IT IS RECORDED, AND IT REACHES THE MANUSCRIPT ═══════════
 
-@pytest.mark.parametrize("shape", sorted(TARGET_SHAPES))
-def test_the_sentence_reaches_the_methods_section(shape):
-    """Recorded at the seal, quoted in the draft — including when not pushed.
-
-    `push` decides what interrupts a user mid-journey; a methods section
-    interrupts nobody. Suppressing the line on the comfortable studies would
-    make its presence a verdict.
-    """
-    name, target, task = TARGET_SHAPES[shape]
-    df = _frame(name, target)
-    labels = _split(df)
-    s = R.statement(df, target, task, labels)
-
-    d = {"kind": "seal_lockbox", "subject": target,
-         "text": "A test set of N rows was sealed before exploration.",
-         "payload": {"resolution": s}}
-    line = draft_mod._sentence_for(d)
-
-    assert s["sentence"] in line, (
-        f"{shape}: the resolution sentence did not reach the methods section")
-    assert "sealed before exploration" in line, (
-        "the seal's own sentence carries the BASIS, which the arithmetic "
-        "cannot supply; both belong")
-    assert str(s["n_test"]) in line and str(s["parameters"]["total"]) in line
-
-    for word in FORBIDDEN:
-        assert word not in line.lower(), f"{shape}: methods line says '{word}'"
-
-
-def test_the_manuscript_line_appears_even_when_the_card_is_quiet():
-    """The asymmetry, asserted directly on the fixture that does not push."""
-    name, target, task = TARGET_SHAPES["continuous regression"]
-    df = _frame(name, target)
-    s = R.statement(df, target, task, _split(df))
-    assert s["push"] is False
-    line = draft_mod._sentence_for(
-        {"kind": "seal_lockbox", "subject": target, "text": "Sealed.",
-         "payload": {"resolution": s}})
-    assert s["sentence"] in line
-
 
 def test_the_statement_travels_with_the_lockbox_not_the_current_frame():
     """Recomputed later it would describe a table that has since changed.
@@ -368,34 +329,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import pageharness as H                                 # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
-
-_needs_js = pytest.mark.skipif(not H.available(),
-                               reason="no JS engine on this machine")
-
-
-def _sealed_project(name, target, task, fraction=0.15):
-    """A real API project, sealed, so `/project/{id}` serves the real
-    `_disclosures`. The seal is set up directly rather than by walking the
-    interview because the subject under test is the disclosure band, not the
-    route to it."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    client = TestClient(api.app)
-    with open(DATA / name, "rb") as fh:
-        created = client.post("/project",
-                              files={"file": (name, fh, "text/csv")}).json()
-    p = api.STORE.get(created["id"])
-    p.df = p.df[p.df[target].notna()].copy()
-    p.target, p.task_type = target, task
-    p.set_grain("one_row_per_person")
-    p.set_eligibility("everyone")
-    sealed = _split(p.df, fraction=fraction)
-    p.seal_lockbox(sealed, fraction=len(sealed) / len(p.df))
-    return client, client.get(f"/project/{created['id']}").json()
 
 
 def _routes(client, project):
@@ -410,51 +345,6 @@ def _routes(client, project):
         f"/project/{pid}/draft": {"paragraphs": []},
         f"/project/{pid}/gaps": {"gaps": []},
     }
-
-
-@_needs_js
-def test_the_card_reaches_the_reader():
-    """GUIDED-080's class, checked rather than assumed."""
-    name, target, task = TARGET_SHAPES["binary classification"]
-    client, project = _sealed_project(name, target, task)
-    assert project["disclosures"]["resolution"]["push"] is True, (
-        "the server did not serve a pushed resolution; the page claim below "
-        "would be vacuous")
-
-    out = H.run("__emit(__harness.html('disc-seal'));",
-                routes=_routes(client, project),
-                search=f"?project={project['id']}")
-    assert out, "the seal disclosure row did not render at all"
-    assert "disc-res" in out, (
-        "the server composed a resolution statement and the page rendered "
-        "none of it — GUIDED-080 exactly")
-    res = project["disclosures"]["resolution"]
-    assert res["headline"] in out
-    assert res["not_a_verdict"] in out, (
-        "the card rendered its number without the sentence that says it is "
-        "not a verdict on the study")
-    assert str(res["parameters"]["total"]) in out
-
-
-@_needs_js
-def test_a_quiet_holdout_renders_no_card_at_all():
-    """The positive control for the assertion above, and rule 3 on the page.
-
-    Absent, not blank: a labeled empty region would read as an answer of
-    nothing, and a card on every dataset is the wallpaper the trigger exists
-    to prevent.
-    """
-    name, target, task = TARGET_SHAPES["continuous regression"]
-    client, project = _sealed_project(name, target, task)
-    assert project["disclosures"]["resolution"]["push"] is False
-
-    out = H.run("__emit(__harness.html('disc-seal'));",
-                routes=_routes(client, project),
-                search=f"?project={project['id']}")
-    assert out, "the seal disclosure row did not render at all"
-    assert "sealed" in out, "the seal itself must still render"
-    assert "disc-res" not in out, (
-        "a holdout of 90 rows raised the card; it fires only when stark")
 
 
 # ═══════════ L40-A1 · `GUIDED-125` — THE TRIGGER LEARNS ITS ARITY ═══════════

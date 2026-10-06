@@ -53,6 +53,8 @@ the first by `sample_data/make_metabolomics_siblings.py`, each through an
 operation a real export performs, each with a companion. `SHAPES_NOT_COVERED`
 names what none of them reaches.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import re
@@ -66,7 +68,8 @@ from turbotab import grain as G
 from turbotab import packs as P
 
 DATA = Path(__file__).resolve().parent / "sample_data"
-PACK = (Path(__file__).resolve().parents[1] / "docs" / "turbotab" /
+PACK = (Path(__file__).resolve().parents[1] / "docs" / "turbotab-next" /
+        "reference" /
         "research" / "METABOLOMICS_PACK.md")
 
 #: `GUIDED-097`. Five tables, and the preconditions of the thirteen detectors
@@ -781,85 +784,6 @@ def test_a_project_sees_them_through_its_own_accessor():
     project.lens = [P.OTHER]
     assert not [f for f in project.pack_findings()
                 if f["id"].startswith("pack::metabolomics::")]
-
-
-def test_every_new_finding_reaches_a_person_and_carries_its_badge():
-    """**Trap #6, on the door that has already paid for it at six surfaces.**
-
-    `test_the_clinical_detectors_reach_an_upload` proves the RENDERER reaches
-    pack findings, on one metabolomics fixture with three of them. This drives
-    the two siblings that carry the ten new ones, because a renderer that
-    reaches three findings and truncates at eight would pass that test and hide
-    most of this part.
-
-    The stack is bounded (`GUIDED-149`), so *"reaches a person"* means pushed
-    OR behind an affordance that states its count — and the affordance is
-    pressed rather than assumed.
-    """
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    client = TestClient(api.app)
-    for fixture, target in (("metabolomics_merged_modes.csv", "responder"),
-                            ("metabolomics_paired_logged.csv", "responder")):
-        with open(DATA / fixture, "rb") as handle:
-            pid = client.post("/project", files={
-                "file": (fixture, handle, "text/csv")}).json()["id"]
-        for kind, payload in (("set_lens", {"lens": [P.METABOLOMICS]}),
-                              ("set_target", {"column": target})):
-            ok = client.post(f"/project/{pid}/decision",
-                             json={"kind": kind, "payload": payload})
-            assert ok.status_code == 200, (fixture, kind, ok.text[:300])
-
-        project = client.get(f"/project/{pid}").json()
-        served = [f for f in project["findings"] if f["source"] == "pack"]
-        new = [f for f in served if f["id"].split("::")[-1] in NEW_DETECTORS]
-        assert new, f"{fixture} served none of the new findings"
-
-        routes = {
-            f"/project/{pid}": project,
-            f"/project/{pid}/interview?step=data":
-                client.get(f"/project/{pid}/interview?step=data").json(),
-            f"/project/{pid}/interview?step=explore":
-                client.get(f"/project/{pid}/interview?step=explore").json(),
-            f"/project/{pid}/evidence/missingness": {"cards": []},
-            f"/project/{pid}/capabilities":
-                client.get(f"/project/{pid}/capabilities").json(),
-        }
-        out = PH.run(
-            "var shut = (__harness.html('profList') || '');\n"
-            "__harness.dispatch('click', __harness.target("
-            "{'data-stack-more':'1','aria-expanded':'false'}));\n"
-            "__emit({shut: shut.slice(0, 90000),"
-            " open: ((__harness.html('profList') || '') +"
-            "        (__harness.html('profRest') || '')).slice(0, 200000),"
-            " more: (__harness.html('profMore') || '')});",
-            routes=routes, search=f"?project={pid}")
-        html = out["open"]
-        assert out["shut"], f"{fixture}: the findings list rendered nothing"
-
-        missing = [f["id"] for f in new if f["title"][:28] not in html]
-        assert not missing, (
-            f"{fixture}: the pack computes {missing} and the page never shows "
-            f"them, pushed or collapsed.")
-
-        stack = project["explore_stack"]
-        behind = [f["id"] for f in new if f["id"] in stack["collapsed"]]
-        if behind:
-            assert str(stack["remainder"]["n"]) in out["more"], (
-                f"{fixture}: {len(behind)} findings sit behind an affordance "
-                f"that does not state its count: {out['more'][:200]}")
-
-        statuses = set(re.findall(r'class="badge (\w+)"', html))
-        expected = {f["evidence"]["evidence_status"].lower() for f in new}
-        assert expected <= statuses, (
-            f"{fixture}: these badge statuses are on the wire and not on the "
-            f"page: {sorted(expected - statuses)}")
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

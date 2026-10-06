@@ -53,12 +53,13 @@ a shared-core defect is corrected once in core.
 read from primary sources; a wrong reference interval is worse than none,
 because a clinician reads that name and believes it.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from turbotab import repeats as R
 
@@ -92,32 +93,6 @@ SHAPES_NOT_COVERED = [
     "a cross-sectional table — question 7 refuses before it is asked",
     "a real p025/p975 reference interval — D4 reference data, not recollected",
 ]
-
-
-def _driven(fixture, temporal):
-    """Upload → the full repeated-measures chain → seal, through the routes."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    name, group, target = TEMPORAL_FIXTURES[fixture]
-    client = TestClient(api.app)
-    with open(DATA / name, "rb") as handle:
-        pid = client.post("/project", files={
-            "file": (name, handle, "text/csv")}).json()["id"]
-    for kind, payload in (
-            ("set_target", {"column": target}),
-            ("set_purpose", {"answer": "prediction"}),
-            ("set_grain", {"answer": "people_repeat", "group_col": group}),
-            ("set_repeat_kind", {"kind": "time_points"}),
-            ("set_unit_of_analysis", {"unit": "record"}),
-            ("set_temporal_prediction", {"temporal": temporal}),
-            ("set_eligibility", {"answer": "everyone"}),
-            ("seal", {})):
-        ok = client.post(f"/project/{pid}/decision",
-                         json={"kind": kind, "payload": payload})
-        assert ok.status_code == 200, (kind, ok.text[:300])
-    return client, pid
 
 
 # ═══════════ A1 · THREE STATES, NEVER TWO ═══════════
@@ -184,119 +159,6 @@ def test_the_honored_flag_is_beside_the_sentence_and_not_only_inside_it():
     assert plain["honored"] is True and plain["strategy"] == R.GROUPED
 
 
-@pytest.mark.parametrize("fixture", sorted(TEMPORAL_FIXTURES))
-def test_the_record_no_longer_claims_the_held_out_rows_are_the_latest(fixture):
-    """`GUIDED-143`'s own evidence sentence, inverted into an assertion."""
-    client, pid = _driven(fixture, temporal=True)
-    import json
-
-    everything = json.dumps(client.get(f"/project/{pid}").json())
-    draft = json.dumps(client.get(f"/project/{pid}/draft").json())
-    for lie in ("latest ones", "times after the ones it trained on"):
-        assert lie not in everything, f"the record still says {lie!r}"
-        assert lie not in draft, f"the draft still says {lie!r}"
-
-    assert "not drawn that way" in draft, (
-        "the draft says nothing about the split it did not draw, so the "
-        "assertion was removed and nothing replaced it — which is silence "
-        "where a disclosure belongs")
-    assert "optimistic" in draft
-
-
-@pytest.mark.parametrize("fixture", sorted(TEMPORAL_FIXTURES))
-def test_the_seal_carries_the_temporal_basis_because_it_is_the_draw(fixture):
-    """**Question 7 can only say what was asked; the seal is the only place
-    that can say what was done.** Beside the basis rather than folded into
-    `seal_basis`, on `resolution`'s precedent."""
-    client, pid = _driven(fixture, temporal=True)
-    lockbox = client.get(f"/project/{pid}").json()["lockbox"]
-    assert lockbox["temporal_requested"] is True
-    assert lockbox["temporal_honored"] is False
-    assert lockbox["temporal_basis"] == R.CHRONOLOGICAL_NOT_DRAWN
-    assert lockbox["temporal_sentence"]
-    # It does not become a fifth seal basis.
-    assert lockbox["seal_basis"] == "grouped"
-
-
-def test_a_non_temporal_answer_leaves_the_seal_clean():
-    """The negative control. A disclosure on every seal would be the second
-    uncalibrated layer of caution this project forbids — it makes a real
-    concern and a routine one read identically."""
-    client, pid = _driven("a scheduled visit series, continuous target",
-                          temporal=False)
-    body = client.get(f"/project/{pid}").json()
-    assert body["lockbox"]["temporal_honored"] is True
-    assert body["lockbox"]["temporal_basis"] == R.GROUPED
-    assert body["disclosures"]["exploratory"] is False
-    assert "not drawn that way" not in body["disclosures"]["seal"]
-
-
-@pytest.mark.parametrize("fixture", sorted(TEMPORAL_FIXTURES))
-def test_it_is_never_rendered_as_a_clean_lock(fixture):
-    """**The clause the ruling turns on.** `IMPORT-020`'s asymmetry: leaking
-    and disclosing is the refuse branch; leaking behind a lock icon is the
-    assert-something-false branch.
-
-    Driven through the page's own controller, because the band is the thing a
-    reader takes the held-out number to mean.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    client, pid = _driven(fixture, temporal=True)
-    body = client.get(f"/project/{pid}").json()
-    assert body["disclosures"]["exploratory"] is True, (
-        "the seal reports itself clean over a split that did not honor the "
-        "validation the user asked for")
-
-    routes = {
-        f"/project/{pid}": body,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore": {"questions": [], "steps": []},
-        f"/project/{pid}/evidence/missingness": {"cards": []},
-    }
-    out = PH.run(
-        "__emit({html: (__harness.html('disclosuresBox') || '').slice(0, 8000)});",
-        routes=routes, search=f"?project={pid}")
-    html = out["html"]
-    assert "not a verified clean split" in html, (
-        "the disclosure band renders `sealed` over a split that trains on rows "
-        "from after the rows it is scored on")
-    assert "is-exploratory" in html and "is-sealed" not in html
-
-
-def test_the_effect_preview_no_longer_promises_the_draw():
-    """The one place a user reads this *before* answering. It said *"the
-    held-out rows become the latest ones rather than a random draw"* — the same
-    false claim the record carried, in the control that sets the expectation.
-
-    **Comments stripped first, and that is the whole difficulty.** Trap #5
-    reserves grep for claims that are *genuinely about the file*, and this one
-    is — *does the shipped code still contain this string*. But the old phrase
-    is deliberately still in the file, quoted in the comment that records what
-    it used to say, and a bare grep cannot tell the record from the claim.
-
-    Driving it was tried first and does not work: `EFFECTS` is a `var` inside
-    the page's closure, so the harness cannot reach it from an injected body —
-    the same wall `PULL_RENDER` hit at L41-C, where the answer was to click the
-    control rather than call the function. There is no control that renders an
-    effect preview in isolation, so this is the honest instrument available.
-    """
-    page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
-        encoding="utf-8")
-    import re
-    code = re.sub(r"/\*.*?\*/", " ", page, flags=re.S)
-    assert "held-out rows become the latest ones" not in code, (
-        "the effect preview still promises a draw no splitter here performs")
-    assert "held-out rows become the latest ones" in page, (
-        "the comment recording what this used to say is gone, so the next "
-        "reader has no record of why the wording is what it is")
-    assert "still drawn at random within whole people" in code
-
-
 def test_no_splitter_anywhere_implements_the_strategy_the_app_records():
     """**The second falsity, and it is why a note beside the sentence would
     not have done.**
@@ -330,43 +192,6 @@ def test_the_consumer_sentence_says_what_actually_happens():
                 "reads this to choose between its chronological"):
         assert lie not in R.TEMPORAL_CONSUMER
 
-
-def test_guided_143_closed_only_because_the_draw_exists():
-    """L42 pinned this row OPEN; L43-C built the draw and it closes.
-
-    **The successor, not the deletion.** The property worth keeping is the
-    same one in both directions: the row's status and the app's capability are
-    one fact. L42 asserted *open, because the draw does not exist*; this
-    asserts *closed, and the draw exists* — so closing it again on a tree
-    where the draw was removed fails here rather than passing quietly.
-    """
-    import inspect
-    import json as _json
-
-    from turbotab import engine
-
-    ledger = (Path(__file__).resolve().parents[1]
-              / "docs" / "turbotab" / "data" / "findings.json")
-    row = next(r for r in _json.loads(ledger.read_text(encoding="utf-8"))
-               if r["id"] == "GUIDED-143")
-
-    takes_time = bool(set(inspect.signature(engine.draw_holdout).parameters)
-                      & {"time_col", "datetime_col", "temporal"})
-    if row["status"] in ("OPEN", "PARTIAL"):
-        assert not takes_time, (
-            "GUIDED-143 is open and `draw_holdout` takes a time argument — "
-            "either the draw landed and the row should close, or the "
-            "signature is asserting a capability that is not wired")
-        return
-
-    assert takes_time, (
-        "GUIDED-143 is closed and `draw_holdout` has no time parameter, so "
-        "the record is claiming a capability again — which is the defect this "
-        "row is about, arriving through the ledger instead of the manuscript")
-    assert R.DRAWS_CHRONOLOGICALLY is True, (
-        "the row is closed and the composer still says the app cannot draw "
-        "chronologically")
-    assert row.get("test"), "a FIXED row with no named regression test"
 
 def test_the_false_name_is_gone_from_core_and_has_no_alias():
     """**Renamed, not aliased.** An alias leaves the false name importable and
@@ -467,64 +292,6 @@ def test_the_pack_card_is_unchanged_and_still_says_which_band_it_counted():
 
 
 # ═══════ `GUIDED-143` · A PRAGMA IS A CLAIM WITH NO GUARD (L43-A3) ═══════════
-
-def test_the_unreachable_basis_is_asserted_unreachable_and_not_annotated():
-    """`GUIDED-143`, ruled at the L42 adjudication.
-
-    `chronological_grouped` stays: the lockbox constitution §03 is *three
-    states, never two*, and `chronological_requested_not_drawn` is only
-    meaningful against an honorable state that exists as a value — a basis set
-    omitting it cannot say the app is *missing* it.
-
-    What does not stay is the `# pragma: no cover` that used to excuse the
-    branch. **A pragma is a claim with no guard**, and this project has been
-    bitten by one already: `GUIDED-134`'s sat on a line its own test executed,
-    so the annotation asserted something false about the code beside it.
-
-    So the claim gets a test. This one, and it is deliberately written to stop
-    being true the moment the draw lands rather than to pin `False` forever —
-    a guard that has to be edited by the loop that fixes the thing is a guard
-    that gets edited without being read.
-    """
-    import inspect
-
-    from turbotab import engine
-
-    # Two conditions now, not one: the draw has to EXIST and a time column
-    # has to be recorded. L43-C flipped the first; the second is per-project
-    # and is what keeps the not-drawn basis alive.
-    reachable = R.DRAWS_CHRONOLOGICALLY
-    drawn = R.split_strategy(temporal=True, unit=R.UNIT_RECORD,
-                             time_col="visit_date")
-
-    if not reachable:
-        assert drawn["strategy"] == R.CHRONOLOGICAL_NOT_DRAWN, (
-            "the flag says the chronological draw does not exist and the "
-            "composer returned something other than the not-drawn basis")
-        assert drawn["honored"] is False
-        # And the flag is not free-floating: it agrees with the draw's own
-        # signature, which is what stops it being flipped without the
-        # capability arriving.
-        assert not (set(inspect.signature(engine.draw_holdout).parameters)
-                    & {"datetime_col", "time_col", "temporal", "order_by"}), (
-            "`draw_holdout` takes a time argument but DRAWS_CHRONOLOGICALLY "
-            "is False — the flag is understating what the draw can do")
-        # THE ROW IS THE DATED REASON. §05's second clause: an unreachable
-        # state ships with a test that names the row keeping it open.
-        import json as _json
-        ledger = (Path(__file__).resolve().parents[1]
-                  / "docs" / "turbotab" / "data" / "findings.json")
-        row = next(r for r in _json.loads(ledger.read_text(encoding="utf-8"))
-                   if r["id"] == "GUIDED-143")
-        assert row["status"] in ("OPEN", "PARTIAL"), (
-            f"GUIDED-143 is {row['status']} and `DRAWS_CHRONOLOGICALLY` is "
-            f"still False. Either the draw landed and the flag was not "
-            f"flipped, or the row was closed without the draw.")
-    else:
-        assert drawn["strategy"] == R.CHRONOLOGICAL_GROUPED, (
-            "the flag says the chronological draw exists and the composer "
-            "still returns the not-drawn basis")
-        assert drawn["honored"] is True
 
 
 def test_the_honorable_branch_is_executed_rather_than_excused():

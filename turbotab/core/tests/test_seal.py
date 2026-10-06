@@ -1,4 +1,4 @@
-"""Tier A: the seal (M2_CONTRACT §3; ROADMAP lockbox constitution §01–§05).
+"""Tier A: the seal (M2_CONTRACT §3; lockbox constitution §01–§05).
 
 Every held-out claim rests on these: the basis is one of four recorded states and an undetermined
 seal is never a clean one; a chronological split puts every training unit's last time before every

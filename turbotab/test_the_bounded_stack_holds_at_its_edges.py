@@ -43,6 +43,8 @@ actually produced.
 Clinical and metabolomics, plus the no-lens project. `SHAPES_NOT_COVERED` names
 what none of them reaches.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import re
@@ -94,46 +96,6 @@ SIZES = (0, 1, 2, A.BOUND - 1, A.BOUND, A.BOUND + 1, 13, 21)
 
 # ── the pool ────────────────────────────────────────────────────────────────
 
-def _driven(fixture: str, lens, target) -> Dict[str, Any]:
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with (DATA / fixture).open("rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-    if lens:
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_lens", "payload": {"lens": [lens]}})
-    if target:
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_target", "payload": {"column": target}})
-    return {"pid": pid, "client": client,
-            "project": client.get(f"/project/{pid}").json()}
-
-
-@pytest.fixture(scope="module")
-def pool() -> Dict[str, Any]:
-    """Real findings from real projects, split by whether they gate a decision."""
-    out: Dict[str, Any] = {"projects": {}, "gating": [], "ordinary": []}
-    for label, (fixture, lens, target) in LENSES.items():
-        run = _driven(fixture, lens, target)
-        out["projects"][label] = run
-        for finding in A.explore_findings(run["project"]["findings"]):
-            # The literal severities again, and for the reason given at the
-            # collapsed check: a pool split by `A.gates_a_decision` is a fixture
-            # built out of the rule under test, so emptying `NEVER_COLLAPSED`
-            # would empty the pool and every case would fail on the fixture
-            # instead of on the property. That is a revert going red for the
-            # wrong reason, which the probe reports as verifying nothing.
-            bucket = ("gating" if finding.get("severity") in ("critical", "blocker")
-                      else "ordinary")
-            out[bucket].append(finding)
-    assert out["gating"], "no fixture produced a finding that gates a decision"
-    assert out["ordinary"], "no fixture produced an ordinary finding"
-    return out
-
 
 def _resample(source: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]]:
     """`n` findings drawn from `source`, each a real one with a fresh id."""
@@ -155,12 +117,6 @@ def _ranked(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [dict(f, rank=i) for i, f in enumerate(ordered)]
 
 
-def _mix(pool: Dict[str, Any], n: int, n_gating: int) -> List[Dict[str, Any]]:
-    n_gating = min(n_gating, n)
-    return _ranked(_resample(pool["gating"], n_gating)
-                   + _resample(pool["ordinary"], n - n_gating))
-
-
 #: `(label, n, n_gating)` — the eight the prompt names, plus the mixes that make
 #: "all critical" and "no critical" a property rather than one case.
 CASES = (
@@ -172,84 +128,6 @@ CASES = (
 
 
 # ── the two properties, at every size ───────────────────────────────────────
-
-@pytest.mark.parametrize("label,n,n_gating", CASES, ids=[c[0] for c in CASES])
-def test_the_arithmetic_is_exact_and_nothing_gating_is_collapsed(
-        pool, label, n, n_gating):
-    findings = _mix(pool, n, n_gating)
-    for bound in (0, 1, 2, A.BOUND, A.BOUND + 1, 40):
-        st = A.stack(findings, bound=bound)
-
-        assert st["served"] == n, f"{label} @ {bound}: served {st['served']}, not {n}"
-        assert len(st["pushed"]) + len(st["collapsed"]) == st["served"], (
-            f"{label} @ bound {bound}: {len(st['pushed'])} pushed + "
-            f"{len(st['collapsed'])} collapsed != {st['served']} served")
-        assert st["remainder"]["n"] == len(st["collapsed"]), (
-            f"{label} @ bound {bound}: the affordance would say "
-            f"{st['remainder']['n']} and {len(st['collapsed'])} are behind it")
-
-        # THE SEVERITY WORDS ARE WRITTEN OUT HERE, and that is deliberate rather
-        # than a duplicated constant. Reading `A.NEVER_COLLAPSED` back would
-        # measure the rule with the rule: empty that set and `gates_a_decision`
-        # answers False for everything, so the check would pass while every
-        # critical went behind the affordance. `critical` is `engine`'s word and
-        # `blocker` is `ROADMAP.md` Decision B's; a test of a constitutional
-        # clause states the clause.
-        by_id = {f["id"]: f for f in findings}
-        collapsed_gating = [i for i in st["collapsed"]
-                            if by_id[i].get("severity") in ("critical", "blocker")]
-        assert not collapsed_gating, (
-            f"{label} @ bound {bound}: {len(collapsed_gating)} findings that "
-            f"gate a decision are inside the collapsed group. A blocker that "
-            f"only offers is not gating.")
-
-        # THE TYPED REMAINDER'S ARITHMETIC, both ways. A tally that does not sum
-        # to the count is the affordance disagreeing with itself in one line.
-        for axis in ("by_severity", "by_source"):
-            total = sum(e["n"] for e in st["remainder"][axis])
-            assert total == st["remainder"]["n"], (
-                f"{label} @ bound {bound}: {axis} sums to {total}, not "
-                f"{st['remainder']['n']}")
-
-        # AND EVERY ID IS IN EXACTLY ONE PLACE — the arithmetic above is
-        # satisfiable by a duplicate paired with an omission.
-        seen = st["pushed"] + st["collapsed"]
-        assert len(set(seen)) == len(seen), f"{label} @ {bound}: a finding is in both"
-        assert set(seen) == set(by_id), f"{label} @ {bound}: the sets differ"
-
-
-@pytest.mark.parametrize("label,n,n_gating", CASES, ids=[c[0] for c in CASES])
-def test_what_a_person_sees_is_stated_at_every_size(pool, label, n, n_gating):
-    """The slot always answers, and it answers with a number or with a claim.
-
-    The recorded-absence rule (`DESIGN_LANGUAGE.md` §09): a reader who sees no
-    affordance cannot tell *this is everything* from *this is the top few*.
-    """
-    st = A.stack(_mix(pool, n, n_gating))
-    assert st["affordance"].strip(), f"{label}: the slot says nothing at all"
-    if st["complete"]:
-        assert not st["affordance_open"] and not st["affordance_detail"], (
-            f"{label}: a complete stack is offering an expand")
-        if n:
-            assert str(n) in st["affordance"], (
-                f"{label}: 'all shown' without saying how many: "
-                f"{st['affordance']!r}")
-        else:
-            assert "Nothing" in st["affordance"], (
-                f"{label}: an empty stack should say so: {st['affordance']!r}")
-    else:
-        n_more = st["remainder"]["n"]
-        assert st["affordance"].startswith(f"{n_more} more"), (
-            f"{label}: the affordance does not lead with its count: "
-            f"{st['affordance']!r}")
-        assert st["affordance_open"], f"{label}: no way to fold it back"
-        assert st["affordance_title"], f"{label}: the control states no effect"
-        # The count in the sentence IS the count behind it — read back off the
-        # prose a person actually sees, not off the field it was composed from.
-        said = int(re.match(r"(\d+) more", st["affordance"]).group(1))
-        assert said == len(st["collapsed"]), (
-            f"{label}: the sentence says {said} and {len(st['collapsed'])} are "
-            f"behind it")
 
 
 def test_a_bound_of_zero_still_cannot_hide_something_that_gates_a_decision():
@@ -329,167 +207,3 @@ def _routes(run, project):
 _CARD = re.compile(r'<article class="[^"]*" id="find-([^"]+)"')
 
 
-@pytest.mark.parametrize("label", sorted(LENSES))
-@pytest.mark.parametrize("n,n_gating", [(0, 0), (1, 0), (2, 0),
-                                        (A.BOUND, 0), (A.BOUND + 1, 0),
-                                        (21, 0), (21, 21), (13, 1)],
-                         ids=lambda v: str(v))
-def test_the_page_shows_exactly_what_the_stack_says_it_shows(
-        pool, label, n, n_gating):
-    """The arithmetic where it is read: on screen.
-
-    Server-composed and never rendered is this door's oldest habit, and the
-    inverse — rendered and never counted — would put a false number in a
-    sentence the user acts on.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    run = pool["projects"][label]
-    findings = _mix(pool, n, n_gating)
-    project = dict(run["project"], findings=findings,
-                   explore_stack=A.stack(findings))
-    st = project["explore_stack"]
-
-    # IDS, NOT MARKUP. `pageharness.py`'s own docstring warns that the DOM runs
-    # to hundreds of kilobytes and the harness emits over a pipe — "the first
-    # version truncated the JSON and the sweep died on its own output". At L47
-    # the finding card grew an at-control slot, twenty-one cards crossed the
-    # line, and this test started failing with `Unterminated string` rather than
-    # with anything about the stack. The assertions only ever wanted the ids and
-    # the affordance, so only those cross.
-    out = PH.run(
-        "function ids(h){ var m, r = [], x = /<article class=\"[^\"]*\" "
-        "id=\"find-([^\"]+)\"/g; while ((m = x.exec(h || '')) !== null) "
-        "r.push(m[1]); return r; }\n"
-        "var shut = {list: ids(__harness.html('profList')),"
-        "            more: (__harness.html('profMore') || '').slice(0, 400),"
-        "            rest: ids(__harness.html('profRest')),"
-        "            calls: __harness.calls().length};\n"
-        "__harness.dispatch('click', __harness.target("
-        "{'data-stack-more':'1','aria-expanded':'false'}));\n"
-        "__emit({shut: shut,"
-        " open: {list: ids(__harness.html('profList')),"
-        "        rest: ids(__harness.html('profRest')),"
-        "        more: (__harness.html('profMore') || '').slice(0, 400),"
-        "        calls: __harness.calls().length}});",
-        routes=_routes(run, project), search=f"?project={run['pid']}")
-
-    pushed = out["shut"]["list"]
-    assert pushed == st["pushed"], (
-        f"{label} @ {n}/{n_gating}: the page pushed {pushed}, the server said "
-        f"{st['pushed']}")
-    assert not out["shut"]["rest"], (
-        f"{label} @ {n}/{n_gating}: the collapsed group is in the DOM before "
-        f"anyone opened it — hidden content probes as READ while no person can "
-        f"see it")
-
-    if st["complete"]:
-        assert st["affordance"] in (out["shut"]["more"] or ""), (
-            f"{label} @ {n}/{n_gating}: a complete stack does not say so: "
-            f"{out['shut']['more']!r}")
-        assert "data-stack-more" not in (out["shut"]["more"] or ""), (
-            f"{label} @ {n}/{n_gating}: nothing is collapsed and there is an "
-            f"expand anyway")
-        return
-
-    # THE COUNT IN THE AFFORDANCE IS THE COUNT BEHIND IT, read off the rendered
-    # sentence and off the rendered cards — never off the payload twice.
-    said = re.search(r">(\d+) more", out["shut"]["more"] or "")
-    assert said, (f"{label} @ {n}/{n_gating}: no count in the affordance: "
-                  f"{out['shut']['more']!r}")
-    opened = out["open"]["rest"]
-    assert int(said.group(1)) == len(opened) == len(st["collapsed"]), (
-        f"{label} @ {n}/{n_gating}: the affordance says {said.group(1)}, the "
-        f"expand rendered {len(opened)}, the server collapsed "
-        f"{len(st['collapsed'])}")
-    assert opened == st["collapsed"], (
-        f"{label} @ {n}/{n_gating}: the expand rendered the wrong findings")
-
-    # AND THE EXPAND IS INSTANT. `DESIGN_LANGUAGE.md` §05.2 ruled it disclosure
-    # rather than consequence, so no fetch and no fifth motion slot: everything
-    # the group holds is already in `P`.
-    assert out["open"]["calls"] == out["shut"]["calls"], (
-        f"{label} @ {n}/{n_gating}: opening the group fetched "
-        f"{out['open']['calls'] - out['shut']['calls']} time(s)")
-
-    # NOTHING GATING IS BEHIND THE AFFORDANCE, checked on the render rather than
-    # on the payload — the payload was already checked above, and this is the
-    # copy a person sees.
-    by_id = {f["id"]: f for f in findings}
-    assert not [i for i in opened if A.gates_a_decision(by_id[i])], (
-        f"{label} @ {n}/{n_gating}: the page collapsed something that gates a "
-        f"decision")
-
-
-def test_the_page_shows_everything_when_the_server_serves_no_partition(pool):
-    """An older payload, or a route that answered without `explore_stack`.
-
-    The page must not invent a bound — that is the second copy of the rule
-    arriving through the back door — and must not show nothing, which would
-    shorten the shelf on a server that never asked it to.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    run = pool["projects"]["clinical"]
-    findings = _mix(pool, 13, 1)
-    project = dict(run["project"], findings=findings)
-    project.pop("explore_stack", None)
-
-    out = PH.run("__emit({list: __harness.html('profList'),"
-                 "        more: __harness.html('profMore'),"
-                 "        rest: __harness.html('profRest')});",
-                 routes=_routes(run, project), search=f"?project={run['pid']}")
-    shown = _CARD.findall(out["list"] or "")
-    assert len(shown) == 13, (
-        f"no partition served and the page showed {len(shown)} of 13")
-    assert shown == [f["id"] for f in A.explore_findings(findings)], (
-        "no partition served and the page invented an order")
-    assert not (out["more"] or "").strip(), (
-        f"no partition served and the page composed an affordance anyway: "
-        f"{out['more']!r}")
-
-
-def test_the_probe_reports_its_own_coverage(pool, capsys):
-    """`LOOP.md` §10: a probe that reports only what it fixed has not reported
-    its coverage. Sizes driven, the bound, criticals ever collapsed, and any
-    size where the arithmetic failed."""
-    sizes: List[int] = []
-    collapsed_gating = 0
-    mismatched: List[str] = []
-    for label, n, n_gating in CASES:
-        findings = _mix(pool, n, n_gating)
-        by_id = {f["id"]: f for f in findings}
-        for bound in (0, 1, 2, A.BOUND, A.BOUND + 1, 40):
-            st = A.stack(findings, bound=bound)
-            sizes.append(n)
-            collapsed_gating += sum(1 for i in st["collapsed"]
-                                    if A.gates_a_decision(by_id[i]))
-            if len(st["pushed"]) + len(st["collapsed"]) != st["served"]:
-                mismatched.append(f"{label} @ bound {bound}")
-
-    with capsys.disabled():
-        print(f"\n  ── L45-D · the bounded stack at its edges ──")
-        print(f"  shipping bound                 {A.BOUND}")
-        print(f"  distinct sizes driven          {sorted(set(sizes))}")
-        print(f"  size × severity-mix cases      {len(CASES)}")
-        print(f"  partitions computed            {len(sizes)}")
-        print(f"  lenses                         {len(LENSES)}  "
-              f"({', '.join(sorted(LENSES))})")
-        print(f"  real findings in the pool      "
-              f"{len(pool['gating'])} gating, {len(pool['ordinary'])} ordinary")
-        print(f"  criticals ever collapsed       {collapsed_gating}   <- must be 0")
-        print(f"  rendered + collapsed != served {len(mismatched)}")
-        for m in mismatched:
-            print(f"      {m}")
-        print(f"  shapes NOT covered             {len(SHAPES_NOT_COVERED)}")
-        for shape in SHAPES_NOT_COVERED:
-            print(f"      · {shape}")
-
-    assert collapsed_gating == 0
-    assert not mismatched

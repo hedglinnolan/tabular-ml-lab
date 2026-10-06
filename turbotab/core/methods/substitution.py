@@ -1,6 +1,6 @@
 """The substitution curve: move k kcal from a donor to a recipient and watch the prediction.
 
-Source: ``docs/turbotab/PRODUCT_VISION.md`` §06c, "The instrument". What it is: a
+Source: ``docs/turbotab-next/reference/PRODUCT_VISION.md`` §06c, "The instrument". What it is: a
 multivariate forward marginal effect along ``d = e_recipient - e_donor``, aggregated
 over rows as an Average Marginal Effect (Scholbeck et al. 2024, DMKD 38:2997-3042;
 the R package ``fmeffects``). It is not an ALE.

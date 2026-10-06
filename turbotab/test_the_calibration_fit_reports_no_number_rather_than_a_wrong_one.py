@@ -33,6 +33,8 @@ with the reason, rather than a blank cell beside five real numbers. A blank
 reads as a rendering fault; the app declining to state a quantity it does not
 have is a different claim and has to look like one.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -44,7 +46,6 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.calibration import weak_calibration                           # noqa: E402
-from turbotab import figure_specs as FS                               # noqa: E402
 
 
 def _logistic(n=4000, extreme=1.0, seed=0):
@@ -139,55 +140,3 @@ def test_no_undefined_case_ever_reports_perfect_calibration():
     ]
     for y, p in undefined:
         assert weak_calibration(y, p) == (None, None), (y[:3], p[:3])
-
-
-# ── what the figure does with the absence ───────────────────────────────────
-
-def test_the_annotation_box_renders_the_absence_rather_than_a_blank():
-    """A blank cell beside five real numbers reads as a rendering fault.
-
-    The app declining to state a quantity it does not have is a different claim
-    and has to look like one — so the row says *not estimable* and carries the
-    reason.
-    """
-    payload = FS.calibration_render(*_separable())
-    box = {row["key"]: row for row in payload["annotation_box"]}
-
-    for key in ("calibration_intercept", "calibration_slope"):
-        assert box[key]["value"] == "not estimable", box[key]
-        assert box[key]["why"], f"{key} states no reason for the absence"
-        assert "separation" in box[key]["why"]
-        assert box[key]["value"] != "", "a blank reads as a rendering fault"
-
-    # The numbers that DO exist are still numbers, so the absence is legible as
-    # an absence rather than as the whole box having failed.
-    assert box["n"]["value"] and box["n"]["why"] == ""
-    assert box["c_statistic"]["value"] != "not estimable"
-
-
-def test_the_checklist_still_fails_when_a_number_is_missing():
-    """Rendering honestly and passing the checklist are different jobs.
-
-    The figure is not publication-grade without the intercept and slope, so the
-    item fails — and it must keep failing, or "render the absence" would have
-    quietly become "the absence is fine".
-    """
-    scored = {r["id"]: r for r in
-              FS.CALIBRATION.score(FS.calibration_render(*_separable()))}
-    assert scored["annotation_box"]["passed"] is False, (
-        "the checklist passed with two of its six numbers missing, so "
-        "'render the absence' has quietly become 'the absence is fine'")
-    assert scored["annotation_box"]["because"]
-    # And the items that do not depend on those two numbers still pass, so the
-    # failure is attributed rather than smeared across the checklist.
-    assert scored["risk_distribution"]["passed"] is True
-    assert scored["no_truncation"]["passed"] is True
-
-
-def test_the_caption_uses_the_same_words_as_the_box():
-    """One vocabulary for one fact. A caption saying "not computed" beside a box
-    saying "not estimable" is two claims about one absence."""
-    payload = FS.calibration_render(*_separable())
-    caption = FS.CALIBRATION.caption(payload)
-    assert "not estimable" in caption
-    assert "not computed" not in caption

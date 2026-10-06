@@ -1,6 +1,6 @@
 /**
  * The seal's glyph, lifted from the M2 prototype (src/explore/m2/views/SealGlyph.tsx), in the
- * three shapes its basis can take (ROADMAP lockbox constitution §03). Only a grouped seal, or a
+ * three shapes its basis can take (lockbox constitution §03). Only a grouped seal, or a
  * verified one row per unit, is drawn closed. Grouping abandoned is a ring with a gap;
  * undetermined is a dashed ring around a question mark — never a clean lock. A recorded seal wears
  * --ok (sealed is a recorded claim); a preview wears ink; an exploratory basis wears the coach's

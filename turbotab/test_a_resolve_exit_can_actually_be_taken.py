@@ -40,11 +40,12 @@ retry open**.
   over; filed as its own row.
 - **Whether the enabled button is on screen.** Nothing without layout can tell.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 
@@ -58,23 +59,6 @@ RESOLVE_EXITS = {
     "clinical.substitution_blocker": "no consumer anywhere; nothing refuses, so "
                                      "there is no request to retry",
 }
-
-
-def _project(fixture: str, target: str, purpose: str | None = None):
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with (DATA / fixture).open("rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": target}})
-    if purpose:
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_purpose", "payload": {"answer": purpose}})
-    return client, pid
 
 
 def _take_the_resolve(client, pid, request):
@@ -102,125 +86,6 @@ def _take_the_resolve(client, pid, request):
     merged["payload"] = dict(request["payload"])
     merged["payload"].update(retry)
     return exit_row, client.post(f"/project/{pid}/decision", json=merged)
-
-
-@pytest.mark.parametrize("fixture,target,column,option", [
-    ("clinic_visits.csv", "outcome", "notes", "impute_mode"),
-    ("metabolomics_untargeted.csv", "bmi", "mz_0022", "impute_median"),
-], ids=["classification · categorical column", "regression · numeric column"])
-def test_clause_07s_resolve_opens_from_the_door_that_posts_card_options(
-        fixture, target, column, option):
-    """`GUIDED-087`'s build, driven end to end for the first time.
-
-    Two fixtures of different target shape (`GUIDED-097`). Before L48 both
-    returned a second 409 naming the strategy that had just been refused.
-    """
-    client, pid = _project(fixture, target)
-    exit_row, took = _take_the_resolve(client, pid, {
-        "kind": "route_missingness", "subject": column,
-        "payload": {"column": column, "card_option": option,
-                    "mechanism": "informative"}})
-    assert took.status_code == 200, (
-        f"taking the resolve exit {exit_row['id']!r} was refused "
-        f"({took.status_code}): {str(took.json())[:300]}. The retry payload "
-        f"names a strategy and the request still carries the refused "
-        f"`card_option`, which `api.py` reads first")
-    assert exit_row["retry"]["payload"].get("card_option") == exit_row["id"], (
-        "the retry does not name the card option, so it is shadowed by the "
-        "refused one from the Explore door")
-
-
-@pytest.mark.parametrize("mechanism", ["not_informative", "not_sure"])
-def test_the_purpose_contraindications_resolve_opens(mechanism):
-    """`GUIDED-183` itself. The row's own exit, taken.
-
-    `blocks_indicator` fires on the recorded purpose alone, so this reproduces
-    on any mechanism — and on `informative` it collides with clause §07's own
-    blocker, which the next test drives and reports rather than hides.
-    """
-    client, pid = _project("clinic_visits.csv", "outcome", purpose="inference")
-    exit_row, took = _take_the_resolve(client, pid, {
-        "kind": "route_missingness", "subject": "Unnamed: 0",
-        "payload": {"column": "Unnamed: 0", "card_option": "indicator",
-                    "mechanism": mechanism}})
-    assert exit_row["id"] == "impute_median"
-    assert took.status_code == 200, (
-        f"the purpose contraindication's SAFE exit does not open on a "
-        f"{mechanism} mechanism ({took.status_code}): "
-        f"{str(took.json())[:300]}")
-
-
-def test_the_two_blockers_collide_and_this_says_so(capsys):
-    """NOT a fix — the measurement, published.
-
-    On `informative` + `inference` + `indicator`, both constitutional rules
-    fire: the purpose blocker offers `impute_median` as the way out, and clause
-    §07 refuses exactly that because the user has said a blank means something.
-    Each rule is right on its own. The user's way through is neither exit.
-
-    Asserted as the CURRENT behavior so the collision cannot be quietly
-    resolved in one direction without this failing and someone deciding it.
-    """
-    client, pid = _project("clinic_visits.csv", "outcome", purpose="inference")
-    request = {"kind": "route_missingness", "subject": "Unnamed: 0",
-               "payload": {"column": "Unnamed: 0", "card_option": "indicator",
-                           "mechanism": "informative"}}
-    exit_row, took = _take_the_resolve(client, pid, request)
-    with capsys.disabled():
-        print("\n  ── L48-E · the two blockers that collide ──")
-        print(f"  first refusal   409 · indicator_under_inference")
-        print(f"  its resolve     {exit_row['id']}")
-        print(f"  taking it       {took.status_code} · "
-              f"{took.json().get('detail', {}).get('kind') if took.status_code != 200 else 'accepted'}")
-        print("  Both rules are correct. Filed, not resolved here.")
-    assert took.status_code == 409, (
-        "the collision has been resolved in one direction. That is a "
-        "constitutional decision and it needs a row, not a passing test")
-    assert took.json()["detail"]["kind"] == "blocker", (
-        "the second refusal is no longer clause §07's mechanism blocker")
-
-
-def test_the_page_renders_a_resolve_with_a_retry_as_live(capsys):
-    """The consumer. `showRefusal` enables an exit that carries a payload.
-
-    `GUIDED-183`'s visible half: the row is about a button rendering `disabled`,
-    so a test that only checked the payload would be asserting the server's side
-    of a defect that lives at the boundary.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-    from turbotab import purpose as _purpose
-
-    blocker = _purpose.indicator_blocker("hs_crp")
-    client, pid = _project("clinic_visits.csv", "outcome", purpose="inference")
-    routes = {f"/project/{pid}": client.get(f"/project/{pid}").json()}
-    for path in ("interview?step=data", "interview?step=explore",
-                 "interview?step=features", "capabilities", "features",
-                 "recipes", "preprocess", "figures", "draft", "manuscript",
-                 "models", "training", "instability", "explain", "sensitivity",
-                 "evidence/plausibility", "evidence/missingness"):
-        resp = client.get(f"/project/{pid}/{path}")
-        routes[f"/project/{pid}/{path}"] = (resp.json() if resp.status_code == 200
-                                            else {})
-    routes[f"POST /project/{pid}/decision"] = {"__status": 409,
-                                               "body": {"detail": blocker}}
-
-    out = PH.run(
-        "__harness.dispatch('click', __harness.target("
-        "  {'data-task': 'regression', 'data-ac': 'task'}));\n"
-        "for (var i = 0; i < 8; i++) await new Promise(function(r){ setTimeout(r, 0); });\n"
-        "__emit({band: __harness.html('refusal')});",
-        routes=routes, search=f"?project={pid}")
-
-    band = out["band"] or ""
-    assert "Impute instead" in band, (
-        f"the purpose blocker's resolve did not render at all: {band[:300]!r}")
-    resolve_button = band[:band.index("Impute instead")]
-    assert "disabled" not in resolve_button.rsplit("<button", 1)[-1], (
-        "the SAFE way out still renders `disabled`, beside a live "
-        f"'keep the indicator': {band[:400]!r}")
 
 
 def test_the_sweep_names_every_resolve_exit_and_what_it_can_do(capsys):

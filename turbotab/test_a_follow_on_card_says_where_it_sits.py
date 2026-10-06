@@ -42,6 +42,8 @@ answer was yes, twice.
 The fix is `FEATURE_PARITY.md`'s principle-locality rule: the list lives in the
 page, the test reads it from there, and a prefix added to one is added to both.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -50,16 +52,15 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml import router                                                 # noqa: E402
-from turbotab import engine, pageharness as H                         # noqa: E402
+from turbotab import engine                                             # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
-DOC = (Path(__file__).resolve().parents[1] / "docs" / "turbotab" /
-       "OPENING_SEQUENCE.md")
+DOC = (Path(__file__).resolve().parents[1] / "docs" / "turbotab-next" /
+       "reference" / "OPENING_SEQUENCE.md")
 
 
 def test_no_question_the_page_renders_carries_a_bare_question_mark():
@@ -140,75 +141,3 @@ def test_a_question_outside_the_sequence_gets_a_word_and_not_a_number():
     rc = next(q.to_dict() for q in plan if q.key == "state_reverse_coding")
     assert rc["seq"] == "pack", rc["seq"]
     assert rc["seq"] not in router.SEQUENCE.values()
-
-
-# ── the duplicate ────────────────────────────────────────────────────────────
-
-def _js_array(name):
-    text = H.PAGE.read_text(encoding="utf-8")
-    start = text.index(f"var {name} = [")
-    return re.findall(r'"([^"]+)"', text[start:text.index("];", start)])
-
-
-def test_a_repair_is_rendered_once_and_not_twice():
-    """Read back off the render.
-
-    Nine binary-text repairs on `metabolomics_untargeted.csv`. Each has a
-    finding card; each ALSO had a generic card with three buttons that no-op,
-    because `ANSWERABLE` has no `repair::` entry and `submitAnswer` returns on a
-    missing spec. A control that silently does nothing is the thing GUIDED-006
-    exists to forbid, and here there were twenty-seven of them.
-    """
-    if not H.available():
-        pytest.skip("no JS engine on this machine")
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    client = TestClient(api.app)
-    # `clinic_visits`, not `metabolomics_untargeted`, since `DRIVE-002` landed:
-    # every binary-text repair on the metabolomics fixture is now covered by one
-    # group, so `repair::` questions no longer exist there and the assertion
-    # below would pass on an empty set. This fixture still serves both kinds —
-    # two groups AND three ungrouped repairs — which is the case worth guarding.
-    with open(DATA / "clinic_visits.csv", "rb") as fh:
-        project = client.post("/project", files={
-            "file": ("c.csv", fh, "text/csv")}).json()
-    pid = project["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": "outcome"}})
-    project = client.get(f"/project/{pid}").json()
-    plan = client.get(f"/project/{pid}/interview?step=data").json()
-    served = [q["key"] for q in plan["questions"]
-              if q["mode"] == "push" and q["status"] == "asked"
-              and q["key"].startswith("repair::")]
-    grouped = [q["key"] for q in plan["questions"]
-               if q["key"].startswith("repair_bulk::")]
-    assert served, "no repair questions on this fixture; the test proves nothing"
-    assert grouped, "no repair GROUPS on this fixture; half the check is idle"
-
-    html = H.run("__emit(__harness.html('askedQuestions'));", routes={
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data": plan,
-        f"/project/{pid}/interview?step=explore": {"questions": []},
-        f"/project/{pid}/evidence/missingness": {"cards": []},
-    }, search=f"?project={pid}")
-
-    leaked = sorted({b["data-answer-key"] for b in H.elements(html)
-                     if b.get("data-answer-key", "").startswith("repair")})
-    assert not leaked, (
-        f"{len(leaked)} repair question(s) rendered a second time in the "
-        f"generic channel, with buttons that do nothing: {leaked[:4]}")
-
-
-def test_the_page_and_its_coverage_test_read_one_prefix_list():
-    """Principle-locality, made executable.
-
-    The prefix list was in the test and not in the page, which is how the page
-    came to render cards the test had already accounted for elsewhere. One
-    list, two readers.
-    """
-    from turbotab import test_the_page_asks_what_the_router_serves as COV
-    assert tuple(_js_array("HANDLED_QUESTION_PREFIXES")) == COV.HANDLED_PREFIXES, (
-        "the page and the coverage test hold different prefix lists, so a "
-        "question can be accounted for in one and orphaned or duplicated in "
-        "the other")

@@ -48,13 +48,14 @@ steps: clinical's censored values come back at Preprocess, dietary's energy
 adjustment at Features. A pair that both landed at the same step would verify one
 row of the table twice.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from ml import router
 from turbotab import attention as A
@@ -134,122 +135,6 @@ def test_every_detector_declares_where_it_comes_back():
         f"`PACK_DEFER` routes detectors that no fixture produces: {stale}. "
         f"Either a detector was removed or a fixture stopped triggering it; "
         f"either way the row is a claim with nothing behind it.")
-
-
-def test_every_pack_finding_an_upload_produces_names_its_step():
-    """The wire, not the table: what a driven project actually serves."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    for label, (fixture, lens, target, _fid, _step) in CASES.items():
-        with (DATA / fixture).open("rb") as handle:
-            pid = client.post("/project", files={
-                "file": (fixture, handle, "text/csv")}).json()["id"]
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_lens", "payload": {"lens": [lens]}})
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_target", "payload": {"column": target}})
-        served = [f for f in client.get(f"/project/{pid}").json()["findings"]
-                  if f["source"] == "pack"]
-        assert served, f"{label}: the lens produced no pack findings at all"
-        naked = [f["id"] for f in served if not f.get("defer_target")]
-        assert not naked, (
-            f"{label}: {naked} are served with no deferral destination, so the "
-            f"button reads 'Decide later' and the API's fallback picks the step")
-        wrong = [f["id"] for f in served
-                 if f.get("defer_target_label")
-                 != router.STEP_LABELS.get(f["defer_target"])]
-        assert not wrong, f"{label}: {wrong} carry a label that is not the step's"
-
-
-@pytest.mark.parametrize("label", sorted(CASES))
-def test_a_deferred_pack_finding_comes_back_where_it_said(label):
-    """End to end: press defer at Explore, find the card at the step it named.
-
-    Driven through the page rather than asserted on the payload, because
-    `GUIDED-142` is this door's standing lesson — a thing served and rendered
-    nowhere is the defect, and the payload alone cannot tell those apart.
-    """
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    fixture, lens, target, fid, step = CASES[label]
-    client = TestClient(api.app)
-    with (DATA / fixture).open("rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": [lens]}})
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": target}})
-
-    project = client.get(f"/project/{pid}").json()
-    finding = next((f for f in project["findings"] if f["id"] == fid), None)
-    assert finding is not None, f"{label}: {fixture} no longer produces {fid}"
-    assert finding["defer_target"] == step, (
-        f"{label}: {fid} names {finding['defer_target']!r}, not {step!r}")
-
-    # THE PRESS, with the payload the page's own button composes — the delegate
-    # reads `data-defer-to` off the card, so this is the body a real click sends.
-    posted = client.post(f"/project/{pid}/decision", json={
-        "kind": "defer", "subject": fid,
-        "payload": {"target_step": finding["defer_target"]}})
-    assert posted.status_code == 200, posted.text[:300]
-    project = posted.json()
-
-    recorded = [d for d in project["decisions"]
-                if d["kind"] == "defer" and d["subject"] == fid]
-    assert recorded, f"{label}: the deferral was not recorded at all"
-    assert recorded[-1]["payload"]["target_step"] == step, (
-        f"{label}: the record says {recorded[-1]['payload']} and the Router said "
-        f"{step!r} — a target the renderer or a fallback chose is one the record "
-        f"cannot honor")
-
-    assert fid in [x["id"] for x in project["deferred_noticings"].get(step, [])], (
-        f"{label}: {fid} is deferred to {step} and the server does not list it "
-        f"there: {project['deferred_noticings']}")
-    assert "__unrouted__" not in project["deferred_noticings"], (
-        f"{label}: something was deferred with no destination")
-
-    routes = {
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore":
-            client.get(f"/project/{pid}/interview?step=explore").json(),
-        f"/project/{pid}/evidence/missingness": {"cards": []},
-        f"/project/{pid}/capabilities":
-            client.get(f"/project/{pid}/capabilities").json(),
-    }
-    slots = ["explore", "features", "preprocess", "train"]
-    out = PH.run(
-        "__emit({" + ",".join(
-            f"{s}: __harness.html('back-{s}')" for s in slots) + "});",
-        routes=routes, search=f"?project={pid}")
-
-    here = out[step] or ""
-    assert f'id="cb-{fid}"' in here, (
-        f"{label}: nothing rendered at the {step} step for {fid}. "
-        f"`PRODUCT_VISION.md` §04's loop is still open: {here[:200]!r}")
-    assert finding["title"][:24] in here, (
-        f"{label}: the block at {step} does not carry the finding's own title")
-    assert "You set this aside at Explore" in here, (
-        f"{label}: the card came back unattributed, which is half of §04's "
-        f"promise missing")
-
-    # AND NOWHERE ELSE. A noticing that came back at every step would satisfy the
-    # assertion above and mean nothing.
-    elsewhere = [s for s in slots
-                 if s != step and f'id="cb-{fid}"' in (out[s] or "")]
-    assert not elsewhere, (
-        f"{label}: {fid} also came back at {elsewhere}")
 
 
 def test_a_finding_that_was_never_deferred_comes_back_nowhere():

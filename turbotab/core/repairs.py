@@ -54,7 +54,7 @@ Where each effect executes
 * **columns** — :func:`unusable_columns`: the columns leave the predictors
   (``decisions.left_out``).
 
-Every family here passes the constitution's litmus (ROADMAP lockbox constitution §06: does row
+Every family here passes the constitution's litmus (lockbox constitution §06: does row
 *i*'s output depend on any other row? No), so ``row_local`` is true and each executes on the data
 as soon as it is recorded. A statistical repair (``row_local: false``) would be recorded and run
 in-fold instead; none is in M2.

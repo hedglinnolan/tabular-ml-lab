@@ -46,6 +46,8 @@ cannot tell whether the test is any good — and it is stated in the tool, in th
 design language, and here, because a gate whose limit is not stated gets read as
 a guarantee.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -60,7 +62,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from turbotab import packs as P                                       # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-RESEARCH = ROOT / "docs" / "turbotab" / "research"
+RESEARCH = ROOT / "docs" / "turbotab-next" / "reference" / "research"
 
 ALL_PRIORS = [(key, prior) for key, pack in P.PACKS.items()
               for prior in pack.priors]
@@ -85,7 +87,7 @@ def test_every_source_resolves_to_a_real_section_of_a_real_file(pair):
     """A citation nobody can follow is a citation nobody can check."""
     _, prior = pair
     filename, _, section = prior.evidence.source.partition("#")
-    path = ROOT / "docs" / "turbotab" / filename
+    path = ROOT / "docs" / "turbotab-next" / "reference" / filename
     assert path.exists(), f"{filename} does not exist"
     headings = {m.group(1).strip() for m in
                 re.finditer(r"^#{1,6}\s+(.*?)\s*$", path.read_text(), re.M)}
@@ -175,67 +177,7 @@ def test_a_derived_prior_cannot_rest_on_a_convention():
                     source="research/METABOLOMICS_PACK.md#03 · Missing data"))
 
 
-# ── it reaches a reader ─────────────────────────────────────────────────────
-
-def test_the_badge_travels_to_the_interface():
-    """`DRIVE-001`'s class applied to content: built, correct, and unreachable
-    by a reader is the same as not built — and the entire argument for the
-    badge is that it reaches a reader."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    client = TestClient(api.app)
-    fixture = Path(__file__).parent / "sample_data" / "metabolomics_untargeted.csv"
-    with open(fixture, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("m.csv", fh, "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": "responder"}})
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": ["metabolomics"]}})
-
-    plan = client.get(f"/project/{pid}/interview?step=preprocess").json()
-    badged = [q for q in plan["questions"] if q.get("evidence_status")]
-    assert badged, (
-        "the metabolomics lens settles 300 columns and no question carries the "
-        "badge for the claim it rests on")
-    for q in badged:
-        assert q["evidence_source"], f"{q['key']} is badged with no source"
-        # THE OBLIGATION, over HTTP: nothing DISPUTED arrives pre-settled.
-        if q["evidence_status"] == "DISPUTED":
-            assert q["status"] == "asked", (
-                f"{q['key']} is DISPUTED and was settled without asking")
-
-
-def test_the_page_renders_the_badge_and_never_invents_one():
-    """Rendered from what the server sends. A page that decided a claim was
-    settled would be the interface taking the epistemic position the badge
-    exists to make legible."""
-    page = (ROOT / "turbotab" / "web" / "index.html").read_text(encoding="utf-8")
-    assert len(page) > 20_000 and "renderAll" in page      # positive control
-    body = page[page.index("function evidenceBadge"):]
-    body = body[:body.index("\n  }")]
-    assert "evidence_status" in body and "(q || {})" in body, (
-        "the badge is not read from the question the server sent")
-    for invented in ("SETTLED\"", "'SETTLED'"):
-        assert invented not in body.replace('esc(status)', ''), (
-            "the page composes a status of its own")
-    assert ".badge.disputed" in page and "var(--stop)" not in page[
-        page.index(".badge{"):page.index(".badge{") + 700], (
-        "DISPUTED wears --stop, which §02 reserves for the blocker band alone")
-
-
 # ── the gate ────────────────────────────────────────────────────────────────
-
-def test_the_gate_runs_and_states_its_own_limit():
-    """A gate whose limit is not stated gets read as a guarantee."""
-    tool = (ROOT / "docs" / "turbotab" / "tools" / "evidence.py").read_text()
-    assert "does not check the claim is faithful to it" in tool, (
-        "the tool does not say what it cannot check")
-    hook = (ROOT / ".githooks" / "pre-commit").read_text()
-    assert "evidence.py check" in hook, (
-        "the gate has no trigger, which is `GUIDED-019` — a check nothing "
-        "triggers does not exist")
 
 
 def test_no_verify_at_build_number_ships_as_a_constant():

@@ -74,6 +74,8 @@ which says only *"Target has 5 unique float values (≤10) - classification"* an
 raises no ordinal possibility at all. That is silence rather than a false
 assertion, so it is out of this row; it is filed separately.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -98,13 +100,6 @@ FORBIDDEN = "should be treated as regression"
 #: The two ordered-integer fixtures, driven through the Guided door below.
 ORDINAL_FIXTURES = [("survey_instrument.csv", "item_01"),
                     ("clinical_longitudinal.csv", "visit")]
-
-
-def _client():
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    return TestClient(api.app)
 
 
 def _reasons_over_http(client, fixture: str, target: str):
@@ -176,16 +171,6 @@ def test_it_states_what_each_offered_family_costs(fixture, target):
 
 
 # ── both doors ──────────────────────────────────────────────────────────────
-
-@pytest.mark.parametrize("fixture,target", ORDINAL_FIXTURES)
-def test_the_guided_door_renders_the_corrected_reason(fixture, target):
-    """Driven, not grepped. The string has to survive `project.task_reasons`,
-    the interview composer and `ml/router.py:608`'s join."""
-    stored, rendered = _reasons_over_http(_client(), fixture, target)
-    for where, text in (("task_reasons", stored), ("card why", rendered)):
-        assert FORBIDDEN not in text, f"{where}: {text}"
-        assert "cumulative link" in text, f"{where}: {text}"
-        assert "does not fit" in text, f"{where}: {text}"
 
 
 def test_the_frozen_classic_page_still_reads_the_reason_list():

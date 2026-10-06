@@ -46,6 +46,8 @@ preview returns `rows: []` on purpose (clause §06: there is no single set of
 values to show before the fold), so the operand table this file is about does
 not exist there.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -60,7 +62,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from turbotab import features as F                                    # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
-PAGE = Path(__file__).resolve().parent / "web" / "index.html"
 
 #: Two target shapes, and a two-operand formula on each. The arithmetic is
 #: named here so the assertion can re-derive the `after` from the operands the
@@ -72,88 +73,6 @@ CASES = {
     "regression": ("clinic_visits", "hba1c", "product",
                    ["age", "glucose"], lambda a, b: a * b),
 }
-
-
-def _client():
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    return TestClient(api.app)
-
-
-def _preview(fixture, target, transform, columns):
-    client = _client()
-    with open(DATA / f"{fixture}.csv", "rb") as handle:
-        pid = client.post("/project", files={
-            "file": (f"{fixture}.csv", handle, "text/csv")}).json()["id"]
-    ok = client.post(f"/project/{pid}/decision",
-                     json={"kind": "set_target", "payload": {"column": target}})
-    assert ok.status_code == 200, ok.text[:300]
-
-    served = client.get(f"/project/{pid}/features")
-    assert served.status_code == 200, served.text[:300]
-    catalogue = served.json()
-    entry = next(t for t in catalogue["row_local"] + catalogue["deferred"]
-                 if t["key"] == transform)
-
-    r = client.get(f"/project/{pid}/feature/preview",
-                   params={"transform": transform, "columns": ",".join(columns)})
-    assert r.status_code == 200, r.text[:300]
-    from turbotab.api import STORE
-    return client, pid, entry, r.json(), STORE.get(pid).df
-
-
-@pytest.mark.parametrize("shape", sorted(CASES))
-def test_a_two_column_formula_previews_both_of_its_columns(shape):
-    """**The defect, as the count it produced.**
-
-    The transform declares how many columns it consumes and the preview has to
-    show that many. Each shown value is then checked against the cell it claims
-    to be, and the `after` is re-derived from the two of them — so this is a
-    claim that the preview shows *what the computation used*, not that it shows
-    two numbers.
-    """
-    fixture, target, transform, columns, arith = CASES[shape]
-    _client_, _pid, entry, body, df = _preview(fixture, target, transform,
-                                               columns)
-    needs = entry["n_inputs"]
-    assert needs == 2, f"{transform} no longer takes two columns: {entry}"
-    assert body["rows"], "a preview with no rows is a description"
-
-    for row in body["rows"]:
-        shown = row.get("operands")
-        assert shown is not None and len(shown) == needs, (
-            f"{transform} consumes {needs} columns and the preview shows "
-            f"{0 if shown is None else len(shown)} per row, so a user cannot "
-            f"see what it was computed from: {row}")
-        # Each operand IS the cell it stands for.
-        for column, value in zip(columns, shown):
-            assert value == pytest.approx(float(df.loc[row["label"], column])), (
-                f"the preview shows {value} for `{column}` on row "
-                f"{row['label']} and the table holds "
-                f"{df.loc[row['label'], column]}")
-        # And the two of them produce the `after` that is on screen beside them.
-        assert row["after"] == pytest.approx(arith(*[float(v) for v in shown]),
-                                             rel=1e-3), (
-            f"the operands shown do not produce the result shown: "
-            f"{shown} -> {row['after']}")
-
-
-@pytest.mark.parametrize("shape", sorted(CASES))
-def test_the_payload_names_the_columns_the_computation_consumed(shape):
-    """The structured half. The sentence named both columns from the start;
-    the payload named none, and the payload is what everything downstream
-    reads."""
-    fixture, target, transform, columns, _arith = CASES[shape]
-    _client_, _pid, entry, body, _df = _preview(fixture, target, transform,
-                                                columns)
-    assert body.get("inputs") == columns[:entry["n_inputs"]], (
-        f"the preview does not say which columns it consumed: "
-        f"{body.get('inputs')!r}")
-    for row in body["rows"]:
-        assert len(row["operands"]) == len(body["inputs"]), (
-            "the header and the values disagree about how many operands there "
-            "are, which is worse than showing one")
 
 
 def test_a_one_column_transform_still_says_exactly_what_it_always_said():
@@ -201,77 +120,3 @@ def test_a_deferred_transform_still_shows_no_values_and_says_why():
     assert "inputs" not in pv, (
         "the deferred preview grew an operand list it renders nowhere — a "
         "field with no consumer, which is the trap this loop is avoiding")
-
-
-# ── the page ─────────────────────────────────────────────────────────────────
-
-def _page_function(name: str) -> str:
-    """One top-level function's source, out of `web/index.html`.
-
-    By indentation: every function in the controller opens at two spaces and
-    closes on a line that is exactly `  }`. The caller checks what it got.
-    """
-    lines = PAGE.read_text(encoding="utf-8").splitlines()
-    start = next(i for i, line in enumerate(lines)
-                 if line.startswith(f"  function {name}("))
-    end = next(i for i in range(start + 1, len(lines)) if lines[i] == "  }")
-    return "\n".join(lines[start:end + 1])
-
-
-def test_the_preview_table_renders_a_column_for_every_operand():
-    """The consumer, run — the table behind `data-feat-preview`.
-
-    `featPreviewHTML` built a fixed three-column table, `row | before | after`,
-    so even a payload carrying both operands would still have rendered one.
-    The server half and the page half are the same defect at two layers and
-    neither is the fix on its own.
-    """
-    import shutil
-    import subprocess
-    import tempfile
-    import json as _json
-
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    _client_, _pid, _entry, body, _df = _preview(
-        "clinical_labs", "readmitted", "ratio", ["weight_kg", "height_cm"])
-
-    renderer = _page_function("featPreviewHTML")
-    assert "data-feat-preview" in PAGE.read_text(encoding="utf-8"), (
-        "the control this renders for is gone from the page")
-    assert "feat-prevbox" in renderer and renderer.rstrip().endswith("}"), (
-        "featPreviewHTML was not lifted out of the page intact:\n" + renderer)
-
-    program = "\n".join([
-        _page_function("esc"), _page_function("num"), renderer,
-        "process.stdout.write(featPreviewHTML(" + _json.dumps(body) + "));"])
-    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
-                                     encoding="utf-8") as handle:
-        handle.write(program)
-        path = handle.name
-    try:
-        run = subprocess.run([shutil.which("node"), path],
-                             capture_output=True, text=True, timeout=60)
-    finally:
-        os.unlink(path)
-    assert run.returncode == 0, run.stderr[-2000:]
-    out = run.stdout
-
-    for column in body["inputs"]:
-        assert f"<th>{column}</th>" in out, (
-            f"the preview table has no column for `{column}`, which the "
-            f"formula consumes:\n{out}")
-    first = body["rows"][0]
-    for value in first["operands"]:
-        assert f"<td>{value:g}</td>" in out or str(value) in out, (
-            f"row {first['label']} was computed from {first['operands']} and "
-            f"the table shows {value} nowhere:\n{out}")
-    # The header row now carries one cell per operand plus `row` and the new
-    # column — the count is the claim, so it is counted.
-    header = out[out.index("<tr>"):out.index("</tr>")]
-    assert header.count("<th>") == len(body["inputs"]) + 2, (
-        f"the header has {header.count('<th>')} cells for "
-        f"{len(body['inputs'])} operands: {header}")

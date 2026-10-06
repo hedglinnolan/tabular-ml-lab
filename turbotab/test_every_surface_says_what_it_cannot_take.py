@@ -28,11 +28,12 @@ refuses, for a surface that produces a number and says what is wrong with it.
 column, which is the finding: shapes enumerated, surfaces checked, cells that
 handle, cells that refuse readably, cells silently wrong.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 #: Every target shape the app can encounter. Four are representable today and
 #: three are not — and *not representable* is itself a cell worth checking,
@@ -188,73 +189,7 @@ def test_every_surface_has_a_verdict_for_every_shape():
         f"is the silence this sweep exists to end.")
 
 
-def test_every_silently_wrong_cell_is_filed():
-    """**The last column is the finding**, and an unfiled finding is a report
-    nobody can act on."""
-    import json
-
-    ledger = {row["id"] for row in json.load(
-        open("docs/turbotab/data/findings.json"))}
-    silent = {(s, k) for s, k, v in _verdicts() if v == SILENT}
-
-    assert silent == set(SILENT_CELLS_ARE_FILED), (
-        f"the silent set and the filed set disagree: "
-        f"{silent ^ set(SILENT_CELLS_ARE_FILED)}")
-    for cell, row_id in SILENT_CELLS_ARE_FILED.items():
-        assert row_id in ledger, f"{cell} is filed against {row_id}, which does not exist"
-
-
 # ═══════════ THE REFUSALS ARE READABLE ═══════════
-
-def test_a_time_to_event_target_is_refused_and_stays_refused():
-    """**`GUIDED-118` must not close here.** Refusing is the correct behavior
-    and L38 established it; a sweep that made the app accept a survival target
-    to fill in a matrix cell would be inventing a capability to satisfy a
-    test."""
-    from turbotab import figures
-    from turbotab.project import AnalysisProject, ProjectError
-    import turbotab.figure_specs                            # noqa: F401
-
-    df = pd.DataFrame({"t": [1, 2, 3, 4] * 5, "event": [0, 1] * 10,
-                       "x": range(20)})
-    p = AnalysisProject.from_dataframe(df, "survival.csv")
-    with pytest.raises(ProjectError, match="not a task type"):
-        p.override_task_type("survival")
-
-    entry = figures.resolve("kaplan_meier")
-    assert entry["status"] == figures.PENDING_STATUS
-    assert entry["blocked_by"] == "GUIDED-118"
-    assert len(entry["needs"]) > 200, (
-        "the refusal does not say what is missing, which makes it "
-        "indistinguishable from an absent feature")
-
-
-def test_the_new_clinical_figures_refuse_readably_rather_than_silently():
-    """L40-C's four are the first surfaces built after L39-D's zero and the
-    first that decline a shape. A refusal is `not_drawn` WITH A REASON, never
-    an absence."""
-    from turbotab import figure_bundle as FB
-    from turbotab.project import AnalysisProject
-
-    df = pd.read_csv("turbotab/sample_data/multiclass_stage.csv")
-    p = AnalysisProject.from_dataframe(df, "multiclass_stage.csv")
-    p.set_target("disease_stage", "classification", "high", [])
-    p.set_grain("one_row_per_person")
-    p.set_eligibility("everyone")
-    rng = np.random.default_rng(7)
-    idx = list(p.df.index)
-    rng.shuffle(idx)
-    p.seal_lockbox(idx[:60], fraction=0.25)
-
-    bundle = FB.render(p)
-    offered = {row["id"] for row in bundle["admitted"] + bundle["held"]}
-    reasons = {row["id"]: row["why"] for row in bundle["not_drawn"]}
-    for figure_id in ("decision_curve", "roc"):
-        assert figure_id not in offered
-        assert figure_id in reasons, (
-            f"{figure_id} is absent from a three-class project AND "
-            f"unexplained, which is the silence L39-D found everywhere")
-        assert reasons[figure_id], f"{figure_id} is declined with no reason"
 
 
 def test_the_shelf_is_never_shortened_by_any_of_this():

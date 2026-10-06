@@ -16,6 +16,8 @@ question's wording would pass on an implementation that showed a histogram
 beside it. So the assertions here are on the KEYS of the evidence payload: what
 is absent is the claim.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -241,84 +243,6 @@ def test_a_criterion_that_empties_the_study_is_refused():
 
 
 # ── over HTTP: what a browser can actually do ────────────────────────────────
-
-@pytest.fixture(scope="module")
-def client():
-    from fastapi.testclient import TestClient
-    from turbotab.api import app
-    return TestClient(app)
-
-
-def _upload(client, df: pd.DataFrame) -> str:
-    r = client.post("/project", files={
-        "file": ("study.csv", df.to_csv(index=False).encode(), "text/csv")})
-    assert r.status_code == 200, r.text
-    return r.json()["id"]
-
-
-def test_a_driver_excludes_a_cohort_and_reads_the_flow_numbers_back(client):
-    """The whole obligation over HTTP: the question is asked in its place, the
-    permitted evidence is servable, the exclusion changes N, and the disclosure
-    that comes back says what happened.
-
-    Clause: `lockbox-04`
-    """
-    pid = _upload(client, study())
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": "outcome"}})
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_grain",
-                      "payload": {"answer": G.ONE_ROW_PER_PERSON}})
-
-    iv = client.get(f"/project/{pid}/interview?step=data").json()
-    q = next(q for q in iv["questions"] if q["key"] == "state_eligibility")
-    assert q["status"] == "asked"
-    assert q["consumer"], "a FACT must name what reads its answer"
-    assert "not showing you the outcome's distribution" in q["why"], (
-        "the question does not tell the user what it is withholding, so the "
-        "refusal reads as an omission")
-
-    ev = client.post(f"/project/{pid}/decision",
-                     json={"kind": "eligibility_evidence",
-                           "payload": {"column": "age"}}).json()
-    assert "observed_min" in ev and "median" not in ev
-
-    before = client.get(f"/project/{pid}").json()["n_rows"]
-    r = client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_eligibility",
-                          "payload": {"answer": "restricted", "column": "age",
-                                      "minimum": 18,
-                                      "reason": "The study is about adults."}})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["n_rows"] < before, "the exclusion did not change N"
-    assert body["eligibility"]["n_excluded"] == before - body["n_rows"]
-    assert "excluded before the held-out set was drawn" in \
-        body["disclosures"]["eligibility"]
-
-    sealed = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
-    assert sealed.status_code == 200, sealed.text
-    assert sealed.json()["lockbox"]["n_total"] == body["n_rows"], (
-        "the seal was drawn against the wider population, so the held-out set "
-        "includes people the study is not about")
-
-
-def test_the_seal_endpoint_refuses_before_eligibility_is_answered(client):
-    """§01's ordering, over HTTP, with the recorded answer named as the way out.
-
-    Clause: `lockbox-01`
-    """
-    pid = _upload(client, study())
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": "outcome"}})
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_grain",
-                      "payload": {"answer": G.ONE_ROW_PER_PERSON}})
-    r = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
-    assert r.status_code == 400
-    assert "eligibility question comes before the seal" in r.json()["detail"]
-    assert "everyone here" in r.json()["detail"], (
-        "the refusal does not name the answer that settles it")
 
 
 def test_the_exclusion_survives_the_save_file():

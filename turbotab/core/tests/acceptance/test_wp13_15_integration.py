@@ -160,7 +160,7 @@ def test_2_the_restated_sentinel_evidence_is_the_legacy_one_and_the_ledgers(tmp_
     status, source = _legacy_sentinel_evidence()
     assert status == "SETTLED"
     heading = source.split("#", 1)[1]
-    pack = (REPO / "docs" / "turbotab" / source.split("#", 1)[0]).read_text("utf-8")
+    pack = (REPO / "docs" / "turbotab-next" / "reference" / source.split("#", 1)[0]).read_text("utf-8")
     assert re.search(rf"^#+ {re.escape(heading)}\s*$", pack, re.M), heading
     ledger = (REPO / "docs/turbotab-next/audit/claims-ledger.md").read_text("utf-8")
     row8 = next(line for line in ledger.splitlines() if line.startswith("| 8 |"))

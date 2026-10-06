@@ -40,11 +40,12 @@ mechanism existed would only have moved the wrong answer.
   exit, and `GUIDED-185`: it has no consumer anywhere outside a test, so there
   is no refusal to render and nothing to take. Left alone deliberately.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 
@@ -89,94 +90,6 @@ def test_the_predicate_agrees_with_the_page_now():
     assert not exits.is_actionable(
         {"id": "y", "kind": "resolve", "takes": {"action": "teleport"}}), (
         "an action the page does not implement is called actionable")
-
-
-@pytest.mark.parametrize("fixture,lens,column", [
-    ("clinical_labs.csv", "clinical", "readmitted"),
-    ("survey_instrument.csv", "survey", "score_total"),
-], ids=["classification target", "continuous target"])
-def test_the_lens_contradictions_revise_exit_renders_live(fixture, lens, column):
-    """Driven through the page, on two fixtures of different target shape.
-
-    The claim is about a rendered button's `disabled` attribute, because that
-    is the whole of the defect — the payload was always correct and the
-    interface was the surface that inverted the choice.
-    """
-    from turbotab import packs, pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with (DATA / fixture).open("rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": [lens]}})
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": column}})
-
-    routes = {f"/project/{pid}": client.get(f"/project/{pid}").json()}
-    for path in ("interview?step=data", "interview?step=explore",
-                 "interview?step=features", "capabilities", "features",
-                 "recipes", "preprocess", "figures", "draft", "manuscript",
-                 "models", "training", "instability", "explain", "sensitivity",
-                 "evidence/plausibility", "evidence/missingness"):
-        resp = client.get(f"/project/{pid}/{path}")
-        routes[f"/project/{pid}/{path}"] = (resp.json() if resp.status_code == 200
-                                            else {})
-    # The refusal is the real object the server composes, not a hand-built one:
-    # a fixture that invented the exit would be asserting about a shape
-    # production cannot produce (trap #3).
-    refusal = {"message": "The lens you chose disagrees with this table.",
-               "exits": [dict(packs._LENS_RESOLVE),
-                         {"id": "attest", "kind": "attest",
-                          "label": "My answer is right",
-                          "detail": "Recorded as a stated limitation.",
-                          "payload_key": "acknowledge_contradiction",
-                          "retry": {"payload": {"acknowledge_contradiction": True},
-                                    "how": "Send it again."}}]}
-    routes[f"POST /project/{pid}/decision"] = {"__status": 409,
-                                               "body": {"detail": refusal}}
-
-    out = PH.run(
-        "function buttons(html){\n"
-        "  var out = [], re = /<button\\b([^>]*)>/g, m;\n"
-        "  while ((m = re.exec(html || ''))){\n"
-        "    var a = {}, kv, rx = /([a-zA-Z-]+)=\"([^\"]*)\"/g;\n"
-        "    while ((kv = rx.exec(m[1]))) a[kv[1]] = kv[2];\n"
-        "    a.__raw = m[0]; out.push(a);\n"
-        "  }\n"
-        "  return out;\n"
-        "}\n"
-        "__harness.dispatch('click', __harness.target("
-        "  {'data-task': 'regression', 'data-ac': 'task'}));\n"
-        "for (var i = 0; i < 8; i++) await new Promise(function(r){ setTimeout(r, 0); });\n"
-        "var band = __harness.html('refusal') || '';\n"
-        "var bs = buttons(band).filter(function(b){ return 'data-refusal-i' in b; });\n"
-        "var revise = bs[0];\n"
-        "if (revise) __harness.dispatch('click', __harness.target(revise));\n"
-        "for (var j = 0; j < 8; j++) await new Promise(function(r){ setTimeout(r, 0); });\n"
-        "__emit({n: bs.length, raw: revise && revise.__raw,\n"
-        "        disabled: revise ? ('disabled' in revise) : null,\n"
-        "        primary: revise ? /primary/.test(revise['class'] || '') : null,\n"
-        "        after_press: __harness.html('refusal')});",
-        routes=routes, search=f"?project={pid}")
-
-    assert out["n"] == 2, (
-        f"the refusal band rendered {out['n']} exit buttons, not two")
-    assert out["disabled"] is False, (
-        f"the REVISE exit still renders disabled beside a live attestation, "
-        f"which is the choice §09 intends, inverted: {out['raw']!r}")
-    assert out["primary"], (
-        "the safe way out is not the primary. `showRefusal` marks a takeable "
-        "resolve as primary and this one is takeable now")
-    assert not (out["after_press"] or "").strip(), (
-        "pressing the revise exit left the refusal band up, so the button is "
-        "enabled and does nothing — `GUIDED-006`'s sentence exactly")
 
 
 def test_the_grain_contradiction_is_the_same_shape():

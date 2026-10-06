@@ -843,7 +843,7 @@ def test_the_exposure_and_the_adjustment_set_are_asked_after_the_seal_and_before
 
     root = Path(__file__).resolve().parents[4] / "docs"
     modeling = (root / "turbotab-next/MODELING_SEQUENCE.md").read_text("utf-8")
-    opening = (root / "turbotab/OPENING_SEQUENCE.md").read_text("utf-8")
+    opening = (root / "turbotab-next/reference/OPENING_SEQUENCE.md").read_text("utf-8")
     assert "# The modeling sequence — everything after the seal" in modeling
     assert "This is the order in which the Router asks." in modeling
     assert "| 6 | **Missing data** (asked before the seal, executed here)" in modeling

@@ -21,13 +21,14 @@ inspects source text.
 `GUIDED-097` — THE FIXTURE RULE. Three target shapes, and the shapes not
 covered are named below.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from turbotab import draft as draft_mod
 from turbotab import identifiers as ID
 from turbotab import resolution as R
 from turbotab import training as T
@@ -209,34 +210,6 @@ def test_a_project_with_no_identifier_gets_no_exclusion_clause():
 
 
 # ═══════════ IT REACHES THE MANUSCRIPT ═══════════
-
-@pytest.mark.parametrize("shape", sorted(TARGET_SHAPES))
-def test_the_methods_section_carries_the_corrected_count(shape):
-    """Where the number does its damage.
-
-    `PRODUCT_VISION.md` §04 puts this sentence in the methods section and
-    `draft.py` folds it there from the seal decision's own payload. A count
-    corrected on the lockbox and stale in the draft would be the fix landing
-    everywhere except where a reviewer reads it.
-    """
-    name, target, task, column, cost = TARGET_SHAPES[shape]
-    p = _sealed(name, target, task)
-
-    recorded = p.lockbox["resolution"]["parameters"]["total"]
-    whole_table = R.candidate_parameters(p.df, target)["total"]
-    assert whole_table != recorded, "this fixture cannot tell the two apart"
-
-    # `seal_lockbox` folds into the `target` section — "Outcome and analysis
-    # population" — which is where `_KIND_SECTION` puts it.
-    sections = {s["key"]: s for s in draft_mod.draft(p.to_dict())["sections"]}
-    methods = " ".join(str(s["text"]) for s in sections["target"]["sentences"])
-
-    assert f"{recorded:,} candidate predictor parameters" in methods, (
-        f"{shape}: the methods section does not report the {recorded:,} "
-        f"parameters the models are handed")
-    assert f"{whole_table:,} candidate predictor parameters" not in methods, (
-        f"{shape}: the methods section still reports the whole table's "
-        f"{whole_table:,} parameters")
 
 
 def test_the_survey_fixture_reports_the_number_the_row_names():
