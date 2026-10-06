@@ -25,9 +25,22 @@ The release track also landed: the legacy app is retired, with its references in
 
 **The design direction (Nolan's rulings, 2026-10-05).**
 - Calm over complete: `calm/FOUNDATION.md` sets the five-second test, two registers, desktop only, the color roles and the canvas grammar.
-- The Q&A card is the likely structure. Four synchronized structures sit on branch `explore/calm` for his comparison.
+- Four synchronized structures sit on branch `explore/calm`. On 2026-10-06 Nolan picked the quest log as the best so far, to be designed further (below).
 - Exploration is a guide plus a gallery, walked on the first visit.
 - Noticings become threads that return at later stages.
+
+**The structure (Nolan, 2026-10-06): the quest log, redesigned.**
+- Hover to see the questions you need to answer.
+- The sections and questions are built dynamically from what the engine needs from this analysis.
+- An overall progress bar sits at the top right, so users are not discouraged.
+- First comes a crosswalk of what the engine must surface for the user to decide, and at what moment. More ideas will come from it.
+- His framing, verbatim. Before the fit: "see what the engine needs to surface that a user decides, dynamically build the tapestry to show the consequences of their decision-making". After training, it pivots to: "show them the results and help them interpret with the tapestry, let them decide what to include and not include in their manuscript results section."
+- **The orchestrator's methods floor on curating results:**
+  - under inference, the locked plan's primary analysis is always reported;
+  - what is left out of the results section goes to the supplement and stays in the record.
+
+  This keeps the curation from becoming selective reporting.
+- `calm/FOUNDATION.md` §3 and §6 still describe the Q&A card as the baseline, and must be updated.
 
 The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 17 families, with sentinels and a coverage test. It is **not built yet**; about one thread in five has engine pieces.
 
@@ -39,13 +52,19 @@ The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 
 - explanations, evaluation and robustness on screen;
 - Classic's missing exploration views.
 
-`RECIPES_AND_TUNING.md` specifies the recipes, overrides and tuning, with three decisions open.
+`RECIPES_AND_TUNING.md` specifies the recipes, overrides and tuning. Its draft 3 must fold in Nolan's rulings.
 
-**Waiting on Nolan:**
-1. `RECIPES_AND_TUNING.md` "Decisions for Nolan": the missing-values card wording, whether fits over about 2 min wait for Fit, and the scope cuts.
-2. Whether to commit the NHANES export as a test fixture.
-3. His pick among the four calm structures.
-4. `UNDERSTANDING_LAYER.md` §7's three questions.
+**Ruled by Nolan (2026-10-06):**
+1. **`RECIPES_AND_TUNING.md` "Decisions for Nolan":**
+   - the trees "Try both" by default, keeping blanks or taking the fill, chosen in each training fold;
+   - fits over about 2 minutes wait for Fit;
+   - three scope-cut groups go to INBOX, and the kept-comparisons group (standard settings as a kept version, trunk versions, re-tuned bands) stays in v2.
+2. **The NHANES export:** commit it **gzipped** as a test fixture. The harness reads the `.gz`, and CI then runs the 42 test files that read it.
+3. **The structure:** the quest log, redesigned (above).
+4. **`UNDERSTANDING_LAYER.md` §7:**
+   - every open noticing feeding the plan must be decided or dismissed before the lock or the seal;
+   - clean checks go in the supplement;
+   - "noticings" are named in two places.
 
 **Engine follow-ups found (not started):**
 - the energy preview that quotes a coefficient before the lock;
@@ -56,7 +75,11 @@ The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 
 - the final re-audit.
 See INBOX.md.
 
-**Next, when resumed.** Build in vertical slices: each is an engine thread, its calm screen and a drive. Start with the prototype plan's phase 0 (`UNDERSTANDING_LAYER.md` §6) on the chosen structure, together with the shelf and tuning work.
+**Next, when resumed.**
+1. Commit the NHANES fixture gzipped, and confirm CI runs the real-data tests.
+2. Run the crosswalk: every decision, noticing and result the engine surfaces, when it surfaces, what it depends on, and what the tapestry shows. It is the input to the quest-log redesign.
+3. Write `RECIPES_AND_TUNING.md` draft 3 with the rulings.
+4. Build in vertical slices: each is an engine thread, its quest-log screen and a drive. Start with the prototype plan's phase 0 (`UNDERSTANDING_LAYER.md` §6), together with the shelf and tuning work.
 
 ---
 

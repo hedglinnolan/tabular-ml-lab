@@ -909,18 +909,21 @@ Until a slot is agreed, use fewer permutations with a Monte Carlo interval.
 
 ---
 
-## 7 · Open questions for Nolan (product and purpose only)
+## 7 · Questions for Nolan (product and purpose only), ruled on 2026-10-06
 
 1. **What happens to an open thread at the lock, or before the seal?**
    - **My recommendation:** "Leave as a limitation" is always allowed except for T1 threads. It writes the limitation sentence, and the lock records which threads were left open.
    - **The alternative:** every thread that feeds the plan must be decided or dismissed before estimates appear.
    - **The trade-off:** a tighter leash and a cleaner paper, against a stall at the most exciting moment.
+   - **Ruled: the alternative.** Every open thread that feeds the plan must be decided or dismissed before estimates appear, and under prediction before the seal opens. The lifecycle (§2) and the lock change to match. The open list before the lock becomes a list the user clears.
 2. **Should clean checks appear in the paper?**
    - **My recommendation:** the supplement lists what was checked and found nothing beyond its reference. An example: "run order and responder were balanced, AUC 0.545." The methods text stays short.
    - **The alternatives:** list only noticings that fired, or put clean checks in the methods text too.
+   - **Ruled: as recommended,** in the supplement.
 3. **Are noticings something the user sees by name?**
    - **My recommendation:** name them "noticings" in exactly two places: First look's "Worth a look", and the open list before the lock. Elsewhere they appear only as context lines and "noticed" links, never as a panel or a counter.
    - **The alternative:** keep them unnamed infrastructure. That is calmer, but the user cannot point at "the thing the app told me".
+   - **Ruled: as recommended,** named in those two places.
 
 ---
 
