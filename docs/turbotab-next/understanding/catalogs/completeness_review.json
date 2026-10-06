@@ -1,0 +1,1321 @@
+{
+ "threads": [
+  {
+   "id": "shared-score-fitted-on-these-rows",
+   "lens": "shared",
+   "title": "A column is a score, component or cluster label fitted on these same rows, possibly using the outcome",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. Fires on either of two signs. (a) A column that a linear or logit-linear combination of 3 or more other columns reproduces at R2 >= 0.99, with coefficients that match no registered published equation. (b) Model-output names: pred_, prob_, risk, score, fitted, ps_, ipw, PC1..k, cluster. Names only order the question; they never settle it. It must reject a published fixed-coefficient score computed per row (Framingham, CKD-EPI, HEI), so the formula table in clin-derived-clinical-variables serves as its reject list. Dietary specialization: an empirical index (EDIP, EDIH, an RRR pattern score) whose weights were derived in this cohort. A collaborator-supplied propensity score or inverse-probability weight is in scope too.",
+   "meaning": "score_provenance: a published external equation, an unsupervised transform of all rows, a model fitted on these rows without the outcome, or one fitted with the outcome. Settled by the user or the codebook.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "set_roles / candidate set",
+     "inference": "A supervised score fitted with the outcome is refused as a predictor or covariate unless it is rebuilt. An unsupervised one is kept, with its full-sample fit stated.",
+     "prediction": "Excluded, or rebuilt in-fold. PCs and clusters are recomputed in each training fold."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjustment set / propensity",
+     "inference": "A supplied PS or IPW is replaced by one the app fits, so the intervals include the PS step.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "score with and without",
+     "inference": "n/a",
+     "prediction": "Both versions are scored, each in-fold."
+    },
+    {
+     "stage": "reporting",
+     "decision": "provenance",
+     "inference": "Stated; anchors PROBAST 3.3 and 4.5.",
+     "prediction": "Stated; anchors KN L1.2/L1.3 and TRIPOD+AI 12."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH. Family S3/S6. A risk score fitted on the full cohort with the outcome enters every fold already knowing the answers. Resampling cannot see the leak because it predates the folds. The final shared synthesis lost this thread when its input was truncated (it was thread 90 of 95 in merge+gaps_shared). Report \u00a74.4 maps leakage type L1.3 to genomics-polygenic-score-provenance alone.",
+   "magic": "risk_score is reproduced at R2 0.998 by age, sbp, ldl and smoking, with coefficients no published score uses: it was fitted on these people. If that fit saw the outcome, every fold has seen the answer. (Illustrative; needs a fixture.)",
+   "layout": "Routing: the score drawn from its components, routed out or rebuilt inside the folds.",
+   "sentence": "A risk score supplied with the data had been fitted on the full cohort and was excluded; principal components were recomputed within each training fold.",
+   "sources": [
+    "merge+gaps_shared in workflow wf_344f7bf3 journal: shared-score-fitted-on-these-rows (lost before the final synthesis)",
+    "Kaufman et al. 2012, ACM TKDD 6:15",
+    "Kapoor & Narayanan 2023, Patterns 4:100804"
+   ],
+   "engine": "new (gap). The formula table of clin-derived-clinical-variables is the reject list."
+  },
+  {
+   "id": "shared-target-population-shift",
+   "lens": "shared",
+   "title": "The participants differ from the population the results or the model are meant for",
+   "looks_at": "design",
+   "detector": "Asked once: 'Who are the results for?' When a target sample or published margins are supplied (NHANES, census, a registry), the check is outcome-blind: a membership model (sample against target) on the shared predictors, giving its c, plus standardized differences per predictor. It must reject differences on variables that neither modify the effect nor change performance; those are listed but trigger no weighting.",
+   "meaning": "target_population: these participants, or a named population with data or margins supplied, or unknown.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "estimand / intended population",
+     "inference": "The estimand is named 'among these participants' or 'in the target'.",
+     "prediction": "Feeds the deployment question: who the model will meet."
+    },
+    {
+     "stage": "model",
+     "decision": "generalization",
+     "inference": "Inverse-odds-of-sampling transport weights, as a secondary analysis.",
+     "prediction": "Intercept recalibration to the target prevalence when it is known."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "performance in the target",
+     "inference": "n/a",
+     "prediction": "Performance reweighted to the target case mix."
+    },
+    {
+     "stage": "reporting",
+     "decision": "applicability",
+     "inference": "Generalizability stated.",
+     "prediction": "PROBAST applicability and the TRIPOD+AI intended-population items."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH under prediction, MEDIUM under inference. Family S7. A model developed in volunteers is published as a population tool: it overestimates risk in some groups and misses others. A score estimates performance only in the sample's own distribution. Lost to the truncation. survey-population-or-sample covers only survey designs, so volunteer cohorts, trials and clinic samples have no thread.",
+   "magic": "From age, income and education alone, a model tells your volunteers from NHANES adults at c = 0.81. Reweighted to NHANES, calibration-in-the-large shifts by 3 points. (Illustrative, from the lost draft.)",
+   "layout": "Angles: who is missing from the sample, and performance in the target.",
+   "sentence": "Results were transported to the US adult population using inverse-odds-of-sampling weights estimated against NHANES margins.",
+   "sources": [
+    "merge+gaps_shared: shared-target-population-shift (lost)",
+    "Westreich et al. 2017, Am J Epidemiol 186:1010",
+    "Debray et al. 2015, J Clin Epidemiol 68:279",
+    "Wolff et al. 2019, Ann Intern Med 170:51 (PROBAST applicability)"
+   ],
+   "engine": "new. The survey population attestation is the nearest analog."
+  },
+  {
+   "id": "shared-overfit-calibration-slope",
+   "lens": "shared",
+   "title": "The model's risks are too extreme: the calibration slope is below 1",
+   "looks_at": "predictor-outcome",
+   "detector": "An O4 view. The optimism-corrected (bootstrap) or out-of-fold calibration slope, with calibration-in-the-large. A slope below 0.9 is flagged, with its interval. Under inference it runs only when the estimand is a predicted risk.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "penalization / shrinkage",
+     "inference": "n/a",
+     "prediction": "Penalized families rank up. Uniform shrinkage by the slope enters as a candidate that the resampling tests."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "calibration",
+     "inference": "n/a",
+     "prediction": "Calibration curve, with recalibration offered."
+    },
+    {
+     "stage": "explanation",
+     "decision": "individual predictions",
+     "inference": "n/a",
+     "prediction": "Individual risks are labeled overconfident until shrunk."
+    },
+    {
+     "stage": "reporting",
+     "decision": "TRIPOD+AI 12e, 23a; PROBAST 4.7, 4.8",
+     "inference": "n/a",
+     "prediction": "The slope with its interval."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH under prediction. Family E2. AUC measures ranking only, so it is blind to risks that are too spread out. Report \u00a74.2 rests PROBAST 4.8 on 'by construction', and \u00a74.5 maps TRIPOD+AI 23a only to score-within-noise and G3. This thread is what gives those items a sentence. Lost to the truncation.",
+   "magic": "The AUC is 0.78, but the calibration slope is 0.71. A patient told 60% has about 40%. Shrinkage by 0.71 fixes the spread without changing the ranking. (Illustrative.)",
+   "layout": "Focus: the calibration curve before and after shrinkage.",
+   "sentence": "The optimism-corrected calibration slope was 0.71; coefficients were shrunk uniformly by this factor.",
+   "sources": [
+    "merge+gaps_shared: shared-overfit-calibration-slope (lost)",
+    "turbotab/core/models/decision_curve.py:244 shrinkage",
+    "Van Calster et al. 2019, BMC Med 17:230",
+    "Steyerberg 2019, Clinical Prediction Models, 2nd ed."
+   ],
+   "engine": "partial: shrinkage exists at core/models/decision_curve.py:244. There is no thread, context line or sentence."
+  },
+  {
+   "id": "shared-decisions-after-viewing",
+   "lens": "shared",
+   "title": "Some decisions were made after the outcome was seen, and the methods should say which",
+   "looks_at": "predictor-outcome",
+   "detector": "Reads the decision ledger. Counts, by stage, every decision recorded after a view_outcome of a variable it touches (core/stages/explore.py:22, :114-120), or after a displayed score or estimate. Decisions changed after the plan lock are counted separately.",
+   "meaning": "decision_timing: each such decision was either planned and only confirmed later, or prompted by the view.",
+   "consumers": [
+    {
+     "stage": "evaluation",
+     "decision": "what the corrected score and the plan cover",
+     "inference": "Changes after the lock are labeled post hoc. Changes before the lock that followed an outcome view are listed.",
+     "prediction": "Choices made outside the resampling are listed beside the corrected score."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods disclosure",
+     "inference": "'Chosen after inspecting outcome relationships' is attached to each such decision. Anchors ROBINS-E domain 7.",
+     "prediction": "The same. Anchors PROBAST 4.5."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH. Family E2. Without it, every choice in the paper looks prespecified even when several followed the data, and a score cannot count looks. Report \u00a74.3 answers ROBINS-E D7 with 'by construction', meaning the lock and its hash. That covers only what happens after the lock. Decisions made before the lock, and every lever under prediction, go undisclosed. Lost to the truncation.",
+   "magic": "Three of your 41 decisions came after you looked at the outcome: the spline on age, the log of CRP, and dropping site 4. Each is named in the methods.",
+   "layout": "Flow: the decision timeline, with outcome views marked and the decisions after them lit.",
+   "sentence": "Three analytic decisions (a spline for age, the log scale for CRP, and exclusion of site 4) were made after viewing outcome relationships and are reported as data-informed.",
+   "sources": [
+    "merge+gaps_shared: shared-decisions-after-viewing (lost)",
+    "turbotab/core/stages/explore.py:22, :114-120 (view_outcome)",
+    "Gelman & Loken 2013",
+    "Simmons, Nelson & Simonsohn 2011, Psychol Sci 22:1359"
+   ],
+   "engine": "partial: outcome views and hand levers are recorded. The ledger-wide count and its sentence are new."
+  },
+  {
+   "id": "shared-winner-optimism",
+   "lens": "shared",
+   "title": "Many configurations were compared, so the best score is optimistic simply for being the best",
+   "looks_at": "predictor-outcome",
+   "detector": "The number of configurations compared (families, hyperparameters, levers), the spread of their CV scores against their standard errors, and the BBC-CV bias (the naive best minus the corrected score).",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "how many families",
+     "inference": "n/a",
+     "prediction": "At small n, fewer configurations rank first."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "the honest score",
+     "inference": "n/a",
+     "prediction": "The BBC-corrected score of the chosen configuration is the headline."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods text",
+     "inference": "n/a",
+     "prediction": "The number of configurations compared, and the correction."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family E2. The correction exists by construction, but without a thread it has no claim, context line, S1 row or sentence, so the paper cannot say how many configurations were compared. Lost to the truncation.",
+   "magic": "Twelve configurations were compared and the best scored 0.83. Picking the best of 12 noisy scores is itself optimistic: corrected, it is 0.80.",
+   "layout": "Strip: the configurations ranked with intervals, and the corrected score beside the best.",
+   "sentence": "Twelve configurations were compared; the selected model's performance was corrected for selection by bootstrap bias-corrected cross-validation.",
+   "sources": [
+    "merge+gaps_shared: shared-winner-optimism (lost)",
+    "turbotab/core/models/design_cv.py:168 design_bbc",
+    "Tsamardinos, Greasidou & Borboudakis 2018, Mach Learn 107:1895",
+    "Cawley & Talbot 2010, JMLR 11:2079"
+   ],
+   "engine": "exists (BBC-CV); no thread."
+  },
+  {
+   "id": "shared-rashomon-disagreement",
+   "lens": "shared",
+   "title": "Several models fit equally well but rank the predictors differently",
+   "looks_at": "predictor-outcome",
+   "detector": "The Rashomon set: families and configurations within one standard error of the best score. Their disagreement is measured two ways: the Spearman correlation of their importance ranks, and the share of rows whose risk decile or class changes between members (predictive multiplicity). Within a single family it is the stability over RESEEDS refits.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "explanation",
+     "decision": "what is reported as important",
+     "inference": "n/a (explanations are not effects)",
+     "prediction": "Importance is reported as a range across the set. No single 'top driver' is named unless it tops every member."
+    },
+    {
+     "stage": "model",
+     "decision": "which member",
+     "inference": "n/a",
+     "prediction": "When members are equivalent, the interpretable one is preferred."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods text",
+     "inference": "n/a",
+     "prediction": "The disagreement across near-equivalent models is reported."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family E3. A paper reports the model's top three predictors when an equally good model ranks a different three on top. Lost to the truncation. Explanation \u00d7 prediction is the thinnest cell (E3 has 8 threads), and this was one of its members.",
+   "magic": "Boosted trees and the elastic net score the same (0.77 and 0.76). The trees rank waist first; the net ranks triglycerides first. 14% of patients change risk decile between them. (Illustrative.)",
+   "layout": "Angles: the near-equivalent models' scores, their importance ranks side by side, and the rows whose prediction changes.",
+   "sentence": "Two models performed equivalently and ranked predictors differently; importance is reported as a range across them.",
+   "sources": [
+    "merge+gaps_shared: shared-rashomon-disagreement (lost)",
+    "turbotab/core/models/explain.py:88 RESEEDS",
+    "Breiman 2001, Stat Sci 16:199",
+    "Fisher, Rudin & Dominici 2019, JMLR 20:177",
+    "Marx, Calmon & Ustun 2020, ICML"
+   ],
+   "engine": "partial: stability within one family exists. Disagreement across families is new."
+  },
+  {
+   "id": "shared-learned-interaction",
+   "lens": "shared",
+   "title": "The fitted model leans on an interaction that the average curve hides",
+   "looks_at": "predictor-outcome",
+   "detector": "Friedman-Popescu H2 between the top inputs, with the interaction's own size, stable across bootstrap refits (explain.h_statistics). Also the spread of the ICE curves around the average curve.",
+   "meaning": "None under prediction. Under inference, a pair is never treated as modification unless it is declared.",
+   "consumers": [
+    {
+     "stage": "explanation",
+     "decision": "interaction display",
+     "inference": "Never offered as modification. If pursued, it goes through set_modification labeled 'suggested by data inspection'.",
+     "prediction": "The pair is shown as 2-D ALE or ICE curves."
+    },
+    {
+     "stage": "model",
+     "decision": "interpretable family",
+     "inference": "Not added post hoc.",
+     "prediction": "An interaction term is proposed for the interpretable family and tested in-fold."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods text",
+     "inference": "n/a",
+     "prediction": "The interaction is reported with H2 and its size."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family E3. An average dependence curve is flat because the effect rises in one group and falls in another, and it is read as 'no effect'. Lost to the truncation.",
+   "magic": "The average curve for sodium is flat. Split by kidney function, it rises steeply in one group and is flat in the other (H2 = 0.31). (Illustrative.)",
+   "layout": "Focus: the ICE curves colored by the partner variable, with the average curve.",
+   "sentence": "The model's strongest interaction was between sodium intake and eGFR; it is reported as a feature of the model, not as effect modification.",
+   "sources": [
+    "merge+gaps_shared: shared-learned-interaction (lost)",
+    "turbotab/core/models/explain.py:497 h_statistics",
+    "Friedman & Popescu 2008, Ann Appl Stat 2:916",
+    "Goldstein et al. 2015, JCGS 24:44"
+   ],
+   "engine": "partial: the H statistics exist. The ICE display and the interaction proposal are new."
+  },
+  {
+   "id": "shared-category-spellings",
+   "lens": "shared",
+   "title": "One category is spelled several ways ('Male', 'male', 'M'), so one level becomes several",
+   "looks_at": "predictors",
+   "detector": "Exists as an engine finding (category_variants, ml/import_doctor.py:842). It flags levels that become equal after case-folding, trimming and a synonym table. It must reject codes where case carries meaning (gene symbols, some code lists). New and outcome-blind: a cross-table of spelling by site or batch, which reveals a spelling that marks its source.",
+   "meaning": "level_map: which spellings are one level. Settled by the user or the codebook; the values only propose.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "recode before counts",
+     "inference": "Confirmed levels merge before the sparse-level check, the reference level and Table 1.",
+     "prediction": "The same, before encoding."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "process shortcut",
+     "inference": "n/a",
+     "prediction": "A spelling that tracks site enters the S1 process-only baseline as a process column."
+    },
+    {
+     "stage": "reporting",
+     "decision": "recode stated",
+     "inference": "The recode is stated.",
+     "prediction": "The recode is stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family K1. Six levels for two sexes split the support and change the reference level. When one site writes 'M' and another 'Male', the spelling becomes a site shortcut that resamples well. The engine raises the finding, but no catalog thread has it, so U4's migration of findings into threads would orphan it.",
+   "magic": "clinic_visits.csv: sex arrives as Male 24, male 24, M 23, Female 23, female 23 and F 23. Six spellings, two sexes. (Measured.)",
+   "layout": "Strip: the levels grouped into proposed merges, with counts.",
+   "sentence": "Inconsistent spellings of sex (six variants) were merged into two levels before analysis.",
+   "sources": [
+    "turbotab/sample_data/clinic_visits.md (category_variants__sex)",
+    "ml/import_doctor.py:842"
+   ],
+   "engine": "exists (the finding); no thread."
+  },
+  {
+   "id": "shared-which-level-is-the-event",
+   "lens": "shared",
+   "title": "For a two-level text outcome, which level is the event is a choice, not a default",
+   "looks_at": "outcome",
+   "detector": "Exists as an engine finding (positive_class, ml/binary_text.py:289). It proposes the event level from vocabulary (case, death, yes, positive, responder, readmitted), never from frequency or the alphabet.",
+   "meaning": "outcome_event_level, settled by the user or the codebook.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "event coding",
+     "inference": "Fixed before Riley's events-per-parameter count, which counts the event, not necessarily the rarer class.",
+     "prediction": "The same, before the seal's floor counts events."
+    },
+    {
+     "stage": "model",
+     "decision": "direction of every coefficient",
+     "inference": "Odds ratios refer to the event.",
+     "prediction": "Probabilities refer to the event."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "threshold metrics",
+     "inference": "n/a",
+     "prediction": "Sensitivity, PPV and the decision curve are defined on the event."
+    },
+    {
+     "stage": "reporting",
+     "decision": "outcome definition",
+     "inference": "STROBE 7.",
+     "prediction": "TRIPOD+AI 8a."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family K6. An alphabetical default can flip every sign and the PPV quoted at a threshold, while AUC is symmetric and cannot notice. The engine has the finding but no thread.",
+   "magic": "clinic_visits.csv: responder 22, non-responder 118. 'Is responder the event? Every odds ratio, and the PPV at your threshold, is about it.' (Counts measured.)",
+   "layout": "Focus: the outcome's two levels, with the proposed event marked.",
+   "sentence": "The outcome event was response (22 of 140 participants).",
+   "sources": [
+    "ml/binary_text.py:289 positive_class_finding",
+    "turbotab/sample_data/clinic_visits.md (positive_class__outcome)"
+   ],
+   "engine": "exists (the finding); no thread."
+  },
+  {
+   "id": "shared-holdout-too-small",
+   "lens": "shared",
+   "title": "The sealed holdout would hold too few events to give an honest score",
+   "looks_at": "design",
+   "detector": "Exists in the engine as the seal floor (core/seal.py:603-718). It compares held-out events and non-events against a floor of 100 and computes the Hanley-McNeil half-width of the held-out AUC. Reads only outcome counts (O1).",
+   "meaning": "none. The user picks between sealing anyway with the interval stated and internal validation with selection correction only.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "the seal",
+     "inference": "n/a",
+     "prediction": "Below the floor, the seal offers cross-validation first."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "the honest score",
+     "inference": "n/a",
+     "prediction": "Reported with its half-width, or replaced by the optimism-corrected estimate."
+    },
+    {
+     "stage": "reporting",
+     "decision": "TRIPOD+AI 12a, 23a; PROBAST 4.1, 4.8",
+     "inference": "n/a",
+     "prediction": "The held-out event count is stated."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH under prediction. Family E1. A 20% split of a small file reports a held-out AUC built on a handful of events as 'the honest score', and the split also wastes development data. The floor exists in the engine with no thread, claim or sentence.",
+   "magic": "clinic_visits.csv has 22 responders in 140 rows. A 20% holdout keeps about 4 of them, so its AUC is uncertain by about \u00b10.3 (Hanley-McNeil at an AUC of 0.75, worked by hand).",
+   "layout": "Focus: the holdout's event count beside the interval it would give.",
+   "sentence": "With 22 events, performance was estimated by repeated cross-validation with optimism correction rather than a held-out split.",
+   "sources": [
+    "turbotab/core/seal.py:603-718",
+    "Collins, Ogundimu & Altman 2016, Stat Med 35:214",
+    "Hanley & McNeil 1982, Radiology 143:29"
+   ],
+   "engine": "exists (the floor); no thread."
+  },
+  {
+   "id": "shared-free-text-column",
+   "lens": "shared",
+   "title": "A text column is free text, a category written as text, or a note written after the moment of use",
+   "looks_at": "predictors",
+   "detector": "Partial: the engine has the reading kind role:free_text (core/readings.py:1118) and text_missing marks ('.', '?'). New and outcome-blind: the distinct-value share decides whether the column is a category or free text, and a lexical scan finds timing or outcome words (discharged, deceased, hospice, diagnosed, started insulin).",
+   "meaning": "role:free_text, a category, or a field written after the index (timing_vs_index).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "set_roles",
+     "inference": "Free text leaves the predictors. Text with few levels becomes a category, and its marks are read as missing.",
+     "prediction": "The same. A note written after the moment of use is excluded, along with any feature derived from it."
+    },
+    {
+     "stage": "reporting",
+     "decision": "what was not used",
+     "inference": "The dropped column is named.",
+     "prediction": "The dropped column is named."
+    }
+   ],
+   "failure_prevented": "Consequential: LOW to MEDIUM. Family K1, with an S2 face. A notes field reading 'deceased' or 'referred' can carry the outcome, and a column dropped silently goes unmentioned in the paper.",
+   "magic": "clinic_visits.csv: notes holds routine 35, referred 18, follow-up 17, plus the marks '.' 18 and '?' 17. Three categories and two kinds of blank, not free text. (Measured.)",
+   "layout": "Strip: the column's values, grouped.",
+   "sentence": "The free-text notes column was not used as a predictor.",
+   "sources": [
+    "turbotab/core/readings.py:1118",
+    "turbotab/sample_data/clinic_visits.md (text_missing__notes)"
+   ],
+   "engine": "partial: the reading kind exists; no thread."
+  },
+  {
+   "id": "genomics-microbiome-composition",
+   "lens": "genomics",
+   "title": "The table is a microbiome: compositional counts or relative abundances, mostly zeros, with blanks and depth",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. A wide block of non-negative counts or proportions with taxonomic names (k__/g__, genus names, ASV or OTU hashes). Row sums are closed to a constant (1, 100, or a rarefied depth), the zero share is often above 60%, and both genus and species rows may be present (nested ranks). Rows for extraction blanks or mock communities are treated like metab-reference-rows. It must reject an RNA-seq count matrix (gene IDs, no closure) and a metabolite intensity block.",
+   "meaning": "microbiome_scale: raw counts, rarefied counts, relative abundance or already CLR. Also which rows are blanks or mocks, and which taxonomic rank is analyzed.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "reference rows",
+     "inference": "Blanks and mocks leave the participants. Contaminants in low-biomass samples are flagged by a prevalence rule.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "representation",
+     "decision": "transform",
+     "inference": "CLR or ALR with a declared pseudocount, or ANCOM-BC-style bias correction, frozen at the lock. Never TMM or VST by default.",
+     "prediction": "CLR in-fold, with a fixed pseudocount rule."
+    },
+    {
+     "stage": "selection",
+     "decision": "rank",
+     "inference": "One rank; nested ranks never enter together.",
+     "prediction": "One rank, or grouped candidates."
+    },
+    {
+     "stage": "explanation",
+     "decision": "wording",
+     "inference": "Effects read 'relative to the other taxa', never as absolute abundance.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "checklist",
+     "inference": "STORMS.",
+     "prediction": "STORMS."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH for nutrition, where diet-microbiome studies are a core design. Family K1, K5, and S1 through depth. Expression rules applied to compositional data create spurious negative correlations and read a relative rise as an absolute one. Contamination dominates low-biomass samples. No catalog thread names microbiome data, and the genomics lens covers expression, methylation, genotypes and qPCR only.",
+   "magic": "Every row sums to 1.000: these are relative abundances. A rise in Bacteroides here can be a fall in everything else. (Illustrative; needs a committed microbiome fixture.)",
+   "layout": "Angles: sample totals, the zero share by taxon, and blanks beside samples.",
+   "sentence": "Taxa were analyzed at genus level after centred log-ratio transformation with a fixed pseudocount; extraction blanks were used to remove contaminants.",
+   "sources": [
+    "Gloor et al. 2017, Front Microbiol 8:2224",
+    "McMurdie & Holmes 2014, PLoS Comput Biol 10:e1003531",
+    "Salter et al. 2014, BMC Biol 12:87",
+    "Davis et al. 2018, Microbiome 6:226",
+    "Lin & Peddada 2020, Nat Commun 11:3514",
+    "Mirzayi et al. 2021, Nat Med 27:1885 (STORMS)",
+    "Vandeputte et al. 2016, Gut 65:57 (stool consistency as a confounder)"
+   ],
+   "engine": "new. The closure detector (shared-compositional-parts) and the reference-row machinery exist."
+  },
+  {
+   "id": "metab-affinity-proteomics",
+   "lens": "metabolomics",
+   "title": "The assay block is affinity proteomics (Olink NPX or SomaScan RFU), with vendor normalization, plates and LOD flags",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. Olink naming (OID, UniProt, NPX) or SomaScan naming (seq.NNNN.NN, RFU). NPX values are on a log2 relative scale, can be negative, and plate medians sit near zero after normalization; RFU values are positive and log-normal. Signs of vendor processing: per-sample QC or assay warning columns, per-assay LOD columns, a plate ID, and bridging samples (one sample ID on two plates). It must reject MS intensities and expression matrices.",
+   "meaning": "proteomics_scale: NPX, raw RFU, or ANML-normalized (vendor normalization already applied). Also whether plates were bridged, and whether below-LOD values were kept or set missing.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "QC-flagged samples and assays",
+     "inference": "Excluded with an exit, and shown in the flow.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "representation",
+     "decision": "scale and plate",
+     "inference": "NPX is never re-logged. Bridging normalization is learned on the bridge rows (reference rows) and frozen at the lock. Below-LOD NPX is kept as measured, with a censoring sensitivity analysis.",
+     "prediction": "The same, in-fold whenever it learns from study samples."
+    },
+    {
+     "stage": "selection",
+     "decision": "epitope effects",
+     "inference": "A protein whose pQTL alters the protein reads genotype or ancestry, not abundance. It is flagged when genotype or ancestry is in the study.",
+     "prediction": "The same flag, beside importance."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "plate as process",
+     "inference": "Plate \u00d7 outcome is a design-balance check (O2).",
+     "prediction": "Leave-one-plate-out. Transport to the other platform is stated as unknown."
+    },
+    {
+     "stage": "explanation",
+     "decision": "units",
+     "inference": "One NPX unit means a doubling on a relative scale, not a concentration.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH. Family K1, S6, S1. The failures: re-logging NPX, treating NPX from different plates as comparable without bridging, dropping below-LOD values (which biases low-abundance proteins), and reading an epitope effect as a diet-protein association. No thread names affinity proteomics, and metab-subdomain lists MS and NMR only.",
+   "magic": "These values are NPX: already log2, and relative to each plate. Plate 3 sits 0.4 NPX above the others on its bridging samples. (Illustrative.)",
+   "layout": "Angles: plate medians, bridge-sample agreement, and the below-LOD share per assay.",
+   "sentence": "Protein levels were analyzed as Olink NPX (log2 scale) after bridging-sample normalization across plates; values below the limit of detection were retained.",
+   "sources": [
+    "Sun et al. 2018, Nature 558:73 (epitope effects)",
+    "Sun et al. 2023, Nature 622:329 (UKB-PPP)",
+    "Candia et al. 2017, Sci Rep 7:14248",
+    "Katz et al. 2022, Sci Adv 8:eabm5164",
+    "Eldjarn et al. 2023, Nature 622:348"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "diet-recall-day-before-the-draw",
+   "lens": "dietary",
+   "title": "The first 24-hour recall covers the day before the blood or urine draw, so the biomarker reads yesterday's meal",
+   "looks_at": "time",
+   "detector": "Outcome-blind; it combines three design facts. The instrument is a 24-h recall (diet-instrument-kind). The outcome or a covariate is a biomarker collected at the same visit as the recall: in NHANES, the day-1 recall covers the 24 h before the MEC exam. The biomarker responds to recent intake, by a registry: triglycerides, glucose, insulin, urinary sodium, potassium and iodine, plasma vitamin C, carotenoids. No outcome values are read.",
+   "meaning": "exposure_window: the question is about usual or acute intake, and whether day 1 is adjacent to the draw.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "usual intake and regression calibration",
+     "inference": "Under the usual-intake question, day 1's deviation is correlated with the biomarker, so regression calibration's nondifferential assumption fails for day 1. Either the estimand is restated as acute, or a day-2-only replicate is the declared sensitivity analysis.",
+     "prediction": "Deployment question: in use, will the recall be taken the day before the draw?"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "Day-2-only analysis.",
+     "prediction": "Score with day 2 only, the deployment-like input."
+    },
+    {
+     "stage": "explanation",
+     "decision": "label",
+     "inference": "'Includes the acute effect of the previous day's intake'.",
+     "prediction": "The same label."
+    },
+    {
+     "stage": "reporting",
+     "decision": "STROBE-nut nut-8.1, nut-12.1",
+     "inference": "The timing and its handling are stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH for biomarker outcomes. Family K3, with a K4 timing face. Measurement error correlated with the outcome breaks regression calibration, and the association mixes yesterday's meal with habitual diet. A score rewards it, because yesterday's sodium predicts this morning's urine.",
+   "magic": "Day-1 recalls cover the 24 hours before the blood draw. For triglycerides, that is the meal you are measuring, not the diet. (Illustrative; needs a committed NHANES-derived fixture with a biomarker.)",
+   "layout": "Flow: the recall-day timeline against the exam, with the biomarker marked.",
+   "sentence": "Because the first recall covered the day before specimen collection, the analysis was repeated using the second recall only.",
+   "sources": [
+    "NHANES MEC In-Person Dietary Interviewers Procedures Manual (day-1 recall at the MEC exam)",
+    "Keogh & White 2014, Stat Med 33:2137",
+    "Carroll et al. 2006, Measurement Error in Nonlinear Models, 2nd ed."
+   ],
+   "engine": "new. usual_intake.py and the calibration stage exist."
+  },
+  {
+   "id": "diet-spot-urine-estimated-excretion",
+   "lens": "dietary",
+   "title": "Sodium or potassium 'intake' is estimated from spot urine by an equation built on age, weight and creatinine",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. Extends the formula table of clin-derived-clinical-variables: a 24-h Na or K column reproduced from spot urine Na or K, creatinine, age, weight and height by the Kawasaki, Tanaka or INTERSALT equation. Names such as est_24h_na beside spot-urine columns also count. Units in mmol or mg are read.",
+   "meaning": "exposure_source: measured 24-h urine, estimated from spot urine (and by which equation), or self-report.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "The equation's inputs (age, weight, creatinine) are flagged: adjusting for them does not remove the association the equation builds in. Measured 24-h urine, or the spot Na/creatinine ratio, ranks first.",
+     "prediction": "Grouped importance with its inputs."
+    },
+    {
+     "stage": "model",
+     "decision": "shape",
+     "inference": "A J-curve in an estimated exposure is labeled as possibly induced by the equation.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "A second equation and the raw ratio.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "exposure definition",
+     "inference": "The equation is named.",
+     "prediction": "Named."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH for sodium and potassium outcome analyses. Family K5, with K3. Equations built on age, weight and creatinine bake in associations with mortality and blood pressure, and they have been shown to change the sodium-mortality relationship.",
+   "magic": "est_na_24h is Kawasaki's equation of spot sodium, creatinine, age, weight and height (R2 1.00). Its J-curve may be the equation's, not the salt's. (Illustrative.)",
+   "layout": "Routing: the estimate drawn from its inputs.",
+   "sentence": "Sodium excretion estimated from spot urine (Kawasaki) was analyzed with a sensitivity analysis using the sodium-to-creatinine ratio.",
+   "sources": [
+    "Kawasaki et al. 1993, Clin Exp Pharmacol Physiol 20:7",
+    "He et al. 2019, Hypertension 74:572",
+    "Cogswell et al. 2013, Am J Clin Nutr 98:1502"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "clin-lipid-carried-micronutrients",
+   "lens": "clinical",
+   "title": "Fat-soluble vitamins and carotenoids travel on lipoproteins, so their concentration tracks cholesterol and triglycerides",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. Serum alpha-tocopherol, carotenoids, vitamin K or CoQ10 appear beside total cholesterol or triglycerides, recognized by analyte vocabulary. Also reports the vitamin's correlation with the lipids, and spots a column that is already a ratio (tocopherol per cholesterol).",
+   "meaning": "nutrient_expression: per volume, per lipid, or adjusted for lipid. Also lipid's causal place: a confounder of the vitamin-outcome association, or on the path for a CVD outcome.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "ratio or raw",
+     "inference": "Declared before the lock.",
+     "prediction": "Both enter as candidates."
+    },
+    {
+     "stage": "selection",
+     "decision": "lipids on the adjustment card",
+     "inference": "Confounder or mediator is asked. For CVD outcomes, lipids sit on the path.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "STROBE-nut nut-8.4",
+     "inference": "The expression is stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family K5, with K4. Unadjusted vitamin E tracks dyslipidemia, so a 'protective' or 'harmful' tocopherol can be the lipoprotein that carries it. Both versions predict, so a score cannot tell them apart. clin-inflammation-adjustment covers CRP and AGP, not lipids.",
+   "magic": "Alpha-tocopherol correlates 0.6 with total cholesterol: much of its spread is the lipoproteins that carry it. (Illustrative.)",
+   "layout": "Angles: the vitamin against total lipids, raw and as a ratio.",
+   "sentence": "Serum alpha-tocopherol was expressed per total lipid.",
+   "sources": [
+    "Traber & Jialal 2000, Lancet 355:2013",
+    "Thurnham et al. 1986, Ann Clin Biochem 23:514",
+    "Horwitt et al. 1972, Ann N Y Acad Sci 203:223"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "diet-borrowed-validity-coefficients",
+   "lens": "dietary",
+   "title": "An FFQ is the only measure, so correcting for measurement error means borrowing a validation study from another population",
+   "looks_at": "measurement",
+   "detector": "Design fact. The exposure comes from an FFQ (diet-instrument-kind), and there is no internal replicate or reference (diet-ffq-recall-substudy is silent), so internal regression calibration is unavailable. Fires when the exposure is in the declared analysis.",
+   "meaning": "external_calibration: none, or a named validation study with its population, instrument version and calibration covariates, and whether it transports here.",
+   "consumers": [
+    {
+     "stage": "evaluation",
+     "decision": "measurement-error sensitivity",
+     "inference": "Regression calibration with the external lambda, as a labeled sensitivity analysis and never the primary. The bootstrap includes lambda's own uncertainty.",
+     "prediction": "n/a (deployment uses the same FFQ)."
+    },
+    {
+     "stage": "explanation",
+     "decision": "null labels",
+     "inference": "diet-invisible-exposure uses the external lambda to say what a null can rule out.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "STROBE-nut nut-8.6, nut-12.3",
+     "inference": "The source and the transport assumption are stated, or the limitation.",
+     "prediction": "n/a"
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family K3. Without this thread there are two failures. Either no correction is made and 'no association' is written silently, or a borrowed lambda from another population or instrument is applied as if exact, giving corrected intervals that are far too narrow.",
+   "magic": "There is no second measure of energy here. A null from this FFQ cannot rule out a true slope several times larger. (Illustrative.)",
+   "layout": "Angles: the observed estimate beside the corrected range under the borrowed lambda.",
+   "sentence": "A sensitivity analysis applied regression calibration using attenuation factors from an external validation study.",
+   "sources": [
+    "Freedman et al. 2014, Am J Epidemiol 180:172",
+    "Keogh & White 2014, Stat Med 33:2137",
+    "Carroll et al. 2006, Measurement Error in Nonlinear Models"
+   ],
+   "engine": "partial: the calibration stage corrects from internal replicates or a substudy only. External lambda input is new."
+  },
+  {
+   "id": "shared-outcome-assessed-knowing-the-arm",
+   "lens": "shared",
+   "title": "In an unblinded trial, the outcome is self-reported or judged by someone who knows the arm",
+   "looks_at": "design",
+   "detector": "Design facts. A settled randomized arm (shared-randomized-arm), plus an outcome that is self-reported or assessor-judged (instrument kind, survey items, diet-intake-as-outcome), plus blinding that is absent or unknown (asked). Where a biomarker sits beside the self-report, comparing the two by arm is an outcome view: after the lock under inference.",
+   "meaning": "outcome_assessment_blinding: participant-reported in an unblinded trial, a blinded assessor, or an objective measure.",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "primary outcome",
+     "inference": "A biomarker or objective outcome ranks first when present. A self-reported effect is labeled at risk of bias (RoB 2 domain 4).",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "Calibration of the self-report against a biomarker substudy when one exists.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "RoB 2 D4; CONSORT 2025 blinding",
+     "inference": "Stated.",
+     "prediction": "n/a"
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH for unblinded diet trials. Family K3 (differential misreporting); the trial sibling of gap G2. Participants in the intervention arm report what they were told to eat, so self-reported effects run larger than biomarker effects. The bias is in the label, so no score can see it. The coverage registry holds ROBINS-I V2 for trials, but RoB 2, the tool for randomized trials, is absent.",
+   "magic": "Self-reported sodium fell 900 mg more in the intervention arm, but urinary sodium fell by only 300 mg. (Illustrative.)",
+   "layout": "Angles: the self-reported and objective outcome by arm.",
+   "sentence": "Because dietary intake was self-reported by unblinded participants, the effect was also estimated on urinary sodium.",
+   "sources": [
+    "Sterne et al. 2019, BMJ 366:l4898 (RoB 2)",
+    "Natarajan et al. 2010, Am J Epidemiol 172:819",
+    "Hopewell et al. 2025, CONSORT 2025 statement"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "shared-cluster-randomized",
+   "lens": "shared",
+   "title": "The arm was assigned to schools, clinics or villages, not to people",
+   "looks_at": "design",
+   "detector": "Outcome-blind. The arm column never varies within a settled grouping (shared-exposure-varies-between-groups at 100% between groups). It reports clusters per arm and the spread of cluster sizes, and checks whether participants enrolled after their cluster was allocated (when dates exist).",
+   "meaning": "randomization_unit: individual, cluster (which column) or stepped-wedge. Also whether participants were recruited after allocation.",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "analysis unit",
+     "inference": "A mixed model or GEE with a small-sample correction, or a cluster-level analysis when clusters are few.",
+     "prediction": "Grouped folds by cluster."
+    },
+    {
+     "stage": "selection",
+     "decision": "recruitment imbalance",
+     "inference": "A predictors-only baseline comparison by arm flags recruitment bias. Individual covariates adjust for it.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "precision",
+     "inference": "The ICC and the design effect are reported, with a sensitivity analysis for recruitment bias.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "CONSORT cluster extension; RoB 2 cluster domain 1b",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH. Family S4, with S5. An individual-level analysis of a 12-school trial reports intervals as if 2,400 children had been randomized. Children recruited after allocation can differ by arm. School-based nutrition trials are common, and no thread names cluster randomization.",
+   "magic": "The arm never varies within a school. Twelve schools were randomized, not 2,400 children, so your effective sample is much closer to 12. (Illustrative.)",
+   "layout": "Flow: clusters by arm, then participants within them.",
+   "sentence": "Twelve schools were randomized; effects were estimated with a mixed model with a small-sample correction (ICC 0.04).",
+   "sources": [
+    "Campbell et al. 2012, BMJ 345:e5661",
+    "Eldridge et al. 2021, RoB 2 for cluster-randomized trials",
+    "Leyrat et al. 2018, Int J Epidemiol 47:321"
+   ],
+   "engine": "partial: grouping detection and the randomized-arm thread exist; their combination is new."
+  },
+  {
+   "id": "shared-unit-summary-spans-the-future",
+   "lens": "shared",
+   "title": "In a long table, a per-person column summarizes all of the person's visits, future ones included",
+   "looks_at": "time",
+   "detector": "Outcome-blind. A column constant within each unit that equals an aggregate of a time-varying column over all of that unit's rows (row count, max, min, last, any, mean), or that carries summary names (ever_, n_visits, final_, max_, total_). It must reject a baseline value carried forward, which equals the first row's value and is legitimate.",
+   "meaning": "timing_vs_index for a unit-level column: baseline only, a summary over follow-up, or unknown.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "candidate set",
+     "inference": "As a covariate it is post-baseline, so it goes to the K4 card's after-exposure row. Used as the exposure, it creates immortal time (shared-time-zero).",
+     "prediction": "A summary over follow-up is refused as a feature."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "score with and without",
+     "inference": "n/a",
+     "prediction": "Both, in grouped folds."
+    },
+    {
+     "stage": "reporting",
+     "decision": "KN L3.1; TRIPOD+AI 9b",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH for longitudinal prediction. Family S2. A per-person 'n_visits' or 'max_hba1c' gives every early row the future. Grouped folds do not help, because the leak runs within the unit's own rows. shared-repeats-or-time-points refuses summaries that the app itself builds after the outcome, but not summary columns the collaborator delivered.",
+   "magic": "n_visits equals the number of rows each person has. A visit-1 row cannot know the person will come back seven times. (Illustrative. clinical_longitudinal.csv is the silent fixture: its constant columns, age and sex, are baseline values.)",
+   "layout": "Flow: one unit's rows over time, with the summary column shown reaching forward.",
+   "sentence": "Person-level summaries computed over follow-up were excluded from the predictors.",
+   "sources": [
+    "Kaufman et al. 2012, ACM TKDD 6:15",
+    "Kapoor & Narayanan 2023, Patterns 4:100804 (L3.1)"
+   ],
+   "engine": "partial: the app's own aggregation refuses after-outcome summaries. Delivered summary columns are not detected."
+  },
+  {
+   "id": "shared-id-unique-only-within-a-site",
+   "lens": "shared",
+   "title": "An identifier is unique only within a site, cycle or file, so two people share one ID",
+   "looks_at": "structure",
+   "detector": "Outcome-blind. An ID repeats across levels of site, cycle or file, and within the ID the time-invariant attributes (sex, birth year) contradict each other, or encounter dates overlap at two sites. ID formats that restart per site (P0001 everywhere) are another sign. It must reject a genuine multi-site patient, whose attributes agree and whose dates do not overlap.",
+   "meaning": "unit_key: the ID alone, the pair (site, ID), or linkage needed.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "grain",
+     "inference": "The unit is set to the composite key before repeats, the MI carry-within-unit step, and clustering.",
+     "prediction": "The same, before grouped folds."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "grouped folds",
+     "inference": "Clustered intervals by the composite unit.",
+     "prediction": "Grouped by the composite unit."
+    },
+    {
+     "stage": "reporting",
+     "decision": "RECORD linkage items",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM to HIGH in pooled multi-site data. Family S4/K1. Different people merge into one unit. shared-one-value-per-unit then carries one person's sex to another, clustered SEs and grouped folds are wrong, and trajectories look implausible. clin-implausible-trajectory catches only some cases.",
+   "magic": "P0001 appears at NORTH as a 56-year-old man and at SOUTH as a 31-year-old woman: two people, one ID. (Illustrative. clinical_labs.csv is the silent fixture: none of its 96 IDs spans two sites.)",
+   "layout": "Strip: IDs with contradictory attributes across sites.",
+   "sentence": "Patients were identified by site and record number, since record numbers were unique only within site.",
+   "sources": [
+    "Benchimol et al. 2015, PLoS Med 12:e1001885 (RECORD)"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "shared-rows-are-follow-up-intervals",
+   "lens": "shared",
+   "title": "Rows are follow-up intervals (start, stop, event) with time-varying covariates, not people or visits",
+   "looks_at": "structure",
+   "detector": "Structural. Per unit, a pair of time columns where each row's start equals the previous row's stop (counting-process format). A 0/1 column that is 1 only on a unit's last row is noted by its position alone, without reading its association with anything.",
+   "meaning": "row_kind: follow-up intervals, visits, or people.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "unit and outcome",
+     "inference": "The outcome is the event at the end of an interval, and the unit is the person.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "model",
+     "decision": "family",
+     "inference": "Cox on (start, stop] or a discrete-time model; never logistic regression treating rows as people.",
+     "prediction": "A landmark design or discrete-time candidates."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "folds",
+     "inference": "n/a",
+     "prediction": "Grouped by person, and time-ordered."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family K6/S4. Treating intervals as people multiplies n and ignores time at risk.",
+   "magic": "Each person's rows chain end to start (0-90, 90-180, 180-240 days), and only the last row can carry the event: these are follow-up intervals. (Illustrative.)",
+   "layout": "Flow: one person's intervals laid end to end.",
+   "sentence": "Data were analyzed in counting-process format with time-varying covariates.",
+   "sources": [
+    "Therneau & Grambsch 2000, Modeling Survival Data",
+    "Andersen & Gill 1982, Ann Stat 10:1100"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "shared-row-stands-for-many",
+   "lens": "shared",
+   "title": "A row stands for many people: frequency weights, aggregated counts, or group means",
+   "looks_at": "structure",
+   "detector": "Outcome-blind. Signs: a positive-integer weight column with no strata or PSU; a count column never larger than a denominator column; or mean_/pct_ columns beside an n. The weight's sum may approximate a population. It must reject survey weights, which shared-survey-population-design handles.",
+   "meaning": "row_weight_kind: frequency, analytic (a group mean with its n), sampling, inverse-probability (route to shared-score-fitted-on-these-rows), or none.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "n and events",
+     "inference": "Counted from the frequencies, so Riley's budget reads the true n.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "model",
+     "decision": "family and estimand",
+     "inference": "Binomial with trials. For group rows, the ecological estimand is named.",
+     "prediction": "Rows expanded only under grouped folds."
+    },
+    {
+     "stage": "reporting",
+     "decision": "unit of analysis",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family S4/K1. Frequency weights ignored, or read as precision weights, change n by orders of magnitude. Aggregated rows read as people commit the ecological fallacy.",
+   "magic": "freq sums to 48,212 over 312 rows: each row is many people. (Illustrative.)",
+   "layout": "Strip: rows against the people they stand for.",
+   "sentence": "Each record represented a group of participants; analyses used frequency weights.",
+   "sources": [
+    "Lumley 2010, Complex Surveys",
+    "Morgenstern 1995, Annu Rev Public Health 16:61"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "shared-missing-by-design-block",
+   "lens": "shared",
+   "title": "A column is missing for whole sites, cycles or waves, or outside a measured subsample: not collected there",
+   "looks_at": "structure",
+   "detector": "Outcome-blind. A column or block that is 100% missing within some levels of site, cycle, wave or batch and nearly complete within others, or missing for everyone outside a subsample, so that design columns predict its missingness almost perfectly.",
+   "meaning": "missing_by_design: not collected there (planned or systematic), lost, or a subsample component.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "missing data",
+     "inference": "Complete cases would drop whole sites. Instead, site-aware multilevel imputation for systematically missing data, or the estimand restricted to the sites that collected it. Never a mean fill.",
+     "prediction": "The missingness indicator is flagged as a site or cycle marker, and availability at use is asked (G1)."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "transport",
+     "inference": "n/a",
+     "prediction": "Leave-one-site-out shows the cost."
+    },
+    {
+     "stage": "reporting",
+     "decision": "which sites lacked it",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM to HIGH in pooled data. Family K2, with S1. Complete cases quietly become 'the sites that measured it'. Under prediction, 'ferritin is missing' learns 'this is site SOUTH'. Only the metabolomics lens has this (metab-missing-by-batch).",
+   "magic": "Ferritin is blank for every row from SOUTH and for 3% elsewhere: SOUTH never measured it. (Illustrative.)",
+   "layout": "Strip: missingness by site or cycle.",
+   "sentence": "Ferritin was not collected at one site; it was imputed with a multilevel model for systematically missing data.",
+   "sources": [
+    "Resche-Rigon & White 2018, Stat Methods Med Res 27:1634",
+    "Graham et al. 2006, Psychol Methods 11:323"
+   ],
+   "engine": "partial: metab-missing-by-batch and the generic missingness mechanism exist."
+  },
+  {
+   "id": "shared-rows-filtered-before-upload",
+   "lens": "shared",
+   "title": "Rows were removed before the file reached the app, by a rule nobody stated",
+   "looks_at": "design",
+   "detector": "Outcome-blind. Signs: not one missing value in columns of kinds that are usually incomplete; a sequential identifier with gaps (the share of its range absent); an eligibility-like column that is constant (every age at least 20, every fasting flag 1); or a row count that matches a known source minus a filter. It must reject a legitimately complete instrument.",
+   "meaning": "upstream_selection: the file is everyone, or rows were removed by a rule. If removed: which rule, and whether it used the outcome, follow-up, or completeness.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "participant flow",
+     "inference": "The flow starts at the upstream source, with an 'excluded before upload' box. A rule that used the outcome or a post-baseline state routes to shared-selection-on-a-consequence.",
+     "prediction": "The removed kinds of rows feed G1 and the target-population question."
+    },
+    {
+     "stage": "reporting",
+     "decision": "STROBE 13a; TRIPOD+AI 20a; PROBAST 1.2, 4.3",
+     "inference": "The upstream rule is stated, or the limitation.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM to HIGH. Family S5, with S6. A collaborator's complete-case extract makes the app report 'no missing data', the flow starts at the wrong N, and the score is computed on the survivors of an unknown filter. The fixtures sweep had this thread (shared-upstream-subset), but it was dropped at the merge; only genomics kept a variant (genomics-excluded-libraries-by-group).",
+   "magic": "No column has a single blank, and SEQN skips 38% of its range. Were rows removed before you got this file? (Illustrative.)",
+   "layout": "Flow: the source population, then what arrived.",
+   "sentence": "The analytic file had been restricted to complete records before receipt; the restriction is reported as an exclusion step.",
+   "sources": [
+    "find_fixtures sweep: shared-upstream-subset (dropped at merge)",
+    "Hern\u00e1n, Hern\u00e1ndez-D\u00edaz & Robins 2004, Epidemiology 15:615",
+    "STROBE item 13a"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "shared-sentinel-dates",
+   "lens": "shared",
+   "title": "Placeholder dates (1900-01-01, the Excel or Unix zero, 9999-12-31) stand for missing",
+   "looks_at": "time",
+   "detector": "Outcome-blind. Date values at 1900-01-01, 1899-12-30/31, 1970-01-01, 9999-12-31 or 2099-12-31, or birth dates heaped on 1 January. Ages or follow-up times derived from them fall out of range.",
+   "meaning": "date_sentinel: a placeholder (missing) or a real date.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "dates to missing",
+     "inference": "Applied before ages, follow-up and time zero are computed.",
+     "prediction": "The same, before any time-ordered split."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "time-ordered split",
+     "inference": "n/a",
+     "prediction": "Placeholders are excluded from the time ordering."
+    },
+    {
+     "stage": "reporting",
+     "decision": "recode",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM for clinical and EHR data. Family K1. A 1900 birth date makes a 124-year-old, a 9999 end date makes follow-up endless, and an epoch default puts rows first in a time-ordered split. shared-missing-value-codes covers numeric codes only.",
+   "magic": "41 visit dates are 1900-01-01, all at one site: placeholders, not visits a century ago. (Illustrative.)",
+   "layout": "Strip: the date distribution, with the spikes marked.",
+   "sentence": "Placeholder dates (1900-01-01) were treated as missing.",
+   "sources": [
+    "Kahn et al. 2016, eGEMs 4:1244",
+    "Weiskopf & Weng 2013, JAMIA 20:144",
+    "turbotab/core/dates.py:206 (the engine's own note on 1970-01-01)"
+   ],
+   "engine": "partial: dates.py reads dates; there is no placeholder rule."
+  },
+  {
+   "id": "shared-ordered-text-predictor",
+   "lens": "shared",
+   "title": "A text predictor's levels are ordered, but the alphabet scrambles their order and picks the reference",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. A text predictor with 3 to 10 levels matching an ordinal vocabulary (education levels; never/former/current; low/medium/high; quintile labels) where alphabetical order differs from the vocabulary's. Mirrors structural.order_question, which today runs for outcomes only.",
+   "meaning": "level_order: ordered (with its order and reference level), or nominal.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "encoding",
+     "inference": "The reference level and the order are declared, so a trend test becomes possible.",
+     "prediction": "Ordinal and one-hot encodings both enter as candidates."
+    },
+    {
+     "stage": "explanation",
+     "decision": "display order",
+     "inference": "Shown in the declared order.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM to LOW. Family K1. 'College graduate' becomes the reference level, and a trend is computed in alphabetical order. The fixtures sweep had this thread (shared-ordered-text-levels), but it was dropped at the merge. survey-ordinal-predictor-spacing covers numeric codes only.",
+   "magic": "Education's reference level is 'College graduate' only because C comes first. Is the order less than high school, high school, some college, college? (Illustrative.)",
+   "layout": "Strip: the levels in the proposed order.",
+   "sentence": "Education was coded as an ordered category with less than high school as the reference.",
+   "sources": [
+    "find_fixtures sweep: shared-ordered-text-levels (dropped at merge)",
+    "Heinze et al. 2024, BMC Med Res Methodol 24:178"
+   ],
+   "engine": "partial: order_question exists for outcomes."
+  },
+  {
+   "id": "shared-mismeasured-confounder",
+   "lens": "shared",
+   "title": "A key confounder is measured so poorly that adjusting for it leaves most of its confounding",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. Applies to a settled confounder (from the K4 card) that is self-reported, a single reading, or coarsened (smoking yes/no with no pack-years), or whose replicate or reference measure shows low reliability. A registry lists confounders known to be noisy in nutrition: physical-activity questionnaires, smoking status, SES proxies.",
+   "meaning": "confounder_quality: adequate, or known to be noisy (with its reliability when known).",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "The finer version enters where it exists (pack-years). A residual-confounding sensitivity analysis follows: a measurement-error correction for the confounder when replicates exist, the E-value otherwise.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "Reported beside the primary estimate.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "ROBINS-E domain 1 (confounders measured validly and reliably)",
+     "inference": "Stated, with its limitation.",
+     "prediction": "n/a"
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH under inference. Family K3, applied to K4. Adjusting for a self-reported activity flag removes little of the confounding it stands for, so a diet 'effect' survives adjustment that is mostly residual lifestyle. Only clin-single-reading-dilution (single-draw labs) and genomics-exposure-written-in-the-profile (smoking) touch this. The failures sweep had it (shared-mismeasured-confounder), but it was dropped at the merge.",
+   "magic": "Physical activity enters as one self-reported yes/no. Adjusting for it removes much less of its confounding than the model's output suggests. (Illustrative.)",
+   "layout": "Angles: the estimate as confounder reliability varies.",
+   "sentence": "Residual confounding by imprecisely measured physical activity was assessed in a sensitivity analysis.",
+   "sources": [
+    "find_failures sweep: shared-mismeasured-confounder (dropped at merge)",
+    "Fewell, Davey Smith & Sterne 2007, Am J Epidemiol 166:646",
+    "Higgins et al. 2024, Environ Int (ROBINS-E)"
+   ],
+   "engine": "partial: clin-single-reading-dilution's consumer covers single draws only."
+  },
+  {
+   "id": "shared-exposure-assigned-or-predicted",
+   "lens": "shared",
+   "title": "The exposure is assigned from a group or predicted by a model (Berkson-type error), not measured with noise",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. The exposure is constant within a grouping such as household, school menu, area or food-composition value (shared-exposure-varies-between-groups at about 100% between groups). Or it is a model's output: predicted usual intake, an imputed biomarker, an equation estimate, a calibrated FFQ, or names like pred_, est_, usual_.",
+   "meaning": "error_structure: classical, Berkson-type (assigned or predicted), or mixed. Also whether the first-stage uncertainty is available.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "measurement-error correction",
+     "inference": "Regression calibration is refused for Berkson-type error, where it would over-correct, and allowed for classical error.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "intervals",
+     "inference": "The SEs include the first stage (the whole two-stage pipeline is bootstrapped), or they are labeled conditional on the prediction.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "exposure assignment",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH under inference. Family K3 + E1. Correcting a Berkson-type exposure for 'attenuation' inflates the effect, and a predicted exposure treated as measured gives intervals that are too narrow. The K3 threads assume classical error throughout; Berkson appears only in genomics-imputed-dosages.",
+   "magic": "Every child in a school has the same sodium value: the menu's. That error does not weaken the slope, so correcting for it would inflate it. (Illustrative.)",
+   "layout": "Angles: the exposure's spread within and between groups.",
+   "sentence": "Exposure was assigned at school level (Berkson-type error); no attenuation correction was applied, and intervals were bootstrapped by school.",
+   "sources": [
+    "Armstrong 1998, Occup Environ Med 55:651",
+    "Carroll et al. 2006, Measurement Error in Nonlinear Models",
+    "Murphy & Topel 1985, J Bus Econ Stat 3:370"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "shared-many-versions-of-the-exposure",
+   "lens": "shared",
+   "title": "The table holds the exposure several ways, inviting a choice after the results are seen",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. Counts columns that measure the declared exposure differently: grams, servings, % energy, density, categories, binge flag, ever/current, FFQ and recall. Found with the derived, coarsened and collinear detectors plus nutrient vocabulary.",
+   "meaning": "primary_exposure_version: one version is primary and declared before the lock; the others are listed as sensitivities.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "primary exposure",
+     "inference": "One version is locked. The others join the specification curve after the lock, labeled.",
+     "prediction": "All may enter as candidates, with grouped importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "ROBINS-E domain 7 (choice among exposure measurements)",
+     "inference": "The versions and the primary are stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM to HIGH under inference. Family E2. With five codings of alcohol, picking the one with the nicest estimate after looking is a forking path that no score counts. The failures sweep had this thread (shared-many-versions-of-exposure), but it was dropped at the merge. shared-coarsened-copy and shared-exposure-family cover parts of it.",
+   "magic": "Alcohol is here five ways: grams, drinks, % of energy, binge days and categories. Which is your exposure? The others become your sensitivity analyses.",
+   "layout": "Strip: the versions, grouped.",
+   "sentence": "Alcohol intake in grams per day was prespecified as the primary exposure; four alternative codings are reported as sensitivity analyses.",
+   "sources": [
+    "find_failures sweep: shared-many-versions-of-exposure (dropped at merge)",
+    "Higgins et al. 2024, ROBINS-E domain 7",
+    "Simonsohn, Simmons & Nelson 2020, Nat Hum Behav 4:1208"
+   ],
+   "engine": "partial: the coarsened-copy and exposure-family detectors exist."
+  },
+  {
+   "id": "shared-null-is-inconclusive",
+   "lens": "shared",
+   "title": "A null result's interval still includes the smallest effect that matters",
+   "looks_at": "predictor-outcome",
+   "detector": "An O4 view, after the lock. The estimate's interval is compared with the smallest effect of interest declared before the lock (diet-meaningful-increment supplies the unit). It is inconclusive when it includes both 0 and that effect, and an informative null when it excludes the effect.",
+   "meaning": "smallest_effect_of_interest, declared before the lock.",
+   "consumers": [
+    {
+     "stage": "explanation",
+     "decision": "result label",
+     "inference": "'Inconclusive' or 'no meaningful association'.",
+     "prediction": "n/a (shared-model-no-better-than-baseline covers it)."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence form",
+     "inference": "'Did not provide evidence' or 'excluded effects larger than'.",
+     "prediction": "n/a"
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family E3. 'No association' gets written for an interval that includes a clinically important effect.",
+   "magic": "The interval runs from -2 to +9 mmHg per serving, and your meaningful effect is 3. This null cannot say there is no effect. (Illustrative.)",
+   "layout": "Focus: the interval against the band of meaningful effects.",
+   "sentence": "The association was inconclusive: the 95% interval included the prespecified smallest effect of interest.",
+   "sources": [
+    "Altman & Bland 1995, BMJ 311:485",
+    "Lakens 2017, Soc Psychol Personal Sci 8:355"
+   ],
+   "engine": "new."
+  },
+  {
+   "id": "shared-sensitive-attribute-role",
+   "lens": "shared",
+   "title": "Race/ethnicity, sex/gender or SES columns: a confounder proxy, a fairness group, or a predictor?",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. Columns that name race/ethnicity, sex/gender, income, insurance, language or area deprivation. Race embedded in a derived column is caught by clin-derived-clinical-variables (CKD-EPI 2009).",
+   "meaning": "attribute_role: confounder proxy (for what), fairness audit group, predictor (with a justification), or excluded.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "inclusion",
+     "inference": "It enters as a proxy for named social exposures, never as a cause.",
+     "prediction": "Inclusion is a declared choice. Both versions are resampled, with calibration by group compared."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "G3 performance by group",
+     "inference": "n/a",
+     "prediction": "Runs on the declared groups."
+    },
+    {
+     "stage": "reporting",
+     "decision": "TRIPOD+AI fairness items",
+     "inference": "The role is stated.",
+     "prediction": "The role and the group performance are stated."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM. Family K4, with E3. A race term enters by default and carries the race-correction problem. Or the groups that G3 needs are never declared, so no fairness check runs. set_intended_use subgroups exists, but nothing asks what the attribute means.",
+   "magic": "Race is a candidate predictor. Including it improves C by 0.004 and changes calibration in two groups. What does it stand for here? (Illustrative.)",
+   "layout": "Angles: performance and calibration by group, with and without the attribute.",
+   "sentence": "Race/ethnicity was used to assess performance across groups and was not included as a predictor.",
+   "sources": [
+    "Vyas, Eisenstein & Jones 2020, N Engl J Med 383:874",
+    "Collins et al. 2024, BMJ 385:e078378 (TRIPOD+AI)"
+   ],
+   "engine": "partial: set_intended_use subgroups exists."
+  },
+  {
+   "id": "shared-unequal-blocks",
+   "lens": "shared",
+   "title": "A small clinical block sits beside thousands of omics features, and one penalty treats them alike",
+   "looks_at": "structure",
+   "detector": "Outcome-blind. Settled blocks (clinical covariates beside an omics block, or diet beside metabolites) whose feature counts differ 50-fold or more, while penalized families are on the shelf.",
+   "meaning": "block_roles: which block is the established base (clin-incremental-value), and whether it is penalized.",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "penalty structure",
+     "inference": "n/a (the adjustment set is declared).",
+     "prediction": "Two candidates beside the plain one, all resampled: the base block unpenalized, and block-specific penalty factors (IPF-lasso)."
+    },
+    {
+     "stage": "explanation",
+     "decision": "importance by block",
+     "inference": "n/a",
+     "prediction": "Grouped by block."
+    }
+   ],
+   "failure_prevented": "Consequential: MEDIUM under prediction. Family K5/E2. One penalty treats 10 clinical variables like 5,000 genes: age is shrunk away and the omics block's value is misstated.",
+   "magic": "Ten clinical columns sit beside 4,800 genes. Under one penalty, age was dropped in 4 of 5 folds. (Illustrative.)",
+   "layout": "Strip: block sizes and their selection rates.",
+   "sentence": "Clinical covariates were left unpenalized while expression features were penalized.",
+   "sources": [
+    "Boulesteix et al. 2017, Comput Math Methods Med 2017:7691937",
+    "De Bin et al. 2014, Stat Med 33:5310"
+   ],
+   "engine": "partial: clin-incremental-value fits base and extended models."
+  },
+  {
+   "id": "shared-identifiable-values-in-the-export",
+   "lens": "shared",
+   "title": "Exports would publish identifiers, an individual's values, or cells small enough to identify someone",
+   "looks_at": "design",
+   "detector": "Outcome-blind. Three signs. Direct identifiers among the columns: names, MRNs, full dates of birth or visit, ZIP5, free text. Small cells (below 10 or 11, by the source's rule) in the participant flow, Table 1, the results tables and supplement S1. Thread claims that name one row's ID and values (catalog moments quote PT0021 and GS031).",
+   "meaning": "disclosure_rule: none, an NCHS RDC rule, CMS cell-size suppression, HIPAA Safe Harbor, or a custom threshold.",
+   "consumers": [
+    {
+     "stage": "reporting",
+     "decision": "export bundle, S1, figures",
+     "inference": "Small cells are suppressed or merged, and individual IDs in sentences become 'one participant'.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "opening",
+     "decision": "identifier handling",
+     "inference": "Identifiers are hashed in the row-set digests of the decision log.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "explanation",
+     "decision": "individual explanations",
+     "inference": "Not exported.",
+     "prediction": "Not exported."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH for real-world use, though no score is involved. It sits outside the 17 families, which decompose validity; this one is an obligation. The export bundle (methods, results, decisions.jsonl), supplement S1 and the row-set readings can publish one person's ID and values, or a cell of 3.",
+   "magic": "Supplement S1 would name GS031 and its z-score, and the flow shows 3 pregnant participants at site SOUTH. Your data-use agreement suppresses cells under 11. (Illustrative.)",
+   "layout": "Strip: each export element with what it would disclose.",
+   "sentence": "Cells with fewer than 11 participants were suppressed in accordance with the data-use agreement.",
+   "sources": [
+    "45 CFR 164.514(b) (HIPAA Safe Harbor)",
+    "NCHS Research Data Center disclosure review rules",
+    "turbotab/core/export/bundle.py (results/*.csv, decisions.jsonl)"
+   ],
+   "engine": "new."
+  }
+ ],
+ "notes": "I am the completeness critic, picking up after the usage limit. The previous completeness run (agent a8cc519d) failed and left nothing behind. I read the repo only. The one computation was a small pandas read of clinic_visits.csv and clinical_labs/clinical_longitudinal.csv, which supplies the counts marked \"Measured\".\n\nThe single biggest finding is a pipeline loss, not a domain gap.\n\n**1. Nine shared threads never reached the \"333\".**\n- **What happened:** final:shared was handed a truncated merge+gaps_shared catalog that stopped partway through the 95 threads. Its report says threads 87-95 \"are gone\" and that no copy exists. A copy does exist: in the workflow journal (subagents/workflows/wf_344f7bf3-8ad/journal.jsonl), in the merge+gaps result. I extracted it to scratchpad/crit/merge+gaps_shared.json.\n- **Two of the nine were rebuilt under other names:** spatial-neighbors became shared-spatial-dependence, and the dropout half of observation-process became shared-informative-dropout.\n- **Seven are substantively missing** (the first seven entries above): score-fitted-on-these-rows, target-population-shift, overfit-calibration-slope, decisions-after-viewing, winner-optimism, rashomon-disagreement and learned-interaction.\n- **Why they matter:**\n  - They are most of the late-born threads for evaluation \u00d7 prediction and explanation \u00d7 prediction.\n  - Report \u00a74 currently answers TRIPOD+AI 23a, PROBAST 4.8, KN L1.3 and ROBINS-E D7 with \"by construction\" or with weaker threads. Each of those items needs one of these seven as its sentence-bearing thread.\n  - So the 333 total, the family counts (E2 16, E3 8, S3 8, S7 9), Appendix A and the \u00a74 coverage maps all need updating.\n- **What remains of observation-process:** only its visit-intensity reading outside the clinical lens (EMA, panels). I left it as a note rather than a thread.\n\n**2. Concepts dropped between the sweeps and the merge.** I checked every sweep thread id against the finals. These five never landed and have no equivalent: shared-upstream-subset, shared-mismeasured-confounder, shared-many-versions-of-exposure, shared-ordered-text-levels and shared-tail-is-a-population. The first four are in the list above. The fifth is mostly covered by impossible-vs-extreme.\n\n**3. Engine noticings with no thread.** U4 says findings migrate into threads, so any finding without a thread would be orphaned:\n- category_variants (ml/import_doctor.py:842);\n- positive_class (ml/binary_text.py:289);\n- the seal floor (core/seal.py:603-718);\n- role:free_text (core/readings.py:1118).\n\nThese four are in the list above. The structural ones are covered: empty, footer, header-in-later-row, duplicate and constant columns, unnamed columns and wide repeats. Recommendation: add a census test so that every engine finding id maps to a thread, or is declared silent with a reason. That is the engine-side twin of \u00a73.5.\n\n**4. The coverage registry is narrower than the anchors the catalogs already cite.**\n- **What the catalogs cite:** STROBE-ME (16 threads), STREGA (10), MIAME (11), CONSORT (6), AAPOR and CHERRIES (2), and STARD (1).\n- **What the registry holds:** PROBAST, ROBINS-E, ROBINS-I V2, KN, TRIPOD+AI and STROBE-nut only.\n- **The consequence:** unmapped items in the cited frameworks cannot turn the test red.\n- **Frameworks to add:** RoB 2 and CONSORT 2025 with its cluster extension (the app supports trials, and ROBINS-I is the wrong tool for them); TRIPOD-Cluster for multi-site prediction; RECORD for EHR and linkage; STROBE-ME; STREGA and GRIPS; STARD and QUADAS-2 (clin-partial-verification); MIAME, MINSEQE and MSI; STORMS (microbiome); AAPOR.\n- **Threads they surfaced:** mapping RoB 2 alone produced shared-outcome-assessed-knowing-the-arm and shared-cluster-randomized.\n- **Still open:** the PROBAST+AI item list is unverified, as the report itself says.\n\n**5. Data types missing from the lenses.** Microbiome (genomics-microbiome-composition) and affinity proteomics (metab-affinity-proteomics: Olink NPX or SomaScan). Both are central to current nutrition research. Neither appears in any catalog: \"microbio\" has 1 incidental hit, and \"Olink\", \"NPX\" and \"aptamer\" have none. A user with these data would pick a lens whose K1 rules are wrong for them.\n\n**6. Nutrition-specific measurement gaps.** These came from looking at lens \u00d7 stage, not at the frameworks:\n- recall day before the draw: correlated error, so regression calibration is invalid;\n- spot-urine estimated excretion: the Kawasaki and INTERSALT equations;\n- lipid-carried micronutrients: lipid standardization of vitamin E;\n- borrowed validity coefficients: regression calibration from external data for FFQ-only studies;\n- the Berkson versus classical error structure. All K3 threads assume classical error, so regression calibration would over-correct a group-assigned exposure.\n\n**7. Data-shape gaps.**\n\n| Shape | Status |\n|---|---|\n| Wide | Covered, except unequal blocks |\n| Longitudinal | Missing: delivered unit summaries that span the future; counting-process intervals |\n| Multi-site | Missing: IDs unique only within a site; columns missing for whole sites or cycles; cluster randomization |\n| Rare outcome | Missing: event-level choice; holdout floor |\n| Small n | Missing: holdout floor; winner optimism |\n| Rows standing for many | Missing: frequency weights and aggregated rows |\n\n**8. The 17 families are closed over validity, not over obligations.** Disclosure and privacy (shared-identifiable-values-in-the-export) fit no family. So do data-use terms, such as NHANES's requirement to use weights and its restricted linked files. Either add an obligation family, or have the registry state that obligations are outside it.\n\n**Most consequential, if only ten are built next:**\n1. score-fitted-on-these-rows\n2. overfit-calibration-slope\n3. decisions-after-viewing\n4. holdout-too-small\n5. unit-summary-spans-the-future\n6. mismeasured-confounder\n7. exposure-assigned-or-predicted\n8. cluster-randomized\n9. microbiome\n10. recall-day-before-the-draw\n\n**Smaller amendments, not separate threads:**\n- clin-population-specific-cutoffs should add BMI cut-offs by ancestry (WHO 2004: Asian 23/27.5) and older-adult BMI.\n- survey-population-or-sample should state the unit response rate (AAPOR) when there are no weights.\n- The six engine-only lens journeys' asked-row targets will rise with the restored threads. Most of them are surfaced or stated O4 threads, which add little ask load.\n\n**Fixture status:**\n- Magic numbers marked \"Measured\" are real (clinic_visits sex spellings, outcome counts, notes levels).\n- clinical_labs.csv is the silent fixture for the ID-collision thread: 0 of its 96 IDs span two sites.\n- clinical_longitudinal.csv is the silent fixture for the unit-summary thread: its constant columns are age and sex, which are baseline values.\n- Every other moment is marked illustrative and needs a committed fixture (R8).\n\n**Files:**\n- Full lost-thread texts: /private/tmp/claude-501/-Users-nhedglin-tabular-ml-lab/a12607bd-3f0c-4a23-8d52-bda4a2c1292e/scratchpad/crit/merge+gaps_shared.json\n- All extracted stage results are in the same folder."
+}

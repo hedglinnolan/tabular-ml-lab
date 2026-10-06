@@ -1,0 +1,2362 @@
+[
+ {
+  "id": "C01-01",
+  "name": "Multi-format, multi-file upload with a live roster",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/datastore.py:48-51; turbotab/core/assembly.py:1-31; turbotab/server/routes/assembly.py:64",
+  "v2_screen": "partly drawn",
+  "evidence": "Ingest reads CSV/TSV/TXT (.gz/.zst), Parquet, Excel and SAS XPT (datastore.py:48-51; DoD:25). XPT is new compared with Classic. The start screen takes one file per upload: StartScreen.tsx:15 TABLE_EXT, :166-171 upload.mutate(file), :210 accept list with no 'multiple'. The server can add files for joining (server/routes/assembly.py:64 upload_file), and the client has uploadFile/joinPreview (client.ts:251-259), but no component calls them (frontend_inventory gaps[6]).",
+  "gap": "No JSON/JSONL (see C01-03). The screen has no multi-file roster with rename, remove or replace. The added-file engine and route exist, but nothing on screen reaches them.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-02",
+  "name": "Excel sheet picker with a parse-time estimate",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/datastore.py:942-959",
+  "v2_screen": "not drawn",
+  "evidence": "Only the first sheet is read; the code warns 'the workbook has N sheets; only the first ... was read' (datastore.py:948-950). That warning goes to DatasetInfo.warnings (datastore.py:126), which no frontend component renders (grep of turbotab/frontend/src finds only design warnings).",
+  "gap": "No sheet picker and no parse-time estimate. On screen the other sheets are dropped without a visible notice.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-03",
+  "name": "JSON layout reader",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "turbotab/core/datastore.py:48-51 (no JSON reader)",
+  "v2_screen": "not drawn",
+  "evidence": "The definition of done lists the v2 upload formats as 'CSV, TSV, Parquet, Excel, SAS XPT' (V2_DEFINITION_OF_DONE.md:25), and new scope enters only by displacing something on the list (V2_DEFINITION_OF_DONE.md:3-4). SUPPORTED_TYPES (datastore.py:50-51) and TABLE_EXT (StartScreen.tsx:15) contain no JSON.",
+  "gap": "This is out of scope by the DoD's format list, not by a ruling that names JSON. Records lists, wrapped payloads, JSON Lines and nested-field flattening are all absent.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-04",
+  "name": "Transpose on import",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/detectors/orientation.py:1-22; turbotab/core/stages/working.py:563, 660-670; turbotab/core/stages/__init__.py:207",
+  "v2_screen": "drawn",
+  "evidence": "Orientation is read from header tokens and feature-name grammar first, then from a scale-aware shape. It is never claimed at high confidence, and the user turns the table (orientation.py:1-22). Duplicate feature names that would collapse into one column are refused with code duplicate_features (working.py:660-670). OrientationAsk (SequenceQuestions.tsx:41) and TurnTable.tsx draw the question; its feature-table exits are partial (frontend_inventory gaps[24]).",
+  "gap": "The omics feature-table exits (set_feature_table) have no control (gaps[24], gaps[68]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-05",
+  "name": "Memory-aware admission gate (files and combined tables)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/config.py:6; turbotab/core/datastore.py:150-161; turbotab/core/stages/data.py:63-97; turbotab/core/stages/findings.py:13-15",
+  "v2_screen": "partly drawn",
+  "evidence": "Ingest is columnar and out of core, so a file never has to fit in RAM to be admitted (BLUEPRINT.md:99-109). Materializing is checked against a budget of 50% of available RAM (config.py:6). Exceeding it raises MemoryBudgetExceeded with the estimate, the budget and the advice to use server mode (datastore.py:150-161). The profile falls back to a fixed sample and says so (stages/data.py:78-97). The findings stage fails with the budget's message rather than sampling (stages/findings.py:13-15).",
+  "gap": "Nothing is admitted, warned about or refused at upload, and there is no estimate before a join. A table too large to materialize surfaces as a stage error during the opening sequence, not as a pre-flight verdict.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-06",
+  "name": "Add-all bulk ingest",
+  "status": "missing",
+  "v2_engine_at": "turbotab/core/assembly.py:410-431 (files are added one at a time for joins)",
+  "v2_screen": "not drawn",
+  "evidence": "A project is created from one file (StartScreen.tsx:166-171). Further files exist only as join partners through the added-file route (server/routes/assembly.py:64), and no component calls it (frontend_inventory gaps[6]).",
+  "gap": "No bulk 'add all' and no per-file added/failed/warnings report. This depends on the multi-file UI in C01-01.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-07",
+  "name": "Built-in practice datasets",
+  "status": "missing",
+  "v2_engine_at": "turbotab/sample_data/*.csv (fixtures; no practice-data route)",
+  "v2_screen": "not drawn",
+  "evidence": "StartScreen.tsx offers open-by-path and upload only; a grep for 'sample', 'example' or 'demo' finds nothing. Reference fixtures exist under turbotab/sample_data (for example clinical_labs.csv). In local mode they can be reached only by browsing to their path.",
+  "gap": "There is no one-click demo or teaching dataset.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-08",
+  "name": "Import Doctor: structural diagnosis with reversible one-click repairs",
+  "status": "partial",
+  "v2_engine_at": "turbotab/engine.py:131-155; turbotab/core/stages/findings.py:1-26; turbotab/core/repairs.py:16-38, 103, 1120-1146; turbotab/core/detectors/codes.py:1-38",
+  "v2_screen": "drawn",
+  "evidence": "The findings stage still runs Classic's ml.import_doctor.diagnose (engine.py:154-155; stages/findings.py:5-8). Repairs exist for sentinel codes, text read as numbers, SAS zeros, binary text, kJ, values below detection, infinities, date reading and impossible values (repairs.py:16-38, 1120-1146). Each repair is row-local, carries a methods sentence and can be undone by revert (Record.tsx:778-782). Sentinel detection is stricter than Classic's: a code must sit beyond every other value with a gap and recur (detectors/codes.py:1-38). Unnamed and constant columns route to roles as 'Mark as excluded' (finding_words.py:180-195). Duplicate headers are renamed at ingest (datastore.py:304-321). Repairs.tsx and Findings.tsx draw all of this.",
+  "gap": "Several findings are diagnosed but offer no fix ('No control for this yet.', repairs.py:103; finding_words.py:952-953): a header in a later row, footer rows, empty rows or columns, category spelling variants, and wide repeated measures (no melt). A header-row finding also masks the per-column checks (detectors/codes.py:252-262). There is no 'Undo all fixes' button.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-09",
+  "name": "Combine files: the relation question, with the app's guess",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/assembly.py:44-70",
+  "v2_screen": "not drawn",
+  "evidence": "Only joins are modeled. The contract asks 'Which file joins this table, and on which identifier?' with the options left and inner (assembly.py:55-68). Minimal assembly is defined as joining on a shared identifier (V2_DEFINITION_OF_DONE.md:40-42).",
+  "gap": "There is no plain-language relation question (link, stack, both or one file), no column-overlap guess, and no stacking. The join UI is unbuilt (gaps[6]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-10",
+  "name": "Join Doctor: key detection from values, with a pre-join diagnosis",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/assembly.py:8-31, 117-178, 223-266",
+  "v2_screen": "not drawn",
+  "evidence": "The plan counts one-to-one, one-to-many and many-to-one joins and refuses many-to-many with an exit (assembly.py:8-18). Blank and NaN identifiers never match (assembly.py:25-28, 202-209). Unmatched rows are counted on each side, and a colliding column is renamed <name>_<file stem> (assembly.py:29-30). Mismatched identifier types are refused, not repaired (assembly.py:244-250).",
+  "gap": "No key candidates are ranked by value overlap; the user names the key (assembly.py:223-227). There is no '001' vs 1 repair, no whitespace, case or '.0' normalization, and no check for float IDs that lost precision. Fuzzy keys are deferred (V2_DEFINITION_OF_DONE.md:95). None of this is reachable on screen (gaps[6], gaps[63]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-11",
+  "name": "Change map: see the combined table before committing",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/data_previews.py:152-200",
+  "v2_screen": "not drawn",
+  "evidence": "The join preview draws a row flow: rows in the table, rows with a partner, rows after the join. The caption counts matches, rows left with blanks and the file's unmatched rows (data_previews.py:168-200). What is recorded is what was previewed (data_previews.py:153-154).",
+  "gap": "There is no live table preview with the seam marked, no styling that separates merge-caused blanks from missing measurements, no column-origin map beyond rename counts, and no stacked-weights warning. The preview has no control on screen (gaps[63]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-12",
+  "name": "Stack, and stack-then-link",
+  "status": "missing",
+  "v2_engine_at": "none (a grep of turbotab/core and turbotab/server finds no stack or concat assembly)",
+  "v2_screen": "not drawn",
+  "evidence": "assembly.py implements joins only (assembly.py:1-31). The DoD's minimal assembly covers joins (V2_DEFINITION_OF_DONE.md:40-42); deep assembly (fuzzy keys, conflict resolution) is deferred (:95). Neither line names stacking.",
+  "gap": "There is no way to stack files, for example to pool NHANES cycles, and no grouped stack-then-link. This is an accidental loss, not a ruling.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-13",
+  "name": "Identifiers and bookkeeping withheld from the predictors",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/decisions.py:124-127; turbotab/core/stages/rows.py:5-9, 30, 39-50, 1041-1043, 1151",
+  "v2_screen": "partly drawn",
+  "evidence": "The roles include identifier, cluster, design, flag, time and excluded (decisions.py:124-127). Only exposure, covariate and energy enter the model (rows.py:30, 39-50). An identifier reading needs values to back it: at least 3 distinct values and a unit structure (BLUEPRINT.md:524-528). The seal groups only by a settled identifier (seal.py:6-16). RolesAsk.tsx:38 draws the roles.",
+  "gap": "Per-column confirmation and the attention markers are not drawn; RolesAsk records only a bulk set_roles (gaps[16]). No list says what was held back and why.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-14",
+  "name": "Working-table card, lineage and undo",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/rows.py:1317-1356; BLUEPRINT.md:118-121, 141-143",
+  "v2_screen": "drawn",
+  "evidence": "The pipeline banner always shows rows through the flow, the column path, the models and the result (Banner.tsx:1-9). The participant flow gives n at each step (RowFlow.tsx:1-8; rows.py:1317-1356), and the lineage runs from raw columns to the model matrix. Every decision can be reverted; nothing is deleted, only made stale (Record.tsx:778-782; BLUEPRINT.md:118-121, 141-143).",
+  "gap": "The flow counts rows. Distinct subjects are counted only at the grouped split (rows.py:1867 n_groups) or after rows are combined per unit. Undo is one decision at a time, with no multi-step 'Back to here'.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-15",
+  "name": "Audit summary metrics",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/datastore.py:97-108, 1772-1773",
+  "v2_screen": "partly drawn",
+  "evidence": "Column summaries hold n_missing and n_unique (datastore.py:97-108), plus mean, sd, quantiles and the most frequent value (datastore.py:1772-1773). The banner shows rows and columns (derive.ts:288-309). ColumnPicker shows dtype, distinct count and missing count per column (ColumnPicker.tsx:154-157).",
+  "gap": "No tiles for total missing %, numeric or categorical counts, or duplicate rows.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-16",
+  "name": "Cardinality analysis",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/datastore.py:99; turbotab/core/stages/finding_words.py:188-195; turbotab/core/stages/rows.py:1041-1043, 1151",
+  "v2_screen": "partly drawn",
+  "evidence": "Every column carries a dtype class (numeric, integer, boolean, categorical, datetime, text) and n_unique (datastore.py:99-102), and ColumnPicker draws both (ColumnPicker.tsx:154-157). Constant columns are a finding with a lever (finding_words.py:188-195). Identifiers are proposed from unit counts (rows.py:1041-1043, 1151).",
+  "gap": "No per-column cardinality-class table (binary, low, moderate, high).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-17",
+  "name": "Data types and validity, including mixed-type detection",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/repairs.py:29-30, 567-640, 746-850",
+  "v2_screen": "drawn",
+  "evidence": "Text counts as numbers when at least 80% of it parses once missing marks (SAS '.', 'n/a', spreadsheet errors) and censoring marks ('<0.01', '>x') are set aside (repairs.py:567-640). The repairs read_numbers, thousands and decimal_comma are offered with a methods sentence (repairs.py:29-30, 810-850). Repairs.tsx draws them.",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C01-18",
+  "name": "Missing-values detail",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/decisions.py:681-709; turbotab/core/coach.py:295-325",
+  "v2_screen": "drawn",
+  "evidence": "ColumnPicker shows missing counts per column (ColumnPicker.tsx:157). The missing-values question can leave mostly blank columns out first (decisions.py:684-690). Its preview notes say which blanks likely mean 'not asked' and what complete cases cost (coach.py:295-325). The decision is deferred to that question, as in Classic. MissingAsk (ChoiceQuestions.tsx:210) draws it.",
+  "gap": "No missingness table sorted by count and no >50% warning.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-19",
+  "name": "Duplicate-row detection",
+  "status": "missing",
+  "v2_engine_at": "none (duplicated() appears only in turbotab/core/stages/usual_intake.py)",
+  "v2_screen": "not drawn",
+  "evidence": "No finding, summary or repair counts exact duplicate rows. The import_doctor checks that v2 runs do not include it (ml/import_doctor.py:315-927).",
+  "gap": "No duplicate-row count, sample or removal.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-20",
+  "name": "Numeric statistics with IQR outlier flags",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/datastore.py:1772-1773; turbotab/core/detectors/plausibility.py:623-626",
+  "v2_screen": "not drawn",
+  "evidence": "Mean, sd, min, quartiles, median and max are computed per column (datastore.py:1772-1773), but no component draws them. The table-window and histogram routes have no caller (gaps[8]). v2 deliberately does not flag by generic outlier fences: 'no generic outlier rule can tell them apart' (plausibility.py:623-626; teaching/content.py:162-167).",
+  "gap": "Nothing describe()-like is drawn. Skewness is not computed. There are no IQR callouts; the absence of IQR flags is a design stance, not a ruling.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-21",
+  "name": "Suggested one-click cleaning actions",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/finding_words.py:188-195; turbotab/core/repairs.py:1574, 1598-1599",
+  "v2_screen": "partly drawn",
+  "evidence": "A constant column's finding routes to roles as 'Mark as excluded' and is settled once those columns hold a non-predictor role (finding_words.py:188-195; repairs.py:1574, 1598-1599). Stale results propagate through graph keys (BLUEPRINT.md:139-146).",
+  "gap": "No duplicate-row drop. Constant columns are excluded through the roles card rather than with a one-click drop.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-22",
+  "name": "Exit assurance sign-off",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/seal.py:6-36; turbotab/core/stages/rows.py:1317-1356",
+  "v2_screen": "partly drawn",
+  "evidence": "The seal states its basis (grouped, one row per unit, abandoned or undetermined) and what a holdout of each size can measure (seal.py:6-23, 31-33). The participant flow and the lineage carry losses of rows and columns (rows.py:1317-1356; Lineage.tsx). Each repair and the turn appear as a Record sentence.",
+  "gap": "There is no consolidated 'surprises' list covering subjects vs rows, people lost, columns removed, never-measured columns and value repairs. The seal plan's floor, labels and n_measured/n_analyzed are unread on screen (gaps[15]). Ingest warnings are not drawn.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-23",
+  "name": "Analysis goal: Prediction or Hypothesis Testing",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/decisions.py:110-111; BLUEPRINT.md:447-453",
+  "v2_screen": "drawn",
+  "evidence": "set_purpose (prediction or inference) is asked with no default (PurposeAsk, FactQuestions.tsx:239). The purpose scopes the seal, the imputation, the shelf and the evaluation (BLUEPRINT.md:447-453). The inference lane covers declared estimands, OLS, logistic, ordinal, Cox, mixed models, GEE and design-based estimation (V2_DEFINITION_OF_DONE.md:52).",
+  "gap": "The inference results (Table 2 and the effects) are not drawn yet (gaps[41]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C01-24",
+  "name": "Target dtype diagnosis and in-the-open boolean repair",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/repairs.py:25-26, 483-525; turbotab/core/decisions.py:848-851; turbotab/core/structural.py:16-22",
+  "v2_screen": "drawn",
+  "evidence": "The binary-text repair offers one option per level, and the user picks which value becomes 1 (repairs.py:25-26, 483-525). The event level is chosen, never guessed (SetEvent, decisions.py:848-851; EventAsk, SequenceQuestions.tsx:93). One rule says which tasks an outcome may take, and other answers are refused (structural.py:20-22).",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C01-25",
+  "name": "Task-type detection with confidence, and an override",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/target.py:15-60; turbotab/core/structural.py:16-22; turbotab/core/models/ordinal.py:521",
+  "v2_screen": "partly drawn",
+  "evidence": "The detection carries a confidence and a sentence that states its evidence (target.py:15-60). Ordinal is a task that v2 actually fits with proportional odds (decisions.py:55; models/ordinal.py), where Classic only warned. The order and scale follow-ups are asked (structural.py:16-22). Detection never pre-selects below high confidence (BLUEPRINT.md:71-72). TaskAsk (FactQuestions.tsx:176) draws it.",
+  "gap": "The outcome histogram, the skew numbers and the outcome unit are served but unread on screen (gaps[23]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-26",
+  "name": "Feature picker",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/decisions.py:126-127, 484-492; turbotab/core/stages/rows.py:5-9",
+  "v2_screen": "partly drawn",
+  "evidence": "Columns get roles, not a flat multiselect: exposure, covariate, energy, identifier, excluded and others (decisions.py:126-127). Roles are proposed with a reason, and a homogeneous family can be confirmed as one block (rows.py:5-9; BLUEPRINT.md:578-583). There is no first-N cap. The shelf states the concern at p\u2265n (elastic_net.py:83-89; boosted_trees.py:57-61). RolesAsk.tsx:38 draws it.",
+  "gap": "Per-column confirmation and categorical proposals are not drawn (gaps[16]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-27",
+  "name": "Subject/participant declaration",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/seal.py:6-23; turbotab/core/decisions.py:910-939",
+  "v2_screen": "drawn",
+  "evidence": "The grain, unit and repeat-kind questions are bespoke (GrainAsk, SequenceQuestions.tsx:156). The seal records 'abandoned' when each row is said to be a unit while an identifier repeats, and 'undetermined' for 'I don't know'. Both are drawn as exploratory, never as a clean lock (seal.py:6-23). A grouping identifier needs confirmation (BLUEPRINT.md:529-532).",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C01-28",
+  "name": "Test-set lockbox sealed at upload",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/seal.py:1-51; turbotab/core/decisions.py:726-740; turbotab/core/stages/rows.py:12-13",
+  "v2_screen": "partly drawn",
+  "evidence": "The seal is grouped or chronological, stratified and seeded (rows.py:12-13; seal.py:25-30). Options are ordered by the precision a holdout of that size gives (seal.py:31-33). Scores stay withheld until open_seal, which happens once; a redraw needs a recorded reseal (seal.py:34-51). The seal is purpose-scoped: inference uses every eligible row (BLUEPRINT.md:447-449). Holdout 0-0.4, k-fold, repeated k-fold, bootstrap or internal-external validation (decisions.py:726-735). SealAsk, LiveSeal and OpenSeal draw it.",
+  "gap": "Bootstrap, nested and internal-external validation cannot be chosen on screen (SealQuestions.tsx:33; gaps[15]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C01-29",
+  "name": "Cohort runs (analyze one group, then the next)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/evaluation.py:13-15, 308-317; turbotab/core/models/decision_curve.py:187; turbotab/core/methods/interaction.py:1-14",
+  "v2_screen": "not drawn",
+  "evidence": "'Does it work as well in women?' becomes subgroup performance with intervals on one model (evaluation.py:13-15, 308-317; decisions.py:1627). 'Is the relationship different?' becomes declared effect modification with RERI and a heterogeneity test (interaction.py:1-30). v2's 'cohort' stage is the participant flow, not group runs (rows.py:10-11).",
+  "gap": "There are no per-group branches, no group-by-group plan table, and no pre-split warnings about multiplicity or unequal sizes. Restricting to one group is possible only with an eligibility rule. Subgroup and modification results are not drawn (gaps[56], gaps[40]).",
+  "cost_to_close": "L"
+ },
+ {
+  "id": "C01-30",
+  "name": "Configuration invalidation and provenance",
+  "status": "improved",
+  "v2_engine_at": "BLUEPRINT.md:114-121, 139-146; turbotab/core/seal.py:37-42",
+  "v2_screen": "drawn",
+  "evidence": "Each stage is keyed by sha256 of its upstream keys and the decision slots it reads, so a changed target or feature set makes the downstream stale with no manual lists (BLUEPRINT.md:139-146). Every answer is appended to decisions.jsonl (BLUEPRINT.md:114-121). An outcome change after the seal is refused until a reseal (seal.py:37-42). The banner veils stale segments (Banner.tsx:6-9, StaleVeil).",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C02-01",
+  "name": "Leakage-safe EDA scoping",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/explore.py:4-6; turbotab/core/stages/modeling.py:101-126; turbotab/core/coach.py:21-25",
+  "v2_screen": "partly drawn",
+  "evidence": "Explore runs after the seal, on training rows under prediction (explore.py:4-6). The shelf is ranked on training rows only, and its basis line says so (modeling.py:117-126). Preview coach notes never read a sealed row (coach.py:21-25). Pre-seal findings are drawn (Findings.tsx).",
+  "gap": "The explore stage is never fetched by the frontend (gaps[57]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-02",
+  "name": "At-a-glance tiles and a data-sufficiency verdict",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/sample_size.py:3-51; turbotab/core/models/artifacts.py:41",
+  "v2_screen": "partly drawn",
+  "evidence": "The heuristic verdict is replaced by Riley et al.'s minimum sample size under prediction, and by rows and events per parameter under inference (sample_size.py:3-51; linear.py:11-13). The shelf ranks 'Riley minimum n first' (MODELING_SEQUENCE.md:140). Each family's row-count concerns are drawn (Shelf.tsx:25-41; boosted_trees.py:52-61).",
+  "gap": "The Riley floor (sample_size.*) is unread on the models card (gaps[22]). There are no rows, features or missing tiles.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C02-03",
+  "name": "Auto-generated findings (problems), each with a remedy and a manuscript sentence",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/explore.py:8-20, 416-514; turbotab/core/structural.py:16-36; turbotab/core/methods/levers.py:29-35; turbotab/core/models/linear.py:32-80",
+  "v2_screen": "partly drawn",
+  "evidence": "Explore findings each tie a claim to a lever: outcome relationship, outcome distribution and imbalance, near-zero variance, p>n, collinear pairs, and missingness across groups (explore.py:8-20). A skewed outcome asks its scale (structural.py:16-22). Imbalance offers an in-fold correction followed by recalibration (levers.py:29-35). Near-singularity is stated at the fit (linear.py:32-80). Repairs carry methods sentences (repairs.py:9-13).",
+  "gap": "There is no target-leakage scan; nothing in turbotab/core flags a near-perfect proxy of the outcome. There are no feature-skew findings, by design (structural.py:33-36), and no target-outlier finding. Unresolved findings do not become Discussion limitations. Explore findings are not drawn (gaps[57]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-04",
+  "name": "Opportunity findings",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/evaluation.py:6-12; turbotab/core/models/base.py:158-176",
+  "v2_screen": "partly drawn",
+  "evidence": "A no-predictor baseline and a regression-with-splines benchmark are always fitted (evaluation.py:6-10; MODELING_SEQUENCE.md:140). The shelf's order expresses which families suit the data (base.py:158-176), and the Shelf draws that order (Shelf.tsx:19-41).",
+  "gap": "There are no positive-signal findings (strong linear signal, non-linearity, high n/p, balanced classes) that route to a family before fitting. The evaluation stage is not drawn (gaps[56]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-05",
+  "name": "Data snapshot and column inspector",
+  "status": "partial",
+  "v2_engine_at": "turbotab/server/routes/data.py:39, 92; turbotab/core/datastore.py:1718-1773",
+  "v2_screen": "partly drawn",
+  "evidence": "A table-window route and per-column summaries exist (data.py:39; datastore.py:1718-1773), but no component calls the window (gaps[8]). The table_focus view appears only inside decision previews (views/TableFocus.tsx). ColumnPicker shows dtype, distinct and missing (ColumnPicker.tsx:154-157).",
+  "gap": "No browsable first-rows view and no per-column inspector with a sparkline, stats and that column's open findings.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-06",
+  "name": "Target distribution views",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/target.py:12; turbotab/core/stages/explore.py:12-14, 22-31, 485-514",
+  "v2_screen": "not drawn",
+  "evidence": "target_info serves an outcome histogram (target.py:12). Explore's outcome_distribution finding routes a rare class to the imbalance lever. Under both purposes the view is recorded as looked at, the forking-paths disclosure (explore.py:22-31, 485-514). The eligibility question deliberately withholds the outcome's distribution (coach.py:27-28).",
+  "gap": "The histogram and skew fields are unread (gaps[23]), and the explore outcome view is not drawn (gaps[57]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C02-07",
+  "name": "Feature distribution gallery",
+  "status": "partial",
+  "v2_engine_at": "turbotab/server/routes/data.py:92; turbotab/core/consequences.py (DistributionView)",
+  "v2_screen": "not drawn",
+  "evidence": "A histogram route exists with no caller (gaps[8]). Distribution views draw only the columns a decision touches, at most 12 (BLUEPRINT.md:279-280).",
+  "gap": "No paginated gallery with filter pills, and no switch to a wide-data summary.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-08",
+  "name": "Outlier prevalence heatmap and outlier-method choice",
+  "status": "missing",
+  "v2_engine_at": "none (stance at turbotab/core/detectors/plausibility.py:623-626)",
+  "v2_screen": "not drawn",
+  "evidence": "No IQR, z-score, MAD or percentile comparison and no outlier-method setting exist in turbotab/core; 'IQR' appears only in omics filter labels (levers.py:623; explore.py:646). v2 states that 'no generic outlier rule can tell [impossible from extreme] apart' (plausibility.py:623-626; teaching/content.py:162-167). It uses plausibility tiers instead (C02-21).",
+  "gap": "There is no descriptive outlier comparison. This is a design stance, not a BLUEPRINT/DoD ruling.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C02-09",
+  "name": "Missing-data bar and co-missingness pattern matrix",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/coach.py:295-325; turbotab/core/stages/explore.py:17-20; turbotab/core/stages/rows.py:440-452",
+  "v2_screen": "partly drawn",
+  "evidence": "The set_missing preview shows a table and a row flow with notes on blank shares and complete-case cost (coach.py:295-325). Explore compares missing shares across sociodemographic groups (explore.py:17-20). The cohort stage counts the rows complete cases would drop (stages/__init__.py:440-441).",
+  "gap": "No co-missingness pattern matrix. The complete-case loss comparison and the group comparison are not drawn (gaps[66], gaps[57]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-10",
+  "name": "Informative-missingness test",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:16-22; turbotab/core/coach.py:316",
+  "v2_screen": "partly drawn",
+  "evidence": "v2 offers missing indicators and blanks as a level, in-fold (pipeline.py:16-22). It flags blanks that 'likely mean not asked' (coach.py:316). Under inference these are blocked and recorded (methods/missing.py:24-28).",
+  "gap": "No test compares the outcome between rows where a column is missing and rows where it is present (BH q-values). Under prediction such a test would be an outcome view to record.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-11",
+  "name": "Correlation matrix and top pairs, with every cap disclosed",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/explore.py:57-62, 450",
+  "v2_screen": "not drawn",
+  "evidence": "Explore flags nearly collinear pairs at |r|\u22650.90. The pair scan is skipped above 500 numeric predictors, and the finding says so (explore.py:60-61, 450). Caps state their bounds (explore.py:57).",
+  "gap": "No heatmap, no Spearman option, no threshold control and no top-N pairs table. Not drawn (gaps[57]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-12",
+  "name": "Features vs target gallery",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/explore.py:10-11, 22-35, 416-421",
+  "v2_screen": "not drawn",
+  "evidence": "For each continuous predictor, the outcome is drawn as binned means or event shares over tenths, on training rows under prediction. Opening it records view_outcome, and a lever pulled afterwards is disclosed as outside the corrected score (explore.py:10-11, 22-35, 416-421).",
+  "gap": "The explore stage and view_outcome are not drawn or emitted (gaps[57], gaps[68]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-13",
+  "name": "Feature Explorer",
+  "status": "missing",
+  "v2_engine_at": "turbotab/core/consequences.py (RelationshipView, used by decision previews only)",
+  "v2_screen": "not drawn",
+  "evidence": "The relationship view kind renders only inside previews such as energy adjustment (views/Relationship.tsx; models/previews.py:3-13). No route lets a user pick any X \u00d7 Y colored by a third column.",
+  "gap": "No free scatter explorer.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-14",
+  "name": "Suggested interactions (mutual-information gain)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/explain.py:42-47, 96-99; turbotab/core/methods/interaction.py:1-35",
+  "v2_screen": "not drawn",
+  "evidence": "After the fit, interactions among the top inputs are ranked by Friedman's H, by size on the model's scale (explain.py:42-47). Under inference, interactions are declared objects with RERI (interaction.py:1-35).",
+  "gap": "No pre-model suggestion of interaction pairs. The H ranking and the modification results are not drawn (gaps[35], gaps[40]), and the explain stage cannot be requested from the UI (gaps[37]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-15",
+  "name": "Cluster structure: k-means scored against a shuffled null",
+  "status": "missing",
+  "v2_engine_at": "none (turbotab/core/consequences.py:28 names an 'embedding' view only as future work)",
+  "v2_screen": "not drawn",
+  "evidence": "No KMeans or clustering module exists in turbotab/core. Classic's ml/clustering.py could be imported (BLUEPRINT.md:57-59), but nothing does.",
+  "gap": "No cluster sweep, null comparison, stability (ARI) or profile, and no embedding view kind.",
+  "cost_to_close": "L"
+ },
+ {
+  "id": "C02-16",
+  "name": "Macro shape: variance profile and PCA biplot",
+  "status": "missing",
+  "v2_engine_at": "none (no PCA in turbotab/core)",
+  "v2_screen": "not drawn",
+  "evidence": "A grep for PCA in turbotab/core finds only a note (consequences.py:28) and teaching text (teaching/content.py:216).",
+  "gap": "No scree plot or biplot.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-17",
+  "name": "UMAP embedding",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No UMAP in turbotab/core (grep).",
+  "gap": "No non-linear embedding view.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-18",
+  "name": "Persistent homology (diagram and barcode)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No persistent homology in turbotab/core (grep for homology, ripser, giotto).",
+  "gap": "No persistence diagram or barcode.",
+  "cost_to_close": "L"
+ },
+ {
+  "id": "C02-19",
+  "name": "Mapper graph",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No Mapper in turbotab/core (grep).",
+  "gap": "No Mapper graph.",
+  "cost_to_close": "L"
+ },
+ {
+  "id": "C02-20",
+  "name": "'What your data is telling you' coaching layer",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/stages/findings.py:47; turbotab/core/stages/finding_words.py:890-902",
+  "v2_screen": "drawn",
+  "evidence": "Findings are ranked critical, warning, info (stages/findings.py:47). At most three cards are pushed; the rest are counted and typed, and same-kind findings share one paged card (Findings.tsx:1-12, 22, 111-112; finding_words.py:890-902; BLUEPRINT.md:288-289).",
+  "gap": "No grouping by category, no 'opportunities' count and no leakage-first ordering, because there is no leakage finding (C02-03).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C02-21",
+  "name": "Physiologic plausibility check with unit inference",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/detectors/plausibility.py:1-37, 610-641; turbotab/core/units.py:1-23",
+  "v2_screen": "drawn",
+  "evidence": "The improbable tier uses real NHANES 2017-2018 weighted adult percentiles. Children are judged by CDC 2000 growth-chart z-scores. Total energy is not treated as physiology. A diastolic pressure of 0 is handled per the NHANES documentation (plausibility.py:1-34). Units are inferred with Classic's reader (plausibility.py:35-37). A unit is proposed but stated only once confirmed (units.py:1-23). Findings and repairs are drawn (Repairs.tsx).",
+  "gap": "No clinical-guideline threshold overlays. A column holding values in another unit is asked, not converted (plausibility.py:614-615).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C02-22",
+  "name": "Residual normality (Q-Q plot and Shapiro-Wilk)",
+  "status": "missing",
+  "v2_engine_at": "none (models/linear.py:1-9 uses HC3/CR2 intervals)",
+  "v2_screen": "not drawn",
+  "evidence": "No Q-Q plot or Shapiro-Wilk in turbotab/core (grep). Inference intervals are HC3, CR2 or bootstrap, which do not rest on normal residuals (linear.py:1-9; effects.py:16-18).",
+  "gap": "No residual normality diagnostic.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C02-23",
+  "name": "Variance inflation factors (VIF)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/linear.py:32-80; turbotab/core/stages/modeling.py:1836-1841; turbotab/core/models/pipeline.py:922-945",
+  "v2_screen": "partly drawn",
+  "evidence": "At the fit, a Belsley scaled condition number of 1,000 or more names the columns in the dependency (linear.py:32-80; modeling.py:1836-1841). Fitted concerns are drawn on the Shelf (Shelf.tsx:25). Compositions that sum to 100% and nested totals are design warnings, drawn under the lineage (pipeline.py:922-945; LiveScenes.tsx:228). Explore flags pairs at |r|\u22650.90 (explore.py:60). VIF exists only in the causal lane (models/causal.py).",
+  "gap": "No per-feature VIF table before modeling, and moderate collinearity (condition number below 1,000) goes unstated.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C02-24",
+  "name": "Influence diagnostics (leverage and Cook's distance)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/effects.py:32-44, 699-720; turbotab/core/decisions.py:1381-1395",
+  "v2_screen": "not drawn",
+  "evidence": "Leverage and Cook's distance are computed on the actual analysis model, matching R's hatvalues and cooks.distance (effects.py:39-44). A recorded response (keep_labeled or without_influential) is available (decisions.py:1381-1395).",
+  "gap": "Inference only. The diagnostics and respond_diagnostic are not drawn (gaps[43], gaps[68]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-25",
+  "name": "Diagnostic narration, next steps and run-vs-refusal honesty",
+  "status": "improved",
+  "v2_engine_at": "BLUEPRINT.md:122-123; turbotab/core/interview.py:67, 160, 342; turbotab/core/models/explain.py:53-55",
+  "v2_screen": "drawn",
+  "evidence": "A refusal is a 409 carrying its exits and is never recorded (BLUEPRINT.md:122-123). Refusal.tsx draws it. Skipped and not-applicable steps show their reasons (StatedSkip.tsx; interview.py:67, 160). Explanations are withheld below a performance floor, with the reason (explain.py:53-55). Each finding's lever routes to its question (Findings.tsx:5-7).",
+  "gap": "The LLM 'Deep Analysis' part is dropped by ruling (V2_DEFINITION_OF_DONE.md:96).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C02-26",
+  "name": "Table 1 (publication summary)",
+  "status": "missing",
+  "v2_engine_at": "none (turbotab/core/export/tables.py:1-16 has Table 2 and the performance table only)",
+  "v2_screen": "not drawn",
+  "evidence": "The export's results tables are Table 2 with its appendix under inference and the performance table under prediction (export/tables.py:1-16). No stratified descriptive table exists in turbotab/core.",
+  "gap": "No Table 1, no tests chosen by normality, no SMD, and no CSV or LaTeX output.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C02-27",
+  "name": "Width and size regime adaptation",
+  "status": "improved",
+  "v2_engine_at": "BLUEPRINT.md:99-112, 279-280; turbotab/core/models/wide.py; turbotab/core/models/explain.py:106; turbotab/core/stages/explore.py:57-61",
+  "v2_screen": "drawn",
+  "evidence": "Ingest is out of core and UI reads are DuckDB queries (BLUEPRINT.md:99-104). Wide data shows only what a choice touched, at most 12 columns (BLUEPRINT.md:279-280). Wide fits use float32 (models/wide.py). Explanations are capped by cells (explain.py:106). The DoD sets speed gates at 500 \u00d7 20,000 and 1,000,000 \u00d7 30 (V2_DEFINITION_OF_DONE.md:74-75).",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C02-28",
+  "name": "Engine EDA actions that v1.0.0 does NOT surface (for the comparison)",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/stages/target.py:15-60; turbotab/core/stages/explore.py:60, 450; turbotab/core/models/sample_size.py:3-7; turbotab/core/methods/levers.py:29-35",
+  "v2_screen": "n/a",
+  "evidence": "Classic never showed these, so this is not a loss. v2 has surfaced analogs: target_profile becomes target_info (target.py); collinearity_map becomes explore collinear pairs (explore.py:450); data_sufficiency_check becomes Riley (sample_size.py); missingness_plan becomes the mechanism-routed missing card (decisions.py:691-695); imbalance_advice becomes the imbalance lever (levers.py:29-35); cohort_split_guidance becomes grain and the seal basis (seal.py:6-23).",
+  "gap": "None to close. leakage_scan has no v2 analog (see C02-03).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C03-01",
+  "name": "Skip, Reset and 'When to use' guidance",
+  "status": "equivalent",
+  "v2_engine_at": "MODELING_SEQUENCE.md:138; turbotab/core/stages/explore.py:81-88",
+  "v2_screen": "partly drawn",
+  "evidence": "There is no feature-engineering page to skip. Construction is a step of the modeling sequence (MODELING_SEQUENCE.md:138), and no construction is the default. Each lever option carries customary and sound labels and a rung (explore.py:81-88). Every decision can be reverted (Record.tsx:778-782).",
+  "gap": "None beyond C03-02 (the levers are not drawn).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C03-02",
+  "name": "EDA-driven recommendations",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/explore.py:8-20, 33-35, 552-665",
+  "v2_screen": "not drawn",
+  "evidence": "Each explore finding is tied to a lever, offered first as an in-fold rule: splines by Harrell's rule or chosen by inner CV, a variance filter, the selection menu (explore.py:8-20, 33-35). The lever options are built at explore.py:552-665.",
+  "gap": "No Router key and no control for the levers (gaps[58]); explore is not fetched (gaps[57]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C03-03",
+  "name": "Polynomial features",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/methods/exposure_form.py:1-14, 79-80; turbotab/core/methods/levers.py:13-24",
+  "v2_screen": "partly drawn",
+  "evidence": "Curvature is modeled with restricted cubic splines, declared or set by an in-fold rule or inner CV (exposure_form.py:1-14; levers.py:13-24). The set_exposure_form preview is reachable, and the form question is drawn generically (gaps[13]).",
+  "gap": "No polynomial or interaction-only expansion. Under prediction there are no generated interaction terms for linear models.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C03-04",
+  "name": "Custom interactions",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/methods/interaction.py:1-41; turbotab/core/decisions.py:1337-1340",
+  "v2_screen": "partly drawn",
+  "evidence": "Effect modification and two-exposure interaction are declared objects (set_modification). They are reported on both the additive scale (RERI) and the multiplicative scale, labeled 'suggested by data inspection' when declared late, and imputed compatibly under multiple imputation (interaction.py:1-41). The question is drawn generically (gaps[14]).",
+  "gap": "No hand-built A\u00d7B, A/B or A\u00b2 columns, and nothing under prediction. The modification results are not drawn (gaps[40]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C03-05",
+  "name": "Mathematical transforms",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/structural.py:16-22; turbotab/core/models/steps.py:48-63; turbotab/core/models/pipeline.py:39-48",
+  "v2_screen": "partly drawn",
+  "evidence": "Logs exist only as domain transforms: the outcome's scale (structural.py:16-22), the energy step's log_transform (steps.py:48-63), and the omics log/glog normalizations, in-fold (pipeline.py:39-48). A later transform invalidates the declared form (exposure_form.py:52-59).",
+  "gap": "No general per-predictor log, sqrt, power or 1/x transform. No decision kind exists for one (decisions.py:82-1530).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C03-06",
+  "name": "Ratio features",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/decisions.py:130-131; turbotab/core/methods/percent_energy.py; turbotab/core/methods/energy.py",
+  "v2_screen": "partly drawn",
+  "evidence": "Nutrient density (nutrient per energy) and percent of energy are energy-adjustment methods, fitted in-fold with their estimand stated (decisions.py:130-131; methods/percent_energy.py). EnergyAsk (ChoiceQuestions.tsx:393) draws them.",
+  "gap": "No general numerator/denominator builder (BMI-style) with a zero-denominator refusal.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C03-07",
+  "name": "Binning and discretization",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/methods/exposure_form.py:1-14, 40-50, 79-80",
+  "v2_screen": "partly drawn",
+  "evidence": "The forms include quintiles, categories at declared cut points (clinical cutoffs) and one data-derived cut point. Cut points and medians are learned on the rows each fit sees (exposure_form.py:1-14, 79-80). The p for trend uses quintile medians and is labeled customary (exposure_form.py:46-50). The form question is generic on screen (gaps[13]).",
+  "gap": "No uniform or k-means bins, and no choice between one-hot and ordinal encoding.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C03-08",
+  "name": "TDA features (persistent homology)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No topological features in turbotab/core (grep).",
+  "gap": "No TDA feature construction.",
+  "cost_to_close": "L"
+ },
+ {
+  "id": "C03-09",
+  "name": "PCA and UMAP components added as features",
+  "status": "missing",
+  "v2_engine_at": "none (MODELING_SEQUENCE.md:138 specifies in-fold PCA for omics)",
+  "v2_screen": "not drawn",
+  "evidence": "The modeling sequence lists 'in-fold PCA for omics' under construction (MODELING_SEQUENCE.md:138), but turbotab/core has no PCA (grep finds only consequences.py:28 and teaching text).",
+  "gap": "This is a specified v2 item that has not been built. There is no UMAP either.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C03-10",
+  "name": "Missingness indicators and conditional ordinal encoding",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:16-22, 212-241; turbotab/core/decisions.py:691-695; turbotab/core/methods/missing.py:24-28",
+  "v2_screen": "drawn",
+  "evidence": "In-fold missingindicator_<col> columns and a 'Missing' level for categorical and two-valued columns are built (pipeline.py:16-22, 212-241). Under inference they are blocked and recorded, citing Groenwold (missing.py:24-28). MissingAsk draws 'Blanks as a level' and the indicators toggle (ChoiceQuestions.tsx:210-330).",
+  "gap": "No missing-share threshold slider.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C03-11",
+  "name": "Summary, engineering log, remove one, preview and save",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:752-831; turbotab/core/models/lineage.py",
+  "v2_screen": "drawn",
+  "evidence": "The lineage traces every column from raw to the model matrix, with SVG/PNG save (LiveScenes.tsx:205-228). The step list describes every pipeline step (pipeline.py:752-831). Any decision can be reverted (Record.tsx:778-782).",
+  "gap": "No 'top engineered features by |corr| with the target' preview. Under prediction that would be an outcome view to record.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C03-12",
+  "name": "Explainability-cost rating per technique",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/evaluation.py:11-12; turbotab/core/models/selection.py:998; BLUEPRINT.md:33-50",
+  "v2_screen": "partly drawn",
+  "evidence": "The price of explainability is measured on the user's data rather than asserted. The interpretable model's cost or gain against the best flexible family is BBC-corrected (evaluation.py:11-12; selection.py:998; BLUEPRINT.md:49-50; V2_DEFINITION_OF_DONE.md:51). Options carry customary and sound labels (BLUEPRINT.md:33-39). Family cautions such as 'No coefficients: effects are read from curves' are drawn on the models card (boosted_trees.py:22-27; ChoiceQuestions.tsx:564-582).",
+  "gap": "The evaluation stage, including the interpretable cost, is not drawn (gaps[56]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C03-13",
+  "name": "Stateful transforms fitted on training rows",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:3-8, 823-831; turbotab/core/methods/exposure_form.py:11-14; turbotab/core/methods/levers.py:1-11",
+  "v2_screen": "drawn",
+  "evidence": "Every learned step (imputation, energy model, form, encoding, scaling, filters, selection) is a pipeline step refit on each training fold (pipeline.py:3-8; levers.py:1-11). The lineage says 'Centers and scales ... on the training fold' (pipeline.py:823-831).",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C03-14",
+  "name": "Engineered-feature replay for the next cohort",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "turbotab/core/export/replay.py (replays the same project only)",
+  "v2_screen": "n/a",
+  "evidence": "'For v2.x (INBOX): portable plans, meaning one project's plan applied to new data' (BLUEPRINT.md:434-435). The headless replay reproduces the same project's matrix (V2_DEFINITION_OF_DONE.md:79).",
+  "gap": "Applying one project's plan to another group or dataset is deferred to v2.x.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C04-01",
+  "name": "Literature-grounded guidance on data-driven selection",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/variable_selection.py:1-42, 52-80",
+  "v2_screen": "not drawn",
+  "evidence": "The menu is ordered by soundness, with customary options (stepwise, univariable p<0.25, VIP>1) ranked lower and their instability quoted (Heinze 2018) (variable_selection.py:1-29, 79-80). Selection outside the resampling is refused (:31-34). Under inference, selection is only a labeled sensitivity analysis (:36-41).",
+  "gap": "set_selection has no control (gaps[58], gaps[68]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C04-02",
+  "name": "LASSO path (with coefficient path plot)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/variable_selection.py:12-13; turbotab/core/models/explain.py:983",
+  "v2_screen": "not drawn",
+  "evidence": "Elastic-net selection keeps the predictors with nonzero coefficients in each fold (variable_selection.py:12-13). The architecture lane has an elastic-net shrinkage path (explain.py:983; V2_DEFINITION_OF_DONE.md:58).",
+  "gap": "No coefficient-path plot is drawn (gaps[36]), and the explain stage cannot be requested (gaps[37]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C04-03",
+  "name": "RFE-CV",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/variable_selection.py:23-28",
+  "v2_screen": "not drawn",
+  "evidence": "Backward elimination by AIC is offered as a customary option, run in-fold (variable_selection.py:23-28).",
+  "gap": "No recursive feature elimination with CV over subset size. The selection menu is not drawn.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C04-04",
+  "name": "Univariate screening with FDR correction (off by default)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/variable_selection.py:21-25, 56; turbotab/core/models/featurewise.py",
+  "v2_screen": "partly drawn",
+  "evidence": "Univariable screening at p<0.25 is labeled customary, and in-fold sure independence screening applies at p\u226bn (variable_selection.py:21-25, 56). The feature-wise FDR family on the shelf serves omics discovery (models/__init__.py:28). The selection menu is undrawn (gaps[58]); the featurewise family is choosable on ModelsAsk.",
+  "gap": "The selection options are not drawn.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C04-05",
+  "name": "Stability selection (resampling robustness of selected features)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/variable_selection.py:14-20, 57-59; turbotab/core/stages/evaluation.py:16, 51; turbotab/core/models/explain.py:28-33",
+  "v2_screen": "not drawn",
+  "evidence": "Shah and Samworth complementary pairs are used, with q set by the bound on false selections, run in-fold (variable_selection.py:14-20). Inclusion frequencies across 20 folds and resamples are reported (evaluation.py:16, 51). SHAP importance stability across bootstrap reseeds adds further robustness (explain.py:28-33).",
+  "gap": "No selection-probability chart; evaluation and explain are not drawn (gaps[56], gaps[33]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C04-06",
+  "name": "Consensus matrix and apply",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/variable_selection.py:52-55; turbotab/core/stages/evaluation.py:16",
+  "v2_screen": "not drawn",
+  "evidence": "One selector is chosen and run inside the resampling, and its inclusion frequencies are reported (evaluation.py:16). It is applied by set_selection (decisions.py SetSelection at :1607).",
+  "gap": "No feature \u00d7 method consensus matrix and no 'use consensus' apply.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C04-07",
+  "name": "Manual feature selection",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/decisions.py:484-492; turbotab/core/stages/explore.py:28-31, 359-364",
+  "v2_screen": "partly drawn",
+  "evidence": "Predictors are chosen through roles (RolesAsk.tsx:38). Under prediction, a by-hand choice made after an outcome view is disclosed as outside the corrected score (explore.py:28-31, 359-364).",
+  "gap": "The by-hand explore levers are not drawn (gaps[58]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C04-08",
+  "name": "Leakage-safe selection with an imputation-cost disclosure",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/variable_selection.py:4-8, 31-34, 96-105",
+  "v2_screen": "not drawn",
+  "evidence": "Every option is a pipeline step fitted on each training fold after outcome-free imputation (variable_selection.py:4-8). Selection outside the resampling is refused (:31-34).",
+  "gap": "Not drawn. The selector's own mean fill for blanks (:96-105) is not stated as a cost.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C04-09",
+  "name": "Target guard and honest run reporting",
+  "status": "equivalent",
+  "v2_engine_at": "BLUEPRINT.md:122-123; turbotab/core/models/variable_selection.py:55",
+  "v2_screen": "not drawn",
+  "evidence": "Refusals carry their exits and are not recorded (BLUEPRINT.md:122-123). Selection supports regression and binary outcomes (variable_selection.py:55).",
+  "gap": "The selection menu is not drawn.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C04-10",
+  "name": "Coaching companion on Feature Selection",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/explore.py:15-16, 618-665",
+  "v2_screen": "not drawn",
+  "evidence": "The near-zero-variance, p>n and collinear findings route to the in-fold variance filter, screening, elastic net or the adjustment set (explore.py:618-665).",
+  "gap": "No per-family grouping. Not drawn (gaps[57], gaps[58]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-01",
+  "name": "Model shelf on Preprocess (22 registry models, filtered by task)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "turbotab/core/models/__init__.py:24-40; turbotab/core/methods/omics.py:1580-1597",
+  "v2_screen": "drawn",
+  "evidence": "The prediction shelf is 'linear, penalized and boosted-tree families' (V2_DEFINITION_OF_DONE.md:51). v2 registers linear, elastic_net, boosted_trees and screened elastic net, plus inference families Classic lacked: proportional odds, mixed, GEE, Cox and feature-wise (models/__init__.py:24-40; omics.py:1580-1597). Each family declares its tasks, inductive bias, cautions, needs_scaling and handles_missing (base.py:64-89). ModelsAsk and the Shelf draw it.",
+  "gap": "kNN, SVM, Naive Bayes, LDA, MLP, random forest and ExtraTrees are dropped by DoD:51. XGBoost, LightGBM and Huber are not on the shelf (see C05-20, C05-22).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-02",
+  "name": "Model Coach: dominant constraint, role-based picks and skip list",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/base.py:158-176; turbotab/core/models/boosted_trees.py:48-66; turbotab/core/models/elastic_net.py:81-99; turbotab/core/stages/modeling.py:101-126",
+  "v2_screen": "drawn",
+  "evidence": "Every family assesses the situation itself (fit, score, stated concerns). The shelf is ordered and never shortened (base.py:158-176), sized by Riley under prediction (MODELING_SEQUENCE.md:140), and ranked on training rows (modeling.py:117-126). Nothing is pre-selected (ChoiceQuestions.tsx:532). Rank, fit tag, inductive bias and concerns are drawn (Shelf.tsx:19-41; ChoiceQuestions.tsx:564-582).",
+  "gap": "No headline naming the dominant constraint and no 'Start here' or 'Try next' roles. The Riley floor is unread (gaps[22]). Imbalance advice lives in Explore, which is not drawn.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C05-03",
+  "name": "Evidence probe (about 10 seconds, advisory)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/evaluation.py:6-10; turbotab/core/models/baseline.py; turbotab/core/methods/levers.py:20-24",
+  "v2_screen": "not drawn",
+  "evidence": "After the fit, each family is compared with the no-predictor baseline, and the splines benchmark answers the non-linearity question (evaluation.py:6-10). Inner-CV forms test non-linearity per predictor in-fold (levers.py:20-24).",
+  "gap": "No pre-fit probe informs the shelf, and there is no learning-curve slope. Evaluation is not drawn (gaps[56]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-04",
+  "name": "Model-scoped preprocessing coaching",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/previews.py:495-517; MODELING_SEQUENCE.md:141",
+  "v2_screen": "drawn",
+  "evidence": "The select_models preview draws each family's model-matrix lineage. Its caption says 'each standardized on training rows' or 'taken as they are, unscaled', and 'missing values allowed' or 'rows need complete values' (previews.py:495-517). Model-specific preprocessing is 'not a question - stated per family in the lineage' (MODELING_SEQUENCE.md:141).",
+  "gap": "No per-family scoping of skew or outlier issues, since v2 does not transform for skew or clip outliers.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C05-05",
+  "name": "Smart Defaults mode (the default path)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:668-685",
+  "v2_screen": "n/a",
+  "evidence": "'No Quick/Advanced mode' (BLUEPRINT.md:393-395). Decisions are instead stated, asked or silent according to their consequence (BLUEPRINT.md:397-405). Per-family differences come from the family's declaration (pipeline.py:668-685).",
+  "gap": "No auto-configured preprocessing bundle. The user answers the missing-values question, and scaling follows the family.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-06",
+  "name": "Per-model scaling decided by the recipe table",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:668-685, 823-831; turbotab/core/models/elastic_net.py:40; turbotab/core/models/linear.py:116; turbotab/core/models/boosted_trees.py:28",
+  "v2_screen": "drawn",
+  "evidence": "A StandardScaler is added only when the family declares needs_scaling: the elastic net yes, linear and boosted trees no (pipeline.py:683-684). Trees are no longer scaled, which removes Classic's Smart Defaults caveat. The step says it is fitted on the training fold (pipeline.py:823-831), and the per-family preview caption says which families scale (previews.py:504-507).",
+  "gap": "Only the standard scaler is available.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-07",
+  "name": "Interpretability preference",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/evaluation.py:11-12; turbotab/core/models/selection.py:998",
+  "v2_screen": "not drawn",
+  "evidence": "A High/Balanced/Performance toggle is replaced by measuring what the interpretable model costs or gains against the best flexible family, BBC-corrected (evaluation.py:11-12; selection.py:998; BLUEPRINT.md:49-50).",
+  "gap": "No preference control. The measured cost is not drawn (gaps[56]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-08",
+  "name": "Advanced, per model: missing data",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/decisions.py:681-709; turbotab/core/methods/missing.py:1-50; turbotab/core/methods/imputation.py:1-20; turbotab/core/models/pipeline.py:541-572",
+  "v2_screen": "partly drawn",
+  "evidence": "There is one purpose-scoped answer for every family. Under inference, multiple imputation includes the outcome, is compatible with the analysis model (SMC-FCS) and is pooled by Rubin's rules (missing.py:6-28). Under prediction, imputation is in-fold and outcome-free (missing.py:29-35). The energy-aware fill and censoring-aware fills below detection are built (pipeline.py:541-572; missing.py:37-50). MissingAsk draws complete cases, impute, blanks as a level and indicators (ChoiceQuestions.tsx:210-376).",
+  "gap": "No per-model imputation; that is by design, 'not a question' (MODELING_SEQUENCE.md:141). Under prediction only median, most-frequent or the energy-aware fill is offered (pipeline.py:555-566), with no in-fold MICE. Multiple imputation, its ranking and the below-detection fills are not offered on screen (gaps[19]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-09",
+  "name": "Advanced, per model: scaling and power transform",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:683-684; turbotab/core/structural.py:33-36",
+  "v2_screen": "drawn",
+  "evidence": "Scaling is the standard scaler only, set by the family (pipeline.py:683-684). Skew is answered through the functional form (splines) and the outcome's scale. Skewness 'says nothing about which scale is right' (structural.py:33-36).",
+  "gap": "No robust or min-max scaling and no Yeo-Johnson or log1p power transform for predictors. There is no per-model choice.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-10",
+  "name": "Advanced, per model: categorical encoding",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:212-241, 595-600, 898-902; turbotab/core/decisions.py:960-964",
+  "v2_screen": "partly drawn",
+  "evidence": "One-hot encoding drops the first level and ignores unknown levels (pipeline.py:595-600). Blanks can be a level (pipeline.py:212-241). More than 20 levels raises a warning (pipeline.py:898-902). set_categorical, which reads a column as codes or amounts, exists without a control (decisions.py:960-964; gaps[68]).",
+  "gap": "No target or ordinal encoding and no per-model choice.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-11",
+  "name": "Advanced, per model: outlier treatment",
+  "status": "missing",
+  "v2_engine_at": "none (turbotab/core/decisions.py:1381 and turbotab/core/models/effects.py:39-44 cover influence under inference only)",
+  "v2_screen": "not drawn",
+  "evidence": "No clipping, winsorizing or MAD step exists ('winsor' appears only in tests). The impossible-values repair (C05-12) and the influence response 'without_influential' (decisions.py:1381) are the nearest equivalents. v2's stance is at plausibility.py:623-626.",
+  "gap": "No outlier-treatment step in the pipeline.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-12",
+  "name": "Advanced, per model: plausibility gating and unit harmonization",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/repairs.py:19-21, 27-28, 51-55, 264-308; turbotab/core/detectors/plausibility.py:1-37; turbotab/core/units.py:1-23",
+  "v2_screen": "drawn",
+  "evidence": "Impossible values can be set to missing, their rows excluded, or the column marked unusable (repairs.py:264-308). Excluded rows leave before the seal, in the participant flow, so the training-only trimming problem cannot arise (repairs.py:51-55). kJ are converted to kcal (repairs.py:27-28). Units are proposed and must be confirmed (units.py:1-23). Repairs.tsx draws them.",
+  "gap": "Mixed units within a column (mg/dL and mmol/L) are flagged and asked, not converted. set_column_unit is reachable only through refusal exits (gaps[68]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-13",
+  "name": "Advanced, per model: PCA in the pipeline",
+  "status": "missing",
+  "v2_engine_at": "none (MODELING_SEQUENCE.md:138)",
+  "v2_screen": "not drawn",
+  "evidence": "In-fold PCA for omics is in the modeling-sequence spec (MODELING_SEQUENCE.md:138), but turbotab/core has no PCA (grep).",
+  "gap": "This is a specified v2 item that has not been built.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-14",
+  "name": "Advanced, per model: k-means cluster features (experimental)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No KMeans in turbotab/core (grep).",
+  "gap": "No cluster-distance features.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-15",
+  "name": "High-cardinality one-hot guardrail",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:71, 898-902",
+  "v2_screen": "drawn",
+  "evidence": "Above 20 levels the design warns that one-hot encoding adds N-1 columns (pipeline.py:898-902). The warning is drawn under the lineage (LiveScenes.tsx:228). Identifiers are kept out by their roles (C01-13). Graph keys recompute the warning once the column is gone (BLUEPRINT.md:139-140).",
+  "gap": "No target-encoding suggestion.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-16",
+  "name": "Double-transformation guardrail",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/methods/exposure_form.py:52-59; BLUEPRINT.md:499-509",
+  "v2_screen": "partly drawn",
+  "evidence": "Domain transforms come before the functional form (MODELING_SEQUENCE.md:127-128). A later transform makes a declared form stale, and it is re-asked rather than kept (exposure_form.py:52-59). Method contracts declare implies, invalidates and conflicts relations (BLUEPRINT.md:499-509).",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-17",
+  "name": "Recipe, overrides, before/after preview and CSV per model",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:752-831; turbotab/core/models/previews.py:495-517; turbotab/core/export/matrix.py:1-18",
+  "v2_screen": "partly drawn",
+  "evidence": "Each step has a label and a detail line (pipeline.py:752-831). The per-family lineage preview (previews.py:495-517) plays before and after in the transform player (BLUEPRINT.md:313-319), with per-figure save (LiveScenes.tsx:207-219). The export hashes the model matrix but never carries its rows (export/matrix.py:4-8).",
+  "gap": "No per-model recipe text panel and no CSV of the transformed matrix.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C05-18",
+  "name": "Methods-ready preprocessing record",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:842-866; turbotab/core/provenance.py:53-65; turbotab/core/export/bundle.py:1-21",
+  "v2_screen": "partly drawn",
+  "evidence": "Every decision is a sentence (BLUEPRINT.md:397-405). The impute step's line says what fills what and where it was learned (pipeline.py:842-866). The methods text is built from the log (provenance.py:53-65). The bundle carries methods.md, provenance and checklists (bundle.py:1-21). Record.tsx:761-805 draws the sentences.",
+  "gap": "The methods text and the export are not drawn (gaps[0], gaps[3]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "C05-19",
+  "name": "Per-family preprocessing: penalized linear models (Ridge, Lasso, ElasticNet, Logistic)",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/elastic_net.py:16-20, 40, 44-59, 66-99",
+  "v2_screen": "drawn",
+  "evidence": "An elastic net, or penalized logistic regression, tunes its penalty and L1 ratio by an inner CV on training rows only (elastic_net.py:1-5, 44-59). It is scaled (needs_scaling, :40), and coefficients are reported per unit with the scaling undone (:66-79). It ranks first at p\u2265n under prediction (:83-89).",
+  "gap": "No separately choosable Ridge or Lasso. The L1-ratio grid starts at 0.1, so pure ridge is never tried (:16).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C05-20",
+  "name": "Per-family preprocessing: GLM (OLS/logistic) and Huber",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/linear.py:1-14, 103-117",
+  "v2_screen": "drawn",
+  "evidence": "The linear family covers OLS and logistic regression, unscaled, with HC3 or CR2 intervals, Firth for separation, and odds ratios with the event named (linear.py:1-14, 116-117). It is sounder than Classic's GLM.",
+  "gap": "There is no Huber or other robust-loss family in turbotab/core (grep).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C05-21",
+  "name": "Per-family preprocessing: bagged trees (Random Forest, ExtraTrees)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "turbotab/core/decisions.py:1403 (random forest only as a causal nuisance learner)",
+  "v2_screen": "n/a",
+  "evidence": "The shelf is 'linear, penalized and boosted-tree families' (V2_DEFINITION_OF_DONE.md:51).",
+  "gap": "Dropped from the prediction shelf.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-22",
+  "name": "Per-family preprocessing: boosting (HistGB, XGBoost, LightGBM)",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/boosted_trees.py:1-69; turbotab/core/models/pipeline.py:541-572, 946-959",
+  "v2_screen": "drawn",
+  "evidence": "HistGradientBoosting is unscaled and declares handles_missing, with early stopping above 10,000 rows. It is validated by CV, not Harrell's bootstrap (boosted_trees.py:28-46). As in Classic, imputation still applies to it whenever imputation is chosen (pipeline.py:541-572). Native NaN handling is used only when no strategy is set (pipeline.py:946-959).",
+  "gap": "No XGBoost or LightGBM.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "C05-23",
+  "name": "Per-family preprocessing: k-nearest neighbours",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "n/a",
+  "evidence": "Not among 'linear, penalized and boosted-tree families' (V2_DEFINITION_OF_DONE.md:51).",
+  "gap": "Dropped.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-24",
+  "name": "Per-family preprocessing: SVM (SVR, SVC)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "n/a",
+  "evidence": "Not among 'linear, penalized and boosted-tree families' (V2_DEFINITION_OF_DONE.md:51).",
+  "gap": "Dropped.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-25",
+  "name": "Per-family preprocessing: Gaussian Naive Bayes and LDA",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "n/a",
+  "evidence": "Not among 'linear, penalized and boosted-tree families' (V2_DEFINITION_OF_DONE.md:51).",
+  "gap": "Dropped.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-26",
+  "name": "Per-family preprocessing: neural network (PyTorch MLP)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "n/a",
+  "evidence": "Not among 'linear, penalized and boosted-tree families' (V2_DEFINITION_OF_DONE.md:51).",
+  "gap": "Dropped.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-27",
+  "name": "One shared pipeline when no models are selected",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:502-504, 668-685; turbotab/core/decisions.py:743-745",
+  "v2_screen": "drawn",
+  "evidence": "Every family shares the same steps, plus only what it declares (pipeline.py:668-685). select_models requires at least one family (decisions.py:743-745).",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "C05-28",
+  "name": "Carried settings for the next cohort",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "n/a",
+  "evidence": "Portable plans, one project's plan applied to new data, are v2.x (BLUEPRINT.md:434-435).",
+  "gap": "Deferred to v2.x.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "CX-01",
+  "name": "Insight ledger: findings that travel and resolve",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/decisions.py:779, 837-838, 1731, 1781; turbotab/core/repairs.py:1578-1640; turbotab/core/readings.py",
+  "v2_screen": "partly drawn",
+  "evidence": "Findings can be applied, deferred (resurfacing at a named question) or dismissed with a reason (decisions.py:779, 837-838). answered_by links each finding to the answer that settled it (repairs.py:1578-1640). The readings ledger tracks every interpretation, proposed or settled (BLUEPRINT.md:541-568). Findings.tsx draws them.",
+  "gap": "No model-family scope. Unresolved findings do not become Discussion limitations, because the export has no discussion. Disposition and detail are partly unread (gaps[67]), and the readings endpoint has no reader (gaps[5]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "CX-02",
+  "name": "Coaching companion with theory links",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/teaching/__init__.py:1-14; turbotab/core/teaching/content.py; turbotab/core/coach.py:1-30",
+  "v2_screen": "drawn",
+  "evidence": "Teaching comes in four layers: a one-liner, each option's consequence, why?, and a concept drawer. The drawer cites the packs with SETTLED, CONVENTION or DISPUTED badges (teaching/__init__.py:1-14). It is drawn per question (teach.tsx:188-235; Question.tsx:194-201). Coach notes pin facts to the preview (coach.py:1-30).",
+  "gap": "No grouping of advice by the selected model families.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "CX-03",
+  "name": "Optional LLM 'Deep Analysis'",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "n/a",
+  "evidence": "'Explicitly NOT in v2 ... an in-app AI assistant' (V2_DEFINITION_OF_DONE.md:93-96).",
+  "gap": "Deferred to v2.x.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "CX-04",
+  "name": "Sidebar workflow, cohort chip and session save/restore",
+  "status": "improved",
+  "v2_engine_at": "BLUEPRINT.md:96-98, 114-121, 393-395, 422-425",
+  "v2_screen": "drawn",
+  "evidence": "Each project persists as an append-only decision log in the workspace, with no save step (BLUEPRINT.md:96-98, 114-121). The banner is the map of where you are (Banner.tsx:1-9; BLUEPRINT.md:422-425).",
+  "gap": "Quick vs Advanced is dropped (BLUEPRINT.md:393-395). LLM settings are dropped (V2_DEFINITION_OF_DONE.md:96). There is no cohort chip, since cohort runs are missing (C01-29).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "CX-05",
+  "name": "Methodology log and provenance feeding the Methods section",
+  "status": "improved",
+  "v2_engine_at": "BLUEPRINT.md:114-123; turbotab/core/provenance.py:53-65; turbotab/core/export/methods.py; turbotab/core/export/bundle.py:1-21",
+  "v2_screen": "partly drawn",
+  "evidence": "Every answer is a recorded decision, and refusals are never recorded (BLUEPRINT.md:114-123). The methods text and a replayable provenance record come from the log (provenance.py:53-65; bundle.py:4-17). Record sentences are drawn (Record.tsx:761-805).",
+  "gap": "The methods text, the export and the checklist have no UI (gaps[0], gaps[1], gaps[3]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "CX-06",
+  "name": "Downstream invalidation cascade",
+  "status": "improved",
+  "v2_engine_at": "BLUEPRINT.md:139-146",
+  "v2_screen": "drawn",
+  "evidence": "Stage keys hash their upstream keys and the slots they read. A change marks the downstream stale (served, not deleted), recomputes it, and cancels in-flight jobs (BLUEPRINT.md:139-146). The banner veils and propagates (Banner.tsx:6-9; StaleVeil).",
+  "gap": "None material.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "PP-01",
+  "name": "Per-model preprocessing pipelines",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:668-702 (family_steps, build_pipeline); pipeline.py:502-601 (shared_steps); turbotab/core/stages/modeling.py:510 (per-family step list); turbotab/core/models/previews.py:461-521",
+  "v2_screen": "partly drawn",
+  "evidence": "Every family trains through its own sklearn Pipeline, but each is built from ONE shared DesignSpec (pipeline.py:279-318) plus what the family declares. Today the only per-family difference is StandardScaler when needs_scaling is set (pipeline.py:683-684), and only elastic_net sets it (elastic_net.py:40). The optional family preprocess hook (pipeline.py:680-682) is defined by no family. All steps are fit in-fold (pipeline.py:1-12). The select_models preview draws one model-matrix lineage per chosen family, captioned 'each standardized on training rows' or 'taken as they are, unscaled' (previews.py:47, 495-517); that preview is reachable from ModelsAsk (frontend inventory, covered list). The per-family step list design.models[].steps (artifacts.py:62-65; modeling.py:510) has no reader; the frontend reads only design.lineage and design.matrix (LiveScenes.tsx:174-181).",
+  "gap": "Deliberate reshape: MODELING_SEQUENCE.md:141 rules that model-specific preprocessing is 'not a question; stated per family in the lineage', so there are no per-model tabs or configurations and no borrowed-pipeline badges. Boosted trees receive the shared imputation (pipeline.py:541-572) rather than their native NaN handling. Closable within the ruling: draw design.models[].steps as each family's recipe.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "PP-02",
+  "name": "Smart Defaults: per-model auto-configuration from the data",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "turbotab/core/models/base.py:158-176 (rank); turbotab/core/coach.py:3-8",
+  "v2_screen": "n/a",
+  "evidence": "BLUEPRINT.md:72: 'detection suggests, never pre-selects below high confidence'. In the UI, ModelsAsk says 'Nothing is chosen for the user: the shelf's order is its judgment' (ChoiceQuestions.tsx:532-533). MissingAsk tags an option 'recommended' and gives its reason instead of applying it (ChoiceQuestions.tsx:262-268). Coach notes never name an option as the answer (coach.py:6-8).",
+  "gap": "No one-click auto-configured pipeline. The skew-gated Yeo-Johnson for skew-sensitive families has no counterpart at all: there is no PowerTransformer in turbotab/core (grep).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "PP-03",
+  "name": "Model-required scaling, resolved per model from the recipe table",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:668-685, 823-831; elastic_net.py:40; linear.py:116; boosted_trees.py:28",
+  "v2_screen": "drawn",
+  "evidence": "Scaling follows the family's needs_scaling declaration and is fit in-fold (pipeline.py:683-684). The step text names the metabolomics departure from Pareto scaling and cites its source (pipeline.py:826-830). The select_models preview caption says 'each standardized on training rows' (previews.py:47, 504-513).",
+  "gap": "The legacy recipe table (turbotab/recipes.py) and its pack overrides are not imported by turbotab/core (grep), so scaling is always autoscaling and the Pareto variant cannot be chosen.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "PP-04",
+  "name": "Interpretability preference (high / balanced / performance)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/selection.py:970-1000 (interpretable_cost); turbotab/core/stages/evaluation.py:11-12, 83-102",
+  "v2_screen": "not drawn",
+  "evidence": "The stated preference becomes a measurement: a spline-regression benchmark against the best flexible family. It reports the signed paired difference on the proper score and on the calibration slope, BBC-corrected, and says 'no measurable cost on these rows' when the interval spans 0 (selection.py:970-984; MODELING_SEQUENCE.md:352-354). The evaluation stage runs whenever models are chosen (stages/__init__.py:786-788), but the frontend never fetches it (frontend inventory gaps[56]).",
+  "gap": "Not shown on any screen. There is also no interpretability-driven removal of steps, because v2 has no PCA or power transform to remove.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-05",
+  "name": "Numeric imputation per model (median / mean / constant / MICE)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:541-572, 842-864; turbotab/core/methods/imputation.py:1-17; turbotab/core/decisions.py:134, 459-481, 4460-4492",
+  "v2_screen": "partly drawn",
+  "evidence": "Under prediction, every family gets one in-fold fill: the median, or an energy-aware line fill for energy-bearing nutrients, plus the most frequent value for categories. The outcome is never an input (pipeline.py:21-31, 541-572). Under inference, v2 runs proper MICE with SMC-FCS and pools by Rubin's rules (imputation.py:1-17). Multiple imputation under prediction is refused, with exits (decisions.py:4460-4471). MissingAsk offers Complete cases, Impute, Blanks as a level and Leave out (ChoiceQuestions.tsx:255-332). Multiple imputation reaches the server only through the refusal exit on 'impute' under inference (decisions.py:4485-4492). The ranked methods with customary and sound labels, and the below-detection fills, are not read by the frontend (frontend inventory gaps[19]).",
+  "gap": "No mean, constant or iterative fill under prediction, and no per-model choice. The per-strategy cost survives only as impute_detail text (pipeline.py:842-864). Inference is sounder than Classic because the imputation is compatible with the analysis model.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-06",
+  "name": "Missing-data indicator columns",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/decisions.py:691-695, 4479-4500; turbotab/core/models/pipeline.py:21-22, 450, 554-563, 212-277",
+  "v2_screen": "drawn",
+  "evidence": "The indicators option adds missingindicator_<column> beside the in-fold fill (pipeline.py:21-22, 562-563). A categorical blank can also become its own 'Missing' level (pipeline.py:16-20, 212-277). Under inference, indicators are blocked unless acknowledged with a reason (decisions.py:4479-4500). Both are checkboxes in MissingAsk, with the inference caution (ChoiceQuestions.tsx:300-327).",
+  "gap": "Applies to all families together, not per model.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "PP-07",
+  "name": "Power transform per model (none / log1p / Yeo-Johnson)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:39-53, 588-592 (omics log, exposure form); turbotab/core/methods/levers.py:13-24 (in-fold spline rule); turbotab/core/models/steps.py:48-63",
+  "v2_screen": "partly drawn",
+  "evidence": "v2 has no log1p or Yeo-Johnson step for predictors (no PowerTransformer in turbotab/core). Nonlinearity is handled instead by restricted cubic splines declared per exposure through set_exposure_form and set_forms, whose previews are reachable (frontend inventory, covered list), or by an in-fold spline rule (levers.py:13-24). No control emits set_levers (frontend inventory gaps[68]). Logs exist only as the omics normalization (pipeline.py:39-48) and the energy method's log_transform (steps.py:48-63).",
+  "gap": "General skew transforms were dropped with no ruling: no v2 doc mentions them. Splines are a defensible replacement for the linear families, but the in-fold spline rule has no control.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-08",
+  "name": "Outlier treatment per model (percentile winsorizing / MAD capping)",
+  "status": "missing",
+  "v2_engine_at": "none (no capping step in turbotab/core/models/pipeline.py:502-601)",
+  "v2_screen": "not drawn",
+  "evidence": "A grep for winsor, MAD or clip-style capping in the turbotab/core pipeline finds no outlier step. RobustScaler appears only as a lineage label (models/lineage.py:40). Impossible values are handled earlier, as repairs before the seal (repairs.py:264-338).",
+  "gap": "No shared or per-model capping, and no family-scoped 'trees are immune' note. No ruling covers it, so this is an accidental loss.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-09",
+  "name": "Categorical imputation and encoding per model (one-hot / target / ordinal)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:564-566, 595-600, 212-277, 366-381, 898-902; turbotab/core/decisions.py:960-964",
+  "v2_screen": "partly drawn",
+  "evidence": "Categories are filled with the most frequent value (pipeline.py:564-566) or kept with a Missing level, then one-hot encoded in-fold with drop='first' (pipeline.py:595-600). A numeric code can be declared a category (pipeline.py:366-381). A predictor with more than 20 levels gets a warning stating how many columns one-hot adds (pipeline.py:898-902), drawn under the lineage (LiveScenes.tsx:228). No control emits set_categorical (frontend inventory gaps[68]).",
+  "gap": "No target or ordinal encoding: there is no TargetEncoder or OrdinalEncoder in turbotab/core. No ruling covers it.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-10",
+  "name": "Physiological plausibility gating (clip to NaN or filter rows)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/detectors/plausibility.py:1-37; turbotab/core/repairs.py:264-338",
+  "v2_screen": "drawn",
+  "evidence": "Each band carries its source, cycle and status: weighted NHANES 2017-18 adult p1-p99, and the clinical pack's impossible tier. Children are judged by CDC growth-chart z-scores (plausibility.py:11-33). The repairs set values to missing, exclude rows as eligibility rules before the seal, or drop the column (repairs.py:311-338). Findings and their repairs are drawn (Repairs.tsx, Findings.tsx; frontend inventory, covered list).",
+  "gap": "Applied to all rows before the seal rather than per model. This is sounder than Classic's post-split training-row filter.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "PP-11",
+  "name": "Unit harmonization (for example mg/dL and mmol/L)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/units.py:1-24; turbotab/core/repairs.py:528-542; turbotab/core/decisions.py:1087-1131; turbotab/core/readings.py:903",
+  "v2_screen": "partly drawn",
+  "evidence": "Energy recorded in kJ is converted to kcal as a repair (repairs.py:528-542), which is drawn through Findings. Clinical analyte units are proposed, then recorded by the user, and never guessed (units.py:10-23). Neither set_outcome_unit nor set_column_unit has a direct control (frontend inventory gaps[23], gaps[68]).",
+  "gap": "Analytes are not converted between units such as mg/dL and mmol/L. A mixed-unit verdict blocks a reading (readings.py:903) but converts nothing. No ruling forbids converting a unit the user has confirmed.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-12",
+  "name": "PCA and KMeans cluster features per model",
+  "status": "missing",
+  "v2_engine_at": "none (turbotab/core/consequences.py:28 lists PCA only as a future 'embedding' view)",
+  "v2_screen": "not drawn",
+  "evidence": "MODELING_SEQUENCE.md:138 specifies 'in-fold PCA for omics' at the construction step, but grep finds no PCA or KMeans step in turbotab/core.",
+  "gap": "Missing, and also a gap against v2's own modeling-sequence spec for omics.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-13",
+  "name": "Engineered-feature passthrough",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:36-37, 584-592, 636-648",
+  "v2_screen": "drawn",
+  "evidence": "v2 has no free-form feature engineering. Its constructions (energy adjustment, scale scores, exposure forms) are in-fold steps in a fixed order: detect, normalize, impute, energy, form, levels, one-hot, scale (pipeline.py:36-37). The form step reads the energy step's renamed columns (pipeline.py:588-592). The lineage draws this order (LiveScenes.tsx:174).",
+  "gap": "Nothing to guard, because there is no user feature-engineering page.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "PP-14",
+  "name": "Per-model pipeline recipe, printed and exported",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:752-839 (describe_steps); turbotab/core/stages/modeling.py:510; turbotab/core/export/bundle.py:1-17; turbotab/core/export/replay.py:1-27",
+  "v2_screen": "partly drawn",
+  "evidence": "Each family's steps are written out in words with their parameters (pipeline.py:752-839) and stored in the design artifact (modeling.py:510). The bundle carries figures/lineage.svg, provenance.json and decisions.jsonl, and a headless replay rebuilds the model matrix byte for byte (bundle.py:4-17; replay.py:14-27). The live lineage is drawn. The step list is not, and there is no export UI (frontend inventory gaps[0], gaps[2]).",
+  "gap": "The fitted pipeline files are excluded by ruling (BLUEPRINT.md:97-98: an export carries 'never fitted objects'). The per-family recipe is not shown, and the export cannot be reached from the UI.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-15",
+  "name": "Pipeline summary and before/after preview",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/consequences.py; turbotab/core/models/previews.py:461-521",
+  "v2_screen": "drawn",
+  "evidence": "Every decision is previewed on the user's own training rows before it is recorded (BLUEPRINT.md:270-273), with storyboards and the transform player (PreviewGrid.tsx and views/*; frontend inventory, covered list). select_models shows each family's model-matrix lineage (previews.py:461-521).",
+  "gap": "Nothing missing for this capability. Separately, 24 of 54 preview kinds still have no control (frontend inventory gaps[63]).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "PP-16",
+  "name": "Model Coach: dominant-constraint headline, top picks, skip list",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/base.py:158-176; turbotab/core/models/selection.py:885-967; turbotab/core/stages/modeling.py:101-203",
+  "v2_screen": "partly drawn",
+  "evidence": "The shelf ranks every family with a good/fair/poor fit and its stated concerns (modeling.py:161-202). Under prediction, Riley's minimum sample size is computed first, and below it the regression families rank first, with the van der Ploeg reason (selection.py:885-967). ModelsAsk draws the order, fit tag, concerns and cost (ChoiceQuestions.tsx:554-572) but not shelf.sample_size (frontend inventory gaps[22]).",
+  "gap": "No headline, top picks or skip list. Pre-ticking picks is ruled out (BLUEPRINT.md:72; ChoiceQuestions.tsx:532). With three prediction families, 'which models should I try' is a smaller question. The cheapest step is to draw the Riley sentence.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "PP-17",
+  "name": "Evidence probe (signal floor, non-linearity gain, learning-curve slope)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/baseline.py:1-31; turbotab/core/models/selection.py:899-1000",
+  "v2_screen": "partly drawn",
+  "evidence": "There is no probe before the fit. After the fit, three answers exist. (1) Each family is compared with the no-predictor baseline by a corrected paired interval and verdict (baseline.py:1-31); a 'worse' or 'no better' result is a concern drawn on the comparison rows (Comparison.tsx:52-56). (2) A spline benchmark is compared with the flexible families (selection.py:970-984); it is not drawn (frontend inventory gaps[56]). (3) Riley's minimum answers 'would more rows help?' (selection.py:953-964); it is not drawn (frontend inventory gaps[22]).",
+  "gap": "No quick probe before modeling. The answers arrive after the fit, and two of the three are not drawn.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "PP-18",
+  "name": "Model-scoped preprocessing insights",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/previews.py:504-513; turbotab/core/models/base.py:64-73; turbotab/core/models/boosted_trees.py:16-27",
+  "v2_screen": "partly drawn",
+  "evidence": "Family declarations reach the select_models preview caption: 'taken as they are, unscaled', and 'missing values allowed' or 'rows need complete values' (previews.py:504-513). Each family's inductive bias and cautions appear on the shelf (Shelf.tsx:37-42).",
+  "gap": "No family-scoped cards on skewness, outliers or scaling, and none with manuscript text. The coach comments on the rows, not on the families (coach.py:1-19).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "M-01",
+  "name": "Ridge regression",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/elastic_net.py:16-19, 44-59",
+  "v2_screen": "drawn",
+  "evidence": "There is no ridge family. The elastic net's inner-CV grid of mixes is (0.1, 0.5, 0.7, 0.9, 0.95, 1.0) for regression and (0.2, 0.6, 1.0) for logistic (elastic_net.py:16-19), so a pure L2 fit is never made. The penalty strength is tuned in-fold (elastic_net.py:1-5).",
+  "gap": "The coach's default 'Start here' L2 model is gone. Close it by adding a near-zero mix or one ridge module registered through register_family (base.py:113-127).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-02",
+  "name": "Lasso regression",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/elastic_net.py:16, 44-59, 81-99; turbotab/core/models/explain.py:767-777",
+  "v2_screen": "drawn",
+  "evidence": "Pure lasso (mix 1.0) is in the inner-CV grid. It is tuned on training rows only, with inner folds that respect grouping and time (inner_cv.py:1-23). At p\u2265n the elastic net is rated 'good' and ranks first (elastic_net.py:83-89). Coefficients are drawn without intervals (Results.tsx:169-199). The inclusion frequencies and the shrinkage path exist (variable_selection.py:23-29; explain.py:767-777) but are not drawn (frontend inventory gaps[36], gaps[56]).",
+  "gap": "The penalty is tuned rather than set by the user. The stability of the shortlist is not drawn.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "M-03",
+  "name": "ElasticNet regression",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/elastic_net.py:1-102; turbotab/core/models/wide.py:1-15",
+  "v2_screen": "drawn",
+  "evidence": "ElasticNetCV and LogisticRegressionCV choose both the strength and the mix by inner CV inside each training fold (elastic_net.py:1-5, 44-59). At p>n the fit runs in float32 with threads (wide.py:1-15). Its concerns are stated (elastic_net.py:81-99). It is drawn on the shelf, in the comparison and in the coefficients.",
+  "gap": "None.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "M-04",
+  "name": "Logistic regression (L1/L2, saga)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/linear.py:1-14, 120-140; turbotab/core/models/elastic_net.py:53-59",
+  "v2_screen": "drawn",
+  "evidence": "Unpenalized logistic regression (newton-cholesky) gives odds ratios, with HC3 or CR2 intervals and Firth's method under separation for inference (linear.py:1-14, 125-140). Penalized logistic regression uses saga with a tuned C and mix (elastic_net.py:53-59). The coefficient forest shows CIs under inference (Coefficients.tsx:76-99).",
+  "gap": "No pure-L2 penalized logistic model. Class weighting exists only as the in-fold imbalance lever with recalibration (levers.py:29-35), which has no control (frontend inventory gaps[68]).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "M-05",
+  "name": "GLM (plain OLS / logistic)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/linear.py:31-80, 103-230",
+  "v2_screen": "drawn",
+  "evidence": "OLS and logistic regression come with HC3, CR2 with Bell-McCaffrey df, Taylor linearization under survey designs, and Firth's method (linear.py:1-14, 130-140). A Belsley collinearity concern names the dependent columns (linear.py:31-80). Sample-size concerns follow the purpose (linear.py:197-226), and the fit is rated 'poor' at p\u2265n (linear.py:205-208).",
+  "gap": "None.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "M-06",
+  "name": "Huber robust regression",
+  "status": "missing",
+  "v2_engine_at": "none (registered families: turbotab/core/models/__init__.py:24-40)",
+  "v2_screen": "not drawn",
+  "evidence": "No robust-loss family is registered (models/__init__.py:24-40). Nothing in v2's docs rules it out, and it is arguably a linear family under V2_DEFINITION_OF_DONE.md:51.",
+  "gap": "No robust regression for outcome outliers. This is an accidental loss.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-07",
+  "name": "Random Forest (regression and classification)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "not on the shelf; RandomForest is used only as a causal nuisance learner (turbotab/core/models/causal.py:402-407)",
+  "v2_screen": "not drawn",
+  "evidence": "V2_DEFINITION_OF_DONE.md:51 fixes the prediction shelf at 'linear, penalized and boosted-tree families'. BLUEPRINT.md:57: 'Parity with Classic (Streamlit) is not binding.' Registered families: models/__init__.py:24-31.",
+  "gap": "Cost shown is for reinstating it: one family module through register_family (base.py:113-127), declaring bootstrap_optimism=False as boosted trees do (boosted_trees.py:30-32). BLUEPRINT.md:72's 'the shelf is never shortened' governs order within the shelf, not which families exist.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-08",
+  "name": "Extra Trees (extratrees_reg / extratrees_clf)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none (turbotab/core/models/__init__.py:24-40)",
+  "v2_screen": "not drawn",
+  "evidence": "Bagged trees fall outside V2_DEFINITION_OF_DONE.md:51 ('linear, penalized and boosted-tree families'). BLUEPRINT.md:57 makes parity non-binding.",
+  "gap": "Cost shown is for reinstating it as one family module (base.py:113-127).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-09",
+  "name": "Histogram Gradient Boosting (histgb_reg / histgb_clf)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/boosted_trees.py:13-69; turbotab/core/models/inner_cv.py:1-21",
+  "v2_screen": "drawn",
+  "evidence": "boosted_trees is HistGradientBoosting at sklearn defaults with random_state=0: 'up to 100 trees of at most 31 leaves', stopping early above 10,000 rows on a tenth of the units (boosted_trees.py:34-46; inner_cv.py:1-21). It is validated by CV, not by Harrell's bootstrap (boosted_trees.py:22-32). Concerns are stated at n<500, at p\u2265n and under inference (boosted_trees.py:48-66).",
+  "gap": "No hyperparameter controls and no tuning. DoD:51's 'nested tuning' is met only by the elastic net's penalty search. Under 'impute', the trees get the shared fill rather than their native NaN handling (pipeline.py:541-572).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "M-10",
+  "name": "XGBoost (xgb_reg / xgb_clf)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/boosted_trees.py:34-41 (HistGB only)",
+  "v2_screen": "not drawn",
+  "evidence": "The boosted-tree family in DoD:51 is served by HistGradientBoosting only. xgboost is installed (BLUEPRINT.md:90-91), but turbotab/core never imports it (grep).",
+  "gap": "XGBoost is not offered as a choice, and neither are its seven controls.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-11",
+  "name": "LightGBM (lgbm_reg / lgbm_clf)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/boosted_trees.py:34-41 (HistGB only)",
+  "v2_screen": "not drawn",
+  "evidence": "lightgbm is installed (BLUEPRINT.md:90-91), but turbotab/core never imports it (grep). The boosted-tree family is HistGB only.",
+  "gap": "LightGBM is not offered as a choice.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-12",
+  "name": "k-Nearest Neighbors (knn_reg / knn_clf)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "Outside V2_DEFINITION_OF_DONE.md:51's prediction shelf. Parity is non-binding (BLUEPRINT.md:57).",
+  "gap": "Cost shown is for reinstating it as one family module (base.py:113-127), with needs_scaling=True.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-13",
+  "name": "Support Vector Regression (svr)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "Outside V2_DEFINITION_OF_DONE.md:51. Parity is non-binding (BLUEPRINT.md:57).",
+  "gap": "Cost shown is for reinstating it as one family module.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-14",
+  "name": "Support Vector Classification (svc, probability=True)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "Outside V2_DEFINITION_OF_DONE.md:51. Parity is non-binding (BLUEPRINT.md:57).",
+  "gap": "Cost shown is for reinstating it as one family module. The fit-time estimate would come for free from the shelf's measured cost (cost.py:1-15).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-15",
+  "name": "Gaussian Naive Bayes",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "Outside V2_DEFINITION_OF_DONE.md:51. Parity is non-binding (BLUEPRINT.md:57).",
+  "gap": "Cost shown is for reinstating it as one family module.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-16",
+  "name": "Linear Discriminant Analysis",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "Outside V2_DEFINITION_OF_DONE.md:51. Parity is non-binding (BLUEPRINT.md:57).",
+  "gap": "Cost shown is for reinstating it as one family module.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "M-17",
+  "name": "Neural network (PyTorch MLP, weighted Huber option)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "Outside V2_DEFINITION_OF_DONE.md:51. Parity is non-binding (BLUEPRINT.md:57). No torch import in turbotab/core.",
+  "gap": "Cost shown is for reinstating it: a family plus the architecture recommender, the learning curves and its CV handling.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-01",
+  "name": "Leakage-aware split strategy",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/seal.py:641-666; turbotab/core/decisions.py:404-426; turbotab/core/models/folds.py",
+  "v2_screen": "drawn",
+  "evidence": "The seal is drawn by whole units when an identifier repeats, and by time when that is declared. Its basis is stated, and it is labeled exploratory when the grouping is uncertain (seal.py:641-660; SealQuestions.tsx:41-63). The seal is purpose-scoped (BLUEPRINT.md:447-449). SealAsk and SealFork draw it (SealQuestions.tsx:65-154; frontend inventory, covered list).",
+  "gap": "The UI fixes the seed at 0 and the folds at 5 (SealQuestions.tsx:28-39).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "TC-02",
+  "name": "Scoreable-test and small-set guardrails",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/seal.py:600-618, 621-686, 645-646",
+  "v2_screen": "partly drawn",
+  "evidence": "The seal plan keeps n_measured apart from n_analyzed (seal.py:645-646). Below a sourced floor (100 events, Collins et al. 2016), CV alone is offered first (seal.py:600-604, 669-686). Each holdout option says what a score on that many rows can measure, with a precision note (seal.py:615-618, 633-638). The options and the cv-first reason are drawn (SealQuestions.tsx:85-101). The floor, n_measured and below_floor are not read (frontend inventory gaps[15]).",
+  "gap": "Draw the floor and the counts.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-03",
+  "name": "Target trimming before the split (regression)",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "turbotab/core/decisions.py:3548-3564",
+  "v2_screen": "n/a",
+  "evidence": "Eligibility rules that read the outcome are refused under every purpose (decisions.py:3548-3556), per BLUEPRINT.md:458-459 (RO-01), and in sensitivity analyses too (stages/sensitivity.py:24).",
+  "gap": "Deliberately refused. Impossible outcome values have their own repair (decisions.py:3552-3553).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "TC-04",
+  "name": "Target transformation with live before/after preview",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/decisions.py:1060-1084",
+  "v2_screen": "partly drawn",
+  "evidence": "The outcome scale is either 'original' or 'log'. Under 'log', ln_<outcome> becomes the target, and its coefficients read as ratios of geometric means (decisions.py:1060-1084). The set_outcome_scale preview is reachable from the task follow-up (frontend inventory, covered list). The task card's skew numbers and histogram are not read (frontend inventory gaps[23]).",
+  "gap": "No Yeo-Johnson or Box-Cox, no back-transformation of predictions (scores are on the log scale), and no 'is it earning its keep' verdict.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-05",
+  "name": "Cross-validation with preprocessing refit inside each fold",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/pipeline.py:1-12; turbotab/core/models/inner_cv.py:1-23; turbotab/core/models/metrics.py:21-42; turbotab/core/models/validation.py:10-12; turbotab/core/stages/modeling.py:633-653",
+  "v2_screen": "partly drawn",
+  "evidence": "Every step is refit in each fold. Folds are grouped or forward-chained, and inner splits are drawn the same way (inner_cv.py:1-23). CV R\u00b2 is pooled (metrics.py:21-34). Repeated k-fold is available (validation.py:10-12). Convergence problems and unknown levels are disclosed as concerns (modeling.py:633-653). Comparison draws the mean \u00b1 SD, with the fold values in a tooltip (Comparison.tsx:45-99).",
+  "gap": "The validation scheme (repeated k-fold, bootstrap, internal-external, nested CV) and the fold count have no control (SealQuestions.tsx:28-39; frontend inventory gaps[15]). No box plot of the folds.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-06",
+  "name": "Model shelf grouped and ordered by explainability",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/base.py:158-176; turbotab/core/models/selection.py:923-967",
+  "v2_screen": "drawn",
+  "evidence": "The shelf is ordered by soundness for the situation and is never shortened (base.py:158-176; BLUEPRINT.md:37-38, 72). Below Riley's minimum, the regression families come first (selection.py:955-960). Drawn in ModelsAsk and Shelf.tsx.",
+  "gap": "The order follows soundness, not explainability. There is no family grouping, since only three families predict.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "TC-07",
+  "name": "Viability verdict under every model card",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/boosted_trees.py:48-66; elastic_net.py:81-99; linear.py:197-230; turbotab/core/stages/modeling.py:190-197",
+  "v2_screen": "drawn",
+  "evidence": "Each family's assess() returns good, fair or poor with concerns that cite n and p, for example 'predictors for rows: most splits will fit noise' (boosted_trees.py:57-61). These are drawn as fit tags and concerns (ChoiceQuestions.tsx:562-571; Shelf.tsx:32-42).",
+  "gap": "None for the families v2 has.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "TC-08",
+  "name": "Schema-driven hyperparameter controls",
+  "status": "missing",
+  "v2_engine_at": "none (fixed settings in boosted_trees.py:34-41 and elastic_net.py:44-59)",
+  "v2_screen": "not drawn",
+  "evidence": "No family declares a hyperparameter schema, and the UI has no controls. A family is built either with fixed settings or with inner-CV tuning.",
+  "gap": "No manual hyperparameter control. A value set by hand would sit outside the resampling, so it would need the disclosure MODELING_SEQUENCE.md:59-64 (ruling 3) requires for hand levers.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-09",
+  "name": "Optuna hyperparameter optimization",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/elastic_net.py:1-5, 23-24; turbotab/core/decisions.py:411-414",
+  "v2_screen": "not drawn",
+  "evidence": "Only the elastic net tunes: its penalty and mix are chosen by inner CV inside each training fold (elastic_net.py:1-5). At p\u226bn, Bates et al.'s nested-CV interval is offered (decisions.py:411-414); the fit's nested_offer is not read (frontend inventory gaps[50]).",
+  "gap": "Boosted trees are not tuned, and there is no search UI. V2_DEFINITION_OF_DONE.md:51 asks for nested tuning.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-10",
+  "name": "Measured run-time and memory quote before training",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/cost.py:1-37; turbotab/core/stages/modeling.py:187-196; turbotab/core/models/previews.py:524-542",
+  "v2_screen": "drawn",
+  "evidence": "Each family's pipeline is fit once on a sample, timed, and scaled by cells and fold count (cost.py:1-15). The estimate is shown per family on ModelsAsk when it is 10 s or more (ChoiceQuestions.tsx:543-553) and summed in the select_models preview note (previews.py:524-542). For memory, MemoryBudgetExceeded carries the server-mode sentence (BLUEPRINT.md:105-109).",
+  "gap": "By design, nothing is said for fits under 10 s (cost.py:35-37).",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "TC-11",
+  "name": "Class-imbalance card with purpose-routed advice",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/stages/modeling.py:762-781; turbotab/core/methods/levers.py:29-35; turbotab/core/decisions.py:1569-1587",
+  "v2_screen": "not drawn",
+  "evidence": "A binary fit states the event share and that no resampling or weighting was applied, citing van den Goorbergh 2022 (modeling.py:762-781, stored as FitArtifact.imbalance at artifacts.py:550-551). A correction can be applied in-fold and is followed by logistic recalibration (levers.py:29-35).",
+  "gap": "fit.imbalance is not read, and set_levers has no control (frontend inventory gaps[68]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-12",
+  "name": "Wide-feature advisory",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/wide.py:1-53; turbotab/core/models/cost.py:33-34; turbotab/core/models/variable_selection.py:21-22; turbotab/core/models/artifacts.py:573-575",
+  "v2_screen": "partly drawn",
+  "evidence": "At p>n the fit runs in float32 with threads (wide.py:1-15). The cost estimate names the column count above 200 columns (cost.py:33). In-fold screening is available at p\u226bn (variable_selection.py:21-22). The fit carries a 'wide' label and a nested-CV offer (artifacts.py:573-575). The cost is drawn on ModelsAsk (ChoiceQuestions.tsx:545-553).",
+  "gap": "fit.wide and nested_offer are not read (frontend inventory gaps[50]). set_selection has no control (frontend inventory gaps[68]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-13",
+  "name": "Comparison table with train-vs-test columns",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/metrics.py:80-110; turbotab/core/models/artifacts.py:100-120; turbotab/core/export/tables.py:10-17",
+  "v2_screen": "partly drawn",
+  "evidence": "Metrics depend on the task. Regression: R\u00b2, MSE, RMSE, MAE. Binary: AUC, Brier, log loss. Multiclass: log loss, accuracy, macro-F1. Each carries an SE and a CI (metrics.py:80-86; artifacts.py:113-120). The Results draw only the primary metric (MSE or log loss) on one axis (Results.tsx:96). The full performance table exists only in the export (tables.py:10-17), which has no UI.",
+  "gap": "No sortable table and no metric switcher (INBOX.md:154). No train or apparent column; apparent performance exists only inside the bootstrap optimism (validation.py:18). No PR-AUC or median absolute error.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-14",
+  "name": "Performance spread and 'simplest competitive' model",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/selection.py:970-1000; turbotab/core/stages/evaluation.py:11-12",
+  "v2_screen": "not drawn",
+  "evidence": "v2 computes what the interpretable model costs or gains against the best flexible family, BBC-corrected, on the proper score and on calibration (selection.py:970-984; MODELING_SEQUENCE.md:352-354).",
+  "gap": "The evaluation stage is never fetched by the frontend (frontend inventory gaps[56]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-15",
+  "name": "BCa bootstrap confidence intervals (1,000 resamples)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/artifacts.py:113-120; turbotab/core/models/performance.py:9-27; turbotab/core/models/validation.py:14-34",
+  "v2_screen": "not drawn",
+  "evidence": "Every CV score carries an SE and a 95% CI (LeDell, the delta method, or DeLong), and so do held-out scores (performance.py:9-27). Bootstrap optimism refits the whole pipeline on at least 500 resamples (validation.py:14-23; decisions.py:393).",
+  "gap": "Comparison draws the mean \u00b1 fold SD, not the CI (Comparison.tsx:65-83). The intervals are analytic rather than BCa.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-16",
+  "name": "Automatic baseline models",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/baseline.py:1-31; turbotab/core/stages/modeling.py:656-747; turbotab/core/stages/evaluation.py:6-10",
+  "v2_screen": "partly drawn",
+  "evidence": "A no-predictor baseline is scored on the same folds, with a Nadeau-Bengio corrected paired interval and a verdict (baseline.py:1-31). A spline-regression benchmark is always fitted (evaluation.py:6-10). The baseline is drawn as a dashed line with its label, and its concern appears on each row (Comparison.tsx:52-56, 61, 114-118).",
+  "gap": "The benchmark is not drawn (frontend inventory gaps[56]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-17",
+  "name": "Calibration analysis",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/performance.py:29-60, 416-430; turbotab/core/stages/modeling.py:1870-1881",
+  "v2_screen": "partly drawn",
+  "evidence": "v2 reports the calibration intercept and slope with intervals, a lowess curve, and ICI, E90 and Emax. Multiclass and ordinal outcomes are calibrated by level, and time-to-event at a horizon (performance.py:29-60, 416-430). Calibration is flagged only when its interval demonstrates a problem (performance.py:39-47). A flagged calibration becomes a model concern (modeling.py:1870-1881), which Comparison draws.",
+  "gap": "The curves are not drawn (frontend inventory gaps[52]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-18",
+  "name": "Paired statistical comparison of models on CV folds",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/validation.py:562 (FamilyDifference); turbotab/core/models/artifacts.py:546-548; turbotab/core/models/baseline.py:13-23",
+  "v2_screen": "not drawn",
+  "evidence": "Families are compared pair by pair on the user's rows, with intervals corrected for shared training rows (artifacts.py:546-548), using the corrected repeated k-fold t (baseline.py:13-23).",
+  "gap": "fit.comparisons is not read (frontend inventory gaps[50]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-19",
+  "name": "Post-training coaching (8 detectors)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/modeling.py:633-653, 723-747, 784-802, 1870-1881; turbotab/core/models/linear.py:50-80; turbotab/core/models/selection.py:12-29",
+  "v2_screen": "partly drawn",
+  "evidence": "Per-model concerns cover: worse or no better than the baseline, flagged calibration, convergence, and a near-singular matrix (modeling.py:633-653, 723-747; linear.py:50-80). These are drawn on the comparison rows. Selection optimism by BBC-CV (selection.py:12-29) and the precision sentence (modeling.py:784-802) are not drawn.",
+  "gap": "No train-test gap or CV-variance detector on screen. Heteroscedasticity is not checked under prediction.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-20",
+  "name": "'How to Choose Your Model' decision framework",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/selection.py:5-55, 352-500 (declared_result), 970-1000",
+  "v2_screen": "not drawn",
+  "evidence": "The choice among families is corrected by BBC-CV. The final family is declared before the seal opens. With no holdout, only a family declared before any score was seen may report its own score (selection.py:5-55). The interpretable model's cost is measured (selection.py:970-984).",
+  "gap": "selection, result and comparisons are not read (frontend inventory gaps[50]). There is no plain-language decision framework.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-21",
+  "name": "Poor-performance diagnostic analysis",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/baseline.py:25-31; turbotab/core/stages/modeling.py:723-747; turbotab/core/models/selection.py:953-964",
+  "v2_screen": "partly drawn",
+  "evidence": "A 'worse' or 'no better' verdict against the baseline becomes the model's first concern (baseline.py:25-31; modeling.py:723-747), drawn on the comparison rows. The Riley shortfall sentence (selection.py:961-962) is not read (frontend inventory gaps[22]).",
+  "gap": "No triage list (weak features, missingness, imbalance) and no pilot-study framing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-22",
+  "name": "Cohort runs (fit the same study per subgroup)",
+  "status": "missing",
+  "v2_engine_at": "none for prediction; declared effect modification under inference (turbotab/core/decisions.py:1318-1340)",
+  "v2_screen": "not drawn",
+  "evidence": "The whole study cannot be refit per subgroup. Subgroup performance on out-of-fold predictions exists (decision_curve.py:29-33), and so does declared effect modification under inference (MODELING_SEQUENCE.md:138). The modification results are not read (frontend inventory gaps[40]).",
+  "gap": "Cohort runs are absent and no ruling covers them, so this is an accidental loss.",
+  "cost_to_close": "L"
+ },
+ {
+  "id": "TC-23",
+  "name": "Per-model diagnostics tab: recipe and test metrics",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/stages/modeling.py:510; turbotab/core/models/artifacts.py:337, 348",
+  "v2_screen": "not drawn",
+  "evidence": "The server sends each family's recipe (modeling.py:510) and per-model holdout details, optimism, internal-external and nested-CV results (artifacts.py:337, 348; validation.py:172, 447, 659). The frontend reads none of them (frontend inventory gaps[51]).",
+  "gap": "No per-model dossier.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TC-24",
+  "name": "NN learning curves with narrative",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "n/a",
+  "evidence": "There is no neural-network family. V2_DEFINITION_OF_DONE.md:51 sets the shelf, and parity is non-binding (BLUEPRINT.md:57).",
+  "gap": "Goes with M-17.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "TC-25",
+  "name": "Predicted vs actual plot (regression)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/performance.py:33-37, 416-430",
+  "v2_screen": "not drawn",
+  "evidence": "For a numeric outcome, calibration is read on the outcome's scale: the intercept is the mean of y \u2212 \u0177, the slope is that of y on \u0177, and the curve is smoothed (performance.py:35-37). That is the content of a predicted-vs-actual plot.",
+  "gap": "No scatter is drawn, and the calibration curves are not read (frontend inventory gaps[52]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-26",
+  "name": "Residual plot with narrative (regression)",
+  "status": "missing",
+  "v2_engine_at": "inference only: turbotab/core/models/effects.py:32-44 (leverage, Cook's distance, Schoenfeld)",
+  "v2_screen": "not drawn",
+  "evidence": "Under prediction there is no residual-vs-predicted view. The out-of-fold predictions are kept (evaluation.py:109-127) but not plotted; residual plots are listed in INBOX.md:72. Inference diagnostics exist (effects.py:32-44) but are not drawn (frontend inventory gaps[43]).",
+  "gap": "Missing under prediction.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-27",
+  "name": "Residuals by target range (stratified bias)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "turbotab/core has no residual-by-range analysis. The out-of-fold predictions it would need already exist (evaluation.py:109-127).",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-28",
+  "name": "ROC and precision-recall curves",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/performance.py:188-241 (DeLong); turbotab/core/models/decision_curve.py:18-25",
+  "v2_screen": "not drawn",
+  "evidence": "v2 computes the AUC with DeLong's interval (performance.py:206-241), and sensitivity and specificity at a declared threshold or an in-fold Youden threshold (decision_curve.py:18-25). The AUC is labeled the 'customary headline' (metrics.py:92-93), but the Results draw only log loss (Results.tsx:96), and the headline is not read (frontend inventory gaps[50]).",
+  "gap": "No ROC or PR curve points are computed or drawn.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-29",
+  "name": "Confusion matrix with per-class narrative",
+  "status": "missing",
+  "v2_engine_at": "none (decision_curve.py:18-25 reports only sensitivity and specificity at a threshold)",
+  "v2_screen": "not drawn",
+  "evidence": "grep finds no confusion matrix in turbotab/core.",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-30",
+  "name": "Honest model-selection phrasing (holdout optimism)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/selection.py:1-55, 407-500; turbotab/core/export/tables.py:10-17; turbotab/core/export/methods.py:24-25, 35",
+  "v2_screen": "not drawn",
+  "evidence": "Selection optimism is estimated by BBC-CV rather than only stated (selection.py:12-29). Reporting the winner's own score as 'the result' is refused (selection.py:47-55). The export labels the declared result (tables.py:10-17), and the methods never say 'prespecified' (methods.py:24-25, 35).",
+  "gap": "Not drawn (frontend inventory gaps[50]), and the export cannot be reached (frontend inventory gaps[0]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "TC-31",
+  "name": "Global random seed control",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/decisions.py:404-407; turbotab/core/stages/explain.py:124",
+  "v2_screen": "not drawn",
+  "evidence": "SplitSpec.seed exists (decisions.py:406) and seeds the folds and the SHAP reseeds (stages/explain.py:124). The UI always sends seed 0 (SealQuestions.tsx:28-31). Every analysis is replayable from the record (replay.py:14-27).",
+  "gap": "No seed control. A new seed does not restart the comparison (selection.py:51-53).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "EX-01",
+  "name": "Explainability checklist (Essential / Recommended / Advanced)",
+  "status": "missing",
+  "v2_engine_at": "none; explanations are requested by set_explain (turbotab/core/decisions.py:1522-1534)",
+  "v2_screen": "not drawn",
+  "evidence": "There is no explainability checklist. The explain stage runs only once set_explain is recorded (stages/__init__.py:756-758), and no control emits it (frontend inventory gaps[37]). As a result, every SHAP, ALE and interaction result is unreachable from the UI today.",
+  "gap": "Missing. The TRIPOD+AI checklist exists in the engine (checklists.py:4-9).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "EX-02",
+  "name": "Feature-engineering reminder",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/explain.py:5-13",
+  "v2_screen": "not drawn",
+  "evidence": "Attributions are summed back to each adjusted input (a one-hot's indicators, a spline's basis) and named as the adjusted lane names them, for example protein_adj or kcal (explain.py:5-13).",
+  "gap": "Not drawn (frontend inventory gaps[33]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "EX-03",
+  "name": "Analysis configuration and SHAP method per model",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/explain.py:15-26, 786-793; turbotab/core/decisions.py:1519-1534",
+  "v2_screen": "not drawn",
+  "evidence": "SHAP is exact for the linear families and exact path-dependent TreeSHAP for boosted trees, and each family's method is named (explain.py:15-26, 791). The curve method and 0-20 reseeds are set in set_explain (decisions.py:1519-1534). KernelSHAP is not needed for v2's families.",
+  "gap": "No control (frontend inventory gaps[37]) and not drawn (frontend inventory gaps[33]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "EX-04",
+  "name": "Compute-aware explainability (run / confirm / refuse)",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/models/explain.py:88-106, 809-811; turbotab/core/stages/explain.py:129-133",
+  "v2_screen": "not drawn",
+  "evidence": "Explained rows are capped at 1,000 (a seeded sample), the beeswarm at 300, the per-row list at 200, and held cells at 2,000,000, so a 20,000-gene table explains 100 rows (explain.py:88-106). rows_basis states this (explain.py:809-811). The stage is a heavy job with progress and cancel (stages/explain.py:129-133).",
+  "gap": "There is no confirm-or-refuse dialogue, because exact SHAP is cheap. The caps are not drawn.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "EX-05",
+  "name": "Permutation importance plot (held-out set)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "grep finds no permutation importance in turbotab/core. Explanations are SHAP-only and use training rows, never held-out rows (stages/explain.py:3-6).",
+  "gap": "No model-agnostic or held-out importance. No ruling covers it.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "EX-06",
+  "name": "SHAP beeswarm summary plot",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/explain.py:28-33, 621-631",
+  "v2_screen": "not drawn",
+  "evidence": "Each input gets a BeeswarmInput with \u03c6, its value, its level and a percentile color (explain.py:621-631), plus stability across bootstrap reseeds (explain.py:28-33).",
+  "gap": "Not drawn (frontend inventory gaps[33]); set_explain has no control (frontend inventory gaps[37]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "EX-07",
+  "name": "Mean |SHAP| bar chart, rankings table and narrative",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/explain.py:610-618, 644-655",
+  "v2_screen": "not drawn",
+  "evidence": "Each input's mean |SHAP| comes with its rank, its ranks across reseeds and how often it stays in the top. The Spearman \u03c1 between refits is reported (explain.py:610-618, 644-655).",
+  "gap": "Not drawn.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "EX-08",
+  "name": "Multiclass SHAP class picker",
+  "status": "missing",
+  "v2_engine_at": "turbotab/core/stages/explain.py:27, 47-53",
+  "v2_screen": "not drawn",
+  "evidence": "SUPPORTED_TASKS is ('regression', 'binary'). A multiclass outcome gets a note that explanations are not built for it (stages/explain.py:27, 47-53).",
+  "gap": "No explanations for multiclass, ordinal or time-to-event outcomes.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "EX-09",
+  "name": "Individual prediction explanation ('waterfall')",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/explain.py:92, 633-641",
+  "v2_screen": "not drawn",
+  "evidence": "For 200 rows, Observations satisfy base + \u03a3\u03c6 + rest == prediction (explain.py:633-641). That is an exact additive decomposition, where Classic drew a bar approximation.",
+  "gap": "Not drawn.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "EX-10",
+  "name": "SHAP dependence plots (top 3 features)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/explain.py:49-55, 621-631, 698-709",
+  "v2_screen": "not drawn",
+  "evidence": "ALE curves are drawn per family on a shared quantile grid. Segments with fewer than 5 rows are masked, and a family that does not beat the baseline floor draws no curve (explain.py:49-55, 698-709). The beeswarm data hold \u03c6 against value, enough for a dependence scatter (explain.py:621-631).",
+  "gap": "Not drawn (frontend inventory gaps[34]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "EX-11",
+  "name": "Partial dependence plots (1D, top 4 features)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/decisions.py:1519, 1523; turbotab/core/models/explain.py:95, 698-709",
+  "v2_screen": "not drawn",
+  "evidence": "Partial dependence can be chosen in place of ALE (decisions.py:1519). It is computed for the top exposures (TOP_EXPOSURES=3, explain.py:95), with support masks (explain.py:698-709).",
+  "gap": "Not drawn, and there is no control to request it.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "EX-12",
+  "name": "2D partial dependence and an interaction-effect metric",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/explain.py:42-47, 96-99, 658-675",
+  "v2_screen": "not drawn",
+  "evidence": "Friedman-Popescu H\u00b2 is computed among the top 6 inputs. Pairs are ranked by RMS interaction size on the model's scale, with stability across reseeds and an 'additive' flag (explain.py:42-47, 96-99, 658-675).",
+  "gap": "No 2-D heatmap, and not drawn (frontend inventory gaps[35]).",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "EX-13",
+  "name": "Cross-model feature importance and consensus",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/explain.py:698-709, 795",
+  "v2_screen": "not drawn",
+  "evidence": "The inductive-bias curves put every family's effect on shared axes (explain.py:698-709; V2_DEFINITION_OF_DONE.md:58), and importance is computed per family (explain.py:795).",
+  "gap": "No cross-family consensus statement or star, and not drawn.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "EX-14",
+  "name": "Bland\u2013Altman agreement between two models (regression)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "grep finds no Bland-Altman analysis in turbotab/core.",
+  "gap": "Missing, and not named in the DoD.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "EX-15",
+  "name": "External validation on a second file",
+  "status": "missing",
+  "v2_engine_at": "substitute: turbotab/core/models/validation.py:44-50 (internal-external CV by cluster)",
+  "v2_screen": "not drawn",
+  "evidence": "No path scores the models on a second file. Internal-external validation by cluster, with a random-effects summary, is the in-data substitute (validation.py:44-50; performance.py:49-54); no control chooses it (frontend inventory gaps[15]).",
+  "gap": "External validation is absent and no ruling covers it, so this is an accidental loss.",
+  "cost_to_close": "L"
+ },
+ {
+  "id": "EX-16",
+  "name": "Subgroup analysis with forest plot",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/decision_curve.py:29-33; turbotab/core/stages/evaluation.py:308-317; turbotab/core/decisions.py:1620-1637",
+  "v2_screen": "not drawn",
+  "evidence": "Subgroup performance with intervals is computed on out-of-fold predictions. Levels are quoted verbatim, continuous columns are cut into thirds, and the fairness approach is recorded (decision_curve.py:29-33; decisions.py:1626-1627).",
+  "gap": "It needs set_intended_use, which has no control (frontend inventory gaps[68]), and the evaluation stage is never fetched (frontend inventory gaps[56]). No forest plot.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "SE-01",
+  "name": "Random-seed sensitivity (re-split, refit, reseed)",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/validation.py:10-12; turbotab/core/models/metrics.py:40-42; turbotab/core/models/artifacts.py:119-120; turbotab/core/models/explain.py:28-33",
+  "v2_screen": "not drawn",
+  "evidence": "Repeated k-fold (10\u00d75 by default, up to 50 repeats) reports the spread of the repeats' estimates (repeat_sd) without redrawing the seal (decisions.py:388-390; metrics.py:40-42; artifacts.py:119-120). SHAP importances are refit on bootstrap reseeds (explain.py:28-33). Classic's re-split counted as opening the lockbox.",
+  "gap": "The validation choice has no control (SealQuestions.tsx:33; frontend inventory gaps[15]), and repeat_sd is not read.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "SE-02",
+  "name": "Robustness verdict (coefficient of variation tiers)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/models/artifacts.py:119-120; turbotab/core/models/explain.py:644-655",
+  "v2_screen": "not drawn",
+  "evidence": "The spread across repeats and the Spearman \u03c1 across reseeds are both computed (artifacts.py:119-120; explain.py:644-655).",
+  "gap": "No CV% verdict tiers and no bar chart.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "SE-03",
+  "name": "Interpreting seed sensitivity (range thresholds and actions)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "v2 states standard errors and the spread across repeats (modeling.py:784-802; artifacts.py:119-120) but gives no threshold bands or remedies.",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "SE-04",
+  "name": "Feature dropout (one-at-a-time neutralization)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No leave-one-feature-out refit exists in turbotab/core. v2's sensitivity stage varies the exclusion rules, not the predictors (stages/sensitivity.py:1-11).",
+  "gap": "Missing, and no ruling covers it.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "SE-05",
+  "name": "Sensitivity results in the manuscript",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/export/methods.py:8-12; turbotab/core/stages/sensitivity.py:1-22, 87",
+  "v2_screen": "not drawn",
+  "evidence": "The methods section carries the cross-validation paragraph the analysis wrote (methods.py:8-12). Declared sensitivity analyses (exclusion rules) are computed (stages/sensitivity.py:1-22), but the bundle does not tabulate them yet (INBOX.md:242), and they have no control (frontend inventory gaps[47]).",
+  "gap": "No seed-stability table or figure, and the export cannot be reached.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "HT-01",
+  "name": "Assumption-checked choice between parametric and non-parametric tests",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "turbotab/core has no classical-test surface. Its uses of scipy tests are internal checks (batch.py:491-495, omics.py:776-804, exposure_form.py:370-376). v2's inference is model-based (V2_DEFINITION_OF_DONE.md:52), and no ruling names classical tests.",
+  "gap": "The whole Hypothesis Testing page is absent. Building a surface for it is the first cost.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "HT-02",
+  "name": "Correlation test (Pearson / Spearman / Kendall)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No user-facing correlation test exists in turbotab/core (see HT-01). Not in V2_DEFINITION_OF_DONE.md:52.",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "HT-03",
+  "name": "Two-sample comparison (t-test / Mann-Whitney U)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No user-facing two-sample test exists. omics.py:794 uses Mann-Whitney internally to check sample totals against the outcome.",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "HT-04",
+  "name": "Multi-group comparison (ANOVA / Kruskal-Wallis)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No user-facing multi-group test exists. omics.py:803 uses Kruskal-Wallis internally.",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "HT-05",
+  "name": "Categorical association (chi-square / Fisher's exact)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "No user-facing association test exists. chi2_contingency is used internally to relate batch to covariates (batch.py:491-495).",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "HT-06",
+  "name": "Normality test (Shapiro-Wilk)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "grep finds no Shapiro-Wilk in turbotab/core.",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "HT-07",
+  "name": "Paired comparison (paired t / Wilcoxon signed-rank)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "grep finds no paired test in turbotab/core.",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "HT-08",
+  "name": "Add a test result to Table 1",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "There are neither classical tests nor a Table 1 in turbotab/core. The only 'Table 1' is the citation in export/data/strobe_nut.json:6.",
+  "gap": "Depends on RE-06.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "HT-09",
+  "name": "Multiple-comparison warning and Benjamini\u2013Hochberg FDR",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/estimand.py:934-944; turbotab/core/models/featurewise.py:1-9; turbotab/core/plan_previews.py:573",
+  "v2_screen": "partly drawn",
+  "evidence": "BH q-values are computed across a declared exposure family and across feature-wise tests (estimand.py:934-944; featurewise.py:1-9). Multiplicity can be set only through set_estimand.multiplicity (frontend inventory gaps[46]).",
+  "gap": "There are no ad hoc tests to correct, and set_multiplicity has no control of its own.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "HT-10",
+  "name": "Test settings, scope notes and export",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "There is no hypothesis-test surface (see HT-01). Population-scope statements exist for model results instead, for example the survey score captions (modeling.py:891-903).",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "RE-01",
+  "name": "Manuscript setup",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "v2 has no title, author or model-inclusion inputs. The checklist never fills a title, a setting or an ethics approval by guessing (checklists.py:19-20).",
+  "gap": "Missing.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "RE-02",
+  "name": "LaTeX manuscript generation",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "The bundle contains no LaTeX (bundle.py:4-17). INBOX.md:242 defers LaTeX tables to v2.x. V2_DEFINITION_OF_DONE.md:76 requires only a methods section.",
+  "gap": "Missing and deferred to v2.x, but not by a BLUEPRINT or DoD ruling.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "RE-03",
+  "name": "PDF compilation and preview",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "Neither the bundle (bundle.py:4-17) nor the frontend has a PDF path; the frontend's only export is per-figure SVG/PNG (SaveMenu.tsx).",
+  "gap": "Missing.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "RE-04",
+  "name": "Markdown report (full analysis narrative)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/export/bundle.py:4-10; turbotab/core/export/tables.py:1-20",
+  "v2_screen": "not drawn",
+  "evidence": "The bundle has methods.md and methods.txt plus results/*.md tables: Table 2 under inference, the performance table under prediction (bundle.py:4-10; tables.py:3-17). There is no client export function (frontend inventory gaps[0]).",
+  "gap": "No full narrative report (abstract, executive summary, discussion), and it cannot be reached from the UI.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "RE-05",
+  "name": "TRIPOD checklist, auto-completed",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/export/checklists.py:1-25",
+  "v2_screen": "not drawn",
+  "evidence": "TRIPOD+AI's 52 items and STROBE-nut's are quoted verbatim from the sources. Each item is answered by a quoted sentence, stage, table or figure, or listed as owed or unanswered (checklists.py:4-25).",
+  "gap": "No client function or panel (frontend inventory gaps[1]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "RE-06",
+  "name": "Table 1 (stratified, automatic tests)",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "grep finds no Table 1 builder in turbotab/core. The only mention is STROBE-nut's citation (export/data/strobe_nut.json:6).",
+  "gap": "Missing, and not named in the DoD.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "RE-07",
+  "name": "Pre-export manuscript validation gate",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/export/gate.py:1-28; turbotab/core/export/methods.py:4-8",
+  "v2_screen": "not drawn",
+  "evidence": "The export refuses with HTTP 409, naming each missing item and a way forward, while anything it would report is unsettled (gate.py:1-24). The methods restate row counts on the rows as they stand, so the methods and the flow agree by construction (gate.py:26-28).",
+  "gap": "There is no text linting of the kind Classic's validator did, and no UI for the gate.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "RE-08",
+  "name": "Compiled Methods & Results draft with [AUTHOR REQUIRED] slots",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/export/methods.py:1-25; turbotab/core/export/checklists.py:11-20",
+  "v2_screen": "partly drawn",
+  "evidence": "The methods are compiled from the record and ordered by STROBE or TRIPOD+AI (methods.py:1-25). The author's remaining obligations appear as owed checklist items (checklists.py:11-20). The Record shows each decision's sentence (Record.tsx:761-805), but the methods endpoint is unused (frontend inventory gaps[3]).",
+  "gap": "No Results or Discussion prose, and no compiled draft on screen.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "RE-09",
+  "name": "Evidence map",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/export/bundle.py:7; turbotab/core/export/checklists.py:11-18",
+  "v2_screen": "not drawn",
+  "evidence": "methods.json pairs each sentence with its decision or the stage that wrote it (bundle.py:7). Checklist items quote where they are answered (checklists.py:11-18).",
+  "gap": "No UI.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "RE-10",
+  "name": "CONSORT-style sample flow diagram",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/export/figures.py; turbotab/core/export/bundle.py:10",
+  "v2_screen": "drawn",
+  "evidence": "figures/participant_flow.svg is in the bundle (bundle.py:10). The live row flow is drawn on the stage (LiveScenes.tsx:43-54; views/RowFlow.tsx) and can be saved as SVG or PNG (SaveMenu.tsx).",
+  "gap": "The journal SVG in the bundle cannot be reached, because there is no export UI.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "RE-11",
+  "name": "One-ZIP export bundle",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/export/bundle.py:1-40",
+  "v2_screen": "not drawn",
+  "evidence": "The ZIP holds the methods, the results tables, two figures, the checklist, the analysis plan, provenance.json, decisions.jsonl and a SHA-256 manifest, and it is byte-deterministic (bundle.py:4-21). BLUEPRINT.md:97-98 rules out fitted objects. The frontend has no export function (frontend inventory gaps[0]).",
+  "gap": "The ZIP has no models or pipelines (by ruling), no predictions and no data sample, and there is no download button.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "RE-12",
+  "name": "Reproducibility manifest and decision audit trail",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/export/bundle.py:15-17; turbotab/core/export/replay.py:1-27",
+  "v2_screen": "not drawn",
+  "evidence": "decisions.jsonl and provenance.json are hashed into the manifest. 'python -m turbotab.replay' re-verifies the input hashes, rebuilds the analysis from the log, and compares the model matrix byte for byte and every estimate to 1e-12 (replay.py:7-27).",
+  "gap": "No UI.",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "RE-13",
+  "name": "Sample-size claim and EPV sentence",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/selection.py:899-967; turbotab/core/models/sample_size.py; turbotab/core/models/linear.py:211-226",
+  "v2_screen": "not drawn",
+  "evidence": "Riley et al.'s criteria give the minimum, its binding criterion and a sentence, computed before the shelf is ranked (selection.py:899-967). Under inference the concerns use rows per parameter and events per parameter (linear.py:1-14, 211-215).",
+  "gap": "shelf.sample_size is not read (frontend inventory gaps[22]).",
+  "cost_to_close": "S"
+ },
+ {
+  "id": "RE-14",
+  "name": "Discussion draft",
+  "status": "missing",
+  "v2_engine_at": "none",
+  "v2_screen": "not drawn",
+  "evidence": "The bundle contains no discussion (bundle.py:4-17). BLUEPRINT.md:234's M5 row names 'discussion scaffolding', but V2_DEFINITION_OF_DONE.md:76-79 does not require it.",
+  "gap": "Missing.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TH-01",
+  "name": "Eight-chapter cited theory reference",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/teaching/__init__.py:1-14; turbotab/core/teaching/content.py",
+  "v2_screen": "drawn",
+  "evidence": "Reshaped by ruling: 'Deeper concept pages open in a drawer and are never required' (BLUEPRINT.md:19-20, 283-285). Each question carries a why? and a sourced, badged drawer (teaching/__init__.py:3-14), rendered by Question.tsx:180-203 and Record.tsx:1099-1100.",
+  "gap": "No standalone reference, and the drawers have no worked examples or self-checks. Coverage is per question rather than per chapter.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TH-02",
+  "name": "Interactive theory demos",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "turbotab/core/consequences.py (previews on the user's data)",
+  "v2_screen": "not drawn",
+  "evidence": "BLUEPRINT.md:266-268: 'The explanation of an option is its effect on the user's own data.' BLUEPRINT.md:286-287: 'Their data before theory... general theory lives in the drawer.' The transform player on real previews replaces simulated demos (BLUEPRINT.md:305-326).",
+  "gap": "The simulated slider demos are gone by design.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "TH-03",
+  "name": "Theory anchors: coaching cards deep-link to the theory",
+  "status": "equivalent",
+  "v2_engine_at": "turbotab/core/teaching/__init__.py:3-14",
+  "v2_screen": "drawn",
+  "evidence": "An in-place why?, a 'Who reads the answer' line, a concept drawer, and terms that define themselves on hover (BLUEPRINT.md:283-290; Question.tsx:180-203).",
+  "gap": "Anchored to questions rather than to coaching cards.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "XC-01",
+  "name": "Model-aware coaching companion (insight ledger)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/coach.py:1-30; turbotab/core/stages/findings.py:1-25; turbotab/core/models/base.py:64-73",
+  "v2_screen": "partly drawn",
+  "evidence": "Coach notes about the user's rows sit on previews (coach.py:10-19). Findings carry repairs and can be deferred, and deferred ones resurface (stages/findings.py:17-25; frontend inventory, covered list). The family cautions and concerns are on the shelf.",
+  "gap": "Data issues are not scoped to the chosen families, as Classic did with ISSUE_MODEL_RELEVANCE. For the 'intelligence understanding' the owner names, this is the main loss.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "XC-02",
+  "name": "Ledger to manuscript (manuscript_text, TRIPOD evidence, limitations)",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/export/methods.py:1-25; turbotab/core/export/checklists.py:11-20",
+  "v2_screen": "partly drawn",
+  "evidence": "Every decision is recorded as a publishable sentence (V2_DEFINITION_OF_DONE.md:31; Record.tsx:761-805), and the checklist lists owed items. Refusals are deliberately not recorded (BLUEPRINT.md:122-123).",
+  "gap": "Findings, caps and refusals do not flow into a limitations section, and there is no Discussion.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "XC-03",
+  "name": "Deterministic plot narratives",
+  "status": "partial",
+  "v2_engine_at": "turbotab/core/coach.py:3-8; turbotab/core/models/previews.py:58-67",
+  "v2_screen": "partly drawn",
+  "evidence": "Previews carry captions of at most 20 words and up to two coach notes anchored to the picture (BLUEPRINT.md:282; coach.py:3-8). Saved Results figures carry captions with their provenance (Results.tsx:153-163).",
+  "gap": "No narratives for residuals, SHAP and similar figures, because those figures are not drawn.",
+  "cost_to_close": "M"
+ },
+ {
+  "id": "XC-04",
+  "name": "Optional LLM 'Deep Analysis' per result",
+  "status": "dropped-by-ruling",
+  "v2_engine_at": "none",
+  "v2_screen": "n/a",
+  "evidence": "V2_DEFINITION_OF_DONE.md:96 lists 'an in-app AI assistant' as explicitly not in v2.",
+  "gap": "Deferred to v2.x.",
+  "cost_to_close": "L"
+ },
+ {
+  "id": "XC-05",
+  "name": "Lockbox status chip with a page-specific scope sentence",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/seal.py:641-666; turbotab/core/models/selection.py:31-36",
+  "v2_screen": "drawn",
+  "evidence": "A seal glyph shows the seal's basis. Every comparison says 'CV on N training rows; M held-out rows sealed' (model.ts:89-98). A held-out aside and a post-seal band follow later decisions (Results.tsx:140, 151). The opening is recorded once, and later changes are marked (SealQuestions.tsx:8-11).",
+  "gap": "None.",
+  "cost_to_close": "n/a"
+ },
+ {
+  "id": "LIB-01",
+  "name": "Capabilities in Classic's modules that no page exposes",
+  "status": "improved",
+  "v2_engine_at": "turbotab/core/models/decision_curve.py:1-39; turbotab/core/methods/levers.py:29-35; turbotab/core/models/validation.py:10-12",
+  "v2_screen": "not drawn",
+  "evidence": "v2's engine has the decision curve with an in-fold threshold, shrinkage updating (decision_curve.py:4-39), logistic recalibration (levers.py:29-35), repeated k-fold (validation.py:10-12) and rank stability across reseeds (explain.py:644-655). None is drawn (frontend inventory gaps[55], gaps[56]).",
+  "gap": "No Friedman test and no isotonic recalibration. Classic users never saw these capabilities, so leave this row out when judging what was lost.",
+  "cost_to_close": "M"
+ }
+]
