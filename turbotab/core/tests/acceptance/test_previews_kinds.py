@@ -458,7 +458,12 @@ def test_1_set_usual_intake_is_the_shrinkage_storyboard(svy):
 def test_3_set_usual_intake_each_step_is_the_stages_distribution(svy):
     """The single day's, the mean of days' and usual intake's 5th and 95th percentiles are the
     usual-intake stage's (its bootstrap aside), and the single day's are NumPy's weighted
-    percentiles of DR1TPROT by hand (the midpoint rule the stage states)."""
+    percentiles of DR1TPROT by hand (the midpoint rule the stage states).
+
+    Usual intake's are the stage's own fit to rounding (10⁻¹²): the stage fits the point estimate
+    alone, its replicates apart, so the preview, which fits no replicate, runs the same
+    computation. Fit in one stack with the replicates, the point estimate had moved 1.4e-7 on
+    Linux CI."""
     from turbotab.core.tests.acceptance import test_nci_usual_intake as T
 
     _, ctx = svy.preview("usual", USUAL)
@@ -469,7 +474,7 @@ def test_3_set_usual_intake_each_step_is_the_stages_distribution(svy):
     assert got["mean_of_days"] == pytest.approx((a["mean_of_days"]["5"], a["mean_of_days"]["95"]),
                                                 rel=1e-12)
     assert got["usual"] == pytest.approx((a["percentiles"]["5"]["value"],
-                                          a["percentiles"]["95"]["value"]), rel=1e-9)
+                                          a["percentiles"]["95"]["value"]), rel=1e-12)
     frame = T.nhanes_table(seed=21, n=900)
     v, w = frame["DR1TPROT"].to_numpy(float), frame["WTDRD1"].to_numpy(float)
     order = np.argsort(v)

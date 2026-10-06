@@ -475,13 +475,31 @@ def _numbers(a, b, path=()):
     return []
 
 
-def _worst_first(diffs, tolerance: float, shown: int = 12) -> str:
-    """The differences above ``tolerance``, the worst first, one per line, with their path."""
+def _worst_first(diffs, tolerance: float, shown: int = 10) -> str:
+    """The differences above ``tolerance``, the worst first, one per line, with their path; then
+    the worst of each config, family and part (absolute, and relative to the reference)."""
     over = sorted((d for d in diffs if d[0] > tolerance), key=lambda d: -d[0])
     lines = [f"{len(over)} numbers differ by more than {tolerance:g}; the worst first:"]
     lines += [f"{diff:.3g} at {'/'.join(map(str, path))}: reference {ref!r}, now {got!r}"
               for diff, path, ref, got in over[:shown]]
+    worst: dict[str, tuple[float, float]] = {}
+    for diff, path, ref, _ in diffs:
+        key = "/".join(map(str, path[:3]))
+        rel = diff / abs(ref) if ref else (0.0 if diff == 0 else float("inf"))
+        a, r = worst.get(key, (0.0, 0.0))
+        worst[key] = (max(a, diff), max(r, rel))
+    lines.append("worst by part (abs, rel): " + "; ".join(f"{k} {a:.2g} {r:.2g}"
+                                                          for k, (a, r) in worst.items()))
     return "\n".join(lines)
+
+
+def _by_family(results: dict) -> dict:
+    """One config's results as family → its parts: the sealed held-out scores (records of family,
+    metric and value) moved under their family as ``sealed``, metric → value."""
+    out = {f: dict(v) for f, v in results.items() if f != "__sealed__"}
+    for r in results.get("__sealed__", []):
+        out.setdefault(r["family"], {}).setdefault("sealed", {})[r["metric"]] = r["value"]
+    return out
 
 
 @pytest.fixture(scope="module")
@@ -528,7 +546,8 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
             assert set(got["cv"]) - set(reference[name][family]["cv"]) == added
             trimmed[name][family] = {**got, "cv": {k: v for k, v in got["cv"].items()
                                                    if k not in added}}
-    diffs = [d for name in reference for d in _numbers(reference[name], trimmed[name], (name,))]
+    diffs = [d for name in reference
+             for d in _numbers(_by_family(reference[name]), _by_family(trimmed[name]), (name,))]
     assert max(d[0] for d in diffs) <= 1e-9, _worst_first(diffs, 1e-9)
 
 

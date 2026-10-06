@@ -1101,6 +1101,9 @@ class _Work:
     A_all: pd.DataFrame
     A: pd.DataFrame
     phi: pd.DataFrame  # grouped, the explained rows × inputs
+    # Mean |SHAP| per input, largest first, ties in the inputs' order: the one ranking that both the
+    # importance table and the curves' order read.
+    ranked: pd.Series
     base: float
     floor: Floor
     refits: list[tuple[Anatomy, pd.DataFrame]]  # each refit and its inputs for the explained rows
@@ -1188,7 +1191,9 @@ def _work(fam: FamilyFit, s: Setting, sample: np.ndarray) -> _Work | FamilyExpla
                                  reason=f"{fam.label}: explanations are built for one output "
                                         f"(a numeric or yes/no outcome).")
     phi, base = found
-    return _Work(fam=fam, anat=anat, A_all=A_all, A=A, phi=grouped(phi, anat.group), base=base,
+    phi = grouped(phi, anat.group)
+    return _Work(fam=fam, anat=anat, A_all=A_all, A=A, phi=phi,
+                 ranked=importance(phi).sort_values(ascending=False, kind="stable"), base=base,
                  floor=floor_of(fam, s), refits=[])
 
 
@@ -1307,8 +1312,8 @@ def _exposure_inputs(s: Setting, works: Sequence[_Work]) -> tuple[list[str], lis
                                        sign * w.fam.score if w.fam.score is not None else 0.0))
     pool = [input_of(raw, sources) for raw in (s.candidates or list(s.X.columns))]
     pool = [a for a in dict.fromkeys(pool) if a is not None and pd.api.types.is_numeric_dtype(A[a])]
-    imp = importance(best.phi)
-    pool.sort(key=lambda a: -float(imp.get(a, 0.0)))
+    place = {a: k for k, a in enumerate(best.ranked.index)}  # its importance table's ranks
+    pool.sort(key=lambda a: place.get(a, len(place)))
     return pool[:TOP_EXPOSURES], notes
 
 
@@ -1362,7 +1367,7 @@ def explain(families: Sequence[FamilyFit], s: Setting, refit: Refit,
             explained.append(w)
             continue
         roles = _roles(s, w.anat.sources)
-        main = importance(w.phi).sort_values(ascending=False, kind="stable")
+        main = w.ranked
         def refit_progress(r: int, _i: int = i, _label: str = fam.label) -> None:
             say(0.05 + 0.85 * (_i + 0.1 + 0.5 * (r - 1) / max(1, s.reseeds)) / len(families),
                 f"{_label}: refit {r} of {s.reseeds}, for stability")

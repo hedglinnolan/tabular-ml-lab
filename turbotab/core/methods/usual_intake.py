@@ -1107,18 +1107,27 @@ def usual_intake(rec: Recalls, model: Model, *, weights: np.ndarray | None = Non
         amount = np.where(rec.amount > 0, rec.amount, floor)
         zeros_replaced = int(np.sum((rec.amount <= 0) & in_analysis))
         X, names = rec.design()
-        W = base[None, :]
-        if replication is not None:
-            W = np.vstack([W, replication.factors * base[None, :]])
         if progress:
             progress(0.1, f"Fitting the amount-only model{' and its replicates' if replication else ''}")
         keep = in_analysis
-        fit = fit_amount(amount[keep], rec.person[keep], X[keep], n, W, names)
-        dists = amount_distribution(fit.beta, fit.sigma2_u, fit.sigma2_e, fit.lam, names, floor,
-                                    cutoff, percentiles)
-        point, reps = dists[0], list(dists[1:])
-        bad = ~(np.isfinite(fit.loglik[1:]) & np.isfinite(fit.sigma2_e[1:]))
-        reps = [None if b else r for r, b in zip(reps, bad)]
+        # The analysis' own weighting is fit alone, the replicates in a stack of their own. The
+        # lock-step search reads every weighting's likelihood through matrix products whose
+        # summation order (the BLAS's) depends on how many weightings are stacked, and near the
+        # maximum that rounding moves λ and the variances: on Linux CI the 5th and 95th percentiles
+        # moved by 1.4e-7 (relative) between a fit with its replicates beside it and one without.
+        # Alone, the point estimate is one computation whether replicates follow it (the stage) or
+        # not (the consequence preview, ``method_previews``).
+        fit = fit_amount(amount[keep], rec.person[keep], X[keep], n, base[None, :], names)
+        point = amount_distribution(fit.beta, fit.sigma2_u, fit.sigma2_e, fit.lam, names, floor,
+                                    cutoff, percentiles)[0]
+        reps = []
+        if replication is not None:
+            again = fit_amount(amount[keep], rec.person[keep], X[keep], n,
+                               replication.factors * base[None, :], names)
+            dists = amount_distribution(again.beta, again.sigma2_u, again.sigma2_e, again.lam,
+                                        names, floor, cutoff, percentiles)
+            bad = ~(np.isfinite(again.loglik) & np.isfinite(again.sigma2_e))
+            reps = [None if b else r for r, b in zip(dists, bad)]
         lam = float(fit.lam[0])
         params = {"lambda": lam, "sigma2_u": float(fit.sigma2_u[0]),
                   "sigma2_e": float(fit.sigma2_e[0]),

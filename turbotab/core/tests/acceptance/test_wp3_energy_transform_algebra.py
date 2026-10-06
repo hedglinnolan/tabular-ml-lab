@@ -232,12 +232,22 @@ def _three_levels(seed: int = 1) -> pd.DataFrame:
 
 def _independent_checks(adj: np.ndarray, energy: np.ndarray, level: pd.Series) -> dict:
     """r(N_adj, E) pooled and per level (scipy), r with each level's indicator (scipy), and the
-    correlation ratio with the strata column as sqrt(R²) of ``adj ~ C(level)`` (statsmodels)."""
+    correlation ratio with the strata column as sqrt(R²) of ``adj ~ C(level)`` (statsmodels), R²
+    read as the explained share of the sum of squares, Σ(ŷ − ȳ)² / Σ(y − ȳ)², from the fit's
+    fitted values.
+
+    Not ``rsquared``: statsmodels forms it as 1 − SSR/TSS, and where η is zero by construction (the
+    linear residual method leaves every level's mean at zero) SSR equals TSS to rounding, so that
+    difference is a rounding residue whose square root is reported as η: R² = 0 on macOS but
+    ε = 2⁻⁵² on Linux CI (ubuntu-latest, Python 3.13), whose root 2⁻²⁶ = 1.5e-8 stood against the
+    app's 1.7e-15. The explained sum of squares adds the squares of the small level means
+    themselves, so its root stays at the values' rounding (2.3e-14 here; the 10⁻⁹ check stands)."""
     labels = level.fillna("(blank)").astype(str).to_numpy()
     ok = np.isfinite(adj) & np.isfinite(energy)
     adj, energy, labels = adj[ok], energy[ok], labels[ok]
     dummies = pd.get_dummies(labels, drop_first=True, dtype=float)
-    eta = float(np.sqrt(max(sm.OLS(adj, sm.add_constant(dummies)).fit().rsquared, 0.0)))
+    fitted = sm.OLS(adj, sm.add_constant(dummies)).fit().fittedvalues
+    eta = float(np.sqrt(np.sum((fitted - adj.mean()) ** 2) / np.sum((adj - adj.mean()) ** 2)))
     per = {}
     for name in sorted(set(labels)):
         inside = labels == name

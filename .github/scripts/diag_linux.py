@@ -1,8 +1,12 @@
 """Temporary (ci/linux-numerics only): platform diagnostics printed as annotations."""
+import platform
+import sys
 import tempfile
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # the checkout, for turbotab
 
 
 def esc(text: str) -> str:
@@ -43,5 +47,24 @@ def explain_regression() -> None:
     say("diag explain regression", lines)
 
 
+def machine() -> None:
+    import scipy.linalg  # noqa: F401 - loads the BLAS threadpool_info reports
+    import sklearn.linear_model  # noqa: F401 - loads the OpenMP runtime
+    from threadpoolctl import threadpool_info
+
+    lines = [f"{platform.system()} {platform.machine()} {platform.processor()}"]
+    try:
+        cpu = [l for l in Path("/proc/cpuinfo").read_text().splitlines() if l.startswith("model name")]
+        lines.append(cpu[0] if cpu else "no model name")
+    except OSError:
+        pass
+    for pool in threadpool_info():
+        lines.append(" ".join(f"{k}={pool.get(k)}" for k in
+                              ("user_api", "internal_api", "version", "architecture", "num_threads",
+                               "filepath")))
+    say("diag machine", lines)
+
+
 if __name__ == "__main__":
+    machine()
     explain_regression()

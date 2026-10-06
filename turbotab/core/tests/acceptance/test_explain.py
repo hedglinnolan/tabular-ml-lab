@@ -792,16 +792,27 @@ def test_3e_the_floor_reads_the_fits_verdict_against_the_baseline(regression):
 
 def test_3f_the_top_exposures_are_the_exposures_the_best_family_leans_on(regression):
     """Under prediction the curves are of the exposures (by role), on their final scale, ordered
-    by mean |SHAP| in the family with the best cross-validated score."""
+    by mean |SHAP| in the family with the best cross-validated score (ties by its importance
+    table's rank).
+
+    The best score is the lowest MSE (MS6's regression primary; lower is better). Taking the
+    highest picked the worst passing family, boosted trees, whose top three matched the elastic
+    net's on macOS by chance (fat_total_adj 0.438 and carb_adj 0.411 in the elastic net) and not
+    on Linux CI."""
+    from turbotab.core.models.metrics import higher_is_better
+
     fit = regression.out["fit"].data
+    primary = fit["primary_metric"]
+    sign = 1.0 if higher_is_better(primary) else -1.0
     passing = [m for m in fit["models"] if m["versus_baseline"]["verdict"] == "better"]
-    best = max(passing, key=lambda m: m["cv"][fit["primary_metric"]]["estimate"])
+    best = max(passing, key=lambda m: sign * m["cv"][primary]["estimate"])
     family = regression.family(best["family"])
     weights = {i["input"]: i["mean_abs"] for i in family["importance"]}
+    rank = {i["input"]: i["rank"] for i in family["importance"]}
     shown = [c["input"] for c in regression.art["curves"]]
     exposures = [f"{n}_adj" if n in ("protein", "carb", "fat_total") else n for n in mf.NUTRIENTS]
-    want = sorted(exposures, key=lambda a: -weights.get(a, 0.0))[:E.TOP_EXPOSURES]
-    assert shown == want
+    want = sorted(exposures, key=lambda a: (-weights.get(a, 0.0), rank.get(a, math.inf)))
+    assert shown == want[:E.TOP_EXPOSURES]
     assert E.SCALE_SAYS in regression.art["relations"]
 
 
