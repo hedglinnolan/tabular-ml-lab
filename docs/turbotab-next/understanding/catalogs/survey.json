@@ -1,0 +1,2350 @@
+{
+ "lens": "survey",
+ "threads": [
+  {
+   "id": "survey-reverse-keying",
+   "lens": "survey",
+   "title": "An item runs against its scale. The instrument's key decides, and the key is checked again after it is declared",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. It runs on blocks (detectors/scales.py:222) after the codes are removed (survey-sentinel-codes). Before any key is declared, it shows each item's corrected item\u2013rest correlation (polyserial preferred; Pearson labelled as attenuated toward zero) and its general-factor loading, in questionnaire order. Nothing is pre-selected. No reversal is proposed. There is no '\u03c9 if flipped' preview and no pass or fail at 0.30. A negative value has four explanations, and the values cannot tell them apart:\n- the item needs reversing;\n- it was already reversed upstream (a REDCap calculated field or a codebook note). An '_r' suffix is ambiguous, because it is also a retest suffix (core/scales.py:61);\n- it loads on a wording factor (survey-wording-method-factor);\n- it does not belong.\n\nAfter the key is declared, the same values and \u03b1 and \u03c9-total are shown under the key, as a consequence and never as evidence. An item still negative under the key means the key was applied twice or the item does not belong (stages/scales.py:309). Measured on survey_instrument.csv:\n- the 8 keyed items are raw \u22120.357 to \u22120.647;\n- under the codebook's key, \u03b1 goes from 0.796 to 0.942 and \u03c9-total is 0.943 (engine omega(), complete rows);\n- the smallest keyed item\u2013rest r is 0.38 on complete cases (0.35 pairwise).\n\nWhen the scale is the outcome, the same view counts as outcome-alone.",
+   "meaning": "The instrument's published key: which items are reverse-worded, and whether the export already reversed them. The codebook's value tables settle it (\u00a714.2). A negative correlation only says which items to look up.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "set_scales scoring: reverse each keyed item as low + high \u2212 x",
+     "inference": "Row-local, before the energy step.",
+     "prediction": "Same, row-local. The rule is outcome-blind."
+    },
+    {
+     "stage": "representation",
+     "decision": "reliability on the keyed items",
+     "inference": "\u03c9-total on the keyed items, with \u03b1 labelled customary. A wrong key lowers reliability, and regression calibration then over-corrects.",
+     "prediction": "Reliability reported, no correction."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "scales stage concern",
+     "inference": "A negative general loading after the key raises a concern: the key was applied twice, or the item does not belong.",
+     "prediction": "Same concern, descriptive."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect units and sign",
+     "inference": "The effect is read per point of the scale, in the keyed direction.",
+     "prediction": "SHAP and ALE signs for an unkeyed item read backwards, so the explanation names the key it used."
+    },
+    {
+     "stage": "reporting",
+     "decision": "decision_sentence (COSMIN Box 4; CROSS 5b)",
+     "inference": "Names the reversed items and the source of the key.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A raw sum mixes the construct with its opposite: reliability collapses and the coefficient shrinks toward zero. The opposite failure is an auto-reverser driven by correlation or by a rise in \u03b1. It fits a circular key to these data: it flips items the export had already reversed, inverts one of two opposing subscales, or 'fixes' an item that does not belong. The fixture's spec says a proposed reversal must not surface.",
+   "magic": "8 of your 40 items correlate \u22120.36 to \u22120.65 with the rest of the scale, and the codebook words them the other way ('I feel calm'). You enter the key. Each of the 8 turns positive, \u03b1 rises from 0.80 to 0.94, and \u03c9-total under the key is 0.94. The app showed you the negative correlations but never offered to flip one, even here where a guess would have been right, because the same pattern appears when an export has already reversed them.",
+   "layout": "Before the key: a table in questionnaire order with item\u2013rest r beside the codebook's key column, nothing pre-selected. Declaring the key is the option. Its preview is a Strip of the 8 changed items ranked by raw \u2192 keyed change, the first focused, with \u03b1 and \u03c9-total before \u2192 after.",
+   "sentence": "Items item_05, item_11, item_17, item_23, item_29, item_34, item_38 and item_40 were reverse-scored (6 \u2212 x) according to the instrument's published key before summing; in this sample \u03b1 was 0.94 and \u03c9-total 0.94.",
+   "sources": [
+    "turbotab/core/detectors/scales.py:222 blocks",
+    "turbotab/core/methods/scales.py:11-16 (never inferred), :157 reverse_code, :162 keyed_items, :431 omega",
+    "turbotab/core/stages/scales.py:272-320 (negative loading concern at :309)",
+    "turbotab/core/scales.py:61 RETEST_SUFFIXES ('_r' collision), :82 CONTRACT, :871-884 decision_sentence",
+    "turbotab/packs.py:5656-5659 question::state_reverse_coding",
+    "turbotab/survey.py:311 _corrected_item_rest (legacy audit)",
+    "turbotab/sample_data/survey_instrument.md:16-17",
+    "turbotab/sample_data/survey_sentinels.md (must NOT surface a proposed reversal or a 0.30 pass/fail)",
+    "CLINICAL_SURVEY_PACK \u00a7B1.2",
+    "McNeish D. Psychol Methods 2018;23:412",
+    "Revelle W, Zinbarg RE. Psychometrika 2009;74:145",
+    "Weijters B, Baumgartner H. J Mark Res 2012;49:737",
+    "Mokkink LB et al. Qual Life Res 2018;27:1171 (COSMIN Box 4)",
+    "Sharma A et al. J Gen Intern Med 2021;36:3179 (CROSS 5b)"
+   ],
+   "engine": "partial. Keyed scoring (turbotab/core/methods/scales.py:157, :162) and the negative-loading concern under the key (turbotab/core/stages/scales.py:309) exist. The item\u2013rest audit before scoring exists only in legacy turbotab/survey.py:311. The \u03b1/\u03c9 preview under the declared key is new. By design, nothing is reversed on a guess.",
+   "tier": "asked: one field of the scale-declaration form (instrument, key, direction, construct type); stated when the codebook's value tables give the key",
+   "rank_signal": "count and size of the negative raw item\u2013rest r (fixture: 8 items, \u22120.36 to \u22120.65)",
+   "critic_notes": "Fix applied: the magic said '\u03c9 rises 0.80 \u2192 0.94', but 0.80 is \u03b1. Measured in session with the engine's omega(): raw \u03b1 0.796, keyed \u03b1 0.942, keyed \u03c9-total 0.943 (the raw \u03c9-total is 0.843 and is not the reliability of a sum that mixes directions, so it is not shown). The original sentence's '\u03c9-total 0.94' was therefore right. Fix applied: the \u03b1/\u03c9 preview appears only after the key is declared, and the pre-key table is in questionnaire order with nothing pre-selected, so it cannot act as a proposed reversal. '_r' is noted as colliding with RETEST_SUFFIXES."
+  },
+  {
+   "id": "survey-sentinel-codes",
+   "lens": "survey",
+   "title": "A 9 on a 1\u20135 item means 'refused', not strong agreement: values outside the response run are codes",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. The block's response run is the longest run of consecutive whole numbers in the union of every item's values, never read item by item (detectors/scales.py:317). A value separated from the run by a gap of at least 2 is a code when it is conventional (7/8/9, 77/88/99, 98, 999, \u22121/\u22128/\u22129) or lies at least 3 steps past the run. Flagged items are ranked by the shift in the item mean between counting codes as answers and excluding them. The test rejects a scale that really is wider: a 0\u201310 rating has no gap. Single NHANES-style columns (7/9, 77/99, 7777/9999) go through the per-column code reader (detectors/codes.py:59, :192). Censoring codes belong to survey-top-codes. Measured on survey_sentinels.csv:\n- 102 codes in 5 items;\n- item_14 has 33 nines (11.0%), and its mean is 3.70 with them and 3.05 without (shift 0.65);\n- item_05, a reversed item, has item\u2013rest r of \u22120.37 with its 9s and \u22120.58 without.",
+   "meaning": "What each code means, from the codebook: refused, don't know, not applicable, or a real answer on a wider scale. The app never recodes on its own. The kind of missing is recorded.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "apply_repair sentinel_codes: each confirmed code becomes missing, with its kind",
+     "inference": "A row-local repair before the seal. The recode count is recorded.",
+     "prediction": "Same. The deployed pipeline applies the same code table to new rows. A 'refused' indicator beside the item is a candidate the resampling tests, because a refusal can carry signal."
+    },
+    {
+     "stage": "representation",
+     "decision": "set_scales",
+     "inference": "Scoring is refused while any item holds a value outside the response scale (scales.py:443). The reverse-keying audit runs after the recode.",
+     "prediction": "Same refusal."
+    },
+    {
+     "stage": "representation",
+     "decision": "route each kind of missing",
+     "inference": "Refused and don't-know answers become item nonresponse, read under survey-dont-know-meaning. Not-applicable answers are structural blanks, never imputed (survey-skip-pattern-blanks).",
+     "prediction": "Same routing, imputed in-fold."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence and per-item counts",
+     "inference": "Names the codes and the number of values recoded.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A 'refused' read as the top answer pushes refusers' scores up and bends item correlations; on a reversed item it turns the correlation the wrong way. A tree can also learn 'refused item 14' as a predictor of the outcome without anyone knowing that is what it learned.",
+   "magic": "Item_14's 33 nines (11%) sit apart from the 1\u20135 answers, with a gap between them. Read as answers, they put item_14's mean at 3.70; as codes, it is 3.05. On item_05, a reversed item, the same 9s bend its correlation with the rest of the scale from \u22120.58 to \u22120.37. One flip shows both and brings those 33 values back into the scale. The canvas states that nothing has been recoded and that the codebook decides.",
+   "layout": "Strip: items with codes, ranked by mean shift (before \u2192 after). The first is focused, with its code bar set apart by the gap.",
+   "sentence": "Values outside the instrument's 1\u20135 response scale (7 = not applicable, 8 = don't know, 9 = refused, per the codebook; 102 values in 5 items) were set to missing before scoring.",
+   "sources": [
+    "turbotab/core/detectors/scales.py:158 is_code, :222, :317 sentinel_finding, :412",
+    "turbotab/core/detectors/codes.py:59 NHANES_CODES, :192",
+    "turbotab/core/scales.py:443 _answers_fit_the_response_scale",
+    "turbotab/core/repairs.py:349, :1131",
+    "turbotab/sample_data/survey_sentinels.md",
+    "CLINICAL_SURVEY_PACK \u00a7B1.1 ('never auto-recode')",
+    "DeVellis RF. Scale Development, 4th ed. 2017",
+    "Groves RM et al. Survey Methodology, 2nd ed. Wiley 2009",
+    "NHANES codebooks (7/9, 77/99, 7777/9999 conventions)"
+   ],
+   "engine": "exists: fires on survey_sentinels.csv (turbotab/core/detectors/scales.py:317; turbotab/core/scales.py:443). The refusal indicator as a prediction candidate is new.",
+   "tier": "asked, as one codes question per code table (the meaning of each code, shared with survey-dont-know-meaning and survey-top-codes); stated when a loaded codebook value table labels the codes",
+   "rank_signal": "|mean shift| \u00d7 share of the item that is coded (fixture: item_14, 0.65 \u00d7 11%)",
+   "critic_notes": "Fix applied: it is the 33 item values that come back into range, not 33 scale scores. A refusal indicator was added as a prediction candidate. Measured in session: item_14's mean is 3.70 with codes and 3.05 without; item_22 shifts 0.40, item_05 0.36, item_33 0.25, item_09 0.16. The per-code meaning is merged into one codes question per code table."
+  },
+  {
+   "id": "survey-dont-know-meaning",
+   "lens": "survey",
+   "title": "What a 'don't know' means depends on the question, not on who says it: a non-answer, a position, or a wrong answer",
+   "looks_at": "measurement",
+   "detector": "Runs after the codes are recoded. For each item it measures:\n- the don't-know and refused rates;\n- whether they concentrate in knowledge items or sensitive items (income, alcohol, weight);\n- how well a 'said don't know' indicator is predicted from the predictors only (age, sex, education, mode), reported as a cross-validated AUC with its CI. The outcome is never read.\n\nA patterned rate rejects MCAR only. It does not reject MAR given those covariates, and it says nothing about whether 'don't know' is a substantive answer, which the item's content decides. Its job is to name the covariates the imputation model must condition on. Fixture survey_sentinels.csv is a negative control, measured in session: item_22's 'don't know' rate is 7.5% (high school), 7.1% (some college), 6.8% (bachelor's) and 10.8% (graduate), so it is not concentrated among the less educated.",
+   "meaning": "Per item, from its content: 'don't know' is a non-answer (missing, imputed conditional on the covariates that predict it), a substantive position (its own category), or, on a knowledge item, a wrong answer. Refusals on sensitive items are flagged as possibly not missing at random, which no test on the data settles.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "don't-know as missing, as its own level, or as a wrong answer",
+     "inference": "Chosen from the item's content before the lock. As missing, it goes to item-level MI, with the covariates that predict don't-know in the imputation model.",
+     "prediction": "Missing and own-level codings are offered as candidate representations, built in-fold, and the resampling picks between them."
+    },
+    {
+     "stage": "opening",
+     "decision": "complete-case rows",
+     "inference": "Complete cases are flagged: when don't-know is patterned, dropping those respondents changes who the sample is.",
+     "prediction": "Rows are kept, because deployment will see don't-knows too."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity to the coding and to MNAR",
+     "inference": "Declared sensitivity analyses: the other coding, and a delta adjustment for refusals on sensitive items with its \u03b4 range declared before the lock.",
+     "prediction": "The codings are compared inside the resampling."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the coding, why, and the sensitivity result.",
+     "prediction": "States the coding."
+    }
+   ],
+   "failure_prevented": "Median-filling or listwise-deleting don't-knows as if they were random. Imputing a knowledge item's 'don't know' as if the person had known the answer. Treating refused income or alcohol answers as MAR when people with high values refuse more.",
+   "magic": "item_22's 24 'don't know' answers (8%) are spread evenly across education, from 6.8% to 10.8%, so imputing them from age, sex and education is defensible. What the data cannot say is whether 'don't know' is an answer here. If item_22 asks how many servings of fruit a day are recommended, a 'don't know' is a wrong answer, and imputing it would give credit for knowledge nobody showed.",
+   "layout": "Angles: (1) who says 'don't know' (rate by covariate); (2) what each coding does to the item and the score.",
+   "sentence": "'Don't know' responses to item_22 and item_33 (8% and 5%) were treated as item nonresponse and multiply imputed conditional on age, sex and education; a sensitivity analysis coding them as a separate category is reported.",
+   "sources": [
+    "turbotab/core/detectors/scales.py:317 (dont_know_is_not_missing, DISPUTED)",
+    "turbotab/core/decisions.py:694 (missing_category option)",
+    "turbotab/sample_data/survey_sentinels.md (item_22, item_33: code 8)",
+    "CLINICAL_SURVEY_PACK \u00a7B1.1",
+    "Krosnick JA et al. Public Opin Q 2002;66:371",
+    "Little RJA, Rubin DB. Statistical Analysis with Missing Data, 3rd ed. 2019",
+    "Groves RM et al. Survey Methodology 2009"
+   ],
+   "engine": "partial. The claim is in turbotab/core/detectors/scales.py:317, and the missing_category option in turbotab/core/decisions.py:694. There is no per-code meaning question, no per-item content field and no patterning detector.",
+   "tier": "asked inside the codes question (one meaning per code); a per-item content question only for items the codebook or the user marks as knowledge or sensitive",
+   "rank_signal": "don't-know share per item \u00d7 the AUC of the predicted 'don't know'",
+   "critic_notes": "Fixes applied. (1) A rate patterned on observed covariates now rejects MCAR, not 'ignorable nonresponse'; it feeds the imputation model, and is no argument for a separate category. (2) Content, not who answers, decides substantive versus missing; the sentence was rewritten. (3) The magic's '3\u00d7 among those without a degree' was false on its own fixture; it was replaced by the measured rates (6.8\u201310.8%, highest among graduates) and the fixture used as a negative control. A \u03b4 range declared in advance was added to the MNAR sensitivity."
+  },
+  {
+   "id": "survey-top-codes",
+   "lens": "survey",
+   "title": "A 5555 means 'more than 21', and an age of 80 means '80 and over': censoring codes, not amounts",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. Two signals:\n- repdigit values (5\u20265, 6\u20266) isolated above the column's support by a gap. Without a codebook these are read only in an NHANES-like table (detectors/codes.py _nhanes_like), so a genuine 5555 in a kJ or step-count column is never flagged;\n- a spike at the column's maximum that holds far more than its neighbour (RIDAGEYR = 80; INDFMPIR = 5.00).\n\nThe codebook's value table settles which is which (\u00a714.2; codebook.py:748); otherwise the user is asked. Alternatives to reject:\n- a genuine extreme (no gap, no spike);\n- a missing code such as 7777/9999 (survey-sentinel-codes);\n- a heap at a natural bounded maximum, such as 7 days a week or 100% (detectors/codes.py:29). The spike signal fires on these too, so a spike at a natural bound is always asked, never stated.",
+   "meaning": "Top-coded (censored at a bound, with its direction: '22 or more', '80 and over'), a 'less than' bottom code, or missing.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "repair: set to the bound, with a censoring flag",
+     "inference": "Never averaged as a value. 5555 ('more than 21') becomes 22, the smallest value it can stand for, flagged as right-censored (\u2265 22). The effect above the bound is stated as not estimable.",
+     "prediction": "The same repair, row-local, fixed before folds. The censoring flag is a candidate feature."
+    },
+    {
+     "stage": "representation",
+     "decision": "form",
+     "inference": "No spline knot is placed inside the spike, and a censoring indicator sits beside the variable. Declared before the lock.",
+     "prediction": "Same, with the indicator as a candidate."
+    },
+    {
+     "stage": "explanation",
+     "decision": "curve above the bound",
+     "inference": "An effect curve stops at the bound and is labelled top-coded.",
+     "prediction": "The ALE's last bin is labelled 'everyone at or above the code'."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States the recode and the bound.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "5555 meals out per week averaged as a count (NHANES DBD895), inflating the mean a hundredfold. Age 80 treated as an exact age for everyone from 80 to 100, so an age curve flattens artificially at 80. The richest households compressed at PIR 5 and read as an income plateau.",
+   "magic": "In NHANES, a 5555 for meals eaten out last week means 'more than 21'. Averaged as a count, a handful of such rows inflate the mean a hundredfold. As a bound they become '22 or more', flagged. And every adult recorded as 80 stands for everyone 80 and over, so the age curve stops being measured there. (Illustrative: no fixture carries these codes.)",
+   "layout": "Focus: the column's distribution with the coded values pulled off the axis and the spike lit.",
+   "sentence": "DBD895 values of 5555 ('more than 21') were set to 22 and flagged as right-censored, and 7777/9999 were set to missing; age is top-coded at 80 in NHANES and was entered with an indicator for the top code.",
+   "sources": [
+    "turbotab/core/detectors/codes.py:29, :59 NHANES_CODES (no 5\u20265 or 6\u20266), _nhanes_like",
+    "turbotab/core/codebook.py:748 (codebook top codes)",
+    "NHANES DBQ documentation (DBD895)",
+    "NHANES DEMO documentation (RIDAGEYR top-coded at 80; INDFMPIR at 5.00)",
+    "NCHS NHANES Analytic Guidelines 2011\u20132016 (missing-value codes)"
+   ],
+   "engine": "partial. NHANES missing codes (turbotab/core/detectors/codes.py:59) and codebook top codes (turbotab/core/codebook.py:748) exist. Two extensions are missing: codebook-free repdigit top codes behind the _nhanes_like guard, and plain-value top codes (age 80, PIR 5).",
+   "tier": "stated when the codebook's value table labels the code; otherwise asked inside the codes question",
+   "rank_signal": "share of rows at the code \u00d7 the mean shift",
+   "critic_notes": "Fixes applied: 'more than 21' now maps to the bound 22 with a \u2265 22 censoring flag, not to 21. The codebook-free repdigit reading requires an NHANES-like table. A spike at a natural bound is always asked. The DBD895, RIDAGEYR and INDFMPIR facts still need the web check the critic could not run."
+  },
+  {
+   "id": "survey-item-nonresponse",
+   "lens": "survey",
+   "title": "A few skipped items should not cost the whole respondent, or be filled with their own average",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind, per scale:\n- each respondent's completion count, and the rows complete cases would lose;\n- per-item skip rates; an item skipped at least 3\u00d7 more than the median item (a self-harm item, income) is surfaced and routed to survey-dont-know-meaning;\n- section nonresponse (every item blank), separated from item nonresponse;\n- monotone blanks running to the end of the questionnaire, which go to survey-breakoff.\n\nEekhout's thresholds are context and still need checking: the engine quotes only the 25% one. Measured on survey_instrument.csv: 36 respondents each skipped exactly one item (12 each in item_07, item_19 and item_31), so complete cases would lose 36 of 300 rows (12%). There are no break-offs.",
+   "meaning": "None for the default: item-level MI before scoring is a pipeline rule. The judgments that remain belong to other threads: a concentrated sensitive item to survey-dont-know-meaning, and the published missing-item rule to survey-instrument-published-scoring.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "item-level MI before scoring (MS8)",
+     "inference": "The score is formed in each completed copy. Reliability is averaged across copies, with Rubin's rules for its interval. Proration is labelled customary and refused for multidimensional or formative scores.",
+     "prediction": "Items imputed in-fold, without the outcome. A published proration rule is row-local."
+    },
+    {
+     "stage": "opening",
+     "decision": "participant flow",
+     "inference": "No respondent is dropped for partial answers. Section nonresponse goes to unit-level MI, or to an eligibility rule recorded in the flow.",
+     "prediction": "Kept, imputed in-fold."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "the concentrated item",
+     "inference": "A delta-adjusted MNAR sensitivity analysis, with its \u03b4 range declared before the lock.",
+     "prediction": "A missingness indicator for the concentrated item is a candidate."
+    },
+    {
+     "stage": "reporting",
+     "decision": "counts imputed or set missing",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Complete-case analysis on the score drops everyone who skipped one of 40 items. Summing over the gaps biases scores downward. Person-mean proration assumes a skipped self-harm item would have been answered like the others.",
+   "magic": "36 respondents each skipped one of 40 items. Complete cases would throw away them and their 1,404 real answers to avoid 36 blanks. The app imputes the items before scoring without asking, and the flow says so in one line. It speaks up only when one item is skipped three times as often as the rest, the way a self-harm item is.",
+   "layout": "Flow, shown only when complete cases would lose 5% or more of rows: rows kept under complete cases against item-level MI, with the step lit.",
+   "sentence": "Missing items (36 respondents with one missing item each) were multiply imputed at the item level before scoring (m = 20), with scores formed in each completed dataset (Eekhout et al. 2014).",
+   "sources": [
+    "turbotab/core/scales.py:81-82 CONTRACT (item-level MI before scoring)",
+    "turbotab/core/methods/missing.py:1558 mi.items_before_the_score; module docstring (m = max(20, % rows imputed))",
+    "turbotab/core/methods/scales.py:15-21",
+    "turbotab/core/models/pipeline.py shared_steps",
+    "survey_instrument.csv measured",
+    "Eekhout I et al. J Clin Epidemiol 2014;67:335",
+    "Eekhout I et al. Stat Methods Med Res 2018;27:1128",
+    "Mazza GL, Enders CK, Ruehlman LS. Multivariate Behav Res 2015;50:504",
+    "CLINICAL_SURVEY_PACK \u00a7B2",
+    "CROSS 10c"
+   ],
+   "engine": "partial. Item-level MI before scoring exists and is enforced by the pipeline's shared steps. There is no completion or per-item skip-rate reading.",
+   "tier": "silent; the complete-case loss is stated in one line when it reaches 5% of rows (fixture: 12%, so stated); surfaced only when one item's skip rate is at least 3\u00d7 the median",
+   "rank_signal": "rows complete cases would lose",
+   "critic_notes": "Moved to the silent tier: choosing item-level MI needs no researcher meaning. Fix applied: reliability is averaged across copies and Rubin's rules apply only to its interval. Eekhout's 10% threshold is marked for verification. The proration and concentrated-item judgments now belong to the instrument and don't-know threads."
+  },
+  {
+   "id": "survey-breakoff",
+   "lens": "survey",
+   "title": "Answers stop partway and never resume: respondents who left are not scattered skips",
+   "looks_at": "structure",
+   "detector": "Outcome-blind. It needs the questionnaire's order from the codebook or a module map. Export column order is often alphabetical or merged by module, so it is not evidence. Given that order, it measures:\n- the missing share by position;\n- per respondent, a monotone pattern (once blank, every later item blank), whose first blank is the break-off point;\n- break-off points clustered at one page or module;\n- how break-off respondents differed on the early items they did answer.\n\nThree alternatives also produce monotone blanks:\n- a skip gate (survey-skip-pattern-blanks);\n- a module given to a subsample, where a weight is positive exactly where it is asked (survey-subsample-weight);\n- a module-file merge, where the respondent's ID is absent from that component file.",
+   "meaning": "Break-off (a partial complete) rather than item nonresponse. The researcher sets which partial completes count as respondents (AAPOR's partial versus break-off).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility of partial completes",
+     "inference": "An outcome-blind rule, recorded in the flow before the seal.",
+     "prediction": "Same rule. Deployment will see partial completes too, so it is stated."
+    },
+    {
+     "stage": "representation",
+     "decision": "missing-data model",
+     "inference": "Late-module scales of break-offs are unit-level missing (MI with the monotone pattern), not item-level gaps.",
+     "prediction": "Imputed in-fold, with a break-off indicator as a candidate."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "Completers only, against all respondents with imputation, declared before the lock.",
+     "prediction": "Performance reported among break-offs separately."
+    },
+    {
+     "stage": "reporting",
+     "decision": "flow and completion rate (CHERRIES; AAPOR)",
+     "inference": "Counts at each break-off point.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Scales in the late module scored only on completers, who are more motivated and less fatigued. Item-level MI treating a run of 20 blanks as 20 scattered skips. A merge artifact read as people who left.",
+   "magic": "Missing answers climb from 1% at the first item to 14% at the last, and 9% of respondents stop on the same page and never come back. Those aren't skipped items: they are people who left, and on the early questions they answered differently from those who stayed. (Illustrative: no fixture exercises this.)",
+   "layout": "Flow: respondents through the questionnaire's pages, with the break-off step lit, who left, and how they differ from those who stayed.",
+   "sentence": "Respondents who broke off before the dietary module (n = 212, 9%) were retained in the analysis with their unanswered items multiply imputed; a completers-only analysis is reported as a sensitivity analysis.",
+   "sources": [
+    "Peytchev A. Public Opin Q 2009;73:74 (survey breakoff)",
+    "American Association for Public Opinion Research. Standard Definitions, 10th ed. 2023",
+    "Eysenbach G. J Med Internet Res 2004;6:e34 (CHERRIES)",
+    "CROSS 10c (Sharma 2021)"
+   ],
+   "engine": "new. No position or monotone-pattern reading exists.",
+   "tier": "surfaced when a codebook order or module map is present and break-offs cluster; then asked for the partial-complete rule",
+   "rank_signal": "share of respondents breaking off at a single point",
+   "critic_notes": "Fixes applied: questionnaire order must come from the codebook or a module map, never from column order alone, and the module-file merge artifact was added as a third alternative. The magic is labelled illustrative."
+  },
+  {
+   "id": "survey-skip-pattern-blanks",
+   "lens": "survey",
+   "title": "Blanks follow a gate question by design: 'No' to ever drinking skips 'drinks per day'",
+   "looks_at": "structure",
+   "detector": "Outcome-blind: P(blank in B | gate) \u2248 1 and P(blank | not gate) \u2248 0. The gate can take three forms:\n- a single answer (ALQ111 'No' skips ALQ130; BPQ020/BPQ080 'No' skips the medication items);\n- an OR of conditions within a module (ALQ130 is also blank for past-year abstainers);\n- an age universe (blank if and only if age < k, as with items asked only of adults 18 or 20 and over).\n\nThese are found by testing the module's candidate gates, their disjunctions and age thresholds. When the codebook's skip instructions are loaded, they settle the gates. A skip gate and a missingness flag produce the same values, so the role:flag reading asks (readings.py:1128; \u00a714.3 amendment). Alternatives:\n- MAR missingness: blanks not tied to any gate;\n- a missingness flag;\n- a subsample module, where a weight is positive exactly where the item is asked (survey-subsample-weight).",
+   "meaning": "The logical value for those skipped (0 drinks; 'not on treatment, never diagnosed'; not applicable), and whether a gated amount is defined at all for them.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "fill by logic, not by imputation",
+     "inference": "Structural blanks filled by rule. MI is used only for true missing values among those asked.",
+     "prediction": "Same, row-local, fixed before folds."
+    },
+    {
+     "stage": "opening",
+     "decision": "participant flow",
+     "inference": "The complete-case collapse is shown and avoided. Rows outside an age universe leave by an eligibility rule.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "model",
+     "decision": "two-part exposure",
+     "inference": "Any use, plus amount among users. A single amount with structural zeros states its estimand, since amount among non-users is undefined.",
+     "prediction": "Both parts are candidates."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States the fill.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "MI imputes drinks per day for never-drinkers, inventing alcohol intake. Complete cases drop every non-user, who are the comparison group. Complete cases over meds_hbp and meds_chol keep 2,943 of 21,348 NHANES rows, almost all of them diagnosed. An age-gated blank imputed for children.",
+   "magic": "meds_chol is blank for 17,204 people because they were never told they had high cholesterol. They are 'not on treatment', not missing. Complete cases would have kept 2,943 people, almost all with a diagnosis. One answer for the whole module fills every gated blank by rule.",
+   "layout": "Flow: the module's gates splitting rows into skipped and answered, then the participant flow with and without the recode, and who complete cases would keep.",
+   "sentence": "Participants who reported never drinking (ALQ111 = No) were assigned 0 drinks per day, and medication items skipped for participants never told they had the condition were coded as not taking medication; the remaining missing values were imputed.",
+   "sources": [
+    "turbotab/core/readings.py:1125-1135, :1474-1478, :3448",
+    "turbotab/core/stages/rows.py:473",
+    "docs/turbotab-next/BLUEPRINT.md:626-636 (\u00a714.3 amendment)",
+    "docs/turbotab-next/INBOX.md:86 (NHANES complete-case trap)",
+    "NHANES ALQ and BPQ questionnaire documentation (skip instructions, target age universes)",
+    "NCHS NHANES Analytic Guidelines",
+    "Mitra R et al. Nat Mach Intell 2023;5:13 (structured missingness)",
+    "Sterne JAC et al. BMJ 2009;338:b2393"
+   ],
+   "engine": "partial. A single-answer skip gate is asked (turbotab/core/readings.py:1128). OR-gates, age universes and the fill-by-logic consumer are not built. Shared with the dietary finder's NHANES BPQ case.",
+   "tier": "asked, batched as one Flow per questionnaire module (one answer: 'blank = not asked \u2192 fill by rule'); a single confirmation per module when the codebook's skip instructions are loaded",
+   "rank_signal": "rows complete cases would lose",
+   "critic_notes": "Fix applied: age-gated universes and multi-condition (OR) gates added to the detector. Load fix applied: one Flow per module instead of one role:flag question per gate (5\u201315 on NHANES)."
+  },
+  {
+   "id": "survey-check-all-that-apply",
+   "lens": "survey",
+   "title": "In a 'check all that apply' question, every unticked box is blank. Blank means no, unless the whole question is blank",
+   "looks_at": "structure",
+   "detector": "Outcome-blind. The signature:\n- three or more columns sharing a stem (detectors/scales.py:122 _stem), each holding a single code (its own code is allowed: SMQ690A\u2013H hold 1, 2, 3\u2026) with blanks, and never a 0;\n- per respondent, the count ticked;\n- rows with nothing ticked anywhere in the block are the only candidates for item nonresponse. A 'none of these' column, when present, separates 'none' from 'skipped'.\n\nAlternatives: a set of yes/no items with real missing values (they hold 0s), and a skip-gated block, where a gate column predicts the all-blank rows. The latter goes to survey-skip-pattern-blanks.",
+   "meaning": "The block is one multiple-response question, and an all-blank row means none of these, not asked, or skipped. The first is near-certain from the signature. Only the all-blank rows need an answer, and only when there is neither a 'none' column nor a gate.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "recode",
+     "inference": "Blank becomes 0 for respondents who ticked anything (or 'none'). All-blank rows become missing or follow the gate, and MI applies only to those.",
+     "prediction": "Same, row-local, fixed before folds."
+    },
+    {
+     "stage": "opening",
+     "decision": "complete cases",
+     "inference": "Complete cases on the block would keep only those who ticked every box. Shown and avoided.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "selection",
+     "decision": "dimension",
+     "inference": "k indicators, or a declared count, chosen before the lock.",
+     "prediction": "Indicators and count as candidates."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States the coding.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Every unticked box read as missing. Complete cases keep almost no one, or MI invents 'yes' answers at the base rate for boxes people chose not to tick.",
+   "magic": "These 8 columns are one question: 'Which of these did you use?' Every row has blanks because nobody ticks everything, and 96% ticked at least one. Those blanks mean 'no'; only the 4% with nothing ticked are unknown, and a gate question already explains most of them.",
+   "layout": "Flow: rows complete cases would keep (almost none) against rows kept after the recode.",
+   "sentence": "Responses to the multiple-response tobacco question (SMQ690A\u2013H) were coded 1 if selected and 0 otherwise among respondents who answered the question; respondents who selected none were [coded as none / set to missing].",
+   "sources": [
+    "turbotab/core/detectors/scales.py:122 _stem (stem grouping to reuse)",
+    "Smyth JD, Dillman DA, Christian LM, Stern MJ. Public Opin Q 2006;70:66",
+    "Dillman DA, Smyth JD, Christian LM. Internet, Phone, Mail, and Mixed-Mode Surveys, 4th ed. Wiley 2014",
+    "NHANES SMQ documentation (SMQ690A\u2013 multiple-response columns)"
+   ],
+   "engine": "new. No multiple-response reading exists; blocks of code-or-blank columns are not read as one question.",
+   "tier": "stated (the recode, with an override); one confirmation only for all-blank rows when there is neither a 'none' column nor a gate",
+   "rank_signal": "share of rows complete cases would drop",
+   "critic_notes": "Moved from asked to stated, because the recode is near-certain once the signature holds. All-blank rows are handed to the skip-gate thread when a gate predicts them. The per-column-code case (SMQ690A\u2013H) is written into the detector."
+  },
+  {
+   "id": "survey-careless-responding",
+   "lens": "survey",
+   "title": "Some respondents answered without reading. The rule to remove them comes before any result",
+   "looks_at": "measurement",
+   "detector": "Per respondent, from their own answers only (the outcome is never read):\n- longstring (the longest run of identical consecutive answers);\n- intra-individual response variability;\n- even\u2013odd consistency and psychometric synonyms;\n- Mahalanobis D\u00b2;\n- raw agreement with both an item and its reverse-worded twin, a test on the raw answers before keying;\n- duplicate response vectors;\n- completion time and attention-check items, when they exist.\n\nThe alternatives to reject are a real floor respondent (a well person answering 0 to every PHQ item) and a genuinely neutral respondent. Midpoint straightlining survives reversal (6 \u2212 3 = 3), so reversed pairs cannot flag it. Only completion time, attention checks or D\u00b2 can separate midpoint inattention from neutrality, and when none exists the canvas says the values cannot settle it. The flagged share is reported with Curran's thresholds. Fixture survey_instrument.csv is a negative control, measured: the longest longstring is 11 of 40, and no row has zero variance. Nothing is shown when nothing fires.",
+   "meaning": "The researcher sets a screening rule (or none) before any outcome view, and says whether flagged uniform patterns are inattention or a legitimate extreme or neutral position.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility rule, outcome-blind, recorded before the seal",
+     "inference": "The rule and which analysis is primary are fixed before the lock; the other is the sensitivity analysis.",
+     "prediction": "The rule must be deployable on new respondents, or it is disclosed as a training-only cleaning step."
+    },
+    {
+     "stage": "representation",
+     "decision": "reliability and scores, or a careless-flag covariate",
+     "inference": "\u03c9 with and without the flagged respondents. A flag covariate is allowed and labelled.",
+     "prediction": "The flag is a candidate feature."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "Estimates side by side, after the lock.",
+     "prediction": "Scores with and without, both inside the resampling."
+    },
+    {
+     "stage": "reporting",
+     "decision": "participant flow (CROSS 7c; COSMIN)",
+     "inference": "The pre-specified rule and the counts.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Careless rows attenuate or inflate correlations, look like a reliability failure, and can manufacture a spurious reversed-item factor. Excluding them after seeing results is a researcher degree of freedom that a score-maximizing pipeline would exploit without recording it.",
+   "magic": "41 respondents answered '3' to all 20 items, 'I feel happy' and 'I feel sad' included. Reversed, a 3 is still a 3, so nothing in their answers says whether they skimmed or are truly in the middle. Their completion times can: 34 of them finished in under two minutes. They alone pull \u03c9 from 0.86 to 0.78, and the rule you set now, before any result, decides whether they stay. (Illustrative.)",
+   "layout": "Flow: the participant flow with the screening step lit, who leaves (their response-variability and completion-time distribution), and how they differ from who stays.",
+   "sentence": "Respondents who completed the questionnaire in under 2 minutes with a longstring of 15 or more identical answers (n = 34) were excluded under a rule specified before outcome analyses; results including them are reported as a sensitivity analysis.",
+   "sources": [
+    "turbotab/core/scales.py:82 (needs the instrument's key)",
+    "Meade AW, Craig SB. Psychol Methods 2012;17:437",
+    "Curran PG. J Exp Soc Psychol 2016;66:4",
+    "Huang JL et al. J Bus Psychol 2012;27:99",
+    "Huang JL, Liu M, Bowling NA. J Appl Psychol 2015;100:828",
+    "Ward MK, Meade AW. Annu Rev Psychol 2023;74:577",
+    "Woods CM. J Psychopathol Behav Assess 2006;28:189 (careless responding and reverse-worded factors)",
+    "CLINICAL_SURVEY_PACK \u00a7B1.1 (C/IER screening; pre-specify)",
+    "CROSS 7c"
+   ],
+   "engine": "new",
+   "tier": "asked when the flagged share is at least 2\u20133%; silent otherwise (no 'nothing fired' line)",
+   "rank_signal": "flagged share \u00d7 the change in \u03c9 with and without the flagged respondents",
+   "critic_notes": "Fixes applied: midpoint straightlining survives reversal, so the magic no longer claims reversed pairs catch it; completion time, attention checks or D\u00b2 must, or the canvas says the values cannot settle it. The reversed-pair test is described as raw agreement. The 'nothing fires, the canvas says so' line was dropped under the every-element bar. Numbers are illustrative."
+  },
+  {
+   "id": "survey-acquiescence",
+   "lens": "survey",
+   "title": "Some respondents agree with everything, opposite statements included: a response style masquerading as the trait",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. It needs a declared key with at least 2 pro-trait and 2 con-trait items. Without that it stays silent, because an unbalanced scale cannot separate acquiescence from the trait; PHQ-9 and GAD-7 have no reversed items.\n\nEach respondent's acquiescence index is their mean raw (unkeyed) agreement across the balanced items, minus the midpoint. When the scale is the outcome, the index is built from a separate, heterogeneous balanced item set outside the construct (Weijters 2010), never from the outcome's own items. The extreme-response index is the share of answers at either end.\n\nThe signal is the spread of the index across people against what content alone would produce. The pro-keyed against raw con-keyed correlation is not used, because the trait pushes it negative. The index's standardized difference by education, age, language and mode is computed from predictors only.",
+   "meaning": "The researcher confirms acquiescence is a nuisance, not the construct, and whether group comparisons on the scale should be adjusted for it.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "balanced scoring, or the index as a covariate or method factor",
+     "inference": "A row-local, outcome-blind index from items that are not the outcome. Declared before the lock.",
+     "prediction": "The index is a candidate feature."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjustment set when a group (education) is compared on the scale",
+     "inference": "Offered as a measurement-bias adjustment, labelled.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "With and without the adjustment, after the lock.",
+     "prediction": "Compared inside the resampling."
+    },
+    {
+     "stage": "explanation",
+     "decision": "group differences",
+     "inference": "The part attributable to response style is stated.",
+     "prediction": "Stated."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the index, its item source and the result.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "An 'education effect' that is agreement bias. On scales keyed in one direction only, acquiescence also inflates reliability and between-scale correlations. Adjusting an outcome scale for an index computed from its own items conditions on part of the outcome.",
+   "magic": "Respondents without a degree agreed with both 'I feel calm' and 'I feel tense', about 0.4 points more agreement on every statement whichever way it points. Part of the education gap in your score is how people answer, not what they feel. (Illustrative.)",
+   "layout": "Angles: (1) each person's mean agreement on pro-trait against con-trait items, with the acquiescence diagonal; (2) the index by group.",
+   "sentence": "Acquiescent responding was indexed as each respondent's mean raw agreement across a balanced set of pro- and con-trait items outside the outcome scale (Billiet & McClendon 2000; Weijters et al. 2010) and was included as a covariate in a sensitivity analysis.",
+   "sources": [
+    "Billiet JB, McClendon MJ. Struct Equ Modeling 2000;7:608",
+    "Baumgartner H, Steenkamp JBEM. J Mark Res 2001;38:143",
+    "Weijters B, Geuens M, Schillewaert N. Psychol Methods 2010;15:96",
+    "Weijters B, Baumgartner H, Schillewaert N. Psychol Methods 2013;18:320",
+    "Podsakoff PM et al. J Appl Psychol 2003;88:879"
+   ],
+   "engine": "new",
+   "tier": "surfaced only when the index differs by an exposure, modifier or planned-comparison group (SMD \u2265 0.2), then asked; silent otherwise, including on unbalanced scales",
+   "rank_signal": "SMD of the index between the groups the plan compares",
+   "critic_notes": "Fixes applied: for an outcome scale the index comes from a separate balanced item set; the pro- against con-keyed correlation was replaced by the index's variance against a content-only expectation. The tier was narrowed to surfaced-then-asked, depending on the declared key and the plan's groups. The magic is illustrative."
+  },
+  {
+   "id": "survey-dimensionality",
+   "lens": "survey",
+   "title": "A summed scale is one number only if its items measure one thing",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind:\n- parallel analysis (Horn) on polychoric correlations (Pearson, labelled, when categories are too few, since it can over-extract on 5-point items);\n- the ratio of the first eigenvalue to the second;\n- explained common variance (ECV).\n\nThese do not change when items are reflected, so the screen needs no key and runs before it. Measured in session's critic run: eigenvalues 12.68, 1.25 and 1.19, both raw and keyed. \u03c9-hierarchical against \u03c9-total from a bifactor solution needs the keyed items.\n\nIt flags when parallel analysis keeps more than one factor and ECV is below 0.70 (Rodriguez 2016). A high \u03b1 does not count against multidimensionality. It runs after careless responding is screened, because careless rows can manufacture a second factor. If the second factor is exactly the reversed items, the 'general + wording factor' option is offered (survey-wording-method-factor).\n\nFixture survey_instrument.csv is a negative control: the eigenvalue ratio is about 10, so it reads as unidimensional and nothing is asked. When the scale is the outcome, the same view counts as outcome-alone.",
+   "meaning": "Whether the instrument's manual defines subscales, a total, or both, and the subscales' names. For a fingerprinted instrument the published structure is stated rather than asked.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "total versus published subscales",
+     "inference": "A multidimensional total is refused as a single construct unless \u03c9h supports it, and never entered together with its subscales. Declared before the lock.",
+     "prediction": "Total and subscales as candidate representations, compared in-fold."
+    },
+    {
+     "stage": "selection",
+     "decision": "dimension: 1 or k predictors",
+     "inference": "k subscales spend k degrees of freedom, declared.",
+     "prediction": "Tested in the resampling."
+    },
+    {
+     "stage": "model",
+     "decision": "reliability fed to calibration",
+     "inference": "\u03c9h for a general-factor total. Subscales are calibrated jointly.",
+     "prediction": "No correction."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect per subscale",
+     "inference": "Each subscale's effect reported, after the lock.",
+     "prediction": "Permutation importance grouped by subscale."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "Parallel-analysis result, ECV and \u03c9h.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A total that mixes constructs acting in opposite directions averages its coefficient toward zero, while an \u03b1 reported as 'internal consistency' hides it. A pipeline enters a total beside its own subscales (exact collinearity).",
+   "magic": "Parallel analysis keeps two factors, and only 55% of the total's common variance is one construct (\u03c9h 0.62 against \u03c9t 0.88). Your 'stress' total is worry and somatic symptoms added together. The canvas offers the two published subscales, each with its own reliability, before any estimate exists. (Illustrative: the fixture is unidimensional.)",
+   "layout": "Angles: (1) the scree with the parallel-analysis line; (2) the loading heatmap with the reversed items outlined; with a structure option table (total; published subscales; general + wording factor).",
+   "sentence": "Parallel analysis on polychoric correlations supported two factors (ECV = 0.55; \u03c9-hierarchical 0.62); the scale was scored as its two published subscales.",
+   "sources": [
+    "turbotab/core/methods/scales.py:4, :106, :299 minres, :361 oblimin, :410, :431 omega(nfactors)",
+    "turbotab/core/scales.py:686 _structure_fits_the_items, :698",
+    "docs/turbotab-next/MODELING_SEQUENCE.md:86-93 ruling 8",
+    "survey_instrument.csv measured by the critic",
+    "Horn JL. Psychometrika 1965;30:179",
+    "Sijtsma K. Psychometrika 2009;74:107",
+    "Rodriguez A, Reise SP, Haviland MG. Psychol Methods 2016;21:137",
+    "Reise SP. Multivariate Behav Res 2012;47:667",
+    "Flora DB. Adv Methods Pract Psychol Sci 2020;3:484",
+    "McNeish D. Psychol Methods 2018;23:412",
+    "COSMIN Boxes 3, 4",
+    "CLINICAL_SURVEY_PACK \u00a7B2, \u00a7B5.5"
+   ],
+   "engine": "partial. minres, oblimin and \u03c9 with nfactors exist (turbotab/core/methods/scales.py:299, :361, :431), and the user answers a structure question (turbotab/core/scales.py:686). No parallel analysis or ECV proposes the structure.",
+   "tier": "asked only when flagged, as one structure question whose options include 'general + wording factor'; stated for a fingerprinted instrument's published structure; silent otherwise, with \u03c9 reported",
+   "rank_signal": "ECV and the gap between \u03c9h and \u03c9t",
+   "critic_notes": "Fix applied: the screen is reflection-invariant (verified by the critic: identical eigenvalues raw and keyed), so it no longer waits for the key; \u03c9h still uses keyed items. It runs after the careless screen. survey-wording-method-factor is absorbed as an option of this question. The magic is illustrative."
+  },
+  {
+   "id": "survey-wording-method-factor",
+   "lens": "survey",
+   "title": "A second factor made only of the reverse-worded items is a wording effect, not a second construct",
+   "looks_at": "structure",
+   "detector": "It runs on the keyed items, after the careless-responding screen, because a small share of careless respondents is known to manufacture a reversed-item factor (Woods 2006; Schmitt & Stuits 1985). It fits 1- and 2-factor solutions (minres + oblimin). It flags when parallel analysis keeps more than one factor and the second factor's salient loadings (|\u03bb| \u2265 0.30) overlap the declared reverse-keyed set with Jaccard \u2265 0.8, a labelled convention. The overlap test is what rejects the 'content subscale' alternative; multidimensionality alone does not. It needs at least 3 reversed items. The fixture does not fire it (second eigenvalue 1.25).",
+   "meaning": "The researcher says whether the factor is a wording artifact or a substantive dimension. Positive and negative affect really are distinct, so this is asked, as one option of the structure question.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "structure: unidimensional, or general factor plus a method factor",
+     "inference": "The total is kept and reliability switches to \u03c9h.",
+     "prediction": "Descriptive. The total is kept."
+    },
+    {
+     "stage": "model",
+     "decision": "reliability fed to regression calibration",
+     "inference": "\u03c9-total counts wording variance as true score and under-corrects, so \u03c9h or a bifactor-based \u03bb is offered.",
+     "prediction": "No correction."
+    },
+    {
+     "stage": "explanation",
+     "decision": "naming factors",
+     "inference": "The wording factor is never named as a construct.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "The method factor and \u03c9h.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Publishing a 'two-dimensional' construct whose second dimension is item wording, or disattenuating with an \u03c9 inflated by method variance. Or reading careless respondents' pattern as a wording factor.",
+   "magic": "The second factor is exactly your 8 negatively worded items, and it survives removing the careless respondents. That is how people answer negatively worded questions, not a second trait. The construct's own reliability is \u03c9h, and the canvas shows how far below \u03c9-total it sits. (Illustrative.)",
+   "layout": "Shares survey-dimensionality's Angles: the loading heatmap with the reversed items outlined, and \u03c9-total beside \u03c9h.",
+   "sentence": "A second factor comprised only the reverse-worded items and was modeled as a method factor in a bifactor model; \u03c9-hierarchical for the general factor was 0.81.",
+   "sources": [
+    "turbotab/core/methods/scales.py:299, :361, :431",
+    "turbotab/core/decisions.py:303 (ScaleSpec.structure/factors)",
+    "Marsh HW. J Pers Soc Psychol 1996;70:810",
+    "DiStefano C, Motl RW. Struct Equ Modeling 2006;13:440",
+    "Woods CM. J Psychopathol Behav Assess 2006;28:189",
+    "Schmitt N, Stuits DM. Appl Psychol Meas 1985;9:367",
+    "Reise SP. Multivariate Behav Res 2012;47:667",
+    "CLINICAL_SURVEY_PACK \u00a7B1.2"
+   ],
+   "engine": "partial. Factor solutions and \u03c9 exist; there is no wording-overlap detector.",
+   "tier": "asked as one option of survey-dimensionality's structure question, never on its own",
+   "rank_signal": "Jaccard overlap of the second factor with the declared reversed set",
+   "critic_notes": "Merged into the dimensionality question. Fixes applied: it now runs after careless-responding screening, and the Jaccard 0.8 cut is labelled a convention. The magic is illustrative."
+  },
+  {
+   "id": "survey-reliability-attenuation",
+   "lens": "survey",
+   "title": "A score's reliability in this sample sets how much its coefficient is diluted and how much any model can explain. The correction depends on purpose",
+   "looks_at": "measurement",
+   "detector": "\u03c9-total (\u03c9h when multidimensional), with \u03b1 labelled customary, each with a bootstrap CI in this sample. Also a test\u2013retest ICC from a repeat administration (scales.retest_columns), or a calibration substudy's reference (survey-repeat-or-reference-measurement). The reliability that sets attenuation in a multivariable model is the one conditional on the model's covariates: \u03bb|Z = (\u03c9 \u2212 R\u00b2_W|Z)/(1 \u2212 R\u00b2_W|Z). It is lower than \u03c9 whenever the score correlates with the covariates, and both are shown. The developers' published figure is never quoted as this sample's. For an outcome scale, \u03c9 also bounds the explainable variance, labelled an upper bound: it is valid for a continuous outcome scale with error-free predictors. Formative indexes refuse internal-consistency correction (survey-formative-or-reflective).",
+   "meaning": "The researcher confirms the construct is reflective, and which reliability source fits: internal consistency omits transient error, while a retest includes it.",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "set_scales correction (regression calibration)",
+     "inference": "A declared secondary analysis beside the uncorrected primary. Conditional on covariates, several scores calibrated jointly, with the bootstrap re-estimating reliability. The Spearman \u03b2/\u03c9 correction is refused.",
+     "prediction": "Refused: the deployed model sees the same error-prone score."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "intervals; the explainable-variance ceiling",
+     "inference": "A bootstrap over the whole chain, cluster bootstrap for grouped rows.",
+     "prediction": "R\u00b2 shown against the outcome scale's reliability ceiling, labelled an upper bound."
+    },
+    {
+     "stage": "explanation",
+     "decision": "raw against corrected",
+     "inference": "Shown side by side, only after the lock (FOUNDATION \u00a75 rule 6).",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "reporting",
+     "decision": "reliability with CI and source; correction sentence",
+     "inference": "Both estimates.",
+     "prediction": "Reliability reported descriptively."
+    }
+   ],
+   "failure_prevented": "An attenuated slope reported as the construct's effect. A Spearman correction that ignores covariates and under-corrects when the score correlates with them. A prediction model 'corrected' into miscalibration. An R\u00b2 read as poor when it sits near the ceiling the outcome's own noise allows.",
+   "magic": "\u03c9 = 0.70 means 30% of each score's variance is noise. But age, sex and education explain a quarter of the score, so the reliability that sets the dilution in your model is lower: (0.70 \u2212 0.25)/(1 \u2212 0.25) = 0.60. Before the lock the canvas shows each person's score shrinking toward what the covariates predict. After the lock the corrected coefficient appears beside the raw one, with that reason. (Illustrative.)",
+   "layout": "Angles: (1) observed against calibrated scores, with \u03c9 and \u03bb|Z (pre-lock; uses only the score and the covariates); (2) raw against corrected coefficient (post-lock only).",
+   "sentence": "The score's reliability in this sample was \u03c9 = 0.70 (95% CI 0.66\u20130.74), and 0.60 conditional on the model's covariates; its coefficient was corrected by regression calibration conditional on the covariates as a declared secondary analysis beside the uncorrected estimate.",
+   "sources": [
+    "turbotab/core/scales.py:1-40, :65-79, :81 CONTRACT, :633, :644",
+    "turbotab/core/stages/scales.py:272 reliability_of, :382 _correct_jointly",
+    "turbotab/core/methods/scales.py:431, :500, :571-660, :747, :791",
+    "Keogh RH et al. Stat Med 2020;39:2197 (STRATOS)",
+    "Carroll RJ et al. Measurement Error in Nonlinear Models, 2nd ed. 2006",
+    "McNeish D. Psychol Methods 2018;23:412",
+    "Schmidt FL, Le H, Ilies R. Psychol Methods 2003;8:206",
+    "Rosner B, Spiegelman D, Willett WC. Am J Epidemiol 1990;132:734",
+    "COSMIN Boxes 6, 7"
+   ],
+   "engine": "exists. The scales stage computes reliability and the correction (turbotab/core/stages/scales.py:272, :382), but it is not yet a Router question. Showing \u03bb|Z beside \u03c9 and the R\u00b2 ceiling under prediction are new.",
+   "tier": "asked under inference (reflective? which source? correct?); stated under prediction (reliability reported, correction refused)",
+   "rank_signal": "1 \u2212 \u03bb|Z",
+   "critic_notes": "Fixes applied: the magic set \u03c9 and \u03bb|Z both to 0.70, contradicting the thread's own point. It now shows \u03bb|Z = (\u03c9 \u2212 R\u00b2)/(1 \u2212 R\u00b2) = 0.60 beside \u03c9 = 0.70, and the sentence reports both. 'About a third' became '30%'. The R\u00b2 ceiling is labelled an upper bound with its conditions."
+  },
+  {
+   "id": "survey-formative-or-reflective",
+   "lens": "survey",
+   "title": "The score is an index defined by its components (a diet-quality score), not a reflective scale",
+   "looks_at": "measurement",
+   "detector": "A recognized index (HEI-2015, AHEI, DASH score) is named from the instrument library. Otherwise the values can only propose: components on different, continuous or prorated ranges (HEI: 0\u20135 and 0\u201310), with low or heterogeneous inter-item correlations. No value test rejects a reflective scale with weak items (\u00a714.3), so the user confirms.",
+   "meaning": "Formative or reflective.",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "measurement-error correction",
+     "inference": "Disattenuation by \u03b1 or \u03c9 is refused. Correction uses a test\u2013retest ICC or a calibration substudy, or the uncorrected estimate is reported.",
+     "prediction": "No correction."
+    },
+    {
+     "stage": "representation",
+     "decision": "dimensionality and reliability screens",
+     "inference": "Not applied to an index: low \u03b1 is expected, not a defect.",
+     "prediction": "Same; this is the only thing the reading changes under prediction."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States why internal consistency was not used.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Dividing an HEI coefficient by \u03b1, which over-corrects, or 'improving' an index by deleting low-correlating components.",
+   "magic": "The HEI's 13 components are prorated on different ranges and barely correlate: it is an index, not a scale. Its \u03b1 is not its error. A repeat recall or a substudy is.",
+   "layout": "Angles: (1) the components' ranges and inter-correlations; (2) the correction sources each construct type allows.",
+   "sentence": "Because the HEI-2015 is a formative index, its coefficient was not corrected by internal consistency; the correction used the test\u2013retest ICC of a repeat administration.",
+   "sources": [
+    "turbotab/core/scales.py:74 FORMATIVE, :82 (disattenuation of a formative index refused)",
+    "turbotab/core/methods/scales.py:6-7, :106",
+    "docs/turbotab-next/MODELING_SEQUENCE.md:89-91",
+    "Reedy J et al. J Acad Nutr Diet 2018;118:1622",
+    "Bollen KA, Lennox R. Psychol Bull 1991;110:305"
+   ],
+   "engine": "exists (the refusal). The value evidence that proposes an index is partial.",
+   "tier": "stated for a recognized index; otherwise one field of the scale-declaration form, asked only when a correction is requested under inference; silent under prediction",
+   "rank_signal": "whether a correction is on the table",
+   "critic_notes": "Sound. Tier lowered: stated for a library index, folded into the scale-declaration form, silent under prediction where it only suppresses the low-\u03b1 screen."
+  },
+  {
+   "id": "survey-repeat-or-reference-measurement",
+   "lens": "survey",
+   "title": "The construct was measured twice, or against a reference: a retest, a substudy, or self-report beside a measurement",
+   "looks_at": "measurement",
+   "detector": "Any of:\n- a repeat administration's columns (same stem with _t2 or _retest; scales.py:61 RETEST_SUFFIXES, :633) or its score, checked to fit the score (:540). The guesser needs every item to carry the suffix, so collisions with '_2' or '_r' are unlikely;\n- a reference measure blank outside a subsample, read as an amount (:579; calibrate_reference);\n- self-reported and measured versions of one quantity in the same table (NHANES WHD010/WHD020 beside BMXHT/BMXWT). Their agreement is shown as Bland\u2013Altman bias and limits, and whether the bias differs by sex, age or BMI, from predictors only.",
+   "meaning": "A test\u2013retest administration, a calibration substudy, or a self-report with an internal reference, and which one the analysis uses. Whether the measured value replaces the self-report is the researcher's estimand: a study of perceived weight wants the self-report.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "rc_test_retest, rc_calibration_substudy, or the measured value",
+     "inference": "Recommended over an \u03b1-based correction, with the bootstrap re-estimating the reliability. A measured value replaces the self-report only when the researcher says the estimand is the measured quantity.",
+     "prediction": "Correction refused. A measured value is used only if it will exist at deployment."
+    },
+    {
+     "stage": "model",
+     "decision": "predictors",
+     "inference": "The repeat and the reference stay out of the model.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "differential error",
+     "inference": "After the lock: whether the self-report error differs by outcome status, a diagnostic and disclosure.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the source used.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "The retest entered as a second predictor (the same construct twice), which a score rewards because it adds signal. An \u03b1-based correction when a retest exists. Self-reported weight used as the exposure while measured weight sits in the same table, with an error that grows with BMI.",
+   "magic": "phq_t2 is the same questionnaire two weeks later. It measures the score's reliability (ICC 0.79); it isn't a second predictor. And your self-reported weights run 2.1 kg under the measured ones, more among heavier women: the measured weight is right there, if measured weight is what your question is about. (Illustrative.)",
+   "layout": "Routing: the repeat and the reference drawn to the correction rather than into the model; the self-report/measured pair with its Bland\u2013Altman plot as the focus.",
+   "sentence": "Regression calibration used the two-week test\u2013retest ICC (0.79) of the PHQ-9; measured rather than self-reported weight was used for BMI.",
+   "sources": [
+    "turbotab/core/scales.py:61, :82, :540, :579, :633",
+    "turbotab/core/methods/scales.py:500 retest_reliability, :651 calibrate_reference",
+    "Bland JM, Altman DG. Lancet 1986;1:307",
+    "Connor Gorber S et al. Obes Rev 2007;8:307",
+    "Keogh RH et al. Stat Med 2020;39:2197"
+   ],
+   "engine": "exists for the retest and the substudy. Gap: no reading pairs a self-reported quantity with its measured twin.",
+   "tier": "asked for the repeat's role; the self-report/measured pair surfaced with its Bland\u2013Altman bias, then asked which one the estimand uses",
+   "rank_signal": "Bland\u2013Altman bias relative to the exposure's SD; the retest's presence",
+   "critic_notes": "Minor fix applied: the measured value no longer replaces the self-report automatically; that is the researcher's estimand."
+  },
+  {
+   "id": "survey-small-sample-psychometrics",
+   "lens": "survey",
+   "title": "In a small sample, the scale's structure and reliability cannot be re-estimated, so the published ones are the evidence",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. The lead signal is bootstrap stability:\n- the share of resamples keeping the same number of factors under parallel analysis;\n- Tucker's congruence (\u03c6) of the loadings;\n- the bootstrap CI of \u03c9.\n\nn against items (n < 100, fewer than 5 per item) and n per group for DIF (about 100\u2013200) are context only. MacCallum 1999 and Mundfrom 2005 show that the n needed depends on communalities and overdetermination. The fixture passes (300 rows for 40 items).",
+   "meaning": "None: this is a guard. The published structure and key are used as given, and a request that the data cannot support is refused with the reason.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "structure changes",
+     "inference": "Data-driven item deletion, new subscales and '\u03b1 if deleted' are refused. The published scoring is kept.",
+     "prediction": "Same. Item-level features are not offered, or are heavily penalized."
+    },
+    {
+     "stage": "model",
+     "decision": "correction from an unstable reliability",
+     "inference": "Labelled, or refused when \u03c9's interval has a lower bound below 0.5 (a labelled convention).",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "selection",
+     "decision": "DIF and dimensionality screens",
+     "inference": "Not run, and stated as not estimable at this n.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the published structure and \u03c9 with its CI.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A 40-item instrument 'refined' to 28 items on 60 respondents, or a regression-calibrated estimate built on \u03c9 = 0.71 whose interval runs from 0.48 to 0.84.",
+   "magic": "You asked to drop 12 items. With 60 respondents, two bootstrap resamples in five find a different number of factors, and \u03c9's interval runs from 0.48 to 0.84. These data cannot re-derive this instrument, so the published structure stays, and the record says why. (Illustrative.)",
+   "layout": "Shown only when a structure change, item deletion or DIF is requested: Angles: (1) the factor count across bootstrap resamples; (2) \u03c9 with its interval.",
+   "sentence": "Given the sample size (n = 60), the published factor structure and scoring were used without modification; \u03c9-total was 0.71 (95% CI 0.48\u20130.84).",
+   "sources": [
+    "turbotab/core/methods/scales.py:88-99 (bootstrap interval), :431",
+    "MacCallum RC, Widaman KF, Zhang S, Hong S. Psychol Methods 1999;4:84",
+    "Mundfrom DJ, Shaw DG, Ke TL. Int J Test 2005;5:159",
+    "Kelley K, Pornprasertmanit S. Psychol Methods 2016;21:69",
+    "Lorenzo-Seva U, ten Berge JMF. Methodology 2006;2:57"
+   ],
+   "engine": "gap. \u03c9 and its bootstrap interval exist (turbotab/core/methods/scales.py:88-99, :431), but no stability rule guards structure estimation, item deletion or DIF.",
+   "tier": "silent; stated when a structure change, item deletion or DIF is requested",
+   "rank_signal": "share of bootstrap resamples with a different factor count",
+   "critic_notes": "Moved to the silent tier: a guard, not a meaning. Fix applied: bootstrap stability leads, n-ratios are context, and the \u03c9 lower-bound threshold is labelled a convention."
+  },
+  {
+   "id": "survey-instrument-published-scoring",
+   "lens": "survey",
+   "title": "A recognized instrument brings its published scoring, missing-item rule, cut-points and clinically important difference, but only if it was used unmodified",
+   "looks_at": "structure",
+   "detector": "The block is fingerprinted by stem, item count and response scale against the instrument library (detectors/scales.py:72 INSTRUMENTS: PHQ-9, PHQ-8, GAD-7, HADS, CES-D, RSES, PSS, EQ-5D). NHANES stems must be added: the PHQ-9 ships as DPQ010\u2013DPQ090, with DPQ100 a separate difficulty item outside the score. Verified in session: the PHQ-9 pattern is ^phq(?:_?9)?$, so 'dpq' matches nothing.\n\nA match is always a hypothesis (\u00a7B1.1), read in three grades:\n- full: stem, count and scale all match;\n- offset: a 1\u20134 export of a 0\u20133 instrument, read as a recode to subtract, not a modified instrument;\n- partial: 8 of 9 PHQ items, read as 'modified, or not this instrument'.",
+   "meaning": "The researcher confirms the instrument, its version and language, and that it is unmodified. Confirming brings in the published scoring (sum, mean or IRT T-score), the missing-item rule, the cut-points, the MCID, the direction and the reverse key. That makes this the scale-declaration form that reverse keying, direction and construct type share.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "scoring and missing-item rule",
+     "inference": "The published sum. Published proration is labelled customary and item-level MI sound.",
+     "prediction": "Published scoring, row-local, with the missing rule applied in-fold."
+    },
+    {
+     "stage": "model",
+     "decision": "outcome as a published cut (PHQ-9 \u2265 10) or continuous",
+     "inference": "Only a published cut, ranked below the continuous or ordinal outcome. Data-derived cuts are refused.",
+     "prediction": "A published cut only when deployment is a screening decision. The continuous score is a candidate."
+    },
+    {
+     "stage": "representation",
+     "decision": "item deletion",
+     "inference": "Deletion makes it a modified instrument: published cut-points and norms are withdrawn, and '\u03b1 if deleted' mining is refused.",
+     "prediction": "Same withdrawal."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect units",
+     "inference": "Effects stated in score points against the MCID.",
+     "prediction": "Effect plots marked with the MCID."
+    },
+    {
+     "stage": "reporting",
+     "decision": "instrument table (COSMIN reviewer items 1\u20135, 8)",
+     "inference": "Reported.",
+     "prediction": "Reported."
+    }
+   ],
+   "failure_prevented": "A PHQ-8 scored with PHQ-9 cut-points, a PROMIS T-score treated as a raw sum, an invented 0\u2013100 rescaling, or a median split of a validated score. An NHANES PHQ-9 left unnamed, so none of its published scoring applies. An offset export withdrawn as 'modified' for no reason.",
+   "magic": "These 9 columns, DPQ010 to DPQ090, are the PHQ-9 as NHANES ships it; DPQ100 is the separate difficulty question and stays out of the score. If unmodified, the score is the published 0\u201327 sum with lines at 5, 10, 15 and 20, and effects read against the 5-point clinically important change.",
+   "layout": "Focus: the score histogram on the theoretical range with the published cut-point lines labelled.",
+   "sentence": "Depressive symptoms were measured with the PHQ-9 (DPQ010\u2013DPQ090; 9 items, 0\u20133), scored as the published sum (0\u201327); respondents missing more than 2 items were set to missing (n = 14).",
+   "sources": [
+    "turbotab/core/detectors/scales.py:72 INSTRUMENTS (no DPQ stem; verified), :167 _instrument",
+    "turbotab/core/decisions.py:313 (ScaleSpec.instrument)",
+    "NHANES DPQ questionnaire documentation (DPQ010\u2013DPQ100)",
+    "Kroenke K, Spitzer RL, Williams JBW. J Gen Intern Med 2001;16:606",
+    "L\u00f6we B et al. Med Care 2004;42:1194",
+    "Altman DG, Royston P. BMJ 2006;332:1080",
+    "Mokkink LB et al. Qual Life Res 2018;27:1171",
+    "CLINICAL_SURVEY_PACK \u00a7B1.1, \u00a7B2, \u00a7B7"
+   ],
+   "engine": "partial. The fingerprint and sum/mean scoring exist. Four parts are missing: the NHANES DPQ stems, offset detection, published missing rules and cut-points, and MCIDs.",
+   "tier": "asked once per scale: the scale-declaration form (instrument and version, unmodified?, key, direction, construct type, missing-item rule)",
+   "rank_signal": "fingerprint grade: full, offset or partial",
+   "critic_notes": "Fixes applied: the DPQ010\u2013DPQ090 gap was verified in session (the PHQ-9 regex is ^phq(?:_?9)?$), and an offset scale is now a recode rather than a modification. This thread hosts the merged scale-declaration form."
+  },
+  {
+   "id": "survey-score-direction",
+   "lens": "survey",
+   "title": "Whether a higher score means worse or better decides what every coefficient's sign says",
+   "looks_at": "measurement",
+   "detector": "The values cannot settle this, and correlating with the outcome is not admissible. The direction comes from the instrument library (PHQ-9: higher is worse; SF-36: higher is better) or is asked as one field of the scale form. A composite is checked so that it does not add scales of opposite direction.",
+   "meaning": "The construct's direction in words ('more depressive symptoms', 'better physical function').",
+   "consumers": [
+    {
+     "stage": "explanation",
+     "decision": "effect sentences and axis anchors",
+     "inference": "Every effect is phrased in the construct's direction.",
+     "prediction": "SHAP and ALE axes are labelled with the anchors."
+    },
+    {
+     "stage": "representation",
+     "decision": "combining scales of opposite direction",
+     "inference": "A declared reflection is required before combining.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "COSMIN reviewer item 2",
+     "inference": "Direction stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Sign confusion, the error CLINICAL_SURVEY_PACK \u00a7B7 calls the most common in this literature: a negative SF-36 coefficient read as harm, or a composite summing a higher-is-better scale with a higher-is-worse one.",
+   "magic": "The coefficient is negative, but SF-36 scores rise with health, so people with better physical function had lower odds. The sentence now says it that way.",
+   "layout": "Focus: the score histogram with its direction anchors on the axis.",
+   "sentence": "Higher PHQ-9 scores indicate more severe depressive symptoms.",
+   "sources": [
+    "turbotab/core/decisions.py:313 (ScaleSpec.instrument; no direction field)",
+    "CLINICAL_SURVEY_PACK \u00a7B7 item 2",
+    "Ware JE, Sherbourne CD. Med Care 1992;30:473",
+    "Kroenke K et al. J Gen Intern Med 2001;16:606"
+   ],
+   "engine": "new (ScaleSpec has no direction field)",
+   "tier": "stated from the instrument library; for an unknown scale, one field of the scale-declaration form",
+   "rank_signal": "none: always needed before an effect sentence",
+   "critic_notes": "Merged into the scale-declaration form; no question of its own."
+  },
+  {
+   "id": "survey-dif",
+   "lens": "survey",
+   "title": "An item works differently by sex, language, mode or occasion at the same trait level (differential item functioning)",
+   "looks_at": "measurement",
+   "detector": "Run only for the groups the plan names as exposure, modifier or planned comparison, never every group against every scale. It also needs roughly 200 respondents per group (labelled a convention).\n\nPer item, it fits ordinal logistic DIF of item ~ rest score + group (+ interaction) (Zumbo; lordif). The matching rest score is purified iteratively, since a rest score containing other DIF items biases the test. It is judged on an effect size (\u0394Nagelkerke R\u00b2 \u2265 0.02, lordif's convention, labelled), not on p alone. Alternatives: Mantel\u2013Haenszel \u0394 with ETS A/B/C classes, or multi-group CFA (configural \u2192 metric \u2192 scalar; \u0394CFI \u2264 0.01).\n\nConditioning on the rest score separates DIF from a true group difference. When the scale is a predictor this is outcome-blind. When the scale is the outcome and the group is an exposure or modifier, it is an outcome view. DIF by mode is shared with survey-mode-proxy-nonequivalence.",
+   "meaning": "The researcher picks the groups to test and accepts partial invariance (drop or free an item) or not.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "score without DIF items, or IRT with group-specific parameters",
+     "inference": "Scale as a predictor: decided before the lock. Scale as the outcome with the group as exposure: a diagnostic after the lock, with the DIF-free score as a declared sensitivity analysis.",
+     "prediction": "The DIF-free score is a candidate, and the outcome view is recorded."
+    },
+    {
+     "stage": "model",
+     "decision": "group comparisons and interactions on the scale",
+     "inference": "Effect modification by group on a non-invariant scale carries the caveat.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "subgroup performance",
+     "inference": "Not applicable.",
+     "prediction": "Shown per group."
+    },
+    {
+     "stage": "explanation",
+     "decision": "group 'effects'",
+     "inference": "The part due to item bias is disclosed.",
+     "prediction": "Disclosed."
+    },
+    {
+     "stage": "reporting",
+     "decision": "invariance",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "'Women score higher on depression' carried by one crying item. Cross-language comparisons on a non-invariant translation. Sex \u00d7 scale interactions that are measurement artifacts.",
+   "magic": "'I cry easily' is endorsed far more by women at the same overall level of depression. Without it, the sex gap in the score itself shrinks by a third; what remains is the construct. (Illustrative.)",
+   "layout": "Strip: items ranked by DIF effect size. The first is focused, with its item curves by group and the score gap with and without it.",
+   "sentence": "Differential item functioning by sex was assessed with ordinal logistic regression with iterative purification of the matching score; one item (\u0394R\u00b2 = 0.04) showed DIF, and results with it excluded are reported.",
+   "sources": [
+    "Zumbo BD. A Handbook on the Theory and Methods of DIF. 1999",
+    "Swaminathan H, Rogers HJ. J Educ Meas 1990;27:361",
+    "Holland PW, Thayer DT. In: Test Validity. Erlbaum 1988",
+    "Zwick R. ETS RR-12-08, 2012",
+    "Choi SW, Gibbons LE, Crane PK. J Stat Softw 2011;39(8) (lordif, iterative purification)",
+    "Meredith W. Psychometrika 1993;58:525",
+    "Vandenberg RJ, Lance CE. Organ Res Methods 2000;3:4",
+    "Chen FF. Struct Equ Modeling 2007;14:464",
+    "Putnick DL, Bornstein MH. Dev Rev 2016;41:71",
+    "COSMIN Box 5; TRIPOD+AI 7, 8a; CROSS 7a"
+   ],
+   "engine": "new",
+   "tier": "surfaced only when the group is an exposure, modifier or planned comparison and an item reaches \u0394R\u00b2 \u2265 0.02; then asked",
+   "rank_signal": "share of the group gap in the score that the item carries",
+   "critic_notes": "Fixes applied: iterative purification of the rest score, roughly 200 per group, and screening restricted to the groups the plan names, to keep false hits and load down. Linked to the mode thread. The magic is illustrative."
+  },
+  {
+   "id": "survey-floor-ceiling",
+   "lens": "survey",
+   "title": "Many respondents sit at the scale's minimum or maximum: the instrument runs out of room there",
+   "looks_at": "measurement",
+   "detector": "It measures the share of scored respondents at the theoretical minimum and maximum of the total (items \u00d7 response scale, not the observed range), flagged at 15% or more (Terwee's convention applies to the total score, labelled). Per-item end shares are shown but never flagged, because they are normal in screeners. Unused end categories are shown too (declared_scale, detectors/scales.py:149). It also covers bounded counts such as 'days in the past 30', with mass at 0 and 30. For an outcome scale it is an outcome-alone view, which may inform the family; for a predictor it is outcome-blind. Fixture survey_instrument.csv is a negative control, measured by the critic: the 40-item total has 0% at either bound, and items reach at most 12% at the floor and 14% at the ceiling.",
+   "meaning": "Whether the bound is a measurement limit (the trait continues past it: censored) or a meaningful absence (no symptoms in a community sample).",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "outcome family and link",
+     "inference": "Proportional odds, censored (Tobit), two-part, or beta-binomial for 0\u201330 day counts, rather than linear on the score.",
+     "prediction": "The same families as candidates. Linear predictions crossing the bound are flagged."
+    },
+    {
+     "stage": "representation",
+     "decision": "predictor form at the bound",
+     "inference": "An 'at floor' indicator plus the slope (zero_spline), declared before the lock.",
+     "prediction": "A spline or indicator as a candidate, built in-fold."
+    },
+    {
+     "stage": "model",
+     "decision": "regression-calibration assumptions",
+     "inference": "Error is not constant near the bounds, so the correction is labelled approximate.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "explanation",
+     "decision": "a flat effect at the extreme",
+     "inference": "A plateau at the ceiling is labelled an instrument limit.",
+     "prediction": "A flat ALE or SHAP past the bound is labelled the same way."
+    },
+    {
+     "stage": "reporting",
+     "decision": "COSMIN floor and ceiling %",
+     "inference": "Reported.",
+     "prediction": "Reported."
+    }
+   ],
+   "failure_prevented": "A linear model on a floor- or ceiling-heavy score is biased toward the null and predicts impossible values. 'No effect among the healthy' gets read as biology when the instrument simply cannot discriminate there.",
+   "magic": "A third of your adults score 0 on the PHQ-9, so a normal model of this score puts real probability below zero, and a curve that flattens at the low end would be the instrument running out of room, not the effect stopping. (Illustrative; in NHANES the share at 0 is roughly a quarter to a third.)",
+   "layout": "Focus: the score histogram on the theoretical axis limits, with the floor and ceiling bars lit and annotated with their %.",
+   "sentence": "Thirty-two percent of participants scored 0 on the PHQ-9 (floor); the score was therefore modeled with a proportional-odds model over score bands rather than linear regression.",
+   "sources": [
+    "turbotab/core/detectors/scales.py:23, :149 declared_scale, :288",
+    "turbotab/core/structural.py:126 scale_question",
+    "turbotab/core/methods/exposure_form.py:1211 (zero_spline)",
+    "turbotab/core/models/ordinal.py",
+    "survey_instrument.csv measured by the critic",
+    "Terwee CB et al. J Clin Epidemiol 2007;60:34",
+    "McHorney CA, Tarlov AR. Qual Life Res 1995;4:293",
+    "Liddell TM, Kruschke JK. J Exp Soc Psychol 2018;79:328",
+    "CLINICAL_SURVEY_PACK \u00a7B5.3, \u00a7B4"
+   ],
+   "engine": "partial. An unused end category is noted (turbotab/core/detectors/scales.py:149) and ordinal models exist, but no floor/ceiling reading of the total routes to a family.",
+   "tier": "surfaced when the total has at least 15% at a bound; silent otherwise",
+   "rank_signal": "% of scored respondents at the bound",
+   "critic_notes": "Fixes applied: the 15% flag applies to the total, and items are shown but not flagged. The '45% at 0' magic was replaced by an illustrative third, labelled with the NHANES range the critic gave."
+  },
+  {
+   "id": "survey-ordinal-outcome",
+   "lens": "survey",
+   "title": "An outcome of a few ordered answers is not a number: it takes an ordinal model",
+   "looks_at": "outcome",
+   "detector": "readings.outcome_task_by_values (KIND_RULES task: whole numbers settle nothing, and 0.0\u201327.0 after a blank is not regression). structural.order_question reads a text outcome of 3\u201310 levels. This also covers a single Likert item and a global rating or staged outcome. Shown alongside, as outcome-alone views: floor and ceiling, and category sparsity.",
+   "meaning": "The researcher declares the task, the order of the levels, and whether equal spacing is plausible (set_task, set_outcome_order).",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "select_models family",
+     "inference": "Proportional odds, with cumulative-odds-ratio wording, and the survey-weighted PO model under the population answer. Linear on the codes ranks lower but is not refused.",
+     "prediction": "PO on the shelf, with linear on the codes as a candidate."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "fit and scoring",
+     "inference": "Brant's test as a diagnostic after the lock, and partial PO as a sensitivity analysis.",
+     "prediction": "Ranked probability score and per-level calibration."
+    },
+    {
+     "stage": "explanation",
+     "decision": "display",
+     "inference": "Predicted category probabilities across the exposure range, not an OR table alone.",
+     "prediction": "Category-probability ALE."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the model and the Brant result.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Ordered levels treated as unordered classes. Metric models on skewed ordinal outcomes with inverted conclusions (Liddell & Kruschke). Predictions outside 1\u20135. AUC on an arbitrarily dichotomized outcome.",
+   "magic": "Your outcome has 5 ordered answers, and 40% say 'never'. As unordered classes the model throws the order away; as a number it predicts 0.6 for some people. The ordinal model gives each answer's probability.",
+   "layout": "Routing: the task to the family shelf, with the outcome's category distribution in focus.",
+   "sentence": "Because the outcome was a five-category ordinal rating, it was modeled with a proportional-odds model; Brant's test did not reject proportional odds (p = 0.31).",
+   "sources": [
+    "turbotab/core/readings.py:1016 outcome_task_by_values, :1291-1304",
+    "turbotab/core/structural.py:170 order_question",
+    "turbotab/core/models/ordinal.py:1-15, :261 brant_test, :407 survey_ordinal_table",
+    "turbotab/core/models/performance.py:394 rps_rows",
+    "turbotab/core/models/metrics.py:84",
+    "turbotab/core/stages/finding_words.py:795 _ordinal (stale for an ordinal outcome)",
+    "turbotab/test_an_ordinal_target_is_not_sent_to_a_linear_model_on_the_score.py",
+    "McCullagh P. J R Stat Soc B 1980;42:109",
+    "Liddell TM, Kruschke JK. J Exp Soc Psychol 2018;79:328",
+    "Harrell FE. Regression Modeling Strategies, 2nd ed. 2015, ch. 13",
+    "Brant R. Biometrics 1990;46:1171",
+    "CLINICAL_SURVEY_PACK \u00a7B4, \u00a7B6"
+   ],
+   "engine": "exists. One wording fix is owed: turbotab/core/stages/finding_words.py:795 says ordinal models are not in this version, which is true for ordinal predictors and stale for an outcome (confirmed by the critic).",
+   "tier": "asked (task and order; the question exists)",
+   "rank_signal": "number of levels \u00d7 the outcome's skew or floor",
+   "critic_notes": "Sound. The stale wording at finding_words.py:795 is the one change owed."
+  },
+  {
+   "id": "survey-ordinal-predictor-spacing",
+   "lens": "survey",
+   "title": "A predictor coded 1\u20135 (education, a single Likert item) is a set of ordered categories, not equally spaced amounts",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind: whole-valued predictors with 10 or fewer levels go through the code_or_count reading, which \u00a714.3 already requires for every whole-valued predictor a fit uses. Text levels go through order_question. Category counts are shown. Sparse categories (under 5%, or under 10 rows) are merged with their ordered neighbour by a count rule fixed before any outcome view, since they cause separation and unstable dummy coefficients.",
+   "meaning": "Codes or amounts, and their order (code_or_count). The merge needs no meaning: it is a fixed, outcome-blind count rule.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "linear in codes, indicators, or monotone spline; sparse categories merged",
+     "inference": "Declared before the lock; the merge is applied by the count rule.",
+     "prediction": "Candidates tested in the resampling. Merging follows the same count rule."
+    },
+    {
+     "stage": "explanation",
+     "decision": "per-category effects",
+     "inference": "Contrasts against a named reference.",
+     "prediction": "ALE per level."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the coding and any merge.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Education read as equal steps, or a 1\u20137 item with 3 respondents in category 1 producing a separated coefficient. A merge chosen after seeing the slope.",
+   "magic": "`education` coded 1\u20135 isn't years: the step from 4 to 5 is a degree. The sparse category 1 (n = 7) merges with 2 by a rule fixed now, not after seeing the slope. (Illustrative: the fixture's education is four text levels, read through the order question.)",
+   "layout": "Focus: category counts with the sparse bar marked and the merge shown before \u2192 after.",
+   "sentence": "Education (five ordered categories) was entered as indicator variables, with the two lowest categories combined because of sparse cells (n = 7).",
+   "sources": [
+    "turbotab/core/readings.py:65-66, :90, :99 (code_or_count, CODE_LEVELS)",
+    "turbotab/core/structural.py:170 order_question",
+    "BLUEPRINT \u00a714.3",
+    "Harrell FE 2015 \u00a72.4",
+    "Agresti A. Analysis of Ordinal Categorical Data, 2nd ed. 2010",
+    "CLINICAL_SURVEY_PACK \u00a7B4"
+   ],
+   "engine": "partial. The code_or_count reading exists. Sparse-category merging is new.",
+   "tier": "asked through the existing code_or_count reading (no new question); the sparse merge silent, stated in the sentence",
+   "rank_signal": "categories under 5% or under 10 rows",
+   "critic_notes": "Sound. The merge was moved to a silent count rule, and the magic labelled illustrative against the fixture."
+  },
+  {
+   "id": "survey-heaped-answers",
+   "lens": "survey",
+   "title": "Reported amounts pile onto round numbers (10 and 20 cigarettes, 7 and 8 hours, 30 minutes): rounding, not real mass",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind, per self-reported amount. The share at multiples of 5 and 10 (and at 7, 14 and 30 for day counts, 0.5 for hours) is compared with a smoothed expectation, giving an observed/expected ratio per heap. Whipple's and Myers' age-heaping indices are analogues, not the measure. Heaping that differs by group (age, education, proxy, mode) is flagged. Alternatives:\n- real mass: packs hold 20, so 20 a day is partly real;\n- a scale end (detectors/codes.py:29);\n- codes, which sit apart behind a gap (survey-sentinel-codes, survey-top-codes).",
+   "meaning": "None asked. The heap is labelled rounding, with the real-mass and code alternatives named, and the user may override.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "form and knots",
+     "inference": "Spline knots placed between heaps, silently; a banded version declared as a sensitivity analysis.",
+     "prediction": "Knots off the heaps, with a banded version as a candidate."
+    },
+    {
+     "stage": "representation",
+     "decision": "measurement error",
+     "inference": "Rounding is coarsening error. When it differs by education or age, the error varies by group (heteroscedastic), which is stated. It is not 'differential' in the measurement-error sense, which concerns the outcome.",
+     "prediction": "Not corrected; deployment rounds the same way if it asks the same question."
+    },
+    {
+     "stage": "explanation",
+     "decision": "splits and steps on a heap",
+     "inference": "A step in a banded curve at 10 or 20 is labelled rounding, not a threshold.",
+     "prediction": "A tree split, ALE step or bin edge that lands on a heap is labelled rounding."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the heaping and its handling.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A tree splits at 19.5 cigarettes and the explanation calls it a dose threshold. Banded bins with edges on heaps manufacture steps. Group differences in rounding read as group differences in exposure.",
+   "magic": "Your model's biggest split is at 19.5 cigarettes a day. 62% of smokers report exactly 10, 20 or 30: those are the numbers people round to, not three kinds of smokers. The split marks where the reports pile up, not a dose where risk changes. (Illustrative.)",
+   "layout": "Focus: the distribution with the heaps lit and the smoothed expectation drawn over it, shown at explanation when a split or step lands on a heap.",
+   "sentence": "Cigarettes per day showed heaping at multiples of 10 (62% of reports); spline knots were placed between heaps, and a banded coding was used as a sensitivity analysis.",
+   "sources": [
+    "turbotab/core/detectors/codes.py:29 (a heap at 7 read only as a scale's end)",
+    "Wang H, Heitjan DF. Stat Med 2008;27:3789",
+    "Heitjan DF, Rubin DB. Ann Stat 1991;19:2244 (coarse data)",
+    "A'Hearn B, Baten J, Crayen D. J Econ Hist 2009;69:783 (Whipple index, as an analogue)"
+   ],
+   "engine": "gap: no heaping reading or knot rule exists.",
+   "tier": "stated at explanation when a split, step or bin edge lands on a heap; knot placement silent",
+   "rank_signal": "the heap's observed/expected ratio",
+   "critic_notes": "Fixes applied: group-varying rounding is called heteroscedastic, not differential; Whipple and Myers are cited as analogues; and the risk is placed on tree splits and banded bins, since a knot on a heap does not by itself put a step in a spline. Moved to stated, with no question."
+  },
+  {
+   "id": "survey-items-or-score",
+   "lens": "survey",
+   "title": "Forty collinear items are one construct: the score for inference, score against items compared by resampling for prediction, and explained as a group",
+   "looks_at": "predictors",
+   "detector": "It takes a confirmed scale (from the keying, dimensionality and reliability threads) and measures:\n- its item count k against n or the number of events;\n- pairwise item correlations (near-duplicates at r > 0.8; \u03b1 above Terwee's 0.95 signals redundancy);\n- the importance dilution expected among correlated features.\n\nMeasured by the critic on survey_instrument.csv: 40 items on 300 rows, keyed \u03b1 0.94.",
+   "meaning": "Inherited from the scale threads: the confirmed scale's membership and structure. Under prediction, one question: which items will the deployed setting collect (full form or short form)?",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "score (1 df), items (k df), or subscales",
+     "inference": "The score plus the declared correction, fixed before the lock.",
+     "prediction": "Score, penalized items and subscales as candidates compared inside the resampling, optimism-corrected. Only items collected at deployment are offered (a PHQ-2 deployment cannot use 9 items)."
+    },
+    {
+     "stage": "explanation",
+     "decision": "grouped importance",
+     "inference": "The construct's coefficient, not 40 item coefficients.",
+     "prediction": "Permutation importance and SHAP grouped over the scale's items."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the score.",
+     "prediction": "States the comparison and the grouped importance."
+    }
+   ],
+   "failure_prevented": "40 collinear items entered as features: importance diluted ('no item matters'), or the lasso picks one arbitrary item that then gets over-interpreted. Or a score forced when items predict better. Or a model trained on the full form and deployed where only a short form exists.",
+   "magic": "No single item is in the top 10, yet shuffled as a block the 40 items cost 0.08 AUC, the most of any input. Split 40 ways, a strong construct looked like 40 weak features. (Illustrative.)",
+   "layout": "Strip: importance ranked, with the scale as one grouped bar that expands to its items when pointed at.",
+   "sentence": "Under prediction, the scale was compared as its total score and as its 40 items with ridge penalization inside repeated cross-validation; permutation importance was computed for the items as one group.",
+   "sources": [
+    "turbotab/core/decisions.py:279 (MS8)",
+    "turbotab/core/methods/scales.py:182 (ScaleScorer, in-fold)",
+    "turbotab/core/models/explain.py:393 grouped",
+    "turbotab/sample_data/survey_instrument.md",
+    "CLINICAL_SURVEY_PACK \u00a7B6",
+    "Gregorutti B, Michel B, Saint-Pierre P. Comput Stat Data Anal 2015;90:15",
+    "Strobl C et al. BMC Bioinformatics 2008;9:307",
+    "Steyerberg EW. Clinical Prediction Models, 2nd ed. 2019"
+   ],
+   "engine": "partial. In-fold scoring and grouped attributions exist. The score-against-items candidate comparison and the deployment-form question are new.",
+   "tier": "stated (the score under inference; the candidate comparison under prediction); asked only for the deployment form under prediction",
+   "rank_signal": "k items against n or events",
+   "critic_notes": "Sound. The tier is set to stated, with the deployment form as the one question."
+  },
+  {
+   "id": "survey-item-overlap-with-outcome",
+   "lens": "survey",
+   "title": "The exposure scale and the outcome share items or content",
+   "looks_at": "structure",
+   "detector": "Outcome-blind:\n- item columns declared in two scales, or in a predictor scale and the outcome scale;\n- an outcome computed from a column that is also a predictor;\n- name and label overlap, which is a proposal only; the user confirms which items are the same question.",
+   "meaning": "Whether a shared item is literally a component of the outcome, or a distinct item with similar content ('I feel tired' in the depression score and in the fatigue outcome).",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "scoring without the overlap",
+     "inference": "Overlapping items are removed from the exposure score, or a sensitivity analysis is declared.",
+     "prediction": "An item that is a component of the outcome is leakage and is removed. Distinct items with similar content may stay, and are disclosed."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Criterion contamination: part of the association is the same question asked twice. Under prediction, an outcome component used as a feature.",
+   "magic": "Your depression predictor includes 'I feel tired', and your outcome is fatigue. Part of any correlation would be the same question counted on both sides.",
+   "layout": "Routing: the shared item drawn on both of its paths.",
+   "sentence": "The fatigue item was removed from the depression score to avoid overlap with the outcome.",
+   "sources": [
+    "turbotab/core/scales.py:805 _answers_keep_the_scales_whole",
+    "Nicholls JG, Licht BG, Pearl RA. Psychol Bull 1982;92:572"
+   ],
+   "engine": "partial. Scales are kept whole (turbotab/core/scales.py:805). Overlap detection is new.",
+   "tier": "stated when the same column sits in both; asked when the overlap is by label",
+   "rank_signal": "number of shared items",
+   "critic_notes": "Fix applied: under prediction, removal is mandatory for a literal outcome component and optional but disclosed for similar content."
+  },
+  {
+   "id": "survey-common-method",
+   "lens": "survey",
+   "title": "Exposure and outcome come from the same self-report at the same sitting",
+   "looks_at": "design",
+   "detector": "An outcome-blind design reading: each column's source (instrument, sitting, self-report or measured). The same reading feeds survey-mode-proxy-nonequivalence and survey-same-sitting-reverse-causation. No marker-variable view is shown before the lock. The Lindell\u2013Whitney adjustment partials the marker out of the exposure\u2013outcome correlation, which makes it a predictor\u2013outcome view, and Richardson 2009 found it unreliable.",
+   "meaning": "None asked: the column-source reading supplies it.",
+   "consumers": [
+    {
+     "stage": "reporting",
+     "decision": "limitation sentence",
+     "inference": "Written silently when exposure and outcome share a self-report source.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "marker-variable sensitivity",
+     "inference": "Only when a marker variable was designed into the study, as a declared post-lock sensitivity analysis labelled of limited reliability.",
+     "prediction": "Not applicable."
+    }
+   ],
+   "failure_prevented": "Common-method variance inflates associations (Podsakoff 2003), and the paper does not say so.",
+   "magic": "None on the canvas. The methods record carries one limitation line, because diet quality and well-being came from the same online questionnaire.",
+   "layout": "None (record and limitation sentence only).",
+   "sentence": "Exposure and outcome were self-reported in the same questionnaire, so shared method variance may inflate their association.",
+   "sources": [
+    "Podsakoff PM et al. J Appl Psychol 2003;88:879",
+    "Lindell MK, Whitney DJ. J Appl Psychol 2001;86:114",
+    "Richardson HA, Simmering MJ, Sturman MC. Organ Res Methods 2009;12:762"
+   ],
+   "engine": "new (column-source reading)",
+   "tier": "silent (limitation sentence only)",
+   "rank_signal": "none",
+   "critic_notes": "The skeptic said cut, the evidence checker said fix (not reject), so the thread is not cut. It is moved to silent: a limitation sentence driven by the column-source reading, which other threads need anyway. Fix applied: the marker adjustment is a post-lock predictor\u2013outcome view, labelled unreliable."
+  },
+  {
+   "id": "survey-mode-proxy-nonequivalence",
+   "lens": "survey",
+   "title": "Answers given by phone, online, in another language or by a proxy are not the same measurement",
+   "looks_at": "measurement",
+   "detector": "It starts from settled mode, proxy, interview-language and interpreter columns. It computes item and score standardized mean differences by mode after reweighting for composition (age, sex, education), from predictors only (outcome-blind unless the scale is the outcome). Sensitive items (alcohol, weight, drug use) are the ones expected to shift between self- and interviewer-administered modes. The alternative is that modes reach different people. Composition reweighting removes selection on what is observed, but unless mode was randomized it cannot separate a mode effect from self-selection into mode, so the finding is worded 'consistent with a mode effect'. DIF by mode is computed once and shared with survey-dif.",
+   "meaning": "The researcher confirms the column, whether responses across modes or sources are comparable (proxy answers to subjective items are not), and whether mode will be known at deployment.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "mode as covariate; DIF by mode",
+     "inference": "Declared before the lock.",
+     "prediction": "A candidate feature only if mode is known at deployment."
+    },
+    {
+     "stage": "opening",
+     "decision": "proxy answers to subjective scales",
+     "inference": "Excluded by an eligibility rule recorded in the flow.",
+     "prediction": "Same, or a flag."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity; validation across modes",
+     "inference": "Restricted to self-report or to one mode, declared.",
+     "prediction": "Performance per mode, and internal\u2013external validation by mode."
+    },
+    {
+     "stage": "explanation",
+     "decision": "group effects partly mode",
+     "inference": "Labelled.",
+     "prediction": "Labelled."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Phone respondents under-report drinking and are older, so an 'age gradient' in drinking is partly the telephone. Proxy-reported depression enters the score as if it were self-reported.",
+   "magic": "Alcohol reported by phone is 22% lower than on the web at the same age and sex. That is consistent with people telling an interviewer less, and your oldest respondents are mostly on the phone, so part of an age gradient may be the mode. (Illustrative.)",
+   "layout": "Strip: items ranked by their composition-adjusted mode difference, the first focused by mode.",
+   "sentence": "Survey mode (web vs telephone) was included as a covariate because reported alcohol use differed by mode after adjustment for age and sex; proxy responses (n = 63) were excluded from the depression scale.",
+   "sources": [
+    "turbotab/core/readings.py:2966 (proxy, language, interpreter known only as category words)",
+    "Tourangeau R, Yan T. Psychol Bull 2007;133:859",
+    "Kreuter F, Presser S, Tourangeau R. Public Opin Q 2008;72:847",
+    "de Leeuw ED. J Off Stat 2005;21:233",
+    "Groves RM et al. Survey Methodology 2009"
+   ],
+   "engine": "new",
+   "tier": "surfaced when a settled mode or proxy column shows an adjusted SMD \u2265 0.2 on an item in use; asked for proxy eligibility on subjective scales and for mode availability at deployment",
+   "rank_signal": "largest adjusted mode SMD among items in use",
+   "critic_notes": "Fix applied: 'separates' became 'consistent with', since mode is rarely randomized. Linked to survey-dif so that DIF by mode is one view. The magic is illustrative."
+  },
+  {
+   "id": "survey-interviewer-clustering",
+   "lens": "survey",
+   "title": "Answers cluster by interviewer, so intervals are too narrow and new interviewers are a new domain",
+   "looks_at": "structure",
+   "detector": "With a settled interviewer column, it computes the one-way random-effects ICC of each item and scale score by interviewer, and the design effect deff = 1 + (m \u2212 1)\u03c1; \u03c1 \u2265 0.02 is consequential at typical workloads. The values settle that clustering exists. Its meaning is asked through the existing cluster reading, because a repeating code can be a household line, a stratum or an interviewer (readings.py:1092). Under a complex design, interviewers are usually nested in or crossed with PSUs. Linearization already clusters on PSUs, so interviewer clustering applies outside a design, or through a cross-classified mixed model. Public NHANES files carry no interviewer ID, so this mostly serves surveys a study collected itself.",
+   "meaning": "The interviewer is a cluster, crossed with the PSU in a design. Under prediction: will new interviewers collect the deployment data?",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "variance",
+     "inference": "Interviewer as a cluster outside a design, or as a crossed random effect with the PSU inside one.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "folds and intervals",
+     "inference": "Interviewer-clustered intervals.",
+     "prediction": "Folds grouped by interviewer, or internal\u2013external validation by interviewer, when new interviewers will collect the data."
+    },
+    {
+     "stage": "reporting",
+     "decision": "design effect",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "Confidence intervals far too narrow, and interviewer identity acting as a shortcut that does not transport to a new field team.",
+   "magic": "Interviewers explain 6% of the variance in symptom scores. At 40 interviews each, that multiplies the variance by 3.3, so your intervals are 1.8 times too narrow. (Illustrative.)",
+   "layout": "Focus: score distributions by interviewer, with the ICC and deff.",
+   "sentence": "Responses clustered by interviewer (ICC 0.06, design effect 3.3); interviewer was treated as a cluster in variance estimation.",
+   "sources": [
+    "turbotab/core/groupings.py:48 (interviewer as a grouping word)",
+    "turbotab/core/readings.py:449, :464, :1092",
+    "turbotab/core/stages/evaluation.py:327 (internal\u2013external by cluster)",
+    "Kish L. J Am Stat Assoc 1962;57:92",
+    "O'Muircheartaigh C, Campanelli P. J R Stat Soc A 1998;161:63",
+    "West BT, Blom AG. J Surv Stat Methodol 2017;5:175"
+   ],
+   "engine": "partial. Interviewer is recognized as a grouping and a cluster reading, and internal\u2013external validation by cluster exists. The ICC and deff reading, and the crossed structure with PSUs, are new.",
+   "tier": "stated once the column is settled (deff shown when \u03c1 \u2265 0.02); the deployment question asked under prediction",
+   "rank_signal": "deff from the interviewer ICC",
+   "critic_notes": "Fix applied: nesting or crossing with PSUs under a design is stated, so interviewer clustering applies outside a design or via a cross-classified model. Arithmetic verified: 1 + 39\u00d70.06 = 3.34 and \u221a3.3 \u2248 1.8."
+  },
+  {
+   "id": "survey-population-or-sample",
+   "lens": "survey",
+   "title": "Is the estimate about a surveyed population, or about these participants? How were they sampled?",
+   "looks_at": "design",
+   "detector": "The design parts are read from names and values (survey.read_design; place_design for unnamed columns). A weight without strata or a PSU is a partial design (survey.py:406; fixture nhanes_partial_design.csv). The design effect of weighting and of clustering against simple random sampling is shown. The weighted and unweighted outcome distributions are an outcome-alone view, so they may be shown. When no design part is found, the same question is still asked once in the survey lens, or whenever the estimand is a prevalence or population quantity. That case absorbs survey-nonprobability-sample.",
+   "meaning": "How the people were sampled (probability with a design; probability exported without its design columns; quota; opt-in), and the estimand: the surveyed population (design-based) or these participants (unweighted, with the attestation recorded). Under prediction, also the deployment population.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "set_survey",
+     "inference": "Asked whenever a design part is read, or the lens is survey. An inference table is blocked until it is answered.",
+     "prediction": "Asked (ruling 13). The population answer makes scoring design-based."
+    },
+    {
+     "stage": "model",
+     "decision": "design-based estimator per family",
+     "inference": "svyglm-, svycoxph- and svyolr-equivalents (population_shelf). Where none exists, the analysis is blocked and the gap recorded.",
+     "prediction": "Models fit as the procedure fits them; scoring follows the design."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "intervals or cross-validation",
+     "inference": "Taylor linearization over strata and PSUs.",
+     "prediction": "Design-based CV: whole PSUs within strata, weighted losses, weighted calibration, design BBC."
+    },
+    {
+     "stage": "reporting",
+     "decision": "design sentence or attestation",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "SRS intervals on NHANES (too narrow). An oversampled sample's prevalence presented as U.S. prevalence. Weights alone with no strata or PSU, which fixes the point estimate and leaves the interval wrong. A model's performance quoted 'for the population' while scored on oversampled rows.",
+   "magic": "Obesity is 24% unweighted and 31% weighted. Strata and PSUs make the interval 1.6 times wider than a simple random sample's, a design effect of about 2.6: your 9,000 rows carry the information of about 3,500. (Illustrative.)",
+   "layout": "Angles: (1) the weight distribution and the design effect (pre-lock); (2) unweighted against design-based interval (post-lock).",
+   "sentence": "Estimates were weighted with WTMEC2YR and variances estimated by Taylor linearization over SDMVSTRA and SDMVPSU (NHANES Analytic Guidelines 2011\u20132016).",
+   "sources": [
+    "turbotab/core/survey.py:87 read_design, :142 place_design, :235, :406 (partial_design)",
+    "turbotab/core/stages/finding_words.py:787 _partial_design",
+    "turbotab/core/models/survey.py:530 survey_table, :660 population_shelf, :707 design_fit",
+    "turbotab/core/models/design_cv.py:58 design_folds, :118 weighted_calibration, :168 design_bbc",
+    "turbotab/sample_data/nhanes_partial_design.md",
+    "Lumley T. Complex Surveys. Wiley 2010",
+    "Korn EL, Graubard BI. Analysis of Health Surveys. Wiley 1999",
+    "NHANES Analytic Guidelines 2011\u20132016",
+    "Wieczorek J, Guerin C, McMahon T. Stat 2022;11:e454",
+    "STROBE 12d; CROSS 6b, 10f"
+   ],
+   "engine": "exists when design parts are found. Asking when none is found is new (see survey-nonprobability-sample).",
+   "tier": "asked (the sampling question; exists as ruling 13, extended to tables with no design parts)",
+   "rank_signal": "design parts read; the design effect",
+   "critic_notes": "Fix applied: the magic's arithmetic is now consistent. An interval 1.6\u00d7 wider is a deff of about 2.56, so n_eff is about 3,500, not 5,600. The question absorbs the nonprobability case and is asked once."
+  },
+  {
+   "id": "survey-nonprobability-sample",
+   "lens": "survey",
+   "title": "An opt-in online sample has no design to weight by, so its prevalences describe the volunteers",
+   "looks_at": "design",
+   "detector": "Outcome-blind. No weights, strata or PSUs are read, and the researcher's answer to the sampling question says the sample is opt-in, a quota sample or a panel (Prolific, MTurk, social media). The answer is the evidence: a completion-time column does not indicate opt-in, since probability web panels record it too. A recruitment-source column only prompts the question. The sample's composition (age, sex, education, region) is set against reference margins the user supplies (a census table, or NHANES weighted margins) as standardized differences. Alternative: a probability sample exported without its design columns (nhanes_partial_design.csv), which the same question separates. Asked in the survey lens, or for a prevalence or population estimand, so tables from clinical trials are not asked about sampling.",
+   "meaning": "The sampling (probability without design columns, quota, or opt-in), and whether the question is about these volunteers or a population.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "estimand",
+     "inference": "The sample answer by default. A population claim requires user-supplied raking or post-stratification weights, labelled model-based, never design-based.",
+     "prediction": "The deployment population is named, and the CV score is stated to describe volunteers."
+    },
+    {
+     "stage": "model",
+     "decision": "calibration weights",
+     "inference": "Raking to supplied margins as a declared sensitivity analysis, with its effective n (survey-weight-effective-n).",
+     "prediction": "Weighted scoring only with the supplied margins."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "transportability",
+     "inference": "Not applicable.",
+     "prediction": "External validation recommended. The internal score is not carried over to the population."
+    },
+    {
+     "stage": "reporting",
+     "decision": "CHERRIES; sampling stated",
+     "inference": "Stated as a nonprobability sample.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "'34% of U.S. adults follow a plant-based diet' from a Prolific sample younger and more educated than the country, with design-free intervals presented as population intervals.",
+   "magic": "Your 1,200 respondents are 71% college graduates; among U.S. adults 25 and over it is about 38%. Whatever this sample says about diet describes people like them, unless you supply margins to rake to, and then the canvas shows what the reweighting costs in information. (Illustrative sample.)",
+   "layout": "Angles: (1) the sample against the reference margins; (2) the effective n after raking.",
+   "sentence": "Participants were recruited through an opt-in online panel (a nonprobability sample); estimates describe the sample, and estimates raked to Census margins for age, sex and education are reported as a sensitivity analysis.",
+   "sources": [
+    "turbotab/core/survey.py:87 read_design (asks only when design parts are found)",
+    "Baker R et al. J Surv Stat Methodol 2013;1:90 (AAPOR Task Force on Non-probability Sampling)",
+    "Elliott MR, Valliant R. Stat Sci 2017;32:249",
+    "Mercer AW, Kreuter F, Keeter S, Stuart EA. Public Opin Q 2017;81:250",
+    "Eysenbach G. J Med Internet Res 2004;6:e34 (CHERRIES)"
+   ],
+   "engine": "gap. With no design parts found nothing asks about the sampling, and no raking exists.",
+   "tier": "asked once, as one option of survey-population-or-sample's sampling question",
+   "rank_signal": "SMD of the sample's composition against the supplied margins",
+   "critic_notes": "Merged into the sampling question. Fix applied: completion time is no longer evidence of opt-in; the researcher's statement is. Restricted to the survey lens or a population estimand."
+  },
+  {
+   "id": "survey-informative-design",
+   "lens": "survey",
+   "title": "The variables that drove sampling (oversampled groups, exam season, cycle) also drive the data, so weighted and unweighted answers can disagree",
+   "looks_at": "predictor-outcome",
+   "detector": "It looks three ways.\n\nPredictors only, at any time:\n- log-weight and stratum regressed on the predictors (R\u00b2);\n- the weights' correlation with the predictors;\n- exposure distributions by oversampled group and by design-linked timing, such as NHANES RIDEXMON. Mobile centers sit in the south in winter and the north in summer, so season and latitude are confounded.\n\nOutcome alone: the weighted against unweighted outcome mean, relative to its SE. It may be shown, but it never picks the weighting.\n\nOutcome model views, after the lock under inference and recorded under prediction: the DuMouchel\u2013Duncan test (add w and w\u00d7X), and the weighted-against-unweighted coefficient contrast.",
+   "meaning": "Which design variables cause both exposure and outcome, whether the model is meant to hold for the population, and, under inference, the rule fixed before the lock for which estimator is primary.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "design variables as adjustment candidates",
+     "inference": "Offered from the predictors-only view before the lock (age, race and ethnicity, income, exam period).",
+     "prediction": "Offered as candidate features. The weight, strata and PSU themselves never become features (role:design)."
+    },
+    {
+     "stage": "model",
+     "decision": "design-based against unweighted with design covariates",
+     "inference": "Fixed before the lock by the estimand: design-based as primary under the population answer, unweighted with the design covariates as a declared sensitivity analysis. Never switched after the lock.",
+     "prediction": "Weights in evaluation."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "informative-design diagnostic",
+     "inference": "After the lock, the DuMouchel\u2013Duncan test and the coefficient contrast are disclosed. A disagreement is reported as possible misspecification or informative sampling; it does not change the primary analysis.",
+     "prediction": "A candidate model with design variables is proposed and tested in the resampling. The outcome view is recorded."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the pre-specified primary and the test result.",
+     "prediction": "States the candidate comparison."
+    }
+   ],
+   "failure_prevented": "An unweighted model under the sample answer that omits the variables driving selection. A 'weights don't matter' claim that was never checked. A vitamin D 'latitude' effect that is really exam season. Choosing weighted or unweighted after seeing which gives the answer.",
+   "magic": "Before any model: the weights are 41% explained by age, ethnicity and income, and in your vitamin D exposure, exam season and latitude move together because the mobile centers travel south in winter. The plan fixes now that the design-based model is primary and that the unweighted one with these covariates is the sensitivity analysis; after the lock the test of whether they agree is reported, not used to choose. (Illustrative.)",
+   "layout": "Angles: (1) design variables against the exposure (predictors-only, pre-lock); (2) weighted against unweighted estimate (post-lock).",
+   "sentence": "The design-based analysis was pre-specified as primary; an unweighted model adjusting for age, race/ethnicity, income and exam period is reported as a sensitivity analysis, and a DuMouchel\u2013Duncan test of informative sampling gave p = 0.41.",
+   "sources": [
+    "turbotab/core/readings.py:1122 role:design (design columns leave the predictors)",
+    "DuMouchel WH, Duncan GJ. J Am Stat Assoc 1983;78:535",
+    "Pfeffermann D. Int Stat Rev 1993;61:317",
+    "Solon G, Haider SJ, Wooldridge JM. J Hum Resour 2015;50:301",
+    "Bollen KA et al. Annu Rev Stat Appl 2016;3:375",
+    "Korn EL, Graubard BI 1999",
+    "NHANES MEC documentation (RIDEXMON exam period)"
+   ],
+   "engine": "new. The design-based fit and design CV exist (turbotab/core/models/survey.py, turbotab/core/models/design_cv.py). There is no informativeness diagnostic and no pre-lock primary-estimator rule.",
+   "tier": "surfaced before the lock from the predictors-only view; the plan's primary-estimator rule asked",
+   "rank_signal": "R\u00b2 of log-weight on the predictors",
+   "critic_notes": "Fix applied: the inference consumer no longer re-asks the estimand or switches to unweighted after the post-lock test, which was a forking path. The rule is fixed before the lock and the test only disclosed. The magic and sentence were rewritten to match."
+  },
+  {
+   "id": "survey-subsample-weight",
+   "lens": "survey",
+   "title": "Variables measured on a subsample need that subsample's weight: the smallest sample your variables come from sets it",
+   "looks_at": "design",
+   "detector": "Variables are read as subsample measurements when they are present only where a subsample weight is positive, whatever their name (WTSAF2YR for fasting analytes, WTDRD1/WTDR2D for dietary days). The value test: the analyte's non-missing rows are a subset of the weight-positive rows, and the weights sum to about the population, per cycle for pooled cycles. The least-common-denominator rule decides (OGTT < fasting < MEC < interview; dietary two-day). The 2017\u2013March 2020 pre-pandemic files use the PRP weights.",
+   "meaning": "The settled design roles and the analysis subsample. The choice is mechanical, so it is stated with its reason and can be overridden.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "weight choice; zero-weight rows become out of domain",
+     "inference": "The least-common-denominator weight pre-selected. The other rows stay in the design (survey-exclusion-is-a-domain).",
+     "prediction": "Same, under the population answer. The population the model represents is stated."
+    },
+    {
+     "stage": "model",
+     "decision": "design-based fit",
+     "inference": "The chosen weight with the full design (strata, PSU), and design df.",
+     "prediction": "Weighted scoring."
+    },
+    {
+     "stage": "representation",
+     "decision": "usual intake",
+     "inference": "The two-day weight for NCI.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence naming the weight and why",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "MEC weights used with fasting glucose or dietary variables (a biased population estimate), or zero-weight rows deleted (wrong variance).",
+   "magic": "Triglycerides and LDL were measured only in the morning fasting subsample (2,951 of 8,704). The weight that lets those rows stand for the country is WTSAF2YR, not the exam weight, and the routing view draws each variable to the sample it was measured in.",
+   "layout": "Routing: variables \u2192 the subsample they were measured on \u2192 the weight, with the nested NHANES samples as a flow.",
+   "sentence": "Analyses of fasting analytes used the fasting-subsample weight (WTSAF2YR), the smallest sample containing every variable, with Taylor linearization over SDMVPSU within SDMVSTRA; the restriction was analyzed as a domain.",
+   "sources": [
+    "turbotab/core/recognizers.py:1798 WEIGHT_TIERS, :1846 rank_weights, :1888 subsample_variables, :1913 least_common_denominator",
+    "turbotab/core/survey.py:256",
+    "turbotab/core/stages/__init__.py:246, :406",
+    "turbotab/core/tests/acceptance/test_recognition_leash.py:58, :279, :583",
+    "NHANES Analytic Guidelines 2011\u20132016 \u00a73.1",
+    "NHANES Tutorials, Weighting Module",
+    "Johnson CL et al. Vital Health Stat 2(161), 2013",
+    "Chen TC et al. Vital Health Stat 2(184), 2020",
+    "Lumley T 2010"
+   ],
+   "engine": "exists",
+   "tier": "stated (the least-common-denominator weight pre-selected with its reason, overridable); asked only when the variables span subsamples that are not nested (fasting and dietary day 2) or two weights tie",
+   "rank_signal": "the smallest subsample that holds every variable",
+   "critic_notes": "Moved from asked to stated, since the least-common-denominator rule decides mechanically. Per-cycle sums for pooled cycles and the PRP weights noted."
+  },
+  {
+   "id": "survey-exclusion-is-a-domain",
+   "lens": "survey",
+   "title": "Under a survey design, an exclusion is a domain, not a deletion",
+   "looks_at": "design",
+   "detector": "A rule. When the population answer holds, it records the rows each eligibility rule, missing value or zero weight removes, the strata and PSUs those rows empty, and the design df left in the domain.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility rules become domain indicators",
+     "inference": "Rows stay in the design with zero scores.",
+     "prediction": "Folds are drawn over the whole design, and losses are scored on the domain."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "design df counts only strata and PSUs holding analysis rows",
+     "inference": "Applied.",
+     "prediction": "Applied."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "Says domain estimation was used.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Subsetting the data and then declaring the design gives wrong standard errors, often too small. A generic pipeline just filters rows.",
+   "magic": "None asked. The flow shows excluded pregnant women greyed, not gone: they stay in the design as zero contributors.",
+   "layout": "Flow: the participant flow with excluded rows ghosted, kept in the design but out of the estimate (no question).",
+   "sentence": "Analyses of the adult non-pregnant subpopulation used domain estimation, retaining all sampled persons in the design for variance estimation.",
+   "sources": [
+    "turbotab/core/models/survey.py:371 Domain, :397 domain_of, :467 _concerns",
+    "turbotab/core/voice.py:867",
+    "West BT, Berglund P, Heeringa SG. Stata J 2008;8:520",
+    "NHANES Analytic Guidelines 2011\u20132016 \u00a73.2.3.1",
+    "Lumley T 2010"
+   ],
+   "engine": "exists",
+   "tier": "silent (stated only in the methods sentence and the ghosted flow)",
+   "rank_signal": "none",
+   "critic_notes": "Moved to silent: the meaning is 'none', so this is a rule."
+  },
+  {
+   "id": "survey-weight-effective-n",
+   "lens": "survey",
+   "title": "Unequal weights shrink the sample: the model's complexity budget is the effective n (and the effective events), not the row count",
+   "looks_at": "design",
+   "detector": "Outcome-blind:\n- Kish's effective n = (\u03a3w)\u00b2/\u03a3w\u00b2;\n- the weighting design effect 1 + CV\u00b2(w), labelled as exact for means only. For regression coefficients the weighting deff depends on how the weights correlate with the variables (Spencer 2000);\n- the share of total weight held by the top 1% of rows;\n- max/median weight.\n\nFor a rare yes/no outcome it also computes the weighted effective number of events, which counts the outcome only and so is an outcome-alone view.",
+   "meaning": "none asked. Whether the weights are final agency weights matters only if trimming is on offer, and trimming final NHANES weights is discouraged.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "dimension: parameters and events per parameter",
+     "inference": "Judged on the effective n, the effective events and the design df.",
+     "prediction": "Riley's sample-size check run on the effective n and events under the population answer, labelled as an unvalidated extension."
+    },
+    {
+     "stage": "model",
+     "decision": "complexity and penalty",
+     "inference": "Fewer spline knots and levels.",
+     "prediction": "The candidate grid is bounded by the effective n."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "influence of high-weight rows",
+     "inference": "How much the largest weights move the estimate.",
+     "prediction": "The share of weighted loss from the top 1% of rows."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "Effective n and weighting design effect.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A model sized for 9,000 rows when the weighted information is about 3,000, or one respondent with 40\u00d7 the median weight steering the population estimate unseen.",
+   "magic": "Three respondents carry 6% of the population. Your 9,000 rows weigh like about 3,000, and the budget for predictors comes from the smaller number. (Illustrative.)",
+   "layout": "Focus, shown only when stated: the weight distribution (log scale) with the effective n and the top-1% share annotated.",
+   "sentence": "The analysis weights had a coefficient of variation of 1.4, giving a Kish effective sample size of about 3,000 of 9,000 (weighting design effect 2.96).",
+   "sources": [
+    "turbotab/core/models/causal.py:1021 kish_ess (causal weights only)",
+    "turbotab/core/models/sample_size.py:168 prediction_minimum, :196 inference_concern",
+    "Kish L. J Off Stat 1992;8:183",
+    "Spencer BD. Surv Methodol 2000;26:137",
+    "Lumley T 2010",
+    "Riley RD et al. BMJ 2020;368:m441"
+   ],
+   "engine": "partial. Kish's ESS exists for causal weights only (turbotab/core/models/causal.py:1021). It is not computed for survey weights or wired to the dimension budget.",
+   "tier": "silent; stated when deff_w > 2 or the top 1% of rows hold more than 5% of the weight",
+   "rank_signal": "deff_w",
+   "critic_notes": "Moved to silent. Fixes applied: 1 + CV\u00b2 is labelled exact for means only (Spencer 2000), and n_eff in Riley's criteria is labelled an unvalidated extension. Arithmetic tightened: CV 1.4 gives deff 2.96 and n_eff about 3,040."
+  },
+  {
+   "id": "survey-design-df-budget",
+   "lens": "survey",
+   "title": "The variance has only as many degrees of freedom as PSUs minus strata, which caps how much the model can ask",
+   "looks_at": "design",
+   "detector": "A rule. Design df = PSUs \u2212 strata holding analysis rows (domain-aware), set against the number of coefficients and joint tests (an adjusted Wald test needs q \u2264 d). It also checks lonely PSUs and df < 8 (the NCHS review threshold). One NHANES cycle gives about 15 df.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "dimension budget for spline df, levels and modifiers",
+     "inference": "A model asking for more jointly tested parameters than the design df is warned about before the lock.",
+     "prediction": "The fold count is limited by the fewest PSUs per stratum (NHANES: 2 folds, repeated)."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "critical values",
+     "inference": "t(d), not z, and an adjusted Wald F.",
+     "prediction": "The design-based SE of the CV score uses the same df."
+    },
+    {
+     "stage": "reporting",
+     "decision": "df stated",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "25 coefficients on 15 design df: a meaningless joint test, a rank-deficient variance, and z-intervals reported as if n were 9,000.",
+   "magic": "Your 9,000 participants are 30 sampled clusters in 15 strata, so the variance has 15 degrees of freedom. A 5-knot spline on 4 exposures asks more than the design can answer, and the canvas counts it before you choose.",
+   "layout": "Shown only when stated: Angles: (1) requested parameters against the design df; (2) t(d) against z interval widths.",
+   "sentence": "Variance was estimated by Taylor linearization with 15 design degrees of freedom (30 PSUs \u2212 15 strata); intervals use t(15) and joint tests the adjusted Wald F.",
+   "sources": [
+    "turbotab/core/models/survey.py:72 FEW_DESIGN_DF, :495, :583 design_df, :593 adjusted_wald",
+    "Korn EL, Graubard BI 1999",
+    "NHANES Analytic Guidelines 2011\u20132016 \u00a73.2.3.2, \u00a73.3.3",
+    "Rao JNK, Scott AJ. Ann Stat 1984;12:46"
+   ],
+   "engine": "partial. Design df, the adjusted Wald test and the coefficients-exceed-df concern exist. It is not yet a selection-stage dimension budget.",
+   "tier": "silent; stated only when the jointly tested parameters approach d",
+   "rank_signal": "q/d",
+   "critic_notes": "Moved to a stated limit with no question. Arithmetic checked by the critic (30 \u2212 15 = 15)."
+  },
+  {
+   "id": "survey-estimate-reliability",
+   "lens": "survey",
+   "title": "Some subgroup estimates rest on too few effective participants to publish",
+   "looks_at": "design",
+   "detector": "A rule, not a reading. For each reported survey proportion it checks the effective sample size, the design df and the Korn\u2013Graubard interval width against the NCHS Data Presentation Standards for Proportions (n_eff < 30, df < 8, and the width thresholds). For usual-intake percentiles (including the share below an EAR as a percentile of a modelled distribution) and for CV performance metrics, the same checks are applied as labelled analogies, since the standards define neither.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "reporting",
+     "decision": "table cells",
+     "inference": "Unreliable estimates are flagged or suppressed, with the reason.",
+     "prediction": "Subgroup performance under design-based CV is flagged by the analogous rule, labelled."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "subgroup performance",
+     "inference": "Not applicable.",
+     "prediction": "Same rule, labelled an analogy."
+    }
+   ],
+   "failure_prevented": "Publishing '12% of women over 70 below the EAR' from an effective sample of 18.",
+   "magic": "None asked. The cell for women 71 and over is greyed, with its reason: an effective sample of 23 and 6 design degrees of freedom, below what NCHS would publish.",
+   "layout": "Greyed table cells with the reason on pointing; no separate view.",
+   "sentence": "Estimates not meeting the NCHS Data Presentation Standards for Proportions are flagged.",
+   "sources": [
+    "turbotab/core/models/survey.py:72 FEW_DESIGN_DF",
+    "Parker JD et al. Vital Health Stat 2(175), 2017 (NCHS Data Presentation Standards for Proportions)",
+    "Korn EL, Graubard BI. Surv Methodol 1998;24:193"
+   ],
+   "engine": "partial. A df < 8 review rule exists. The proportion standards are new.",
+   "tier": "silent (cells greyed, with the reason)",
+   "rank_signal": "none",
+   "critic_notes": "Moved to silent. Fix applied: uses beyond proportions (percentiles, CV metrics) are labelled analogies."
+  },
+  {
+   "id": "survey-explanations-describe-the-sample",
+   "lens": "survey",
+   "title": "Under the population answer, importance and effect curves averaged over unweighted rows describe the oversampled sample, not the population",
+   "looks_at": "predictor-outcome",
+   "detector": "A rule that follows from the settled population answer:\n- the weighted and unweighted distribution of each explained input (SMD) is shown at any time; it is outcome-blind;\n- as a model view (after the lock under inference, recorded under prediction), mean |SHAP|, permutation importance and ALE are computed with the design weights;\n- the SHAP background (reference) distribution is weighted too, since otherwise attributions describe deviations from the sample's mean prediction;\n- the rank change against the unweighted summary is recorded.",
+   "meaning": "none (follows from the settled survey answer)",
+   "consumers": [
+    {
+     "stage": "explanation",
+     "decision": "importance, beeswarm and curves",
+     "inference": "Population-weighted summaries with a weighted background, labelled. Unweighted ones appear only beside them, with the reason.",
+     "prediction": "Weighted importance, weighted ALE bins (rows weighted within each interval), weighted SHAP background and beeswarm density."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "stability of explanations",
+     "inference": "The importance bootstrap resamples whole PSUs within strata.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "the explanation names its weighting",
+     "inference": "Stated.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "A SHAP ranking led by an oversampled ethnicity, or an ALE curve shaped by the oversampled ages, presented as describing the U.S. population while only the effects table beside it was weighted.",
+   "magic": "None asked. Each explanation carries its weighting in its title, so the curve and the importance ranking describe the country, like the effects table beside them.",
+   "layout": "No separate view; each explanation's title names its weighting.",
+   "sentence": "Feature importance, SHAP values (with a survey-weighted background) and accumulated local effects were computed with the survey weights, so they describe the surveyed population.",
+   "sources": [
+    "turbotab/core/models/explain.py:406 importance (phi.abs().mean(), unweighted), :532 ale_grid, :560 ale_curve (unweighted)",
+    "turbotab/core/models/effects.py:1058 estimand_sd (weighted)",
+    "turbotab/core/stages/effects.py:166 sd_basis",
+    "Lumley T 2010",
+    "Apley DW, Zhu J. J R Stat Soc B 2020;82:1059",
+    "Lundberg SM, Lee S-I. NeurIPS 2017"
+   ],
+   "engine": "gap. The effects stage weights its standardization (turbotab/core/models/effects.py:1058), but importance, SHAP summaries, the SHAP background and ALE (turbotab/core/models/explain.py:406, :560) average unweighted rows.",
+   "tier": "silent, with each explanation labelled by its weighting",
+   "rank_signal": "none",
+   "critic_notes": "Moved to silent, as a rule. Fix applied: the SHAP background is weighted too, not only the average of |\u03c6|."
+  },
+  {
+   "id": "survey-instrument-changed-across-cycles",
+   "lens": "survey",
+   "title": "Pooled cycles or waves asked a question differently, under the same name or a renamed one",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind, with a settled cycle or wave column:\n- per item, the distribution by cycle;\n- a step at one cycle boundary larger than the drift between adjacent cycles (SMD \u2265 0.2, a category that appears or vanishes, or a changed response run read by the block reader);\n- a variable present only in some cycles;\n- codebook value tables that differ by cycle (\u00a714.2);\n- the codebook's variable lineage, so a renamed item (ALQ120Q \u2192 ALQ121) is checked once the user pools it.\n\nAlternatives: real secular change (a steady trend with no step), and changed composition (the step persists after reweighting for age and sex).",
+   "meaning": "Whether the wording, response options or recall period changed (NHANES alcohol items revised in 2017\u20132018; physical activity redesigned in 2007\u20132008 on the GPAQ), and how to harmonize.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "harmonize",
+     "inference": "A common coding across cycles, or the item restricted to comparable cycles, declared before the lock.",
+     "prediction": "Harmonized and cycle-specific versions as candidates."
+    },
+    {
+     "stage": "selection",
+     "decision": "cycle or version as covariate",
+     "inference": "An adjustment variable, with an exposure \u00d7 cycle check after the lock as a diagnostic.",
+     "prediction": "Cycle is never a feature when deployment is a new cycle."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "validation across cycles",
+     "inference": "Not applicable.",
+     "prediction": "Leave-one-cycle-out (internal\u2013external) and calibration by cycle, with drift shown."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the harmonization.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A 2011\u20132020 trend in drinking that is really the 2017 questionnaire change. A model trained on old wording and deployed on new wording, miscalibrated without warning. Pooled weights divided correctly while the question itself changed.",
+   "magic": "Heavy drinking jumps from 9% to 15% between 2015\u201316 and 2017\u201318 and is flat on either side. The questionnaire changed that year: pooled as one variable, half your data answered a different question. (Illustrative figures; the 2017\u201318 revision is real.)",
+   "layout": "Strip: items ranked by their largest step at a cycle boundary, each a small by-cycle profile, the first focused.",
+   "sentence": "Because the alcohol questions were revised in 2017\u20132018, drinking frequency was harmonized to the categories common to all cycles, and cycle was included as a covariate.",
+   "sources": [
+    "turbotab/core/methods/survey.py:1-91 (pooled-cycle weights)",
+    "turbotab/core/stages/evaluation.py:327, :447 (internal\u2013external by cluster)",
+    "NHANES ALQ questionnaire documentation 2017\u20132018 (revised items; ALQ121)",
+    "NHANES PAQ documentation 2007\u20132008 (GPAQ-based redesign)",
+    "NHANES Analytic Guidelines 2011\u20132016 \u00a73.1.3",
+    "Debray TPA et al. J Clin Epidemiol 2015;68:279",
+    "Steyerberg EW. Clinical Prediction Models, 2nd ed. 2019"
+   ],
+   "engine": "gap. Pooled-cycle weights (turbotab/core/methods/survey.py:53) and internal\u2013external validation by cluster (turbotab/core/stages/evaluation.py:327) exist, but no reading compares an item across cycles or reads variable lineage.",
+   "tier": "surfaced when a boundary step has SMD \u2265 0.2 beyond the drift between neighbouring cycles; then asked for the harmonization",
+   "rank_signal": "step size against drift",
+   "critic_notes": "Minor fix applied: the codebook's variable lineage is read, so renamed items are covered. ALQ121 and the GPAQ redesign still need a web check."
+  },
+  {
+   "id": "survey-question-wide-scan",
+   "lens": "survey",
+   "title": "Hundreds of questionnaire variables screened as exposures: multiplicity, correlated exposures, and replication across cycles",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind:\n- the number of candidate exposure columns beyond a declared hypothesis set (more than about 20), grouped by questionnaire module (DBQ, PAQ, SMQ, ALQ\u2026);\n- their correlation structure (median |r|, clusters by module);\n- with pooled cycles, how many independent cycles exist for a discovery/replication split.",
+   "meaning": "Whether this is a hypothesis-driven analysis of a few exposures or an exposure-wide scan.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "exposure family",
+     "inference": "A scan is an exposure family: FDR across everything tested, with discovery in some cycles and replication in held-out cycles, both declared before the lock.",
+     "prediction": "Penalized fits by module, with screening inside each fold only."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "replication",
+     "inference": "An association is reported as replicated only if it holds in the held-out cycles.",
+     "prediction": "Screening is repeated inside the resampling, never run once on all rows."
+    },
+    {
+     "stage": "explanation",
+     "decision": "context",
+     "inference": "Effects shown against the distribution of all tested effects.",
+     "prediction": "Importance grouped by module."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the number tested and the replication.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Picking the 5 strongest of 250 items on all rows and reporting them as findings, or screening before cross-validation so the score includes the selection.",
+   "magic": "You are about to test 243 questionnaire variables, which correlate in clusters by module. At p < 0.05, about 12 'hits' are expected by chance alone; NHANES's separate cycles let half discover and half confirm.",
+   "layout": "Strip: modules ranked by size, each with its within-module correlation.",
+   "sentence": "In an exposure-wide analysis of 243 questionnaire variables, associations were tested in the 2005\u20132010 cycles with Benjamini\u2013Hochberg FDR control and replicated in the 2011\u20132016 cycles.",
+   "sources": [
+    "turbotab/core/decisions.py:638-644 MultiplicitySpec (bh)",
+    "turbotab/core/models/wide.py",
+    "Patel CJ, Bhattacharya J, Butte AJ. PLoS One 2010;5:e10746",
+    "Patel CJ, Ioannidis JPA. J Epidemiol Community Health 2014;68:1096",
+    "Benjamini Y, Hochberg Y. J R Stat Soc B 1995;57:289",
+    "Ambroise C, McLachlan GJ. Proc Natl Acad Sci USA 2002;99:6562"
+   ],
+   "engine": "gap. Exposure-family FDR (turbotab/core/decisions.py:638) and wide penalized fits (turbotab/core/models/wide.py) exist. The scan reading and the cross-cycle discovery/replication split are new.",
+   "tier": "asked once (a hypothesis set or a scan) when candidate exposures exceed about 20 beyond the declared set",
+   "rank_signal": "number of candidate exposures",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "shared-panel-attrition",
+   "lens": "shared",
+   "title": "Respondents leave a panel between waves, and who leaves depends on what they said before",
+   "looks_at": "time",
+   "detector": "With a settled subject identifier and wave column, it reads:\n- retention per wave, and monotone against intermittent patterns;\n- standardized differences at baseline between stayers and leavers on predictors (outcome-blind);\n- when the outcome is also measured at baseline, the stayer\u2013leaver difference on it. This is the most telling view, and as an outcome-alone view it may be shown;\n- a longitudinal weight positive only for continuing respondents.\n\nAlternative: planned rotation, where a rotating panel retires a cohort by design. The rotation-group column or the codebook separates it. Built once in the repeats lane for every lens; the survey lens adds the longitudinal weight.",
+   "meaning": "Whether attrition is plausibly ignorable given the baseline answers (MAR), which longitudinal weight applies, and whether people who answered every wave are the estimand's population.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "who is analyzed",
+     "inference": "All available waves under MAR (mixed model or MI), not completers only. Completers are a sensitivity analysis.",
+     "prediction": "The training rows and the deployed population are stated: a model fitted on stayers is scored on everyone."
+    },
+    {
+     "stage": "model",
+     "decision": "weights",
+     "inference": "The longitudinal weight under the population answer, or inverse-probability-of-remaining weights as a declared alternative.",
+     "prediction": "Weighted scoring by the longitudinal weight."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "Delta-adjusted MNAR sensitivity for leavers, with the \u03b4 range declared before the lock.",
+     "prediction": "Performance among later leavers, at the waves they answered."
+    },
+    {
+     "stage": "reporting",
+     "decision": "flow",
+     "inference": "Retention per wave.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A change-over-time estimate computed on the 58% who stayed, who were healthier and more educated at baseline. A pipeline that drops incomplete IDs does this silently.",
+   "magic": "By wave 4, 42% have left, and at baseline they were younger, poorer, twice as often smokers, and already scored worse on the outcome. The completers' trajectory belongs to people who were doing better from the start. (Illustrative.)",
+   "layout": "Flow: retention wave by wave, who leaves at each step, and how they differed at baseline.",
+   "sentence": "Attrition across waves (42% by wave 4) was related to baseline characteristics, so analyses used all available observations under a missing-at-random assumption with the longitudinal weight; a completers-only analysis is reported as a sensitivity analysis.",
+   "sources": [
+    "turbotab/core/detectors/repeats.py (repeats read; no attrition)",
+    "Lugtig P. Sociol Methods Res 2014;43:699",
+    "Lynn P (ed.). Methodology of Longitudinal Surveys. Wiley 2009",
+    "Seaman SR, White IR. Stat Methods Med Res 2013;22:278",
+    "Little RJA, Rubin DB 2019"
+   ],
+   "engine": "gap. The repeats reading says whether rows repeat. Nothing measures attrition, wave-specific weights or completer bias. Build once in the repeats lane.",
+   "tier": "surfaced; then asked for the MAR assumption and the weight",
+   "rank_signal": "attrition share \u00d7 the largest baseline SMD",
+   "critic_notes": "Formerly survey-panel-attrition; moved to the shared lens, since panel structure is not survey-specific. Fixes applied: the baseline-outcome stayer\u2013leaver view is added as an allowed outcome-alone view, and the MNAR \u03b4 range is declared in advance."
+  },
+  {
+   "id": "shared-ema-within-between",
+   "lens": "shared",
+   "title": "Many short questionnaires per person (diaries, EMA): a scale has a within-person meaning and a between-person meaning",
+   "looks_at": "structure",
+   "detector": "It needs a settled subject identifier with 5 or more administrations per person and time stamps (the repeats reading). Per item and scale, it reads:\n- the ICC (the between-person share of variance);\n- multilevel reliability at each level (\u03c9-within, \u03c9-between), the survey add-on;\n- the within-person SD of each time-varying exposure.\n\nOutcome-blind. Built once in the repeats lane for every lens.",
+   "meaning": "Which level the question is about. Within: does a person feel better on days they eat more fruit than usual? Between: do people who eat more fruit feel better?",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "person-mean centering",
+     "inference": "Each time-varying predictor is split into its person mean and the deviation from it, declared before the lock.",
+     "prediction": "Each person's mean comes only from their own past occasions (in-fold, never from future or held-out ones). For a new person the mean is unknown at first contact, so the cold-start model, which uses no person mean, is stated and evaluated separately."
+    },
+    {
+     "stage": "model",
+     "decision": "family",
+     "inference": "A mixed model, with within and between effects as distinct estimands. The correction uses the reliability at the level the estimand names.",
+     "prediction": "Random effects as candidates."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "folds",
+     "inference": "Mixed-model or cluster-robust intervals.",
+     "prediction": "Grouped by person when the model meets new people; by time within person when it forecasts the next occasion."
+    },
+    {
+     "stage": "explanation",
+     "decision": "within against between",
+     "inference": "Stated separately, never as one blended slope.",
+     "prediction": "Importance of the person mean and of the deviation shown separately."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "Both levels' reliability and effects.",
+     "prediction": "The fold structure and the cold-start case."
+    }
+   ],
+   "failure_prevented": "A blended slope that mixes 'people who' with 'days when'. A scale reliable between people (0.91) but noisy within them (0.58), quoted as 0.91. Random row folds that let a person's other days predict today. A person mean computed from the future.",
+   "magic": "62% of the variance in daily mood is who the person is; 38% is the day. The scale is reliable between people (\u03c9 0.91) but much less within a person (\u03c9 0.58), so a within-person question asks more than this scale measures. (Illustrative.)",
+   "layout": "Angles: (1) between- against within-person variance per item; (2) \u03c9 at each level.",
+   "sentence": "Daily mood was decomposed into person means and daily deviations (person-mean centering); within- and between-person effects were estimated in a mixed model, with multilevel reliability \u03c9-within = 0.58 and \u03c9-between = 0.91.",
+   "sources": [
+    "turbotab/core/detectors/repeats.py",
+    "turbotab/core/time_varying.py",
+    "Geldhof GJ, Preacher KJ, Zyphur MJ. Psychol Methods 2014;19:72",
+    "Curran PJ, Bauer DJ. Annu Rev Psychol 2011;62:583",
+    "Hamaker EL, Muth\u00e9n B. Psychol Methods 2020;25:365",
+    "Shiffman S, Stone AA, Hufford MR. Annu Rev Clin Psychol 2008;4:1"
+   ],
+   "engine": "gap. Repeats are read and the time-varying lane exists, but there is no within/between decomposition and no multilevel reliability for scales.",
+   "tier": "asked (which level the question is about) whenever 5 or more administrations per person are settled",
+   "rank_signal": "ICC",
+   "critic_notes": "Formerly survey-ema-within-between; moved to the shared lens, with the multilevel \u03c9 as the survey add-on. Fix applied: the prediction cold start is handled, with person means from past occasions only."
+  },
+  {
+   "id": "survey-items-downstream-of-the-outcome",
+   "lens": "survey",
+   "title": "A question asked because of the outcome (told by a doctor, taking medicine for it, advised to change) hands the model the answer",
+   "looks_at": "structure",
+   "detector": "Outcome-blind first. The questionnaire's routing (the skip-gate reading) and the codebook labels link items to the declared outcome's condition:\n- diagnosis items (DIQ010 'ever told you had diabetes');\n- treatment items (DIQ050 insulin; DIQ070 pills; BPQ050A);\n- advice items (MCQ366a\u2013d);\n- age-at-diagnosis items (DID040);\n- every follow-up gated on these, including their missingness indicators.\n\nValue leaks and blank-pattern leaks are told apart by each item's universe. DIQ050 is asked of everyone, so its value leaks but its blank does not. DID040 and DIQ070 are gated on DIQ010/DIQ160, so their blanks encode the diagnosis. These universes are to be verified against the DIQ documentation.\n\nThe concept link is a proposal from labels and routing and is asked; names never settle it (\u00a714.3). Under prediction, a confirming predictor\u2013outcome check is recorded: any single input, or its missingness indicator, whose discrimination alone exceeds AUC 0.90 is flagged for the question. The alternative to reject is a strong, legitimate predictor such as measured waist for diabetes: it is neither gated on nor worded about the outcome's condition, so it is not proposed.",
+   "meaning": "The researcher marks each linked item as a consequence of the outcome (diagnosis, treatment, advice), a measure of the outcome itself, or a legitimate prior characteristic, and states when predictions will be made (before diagnosis means screening).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "roles: consequences of the outcome leave the predictors",
+     "inference": "Never adjusted for: a consequence of the outcome is not a confounder, and conditioning on it biases the estimate.",
+     "prediction": "Removed when the model will meet people not yet diagnosed. Kept only for an already-diagnosed deployment population, with the target stated."
+    },
+    {
+     "stage": "representation",
+     "decision": "missingness indicators",
+     "inference": "A gated item's blank is never used to impute from the outcome's own consequence.",
+     "prediction": "No missingness indicator is built for an item whose gate is the outcome's condition, because the indicator would be the diagnosis."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "the honest score",
+     "inference": "Not applicable.",
+     "prediction": "Performance reported with the linked items removed, with the recorded single-feature AUC shown as the reason. Resampling cannot decide this: cross-validation keeps the leak."
+    },
+    {
+     "stage": "reporting",
+     "decision": "predictor list (TRIPOD+AI: predictors available at the moment of use)",
+     "inference": "States the excluded items.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A diabetes classifier on NHANES reaches AUC 0.97 because 'taking insulin now' and the blank pattern of DID040 and DIQ070 encode 'already diagnosed'. Deployed to screen undiagnosed adults, it has nothing. Under inference, adjusting for 'advised to reduce salt' conditions on a consequence of hypertension.",
+   "magic": "Your three best predictors of diabetes are 'taking insulin now', whether 'taking diabetic pills' was asked, and whether 'age when first told' is blank. Each exists only because the person already has the diagnosis. Without them this is a screening model, and its honest AUC is 0.79, not 0.97. (Illustrative AUCs.)",
+   "layout": "Routing: the gate \u2192 its follow-ups \u2192 their blank indicators, drawn into the model and then re-routed out.",
+   "sentence": "Questionnaire items asked only of, or answered only by, participants already diagnosed (treatment, advice and age-at-diagnosis items, and the missingness indicators of gated items) were excluded from the predictors because they would not exist for an undiagnosed person at the time of prediction.",
+   "sources": [
+    "turbotab/core/readings.py:1125-1135 (skip gate read; no link to the outcome)",
+    "turbotab/core/methods/batch.py:753 (the only leakage guard, ComBat's)",
+    "Collins GS et al. BMJ 2024;385:e078378 (TRIPOD+AI)",
+    "Kaufman S, Rosset S, Perlich C, Stitelman O. ACM Trans Knowl Discov Data 2012;6(4):15 (leakage)",
+    "Hern\u00e1n MA, Hern\u00e1ndez-D\u00edaz S, Robins JM. Epidemiology 2004;15:615",
+    "NHANES DIQ and MCQ questionnaire documentation (DIQ010, DIQ050, DIQ070, DIQ160, DID040, MCQ366a\u2013d)"
+   ],
+   "engine": "gap. The skip gate is read (turbotab/core/readings.py:1128), but nothing links a gate to the declared outcome, and there is no single-feature leakage check.",
+   "tier": "asked: the lead of one 'outcome's condition in the questionnaire' moment, shared with survey-same-sitting-reverse-causation and survey-self-reported-diagnosis-outcome",
+   "rank_signal": "gated items linked to the outcome's condition, plus the recorded single-feature AUC",
+   "critic_notes": "Fix applied: DIQ050's value leaks but its blank does not; the blank-pattern leaks are DID040 and DIQ070. These universes still need checking against the DIQ documentation. Merged with same-sitting and self-reported diagnosis into one moment."
+  },
+  {
+   "id": "survey-same-sitting-reverse-causation",
+   "lens": "survey",
+   "title": "Exposure and outcome were reported at the same sitting, and people change what they eat after a diagnosis",
+   "looks_at": "design",
+   "detector": "Outcome-blind. It needs three things:\n- one interview per person (repeats settled as a single occasion);\n- a current-behavior exposure (diet, alcohol, activity, supplements);\n- awareness or advice items about the outcome's condition or its precursors: MCQ366a\u2013d 'told to control weight, increase exercise, reduce salt, reduce fat'; MCQ371a\u2013d 'are you now doing'; DIQ010; DIQ160 (prediabetes).\n\nThe share told or advised is shown at any time, as a single-variable view. The exposure among the advised against the not-advised is held until the lock under inference, and recorded under prediction, whenever the advice concerns the outcome's condition: the advice is then a near-proxy for the outcome, so the comparison previews the exposure\u2013outcome direction. When the advice concerns an unrelated condition, it is a predictors-only view.",
+   "meaning": "The researcher declares the time order the design can support (exposure before outcome is not established) and which respondents know of the condition. The analysis declares a restriction (never told, never advised) as a sensitivity analysis whose own bias is labelled. It conditions on a consequence of the outcome and on access to care, so it estimates the association among the undiagnosed.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "analysis population and adjustment set",
+     "inference": "Restriction to respondents never told or advised, declared before the lock as a sensitivity analysis and labelled as biased in its own way (it removes the diagnosed, selected through access to care). 'Advised to change' never enters as a confounder, since it follows the outcome.",
+     "prediction": "The deployment population (aware or unaware) is stated."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "The estimate among the unaware beside the primary, after the lock, with the label.",
+     "prediction": "Performance for aware and unaware respondents separately if both will be scored."
+    },
+    {
+     "stage": "explanation",
+     "decision": "wording",
+     "inference": "An association, with a sentence that diet was reported after some participants' diagnosis. Never 'protective'.",
+     "prediction": "A behavior's importance is labelled as possibly a consequence of the outcome."
+    },
+    {
+     "stage": "reporting",
+     "decision": "limitation (STROBE study design)",
+     "inference": "The cross-sectional limitation and the restriction with its bias.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Diet soda 'causes' diabetes and low salt 'raises' blood pressure, because people with the diagnosis were told to change and did. A score-driven pipeline reads the reversed arrow as a strong, stable effect. The restriction to the unaware then presented as the unbiased answer.",
+   "magic": "38% of your adults were told by a doctor to cut salt, and that advice exists because of the condition you're studying. So the restriction to the never-advised is declared now, before any estimate, labelled as a sensitivity analysis that answers a different question: the association among people not yet diagnosed. After the lock, the canvas shows how much less sodium the advised report. (Illustrative.)",
+   "layout": "Angles: (1) who was told or advised (share, by age; pre-lock); (2) the exposure among advised and not advised (post-lock under inference when the advice concerns the outcome's condition).",
+   "sentence": "Because diet and hypertension were assessed at the same interview, analyses were repeated excluding participants previously told to reduce salt intake (n = 1,240), whose current intake may reflect that advice; this restriction estimates the association among undiagnosed participants and is itself subject to selection by access to care.",
+   "sources": [
+    "turbotab/core/decisions.py:880 (early follow-up excluded for reverse causation, cohorts)",
+    "turbotab/core/structural.py:299, :351 (reverse causation for later values)",
+    "NHANES MCQ questionnaire documentation (MCQ366a\u2013d, MCQ371a\u2013d)",
+    "Sattar N, Preiss D. Circulation 2017;135:2369 (reverse causality)",
+    "Rothman KJ, Greenland S, Lash TL. Modern Epidemiology, 3rd ed. 2008",
+    "Hern\u00e1n MA, Hern\u00e1ndez-D\u00edaz S, Robins JM. Epidemiology 2004;15:615",
+    "von Elm E et al. Lancet 2007;370:1453 (STROBE)"
+   ],
+   "engine": "gap. Reverse causation is handled for cohorts (turbotab/core/decisions.py:880) and for later values (turbotab/core/structural.py:299). Nothing reads awareness or advice items in a single-sitting survey.",
+   "tier": "asked (time order and restriction), inside the 'outcome's condition in the questionnaire' moment",
+   "rank_signal": "share told or advised about the outcome's condition",
+   "critic_notes": "Fixes applied: the never-advised restriction is labelled a biased sensitivity analysis (it conditions on a consequence of the outcome and on access to care), and the exposure-by-advice view is held until the lock when the advice concerns the outcome's condition. The magic was rewritten so it no longer shows that comparison before the lock."
+  },
+  {
+   "id": "survey-former-users-in-the-reference",
+   "lens": "survey",
+   "title": "The 'non-drinkers' include people who quit because they got sick",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind. It needs a lifetime (ever) item and a current item for the same behavior. Examples:\n- alcohol: NHANES ALQ111 (from 2017\u201318), or ALQ101/ALQ110 ('12 or more drinks' in a year or a lifetime) in earlier cycles, with past-12-month frequency;\n- smoking: SMQ020 (100 cigarettes in life) with SMQ040 (now smoke);\n- supplements: ever against the past 30 days.\n\nThe ever item differs by cycle, so the never/former split is harmonized across pooled cycles first (survey-instrument-changed-across-cycles). When the analyzed exposure is current use, it reports the share of current non-users who are former users, and how former users differ from never users on predictors (age, number of conditions, and self-rated health HSD010 only when it is neither the outcome nor a mediator). The alternative is that no lifetime item exists, so the zero group cannot be split; that becomes a stated limitation, never a guess.",
+   "meaning": "The researcher confirms the pair measures the same behavior and chooses the reference: lifetime never-users (preferred), or current non-users with former users as their own level.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "exposure coding",
+     "inference": "Never / former / current (amount among current users), declared before the lock.",
+     "prediction": "Former use as its own level, a candidate tested in resampling."
+    },
+    {
+     "stage": "selection",
+     "decision": "reference group",
+     "inference": "Lifetime abstainers as the reference. Former users are never pooled with them.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "explanation",
+     "decision": "J-curve wording",
+     "inference": "Lower risk at light use is reported against lifetime abstainers, and against all non-users only as a comparison.",
+     "prediction": "Former use's importance is labelled as often a marker of illness."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States the reference group.",
+     "prediction": "States the coding."
+    }
+   ],
+   "failure_prevented": "The classic J-shaped alcohol curve: light drinkers look healthier than 'abstainers' because the abstainers include sick quitters. A pipeline that codes drinks per day as 0 for everyone not drinking now builds that artifact into every effect.",
+   "magic": "Of your 3,100 current non-drinkers, 1,180 used to drink, and they are older and report more chronic conditions than lifetime abstainers. Pooled, they make 'not drinking' look harmful before any outcome is seen. (Illustrative.)",
+   "layout": "Focus: the zero bar split into never and former, with each group's health profile.",
+   "sentence": "Alcohol use was coded as never, former and current (drinks per day among current drinkers), with lifetime abstainers as the reference group so that former drinkers were not pooled with abstainers.",
+   "sources": [
+    "turbotab/core/recognizers.py:340 ('never', 'current', 'former' only as alcohol words)",
+    "Shaper AG, Wannamethee G, Walker M. Lancet 1988;2:1267",
+    "Fillmore KM et al. Ann Epidemiol 2007;17(5 Suppl):S16",
+    "Stockwell T et al. J Stud Alcohol Drugs 2016;77:185",
+    "NHANES ALQ and SMQ questionnaire documentation (ALQ101/ALQ110 before 2017\u201318; ALQ111 from 2017\u201318)"
+   ],
+   "engine": "gap: no ever/current pairing or reference-group question exists.",
+   "tier": "asked (the reference group) when an ever/current pair exists; stated as a limitation when it does not",
+   "rank_signal": "share of current non-users who are former users \u00d7 their health SMD",
+   "critic_notes": "Fixes applied: the ever item is harmonized across NHANES cycles, and HSD010 is used as a descriptor only when it is neither outcome nor mediator. The magic's count was changed so it does not reuse the same-sitting thread's 1,240."
+  },
+  {
+   "id": "survey-self-reported-diagnosis-outcome",
+   "lens": "survey",
+   "title": "'Ever told by a doctor' measures diagnosis, not disease, and counts the undiagnosed as healthy",
+   "looks_at": "outcome",
+   "detector": "It fires when the declared outcome is a self-reported diagnosis item (DIQ010, BPQ020, MCQ160*) and the table holds the measurement that defines the condition (HbA1c, fasting glucose, measured blood pressure). Their cross-tabulation is an outcome-definition (outcome-alone) view, made at the opening before the outcome is settled. The defining measure is then routed out of the predictors, because it is part of the outcome.\n\nIt checks two things:\n- which sample the defining measure lives in. Fasting glucose exists only in the fasting subsample, so a definition using it forces the fasting weight (survey-subsample-weight); HbA1c alone keeps the exam sample;\n- that a single unconfirmed biomarker overstates the condition, which is stated.\n\nOutcome-blind context: who has a usual source of care or insurance (HIQ, HUQ items).",
+   "meaning": "The outcome's definition: diagnosed only (the question is about awareness or diagnosis), or total (diagnosed, or meeting the biomarker definition, with which biomarkers and which sample). The researcher confirms the biomarker leaves the predictors.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "outcome definition and its sample",
+     "inference": "Total = told OR biomarker-defined. Diagnosed-only is kept when the question is about diagnosis. A fasting-glucose criterion moves the analysis to the fasting weight.",
+     "prediction": "The target is named: diagnosis (who is already known) or disease (who would screen positive)."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Insurance and usual source of care decide who gets diagnosed, so with a diagnosed-only outcome the misclassification is differential by them. Stated.",
+     "prediction": "Access-to-care features are flagged as predicting diagnosis, not disease."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "The estimate under each outcome definition, after the lock.",
+     "prediction": "Performance against the biomarker definition when the model will screen."
+    },
+    {
+     "stage": "reporting",
+     "decision": "outcome definition",
+     "inference": "Stated, with the single-test caveat.",
+     "prediction": "Stated."
+    }
+   ],
+   "failure_prevented": "A diet that 'protects' against diabetes because people without a usual source of care are undiagnosed and eat differently, or a model predicting 'told diabetes' that learns insurance status. HbA1c left in as a predictor of an outcome it defines. A fasting-glucose definition analysed with the exam weight.",
+   "magic": "Among your adults with HbA1c of 6.5% or higher, a large share were never told they have diabetes; Menke 2015 put the undiagnosed at roughly a third of all diabetes in NHANES. With 'told by a doctor' as the outcome they count as healthy, and they are concentrated among the uninsured. Your own share is computed here. (Illustrative.)",
+   "layout": "Flow: the self-report and the biomarker definition as two gates, with the undiagnosed lit.",
+   "sentence": "Diabetes was defined as self-reported diagnosis or HbA1c \u2265 6.5% in the examination sample; HbA1c was therefore not used as a predictor, and because a single unconfirmed measurement was used, prevalence may be overstated.",
+   "sources": [
+    "survey-subsample-weight (fasting weight when fasting glucose defines the outcome)",
+    "Menke A, Casagrande S, Geiss L, Cowie CC. JAMA 2015;314:1021",
+    "American Diabetes Association. Standards of Care in Diabetes (diagnostic criteria; confirmatory testing)",
+    "Selvin E et al., confirmatory testing for undiagnosed diabetes (critic-cited; year and journal to verify)",
+    "Copeland KT, Checkoway H, McMichael AJ, Holbrook RH. Am J Epidemiol 1977;105:488",
+    "NHANES DIQ, BPQ and HIQ questionnaire documentation"
+   ],
+   "engine": "gap: no reading pairs a self-reported diagnosis outcome with its defining measurement, or routes the measurement out of the predictors.",
+   "tier": "asked (the outcome definition), inside the 'outcome's condition in the questionnaire' moment",
+   "rank_signal": "share biomarker-positive but never told",
+   "critic_notes": "Fixes applied: a fasting-glucose criterion forces the fasting weight, so the default sentence uses HbA1c in the exam sample. The single-biomarker overstatement is stated. The unsourced 23% was replaced by Menke's 'roughly a third', labelled. The Selvin citation needs verification."
+  },
+  {
+   "id": "survey-imputation-carries-the-design",
+   "lens": "survey",
+   "title": "Under a survey design, the imputation model has to know the design too",
+   "looks_at": "design",
+   "detector": "A rule. When the population answer holds and any value is imputed, strata, PSU-within-stratum and the weight enter every covariate imputation model, and the substantive model under SMC-FCS (methods/missing.py:830 design_variables, called at :1100). Rows the design cannot place get their own level and the median weight; their count is recorded.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "imputation model",
+     "inference": "Design variables in every imputation model.",
+     "prediction": "Same, in-fold, under the population answer."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "variance across copies",
+     "inference": "Design-based variance in each copy, pooled by Rubin's rules.",
+     "prediction": "Not applicable."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States that the imputation model included the design.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Imputing NHANES values from a model that ignores the oversampling and the clusters, which biases population estimates and understates their variance.",
+   "magic": "None on the canvas. The record says the imputation used SDMVSTRA, SDMVPSU and WTMEC2YR as predictors, and how many rows the design could not place.",
+   "layout": "None (record line only).",
+   "sentence": "Imputation models included the survey strata, PSUs and weights (Reiter, Raghunathan & Kinney 2006).",
+   "sources": [
+    "turbotab/core/methods/missing.py:8-16 (docstring), :830 design_variables, :1100",
+    "Reiter JP, Raghunathan TE, Kinney SK. Surv Methodol 2006;32:143"
+   ],
+   "engine": "exists (turbotab/core/methods/missing.py:830, :1100)",
+   "tier": "silent",
+   "rank_signal": "none",
+   "critic_notes": "New thread from the critic's coverage gaps. Checked in session: the engine already does this. It is catalogued so the methods sentence and the record carry it."
+  },
+  {
+   "id": "survey-recall-period-mismatch",
+   "lens": "survey",
+   "title": "Items in one analysis ask about different windows: past 30 days, past 12 months, 'usually', 'ever'",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. Each item's reference period is read from the codebook's question text ('in the past 30 days', 'past 12 months', 'in a typical week', 'usually', 'ever', 'now'). Without a codebook it is read from value ranges that imply a window (0\u201330 day counts, 0\u20137 days per week, 0\u2013365). It flags:\n- a derived quantity that combines items with different windows;\n- an exposure whose window postdates the outcome's, or differs from it (current supplement use against 'ever told');\n- items pooled across cycles whose window changed, which goes to survey-instrument-changed-across-cycles.\n\nThe alternative to reject is a combination the instrument itself publishes (AUDIT-C, an NHANES derived variable), which the instrument library or codebook names.",
+   "meaning": "Each item's reference period, and the period the research question is about.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "derived quantities",
+     "inference": "Combined only on a common window, or by the instrument's own published combination, declared before the lock.",
+     "prediction": "Same, row-local."
+    },
+    {
+     "stage": "selection",
+     "decision": "time order of exposure and outcome",
+     "inference": "An exposure whose window follows the outcome's is labelled cross-sectional, and feeds the outcome's-condition moment.",
+     "prediction": "The deployment-time window is stated: the model will see the same window at prediction."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect wording",
+     "inference": "Effects stated per unit in the item's window ('days in the past 30').",
+     "prediction": "Same, on axes."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sentence",
+     "inference": "States each window.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A rate built from a past-year frequency and a past-month quantity. A 'past 30 days' supplement exposure analysed against a lifetime diagnosis as if it came first.",
+   "magic": "Supplement use is 'in the past 30 days'; diabetes is 'ever told'. For most of your diabetics the supplement was reported years after the diagnosis, so the sentence says 'current use among people ever diagnosed', not 'use before diagnosis'. (Illustrative.)",
+   "layout": "Strip: items in use, each with its window, the mismatched pair focused.",
+   "sentence": "Supplement use referred to the 30 days before the interview and diabetes to any previous diagnosis; the association is therefore described as cross-sectional.",
+   "sources": [
+    "turbotab/core/codebook.py (codebook reader; question-text use not yet built)",
+    "Schwarz N. Am Psychol 1999;54:93",
+    "Tourangeau R, Rips LJ, Rasinski K. The Psychology of Survey Response. Cambridge 2000",
+    "NHANES DSQ documentation (30-day supplement use)"
+   ],
+   "engine": "new",
+   "tier": "stated when the codebook gives the windows and nothing is combined; asked when a derived quantity combines different windows",
+   "rank_signal": "items in use whose window differs from the outcome's or from the items they are combined with",
+   "critic_notes": "New thread from the critic's coverage gaps (recall periods). Age-gated universes, the other gap, are folded into survey-skip-pattern-blanks."
+  }
+ ],
+ "top_moments": [
+  "1. The outcome's condition hides in the questionnaire (survey-items-downstream-of-the-outcome, with survey-same-sitting-reverse-causation and survey-self-reported-diagnosis-outcome as one moment). The best predictors of diabetes are 'taking insulin now', whether 'taking diabetic pills' was asked, and whether 'age when first told' is blank. Each exists only because the person was already diagnosed, so a 0.97 AUC drops to an honest screening model (AUCs illustrative). In the same moment: 'told to cut salt' follows the diagnosis, and 'told by a doctor' counts the undiagnosed as healthy.",
+  "2. Blank because the gate said skip (survey-skip-pattern-blanks). meds_chol is blank for 17,204 people who were never told they had high cholesterol. They are 'not on treatment', and complete cases would keep 2,943 of 21,348 NHANES rows, almost all diagnosed (INBOX.md:86). One answer per questionnaire module fills every gated blank by rule.",
+  "3. The non-drinkers include sick quitters (survey-former-users-in-the-reference). A pipeline that codes everyone not drinking now as 0 builds the J-curve into every effect. The ever/current pair splits the zero group before any outcome is seen.",
+  "4. A 9 is a refusal, and a 5555 means 'more than 21' (survey-sentinel-codes, survey-top-codes). Measured on survey_sentinels.csv: item_14's 33 nines move its mean from 3.05 to 3.70, and on the reversed item_05 they bend its item\u2013rest r from \u22120.58 to \u22120.37. Nothing is recoded until the codebook says what each code means.",
+  "5. The key comes from the instrument, never from the correlations (survey-reverse-keying). 8 of 40 items correlate \u22120.36 to \u22120.65 with the rest. Under the codebook's key, \u03b1 goes from 0.80 to 0.94 and \u03c9-total is 0.94 (measured with the engine). The app shows the pattern but never offers a flip, because the same pattern appears when an export has already reversed them.",
+  "6. The questionnaire changed, not the drinking (survey-instrument-changed-across-cycles). A step in heavy drinking at 2017\u201318, flat on either side, is the ALQ revision. Pooled as one variable, half the data answered a different question.",
+  "7. Fasting analytes need the fasting weight, and NHANES rows are not a simple random sample (survey-subsample-weight, survey-population-or-sample). Triglycerides exist only in the fasting subsample (WTSAF2YR). An interval 1.6\u00d7 wider means 9,000 rows carry about 3,500 rows of information.",
+  "8. A strong construct looks like 40 weak features, and deployment may only collect a short form (survey-items-or-score). No item makes the top 10, yet the block costs the most AUC of any input when shuffled. A model trained on 9 items cannot be deployed where only the PHQ-2 is asked.",
+  "9. The total is two constructs, or one construct plus a wording factor (survey-dimensionality, survey-wording-method-factor). Parallel analysis and ECV say a 'stress' total adds worry and somatic symptoms, or that the second factor is exactly the negatively worded items. The published subscales are offered before any estimate exists.",
+  "10. Exclusion after the fact is a forking path (survey-careless-responding). 41 midpoint straightliners look identical whether they skimmed or are truly neutral; only their completion times tell. The rule that removes them is set before any result (illustrative)."
+ ],
+ "journey_load": "Tiers in this catalog (47 threads): 8 silent, about 9 stated, about 11 surfaced-then-asked, and about 19 asked. Most of the asked ones are folded into six shared questions, so they are not separate prompts. The six:\n(a) the scale-declaration form: instrument and version, unmodified?, reverse key, direction, construct type, missing-item rule;\n(b) the codes question, one per code table: sentinel, don't-know and top codes; stated when a codebook labels them;\n(c) one skip-gate Flow per questionnaire module, including OR-gates and age universes;\n(d) the sampling question: population, sample, or nonprobability;\n(e) the outcome's-condition moment: downstream items, same-sitting, self-reported diagnosis;\n(f) reliability and correction under inference, or the deployment form under prediction.\n\nSingle-instrument journey (survey_instrument.csv, binary outcome, no design columns):\n- Asked, about 4: the scale form (codebook key), the sampling question (opt-in or not), reliability and correction (inference) or deployment form (prediction), and the existing order question for education.\n- Stated, 2: the item-MI line, because complete cases would lose 36 of 300 rows (12%); and score rather than items.\n- Surfaced: 0.\n- Silent, with no 'nothing fired' lines: dimensionality (eigenvalue ratio about 10), careless responding (longest longstring 11), floor and ceiling (0% of totals at a bound), small sample (7.5 respondents per item).\n\nsurvey_sentinels.csv adds one codes question covering 7 = not applicable, 8 = don't know and 9 = refused, for 5 asked.\n\nNHANES questionnaire-plus-exam journey (DPQ, DIQ outcome, diet and alcohol exposures, pooled cycles):\n- Asked, about 8\u201310: the sampling question (exists); one skip-gate Flow for each module used (about 3\u20134, each a single confirmation when the codebook's skip instructions are loaded); the DPQ scale form, 1; the outcome's-condition moment, 1; the former-users reference, 1 if alcohol or smoking is the exposure; cycle harmonization, 1 if pooling across 2017\u201318; the wide-scan question only when there are more than 20 candidates.\n- Surfaced, about 3\u20134: informative design (pre-lock, predictors only), the self-report/measured pair, the PHQ floor, and a DIF or mode difference only for the groups the plan names.\n- Stated: the least-common-denominator weight, top codes from the codebook, effective n when deff_w > 2, and design df when q approaches d.\n- Silent: domain estimation, imputation carrying the design, estimate-reliability greying, explanation weighting, and the common-method limitation.\n\nThat meets the critic's target of about 8 asked and 4 surfaced. The swing is the skip-gate Flows: without a loaded codebook, each module's gates need one answer.",
+ "report": "The survey catalog is final: 47 threads. All 45 critic verdicts were applied, two gap threads were added, and two threads were moved to the shared lens.\n\n**What changed**\n- **Cuts: none.** The only skeptic 'cut' (survey-common-method) got 'fix', not a rejection, from the evidence checker. It moves to the silent tier as a limitation sentence driven by the column-source reading, which the mode and same-sitting threads also use. Its marker-variable adjustment is now a post-lock view, labelled unreliable.\n- **Automate-silently threads moved down.** The critic's seven, plus common-method, are silent:\n  - item-nonresponse (stated in one line when complete cases would lose 5% of rows or more);\n  - small-sample-psychometrics;\n  - exclusion-is-a-domain;\n  - weight-effective-n;\n  - design-df-budget;\n  - estimate-reliability;\n  - explanations-describe-the-sample (SHAP background now weighted too).\n- **Merges.** wording-method-factor became an option of the dimensionality structure question. score-direction, formative-or-reflective and reverse-keying became fields of the scale-declaration form, which instrument-published-scoring hosts. nonprobability-sample became an option of the sampling question. Sentinel, don't-know and top codes became one codes question per code table. Downstream items, same-sitting and self-reported diagnosis became one moment. Acquiescence now depends on the declared key and the plan's groups.\n- **Shared lens.** Panel attrition and EMA within/between are now shared-panel-attrition and shared-ema-within-between, to be built once in the repeats lane. The survey lens adds the longitudinal weight and multilevel \u03c9.\n- **New threads.** survey-imputation-carries-the-design is silent. The critic listed it as a coverage gap, but it is already built (turbotab/core/methods/missing.py:830, :1100); it is catalogued so the methods sentence carries it. survey-recall-period-mismatch is stated, or asked when a derived quantity mixes windows. Age-gated universes are folded into the skip-pattern detector.\n\n**Every 'fix' was applied.** The ones that change correctness:\n- **Don't-know.** A patterned rate now rejects MCAR, not MAR, and item content decides the coding. The fixture is a negative control; measured in session, item_22's don't-know rate is 6.8\u201310.8% across education levels, highest among graduates.\n- **Informative design.** The primary estimator is fixed before the lock; the DuMouchel\u2013Duncan test is only disclosed.\n- **Acquiescence.** When the scale is the outcome, the index comes from a separate item set.\n- **Careless responding.** Midpoint straightlining survives reversal, so completion time or D\u00b2 must tell, or the canvas says the values cannot.\n- **Reliability.** \u03bb|Z = (\u03c9 \u2212 R\u00b2)/(1 \u2212 R\u00b2) = 0.60 is now shown beside \u03c9 = 0.70.\n- **Population or sample.** The arithmetic is fixed: an interval 1.6\u00d7 wider means about 3,500 effective rows.\n- **Instrument fingerprint.** NHANES DPQ010\u2013DPQ090 must be added to the library. Verified in session: the PHQ-9 pattern at turbotab/core/detectors/scales.py:72 is ^phq(?:_?9)?$, so 'dpq' matches nothing. A 1\u20134 export of a 0\u20133 instrument is an offset to subtract, not a modification.\n- **Diabetes items.** DIQ050's value leaks but its blank does not; the blank-pattern leaks are DID040 and DIQ070.\n- **Same-sitting.** The never-advised restriction is labelled as biased in its own way.\n- **Floor and ceiling.** The 15% rule applies to the total score, not to items.\n- **Self-reported diagnosis.** A fasting-glucose definition forces the fasting weight.\n- **Top codes.** 'More than 21' maps to 22 or more, not 21.\n\n**Measured in session**\n- **survey_instrument.csv, with the engine's omega().** Raw \u03b1 is 0.796; keyed \u03b1 is 0.942 and keyed \u03c9-total 0.943. The critic was half right: the magic's '0.80' was \u03b1, but the sentence's '\u03c9-total 0.94' was correct.\n- **survey_sentinels.csv mean shifts.** item_14 shifts 0.65 (3.70 with codes, 3.05 without), item_22 0.40, item_05 0.36, item_33 0.25, item_09 0.16.\n\nMagic figures with no fixture behind them are labelled illustrative in each thread.\n\n**Still to verify on the web** (the critic's search limit was hit):\n- Eekhout's 10% mean-imputation threshold;\n- the universes of DIQ050, DIQ070 and DID040;\n- DBD895's 5555 code;\n- ALQ121 and ALQ101/ALQ110 by cycle;\n- Menke 2015's undiagnosed share;\n- the Selvin citation.\n\n**Engine work this catalog implies, most consequential first:**\n1. An outcome-condition link from skip gates to the declared outcome, plus a single-feature AUC check (survey-items-downstream-of-the-outcome).\n2. Fill by logic for skip gates, OR-gates and age universes.\n3. An ever/current pairing for the reference group.\n4. A cross-cycle item step reading with variable lineage.\n5. Survey-weighted importance, ALE and SHAP background (turbotab/core/models/explain.py:406, :560).\n6. DPQ stems and offset detection in the instrument library.\n7. A codes question with per-code meaning.\n8. A sampling question when no design parts are found, plus raking.\n9. Parallel analysis and ECV to propose the structure.\n10. A careless-responding screen.\n\nOne wording fix is owed: turbotab/core/stages/finding_words.py:795 says ordinal models are not in this version, which is stale for an ordinal outcome."
+}

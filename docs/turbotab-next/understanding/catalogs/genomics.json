@@ -1,0 +1,2272 @@
+{
+ "lens": "genomics",
+ "threads": [
+  {
+   "id": "genomics-genes-are-the-outcomes",
+   "lens": "genomics",
+   "title": "In a diet or intervention study the genes are the outcomes and the diet is the exposure, not the other way round",
+   "looks_at": "design",
+   "detector": "An omics block plus a randomized arm, treatment or dietary exposure column (STUDY_COLUMNS group/treatment/arm; dietary-lens readings), and the user's chosen target. Flags a target that is the arm or a diet variable with the omics block among the predictors, or a target that is one gene among thousands. Outcome-blind facts: arm sizes, and whether the arm was randomized (asked). The researcher settles the estimand.",
+   "meaning": "The scientific question. 'Which genes does the diet change' means many outcomes and one exposure: one model per gene, with FDR. 'Can expression mark the diet or predict a phenotype' is prediction. 'Does expression mediate diet to outcome' is mediation.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "roles",
+     "inference": "The arm or intake is the exposure and the genes are the outcome family.",
+     "prediction": "The arm is the target and the genes are predictors (an intake-biomarker panel), labeled as a marker question."
+    },
+    {
+     "stage": "model",
+     "decision": "family",
+     "inference": "Feature-wise limma-direction design: gene_j ~ arm + Z (exists for a two-level target); gene_j ~ intake + Z for a numeric exposure (new).",
+     "prediction": "A penalized classifier of the arm, its score read as how separable the arms are, not as a diet effect."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "what is reported",
+     "inference": "FDR over genes, not a CV score.",
+     "prediction": "The CV score."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect words",
+     "inference": "Per-gene log2 fold change per diet unit.",
+     "prediction": "Importance labeled 'marker of the diet', never 'effect of'."
+    },
+    {
+     "stage": "reporting",
+     "decision": "estimand sentence",
+     "inference": "States the per-gene model and the FDR family.",
+     "prediction": "States the marker claim."
+    }
+   ],
+   "failure_prevented": "An AutoML run 'predicts' the randomized diet arm from expression, reports AUC 0.78 and SHAP values, and never answers the paper's question (which genes the diet changed, by how much, under FDR); gene importances get read as diet effects. Or intake, measured with error, is regressed on 20,000 genes.",
+   "magic": "'You picked diet arm as the outcome. In a feeding trial the diet came first: the question your design can answer is which genes the diet changed. With one model per gene, 212 change at 5% FDR. An AUC would tell you only that the arms are separable.'",
+   "layout": "Routing: the lineage flips. The arm moves from target to exposure and the genes from predictors to the outcome family, with counts per role.",
+   "sentence": "Each gene's log2 expression was modeled on diet arm adjusted for {Z}, and the false discovery rate was controlled over {m} genes.",
+   "sources": [
+    "turbotab/core/models/featurewise.py:1-20 (x_j ~ event + Z for a two-level target; verified by the critic at :15-20)",
+    "turbotab/core/estimand.py",
+    "turbotab/packs.py:1860-1868 STUDY_COLUMNS group/treatment/arm",
+    "Smyth 2004, Stat Appl Genet Mol Biol 3:Article3",
+    "Ritchie et al. 2015, Nucleic Acids Res 43:e47",
+    "Afman & M\u00fcller 2006, J Am Diet Assoc 106:569"
+   ],
+   "engine": "Partial: featurewise already runs the gene-on-event direction for a two-level target. New: the estimand question and gene-on-numeric-exposure models.",
+   "tier": "asked-blocking (critical) when a diet arm or exposure sits beside an omics block and the target is the arm or a diet variable; silent otherwise",
+   "rank_signal": "Fires or not; when it fires it ranks first in the journey, since every later stage depends on the roles.",
+   "critic_notes": "Sound; the clearest question AutoML cannot ask."
+  },
+  {
+   "id": "genomics-batch-aligned-with-case",
+   "lens": "genomics",
+   "title": "Samples split by processing batch on the leading components, and batch lines up with case status",
+   "looks_at": "design",
+   "detector": "Outcome-blind first: PCA of the normalized matrix (training rows under prediction) and each top PC's one-way R\u00b2 on every settled batch reading (readings.BATCH_KINDS batch/run/plate via recognizers.acquisition_kind). Then a design-balance view: the batch x outcome table over rows with both (methods/batch.py confounding). A design-balance view decides only identifiability (the refusal) and the split scheme, is recorded as an outcome view under both purposes, and never feeds a form, an adjustment set or a predictor; Cram\u00e9r's V stays out of every form choice. Perfect confounding (every batch holds one outcome level, or a numeric outcome is constant within batch) is critical and refused; V >= 0.1 is asked (imbalance_concern). Under prediction, a shortcut check: in-fold AUC for predicting batch from the features. Alternative to reject: the column is biology (a recruitment site with a different case mix; a run date equal to the visit date). The user settles the batch reading under \u00a714.3, never the values. Measured on genomics_expression (critic, in-process): batch explains R\u00b2 0.97 of PC1 and 0.69 of PC2 of log-CPM, and every batch holds 10 cases and 10 controls.",
+   "meaning": "The column is a technical processing batch, not a study group (set_batch; ledger kind 'batch'); 'not a batch' is a recorded answer. Also which batches hold the cases.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "is any estimate possible",
+     "inference": "Perfect confounding refused, with exits (another outcome, or 'not a batch').",
+     "prediction": "The same refusal: no model can separate batch from outcome."
+    },
+    {
+     "stage": "representation",
+     "decision": "set_batch",
+     "inference": "Batch as a fixed covariate in each feature-wise model (Nygaard 2016); outcome-protected ComBat drawn for figures only, never tested. Offered, not applied without the answer (genomics_expression.md: no batch correction by default).",
+     "prediction": "ReferenceComBat fitted in each training fold without the outcome; held-out rows adjusted by the fold's estimates, unseen batches by add-on adjustment; outcome-protected ComBat refused as leakage."
+    },
+    {
+     "stage": "selection",
+     "decision": "order of screening",
+     "inference": "Feature-wise tests carry batch as a covariate.",
+     "prediction": "Batch correction runs before in-fold screening, never after."
+    },
+    {
+     "stage": "model",
+     "decision": "select_models",
+     "inference": "No model fitted while perfectly confounded (_no_model_while_confounded).",
+     "prediction": "The same."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "set_split / the honest score",
+     "inference": "Batch is a fixed covariate; with 2-5 batches no cluster-robust intervals (they need many clusters). After the lock, \u03bb with and without batch as a diagnostic.",
+     "prediction": "On the same repeated folds: the score without the batch step beside the score with it, plus leave-one-batch-out (internal_external). The gap is labeled 'learned from the batch'."
+    },
+    {
+     "stage": "explanation",
+     "decision": "set_explain: which top genes are batch",
+     "inference": "After the lock, each reported gene shows its batch \u03b7\u00b2 beside its effect.",
+     "prediction": "Top features that separate batches better than classes are flagged; importance rank shown with and without correction."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods text and figure",
+     "inference": "batch_sentence / methods_clause, plus the batch x case table.",
+     "prediction": "The same, plus the random-fold and batch-held-out scores."
+    }
+   ],
+   "failure_prevented": "The classifier learns which run a sample was sequenced in; because cases sit mostly in one run, the CV AUC is high and the 'signature' is batch (Baggerly 2004; Leek 2010). Or ComBat run with the outcome protected manufactures group differences in unbalanced designs (Nygaard 2016; quote the reanalysed example's DE-gene counts from the paper's table, not from memory).",
+   "magic": "Illustrative (no fixture plants alignment yet): PCA colored by batch, then by case, and the two pictures look the same. Random folds give AUC 0.91; with ComBat fitted in each fold and one batch held out at a time, 0.61, and the 0.30 is labeled what the first model learned from the batch. On the shipped fixture, where batches are balanced: 'Batch is the biggest thing in your data (97% of PC1), but every batch holds 10 cases and 10 controls, so it costs you power, not truth.'",
+   "layout": "Angles, inside the consolidated 'What drives your leading components' view (one PC x covariate R\u00b2 matrix). Three panels: 'Do samples split by batch?' (PCA by batch, flip to case); 'Does batch carry the outcome?' (batch x case mosaic with V); 'What is the honest score?' (random vs batch-held-out, naive vs in-fold). An option table follows the pointer: covariate / reference ComBat / not a batch.",
+   "sentence": "Samples were processed in {k} batches, {balanced | unevenly distributed} across case status (Cram\u00e9r's V = {v}). Batch was included as a covariate in each gene-wise model [inference] / removed by reference-batch ComBat fitted within each training fold without the outcome, and performance was also estimated by leave-one-batch-out cross-validation ({auc_lobo} vs {auc_random} with random folds) [prediction].",
+   "sources": [
+    "turbotab/core/methods/batch.py:1-30, :252 add_on, :291 ReferenceComBat, :356 principal_components, :389 batch_figure",
+    "turbotab/core/methods/batch.py:465 confounding, :508 imbalance_concern, :581 batch_findings, :660 confounding_refusal, :673 _no_model_while_confounded, :794 batch_sentence, :814 methods_clause",
+    "turbotab/core/readings.py:3093 BATCH_KINDS, :3150 batch_readings",
+    "turbotab/core/models/validation.py:457 internal_external; turbotab/core/decisions.py:388",
+    "turbotab/core/method_previews.py:780",
+    "turbotab/sample_data/genomics_expression.md",
+    "Leek et al. 2010, Nat Rev Genet 11:733",
+    "Johnson, Li & Rabinovic 2007, Biostatistics 8:118",
+    "Nygaard, R\u00f8dland & Hovig 2016, Biostatistics 17:29",
+    "Zhang et al. 2018, BMC Bioinformatics 19:262",
+    "Baggerly, Morris & Coombes 2004, Bioinformatics 20:777",
+    "MIAME 4; MINSEQE 1, 4, 5; STREGA 8b"
+   ],
+   "engine": "Exists for the detector, the refusal, ReferenceComBat with add-on, and the preview. Magic partial: no fixture plants batch-outcome alignment, and the PCA figure is served only under inference with figures=True. New: the PC x batch R\u00b2 ranking, the batch-predictability check, the naive-vs-in-fold and random-vs-batch-held-out score pairs, per-gene batch \u03b7\u00b2. Purpose fix: confounding() reads the outcome on every row and must be recorded as a design-balance outcome view.",
+   "tier": "asked-blocking when perfectly confounded; asked when V >= 0.1 (one question: settle the reading, choose covariate / reference ComBat / not a batch); stated when balanced (the batch reading is still confirmed in one click, because number-changing consumers read only settled readings)",
+   "rank_signal": "Refusal first; then V x PC variance share x batch R\u00b2.",
+   "critic_notes": "Fixes applied: batch-clustered intervals dropped; batch x case table named a design-balance view recorded under both purposes that decides only refusal and split; Nygaard count flagged for citation from the paper's table."
+  },
+  {
+   "id": "genomics-depth-tracks-case",
+   "lens": "genomics",
+   "title": "Cases were sequenced deeper than controls, so depth alone can predict case status",
+   "looks_at": "design",
+   "detector": "Library size (column sums) and detected genes per sample, from the assay alone; PC1 of log2(count+1) against log library size. Then a design-balance view: the size ratio and a Mann-Whitney test by outcome (library_size_check; training rows under prediction), recorded as an outcome view under both purposes. Under inference it decides nothing (normalization is offered regardless) and is disclosed in the methods sentence only. Under prediction a depth-only baseline score is computed on the same folds. Assumption, not a rejected alternative: normalization assumes most genes do not change, so without spike-ins a genuine global rise in transcription looks the same as depth (Lov\u00e9n 2012). Measured on genomics_expression (in-process): case median 38,396 reads vs 32,888 (1.17-fold), depth-only AUC 0.66, Mann-Whitney p = 0.034, PC1 vs log depth r = 0.67; depth also differs by batch (p = 0.02).",
+   "meaning": "Depth is technical and the counts are raw.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "apply_repair omics_normalization",
+     "inference": "TMM log-CPM offered as the repair before any feature-wise test; applied only when the researcher takes it (genomics_expression.md forbids a normalization default).",
+     "prediction": "LogCPM with TMM factors fitted in each training fold, offered the same way."
+    },
+    {
+     "stage": "model",
+     "decision": "which families may see the values",
+     "inference": "Linear families refused on raw counts (refusal_for).",
+     "prediction": "The same refusal, and a concern on every family while unnormalized."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "how much of the score is depth",
+     "inference": "Not a score: after the lock, the number of genes associated with depth as a diagnostic.",
+     "prediction": "Three scores on the same folds: library size alone, the raw-count model, the normalized model."
+    },
+    {
+     "stage": "explanation",
+     "decision": "scale of importances",
+     "inference": "Effects per doubling of CPM.",
+     "prediction": "Importance on the normalized scale; features acting as depth proxies flagged."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States the normalization and the depth difference.",
+     "prediction": "The same, plus the depth-only score."
+    }
+   ],
+   "failure_prevented": "AUDIT ME-09: no gene differs, but cases sequenced 1.46 times deeper gave an elastic net AUC 0.83-1.0. A PCA on raw counts whose PC1 is depth gets read as biology.",
+   "magic": "'Library size alone predicts case status with AUC 0.92. Your raw-count model scored 0.94; normalized, 0.61.' (illustrative, the ME-09 shape). On the shipped fixture, stated: 'Cases were sequenced 1.17 times deeper; depth alone separates them at AUC 0.66.'",
+   "layout": "Angles, inside 'What drives your leading components': library size by group, PC1 against depth, the three scores side by side.",
+   "sentence": "Library sizes were {ratio}-fold larger in cases (Mann-Whitney p = {p}); counts were TMM-normalized to log2 counts per million [within each training fold].",
+   "sources": [
+    "turbotab/core/methods/omics.py:1-30 (ME-09), :233 tmm_factor, :350 LogCPM, :753 library_size_check, :814 check_on, :868 refusal_for",
+    "turbotab/core/methods/omics.py:1993 (normalization recorded from the researcher's choice, normalization_of)",
+    "turbotab/core/detectors/genomics.py:118 scaled_counts",
+    "docs/turbotab-next/audit/AUDIT_REPORT.md ME-09",
+    "turbotab/sample_data/genomics_expression.csv and .md",
+    "Robinson & Oshlack 2010, Genome Biol 11:R25",
+    "Lov\u00e9n et al. 2012, Cell 151:476",
+    "Conesa et al. 2016, Genome Biol 17:13",
+    "MINSEQE 2, 5"
+   ],
+   "engine": "Exists (library_size_check, refusal, in-fold LogCPM, normalization as a researcher-applied repair). New: the depth-only baseline score, the PC1-against-depth reading, the detected-genes balance. Purpose fix: record the outcome read as a design-balance view.",
+   "tier": "surfaced under prediction when the depth-only AUC >= 0.7 or within 0.05 of the model's score; stated otherwise (the shipped fixture, AUC 0.66, is stated); silent under inference beyond the methods sentence",
+   "rank_signal": "Depth-only AUC.",
+   "critic_notes": "Fixes applied: 'global rise' is an assumption, not a rejected alternative; depth x outcome under inference is disclosure only. The fixture contract conflict is resolved toward the fixture: normalization is offered as a repair, never a default (normalization_of records the researcher's choice)."
+  },
+  {
+   "id": "genomics-what-the-numbers-are",
+   "lens": "genomics",
+   "title": "The values show the processing they have already had (raw counts, estimated counts, CPM/TPM, FPKM, VST, log intensity), and that closes some models",
+   "looks_at": "measurement",
+   "detector": "detectors/genomics.card over the pack's nine signatures: per-sample sums, integrality, zero share, maximum, negatives; a back-transform 2^x - offset summing to 1e6 per sample within 5% (log CPM/TPM) or 25% (log TMM-scaled CPM); voom's count+0.5 signature; whole multiples of a per-sample minimum (scaled counts); count quanta (estimated counts); shallow counts; plus omics.scale_finding (counts vs intensities) and the mean-variance slope (1.97 on genomics_expression: overdispersed counts). Values settle the reading where they exclude the alternatives (any negative rules out counts, CPM, TPM, FPKM). CPM vs TPM cannot be decided from the matrix, and once logged no downstream number depends on it (same log2 unit; within a gene they differ by a per-gene constant), so it becomes a blank in the methods sentence filled at reporting, not a blocking question. Asked: estimated counts vs normalized non-integers, shallow counts vs an integer targeted panel, and a log scale whose normalization cannot be recovered. Single-cell signatures hand off to genomics-cells-are-not-replicates.",
+   "meaning": "Which pipeline produced the values and with what offset; or the values declared already normalized (omics_scale 'declared_normalized'). CPM vs TPM is answered at reporting.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "apply_repair omics_scale",
+     "inference": "TMM/log-CPM only from raw counts; already-logged values never logged again; VST/rlog for figures only, never a test input.",
+     "prediction": "The same outcome-blind transforms refit inside each training fold (LogCPM, QuotientLog); no second log."
+    },
+    {
+     "stage": "model",
+     "decision": "select_models: which families are eligible",
+     "inference": "Negative binomial models only on raw counts; log values go to a Gaussian feature-wise model whose coefficient is a log2 fold difference.",
+     "prediction": "Linear families wait until a scale is settled (_linear_families_need_a_scale); tree families allowed, depth-driven splits named."
+    },
+    {
+     "stage": "explanation",
+     "decision": "the unit of an effect or SHAP value",
+     "inference": "'Per doubling' stated only once the log2 scale is settled.",
+     "prediction": "The same; until settled, the attribution axis quotes the column header verbatim."
+    },
+    {
+     "stage": "reporting",
+     "decision": "input scale in the methods",
+     "inference": "Names the pipeline, the evidence, and the researcher's CPM/TPM answer (asked here, not earlier).",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "TPM, FPKM or VST fed to DESeq2/edgeR gives invalid dispersions and normal-looking wrong p-values; double-logging; a Gaussian model or PCA on raw counts whose PC1 is library size; FPKM compared across samples.",
+   "magic": "'Each sample's back-transformed values sum to one million within 2%: these are log2(CPM+1).' Before the researcher picks anything, the shelf greys out the count model and the extra log, each with one line saying why.",
+   "layout": "Routing: the model shelf with closed families re-routed out, beside a per-sample strip of back-transformed sums against the 1e6 line; a capability table (enabled, disabled, needs input) follows the pointer.",
+   "sentence": "The expression values were read as {reading} ({evidence}; {settled by values | confirmed by the researcher}); {normalization} was therefore applied within each training fold, and count-scale models were not used.",
+   "sources": [
+    "turbotab/core/detectors/genomics.py:1-33, :71 log_signature, :118 scaled_counts, :150 voom_reading, :188 card, :255-275 (LOG_CPM sets requires_input), :342 findings, :379-381 CLOSED_COUNT_MODEL / CLOSED_RELOG",
+    "turbotab/packs.py:4346 data_type_card, :4470",
+    "turbotab/core/methods/omics.py:350 LogCPM, :409 QuotientLog, :565 scale_finding, :868 refusal_for, :973 _linear_families_need_a_scale",
+    "turbotab/sample_data/genomics_{cpm,tmm_cpm,fpkm,vst,microarray,estimated_counts,expression,single_cell,gene_ids}.csv",
+    "Love, Huber & Anders 2014, Genome Biol 15:550",
+    "Robinson, McCarthy & Smyth 2010, Bioinformatics 26:139",
+    "Law et al. 2014, Genome Biol 15:R29",
+    "Wagner, Kin & Lynch 2012, Theory Biosci 131:281",
+    "Dillies et al. 2013, Brief Bioinform 14:671",
+    "Conesa et al. 2016, Genome Biol 17:13"
+   ],
+   "engine": "Exists; fires on all nine genomics fixtures. Change: LOG_CPM's requires_input (detectors/genomics.py:262) becomes a reporting blank. New: the explanation-unit consumer.",
+   "tier": "silent when values settle the reading; asked only for estimated counts vs normalized non-integers, shallow counts vs a targeted panel, and an unrecoverable log normalization; CPM/TPM is a reporting blank",
+   "rank_signal": "Number of downstream options the reading closes.",
+   "critic_notes": "Fixes applied: CPM vs TPM demoted from a blocking question to a reporting blank; single-cell stance unified (detected and routed to the grain question, not 'out of scope')."
+  },
+  {
+   "id": "genomics-sample-quality-drives-components",
+   "lens": "genomics",
+   "title": "A recorded technical covariate (RIN, ischemic or post-mortem time, %mito, 3\u2032 bias, mapping rate, array position, processing order) drives a leading component",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind (training rows under prediction): R\u00b2 of each of the top 10 PCs on each settled technical covariate and on derived ones (detected-gene count, % zeros, %mito when identifiers allow), in the same PC x covariate matrix as the batch, unrecorded-structure, depth, draw-conditions and tissue threads. Flag R\u00b2 >= 0.3, or a technical covariate explaining more of PC1 than any biological covariate. A processing-order or date column also gets a LOESS trend of the per-sample median and PC1 against order (drift, not steps). Then a design-balance view of the covariate by outcome, recorded under both purposes; the adjustment choice rests on the asked meaning, never on the imbalance. A column name only proposes a quality column; the user settles it. Alternative the values cannot reject: the covariate is a consequence of the condition (diseased or autopsy tissue has lower RIN), so this is asked.",
+   "meaning": "Whether the covariate is purely technical (adjust) or downstream of the condition (report with and without), the failed-library threshold, and whether the covariate will exist at deployment.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility of failed libraries",
+     "inference": "An exclusion rule stated before estimates, with a sensitivity analysis.",
+     "prediction": "The same rule applied identically to sealed rows."
+    },
+    {
+     "stage": "representation",
+     "decision": "quality as a covariate or feature",
+     "inference": "RIN in each gene-wise model when technical.",
+     "prediction": "Asked: will RIN exist at deployment? If yes, a candidate feature (or in-fold residualization) tested by resampling; if no, excluded and the score without it reported."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "A precision covariate, or a declared with/without pair when the condition may affect it, decided by the meaning.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "where the score holds",
+     "inference": "After the lock, sensitivity excluding the lowest-quality tertile.",
+     "prediction": "Performance stratified by RIN tertile or plate."
+    },
+    {
+     "stage": "explanation",
+     "decision": "trust in top features",
+     "inference": "After the lock, each reported gene's r with the covariate.",
+     "prediction": "Features tracking RIN more than the outcome flagged beside their importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States the quality adjustment.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "A degradation signature, or the difference between surgical and autopsy tissue, is reported as a disease signature (Gallego Romero 2014; Ransohoff 2005).",
+   "magic": "'PC1 (34%) is RNA integrity, not disease: R\u00b2 0.71 with RIN, and the cases' tissue waited longer before freezing. Nine of your top ten genes correlate with RIN at |r| > 0.5.'",
+   "layout": "Angles, the anchor of 'What drives your leading components': the PC x covariate R\u00b2 heatmap, PC1 against the covariate, the top genes' r with it.",
+   "sentence": "{covariate} explained {r2} of the variance in principal component {k} and differed by case status; it was {included as a precision covariate | reported with and without adjustment because it may be affected by the condition}.",
+   "sources": [
+    "turbotab/core/methods/batch.py:356 principal_components",
+    "turbotab/core/methods/omics.py:753 library_size_check",
+    "turbotab/core/readings.py:60-77 KINDS (injection_order exists for metabolomics)",
+    "Gallego Romero et al. 2014, BMC Biol 12:42",
+    "Jaffe et al. 2017, PNAS 114:7130",
+    "GTEx Consortium 2015, Science 348:648",
+    "Leek et al. 2010, Nat Rev Genet 11:733",
+    "Conesa et al. 2016, Genome Biol 17:13",
+    "Ransohoff 2005, Nat Rev Cancer 5:142",
+    "docs/turbotab/research/GENOMICS_PACK.md \u00a705, \u00a707A"
+   ],
+   "engine": "New: no PC x covariate matrix and no processing-order drift detector for genomics; only library size is checked.",
+   "tier": "asked when a settled technical column has R\u00b2 >= 0.3 on a top PC, one question per covariate; silent otherwise",
+   "rank_signal": "R\u00b2 x PC variance share.",
+   "critic_notes": "Sound. Balance view treated as a design-balance view; builds the shared PC x covariate matrix."
+  },
+  {
+   "id": "genomics-unrecorded-structure",
+   "lens": "genomics",
+   "title": "Samples split on a leading component by something no column names (a lane, an extraction day, a tissue)",
+   "looks_at": "structure",
+   "detector": "Outcome-blind PCA (top 10 PCs; training rows under prediction). For each PC with >= 5% of variance, a real bimodality test on its scores: Hartigan's dip test, or a 2-component Gaussian mixture with a BIC gain and Ashman's D > 2. Silhouette is rejected: k-means silhouette >= 0.5 fired on unimodal normal, uniform and t5 draws at n = 60 in 50 of 50 runs (critic, in-process). Then the PC's adjusted R\u00b2 against every recorded column and against tokens parsed from sample names (lane L1_/L2_, plate, date prefixes; detectors/lenses.py grammars). Fires only when a name token matches the PC, or the bimodality test passes and no recorded column explains it (max adjusted R\u00b2 < 0.1). Second detector: block missingness (feature sets absent in the same subset of samples: merged platforms). Only after the factor is named: its table with the outcome, as a design-balance view. Alternatives to reject: one outlier (needs >= 2 samples per mode; otherwise genomics-outlier-sample) and recorded biology (the R\u00b2 check). Unrecorded biology (sex, tissue, subtype) is asked, never settled by values.",
+   "meaning": "The researcher names the factor and says whether it is technical (it becomes a batch reading and feeds genomics-batch-aligned-with-case) or biological (a covariate, genomics-mixed-tissue-types, or left alone).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "confirm_reading: a new batch or covariate reading",
+     "inference": "The confirmed factor becomes a covariate or batch reading.",
+     "prediction": "The confirmed factor becomes the in-fold ComBat batch and the CV grouping."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjusting for unknown factors",
+     "inference": "Surrogate variables (SVA) or RUV factors added to the design, never subtracted from the matrix; SVA reads the outcome, so it is allowed only when declared before estimates.",
+     "prediction": "Only a confirmed, outcome-free factor is corrected in-fold; supervised SVA refused as preprocessing; frozen SVA (fSVA) is the in-fold route, fitted on training rows and applied to held-out rows; outcome-free removal of the component offered, labeled as possibly removing signal."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "stress test",
+     "inference": "After the lock, sensitivity with and without the surrogate variables (\u03bb both ways).",
+     "prediction": "Folds grouped by the discovered factor (leave-one-level-out) beside random folds."
+    },
+    {
+     "stage": "explanation",
+     "decision": "nuisance association of top genes",
+     "inference": "After the lock, each reported gene's R\u00b2 with the component.",
+     "prediction": "The same, beside importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "disclosure",
+     "inference": "States the discovered axis and its handling.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "A batch with no column (a lane in the sample name, a processing date) is invisible to the named-batch check, so the confounding thread never fires and the shortcut ships; unmodeled technical heterogeneity inflates false discoveries.",
+   "magic": "'PC2 (18% of the variance) splits your samples into two groups that none of your 12 columns explains. Samples named L2_ match it exactly. Was there a second lane or extraction day?' Once named: '18 of the 20 cases are L2_.' The researcher finds the lab log and now has a batch column.",
+   "layout": "Focus, inside 'What drives your leading components': the unexplained component's scores as small multiples colored by each recorded column and name token in turn, the PC x column adjusted-R\u00b2 strip beneath.",
+   "sentence": "Principal component {k} ({share} of variance) showed bimodal structure unexplained by any recorded covariate; it matched {factor} (R\u00b2 = {r2}) and was handled as {a batch | surrogate variables in the design | frozen surrogate variables within each training fold}.",
+   "sources": [
+    "turbotab/core/methods/batch.py:356 principal_components, :569 batch_columns",
+    "turbotab/core/readings.py:3093 BATCH_KINDS",
+    "turbotab/core/detectors/lenses.py:37-42",
+    "turbotab/core/recognizers.py:1569 acquisition_kind",
+    "turbotab/packs.py pack::metabolomics::empty_blocks (block-missingness precedent)",
+    "Hartigan & Hartigan 1985, Ann Stat 13:70 (dip test)",
+    "Leek & Storey 2007, PLoS Genet 3:e161",
+    "Parker, Corrada Bravo & Leek 2014, PeerJ 2:e561 (fSVA)",
+    "Gagnon-Bartsch & Speed 2012, Biostatistics 13:539",
+    "Risso et al. 2014, Nat Biotechnol 32:896",
+    "Leek et al. 2010, Nat Rev Genet 11:733"
+   ],
+   "engine": "New: PCA exists, but no outcome-blind latent-structure detector, no sample-name token parser for this purpose, no fSVA.",
+   "tier": "asked only when a name token matches the PC or the bimodality test passes with no column explaining it; silent otherwise",
+   "rank_signal": "Unexplained PC variance share.",
+   "critic_notes": "Fixes applied: silhouette replaced by dip test / GMM with Ashman's D; adjusted R\u00b2; fSVA named as the in-fold route; gated so it no longer fires on every expression set."
+  },
+  {
+   "id": "genomics-sample-sheet-alignment",
+   "lens": "genomics",
+   "title": "The expression matrix and the sample sheet do not line up one-to-one (renamed, reordered or missing sample IDs)",
+   "looks_at": "structure",
+   "detector": "When sample annotation arrives separately, or as header rows in a GEO-style matrix: an exact join of matrix sample IDs to sheet IDs. Then near-matches under known rewrites, each counted: R's make.names ('X' prefixed to IDs starting with a digit, '-' turned to '.'), Excel's leading-zero loss on all-digit IDs (001234 to 1234; alphanumeric IDs like S001 are not affected), case and whitespace. Samples present on one side only are listed. A join by position alone is refused unless confirmed. Identity cross-checks from the data: recorded sex against sex genes, recorded batch against the unrecorded-structure PC, replicate pairs. Alternative to reject: genuinely different sample sets (failed libraries removed), which is asked and feeds genomics-excluded-libraries-by-group.",
+   "meaning": "The join key, which rewrite produced each mismatch, and what happens to unmatched samples.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "rows and eligibility",
+     "inference": "Which samples have outcomes; unmatched samples counted in the flow before the seal.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "label integrity",
+     "inference": "A mis-joined label attenuates every effect, so the identity checks are reported before any estimate.",
+     "prediction": "A score trained on shifted labels is meaningless, so the identity checks are reported before any score."
+    },
+    {
+     "stage": "reporting",
+     "decision": "participant flow",
+     "inference": "States matched and unmatched samples and the key.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Off-by-one or reversed sample labels (Baggerly & Coombes 2009) silently attach each person's outcome to another person's profile, and samples whose IDs R rewrote drop out of an inner join unnoticed.",
+   "magic": "'38 of your matrix columns start with X and use dots where the sheet uses dashes: R rewrote them (X2019.044 was 2019-044). Matched exactly, 22 samples would have silently dropped. Matched through the rewrite, all 60 align, and the sex check agrees for every one.'",
+   "layout": "Flow, inside 'Who are your samples': matrix samples, matched exactly, matched through a named rewrite, unmatched, each step lit with its count.",
+   "sentence": "Expression profiles were matched to sample annotation by {key} ({n_exact} exactly, {n_rewritten} after reversing {rewrite}, {n_unmatched} unmatched and excluded); sample identity was checked against sex-chromosome expression.",
+   "sources": [
+    "Baggerly & Coombes 2009, Ann Appl Stat 3:1309",
+    "Ziemann, Eren & El-Osta 2016, Genome Biol 17:177",
+    "Toker, Feng & Pavlidis 2016, F1000Research 5:2103",
+    "turbotab/packs.py:1855-1868 STUDY_COLUMNS",
+    "MIAME 4"
+   ],
+   "engine": "New. No second-table join and no make.names handling exist in turbotab/core (critic search). The main path is new ingest scope; today it can reach only annotation that arrives inside the one uploaded table (GEO-style header rows), and that path is unverified.",
+   "tier": "asked-blocking on any mismatch; silent on an exact one-to-one join",
+   "rank_signal": "Count of unmatched or rewrite-matched samples.",
+   "critic_notes": "Fixes applied: Excel leading-zero loss limited to all-digit IDs; ingest dependency stated."
+  },
+  {
+   "id": "genomics-features-preselected-on-outcome",
+   "lens": "genomics",
+   "title": "The uploaded genes were already chosen using these samples' outcome",
+   "looks_at": "predictor-outcome",
+   "detector": "Outcome-blind first: the feature count against what the identifier vocabulary implies for the platform (200 genes from a platform measuring about 20,000), names like signature or score, and the provenance question (TRIPOD+AI 9a; decisions.py pre_selected: no / yes / other_data / unknown). Then, under prediction only, a recorded outcome view on training rows: the per-feature p-value histogram; \u03c00 < 0.2, or >= 95% of features below 0.01, proposes selection before upload. It only proposes: a strong curated panel also fires, so the asked provenance decides. Under inference the question is asked without the view, and the \u03c00 check runs after the lock as a provenance diagnostic. Alternative that cannot be rejected by values: a panel chosen from prior literature or other data ('other_data').",
+   "meaning": "Whether, and on what data, the features were selected upstream (for example a DE test on all samples).",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "what in-fold selection can repair",
+     "inference": "n/a",
+     "prediction": "In-fold selection cannot undo selection made before upload, and the canvas says so."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "whether the CV score is a performance estimate",
+     "inference": "p-values and FDR of preselected features are post-selection, and that is disclosed.",
+     "prediction": "'yes' refuses the CV score as performance (pre_selected_on_these_rows): labeled optimistic until the unfiltered matrix arrives or external validation is done."
+    },
+    {
+     "stage": "reporting",
+     "decision": "TRIPOD+AI 9a",
+     "inference": "States how the features were chosen.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Selecting genes outside the cross-validation gives near-zero error even on random labels (Ambroise & McLachlan 2002; Simon 2003).",
+   "magic": "'All 200 genes in your file differ between groups at p < 0.001; on random data you would expect 0.2 of them to. They look picked using the outcome before the file was made. Were they? If so, any score on them is graded on the answers; bring the full matrix and the honest AUC appears.'",
+   "layout": "Focus, on the shared 'Where did these come from' provenance card: the uploaded features' p-value histogram against the uniform expectation (training rows, prediction only).",
+   "sentence": "Predictors {were | were not} selected using the outcome in these data before modeling ({answer}); {performance is therefore reported as optimistic and requires external validation}.",
+   "sources": [
+    "turbotab/core/decisions.py:1591-1613 pre_selected",
+    "turbotab/core/models/variable_selection.py:698-704 pre_selected_on_these_rows",
+    "Ambroise & McLachlan 2002, PNAS 99:6562",
+    "Simon et al. 2003, JNCI 95:14",
+    "Kapoor & Narayanan 2023 (L1.3)",
+    "Breheny, Stromberg & Lambert 2018, High-Throughput 7:23",
+    "Collins et al. 2024, BMJ 385:e078378 (TRIPOD+AI)"
+   ],
+   "engine": "Partial: the question and the refusal exist; nothing detects selection before upload.",
+   "tier": "asked when the feature count is far below the platform's vocabulary or names suggest a signature; silent with a full matrix",
+   "rank_signal": "Ratio of platform vocabulary to uploaded features; then \u03c00 under prediction.",
+   "critic_notes": "Fix applied: arithmetic (0.2 expected, not 2); \u03c00 only proposes. Shares one provenance card with genomics-outcome-defined-from-features and shared-sampled-after-diagnosis."
+  },
+  {
+   "id": "genomics-outcome-defined-from-features",
+   "lens": "genomics",
+   "title": "The outcome was derived from the same expression data (clusters, subtypes, a signature-defined 'responder'), so testing or predicting it from those features is circular",
+   "looks_at": "predictor-outcome",
+   "detector": "Asked first, before the lock, only on name cues (cluster, subtype, signature, score, responder): the outcome's provenance (clinical, or derived from these profiles by clustering or a published rule). Under prediction, a recorded outcome view inside folds: a single gene or a short linear combination reaching AUC of about 1.0, or R\u00b2 of about 1 for a numeric outcome, also triggers the question. Under inference the near-perfect separation is a diagnostic after the lock. Alternative: a genuinely strong single marker (sex predicted by XIST), which is asked.",
+   "meaning": "How the outcome was made: clustering these samples, a rule applied to these genes, or clinical.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "roles",
+     "inference": "The outcome refused as a target for 'which genes differ', or the defining genes excluded.",
+     "prediction": "The defining genes excluded from predictors, or the target refused."
+    },
+    {
+     "stage": "selection",
+     "decision": "candidate features",
+     "inference": "The defining genes removed from the tested family.",
+     "prediction": "The same, from the candidates."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "what the result means",
+     "inference": "Differences between data-derived clusters need selective inference or sample splitting (Gao 2024).",
+     "prediction": "The score labeled a reproduction of the rule."
+    },
+    {
+     "stage": "explanation",
+     "decision": "naming the top features",
+     "inference": "Defining genes named as such.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "outcome definition",
+     "inference": "States how the outcome was made.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Double dipping: clusters found on expression, then 'thousands of genes differ between clusters', which is always true; or a 'subtype classifier' reaches AUC 1.0 by reading the definition back.",
+   "magic": "'Five genes predict your subtype perfectly in every fold, and they are five of the genes in the rule that defined it. The model is reading the definition back to you.'",
+   "layout": "Routing, on the 'Where did these come from' card: the defining genes re-routed out of the predictors (or the outcome out of the target), with the score before and after.",
+   "sentence": "The outcome was defined from {rule} on these data; the {k} defining genes were excluded from the predictors, and between-cluster differences were tested by {sample splitting | selective inference}.",
+   "sources": [
+    "Kriegeskorte et al. 2009, Nat Neurosci 12:535",
+    "Gao, Bien & Witten 2024, J Am Stat Assoc 119:332"
+   ],
+   "engine": "New.",
+   "tier": "asked on name cues or the in-fold near-perfect separation flag; silent otherwise",
+   "rank_signal": "In-fold separation of the best single feature or short combination.",
+   "critic_notes": "Sound; merged onto the provenance card."
+  },
+  {
+   "id": "genomics-sex-from-expression",
+   "lens": "genomics",
+   "title": "Recorded sex disagrees with sex-chromosome expression (a sample swap or mislabel), or sex genes top a sex-imbalanced comparison",
+   "looks_at": "measurement",
+   "detector": "Runs when XIST and at least two Y-linked genes (RPS4Y1, DDX3Y, KDM5D, UTY, EIF1AY) are present by identifier: the score XIST z minus mean Y-gene z forms two clusters; samples whose cluster disagrees with the settled sex_coding reading are counted. For genotype tables, X heterozygosity (the check-sex F statistic). Outcome-blind. Abstains when the genes are absent or filtered (all shipped fixtures use gene_0001 names). Alternatives the values cannot reject: sex-chromosome aneuploidy, loss of Y in tumours or with age, XIST loss in tumours, a recorded gender that is not chromosomal sex; each is asked. A second check after the lock (inference) or in-fold (prediction): sex-linked genes among the top features while sex is imbalanced across the outcome.",
+   "meaning": "A swap or mislabel (relabel or exclude, knowing the outcome label may be swapped too), or a genuine discordance.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "row eligibility before the seal",
+     "inference": "Excluded or relabeled by the researcher's answer; a swapped sample may carry a swapped outcome.",
+     "prediction": "The same, before the seal."
+    },
+    {
+     "stage": "selection",
+     "decision": "sex as a covariate",
+     "inference": "Sex in the adjustment set by its meaning as a confounder or precision variable.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "After the lock, estimates with and without the discordant samples.",
+     "prediction": "The score with and without them."
+    },
+    {
+     "stage": "explanation",
+     "decision": "naming a sex proxy",
+     "inference": "After the lock, sex-linked genes among the top hits named as sex, not disease.",
+     "prediction": "XIST or RPS4Y1 ranking high while sex is imbalanced is labeled a sex proxy."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sample identity checks",
+     "inference": "States the check and its result; excluded samples appear in the flow.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Swapped samples carry another person's outcome (misannotation is widespread in public transcriptomic data; Toker 2016); or a 'disease signature' is Y-chromosome genes in a sex-imbalanced study.",
+   "magic": "'Three samples recorded as female express RPS4Y1 at male levels and no XIST. If their sex labels were swapped in the lab, their case labels may be someone else's too.'",
+   "layout": "Focus, inside 'Who are your samples': an XIST by Y-score scatter colored by recorded sex, discordant points in the choice color and labeled.",
+   "sentence": "Recorded sex was checked against XIST and Y-linked gene expression; {n} discordant samples were {excluded as probable mix-ups | relabeled after review}.",
+   "sources": [
+    "turbotab/core/readings.py:60-77 KINDS sex_coding",
+    "turbotab/core/detectors/plausibility.py:193",
+    "Toker, Feng & Pavlidis 2016, F1000Research 5:2103",
+    "Westra et al. 2011, Bioinformatics 27:2104",
+    "Anderson et al. 2010, Nat Protoc 5:1564",
+    "MIAME 3; STREGA 8b"
+   ],
+   "engine": "New. The sex_coding reading exists; a fixture with real gene identifiers including XIST and the Y genes is needed.",
+   "tier": "asked only when discordant samples exist, one decision per discordance; stated 'check passed' otherwise; abstains (stated) when the genes are absent",
+   "rank_signal": "Discordant sample count.",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "genomics-paired-or-repeated-samples",
+   "lens": "genomics",
+   "title": "Several samples come from the same person (before and after a diet, tumour and normal, several tissues or time points), so the design is paired",
+   "looks_at": "structure",
+   "detector": "A subject column (packs.py _repeated_subjects; STUDY_COLUMNS subject and timepoint names). Without one, sample names that share a stem with a time or tissue suffix (P07_pre/P07_post, _T/_N, _wk0/_wk8), confirmed by values: within-stem profile correlation higher than between-stem. Reports the number of units, samples per unit, complete pairs against singletons, and, outcome-blind, the median between-person share of each gene's variance. Under inference the design is decided by this outcome-blind evidence; discovery counts under paired vs unpaired designs appear only after the lock. Alternative to reject: coincidental name stems, which the correlation check rejects; otherwise asked.",
+   "meaning": "The unit (the person), what the repeats are (time points, tissues or technical replicates: repeat_kind), and whether the question is within-person change.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "cluster / repeat_kind / time_column readings",
+     "inference": "The person is the unit.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "model",
+     "decision": "paired design",
+     "inference": "Person as a blocking factor (paired limma design or duplicateCorrelation; CR2 for repeated units in featurewise); the estimand is the within-person change.",
+     "prediction": "The baseline profile is a feature only if it exists at prediction time; the target is per person."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "unit of resampling",
+     "inference": "n is persons; cluster-robust intervals (many persons, so valid).",
+     "prediction": "Folds grouped by person: a post sample in training and its pre sample in test leak identity."
+    },
+    {
+     "stage": "explanation",
+     "decision": "stability resampling",
+     "inference": "Resample persons.",
+     "prediction": "Resample persons (explain.py resample with units)."
+    },
+    {
+     "stage": "reporting",
+     "decision": "design sentence",
+     "inference": "States pairs, the unit and the within-person model.",
+     "prediction": "States grouped validation."
+    }
+   ],
+   "failure_prevented": "Pre and post samples treated as independent: between-person variance swamps the diet effect, pairs split across folds leak identity, and ignored pairing distorts the p-value histogram.",
+   "magic": "Before the lock: 'Your 48 samples are 24 people sampled before and after the 8-week diet. For the median gene, 70% of the spread is between people, so the diet effect is visible only within each person.' After the lock, the counts under both designs may be shown (3 genes as 48 strangers, 61 within person), recorded as post-estimate.",
+   "layout": "Flow, inside 'Who are your samples': samples to persons, pairs drawn as linked dots (before to after), complete pairs and singletons counted, the between-person variance share beside it.",
+   "sentence": "Samples were paired within participants ({n_pairs} complete pairs); the diet effect was estimated within participant with participant as a blocking factor, and cross-validation kept each participant's samples together.",
+   "sources": [
+    "turbotab/packs.py:2102 _repeated_subjects, :1855-1868 STUDY_COLUMNS",
+    "turbotab/core/models/featurewise.py:30-32 (CR2 for repeated units)",
+    "turbotab/core/models/folds.py:189; turbotab/core/models/explain.py:432",
+    "turbotab/core/readings.py:60-77 KINDS repeat_kind, time_column",
+    "Smyth 2004, Stat Appl Genet Mol Biol 3:Article3",
+    "Smyth, Michaud & Scott 2005, Bioinformatics 21:2067"
+   ],
+   "engine": "Partial: repeated subjects detected by name, CR2 for repeated units, grouped folds. New: name-stem pairing confirmed by correlation, the between-person variance share.",
+   "tier": "asked (unit, repeat_kind) when a subject column or confirmed name stems are found; silent otherwise",
+   "rank_signal": "Share of samples in complete pairs.",
+   "critic_notes": "Fix applied: pre-lock magic now shows outcome-blind evidence; discovery counts moved after the lock."
+  },
+  {
+   "id": "genomics-outlier-sample",
+   "lens": "genomics",
+   "title": "One or two samples are unlike all the others (a failed library, degraded or contaminated RNA, or a mislabel)",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind: each sample's median Spearman correlation with all other samples on log-CPM, as a robust z (connectivity Z.K); flags z < -3, or more than 3 MAD below the median. Also the RLE median and IQR per sample, and leverage (one sample carrying > 50% of a PC's variance). Under prediction a held-out sample's connectivity is computed against training samples only, so the rule is identical for sealed rows. The exclusion card never shows a flagged sample's outcome under inference. Re-measured on genomics_expression (in-process): GS031 z = -3.77 (median \u03c1 0.809 against a fixture median of 0.832); the next lowest is GS025 at -1.75 (the earlier -2.56 did not reproduce). Alternative the values cannot reject: rare genuine biology (a subtype), so the reading is asked.",
+   "meaning": "A technical failure (excluded by the stated rule) or real biology (kept).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "row eligibility",
+     "inference": "Excluded only by a criterion stated before estimates; the card shows batch, library size and quality, never the outcome.",
+     "prediction": "The same rule applied identically to training and held-out rows, held-out connectivity against training samples."
+    },
+    {
+     "stage": "representation",
+     "decision": "normalization reference",
+     "inference": "A failed library is never the TMM reference sample.",
+     "prediction": "The same, inside the fold."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "robustness",
+     "inference": "After the lock, sensitivity with and without the flagged samples.",
+     "prediction": "The flagged samples' prediction errors shown."
+    },
+    {
+     "stage": "reporting",
+     "decision": "exclusions",
+     "inference": "Count and criterion, stated as a rule.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "One degraded library dominates PC1, normalization and any distance-based model; or samples are dropped after the results were seen because they 'did not fit'.",
+   "magic": "'Sample S17 correlates 0.62 with the others, which correlate 0.93-0.97 with each other; one hemoglobin gene holds 31% of its reads, and it carries 40% of PC1.' On the fixture: 'GS031 looks like none of the others (z = -3.8; the next lowest is -1.8). Is it a failed library?'",
+   "layout": "Flow, inside 'Who are your samples': the rule removes rows, then the leaving sample's profile is drawn against the distribution of the rest.",
+   "sentence": "Samples were excluded if their median correlation with other samples fell more than {k} MADs below the median ({n} excluded: {reasons}); the criterion was stated before any estimate.",
+   "sources": [
+    "turbotab/core/stages/working.py:504 _incoherent (rank correlation with the block median, orientation only)",
+    "turbotab/sample_data/genomics_expression.csv (GS031, re-measured)",
+    "Oldham, Langfelder & Horvath 2012, BMC Syst Biol 6:63",
+    "Gandolfo & Speed 2018, PLoS One 13:e0191629",
+    "Conesa et al. 2016, Genome Biol 17:13",
+    "docs/turbotab/research/GENOMICS_PACK.md \u00a707B, \u00a707F"
+   ],
+   "engine": "Partial: the statistic is computed in working.py for orientation only; no sample-QC finding.",
+   "tier": "asked once, with the flagged samples listed (fires on the shipped fixture: GS031)",
+   "rank_signal": "Robust z.",
+   "critic_notes": "Fixes applied: outcome hidden from the exclusion card under inference; held-out connectivity against training samples; next-lowest z corrected to -1.75 (re-measured)."
+  },
+  {
+   "id": "genomics-near-identical-samples",
+   "lens": "genomics",
+   "title": "Pairs of samples are near-identical: technical replicates, a duplicated upload, or the same person",
+   "looks_at": "structure",
+   "detector": "Sample-sample Spearman correlation on the top-variance expressed genes. A pair is flagged by a gap rule: the two samples are mutual nearest neighbours and their \u03c1 exceeds each member's second-nearest neighbour by a margin (on the Fisher-z scale), or it passes an absolute replicate bar set for the platform. A percentile bar is rejected, because it always flags about 0.1% of pairs. Any comparison group is outcome-blind (batch, tissue), never the outcome class. No shared identifier explains the pair. Alternative to reject: a tight biological cluster (the same subtype), which shows no gap.",
+   "meaning": "The pairs are replicates, the same person, or a duplicated upload; the researcher confirms the unit.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "grain and unit",
+     "inference": "Replicates averaged or collapsed, or a unit declared (cluster reading).",
+     "prediction": "The same."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "fold grouping",
+     "inference": "Inference by the confirmed unit.",
+     "prediction": "Folds grouped by the confirmed unit; the score with the pairs split across folds shown beside it."
+    },
+    {
+     "stage": "explanation",
+     "decision": "resampling unit for stability",
+     "inference": "Resample by unit.",
+     "prediction": "Resample by unit."
+    }
+   ],
+   "failure_prevented": "Doppelg\u00e4nger pairs across train and test inflate performance (Wang, Wong & Goh 2022); replicates counted as independent samples.",
+   "magic": "'12 pairs correlate at 0.998, while each sample's next-closest partner tops out at 0.95. Split across folds, they add 0.07 to the AUC.'",
+   "layout": "Focus, inside 'Who are your samples': each sample's nearest vs second-nearest correlation, the gap-qualified pairs lit.",
+   "sentence": "{n} sample pairs with near-identical profiles (\u03c1 = {rho}, exceeding each sample's next-nearest neighbour by {gap}) were treated as one unit in resampling.",
+   "sources": [
+    "turbotab/core/models/folds.py:189 kfold_assignment (groups)",
+    "turbotab/core/models/explain.py:432 resample (units)",
+    "Wang, Wong & Goh 2022, Drug Discov Today 27:678",
+    "Kaufman et al. 2012, ACM TKDD 6:15",
+    "MIAME 4; MINSEQE 4"
+   ],
+   "engine": "New detector; grouped folds and unit resampling exist.",
+   "tier": "asked only when a gap-qualified pair exists; silent otherwise",
+   "rank_signal": "Gap size.",
+   "critic_notes": "Fixes applied: gap rule replaces the percentile bar; 'own group' made outcome-blind."
+  },
+  {
+   "id": "genomics-cells-are-not-replicates",
+   "lens": "genomics",
+   "title": "The rows are cells, many per person, so the effective n is the number of donors",
+   "looks_at": "structure",
+   "detector": "detectors/genomics._single_cell_finding over packs.reads_as_single_cell: zero fraction above 80-90% over more than 1,000 columns, median non-zero count <= 3, per-cell depth (the single-cell fixture has 85.3% zeros). Cells per donor from the settled cluster reading. Rejects shallow bulk counts. One stance across the lens: single-cell data is detected and routed to this grain question; the bulk readings (scale card, cell-mix scores) do not run on cell rows.",
+   "meaning": "The donor column is the unit, and whether the question is about people or about cells.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "set_grain / set_aggregation",
+     "inference": "One pseudobulk profile per donor per cell type before any person-level test, or the donor as a random effect; the engine names both because which is better is disputed (Squair 2021 vs Zimmerman 2021).",
+     "prediction": "Cells stay as rows for a cell-level prediction, labeled with what it cannot claim; subject-level prediction uses pseudobulk."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "set_split",
+     "inference": "The donor is the unit; n = donors.",
+     "prediction": "Folds keep each donor's cells together; 'performance on new people' only when donors are held out."
+    },
+    {
+     "stage": "reporting",
+     "decision": "unit",
+     "inference": "States n donors and the aggregation.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Thousands of cells from a few donors treated as independent replicates: p-values off by orders of magnitude, and scores that do not transfer to new people.",
+   "magic": "'These 12,000 rows are cells from 8 people. For a question about people, n is 8.'",
+   "layout": "Flow: cells collapsed to donors, the count of independent units lit at each step.",
+   "sentence": "Single-cell counts were aggregated to one pseudobulk profile per donor and cell type before testing (n = {donors}); cross-validation kept each donor's cells together.",
+   "sources": [
+    "turbotab/core/detectors/genomics.py:23-30, :287 _single_cell_finding",
+    "turbotab/packs.py:3689 reads_as_single_cell",
+    "turbotab/core/models/folds.py:189",
+    "turbotab/sample_data/genomics_single_cell.csv",
+    "Squair et al. 2021, Nat Commun 12:5692",
+    "Zimmerman, Espeland & Langefeld 2021, Nat Commun 12:738",
+    "Hicks et al. 2018, Biostatistics 19:562"
+   ],
+   "engine": "Exists for the finding and grouped folds; pseudobulk aggregation is partial (generic grain and aggregation answers).",
+   "tier": "asked-blocking (critical) when it fires; rare in this app's uploads",
+   "rank_signal": "Cells per donor.",
+   "critic_notes": "Fix applied: one stance on single-cell across what-the-numbers, cell-mix and this thread."
+  },
+  {
+   "id": "genomics-matrix-orientation",
+   "lens": "genomics",
+   "title": "Genes are in rows and samples in columns (the usual GEO or featureCounts export), so every row-wise step would treat genes as people",
+   "looks_at": "structure",
+   "detector": "The orientation reading (orientation.py statistic, streamed by working.py orientation_reading, name cues from detectors/orientation): a text column of gene-like identifiers and many numeric columns named like sample IDs (GSM, S01) whose values move together (working.py _incoherent). Long (gene, sample, value) triples are also recognized. New: leading annotation columns (symbol, chromosome, length) identified as feature metadata. Alternative to reject: a genuinely wide table of participants x features. Shape and names only propose; the user answers, because turning the table replaces every row identity and is allowed only before the seal.",
+   "meaning": "Which way round the table is, and which leading columns are annotation rather than samples.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "orientation: turn before the seal",
+     "inference": "Transposed; annotation columns become feature metadata.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "representation",
+     "decision": "feature metadata carried with the genes",
+     "inference": "Chromosome lets the sex check find X and Y genes; gene length is available for FPKM/TPM readings.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "data handling",
+     "inference": "States the original orientation and the transposition.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "20,000 genes read as participants: missingness per sample read as per feature, the outcome picker offering sample names, every finding on the wrong axis, gene length entering as a sample.",
+   "magic": "'Your 20,000 rows are genes and your 60 columns are samples (GSM4012...). Turned, the table has 60 people and 20,000 genes, and the second column, gene length, becomes a fact about genes, not a sample.'",
+   "layout": "Routing, first in 'Who are your samples': sample columns re-routed to rows and annotation columns to feature metadata, with counts per destination.",
+   "sentence": "The supplied matrix held features in rows and samples in columns and was transposed before analysis ({n} samples, {p} features; {k} annotation columns kept as feature metadata).",
+   "sources": [
+    "turbotab/orientation.py:1-30",
+    "turbotab/core/stages/working.py:11-18, :295 orientation_reading, :504 _incoherent",
+    "turbotab/core/readings.py:60-77 KINDS orientation",
+    "Edgar, Domrachev & Lash 2002, Nucleic Acids Res 30:207"
+   ],
+   "engine": "The orientation question exists (orientation.py, working.py:295). New: annotation columns as feature metadata feeding the sex and composition checks.",
+   "tier": "asked-blocking only when the statistic flags genes-in-rows; silent otherwise",
+   "rank_signal": "Fires or not; first in the journey when it fires.",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "genomics-gene-identifiers-damaged",
+   "lens": "genomics",
+   "title": "Gene identifiers were turned into dates by a spreadsheet, carry version suffixes, are duplicated, mix vocabularies, or include control features",
+   "looks_at": "measurement",
+   "detector": "packs.read_gene_ids. Symbols read as dates or Excel serials are critical: reported, never auto-repaired. Restoration is ambiguous for 1-Mar and 2-Mar, which can be MARCH1/MARCHF1 or MARC1/MTARC1 (a collision Zeeberg 2004 noted), so it is asked when both are on the platform; a five-digit integer can be an Excel serial or an Entrez ID, and a real pre-2019 symbol (MARCH1, SEPT2) can look like a corruption, so both are asked. Also: Ensembl version suffixes that join to unversioned annotation as nothing, accessions duplicated once versions are stripped, more than one vocabulary. New class: control or spike-in features (ERCC-00002, AFFX- prefixes). Measured on genomics_gene_ids: 14 corrupted symbols, 70 versioned accessions, 3 duplicates after collapsing versions, mixed vocabularies.",
+   "meaning": "The vocabulary and annotation release; which corrupted IDs map to which genes, or are dropped; how duplicates combine; that controls are excluded from the biology.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "hard stop for corruption; which columns enter",
+     "inference": "Restored or excluded before the seal.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "representation",
+     "decision": "duplicates collapse; feature weighting",
+     "inference": "One column per gene before testing; a gene counted twice no longer doubles its weight in sample PCA.",
+     "prediction": "The same, before the in-fold steps."
+    },
+    {
+     "stage": "selection",
+     "decision": "set_selection",
+     "inference": "Multiplicity counts unique genes.",
+     "prediction": "A duplicated gene no longer gets two chances in a screen or splits its penalty weight."
+    },
+    {
+     "stage": "explanation",
+     "decision": "names on importance and effect tables",
+     "inference": "The restored symbol shown with its original header.",
+     "prediction": "A '2-Sep' among the top features is named SEPTIN2 with the correction shown; its importance no longer split across copies."
+    },
+    {
+     "stage": "reporting",
+     "decision": "annotation and identifier handling",
+     "inference": "States the build, the annotation release and the corrections.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "The paper's top gene is '1-Mar'. Gene-name errors appear in about 20% of papers with Excel gene lists (Ziemann 2016; 31% in Abeysooriya 2021); an annotation join drops versioned IDs; one gene is counted twice.",
+   "magic": "'Your third feature, 2-Sep, was SEPT2 (now SEPTIN2) before Excel converted it. 14 symbols became dates, one of them in your top 20. 1-Mar could be MARCHF1 or MTARC1, so that one is yours to say.'",
+   "layout": "Strip: affected identifiers ranked, each shown before and after; duplicates that collapse drawn as Routing.",
+   "sentence": "{n} gene identifiers showed spreadsheet date conversion and were {restored to their symbols | excluded}; identifiers were matched without version suffixes against {annotation release}, and duplicates were {summed | reduced to one}.",
+   "sources": [
+    "turbotab/packs.py:4604 GeneIdReading, :4634 read_gene_ids, :4716 _gene_id_excel_corruption, :4783 _gene_id_versions, :4825 _gene_id_duplicates, :4877 _gene_id_mixed_vocabulary",
+    "turbotab/core/stages/finding_words.py:891-905",
+    "turbotab/test_the_gene_id_diagnostics_reach_an_upload.py",
+    "turbotab/sample_data/genomics_gene_ids.csv.md",
+    "Zeeberg et al. 2004, BMC Bioinformatics 5:80",
+    "Ziemann, Eren & El-Osta 2016, Genome Biol 17:177",
+    "Abeysooriya et al. 2021, PLoS Comput Biol 17:e1008984",
+    "docs/turbotab/research/GENOMICS_PACK.md \u00a701"
+   ],
+   "engine": "Exists; fires on genomics_gene_ids.csv. New: the MARCH/MARC ambiguity question, restored names carried into explanation and export, the control-feature class.",
+   "tier": "asked-blocking when corruption or a serial-vs-Entrez ambiguity appears; version stripping and duplicate collapse stated",
+   "rank_signal": "Corrupted symbols among the top features first, then the corrupted count.",
+   "critic_notes": "Fixes applied: 1-Mar/2-Mar restoration is a question; the ~20% claim reworded to gene-name errors."
+  },
+  {
+   "id": "genomics-cell-mix-drives-signal",
+   "lens": "genomics",
+   "title": "Differences in the mix of cell types, not regulation within cells, drive the signal",
+   "looks_at": "predictors",
+   "detector": "Per-sample marker-set scores when identifiers match: mean z of canonical markers for neutrophils, T, B and NK cells, monocytes and erythroid cells, plus tumour purity from stromal and immune sets. Reference-based deconvolution is row-local given a fixed reference; for methylation in blood, Houseman (methylation only). Outcome-blind R\u00b2 of the top PCs on these scores, as rows of the shared PC x covariate matrix. A measured blood-cell differential, when present, corroborates the scores (r >= 0.5). Their association with the outcome is held until the plan locks under inference, and proposed in-fold and recorded under prediction. Marker means track activation as well as abundance (stated). Composition as the mechanism of interest cannot be rejected by values and is asked.",
+   "meaning": "Whether the tissue is a mixture, and whether composition is a confounder (the question is regulation within cells) or part of the effect (the question is the tissue; disease changes cell counts).",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "composition features",
+     "inference": "n/a for the reported model.",
+     "prediction": "Proportions from a fixed reference are row-local features; a deconvolution learned from the study rows is fitted in-fold; both are candidates tested by resampling."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Estimated proportions as covariates, or a declared with/without pair when composition may lie on the pathway, decided by the asked meaning.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "explanation",
+     "decision": "is the top feature a cell marker",
+     "inference": "After the lock, top genes annotated by marker-set membership.",
+     "prediction": "Importance grouped by marker set; 'the model is reading a blood count' stated where it applies."
+    },
+    {
+     "stage": "reporting",
+     "decision": "composition handling",
+     "inference": "States whether results are adjusted for cell mix.",
+     "prediction": "States that the signature may track cell counts."
+    }
+   ],
+   "failure_prevented": "An inflammation-driven rise in neutrophils is reported as gene regulation, and a signature fails in tissue with a different cell mix.",
+   "magic": "'PC1 tracks your neutrophil score (R\u00b2 0.48). Is your question about how many neutrophils people have, or about what happens inside the cells?' After the lock: 'Your top 20 genes are neutrophil genes; adjusted for estimated neutrophil share, 3 remain.'",
+   "layout": "Angles, inside 'What drives your leading components': PCs against proportions, proportions by group (after the lock under inference), top features colored by marker set.",
+   "sentence": "Cell-type proportions were estimated from {marker sets | reference deconvolution} and were {included as covariates | reported with and without adjustment because composition may lie on the pathway}.",
+   "sources": [
+    "turbotab/core/detectors/genomics.py:287",
+    "Jaffe & Irizarry 2014, Genome Biol 15:R31",
+    "Houseman et al. 2012, BMC Bioinformatics 13:86",
+    "Shen-Orr & Gaujoux 2013, Curr Opin Immunol 25:571",
+    "Newman et al. 2015, Nat Methods 12:453",
+    "Aran, Sirota & Butte 2015, Nat Commun 6:8971",
+    "STROBE-ME ME-6; MINSEQE 1"
+   ],
+   "engine": "New; needs a fixture with real gene identifiers.",
+   "tier": "asked once, for blood or tumour tissue, when a composition score explains >= 0.3 of a top PC; methylation journeys reach it from genomics-methylation-beta and are not asked twice",
+   "rank_signal": "PC variance explained by composition.",
+   "critic_notes": "Sound; the pre-lock magic now shows only the outcome-blind PC association."
+  },
+  {
+   "id": "genomics-draw-conditions",
+   "lens": "genomics",
+   "title": "When and how the sample was drawn (time of day, fasting or fed, season) shapes expression and may differ between groups",
+   "looks_at": "time",
+   "detector": "Recorded collection time, fasting status or date columns (STUDY_COLUMNS names fasting and storage_time). Outcome-blind R\u00b2 with the top PCs (rows of the shared matrix). When identifiers allow, a clock-gene score (PER1, PER2, PER3, NR1D1, NR1D2, DBP, ARNTL, TEF) associated with the recorded draw time; single-sample circadian phase is not estimated, because it needs a trained predictor applied to its platform (BodyTime; TimeSignature). A month-of-draw harmonic against the PCs. Then a design-balance view by outcome, recorded under both purposes and used only for disclosure. Alternative the values cannot reject: the condition shifts the clock (sleep disruption as part of the disease), so this is asked.",
+   "meaning": "The collection protocol: time of day and fasting state, and whether either differed between cases and controls by design (clinic vs home visits).",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Draw time and fasting enter by meaning (the asked protocol: precision covariate, or confounder when the protocol differed by group); the measured imbalance is disclosed, never used to choose.",
+     "prediction": "Excluded as features unless the deployed setting standardizes or records them."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "where the score holds",
+     "inference": "After the lock, sensitivity restricted to fasting or morning samples.",
+     "prediction": "The score within morning-only samples."
+    },
+    {
+     "stage": "explanation",
+     "decision": "naming clock and postprandial genes",
+     "inference": "Top genes flagged as clock or postprandial (PPAR-\u03b1 targets).",
+     "prediction": "The same, beside importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "collection conditions",
+     "inference": "States the protocol and any imbalance.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Cases drawn at morning clinic visits and controls at afternoon home visits, so clock genes 'predict' disease; a postprandial PPAR-\u03b1 response read as a diet effect (Bouwens 2007; Ransohoff 2005).",
+   "magic": "'Cases were drawn at a median 08:40, controls at 14:10, and PC3 tracks draw time. Was the protocol different for the two groups?' Later: 'Four of your top ten genes are clock genes (PER1, NR1D1, DBP, TEF). The signature tells the time.'",
+   "layout": "Angles, inside 'What drives your leading components': PC against recorded draw time, draw time by group, top genes marked as clock or postprandial.",
+   "sentence": "Blood was drawn {protocol}; draw time differed between groups ({summary}) and was included as a covariate [and a sensitivity analysis restricted to fasting morning samples].",
+   "sources": [
+    "turbotab/packs.py:1855-1868 STUDY_COLUMNS",
+    "Wittenbrink et al. 2018, J Clin Invest 128:3826 (BodyTime)",
+    "Braun et al. 2018, PNAS 115:E9247 (TimeSignature)",
+    "Archer et al. 2014, PNAS 111:E682",
+    "Bouwens, Afman & M\u00fcller 2007, Am J Clin Nutr 86:1515",
+    "Ransohoff 2005, Nat Rev Cancer 5:142"
+   ],
+   "engine": "New. Names are recognized as confounders; no clock-gene score or PC association.",
+   "tier": "asked only when a draw-time or fasting column exists and is imbalanced by group, or clock genes top the list; stated otherwise",
+   "rank_signal": "Imbalance x PC R\u00b2.",
+   "critic_notes": "Fixes applied: no single-sample phase without a trained predictor; adjustment by meaning, imbalance disclosed only."
+  },
+  {
+   "id": "genomics-mixed-tissue-types",
+   "lens": "genomics",
+   "title": "Samples come from different tissues or sample types (whole blood vs PBMC, tumour vs adjacent normal, biopsy sites), and the mix differs by group",
+   "looks_at": "design",
+   "detector": "A recorded tissue or sample-type column, or, outcome-blind, a leading PC that separates on tissue-marker scores when identifiers allow (hemoglobin and granulocyte genes for whole blood vs PBMC; keratins for skin), reached through the shared PC x covariate matrix and genomics-unrecorded-structure. Then a tissue x outcome design-balance view, recorded under both purposes, deciding only eligibility, stratification and disclosure. Alternative the values cannot reject: the tissue difference is the question (tumour vs normal), which is asked.",
+   "meaning": "Whether tissue is a design factor to restrict or stratify by, or the contrast of interest (paired tumour-normal feeds genomics-paired-or-repeated-samples).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility",
+     "inference": "Restrict to one tissue or keep strata.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "selection",
+     "decision": "tissue in the design",
+     "inference": "Tissue as stratum or covariate by meaning, never by imbalance.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "where the score holds",
+     "inference": "After the lock, estimates per tissue.",
+     "prediction": "Score per tissue; leave-one-tissue-out if deployment spans tissues."
+    },
+    {
+     "stage": "explanation",
+     "decision": "tissue-marker features",
+     "inference": "Top genes marked as tissue markers.",
+     "prediction": "The same, beside importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "sample types",
+     "inference": "States tissues and handling.",
+     "prediction": "The same, with per-tissue performance."
+    }
+   ],
+   "failure_prevented": "Cases collected as PBMC at the clinic and controls as whole blood at home: the 'disease signature' is hemoglobin and granulocyte genes.",
+   "magic": "'PC1 (41%) is whole blood vs PBMC: hemoglobin genes load on it, and 24 of your 30 cases are PBMC. Any case-control model will find globin first.'",
+   "layout": "Angles, inside 'What drives your leading components': PCs by tissue, the tissue x group mosaic, top features by marker set.",
+   "sentence": "Samples comprised {tissues}; analyses were {restricted to | stratified by} tissue, and performance is reported per tissue.",
+   "sources": [
+    "GTEx Consortium 2015, Science 348:648",
+    "Debey et al. 2004, Pharmacogenomics J 4:193 (whole blood vs PBMC; not re-checked this session)",
+    "Ransohoff 2005, Nat Rev Cancer 5:142",
+    "MIAME 3"
+   ],
+   "engine": "New.",
+   "tier": "asked when tissue is imbalanced by group or a tissue cluster appears; stated otherwise",
+   "rank_signal": "Tissue R\u00b2 on top PCs x imbalance.",
+   "critic_notes": "Added from the critic's gap list ('mixed tissue types across samples'); not yet adversarially reviewed."
+  },
+  {
+   "id": "genomics-excluded-libraries-by-group",
+   "lens": "genomics",
+   "title": "Libraries that failed or were dropped before upload are not spread evenly across cases and controls",
+   "looks_at": "design",
+   "detector": "From the sample sheet (rows without a profile, via genomics-sample-sheet-alignment), a QC-fail or excluded column, or the protocol's planned n (asked): exclusions per group, a design-balance view recorded under both purposes that decides only the flow and disclosure. Flagged when exclusion shares differ by more than 10 percentage points between groups or a Fisher test gives p < 0.05. Where failed libraries' quality metrics exist (RIN, mapped reads), their distribution is shown beside the kept ones, outcome-blind. Chance cannot be rejected by values; the researcher says why libraries failed.",
+   "meaning": "Why the libraries failed (degradation that tracks disease severity, a bad plate, too little tissue) and whether the failure would recur at deployment.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "flow and eligibility",
+     "inference": "Exclusion stated as a rule; counts by group in the flow.",
+     "prediction": "The same rule for sealed rows; the failure rate is part of the claim."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "what the result describes",
+     "inference": "After the lock, a stated bound: estimates describe samples that yield a library.",
+     "prediction": "The score describes samples that pass QC; the expected deployment failure rate is reported beside it."
+    },
+    {
+     "stage": "reporting",
+     "decision": "participant flow",
+     "inference": "Flow diagram with counts per group (STROBE 13).",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "The sickest cases' RNA degrades, their libraries fail, and the remaining cases are milder: effects shrink or flip, and the classifier is graded only on samples it could process (selection bias).",
+   "magic": "'9 of 40 case libraries failed QC against 1 of 40 controls. The cases you are analyzing are the ones whose tissue survived; the score describes them, not every case you will meet.'",
+   "layout": "Flow, inside 'Who are your samples': planned samples, failed libraries per group, analyzed, each step counted by group.",
+   "sentence": "{n_fail} libraries failed quality control ({k_case} of {n_case} cases, {k_ctrl} of {n_ctrl} controls) and were excluded; results describe samples that yielded a usable library.",
+   "sources": [
+    "von Elm et al. 2007, Lancet 370:1453 (STROBE item 13)",
+    "Hern\u00e1n, Hern\u00e1ndez-D\u00edaz & Robins 2004, Epidemiology 15:615",
+    "Ransohoff 2005, Nat Rev Cancer 5:142",
+    "MINSEQE 1"
+   ],
+   "engine": "New; depends on the sample-sheet join (new ingest scope).",
+   "tier": "stated; asked (why did they fail) when exclusion shares differ by group",
+   "rank_signal": "Difference in exclusion share between groups.",
+   "critic_notes": "Added from the critic's gap list ('informative exclusion'); not yet adversarially reviewed."
+  },
+  {
+   "id": "genomics-new-site-new-platform",
+   "lens": "genomics",
+   "title": "The model will meet samples from another lab, platform or study, perhaps one at a time, and the training data already hold more than one",
+   "looks_at": "design",
+   "detector": "Several studies or platforms in the data: a study, cohort, platform or GSE column; mixed identifier vocabularies; block missingness from merged platforms; per-study separation on outcome-blind PCs (cohort R\u00b2). The deployment question is asked: a new site or the same, and whether new samples arrive singly or in batches. Each representation step is checked for whether it is defined for one new sample with frozen parameters (fRMA or frozen reference quantiles, ReferenceComBat add-on, TMM against a frozen reference) or needs a cohort (quantile normalization across the new batch, per-gene z-scores over the test set). Under prediction: leave-one-study-out scores and per-study calibration (calibration-in-the-large and slope).",
+   "meaning": "Where the model will be used, and whether new samples arrive singly.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "deployable preprocessing",
+     "inference": "Study as a batch or random effect.",
+     "prediction": "Only steps defined for a single sample (frozen references); cohort-dependent steps refused for single-sample deployment."
+    },
+    {
+     "stage": "model",
+     "decision": "platform-robust candidates",
+     "inference": "n/a",
+     "prediction": "Within-sample features (gene-pair ratios, rank-based scores) offered as candidates, tested by the cross-study resampling."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "transport and calibration",
+     "inference": "Heterogeneity across studies (I\u00b2) for pooled estimates.",
+     "prediction": "Leave-one-study-out (internal_external) beside pooled CV, with a calibration curve per study."
+    },
+    {
+     "stage": "reporting",
+     "decision": "settings represented",
+     "inference": "States the studies pooled and the heterogeneity.",
+     "prediction": "States the settings represented and per-study calibration (TRIPOD+AI)."
+    }
+   ],
+   "failure_prevented": "A signature scoring 0.90 in pooled CV loses its calibration in a new lab, or a pipeline z-scores genes across the test set, which a clinic receiving one sample cannot do.",
+   "magic": "'Pooled across your three GEO studies, AUC 0.89. Trained on two and tested on the third: 0.71, 0.64 and 0.83, and predicted risks run 15 points too high in study B. Your z-scoring step also needs a batch of new samples, so one patient's sample cannot be scored.'",
+   "layout": "Angles: PCA colored by study, the leave-one-study-out score per study, the calibration curve per study.",
+   "sentence": "Performance was estimated by leave-one-study-out validation across {k} studies (AUC {range}), with calibration reported per study; preprocessing used frozen reference parameters so that single new samples can be scored.",
+   "sources": [
+    "turbotab/core/models/validation.py:457 internal_external",
+    "turbotab/core/methods/batch.py:252 add_on",
+    "Bernau et al. 2014, Bioinformatics 30:i105",
+    "Patil & Parmigiani 2018, PNAS 115:2578",
+    "McCall, Bolstad & Irizarry 2010, Biostatistics 11:242",
+    "Piccolo et al. 2012, Genomics 100:337",
+    "Van Calster et al. 2019, BMC Med 17:230"
+   ],
+   "engine": "Partial: internal-external validation and add-on ComBat exist. New: the deployment question, the single-sample definability check, per-study calibration.",
+   "tier": "asked under prediction (the deployment question); stated under inference (study as batch or random effect)",
+   "rank_signal": "Number of studies, then the spread of leave-one-study-out scores.",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "genomics-normalized-across-all-samples",
+   "lens": "genomics",
+   "title": "The matrix was quantile-normalized, RMA-processed or z-scored across all samples before upload, test samples included",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind tolerance test: the spread of each sorted quantile across samples, relative to the within-sample spread. Plain quantile normalization gives 0; RMA does not (median-polish summarization), and on the shipped RMA fixture genomics_microarray the median per-quantile spread is 0.27 against a within-sample SD of 4.2 (ratio 0.06, critic in-process). The threshold must be calibrated against an unnormalized array matrix, which no fixture ships. Array-style probe IDs are a cue, and provenance is asked. Per-gene z-scores: each gene column has mean 0 and SD 1 after orientation.",
+   "meaning": "Whether the matrix was normalized across all samples upstream, and whether raw intensities or counts are available.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "refit the normalization in-fold",
+     "inference": "States that global differences between groups may have been erased (Hicks & Irizarry 2015).",
+     "prediction": "With raw intensities: frozen reference quantiles from the training rows (fRMA-style), applied to held-out rows."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "label the score when the normalization cannot be refit",
+     "inference": "n/a",
+     "prediction": "Labeled 'preprocessing used all samples' (Kapoor L1.2); mild for quantile normalization, but stated."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States the upstream normalization.",
+     "prediction": "The same, with the label."
+    }
+   ],
+   "failure_prevented": "Test samples shape the training features (Kapoor L1.2); quantile normalization's assumption fails when groups differ globally.",
+   "magic": "'Every sample in your matrix holds almost exactly the same set of values in a different order: they were normalized together, test samples included. The app can't refit that inside folds unless you bring the raw intensities.'",
+   "layout": "Focus: the overlaid sorted-value curves against what raw data look like.",
+   "sentence": "The supplied matrix was {quantile-normalized | RMA-processed} across all samples before analysis; [the normalization was refit within training folds from raw intensities | this is disclosed as a limitation].",
+   "sources": [
+    "turbotab/core/detectors/genomics.py:71 log_signature, :188 card",
+    "turbotab/sample_data/genomics_microarray.csv",
+    "Bolstad et al. 2003, Bioinformatics 19:185",
+    "McCall, Bolstad & Irizarry 2010, Biostatistics 11:242",
+    "Hicks & Irizarry 2015, Genome Biol 16:117",
+    "Kapoor & Narayanan 2023 (L1.2)",
+    "MIAME 2, 6; MINSEQE 3, 5"
+   ],
+   "engine": "New.",
+   "tier": "stated; under prediction asked once (do raw intensities exist?) only when the signature passes",
+   "rank_signal": "Prediction purpose first, then the spread ratio (smaller is more certain).",
+   "critic_notes": "Fix applied: tolerance test replaces exact equality so RMA is caught; per-gene z-score test after orientation."
+  },
+  {
+   "id": "genomics-few-transcripts-take-the-reads",
+   "lens": "genomics",
+   "title": "A few transcripts (globin, rRNA, mitochondrial) take most of the reads, or most genes shift one way, so depth-only scaling misleads",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind: per-sample share of the total held by the top 1, 10 and 100 features (a single feature class above 20% flagged); TMM factors outside [0.5, 2]; mitochondrial and globin share when identifiers allow; spike-in or ERCC features present. Under inference only, after the lock: per-feature group log-ratios after normalization checked for a center or MA trend away from zero. No outcome view under prediction (it would feed no prediction decision). A real global transcriptional shift cannot be rejected without spike-ins, so it is stated.",
+   "meaning": "Whether a dominant class is carry-over contamination (exclude before computing factors) or real biology; globin exclusion is asked only for whole blood (protocol vs anemia).",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "normalization method and which features compute the factors",
+     "inference": "TMM or median-of-ratios rather than CPM; dominant contaminants excluded before computing factors.",
+     "prediction": "The same, refit in each fold."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "normalization adequacy",
+     "inference": "After the lock, an asymmetric volcano or MA plot flags normalization before biology.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "explanation",
+     "decision": "direction of effects",
+     "inference": "'All top genes go down' triggers a normalization caveat.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States the excluded class and the normalization.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "CPM on composition-skewed data biases fold changes across all genes, and globin reads that vary with anemia pass for signal.",
+   "magic": "'In nine samples, hemoglobin genes take over 40% of the reads. Every other gene looks lower in those samples only because globin took the reads. TMM corrects for this; CPM does not.'",
+   "layout": "Strip: a stacked bar per sample of the top features' share, with normalization factors before and after.",
+   "sentence": "{feature class} accounted for up to {share} of reads per sample and was excluded before computing TMM normalization factors.",
+   "sources": [
+    "turbotab/core/methods/omics.py:233 tmm_factor, :276 tmm_factors",
+    "Robinson & Oshlack 2010, Genome Biol 11:R25",
+    "Lov\u00e9n et al. 2012, Cell 151:476",
+    "Evans, Hardin & Stoebel 2018, Brief Bioinform 19:776",
+    "Dillies et al. 2013, Brief Bioinform 14:671",
+    "docs/turbotab/research/GENOMICS_PACK.md \u00a704, \u00a707E-F"
+   ],
+   "engine": "Partial: TMM exists; no domination detector.",
+   "tier": "stated; asked (exclude before the factors?) only when a class takes > 20% of some samples' reads or TMM factors fall outside [0.5, 2], and globin only for whole blood",
+   "rank_signal": "Largest single-feature-class share.",
+   "critic_notes": "Fix applied: the prediction-side outcome view dropped."
+  },
+  {
+   "id": "genomics-coexpression-modules",
+   "lens": "genomics",
+   "title": "Genes move in large correlated modules, so thousands of columns carry far fewer independent signals and importance splits across a module",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind (training rows under prediction): the effective number of independent features from the eigenvalues (Li-Ji Meff, or PCs to 80% of variance), and hard-threshold modules of genes with |r| >= 0.8 (hierarchical clustering on 1 - |r|; not WGCNA, which uses soft-thresholded adjacency and TOM), with the share of top-variance genes in modules of 10 or more. A module whose eigengene tracks depth or batch is routed to those threads first.",
+   "meaning": "none (measured); the user may name a module's biology.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "engineered features",
+     "inference": "None for the reported tests; module eigengenes only as a declared secondary analysis.",
+     "prediction": "Module eigengenes or gene-set scores as engineered features learned in-fold, tested by resampling."
+    },
+    {
+     "stage": "selection",
+     "decision": "selection under correlation",
+     "inference": "Meff informs the multiplicity statement (BH stays valid under positive dependence).",
+     "prediction": "Elastic net over lasso; lasso's pick within a module stated as arbitrary."
+    },
+    {
+     "stage": "explanation",
+     "decision": "importance under correlation",
+     "inference": "Effects per gene with the module named.",
+     "prediction": "Grouped (module-level) permutation importance beside per-gene values; within-module SHAP and permutation shown as shared."
+    },
+    {
+     "stage": "reporting",
+     "decision": "structure and grouped importance",
+     "inference": "States the module structure.",
+     "prediction": "Reports importance by module."
+    }
+   ],
+   "failure_prevented": "Permutation importance of one gene in a module of 300 looks near zero because its neighbours carry the signal; lasso keeps one arbitrary gene and the paper names it the driver.",
+   "magic": "'Your 11,600 genes behave like about 140 independent signals. The 38 genes in your top list sit in two modules; module 3 holds 70% of the importance, and its genes look small one at a time only because they carry the same information.'",
+   "layout": "Angles, at explanation, presented with signature instability: the gene-gene correlation heatmap ordered by module, per-gene vs per-module importance, the effective-number count.",
+   "sentence": "Genes were grouped into {k} hard-threshold co-expression modules (|r| >= 0.8) on training samples; importance was assessed by module as well as by gene.",
+   "sources": [
+    "turbotab/core/models/explain.py:644 Stability",
+    "Langfelder & Horvath 2008, BMC Bioinformatics 9:559",
+    "Li & Ji 2005, Heredity 95:221",
+    "Strobl et al. 2008, BMC Bioinformatics 9:307",
+    "Hooker, Mentch & Zhou 2021, Stat Comput 31:82",
+    "Zou & Hastie 2005, JRSS-B 67:301",
+    "Benjamini & Yekutieli 2001, Ann Stat 29:1165"
+   ],
+   "engine": "New: no module detector and no grouped importance.",
+   "tier": "stated at explanation only; never asked",
+   "rank_signal": "Share of top-list genes inside modules of 10 or more.",
+   "critic_notes": "Fix applied: 'hard-threshold modules', not WGCNA-style."
+  },
+  {
+   "id": "genomics-signature-instability",
+   "lens": "genomics",
+   "title": "The selected gene list changes from refit to refit",
+   "looks_at": "predictor-outcome",
+   "detector": "Prediction only, inside the resampling: each gene's inclusion frequency across fold and bootstrap refits, and the mean Jaccard overlap between selected sets; recorded as an outcome view.",
+   "meaning": "none (a property of the procedure); the user says whether a short, reproducible panel matters.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "selection method",
+     "inference": "Not offered for the reported model.",
+     "prediction": "Stability selection or elastic net offered with the measured instability; lasso's arbitrariness among correlated genes stated."
+    },
+    {
+     "stage": "explanation",
+     "decision": "how to present genes",
+     "inference": "Feature-wise results with BH.",
+     "prediction": "Inclusion frequency beside importance; the list is 'one of many equally good lists'."
+    },
+    {
+     "stage": "reporting",
+     "decision": "selection claim",
+     "inference": "n/a",
+     "prediction": "Inclusion frequencies reported (TRIPOD+AI)."
+    }
+   ],
+   "failure_prevented": "A 20-gene signature is published as the biomarker set when it is one draw among many (Ein-Dor 2006).",
+   "magic": "'Across 50 refits, only 4 of your 20 genes appear more than 80% of the time. The score belongs to the procedure, not to this list.'",
+   "layout": "Strip: genes ranked by inclusion frequency, with module membership from genomics-coexpression-modules.",
+   "sentence": "Selection was repeated in each of {B} resamples; {k} genes were selected in more than 80% of them.",
+   "sources": [
+    "turbotab/core/models/explain.py:432 resample, :644 Stability",
+    "docs/turbotab-next/MODELING_SEQUENCE.md row 8",
+    "Ein-Dor, Zuk & Domany 2006, PNAS 103:5923",
+    "Meinshausen & B\u00fchlmann 2010, JRSS-B 72:417"
+   ],
+   "engine": "Partial: SHAP stability and unit resampling exist; inclusion frequencies are in the modeling sequence.",
+   "tier": "surfaced only when a selecting model's gene list will be reported or exported; silent otherwise",
+   "rank_signal": "Mean Jaccard overlap (lower ranks higher).",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "genomics-pvalue-distribution",
+   "lens": "genomics",
+   "title": "The feature-wise p-values are inflated or misshapen, which says the model or the structure is wrong",
+   "looks_at": "predictor-outcome",
+   "detector": "Inference only, after the plan locks, as a diagnostic: a 50-bin histogram of feature-wise p-values and \u03c00 (Storey). The top-decile to middle density ratio reads the shape: U-shaped or rising toward 1 means misspecification, hill-shaped conservative, a comb discreteness at low counts (separated by count level; the engine's featurewise uses an unmoderated per-gene t without eBayes, which shapes that comb). Genomic inflation \u03bb = median \u03c7\u00b2\u2081 / 0.455 with a QQ plot, flagged above 1.1. Broad true signal also inflates \u03bb; under confounding, inflation falls after adding top PCs, surrogate variables or ancestry PCs. That comparison is a declared sensitivity analysis recorded as made after the estimates were seen.",
+   "meaning": "The cause: unmodeled pairing, batch, ancestry or cell mix, a variance misfit, or a genuinely broad signal.",
+   "consumers": [
+    {
+     "stage": "evaluation",
+     "decision": "model diagnostic",
+     "inference": "Shown after the lock; reopens the batch, pairing or structure question, any change recorded as post-estimate.",
+     "prediction": "n/a: prediction does not report feature-wise tests."
+    },
+    {
+     "stage": "selection",
+     "decision": "back-link to the structure threads",
+     "inference": "Offers the unrecorded-structure, cell-mix or ancestry adjustment as a labeled sensitivity analysis.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "the required figure",
+     "inference": "The histogram, \u03c00, \u03bb and the expected false positives (tests x \u03b1).",
+     "prediction": "n/a"
+    }
+   ],
+   "failure_prevented": "Miscalibrated p-values reported as discoveries, including inflation from ComBat-then-test, unmodeled repeated samples, or confounding that makes half the genome look associated.",
+   "magic": "'Your p-values pile up toward 1, so the model is wrong somewhere. The usual cause is samples from the same person treated as independent, and you have 14 people with two samples each.' Or: '\u03bb = 1.6: half the genome looks associated. With three surrogate variables, \u03bb = 1.05, and 41 genes remain.'",
+   "layout": "Focus: the histogram with the uniform reference and \u03c00 level, flipping to the QQ plot with \u03bb and the sensitivity curve.",
+   "sentence": "The distribution of feature-wise p-values was inspected after the analysis plan was locked (\u03c00 = {pi0}; \u03bb = {lambda}); {it was consistent with a well-specified model | in a sensitivity analysis adding {k} surrogate variables, \u03bb was {lambda2}, recorded as made after the estimates were seen}.",
+   "sources": [
+    "turbotab/core/methods/omics.py:1640 multiplicity_policy, :1701 apply_multiplicity",
+    "turbotab/core/models/featurewise.py (unmoderated t)",
+    "Breheny, Stromberg & Lambert 2018, High-Throughput 7:23",
+    "Storey & Tibshirani 2003, PNAS 100:9440",
+    "Devlin & Roeder 1999, Biometrics 55:997",
+    "Price et al. 2006, Nat Genet 38:904",
+    "Leek & Storey 2007, PLoS Genet 3:e161",
+    "Nygaard, R\u00f8dland & Hovig 2016, Biostatistics 17:29",
+    "docs/turbotab/research/GENOMICS_PACK.md \u00a706"
+   ],
+   "engine": "New; the multiplicity correction exists.",
+   "tier": "surfaced when U- or hill-shaped or \u03bb > 1.1; otherwise stated as the reporting figure",
+   "rank_signal": "\u03bb.",
+   "critic_notes": "Sound; constant corrected to 0.455."
+  },
+  {
+   "id": "genomics-qpcr-ct-values",
+   "lens": "genomics",
+   "title": "qPCR Ct values run backwards, and 'Undetermined' or the cycle maximum is a non-detect, not a number",
+   "looks_at": "measurement",
+   "detector": "Columns with values of roughly 10-40, a mass at an integer cycle maximum (35, 40 or 45) or the text 'Undetermined', and a reference-gene column (GAPDH, ACTB, 18S). Value test: the ceiling mass plus the bounded range; an ordinary bounded score is rejected by the ceiling mass, otherwise asked. Names alone give medium confidence.",
+   "meaning": "The values are Ct (lower means more), which genes are the reference, the cycle maximum as a detection limit, and whether the values are already \u0394Ct.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "normalization",
+     "inference": "\u0394Ct against the reference gene(s) within each sample (row-local, no refit); reference-gene stability against the condition checked after the lock.",
+     "prediction": "The same \u0394Ct; reference stability by condition checked in-fold and recorded as an outcome view."
+    },
+    {
+     "stage": "representation",
+     "decision": "non-detects",
+     "inference": "Routed to the detection_limit reading and handled censoring-aware, never dropped or imputed as missing at random.",
+     "prediction": "Censoring-aware fill inside the fold (QRILCFill / LogScaleCensoredFill)."
+    },
+    {
+     "stage": "explanation",
+     "decision": "direction words",
+     "inference": "A higher Ct worded as lower expression.",
+     "prediction": "The same on importance and dependence plots."
+    },
+    {
+     "stage": "reporting",
+     "decision": "MIQE items",
+     "inference": "Reference genes and non-detect handling.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Sign errors in every effect; non-detects dropped although they are not missing at random; normalizing to a reference gene the condition itself changes.",
+   "magic": "'In your table, a bigger number means less of the gene. Your top positive effect is actually lower expression in cases, and the 14 Undetermined wells are samples with too little to detect, not missing at random.'",
+   "layout": "Focus: the distribution with the ceiling mass marked and the reversed axis labeled 'more expression \u2190'.",
+   "sentence": "Ct values were normalized to {reference genes} (\u0394Ct); undetermined reactions were treated as below the detection limit at {max} cycles and handled by {method}.",
+   "sources": [
+    "turbotab/core/readings.py:60-77 KINDS detection_limit",
+    "turbotab/core/methods/omics.py:1137 QRILCFill, :1229 LogScaleCensoredFill",
+    "Livak & Schmittgen 2001, Methods 25:402",
+    "Bustin et al. 2009, Clin Chem 55:611 (MIQE)",
+    "McCall et al. 2014, Bioinformatics 30:2310",
+    "Vandesompele et al. 2002, Genome Biol 3:research0034"
+   ],
+   "engine": "New detector; the detection_limit reading and censored fills exist.",
+   "tier": "asked once (confirm Ct, reference genes, cycle maximum) when the ceiling mass appears",
+   "rank_signal": "Non-detect share.",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "genomics-methylation-beta",
+   "lens": "genomics",
+   "title": "Methylation beta values are bounded proportions whose variance depends on their level, and blood methylation tracks the cell mix",
+   "looks_at": "measurement",
+   "detector": "Identifiers of the form cg plus eight digits (or ch. / rs probes), values in [0, 1], and a bimodal distribution (peaks near 0.1 and 0.9); other proportions are rejected by the identifier pattern. Sentrix chip and position columns are passed to genomics-sample-quality-drives-components as technical covariates. Array type (450K vs EPIC) from the probe set, for the exclusion list.",
+   "meaning": "Beta vs M-values, the tissue (blood routes to genomics-cell-mix-drives-signal, asked there once), and the array type.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "scale and probe filters",
+     "inference": "M-values (logit2) for testing; cross-reactive, SNP-under-probe and sex-chromosome probes excluded by the array's list, blind to the outcome.",
+     "prediction": "The same, in-fold where anything is learned."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Estimated cell proportions (Houseman) as covariates by the cell-mix thread's meaning.",
+     "prediction": "Proportions offered as candidate features."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect unit",
+     "inference": "Effects back-transformed to \u0394beta (percentage points).",
+     "prediction": "The same on dependence plots."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States the scale, the exclusions and the cell adjustment.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Heteroscedastic beta-scale tests mis-rank CpGs, cross-reactive probes produce spurious hits, and cell mix confounds blood studies.",
+   "magic": "'These are methylation betas from an EPIC array, in blood. Before anything is compared, the app estimates each person's white-cell mix, because folate-related CpGs also differ by cell type.'",
+   "layout": "Focus: the bimodal beta distribution, with the M-value transform played.",
+   "sentence": "Methylation was analyzed as M-values after excluding cross-reactive, polymorphic and sex-chromosome probes ({n} retained; {array} list), with estimated cell proportions as covariates; effects are reported as differences in beta.",
+   "sources": [
+    "Du et al. 2010, BMC Bioinformatics 11:587",
+    "Chen et al. 2013, Epigenetics 8:203 (450K list)",
+    "Pidsley et al. 2016, Genome Biol 17:208 (EPIC)",
+    "Zhou, Laird & Shen 2017, Nucleic Acids Res 45:e22 (manifests)",
+    "Houseman et al. 2012, BMC Bioinformatics 13:86",
+    "Jaffe & Irizarry 2014, Genome Biol 15:R31"
+   ],
+   "engine": "New.",
+   "tier": "asked once when cg identifiers appear (array, tissue); the cell-mix question comes from that thread",
+   "rank_signal": "Fires or not.",
+   "critic_notes": "Fix applied: EPIC exclusion sources added; cell-mix not asked twice."
+  },
+  {
+   "id": "genomics-ancestry-structure",
+   "lens": "genomics",
+   "title": "Genetic ancestry structures the samples and lines up with case status or with the diet exposure",
+   "looks_at": "structure",
+   "detector": "Outcome-blind PCs of LD-pruned common autosomal variants with long-range LD regions excluded (genotype dosages 0/1/2, which omics.py's count reading excludes); supplied ancestry PCs or an ancestry column when present (groupings.py:55). Variance on the top PCs and their cluster structure, then the ancestry x outcome and ancestry x diet tables as design-balance views. After the lock (inference), \u03bbGC of the feature-wise tests, flagged above 1.1. Polygenic signal vs stratification cannot be separated at cohort scale (the LD-score intercept needs genome-wide summary statistics and large n), so it is a stated limitation.",
+   "meaning": "Whether ancestry confounds the genotype-outcome or genotype-diet comparison, and whether the population is admixed.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "in-fold PCA for omics",
+     "inference": "PCs on all analyzed samples.",
+     "prediction": "PCs computed within each training fold and projected onto held-out rows with a shrinkage correction (projected scores shrink toward zero when p >> n), never fitted on them."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Top ancestry PCs as covariates, or an LMM; stated caution that PCs miss fine-scale or recent structure, where an LMM is preferred.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "transfer",
+     "inference": "n/a",
+     "prediction": "Performance by ancestry group; transfer beyond represented ancestries not claimed."
+    },
+    {
+     "stage": "explanation",
+     "decision": "reading a nutrigenetic hit",
+     "inference": "A lactase-persistence or similar variant checked against ancestry before being called diet-related.",
+     "prediction": "The same caution on importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "QQ plot with \u03bb; training ancestry",
+     "inference": "\u03bbGC on the QQ plot; number of PCs stated.",
+     "prediction": "Ancestry composition of the training data stated."
+    }
+   ],
+   "failure_prevented": "Population stratification produces spurious associations (LCT appearing to associate with height; Campbell 2005), and models transfer poorly across ancestries (Martin 2019).",
+   "magic": "'Your strongest variant for dairy intake also tells your two recruitment regions apart. After ancestry PCs its association shrinks to a fifth: much of it was where people's grandparents came from.'",
+   "layout": "Angles: PC1/PC2 colored by outcome and shaped by ancestry; the QQ plot with \u03bb (after the lock); performance by ancestry group.",
+   "sentence": "Population structure was assessed by principal components of {m} LD-pruned variants; {k} components [computed within each training fold, with shrinkage-corrected projection] were included as covariates (\u03bbGC = {lambda}), and performance is reported by ancestry group.",
+   "sources": [
+    "turbotab/core/methods/omics.py:14",
+    "turbotab/core/groupings.py:53-57",
+    "docs/turbotab-next/MODELING_SEQUENCE.md:138 row 7",
+    "Price et al. 2006, Nat Genet 38:904",
+    "Price et al. 2010, Nat Rev Genet 11:459",
+    "Lee, Zou & Wright 2010, Ann Stat 38:3605",
+    "Campbell et al. 2005, Nat Genet 37:868",
+    "Devlin & Roeder 1999, Biometrics 55:997",
+    "Martin et al. 2019, Nat Genet 51:584",
+    "STREGA 7b, 12h"
+   ],
+   "engine": "New.",
+   "tier": "surfaced when genotypes are present (PCs with the design tables); asked only about admixture or what the ancestry grouping means",
+   "rank_signal": "Top-PC variance x association with the outcome or the diet exposure.",
+   "critic_notes": "Fixes applied: LD-score intercept dropped; shrinkage-corrected projection; unsourced collider caution replaced by the standard PC/LMM caution (Price 2010)."
+  },
+  {
+   "id": "genomics-genotype-qc",
+   "lens": "genomics",
+   "title": "The columns are genotypes coded 0/1/2, and some samples or variants fail basic genotyping QC",
+   "looks_at": "measurement",
+   "detector": "Values restricted to {0, 1, 2, NA} across at least 100 columns with rs-ID or chr:pos names (ordinal codes rejected by the pattern and column count, otherwise asked). Outcome-blind QC: per-sample call rate < 98%; heterozygosity beyond \u00b13 SD; per-variant call rate; MAF < 1%; X heterozygosity for sex; kinship (feeds genomics-relatedness). Outcome-reading rules stated before estimates and applied mechanically: HWE exact test p < 1e-6 in controls only; plate artifacts by differential missingness by plate and by case status (PLINK --test-missing), a design-balance view that decides only variant exclusion. HWE departure in cases is not used, because true association also produces it.",
+   "meaning": "The genetic model (additive or dominant) and the QC rules; effect allele and strand are asked only when a merge needs them (genomics-allele-harmonization).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "exclusions",
+     "inference": "Call-rate, heterozygosity and differential-missingness rules stated before estimates.",
+     "prediction": "The same rules applied identically to sealed rows."
+    },
+    {
+     "stage": "representation",
+     "decision": "coding and filters",
+     "inference": "Additive coding; MAF filter blind to the outcome; HWE in controls.",
+     "prediction": "HWE and differential missingness read case status, so they run on training rows inside each fold."
+    },
+    {
+     "stage": "model",
+     "decision": "relatedness and coding",
+     "inference": "An LMM, or relatives removed at the KING cutoff.",
+     "prediction": "Relatives kept together across folds."
+    },
+    {
+     "stage": "reporting",
+     "decision": "QC table",
+     "inference": "Samples and variants before and after each rule.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Genotyping artifacts that differ between case and control plates produce spurious associations; contaminated samples are kept; 0/1/2 treated as unordered categories.",
+   "magic": "'rs123 is missing in 9% of case-plate samples and 1% of controls. Differential missingness like this is how plate artifacts look, and the rule set before any estimate drops it.'",
+   "layout": "Flow: the sample and variant QC waterfall.",
+   "sentence": "Samples with call rate < {x} or heterozygosity beyond \u00b13 SD, and variants with call rate < {y}, MAF < {z}, HWE p < {h} in controls, or differential missingness by case status (p < {m}), were excluded; genotypes were coded additively for the {allele} allele.",
+   "sources": [
+    "Anderson et al. 2010, Nat Protoc 5:1564",
+    "Purcell et al. 2007, Am J Hum Genet 81:559 (PLINK)",
+    "Manichaikul et al. 2010, Bioinformatics 26:2867",
+    "STREGA 8b, 12f",
+    "docs/turbotab/research/GENOMICS_PACK.md \u00a709"
+   ],
+   "engine": "New.",
+   "tier": "stated (QC waterfall with default thresholds)",
+   "rank_signal": "Differential missingness.",
+   "critic_notes": "Fix applied: plate artifacts detected by differential missingness; HWE in controls only."
+  },
+  {
+   "id": "genomics-relatedness",
+   "lens": "genomics",
+   "title": "Participants are related (siblings, parent-child, duplicates), so relatives share alleles and kitchens across the split",
+   "looks_at": "structure",
+   "detector": "KING kinship coefficients on genotypes: >= 0.354 duplicate or MZ twin, 0.177-0.354 first-degree, 0.088-0.177 second-degree; also a family-ID column (FID). Outcome-blind. On expression-only data genomics-near-identical-samples stands in.",
+   "meaning": "The families, and the unit for resampling and modeling; for duplicate or MZ pairs, collapse or not.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "cluster reading: family",
+     "inference": "Family is a cluster; duplicates collapsed.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "model",
+     "decision": "dependence",
+     "inference": "A mixed model with the kinship matrix, or one person per family.",
+     "prediction": "n/a beyond grouping."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "grouped folds",
+     "inference": "Inference by family.",
+     "prediction": "Families kept together across folds."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "States relatedness handling.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Leakage through relatives: the model is graded on siblings of people it trained on, who share genotype and household diet; inflated association statistics from cryptic relatedness.",
+   "magic": "'14 sibling pairs and one duplicate sample (kinship 0.49). Split across folds, siblings share alleles and kitchens: the model would be graded on relatives of the people it trained on.'",
+   "layout": "Flow: participants into families, pairs by degree counted.",
+   "sentence": "Relatedness was estimated with KING; {n} related pairs were kept within the same cross-validation fold [and modeled with a kinship random effect].",
+   "sources": [
+    "Manichaikul et al. 2010, Bioinformatics 26:2867",
+    "Anderson et al. 2010, Nat Protoc 5:1564",
+    "turbotab/core/models/folds.py:189",
+    "STREGA 12j"
+   ],
+   "engine": "New detector; grouped folds exist.",
+   "tier": "stated (related pairs grouped in folds automatically and disclosed); asked only for duplicate or MZ pairs",
+   "rank_signal": "Degree of relatedness (duplicates first).",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "genomics-genotype-shapes-the-diet",
+   "lens": "genomics",
+   "title": "A genotype predicts the dietary exposure (lactase persistence and milk, ALDH2 and alcohol), so gene-diet questions carry gene-environment correlation and sparse cells",
+   "looks_at": "predictors",
+   "detector": "When genotypes or a named variant and a dietary exposure are both present: outcome-blind association of each candidate genotype with each diet exposure (intake regressed on dosage: R\u00b2 and p), checked against ancestry PCs. For a declared gene x diet modifier: counts per genotype x intake stratum (positivity: minor homozygotes in the high-intake stratum), and the exposure's measurement-error reading from the dietary lens. Ancestry driving both is rejected by adjusting for ancestry PCs first.",
+   "meaning": "The genotype's role: a pure instrument (acts on the outcome only through intake), a pleiotropic confounder (acts through other paths too), or a modifier; and the interaction scale (additive or multiplicative).",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Decided by the asked role: a pleiotropic genotype is a confounder and is adjusted; a pure instrument does not change the estimand, but adjusting for it costs precision and can amplify unmeasured-confounding bias, so it is left out. G x E models carry covariate x E and covariate x G terms (Keller 2014). Mendelian randomization offered as a separate analysis with its assumptions stated.",
+     "prediction": "n/a beyond feature redundancy."
+    },
+    {
+     "stage": "model",
+     "decision": "interaction form",
+     "inference": "Interaction on additive (RERI) and multiplicative scales (methods/interaction.py); genotype coding stated.",
+     "prediction": "Interaction candidates proposed and tested by resampling."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "positivity and power",
+     "inference": "Empty or tiny genotype x intake cells and the power for interaction disclosed.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "explanation",
+     "decision": "reading diet importance",
+     "inference": "The diet effect named as partly genotype-driven.",
+     "prediction": "Diet and genotype importance shown as shared."
+    },
+    {
+     "stage": "reporting",
+     "decision": "G x E reporting",
+     "inference": "Both scales, cell counts, covariate x E terms.",
+     "prediction": "n/a"
+    }
+   ],
+   "failure_prevented": "A 'gene x dairy interaction' reported where the genotype sets dairy intake and ancestry sets both; interaction tests without covariate x environment terms are confounded; the interaction rests on a nearly empty cell.",
+   "magic": "'Carriers of the lactase-persistence allele drink 2.1 times the milk here: the genotype predicts the diet. Only 4 non-persistent people are in the top intake fifth, so a gene x dairy interaction rests on 4 people.'",
+   "layout": "Angles: intake by genotype, the genotype x intake cell counts, the interaction on two scales.",
+   "sentence": "Genotype was associated with intake (R\u00b2 = {r2}); the gene x diet interaction was estimated on additive and multiplicative scales with covariate x diet and covariate x genotype terms, and cell counts are reported.",
+   "sources": [
+    "turbotab/core/methods/interaction.py:216 reri, :255 measures",
+    "Keller 2014, Biol Psychiatry 75:18",
+    "Pearl 2010, Proc UAI (bias-amplifying variables)",
+    "Davey Smith & Ebrahim 2003, Int J Epidemiol 32:1",
+    "Campbell et al. 2005, Nat Genet 37:868",
+    "VanderWeele & Knol 2014, Epidemiol Methods 3:33"
+   ],
+   "engine": "Partial: interaction measures on two scales exist. New: the G-E correlation detector and the positivity table.",
+   "tier": "asked (role and scale) when a gene x diet modifier is declared; the G-E correlation surfaced otherwise",
+   "rank_signal": "Sparsest genotype x intake cell.",
+   "critic_notes": "Fix applied: adjustment language distinguishes a pure instrument from a pleiotropic confounder."
+  },
+  {
+   "id": "genomics-polygenic-score-provenance",
+   "lens": "genomics",
+   "title": "A polygenic score column whose weights may have been learned on these participants, or in another ancestry",
+   "looks_at": "predictors",
+   "detector": "A column named PRS, PGS, GRS or polygenic, or a roughly normal score beside genotype data. Its source is asked: PGS Catalog ID, discovery GWAS, its ancestry, and whether it included these participants or their relatives; overlap cannot be measured without the GWAS. Under prediction, a recorded outcome view proposes overlap: the score's in-sample variance explained against the published range for the trait. Outcome-blind: the sample's ancestry against the GWAS ancestry (via genomics-ancestry-structure).",
+   "meaning": "The weights' source, any overlap with these participants, and the ancestry match.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "role of the score",
+     "inference": "A confounder proxy or effect modifier, adjusted alongside ancestry PCs.",
+     "prediction": "A candidate predictor; incremental value over clinical predictors tested on the same folds."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "honesty of the score",
+     "inference": "n/a",
+     "prediction": "Overlap means the score is labeled optimistic and external validation required."
+    },
+    {
+     "stage": "explanation",
+     "decision": "transport",
+     "inference": "Effect by ancestry group.",
+     "prediction": "Performance by ancestry group."
+    },
+    {
+     "stage": "reporting",
+     "decision": "PGS reporting standards",
+     "inference": "Source, ancestry and overlap stated (Wand 2021).",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "A PRS built from a GWAS that included the target cohort inflates prediction (Wray 2013), and applied across ancestries it loses accuracy (Martin 2019).",
+   "magic": "'Your BMI polygenic score explains 19% of BMI here; published scores explain about 6-9% in independent samples. Was your cohort, or its relatives, in the GWAS that built it?'",
+   "layout": "Focus: the PRS-outcome association beside the published range, the ancestry match shown.",
+   "sentence": "The polygenic score ({PGS ID}) was derived from {GWAS}, which {did not include | included} these participants; its incremental value was assessed within cross-validation and is reported by ancestry group.",
+   "sources": [
+    "Wray et al. 2013, Nat Rev Genet 14:507",
+    "Choi, Mak & O'Reilly 2020, Nat Protoc 15:2759",
+    "Wand et al. 2021, Nature 591:211",
+    "Martin et al. 2019, Nat Genet 51:584",
+    "Yengo et al. 2018, Hum Mol Genet 27:3641 (BMI comparator)",
+    "Khera et al. 2019, Cell 177:587 (BMI comparator)"
+   ],
+   "engine": "New.",
+   "tier": "asked when a PRS-like column exists",
+   "rank_signal": "Observed R\u00b2 over the published range.",
+   "critic_notes": "Fix applied: comparator cited (about 6-9% for BMI)."
+  },
+  {
+   "id": "genomics-allele-harmonization",
+   "lens": "genomics",
+   "title": "External effect sizes or polygenic weights must use the same effect allele and strand as these genotypes",
+   "looks_at": "measurement",
+   "detector": "When external weights (a PGS Catalog file, published betas) or a second genotype source are merged: per variant, the allele pair compared with the data's alleles; counts matched, swapped (effect and other allele reversed: weight sign flipped), strand-flipped (complement) and palindromic (A/T, C/G). A palindromic variant is resolved by frequency only when its MAF is well below 0.5 (for example < 0.4) in both sources; otherwise unresolvable. The sample's allele frequency against the reference frequency checks each resolution. Outcome-blind.",
+   "meaning": "The effect allele, each source's strand convention, and whether ambiguous palindromic variants are dropped.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "score construction",
+     "inference": "Score built from harmonized weights; dropped variants counted.",
+     "prediction": "The same; harmonization is row-local and needs no fold refit."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect direction words",
+     "inference": "Effects name the effect allele.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "harmonization",
+     "inference": "Matched, flipped and dropped counts.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "A polygenic score whose weights are flipped for a share of its variants loses or reverses its signal, and a reported risk allele is the other allele.",
+   "magic": "'Of 1,100 weights in your score file, 212 are for the other allele and 61 are A/T or C/G at near 50% frequency, so their strand cannot be told. Unharmonized, your score is a different score.'",
+   "layout": "Routing: variants re-routed to matched, flipped, strand-flipped and dropped-as-ambiguous, with counts.",
+   "sentence": "External weights were aligned to the effect allele and strand of the study genotypes ({matched} matched, {flipped} flipped, {dropped} ambiguous palindromic variants excluded).",
+   "sources": [
+    "Hartwig et al. 2016, Int J Epidemiol 45:1717",
+    "Choi, Mak & O'Reilly 2020, Nat Protoc 15:2759",
+    "STREGA 12"
+   ],
+   "engine": "New.",
+   "tier": "asked when a merge needs it and ambiguous or swapped variants exceed a few percent; stated otherwise; silent without a merge",
+   "rank_signal": "Share of ambiguous or swapped variants.",
+   "critic_notes": "Added from the critic's gap list ('allele/strand harmonization'); not yet adversarially reviewed."
+  },
+  {
+   "id": "genomics-imputed-dosages",
+   "lens": "genomics",
+   "title": "Genotypes are imputed dosages (continuous 0-2) whose imputation quality varies by variant",
+   "looks_at": "measurement",
+   "detector": "Values in [0, 2] with mass near the integers but many non-integers, across at least 100 variant-named columns. Uses an INFO or R\u00b2 column when present; otherwise an outcome-blind proxy, the per-variant dosage variance over 2p(1 - p) (the MaCH r\u00b2 estimate). Mean-filled hard calls are rejected by the distribution of the non-integer values.",
+   "meaning": "none for the rule; the reference panel is a reporting blank.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "coding and quality filter",
+     "inference": "Dosages kept, never rounded; INFO filter blind to the outcome.",
+     "prediction": "The same, applied once (outcome-blind)."
+    },
+    {
+     "stage": "selection",
+     "decision": "what a weak variant can show",
+     "inference": "Expected dosages behave like Berkson error: effects roughly unbiased, information about r\u00b2 x n; rounding would attenuate.",
+     "prediction": "Low-quality variants down-ranked as candidates."
+    },
+    {
+     "stage": "explanation",
+     "decision": "reading variant effects",
+     "inference": "Each effect shown with its imputation quality and effective n.",
+     "prediction": "The same, beside importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "imputation",
+     "inference": "Panel, threshold, use of dosages.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Rounding dosages to calls discards uncertainty and attenuates effects; poorly imputed variants make null results look informative.",
+   "magic": "None by default; when stated: 'These are imputed dosages (38% of values are not whole numbers); variants below INFO 0.8 were set aside and the rest kept unrounded.'",
+   "layout": "Focus on demand: the dosage histogram with its integer peaks, beside per-variant imputation r\u00b2.",
+   "sentence": "Genotypes were imputed to {panel}; variants with imputation quality below {t} were excluded, and dosages were analyzed without rounding.",
+   "sources": [
+    "turbotab/core/methods/omics.py:14",
+    "Marchini & Howie 2010, Nat Rev Genet 11:499",
+    "Li et al. 2010, Genet Epidemiol 34:816"
+   ],
+   "engine": "New.",
+   "tier": "stated (automated: keep dosages, INFO filter, both stated)",
+   "rank_signal": "Share of variants below the quality threshold.",
+   "critic_notes": "Automate-silently verdict applied."
+  },
+  {
+   "id": "genomics-many-probes-one-gene",
+   "lens": "genomics",
+   "title": "Several microarray probes map to one gene, and some probes map to several",
+   "looks_at": "measurement",
+   "detector": "Probe-set identifiers (Affymetrix _at, Illumina ILMN_, Agilent A_23_P) with an annotation column or an offline platform map (GPL). Counts genes with more than one probe, probes mapping to several genes, probes with no gene, reusing the duplicate detector (packs.py:4825). The collapse rule is outcome-blind (highest mean expression, Miller 2011's recommended default); a p-value-based pick is refused. Without annotation the app says it cannot collapse and keeps probes, with the family stated as probes.",
+   "meaning": "none for the rule; asked only when no annotation exists.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "collapse probes to genes",
+     "inference": "Max-mean over the analyzed rows.",
+     "prediction": "The same rule, means computed on training rows in each fold."
+    },
+    {
+     "stage": "selection",
+     "decision": "multiplicity / screening unit",
+     "inference": "The family stated as genes or probes.",
+     "prediction": "A gene's probes grouped in screening."
+    },
+    {
+     "stage": "explanation",
+     "decision": "gene-level importance",
+     "inference": "Effects per gene, with the probe used.",
+     "prediction": "Importance grouped over a gene's probes."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence",
+     "inference": "Rule and counts.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Choosing each gene's 'best' probe by its p-value (outcome-driven selection outside the resampling), and a gene counted four times.",
+   "magic": "None by default; the waterfall line: '2,310 genes have more than one probe; collapsing by highest mean expression, never by p-value, leaves 18,402 genes.'",
+   "layout": "Flow: a line in the feature waterfall; the ranked probe strip on demand.",
+   "sentence": "Probes were collapsed to genes by highest mean expression across {training} samples ({probes} probes to {genes} genes); probes mapping to several genes were excluded.",
+   "sources": [
+    "turbotab/packs.py:4825 _gene_id_duplicates",
+    "turbotab/sample_data/genomics_microarray.csv",
+    "Miller et al. 2011, BMC Bioinformatics 12:322",
+    "MIAME 5"
+   ],
+   "engine": "Partial: duplicate detection exists; the probe vocabulary, platform map and collapse rule are new.",
+   "tier": "stated (automated); asked only when no annotation exists",
+   "rank_signal": "Probes per gene.",
+   "critic_notes": "Automate-silently verdict applied; annotation dependency stated."
+  },
+  {
+   "id": "genomics-array-detection-floor",
+   "lens": "genomics",
+   "title": "On arrays, many probes sit at background and a few at the scanner ceiling, so the floor and the ceiling are not values like the rest",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. Detection p-value columns (Illumina detection p-values, Affymetrix MAS5 present/absent calls) when present; otherwise the background mode of the log intensity distribution and the share of probes near it, and a mass at the scanner maximum (65,535 on 16-bit scanners, about 16 on log2). The array counterpart of the expression filter: a probe is kept when detected (p < 0.05) in at least as many samples as the smallest group, a group-size-only read. Saturated values flagged as right-censored. For Illumina data with negative-control probes, background correction by neqc.",
+   "meaning": "none for the rule; the researcher confirms the platform and whether detection p-values exist.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "detection filter and background correction",
+     "inference": "The filter on all analyzed rows; neqc where control probes exist.",
+     "prediction": "The same, filter applied per fold."
+    },
+    {
+     "stage": "selection",
+     "decision": "multiplicity family",
+     "inference": "BH over the post-filter probes, size stated.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "explanation",
+     "decision": "censored probes",
+     "inference": "Saturated probes among the top hits flagged.",
+     "prediction": "The same, beside importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "probe waterfall",
+     "inference": "Probes before and after, with the rule.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Thousands of probes that never rise above background enter the tests and the penalty as noise, and a saturated probe's ceiling hides a real difference.",
+   "magic": "None by default; the waterfall line: '38% of your probes are never detected in any sample; 120 sit at the scanner ceiling and are marked, because their true values are higher than recorded.'",
+   "layout": "Flow: the probe waterfall (input, never detected, detection filter, tested), saturated probes marked.",
+   "sentence": "Probes were retained if detected (detection p < 0.05) in at least {n} samples, a rule independent of the outcome ({before} to {after}); {k} probes at scanner saturation were flagged.",
+   "sources": [
+    "Shi, Oshlack & Smyth 2010, Nucleic Acids Res 38:e204 (neqc)",
+    "Liu et al. 2002, Bioinformatics 18:1593 (detection calls)",
+    "Bourgon, Gentleman & Huber 2010, PNAS 107:9546",
+    "turbotab/sample_data/genomics_microarray.csv",
+    "MIAME 2"
+   ],
+   "engine": "New.",
+   "tier": "silent (stated in the waterfall and methods sentence)",
+   "rank_signal": "Share of probes never detected.",
+   "critic_notes": "Added from the critic's gap list ('array detection p-values and background/saturation'); not yet adversarially reviewed."
+  },
+  {
+   "id": "genomics-low-expression-filter",
+   "lens": "genomics",
+   "title": "Most genes barely register, and an outcome-blind filter decides how many are really tested",
+   "looks_at": "predictors",
+   "detector": "A filterByExpr rule: CPM >= 10 / (median library size in millions) in at least n samples, where n is the smallest group size, or 10 + 0.7 x (size - 10) when that exceeds 10 (large.n = 10, min.prop = 0.7), and total count >= 15. It reads only the smallest group's size from the outcome, an outcome-alone read allowed under both purposes. Re-measured on genomics_expression (in-process): smallest group 30 gives n = 24; threshold 288.5 CPM (10 reads at a median library of about 34,700); the rule keeps 252 of 495 genes; 119 genes never reach 10 reads in any sample. Any recorded filter statistic must be outcome-independent (overall mean or variance); a label-using filter is refused under inference.",
+   "meaning": "none: the rule is stated.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "which features enter",
+     "inference": "The filter on every analyzed row, blind to which sample is in which group.",
+     "prediction": "The filter inside each training fold."
+    },
+    {
+     "stage": "selection",
+     "decision": "the multiplicity family",
+     "inference": "The BH family is the post-filter set, its size and \u03c00 stated (Bourgon 2010).",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "feature waterfall",
+     "inference": "Genes before and after, with the rule. Discovery counts with and without the filter are never shown before the rule is fixed.",
+     "prediction": "The same, per fold, as a range."
+    }
+   ],
+   "failure_prevented": "Filtering with condition labels breaks the FDR, filtering by fold change before testing is circular, and BH power is spent on genes of zeros.",
+   "magic": "None by default; the waterfall line on the fixture: '119 of your 495 genes never reach 10 reads in any sample. The rule keeps 252, and no step of it looked at which sample is a case.'",
+   "layout": "Flow: the feature waterfall (input, zeros, expression filter, tested); the log-mean-count histogram with removed features shaded on demand.",
+   "sentence": "Genes were retained if they reached {cpm} counts per million in at least {n} samples (edgeR filterByExpr defaults), a criterion independent of the outcome ({before} to {after}); the false discovery rate was controlled over the {after} tested genes.",
+   "sources": [
+    "turbotab/core/methods/omics.py:1521 UnivariateScreen, :1640 multiplicity_policy, :1701 apply_multiplicity, :1775 zeros_finding",
+    "turbotab/core/decisions.py:1580-1586 SetLevers.variance_filter",
+    "turbotab/sample_data/genomics_expression.csv (re-measured)",
+    "Bourgon, Gentleman & Huber 2010, PNAS 107:9546",
+    "Chen, Lun & Smyth 2016, F1000Research 5:1438",
+    "Benjamini & Hochberg 1995, JRSS-B 57:289"
+   ],
+   "engine": "Partial: the 'low counts, not codes' reframing, the variance filter and multiplicity exist; no count-based expression filter.",
+   "tier": "silent (stated in the waterfall and methods sentence)",
+   "rank_signal": "Share of genes removed.",
+   "critic_notes": "Automate-silently verdict applied. Numbers corrected and re-measured: 'never reach 10'; the actual filterByExpr rule at min group 30 keeps 252, not the 294 that a 10-sample bar gives."
+  },
+  {
+   "id": "genomics-mean-variance-scaling",
+   "lens": "genomics",
+   "title": "A feature's variance depends on its mean; on counts the settled scale already handles it, and a guard checks that filtering did",
+   "looks_at": "predictors",
+   "detector": "No scaling menu for counts: variance handling follows from the settled scale (log-CPM with a prior count after the expression filter). Guard only, outcome-blind on training rows: after filtering and the chosen transform, the share of PC1's squared-loading mass held by genes with mean < 5 reads, flagged when it exceeds their share of genes by 1.5x. Measured on genomics_expression without filtering, autoscaled log-CPM (in-process): 195 of 495 genes (39%) have mean < 5 reads and hold 21% of PC1's loading mass, so the guard stays silent. The mean-SD trend figure is available on demand.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "scaling and variance stabilization",
+     "inference": "Log-CPM with a prior count after filtering; VST for figures only.",
+     "prediction": "Scaling is a hyperparameter tested by resampling, refit in each fold."
+    },
+    {
+     "stage": "model",
+     "decision": "variance handling",
+     "inference": "Precision weights (voom) or limma-trend (not yet in the engine: featurewise uses an unmoderated t).",
+     "prediction": "n/a beyond the resampled scaling."
+    },
+    {
+     "stage": "explanation",
+     "decision": "trusting low-expression features",
+     "inference": "Low-count genes among the top hits marked.",
+     "prediction": "Features below the expression floor flagged on the importance list."
+    }
+   ],
+   "failure_prevented": "'Standardize everything' turns near-zero genes into unit-variance noise that dominates PCA, kNN and penalties.",
+   "magic": "None by default; if the guard fires: 'After scaling, 40% of PC1's weight comes from genes with fewer than 5 reads. Filter first.'",
+   "layout": "Focus on demand: the mean-SD scatter with its trend.",
+   "sentence": "Features were {transform} after filtering ({rule}); variance handling followed the {scale} scale.",
+   "sources": [
+    "Law et al. 2014, Genome Biol 15:R29",
+    "Love, Huber & Anders 2014, Genome Biol 15:550",
+    "Anders & Huber 2010, Genome Biol 11:R106",
+    "turbotab/sample_data/genomics_expression.csv (measured)"
+   ],
+   "engine": "New guard; the scaling steps exist; voom and limma-trend do not.",
+   "tier": "silent",
+   "rank_signal": "Guard excess ratio (loading share over gene share).",
+   "critic_notes": "Automate-silently verdict applied; the autoscaling vs Pareto menu removed as a metabolomics import."
+  },
+  {
+   "id": "genomics-more-genes-than-samples",
+   "lens": "genomics",
+   "title": "With far more features than samples, the data cannot pin down a unique model",
+   "looks_at": "structure",
+   "detector": "p/n (genomics_expression: 495 genes on 60 samples, 8.25) and effective rank (<= n - 1). Settled by values. At p >= n - 1 any labeling of points in general position is linearly separable (Cover 1965), so the shuffled-label perfect fit is stated without fitting it. Riley's minimum sample size does not apply (it assumes a fixed count of candidate parameters and an essentially unpenalized model) and is not shown.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "in-fold screening",
+     "inference": "Feature-wise tests with multiplicity control for the reported results.",
+     "prediction": "In-fold screening or variance filters; elastic net preferred over lasso for co-regulated genes; selection frequency reported."
+    },
+    {
+     "stage": "model",
+     "decision": "family",
+     "inference": "Feature-wise models, or penalized models with their limits stated (no CIs on shrunk coefficients).",
+     "prediction": "Regularized families ranked first; unpenalized fits refused; lasso's cap of n selected features stated."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "scheme",
+     "inference": "n/a",
+     "prediction": "Nested CV; a training-set score is never shown as performance."
+    },
+    {
+     "stage": "explanation",
+     "decision": "coefficients",
+     "inference": "Effective rank reported; VIF undefined.",
+     "prediction": "Coefficients not unique, so stability is shown instead."
+    }
+   ],
+   "failure_prevented": "A degenerate fit with zero training error presented as a model; selection on all samples giving near-zero error with no signal.",
+   "magic": "None by default; one stated line: '495 genes on 60 samples: any labels can be fitted perfectly, so only penalized models are fitted and every choice is nested in cross-validation.'",
+   "layout": "Strip: one stated line on the model shelf.",
+   "sentence": "With {p} features on {n} samples (p/n = {ratio}), only penalized models were fitted, and selection and tuning were nested within cross-validation.",
+   "sources": [
+    "turbotab/packs.py:3311 _counts_at_p_over_n",
+    "turbotab/core/methods/omics.py:1516 sis_size, :1521 UnivariateScreen",
+    "turbotab/core/models/featurewise.py:1-10",
+    "Cover 1965, IEEE Trans Electron Comput EC-14:326",
+    "Zou & Hastie 2005, JRSS-B 67:301",
+    "Simon et al. 2003, JNCI 95:14",
+    "Ambroise & McLachlan 2002, PNAS 99:6562"
+   ],
+   "engine": "Exists.",
+   "tier": "silent (one stated line)",
+   "rank_signal": "p/n.",
+   "critic_notes": "Automate-silently verdict applied; Riley dropped; perfect fit stated from the theorem."
+  },
+  {
+   "id": "genomics-enrichment-background",
+   "lens": "genomics",
+   "title": "A top-feature list read by pathway needs, as its background, the features that could have been selected",
+   "looks_at": "design",
+   "detector": "When a ranked list is exported: the tested (post-filter) set size against the annotated genome, and the correlation between selection probability and mean expression or gene length (GOseq-style bias). A rule, not a reading.",
+   "meaning": "none",
+   "consumers": [
+    {
+     "stage": "explanation",
+     "decision": "what the list is compared against",
+     "inference": "The ranked list carries its post-filter background and selection rule.",
+     "prediction": "The importance list carries the features that entered the model as its background."
+    },
+    {
+     "stage": "reporting",
+     "decision": "export bundle",
+     "inference": "The background list and the selection-vs-expression bias exported.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Enrichment against the whole genome inflates tissue-expressed pathways (blood lists look 'immune' by default); length and expression bias.",
+   "magic": "None by default; the export line: 'Background: the 252 genes that could have been picked, not 20,000.'",
+   "layout": "None on the canvas; the export carries it; the selection-probability plot on demand.",
+   "sentence": "Ranked features are exported with their background of {n} tested features, the appropriate universe for enrichment analysis.",
+   "sources": [
+    "turbotab/core/export/bundle.py:36 ExportBundle",
+    "Timmons, Szkop & Gallagher 2015, Genome Biol 16:186",
+    "Young et al. 2010, Genome Biol 11:R14"
+   ],
+   "engine": "New; the export bundle exists.",
+   "tier": "silent",
+   "rank_signal": "n/a (always exported with a ranked list).",
+   "critic_notes": "Automate-silently verdict applied."
+  },
+  {
+   "id": "genomics-exposure-written-in-the-profile",
+   "lens": "genomics",
+   "title": "The profile records exposures the sheet does not (smoking), or contradicts the self-report",
+   "looks_at": "measurement",
+   "detector": "Known high-specificity smoking markers, when identifiers allow: AHRR cg05575921 and F2RL3 cg03636183 hypomethylation (methylation); LRRN3 and GPR15 up-regulation (blood expression). A per-sample score compared with the recorded smoking column. Outcome-blind. AHRR hypomethylation persists for years after quitting, so discordance reads as ever vs never smoking, not current smoking. Low specificity in some tissues means the result is asked, never recoded automatically. (Statin LDLR/HMGCR markers dropped: no source.)",
+   "meaning": "Whether the self-reported exposure is wrong (a misclassified confounder) or unrecorded, and how to code it.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Smoking enters the adjustment set; the marker score is a sensitivity covariate for residual confounding by misreported smoking.",
+     "prediction": "The marker is a feature only if the deployed setting measures it, named as a smoking proxy."
+    },
+    {
+     "stage": "explanation",
+     "decision": "naming exposure markers",
+     "inference": "Top genes or CpGs marked as smoking markers.",
+     "prediction": "The same, beside importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "residual confounding",
+     "inference": "States the check and the sensitivity analysis.",
+     "prediction": "States the proxy."
+    }
+   ],
+   "failure_prevented": "Self-reported never-smokers who smoked leave residual confounding in a diet-to-expression association (smokers eat fewer vegetables), and the top CpG 'for fiber intake' is AHRR.",
+   "magic": "'Your top CpG for vegetable intake is AHRR cg05575921, the strongest smoking mark in blood. Six self-reported never-smokers have smoker-level values there; they may have smoked in the past.'",
+   "layout": "Focus: the marker score by recorded smoking status, discordant samples lit.",
+   "sentence": "Smoking was assessed by self-report and by {marker}; analyses were adjusted for smoking, and {n} discordant participants were examined in a sensitivity analysis.",
+   "sources": [
+    "Joehanes et al. 2016, Circ Cardiovasc Genet 9:436",
+    "Zeilinger et al. 2013, PLoS One 8:e63812",
+    "Breitling et al. 2011, Am J Hum Genet 88:450 (F2RL3)",
+    "Beineke et al. 2012, BMC Med Genomics 5:58 (LRRN3)",
+    "Huan et al. 2016, Hum Mol Genet 25:4611 (blood expression signature incl. GPR15; not re-checked this session)"
+   ],
+   "engine": "New.",
+   "tier": "asked when marker identifiers exist and self-report disagrees; surfaced when a marker tops a diet result",
+   "rank_signal": "Discordant count, or the marker's rank in a diet result.",
+   "critic_notes": "Fixes applied: F2RL3 and GPR15 sourced, statin marker dropped, ever-vs-never reading stated."
+  },
+  {
+   "id": "shared-sampled-after-diagnosis",
+   "lens": "shared",
+   "title": "Cases' samples were taken after diagnosis or treatment, or stored longer, than controls', so the profile records the disease's consequences",
+   "looks_at": "time",
+   "detector": "Sample collection date against diagnosis or treatment date: the lag distribution and the share of cases sampled after diagnosis; a sample-type column (prediagnostic, at diagnosis, post-treatment); storage duration and freeze-thaw count by group (design-balance views, recorded under both purposes). Under prediction, the score stratified by lag on the same folds. A cohort design guaranteeing prediagnostic samples is asked. The omics view adds treatment-response genes and storage-sensitive transcripts.",
+   "meaning": "The timing of each sample relative to diagnosis and treatment, and the intended use (early detection vs diagnosis).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility",
+     "inference": "Post-treatment samples excluded for an etiologic question.",
+     "prediction": "For an early-detection claim, the cohort restricted to samples drawn at least k years before diagnosis."
+    },
+    {
+     "stage": "selection",
+     "decision": "which features may enter",
+     "inference": "Reverse causation stated: expression may lie downstream of the disease.",
+     "prediction": "Treatment-response genes refused as features for a pre-diagnosis claim."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "the honest score for the claim",
+     "inference": "After the lock, sensitivity excluding the first years of follow-up.",
+     "prediction": "The score by lag stratum; the score at the longest lags is the early-detection score."
+    },
+    {
+     "stage": "reporting",
+     "decision": "timing",
+     "inference": "Lag and storage times by group.",
+     "prediction": "The same, with the score per lag stratum."
+    }
+   ],
+   "failure_prevented": "A 'diagnostic signature' trained on samples drawn after chemotherapy or a post-diagnosis diet change reads the treatment, and storage-time differences between cases and controls drive the signal (Ransohoff 2005; Pepe 2001).",
+   "magic": "'Cases' samples were drawn a median 3 weeks after diagnosis; controls' at enrolment. The model scores 0.88 overall but 0.55 on the 40 cases drawn before diagnosis, the only ones that matter for early detection.'",
+   "layout": "Angles, on the 'Where did these come from' provenance card: the lag distribution by group, the score by lag stratum, storage time by group.",
+   "sentence": "Samples were collected a median {lag} {before | after} diagnosis; analyses were restricted to {criterion}, and performance is reported by time between sampling and diagnosis.",
+   "sources": [
+    "turbotab/packs.py:1855-1868 STUDY_COLUMNS (storage_time, freeze_thaw)",
+    "Ransohoff 2005, Nat Rev Cancer 5:142",
+    "Pepe et al. 2001, J Natl Cancer Inst 93:1054",
+    "Kapoor & Narayanan 2023 (temporal leakage)"
+   ],
+   "engine": "New; storage time and freeze-thaw are recognized only as confounder names.",
+   "tier": "asked when diagnosis and collection dates, or a sample-type column, exist; critical for early-detection claims",
+   "rank_signal": "Share of cases sampled after diagnosis x the score gap between lag strata.",
+   "critic_notes": "Moved to shared: merge with the clinical lens's 'measured after diagnosis' thread; genomics contributes the omics view (treatment-response genes, storage-sensitive transcripts)."
+  },
+  {
+   "id": "shared-score-within-noise",
+   "lens": "shared",
+   "title": "With 40 samples or 8 events, the cross-validated score's own spread is as wide as the claims made from it",
+   "looks_at": "outcome",
+   "detector": "Events per class and per fold under stratified folds (a fold with fewer than 3 events flagged). The spread of the score across repeated k-fold (validation.py REPEATS). On request or scheduled, never by default: the full-pipeline label-permutation null (labels shuffled, every in-fold step repeated; Ojala & Garriga test 1) with sequential stopping (Besag & Clifford 1991), because >= 200 permutations x repeated nested CV is the heaviest compute in the lens and the dev machine sits beside a bedroom. The outcome alone sets stratification; the permutation null is a recorded outcome view under prediction.",
+   "meaning": "none (measured).",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "family at tiny n",
+     "inference": "Feature-wise models (moderated variances would help but are not in the engine: featurewise has no eBayes).",
+     "prediction": "Simpler families ranked first: tuning on 32 training samples is noise."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "what the score can claim",
+     "inference": "Power stated as a design quantity (the smallest detectable fold change from n, \u03b1 and an assumed variance), never computed from the observed effect.",
+     "prediction": "Score reported with its repeat spread and, when run, the permutation p; folds stratified by outcome."
+    },
+    {
+     "stage": "reporting",
+     "decision": "uncertainty",
+     "inference": "States n per group and the detectable effect.",
+     "prediction": "Reports the interval and the permutation result (TRIPOD+AI)."
+    }
+   ],
+   "failure_prevented": "An 'AUC 0.78' from 40 samples reported as a discovery when shuffled labels through the same pipeline reach 0.70 a fifth of the time, or a 5-fold split leaves folds with one case.",
+   "magic": "'With shuffled labels, your whole pipeline still scores up to 0.74 in 1 run of 20. Your 0.78 beats that, barely (p = 0.03), and across repeats it ranges from 0.66 to 0.86.'",
+   "layout": "Focus: the permutation-null distribution with the observed score and its repeat spread marked.",
+   "sentence": "The cross-validated AUC was {auc} (range {lo}-{hi} over {r} repeats); in a label-permutation test that repeated every step of the pipeline ({B} permutations), p = {p}.",
+   "sources": [
+    "turbotab/core/models/validation.py:11-12; turbotab/core/decisions.py:385-390 (REPEATS)",
+    "turbotab/core/models/sample_size.py:168 prediction_minimum",
+    "Varoquaux 2018, NeuroImage 180:68",
+    "Ojala & Garriga 2010, J Mach Learn Res 11:1833",
+    "Besag & Clifford 1991, Biometrika 78:301",
+    "Riley et al. 2020, BMJ 368:m441"
+   ],
+   "engine": "Partial: repeated k-fold spread and the sample-size minimum exist. New: the full-pipeline permutation null with sequential stopping, the per-fold event check.",
+   "tier": "stated (interval always printed beside the score); surfaced when the score sits within the null's 95th percentile or a fold has < 3 events",
+   "rank_signal": "Observed score minus the null's 95th percentile (or the repeat spread when the null was not run).",
+   "critic_notes": "Moved to shared (cross-lens). Fixes applied: permutation null on request with sequential stopping; detectable effect as a design quantity; eBayes gap stated."
+  },
+  {
+   "id": "genomics-microbiome-composition",
+   "lens": "genomics",
+   "title": "The table is a microbiome: compositional counts or relative abundances, mostly zeros, with blanks and depth",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. A wide block of non-negative counts or proportions with taxonomic names (k__/g__, genus names, ASV or OTU hashes). Row sums are closed to a constant (1, 100, or a rarefied depth), the zero share is often above 60%, and both genus and species rows may be present (nested ranks). Rows for extraction blanks or mock communities are treated like metab-reference-rows. It must reject an RNA-seq count matrix (gene IDs, no closure) and a metabolite intensity block.",
+   "meaning": "microbiome_scale: raw counts, rarefied counts, relative abundance or already CLR. Also which rows are blanks or mocks, and which taxonomic rank is analyzed.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "reference rows",
+     "inference": "Blanks and mocks leave the participants. Contaminants in low-biomass samples are flagged by a prevalence rule.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "representation",
+     "decision": "transform",
+     "inference": "CLR or ALR with a declared pseudocount, or ANCOM-BC-style bias correction, frozen at the lock. Never TMM or VST by default.",
+     "prediction": "CLR in-fold, with a fixed pseudocount rule."
+    },
+    {
+     "stage": "selection",
+     "decision": "rank",
+     "inference": "One rank; nested ranks never enter together.",
+     "prediction": "One rank, or grouped candidates."
+    },
+    {
+     "stage": "explanation",
+     "decision": "wording",
+     "inference": "Effects read 'relative to the other taxa', never as absolute abundance.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "checklist",
+     "inference": "STORMS.",
+     "prediction": "STORMS."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH for nutrition, where diet-microbiome studies are a core design. Family K1, K5, and S1 through depth. Expression rules applied to compositional data create spurious negative correlations and read a relative rise as an absolute one. Contamination dominates low-biomass samples. No catalog thread names microbiome data, and the genomics lens covers expression, methylation, genotypes and qPCR only.",
+   "magic": "Every row sums to 1.000: these are relative abundances. A rise in Bacteroides here can be a fall in everything else. (Illustrative; needs a committed microbiome fixture.)",
+   "layout": "Angles: sample totals, the zero share by taxon, and blanks beside samples.",
+   "sentence": "Taxa were analyzed at genus level after centred log-ratio transformation with a fixed pseudocount; extraction blanks were used to remove contaminants.",
+   "sources": [
+    "Gloor et al. 2017, Front Microbiol 8:2224",
+    "McMurdie & Holmes 2014, PLoS Comput Biol 10:e1003531",
+    "Salter et al. 2014, BMC Biol 12:87",
+    "Davis et al. 2018, Microbiome 6:226",
+    "Lin & Peddada 2020, Nat Commun 11:3514",
+    "Mirzayi et al. 2021, Nat Med 27:1885 (STORMS)",
+    "Vandeputte et al. 2016, Gut 65:57 (stool consistency as a confounder)"
+   ],
+   "engine": "new. The closure detector (shared-compositional-parts) and the reference-row machinery exist.",
+   "added_by": "completeness critic"
+  }
+ ],
+ "top_moments": [
+  "genomics-genes-are-the-outcomes: 'You picked diet arm as the outcome. In a feeding trial the question your design can answer is which genes the diet changed: 212 at 5% FDR. An AUC would tell you only that the arms are separable.' This is the clearest case of a question AutoML cannot ask, and it is specific to nutrition.",
+  "genomics-batch-aligned-with-case: random folds give AUC 0.91; fitting ComBat inside each fold and holding out one batch at a time gives 0.61, and the 0.30 gap is labeled as learned from the batch. When batches are balanced, as in the shipped fixture, the app says instead: 'Batch is 97% of PC1, but every batch holds 10 cases and 10 controls, so it costs you power, not truth.'",
+  "genomics-depth-tracks-case: 'Library size alone predicts case status with AUC 0.92; your raw-count model scored 0.94, normalized 0.61.' AutoML never prints a depth-only baseline.",
+  "genomics-sample-sheet-alignment + genomics-sex-from-expression: 'Three samples recorded as female express RPS4Y1 at male levels and no XIST. If their sex labels were swapped, their case labels may be someone else's too.' Or: R rewrote 38 IDs, so an exact join would have silently dropped 22 samples.",
+  "genomics-features-preselected-on-outcome + genomics-outcome-defined-from-features: 'All 200 genes differ at p < 0.001, where random data would give 0.2. Were they picked using the outcome before the file was made?' Or: 'five genes predict your subtype perfectly, and they are five of the genes that defined it.'",
+  "genomics-sample-quality-drives-components: 'PC1 (34%) is RNA integrity, not disease: R\u00b2 0.71 with RIN, and the cases' tissue waited longer before freezing.'",
+  "genomics-paired-or-repeated-samples: 'Your 48 samples are 24 people before and after the diet, and 70% of each gene's spread is between people. The comparison has to be within each person.'",
+  "genomics-new-site-new-platform: 'Pooled AUC 0.89; leave one study out gives 0.71, 0.64 and 0.83. Your z-scoring step needs a batch of new samples, so a single patient's sample cannot be scored.'",
+  "genomics-exposure-written-in-the-profile: 'Your top CpG for vegetable intake is AHRR cg05575921, the strongest smoking mark in blood, and six self-reported never-smokers have smoker-level values there.'",
+  "genomics-what-the-numbers-are: 'Each sample's back-transformed values sum to one million within 2%: these are log2(CPM+1).' The count model and a second log are greyed out before the researcher picks anything."
+ ],
+ "journey_load": "Every thread is now gated, given a tier, and folded into four shared cards:\n- **'What drives your leading components'**: one Angles view over a single PC x covariate R\u00b2 matrix. It covers batch, unrecorded structure, sample quality, depth, draw conditions, mixed tissue and cell mix, and asks at most 2 questions per journey.\n- **'Who are your samples'**: one Flow card for orientation, sample-sheet alignment, excluded libraries, sex check, near-identical samples, outliers and pairing.\n- **'Where did these come from'**: the provenance card for preselected features, an outcome defined from the features, and sampling after diagnosis.\n- **The feature waterfall**: silent and stated rules only. It covers the expression or array detection filter, probe collapse, identifier repairs and p/n.\n\nExpected load by journey:\n- **Shipped fixture (genomics_expression, 60 samples, balanced batches, gene_0001 names): 2\u20133 asks, 0\u20131 surfaced, about 5 stated.**\n  - Asks: confirm the batch reading in one click, the outlier rule (GS031, z = -3.8) and the grain question the fixture requires.\n  - Surfaced: depth, only under prediction and only if the model's score lands within 0.05 of the depth-only AUC of 0.66.\n  - Stated: batch is balanced; cases are 1.17-fold deeper (AUC 0.66); the filter keeps 252 of 495 genes; 495 genes on 60 samples; the sex check abstains.\n  - Unrecorded structure, sample quality and cell mix stay silent.\n- **Typical bulk RNA-seq (blood, 60\u2013200 samples, sheet with batch/RIN/sex): 3\u20135 asks, 2\u20134 surfaced.**\n  - Asks: batch reading and imbalance, RIN meaning, cell mix, outlier rule, and sex discordance only if it occurs.\n  - Surfaced: depth, p-value histogram or \u03bb after the lock (inference), instability (prediction, when a list is exported), score noise.\n- **Under prediction:** add the deployment question (new-site), and the provenance card only on its cues.\n- **Feeding trial:** the estimand and pairing questions dominate. That is 2 blocking asks before anything else, then the bulk set above.\n- **Genotype journey: 2\u20133 asks** (PRS provenance, gene x diet role, and allele harmonization only when merging). QC, relatedness and imputation are stated; ancestry is surfaced.\n- **Methylation and qPCR journeys:** 1 ask each (array/tissue, or Ct/reference/cycle maximum), plus cell mix for blood.\n\nMost asks land at the opening stage. Explanation-stage threads (modules, instability) are never asked. One compute note: the permutation null runs only on request and with sequential stopping, and should be scheduled because the machine sits beside a bedroom.",
+ "report": "## Genomics catalog: 44 threads\n\n**What changed from the 40-thread draft**\n- **Cuts:** none. Neither the AutoML skeptic nor the evidence checker rejected any thread.\n- **Automated** (the 6 \"automate-silently\" verdicts):\n  - Silent: mean-variance scaling, low-expression filter, p\u226bn, enrichment background.\n  - Stated: probe collapse, imputed dosages.\n- **Added from the critic's gap list** (4 threads, marked as not yet adversarially reviewed): mixed tissue types, libraries excluded by group, the array detection floor, and allele/strand harmonization.\n- **Moved to lens 'shared'** so they merge with the clinical lens: shared-sampled-after-diagnosis and shared-score-within-noise.\n\n**New purpose-rule class: design-balance views**\nThese are covariate x outcome tables, for example batch, RIN, depth, ancestry, draw time, tissue or exclusions against the outcome.\n- They are recorded as outcome views under both purposes.\n- They decide only three things: the refusal (identifiability), the split scheme, and disclosure.\n- They never choose a form, an adjustment set or a predictor.\n\nThis needs adding to the purpose rules. Its consequence: adjustment for draw time and cell mix is decided by what the researcher says the variable means, never by the measured imbalance.\n\n**Fixes applied**\n- **Pre-lock outcome views removed under inference:**\n  - outlier cards no longer show the sample's case label\n  - the paired-design magic now shows the between-person variance share, with discovery counts only after the lock\n  - the filter discovery counts are gone\n- **Detectors replaced:**\n  - Unrecorded structure: a dip test, or a Gaussian mixture with Ashman's D, replaces the silhouette score (which fired on unimodal data); it also uses adjusted R\u00b2, and fSVA is the in-fold route.\n  - Near-identical pairs: a gap rule replaces the percentile bar.\n  - Normalized across all samples: a tolerance test replaces exact equality, so RMA output is caught.\n  - Genotype QC: plate artifacts are found by differential missingness, and HWE is tested in controls only.\n- **CPM vs TPM:** no longer a blocking question; it becomes a blank in the methods sentence. Engine change: detectors/genomics.py:262 sets requires_input for LOG_CPM.\n- **Single-cell:** one stance across the lens. It is detected and routed to the grain question; the bulk readings do not run on cell rows.\n- **Batch:** cluster-robust intervals with 2\u20135 batches dropped.\n- **Ancestry:**\n  - LD-score intercept dropped\n  - shrinkage correction added for projected PCs\n  - collider caution replaced by the standard Price 2010 caution\n- **Numbers and claims corrected:**\n  - expected null genes at p < 0.001: 0.2, not 2\n  - 1-Mar is now a question (MARCHF1 or MTARC1)\n  - the Excel leading-zero claim is limited to all-digit IDs\n  - Riley's minimum dropped for penalized models at p = 495\n  - \u03bb uses 0.455\n  - genotype as instrument vs confounder is stated precisely\n  - circadian phase is not estimated without a trained predictor\n- **Sources:**\n  - Added: EPIC probe lists (Pidsley 2016, Zhou 2017), Breitling 2011, BMI PRS comparators (Yengo 2018, Khera 2019).\n  - Dropped: the unsourced statin marker.\n  - Corrected: modules are called hard-threshold, not WGCNA.\n- **Fixture conflict resolved toward the fixture:** genomics_expression.md forbids a normalization default. TMM is now offered as a repair, never applied by default; omics.py:1993 records normalization from the researcher's choice.\n- **Permutation null:** runs on request with sequential stopping.\n\n**Checked in-process this session** (.venv; genomics_expression.csv, 30 cases and 30 controls, 10/10 in every batch)\n- **Outlier:** GS031 z = -3.77 (median \u03c1 0.809 against 0.832). The next lowest is GS025 at -1.75, which confirms the critic's figure; the old -2.56 is wrong.\n- **Expression filter:** the actual filterByExpr rule at smallest group 30 gives n = 24 samples and a 288.5 CPM threshold, and keeps 252 of 495 genes. The draft's 294 came from a 10-sample bar. 119 genes never reach 10 reads.\n- **Scaling guard:** 195 low-count genes (39% of genes) carry 21% of PC1's loading after autoscaling, so the guard stays silent.\n\nDepth and batch numbers are the critic's in-process measurements.\n\n**Still unverified**\n- Nygaard 2016's DE-gene counts: quote them from the paper's table.\n- Debey 2004 and Huan 2016 citations.\n- The tolerance threshold for 'normalized across all samples': no unnormalized array fixture exists to calibrate it.\n- Whether GEO-style header rows reach ingest.\n\n**Engine purpose fixes**\nconfounding() and library_size_check must record their outcome reads as design-balance views.\n\n**Fixtures needed**\n- real gene identifiers (XIST/Y genes, cell markers, clock genes)\n- planted batch-outcome alignment\n- a paired diet-trial set\n- genotypes with PRS\n- methylation\n- qPCR\n\n**Consolidation**\nMost threads land on four shared cards (leading components, sample identity, provenance, feature waterfall). That brings a typical bulk journey down to 3\u20135 asks, from the critic's 7\u201310."
+}

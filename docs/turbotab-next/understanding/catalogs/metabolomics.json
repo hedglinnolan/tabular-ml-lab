@@ -1,0 +1,2174 @@
+{
+ "lens": "metabolomics",
+ "threads": [
+  {
+   "id": "metab-reference-rows",
+   "lens": "metabolomics",
+   "title": "Pooled QCs, blanks and other instrument checks sit among the samples as if they were participants",
+   "looks_at": "structure",
+   "detector": "reference_rows.pooled_qc_finding, name-blind: a minority level of a 2-10-level column whose rows vary far less across the feature block and carry no covariates. On metabolomics_untargeted that level is sample_type = pooled_qc (8 of 80 rows): median RSD 0.25 against 0.59 in participants, and no age, sex, BMI or responder. Two additions keep the test from missing references that are not simply tight: a dilution-series QC varies by design, so it is found by proportionality to the pool (its log profile is the pool's plus one constant offset across features); a long-term reference or NIST SRM 1950 is as tight as the pool, so it is told apart from the pool by its distance from the study centroid. The sample_roles naming census adds blanks, calibrants, dilution series, LTRs and system-suitability injections, as a guess only. Alternatives it must reject: a small real subgroup (varies like everyone else and has covariates); a name-only guess (names never settle a reading, \u00a714.3).",
+   "meaning": "A pre-filled confirmation: the values settle the pool (low RSD plus empty covariates), so it takes one accept. The researcher is asked only for the role of levels that are not the pool (process or solvent blank, dilution QC with its factors, LTR or SRM), and which of them were kept out of all fitting so they can serve as the correction's independent check (metab-correction-honest-check). apply_repair reference_rows: exclude.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility and task",
+     "inference": "Reference rows leave the participant table before the outcome is read, on their own line of the participant flow, and move to the instrument's shelf. Where 'QC' is a level of the outcome itself (another export shape), the task becomes Case vs Control, not three-class.",
+     "prediction": "Same, and they leave before the seal, so no QC can be drawn into the held-out rows."
+    },
+    {
+     "stage": "representation",
+     "decision": "which reference feeds which step, and which fits never see them",
+     "inference": "Pooled QCs feed QC-RLSC, the QC filters and the QC-reference PQN; blanks feed the blank filter; dilution QCs feed linearity; the LTR or SRM feeds the honest check of the correction. No participant-level fit (PCA, fill limits, the training PQN reference, the D-ratio's study SD) counts them as people.",
+     "prediction": "Same. They carry no outcome, so every use is outcome-blind."
+    },
+    {
+     "stage": "reporting",
+     "decision": "participant flow and methods",
+     "inference": "Counted by role on their own line.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "On this file a score-driven pipeline either drops the 8 QC rows as rows with a missing outcome, discarding the only ruler for drift and technical noise, or keeps them in its outcome-blind steps (PCA, imputation limits, the PQN reference, the D-ratio denominator) as eight more participants who are all one sample. In exports where 'QC' is a level of the class label, the task is read as three-class and copies of one pooled sample land in the test set, where they are trivially predictable.",
+   "magic": "'sample_type has a level, pooled_qc, whose 8 rows vary less than half as much as anyone else (median RSD 0.25 vs 0.59) and have no age, sex, BMI or responder. They are one pooled sample injected every tenth position. Drop them as missing outcomes and you lose the only ruler for drift; keep them in the PCA and they are eight more people who are the same person. They leave the participant table and go to the instrument's shelf.'",
+   "layout": "Flow: loaded (80) -> reference rows leave, by role (8 pooled QC) -> participants (72), with the reference rows drawn on a shelf beside the flow where the drift and filter steps pick them up.",
+   "sentence": "Eight pooled-QC injections were identified as reference rows, excluded before the outcome was read, and used only for drift correction and quality filtering.",
+   "sources": [
+    "turbotab/core/reference_rows.py:1-38, :63 pooled_qc_finding, :164 _exclusion",
+    "turbotab/packs.py:1584 sample_roles, :1713 _sample_roles_finding, :1455-1489 role patterns",
+    "turbotab/core/stages/rows.py:1317 cohort_flow",
+    "turbotab/core/methods/qc_drift.py:1027 (QC rows leave)",
+    "turbotab/sample_data/metabolomics_untargeted.md (QC rows carry no age, sex, bmi or responder; RSD 0.25 vs 0.59)",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Lewis MR et al. 2016, Anal Chem 88:9004-9013 (dilution series)"
+   ],
+   "engine": "exists: fires on metabolomics_untargeted.csv (reference_rows.py:63). Partial: blank, dilution and LTR roles are recognized by name only (packs.py:1455-1489). New: the proportionality test for dilution QCs and the centroid-distance test for LTR/SRM.",
+   "tier": "stated",
+   "rank_signal": "First card of the opening whenever a low-variance minority level has empty covariates; one accept when only the pool is present, a role question only for the other levels.",
+   "critic_notes": "Fixed: the magic and failure now describe the fixture's real shape (QC is a level of sample_type; responder is NaN on QC rows), 'a quarter as much' corrected to 'less than half' (RSD 0.25 vs 0.59), proportionality and centroid tests added for dilution QCs and LTR/SRM, and the honest-check's validation-reference role folded into this confirmation."
+  },
+  {
+   "id": "metab-qc-drift",
+   "lens": "metabolomics",
+   "title": "Pooled QCs drift over injection order within each batch, and batches sit at different levels",
+   "looks_at": "measurement",
+   "detector": "Reference rows and feature columns only; a pooled QC is never a participant and never carries the outcome. Per feature, the QC response against injection order with a batch offset: within-batch Spearman statistics summed across batches and tested by permuting order within batch (exact at small n). A per-batch test cannot work at the QC counts exports carry: at 4 QCs per batch the exact two-sided Spearman p is never below 0.083, while the within-batch permutation over two batches of 4 reaches 2/576 = 0.0035. BH across features; a feature counts when |rho| > 0.3 and q < 0.05, and the drifting share is shown beside chance_share at the QC n. Between batches: the shift in QC medians, reported separately so the batch step is never read as drift (pooling all 8 QCs without the offset gives 328/392 features, mostly the step). QC trajectories get a robust LOESS (bisquare) whose span is chosen by leave-one-QC-out CV over interior QCs. Today's engine reading (assay.py:99 drift_reading) correlates order with every numeric column over all 80 rows, participants, age and bmi included; on the fixture that gives 65% drifting, and participants alone give 60%. That study-sample reading is kept, labelled as such, for the no-QC fallback and for metab-run-order-aligned-with-outcome; it is never the drift reading. Alternatives it must reject: a biological trend over order (QCs are one sample, so a trend in them is technical); chance at small n (exact permutation p, FDR, chance share); one bad QC injection (robustness weights); an order column that is really a sample ID or a visit date (the acquisition card).",
+   "meaning": "Settled on the shared acquisition card, not asked here: the order column is the acquisition sequence (pre-filled, since it is a permutation of row positions), the batch column is the analytical batch, and the QC rows are pooled QCs of this study (metab-reference-rows). The platform comes from the assay card (metab-subdomain).",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "QC-RLSC before the seal",
+     "inference": "QC-RLSC is the stated default when sufficiency passes: fitted per feature and batch on reference rows, applied row-locally, followed by grand-median inter-batch alignment. A feature that drifts below detection late in the run cannot be corrected; it leaves and is listed. The QC filters then run on corrected values, then optional PQN to the QC reference. When sufficiency fails, metab-qc-design-insufficient takes over.",
+     "prediction": "Same chain, outcome-free. The requirement that a new run carry its own interspersed QCs goes to the deployment record (metab-cross-batch-transport)."
+    },
+    {
+     "stage": "selection",
+     "decision": "screening on corrected values",
+     "inference": "Feature-wise tests run only on drift-corrected values.",
+     "prediction": "In-fold screening runs after correction."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "correction-off sensitivity",
+     "inference": "After the lock, top-feature estimates with the correction switched off are disclosed beside the corrected ones.",
+     "prediction": "Honest score with vs without correction on the same folds; the gap is how much of the signal was drift."
+    },
+    {
+     "stage": "explanation",
+     "decision": "does importance survive the correction",
+     "inference": "Each reported feature carries its QC drift rho and its estimate on corrected vs uncorrected values.",
+     "prediction": "Each top feature carries its importance rank with vs without correction and its drift rho; a feature whose rank collapses is labelled drift-driven."
+    },
+    {
+     "stage": "reporting",
+     "decision": "methods sentence and QC figure",
+     "inference": "rlsc_sentence gives the QC count, spacing, span selection, features removed, and median QC RSD before and after (held-out, per metab-correction-honest-check).",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Drift can exceed the biology in a run. Uncorrected, it enters as a feature axis and drifting features are ranked as biomarkers; late-run features drift below detection and read as low concentrations. A detector that tests all rows mixes the study's biology and covariates (age, BMI) into 'drift' and calls a randomized run drifting.",
+   "magic": "On a run with 5 or more QCs per batch: the run-order strip shows the pooled QCs, one sample injected again and again, sloping within batch in more than half the features, beside the share chance would give at that QC count; after QC-RLSC they lie flat. Later, at explanation: 'Of your eight strongest features, two lose their signal once drift is removed: they were the end of the run. One keeps it.' On metabolomics_untargeted the strip still shows the slope, and the correction lever hands over to the fallback (metab-qc-design-insufficient).",
+   "layout": "At the decision, Strip: features ranked by QC drift rho, the first focused large with its QCs highlighted over run order, batches shaded, the LOESS curve, and a flip to corrected. At explanation, Angles: QC trajectory | held-out QC RSD before/after | importance rank with/without correction.",
+   "sentence": "Instrumental drift and between-batch differences were corrected by QC-based robust LOESS signal correction (QC-RLSC; Dunn et al. 2011), fitted per feature and batch to {n_qc} pooled-QC injections (one every {gap} injections; span chosen by leave-one-out cross-validation); median held-out QC RSD was {before}% before and {after}% after correction.",
+   "sources": [
+    "turbotab/core/detectors/assay.py:1-20, :89 chance_share, :99 drift_reading (all rows, n_injections = len(df)), :127 run_order_finding",
+    "turbotab/core/methods/qc_drift.py:54-55 MIN_QC/MAX_GAP, :151 _loo_rows, :166 choose_spans, :220 sufficiency, :280 qc_rlsc, :610 rlsc_offer, :716 rlsc_sentence, :849 reference_plan",
+    "turbotab/core/readings.py:1305 injection_order, :1327 batch",
+    "turbotab/core/stages/finding_words.py:598 _run_order (no lever)",
+    "docs/turbotab-next/MODELING_SEQUENCE.md:149-153, :365",
+    "docs/turbotab-next/INBOX.md:186 (QC-RSD before/after figure not served)",
+    "Critic's measurement on metabolomics_untargeted.csv: 65% drifting over all rows, 60% over participants, 328/392 over pooled QCs without a batch offset",
+    "Dunn WB et al. 2011, Nat Protoc 6:1060-1083",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Kirwan JA et al. 2013, Anal Bioanal Chem 405:5147-5157",
+    "Wehrens R et al. 2016, Metabolomics 12:88",
+    "Fan S et al. 2019, Anal Chem 91:3590-3596"
+   ],
+   "engine": "partial. Detection exists but reads all rows (assay.py:99); the QC-only, batch-offset permutation test is new. Correction exists (qc_drift.py:280) and is refused on metabolomics_untargeted by sufficiency (4 QCs per batch < MIN_QC = 5, qc_drift.py:54). The drift finding has no lever of its own (finding_words.py:598). The correction-off sensitivity refit and the importance-survives-correction comparison are new.",
+   "tier": "surfaced",
+   "rank_signal": "QC drifting share over chance_share at the QC n; later, whether any top feature's rank collapses without correction.",
+   "critic_notes": "Fixed: detector rewritten to QC-only with a batch offset and exact/permutation p (the engine's all-rows reading is named as what it is and demoted to the fallback and run-order threads); magic moved to a run that passes sufficiency, with the fixture handing over to the fallback; AUC 0.31 -> 0.49 numbers dropped because they came from the fixtures finder's linear detrend, not an engine path; 'largest variance component' softened; order/batch/platform confirmations moved to the shared acquisition and assay cards."
+  },
+  {
+   "id": "metab-qc-design-insufficient",
+   "lens": "metabolomics",
+   "title": "The run cannot be QC-corrected as exported: no QCs or run order, too few QCs per batch, or samples outside the QCs' span",
+   "looks_at": "design",
+   "detector": "qc_drift.sufficiency: QCs per batch (at least 5, MIN_QC, Broadhurst 2018), the largest gap between QCs (at most 10 injections, MAX_GAP), and whether every study injection is bracketed by QCs in its batch (interpolation only). sufficiency returns at the QC count before it checks bracketing (qc_drift.py:235-237), so the detector runs both checks and reports both reasons. On metabolomics_untargeted the QCs sit at 1, 11, 21, 31 (batch 1) and 41, 51, 61, 71 (batch 2): 4 per batch, and in each batch the last 9 study injections (32-40 and 72-80) follow the final QC, 18 in all. Absence findings: pack::metabolomics::no_pooled_qc and no_run_order fire on metabolomics_no_qc.csv. Alternatives: QCs were run but not exported (asked only when no_pooled_qc fires, since they cannot be reconstructed later); QC rows carry a label the census did not recognize (metab-reference-rows).",
+   "meaning": "Stated with the fallback pre-selected, which the researcher may change. Asked only when no_pooled_qc fires: were QCs run but not exported?",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "what correction is still possible",
+     "inference": "Run order and batch enter as covariates, or batch-median centering is used. A study-sample LOESS is offered only with its assumption stated, and is refused when order tracks the outcome (metab-run-order-aligned-with-outcome).",
+     "prediction": "A study-sample drift fit reads participants' values, so it is refit in-fold; otherwise batch-median centering runs in-fold."
+    },
+    {
+     "stage": "selection",
+     "decision": "QC-based filters",
+     "inference": "Where no QCs exist, QC RSD, QC detection and D-ratio cannot be computed and the reliability thread becomes a stated limitation. Where QCs exist but are too few for a curve, the filters still run on uncorrected QCs, with that stated.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "uncorrected drift in every row",
+     "inference": "Disclosure only.",
+     "prediction": "The score in folds blocked by batch is shown beside the random-fold score."
+    },
+    {
+     "stage": "reporting",
+     "decision": "limitation",
+     "inference": "States which corrections were impossible and why.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A drift curve is extrapolated past the last QC of each batch and 'corrects' the final samples by invention. Or the user assumes drift was handled when no tool could handle it from this file.",
+   "magic": "'Each batch has four QCs, and the last nine injections of each batch come after its final QC: 18 samples no QC curve can reach without inventing values. Here is what still can.'",
+   "layout": "Focus: the injection sequence (x = run order, batches shaded) with QCs marked and the two unreachable stretches lit.",
+   "sentence": "QC-based drift correction was not possible ({n_qc} QCs per batch, fewer than the 5 required; {n_late} injections after the final QC of their batch); run order was {adjusted for | corrected in-fold from study samples}.",
+   "sources": [
+    "turbotab/core/methods/qc_drift.py:54-55 MIN_QC/MAX_GAP, :220 sufficiency (returns at the count before bracketing), :249 largest_gap",
+    "turbotab/packs.py:1788 _no_pooled_qc, :2067 _no_run_order",
+    "turbotab/sample_data/metabolomics_untargeted.md (QC positions 1, 11, ..., 71)",
+    "turbotab/sample_data/metabolomics_no_qc.md",
+    "Broadhurst D et al. 2018, Metabolomics 14:72 (at least 5 QCs per batch; begin and end with a QC)",
+    "Dunn WB et al. 2011, Nat Protoc 6:1060-1083"
+   ],
+   "engine": "partial: sufficiency refuses with its reason (qc_drift.py:220), and no_pooled_qc/no_run_order fire. Reporting both reasons when the count already fails, and the fallback correction, are new.",
+   "tier": "stated",
+   "rank_signal": "Any batch failing sufficiency; shown ahead of every drift lever.",
+   "critic_notes": "Fixed: the count is now 9 after the last QC in each batch (18 in all), the unsourced 'at least 8 for a nonlinear fit' was dropped, and the 'QCs run but not exported' question is limited to no_pooled_qc."
+  },
+  {
+   "id": "metab-run-order-aligned-with-outcome",
+   "lens": "metabolomics",
+   "title": "Cases and controls (or exposure groups) were run in different parts of the sequence, batches or plates, so drift can impersonate the outcome",
+   "looks_at": "design",
+   "detector": "Study injections only; a design-balance view of a technical variable, whose require/refuse rule is written before the view is computed. Injection order within batch by outcome level: rank-biserial for a binary outcome, Spearman for continuous, Kruskal-Wallis for multiclass. A Wald-Wolfowitz runs test reads class-block acquisition. Batch and plate x outcome uses Cramer's V (batch.confounding, extended to the injection_order reading; BATCH_KINDS covers batch, run and plate). It is combined with the QC drift reading: drift present and order unbalanced means shortcut risk. Under inference with a declared exposure (diet arm, intake), the same table is read against the exposure. Under prediction, a run-position-only model (order + batch as the only inputs) scored on the same folds gives the shortcut ceiling. The view never reads any feature's relation to the outcome, can only require or refuse corrections, and is recorded as an outcome view. Alternatives it must reject: a randomized order with chance imbalance (effect size and runs test near null); blocked but balanced within blocks (acceptable); an order that follows collection date (asked). On metabolomics_untargeted, order vs responder is AUC 0.545 (near random).",
+   "meaning": "Asked only when imbalance is detected: was injection order (and plate assignment) randomized with respect to the outcome, and the exposure? The order column's identity comes from the acquisition card.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "which drift and batch corrections are allowed",
+     "inference": "QC-based correction becomes required. Study-sample LOESS and outcome-protected ComBat are refused, because they remove or manufacture the group difference. With perfect alignment and no QCs, positivity fails: the design cannot separate drift from outcome, and the app says so.",
+     "prediction": "Same. The correction stays outcome-free, and run order is never a feature."
+    },
+    {
+     "stage": "model",
+     "decision": "order and batch as inputs",
+     "inference": "Batch or plate enters as a covariate when partially aligned. Order terms collinear with the outcome cannot adjust, and this is disclosed.",
+     "prediction": "Order and batch are excluded from the inputs."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "shortcut baseline",
+     "inference": "After the lock, each reported feature's correlation with run order is shown as a design diagnostic.",
+     "prediction": "The run-position-only score is reported beside the model's, paired fold by fold. Batch-blocked folds measure the shortcut; under perfect alignment run-segment blocks turn single-class, so only the order-only baseline is shown. The verdict states the gain over the instrument, not over the null."
+    },
+    {
+     "stage": "explanation",
+     "decision": "drift-aligned features",
+     "inference": "Flagged in the effects table.",
+     "prediction": "Top features carry their drift rho beside importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "randomization statement",
+     "inference": "States whether order was randomized, the imbalance, and that correction used QCs only.",
+     "prediction": "Same, plus the run-position baseline."
+    }
+   ],
+   "failure_prevented": "The model learns drift, carryover or column aging as 'case', and the instrument manufactures feature-outcome correlations. Cross-validation cannot catch it, because the shortcut is present in every fold. A drift curve fitted on study samples removes the true group difference.",
+   "magic": "When it fires: 'Injection order alone predicts case status at AUC 0.81: cases were run in the first half of each batch. Your model's 0.86 is 0.05 above the instrument. Only the QC-based correction can tell drift from disease.' On metabolomics_untargeted it does not fire (order vs responder AUC 0.545): the run was effectively randomized, and the thread is one methods line.",
+   "layout": "Angles: 'Was the run randomized?' (timeline strip, x = injection order, colored by class, shaded by batch) | 'Does drift carry the outcome?' (a drifting feature over order, colored by class, with the QC trace overlaid) | run-position-only score vs model score (prediction).",
+   "sentence": "Injection order was {randomized | not randomized} with respect to case status (rank-biserial r = {r}); drift was corrected using pooled QCs only, and a model using injection order and batch alone achieved a cross-validated AUC of {auc_order}, reported beside the metabolite model ({auc_model}).",
+   "sources": [
+    "turbotab/core/methods/batch.py:465 confounding, :569 batch_columns",
+    "turbotab/core/readings.py:3093 BATCH_KINDS, :1305 injection_order",
+    "turbotab/core/detectors/assay.py:99",
+    "turbotab/packs.py:1907 _permutation_column, :1974 design inventory",
+    "turbotab/core/models/baseline.py:69 versus_baseline (paired comparison, reusable)",
+    "docs/turbotab-next/MODELING_SEQUENCE.md:246-250",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Dunn WB et al. 2011, Nat Protoc 6:1060-1083",
+    "Soneson C, Gerster S, Delorenzi M 2014, PLoS One 9:e100335",
+    "Leek JT et al. 2010, Nat Rev Genet 11:733-739",
+    "Geirhos R et al. 2020, Nat Mach Intell 2:665-673"
+   ],
+   "engine": "partial: batch x outcome confounding exists (batch.py:465), as do the injection-order and drift readings. Order x outcome balance, the runs test, the exposure-side table and the run-position baseline are new.",
+   "tier": "surfaced when imbalanced; otherwise one silent methods line",
+   "rank_signal": "Imbalance effect size beyond its null x QC drifting share; the lens's top noticing when it fires.",
+   "critic_notes": "Sound. Applied the minor fixes: batch-blocked folds (or the order-only baseline alone) under perfect alignment, randomization asked only on imbalance, the require/refuse rule written before the view, and the fixture's negative result stated in the magic."
+  },
+  {
+   "id": "metab-correction-honest-check",
+   "lens": "metabolomics",
+   "title": "QC RSD fell after correction, but the correction was fitted to make that number small",
+   "looks_at": "measurement",
+   "detector": "Leave-one-QC-out corrected RSD over interior QCs only: leaving out the first or last QC of a batch asks the curve to extrapolate, which sufficiency forbids. choose_spans' leave-one-out today includes the end QCs (qc_drift.py:151-163), so its end errors are extrapolation errors. Where present, a second reference never used in fitting (LTR, NIST SRM 1950, or technical duplicates of study samples) gives RSD and replicate correlation before and after correction. The refusal rule carries a margin: with 5 QCs per batch the leave-one-out RSD is noisy, so correction is refused only when the held-out RSD is worse than uncorrected by more than that margin. Alternatives it must reject: overfitting between QCs (an in-sample drop with no held-out drop); over-correction removing biology (the replicate correlation of study duplicates falls).",
+   "meaning": "Nothing asked here: which reference rows were kept out of fitting, and their role, is settled on the metab-reference-rows role confirmation.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "span and method chosen by held-out RSD",
+     "inference": "Span and method (QC-RLSC, spline, none) are chosen by interior held-out-QC RSD, not in-sample RSD. Correction is refused where the held-out RSD is worse than uncorrected beyond the margin.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "the correction's own honest score",
+     "inference": "The held-out (or validation-reference) RSD is reported as the correction's honest score.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "mQACC item",
+     "inference": "QC RSD before and after, on held-out QCs and on any validation reference; the in-sample figure is never the headline.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Circular validation: a small-span smoother drives in-sample QC RSD toward zero while adding artifacts between QCs, and the pipeline reports '28% -> 9%' as proof of quality.",
+   "magic": "'The fitted QCs went from 26% to 8% RSD. The interior QCs, each corrected by a curve that never saw it, went to 15%, and 15% is the number for your methods.' With an SRM: 'The NIST plasma the correction never saw went from 24% to 15%; at span 0.3 its RSD rose, so the app chose 0.6.'",
+   "layout": "Angles: in-sample vs held-out-QC RSD distributions | one feature's trajectory with the held-out QCs marked.",
+   "sentence": "Correction performance was assessed on interior QC injections held out of the fit (leave-one-out) and on {reference} injections not used for correction (median RSD {a}% -> {b}%).",
+   "sources": [
+    "turbotab/core/methods/qc_drift.py:151 _loo_rows (all points, end QCs included), :166 choose_spans",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Sanchez-Illana A et al. 2018, Anal Chim Acta 1019:38-48",
+    "Fan S et al. 2019, Anal Chem 91:3590-3596",
+    "Lewis MR et al. 2016, Anal Chem 88:9004-9013",
+    "Kirwan JA et al. 2022, Metabolomics 18:70"
+   ],
+   "engine": "partial: leave-one-out fits already choose the span (qc_drift.py:151, :166) but include end QCs. Interior-only held-out RSD, the refusal margin, the validation-reference role and reporting the held-out RSD are new.",
+   "tier": "silent",
+   "rank_signal": "Surfaced only when the correction is refused or the in-sample vs held-out gap is large; otherwise it is the number in the record and the methods sentence.",
+   "critic_notes": "Fixed: end QCs excluded from the held-out RSD, a margin added to the refusal rule, the meaning folded into the reference-roles confirmation, and a magic added for the common export with no SRM."
+  },
+  {
+   "id": "metab-qc-representativeness",
+   "lens": "metabolomics",
+   "title": "The pooled QC does not contain what the study samples contain",
+   "looks_at": "measurement",
+   "detector": "Per feature, detection rate in QCs vs in study samples. Flags features detected in at least 50% of study samples but in under 70% of QCs (the QC detection filter would delete them), and features whose QC median falls outside the study 5-95% range; a PCA projection checks that the QCs sit near the study centroid. It reads participants' feature values, never the outcome; used as a filter rule under prediction, the study-sample half runs in training folds. Pooling dilutes any feature present in only a minority of participants, so even a pool of all samples can fail the 70% rule for them; the decision is keyed on the measured mismatch, not on how the pool was made. Other sources of mismatch: a subset pool (e.g. controls only), a commercial surrogate QC (matrix mismatch), a diluted pool.",
+   "meaning": "Stated default: the mismatched features are spared from the QC detection filter and marked uncorrected. The researcher is asked how the pool was made only when the spared set is large or holds features that pass every other filter.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "QC detection filter spares unrepresented features",
+     "inference": "Features detected in study samples but under-represented in the QC are spared, left without drift correction and marked; their drift is noted as uncorrectable.",
+     "prediction": "Spared features enter in-fold with their own noise filter."
+    },
+    {
+     "stage": "reporting",
+     "decision": "QC composition",
+     "inference": "Stated, with the count of features handled differently.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "The QC detection filter silently deletes metabolites present only in some participants (a minority subgroup, or cases when the pool was made from controls), which are often exactly the findings sought.",
+   "magic": "'38 features are detected in most of your participants but in few pooled-QC injections, so the 70% QC rule would delete them. Pooling dilutes anything only some people carry. The app spares them, leaves them uncorrected and says so.'",
+   "layout": "Focus: QC detection rate against study detection rate per feature, with the filter line and the spared features in the choice color.",
+   "sentence": "Pooled QC samples were prepared from {composition}; {n} features detected in at least 50% of study samples but fewer than 70% of QCs were retained without drift correction.",
+   "sources": [
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Dudzik D et al. 2018, J Pharm Biomed Anal 147:149-173",
+    "Dunn WB et al. 2011, Nat Protoc 6:1060-1083",
+    "Kirwan JA et al. 2022, Metabolomics 18:70"
+   ],
+   "engine": "new.",
+   "tier": "stated",
+   "rank_signal": "Count of features the QC detection filter would delete despite at least 50% study detection.",
+   "critic_notes": "Fixed: 'pool of all samples (fine)' removed (an all-sample pool also dilutes minority features), the decision keyed on measured mismatch, the pool question limited to large or otherwise-passing spared sets. The 38 in the magic is illustrative, not measured."
+  },
+  {
+   "id": "metab-feature-technical-reliability",
+   "lens": "metabolomics",
+   "title": "Each feature's technical noise in the QCs, relative to its spread across people, is a reliability, not just a filter",
+   "looks_at": "measurement",
+   "detector": "After drift correction, per feature on the log scale, on detected and never imputed values: QC detection rate (at least 70%), QC RSD (below 20% for LC, 30% for GC), and the D-ratio, SD across QCs over SD across study samples (below 50%), with the study SD from training rows only (DRatioFilter). Technical reliability is lambda_tech = 1 - D^2. Because the filter keeps only D < 0.5, every kept feature has lambda_tech above 0.75 (measured minimum on the fixture 0.750), so the correction can move a kept effect by at most a third. With covariates Z, the relevant reliability is the conditional one, 1 - sigma2_tech / Var(X | Z), which is smaller than 1 - D^2; for logistic models the correction is approximate. SD_QC is measured at the pool's level, so it understates the error for participants near the floor. On metabolomics_untargeted raw values, 41% of features have QC RSD above 30% before correction, and 54 are detected in fewer than 70% of QCs. Alternatives it must reject: a D shrunk by imputed ties (un-imputed values are used); saturated QCs (metab-dilution-linearity); QCs injected back to back that understate variance (the spacing check).",
+   "meaning": "Nothing new asked: the platform (LC vs GC sets the RSD threshold) comes from the assay card, and the QCs' representativeness from metab-qc-representativeness, so SD_QC estimates the measurement-error variance.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "QC filters",
+     "inference": "QC detection and RSD filters run before the seal on reference rows; their thresholds are fixed on the feature-flow screen. The D-ratio filter runs in each training fold.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "selection",
+     "decision": "multiplicity burden",
+     "inference": "Unreliable features leave before the family of tests is counted.",
+     "prediction": "Unreliable features leave before in-fold screening."
+    },
+    {
+     "stage": "model",
+     "decision": "attenuation by technical error",
+     "inference": "After the lock, each feature's effect is corrected by regression calibration with the known QC error variance, using the conditional reliability given the adjustment set, and shown beside the raw one.",
+     "prediction": "No correction, because deployment uses the same noisy measure. Features with lambda_tech below 0.9 (D above about 0.32) are flagged, with a caveat if the lab or platform changes."
+    },
+    {
+     "stage": "explanation",
+     "decision": "trust in a top feature",
+     "inference": "Effects are ranked by corrected effect, with the D-ratio and conditional lambda_tech as columns of the trust row.",
+     "prediction": "QC RSD and D-ratio sit beside importance; a top feature near the D threshold is labelled as partly noise."
+    },
+    {
+     "stage": "reporting",
+     "decision": "filters and reliability",
+     "inference": "Thresholds, counts removed, the D-ratio distribution and the correction stated.",
+     "prediction": "Same, without the correction."
+    }
+   ],
+   "failure_prevented": "Noise features enter screening and inflate the multiple-testing burden. Kept noisy features have their per-SD effects silently attenuated, so the 'strongest metabolites' are partly the best-measured ones. A marker the lab cannot reproduce is reported.",
+   "magic": "'Citrulline leads ornithine (beta 0.18 vs 0.16), but ornithine's QCs vary 45% as much as people do (lambda 0.80) and citrulline's 10% (lambda 0.99). Corrected for technical error, ornithine is 0.20 and citrulline 0.18: the order was partly the assay's precision.' (Under inference, after the lock.)",
+   "layout": "Thresholds live on the feature-flow screen (metab-feature-flow). At explanation, Angles: raw vs corrected effect, with each feature's QC spread against its study spread.",
+   "sentence": "Features detected in fewer than 70% of QCs or with a corrected QC RSD of {20|30}% or more were removed, and features with a D-ratio of 50% or more in the training rows were excluded within each fold (Broadhurst et al. 2018); technical reliability given the adjustment covariates is reported beside each effect.",
+   "sources": [
+    "turbotab/core/methods/qc_drift.py:56 (platform thresholds), :369 detection_rate, :377 qc_rsd, :435 d_ratio, :446 DRatioFilter",
+    "turbotab/core/methods/calibration.py:1-40 (replicate regression calibration)",
+    "metabolomics_untargeted.csv measured (41% QC RSD > 30% before correction; 54 features < 70% QC detection; minimum lambda among D < 0.5 is 0.750)",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Sampson JN et al. 2013, Cancer Epidemiol Biomarkers Prev 22:631-640",
+    "Carroll RJ et al. 2006, Measurement Error in Nonlinear Models, 2nd ed.",
+    "Rosner B, Willett WC, Spiegelman D 1989, Stat Med 8:1051-1069",
+    "Schiffman C et al. 2019, BMC Bioinformatics 20:334"
+   ],
+   "engine": "exists for the filters (qc_drift.py:369, :377, :435, :446). New: lambda_tech as a reading, conditional reliability, calibration with a known QC error variance, and reliability carried into explanation.",
+   "tier": "silent",
+   "rank_signal": "Filters appear on the feature-flow screen; reliability is a trust-row column, surfaced only when a reported feature sits near a threshold.",
+   "critic_notes": "Fixed: the magic's arithmetic (now consistent with lambda > 0.75 after the filter), the prediction flag raised to lambda < 0.9 so it can fire, conditional reliability with covariates, and the SD_QC caveat at low abundance. Platform asked once on the assay card."
+  },
+  {
+   "id": "metab-blank-contamination",
+   "lens": "metabolomics",
+   "title": "Features present in the process blanks at levels near the samples' (contamination, not biology)",
+   "looks_at": "measurement",
+   "detector": "Blank rows come from the sample-role census. Per feature, the pooled-QC median (a pre-seal stand-in for the study level, so no participant is read) over the blank median; features under k-fold are flagged. The choice of k (3/5/10/20) is disputed, so the cost at each is shown on the feature-flow screen. Process (extraction) blanks are told apart from solvent blanks by name, then confirmed. Carryover shows as signal in a blank injected right after a high-concentration sample. Alternatives: an endogenous compound also present in reagents (asked only for a reported feature); a feature absent from blanks (no information).",
+   "meaning": "Blank type is pre-filled from its name and confirmed with the reference roles. 'Endogenous compound or contaminant?' is asked only for a flagged feature that would be reported, at explanation (after the lock under inference).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "blank rows leave",
+     "inference": "Blank rows leave as reference rows.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "representation",
+     "decision": "blank filter first in the chain",
+     "inference": "The blank filter runs before the QC detection and RSD filters; the threshold is fixed on the feature-flow screen before the lock, with its cost shown.",
+     "prediction": "Same, before the seal (reference rows only)."
+    },
+    {
+     "stage": "explanation",
+     "decision": "possible contaminant",
+     "inference": "A reported feature with a low blank ratio is labelled a possible contaminant on its trust row.",
+     "prediction": "Same, on the importance table."
+    },
+    {
+     "stage": "reporting",
+     "decision": "filter line",
+     "inference": "Threshold, blank type and features removed.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Plasticizers, polymer ions and column bleed enter the model. If a consumables lot changed between recruitment waves, contamination tracks batch and the outcome and becomes a 'biomarker'.",
+   "magic": "'Your third-strongest feature sits at only 1.6 times its level in the extraction blanks: it is in the tubes, not the blood.'",
+   "layout": "On the feature-flow screen, Angles over the threshold: features lost at 3/5/10/20x | the flagged feature's blank vs QC distributions.",
+   "sentence": "Features whose median intensity in pooled QCs was less than {k}-fold that in {n_blank} process blanks were removed as background ({n_removed} features).",
+   "sources": [
+    "turbotab/packs.py:907 blank_ratio_fold_change hedge, :1455, :1489, :1584 sample_roles",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Schiffman C et al. 2019, BMC Bioinformatics 20:334",
+    "Dunn WB et al. 2011, Nat Protoc 6:1060-1083",
+    "Kirwan JA et al. 2022, Metabolomics 18:70"
+   ],
+   "engine": "partial: blank roles are recognized (packs.py:1455, :1489) and the threshold hedge exists (packs.py:907). The blank-ratio reading and the filter are new.",
+   "tier": "stated",
+   "rank_signal": "Fires only when blank rows exist; ranked by flagged features among retained or reported ones.",
+   "critic_notes": "Sound. Threshold decision moved onto the feature-flow screen; the contaminant question limited to reported features."
+  },
+  {
+   "id": "metab-dilution-linearity",
+   "lens": "metabolomics",
+   "title": "A dilution series shows which features respond to concentration at all, and which saturate",
+   "looks_at": "measurement",
+   "detector": "Dilution-QC rows with dilution factors (parsed from names like QC_2x, or found by proportionality in metab-reference-rows). Per feature, on reference rows: Pearson r and slope of log response against log dilution factor. r < 0.7 (the nPYc default) means the feature is not quantitative. A flat top at high concentration means saturation above the upper limit. Alternatives it must reject: misparsed factors (confirmed); a feature falling below detection at high dilution, which is censored, not nonlinear.",
+   "meaning": "Dilution factors are confirmed with the reference roles, and only when they were parsed from names.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "linearity filter and saturation",
+     "inference": "Non-linear features are removed before the seal. Saturated features are marked right-censored at the plateau.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "model",
+     "decision": "shape at a plateau",
+     "inference": "Nonlinear forms for saturated features are refused, with the reason: the plateau would be read as biology.",
+     "prediction": "Flagged, not refused: a tree loses information above the plateau but is not biased by it. Recorded."
+    },
+    {
+     "stage": "explanation",
+     "decision": "truncated effects",
+     "inference": "A saturated feature's effect is labelled 'truncated at the detector's limit'.",
+     "prediction": "Same for importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "filter line",
+     "inference": "Linearity filter stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Non-quantitative features enter as predictors. Saturated features' associations are attenuated, and their plateau is read as a biological threshold.",
+   "magic": "'Feature M212T88 gives the same signal at 1x, 2x and 8x dilution: it measures no concentration. The plateau the shape view showed was the detector saturating, not a threshold in the biology.'",
+   "layout": "On the feature-flow screen: response against dilution for the focused feature, with the linear features as a gray band.",
+   "sentence": "Features whose response across a {k}-level serial dilution of the pooled QC correlated with dilution at r < 0.7 were removed ({n} features).",
+   "sources": [
+    "turbotab/packs.py:1454, :1486 (dilution-QC role pattern)",
+    "Lewis MR et al. 2016, Anal Chem 88:9004-9013",
+    "Sands CJ et al. 2019, Bioinformatics 35:5359-5360 (nPYc-Toolbox)",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Kirwan JA et al. 2022, Metabolomics 18:70"
+   ],
+   "engine": "partial: the dilution-QC role pattern exists (packs.py:1454, :1486). The linearity reading and filter are new.",
+   "tier": "silent",
+   "rank_signal": "Fires only with dilution-QC rows (rare outside NPC-style pipelines); its count appears on the feature-flow screen.",
+   "critic_notes": "Fixed: one threshold (r < 0.7) in detector and sentence; the nonlinear-form refusal kept under inference only and turned into a flag under prediction."
+  },
+  {
+   "id": "metab-internal-standards",
+   "lens": "metabolomics",
+   "title": "Some columns are spiked internal standards: they are the normalizer and the extraction check, not metabolites",
+   "looks_at": "measurement",
+   "detector": "Value test: a spiked standard is added at a constant amount, so its spread across participants is about its spread across QCs (D-ratio near 1), while true metabolites have D well below 1. Name tokens (d3-, d4-, 13C, ISTD, _IS) raise the guess to medium only. A tightly regulated real metabolite can also have D near 1, so \u00a714.3 makes this user-settled, with the guess pre-filled. IS columns are routed before the filter chain runs, because the D-ratio filter (D < 0.5) would otherwise delete them as noise and take the normalizer and the extraction check with them. Each sample's IS response, against the median and against run order, flags extraction or injection failures.",
+   "meaning": "The researcher confirms the IS columns (pre-filled list) and, for lipidomics or targeted panels, which class each one normalizes.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "IS columns routed out; failed extractions",
+     "inference": "IS columns are routed out of the predictors before filtering. Samples whose IS response is more than a stated percentage from the median are flagged as failed extractions (row-local, before the seal) and handed to metab-failed-injection's batched decision.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "representation",
+     "decision": "IS-based normalization",
+     "inference": "Class-matched IS normalization for targeted panels and lipidomics. A single IS is never used to normalize untargeted data.",
+     "prediction": "Same, before the seal: row-local, each row divided by its own spike."
+    },
+    {
+     "stage": "reporting",
+     "decision": "IS list",
+     "inference": "The IS list and normalization stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Without a D-ratio filter, an IS is used as a feature, and if its spiking or lot differs by batch, and batch by outcome, the IS 'predicts'. With one, the IS is deleted as noise and nobody checks the extractions. A single IS used to normalize unrelated compounds distorts them.",
+   "magic": "'d4-succinate varies between your participants exactly as much as between QC injections: it is the spike you added, not a metabolite, and the noise filter was about to delete it. Three samples carry 40% of the spike the others do: their extractions lost material, and every metabolite in them reads low.'",
+   "layout": "Routing: the column moves from predictors to normalizer, drawn in the choice color. Focus on each sample's IS response, with the failed extractions lit.",
+   "sentence": "Internal standards ({k}) were excluded from the features {and used for class-specific normalization}; {n} samples with internal-standard response outside {x}% of the median were excluded as extraction failures.",
+   "sources": [
+    "turbotab/core/methods/qc_drift.py:435 d_ratio, :446 DRatioFilter (D < 0.5 would remove an IS)",
+    "Sysi-Aho M et al. 2007, BMC Bioinformatics 8:93",
+    "Redestig H et al. 2009, Anal Chem 81:7974-7980",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Kirwan JA et al. 2022, Metabolomics 18:70"
+   ],
+   "engine": "new.",
+   "tier": "stated",
+   "rank_signal": "Fires only when IS-like columns exist (name tokens or a cluster of D near 1); ranked by the number of samples whose IS response fails.",
+   "critic_notes": "Fixed: the magic is re-anchored on the normalizer and failed-extraction moment, since the D-ratio filter already removes an IS from the predictors; IS columns are routed before the filter chain."
+  },
+  {
+   "id": "metab-failed-injection",
+   "lens": "metabolomics",
+   "title": "A sample whose injection or extraction failed: low total signal, features missing across the range, internal standards off",
+   "looks_at": "measurement",
+   "detector": "Row-local against reference rows, so it can run before the seal. For each sample: its detected-feature count and total signal over the QC medians, flagged below 50% or above 200%. A dilute but valid sample also loses its low-abundance detections, so the count alone does not discriminate: the sample's detections are compared with those expected at its PQN dilution factor. A dilute sample loses features from the bottom of the abundance range; a failed one loses them across it, or loses its internal standards (metab-internal-standards). Robust PCA distance or Hotelling T^2 is outcome-blind and may run before the seal. Fixture: on metabolomics_merged_modes, S080 is zero in every feature except the 5 gap-filled ones, which hold the filler's constant 79.17. Alternatives it must reject: a dilute but valid urine; a sample of a different matrix (serum among plasma), which is asked.",
+   "meaning": "One batched decision for all flagged samples, default exclude with the keep-sensitivity. The researcher is asked only about the different-matrix alternative.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "exclusion by a row-local rule",
+     "inference": "The exclusion is pre-specified and has its own flow line. A sensitivity analysis keeps the row.",
+     "prediction": "Same. The deployment rule rejects such samples too."
+    },
+    {
+     "stage": "representation",
+     "decision": "fill at the floor avoided",
+     "inference": "Otherwise its non-detects would be filled at the detection floor.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "sensitivity",
+     "inference": "Estimates with and without flagged rows.",
+     "prediction": "Score with and without."
+    },
+    {
+     "stage": "reporting",
+     "decision": "analytical failures",
+     "inference": "Number excluded, by rule.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A failed injection filled at the floor becomes a high-leverage point. In 30 samples it can carry a coefficient, or read as an outcome-specific depletion. An instrument failure is analyzed as a person.",
+   "magic": "'S080 has no signal in any feature except five, and those five hold the gap filler's constant 79.17: the injection failed and the merge still wrote a row. Kept, its 387 empty cells would be filled at the floor, and the model would learn that this person has no metabolites.'",
+   "layout": "Flow: the participant flow with the analytical-failure step lit, then the flagged sample's detection profile against the others, with the detections expected at its dilution drawn as a band.",
+   "sentence": "{n} injections detecting fewer than 50% of the features detected in the pooled QCs (after allowing for their dilution), or with total signal outside 50-200% of the QC median, were excluded as analytical failures.",
+   "sources": [
+    "turbotab/packs.py:2574 _empty_blocks (fires on the empty sample)",
+    "turbotab/sample_data/metabolomics_merged_modes.md (operation 5: S080 zeroed; operation 6: S040 re-injected)",
+    "turbotab/core/methods/qc_drift.py:418 dilution",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Dunn WB et al. 2011, Nat Protoc 6:1060-1083",
+    "Broadhurst DI, Kell DB 2006, Metabolomics 2:171-196",
+    "Kirwan JA et al. 2022, Metabolomics 18:70"
+   ],
+   "engine": "partial: _empty_blocks catches the fully empty sample on metabolomics_merged_modes (packs.py:2574). The dilution-aware detection test, total-signal bounds and the IS check are new.",
+   "tier": "stated",
+   "rank_signal": "Number flagged and distance beyond the 50%/200% bounds.",
+   "critic_notes": "Fixed: dilution-aware discrimination replaces 'detection count normal'; anchored on the S080 fixture case; one batched decision with only the matrix alternative asked."
+  },
+  {
+   "id": "metab-technical-replicates",
+   "lens": "metabolomics",
+   "title": "The same sample was injected more than once, and the duplicates are counted as people",
+   "looks_at": "structure",
+   "detector": "Sample-name grammar (S012_a/S012_b, _rep1) gives a guess only. Value test on predictors only: pairs of rows whose log profiles correlate above the 99.9th percentile of all other pairs. Alternatives: repeat visits or twins (biological repeats correlate highly but less than technical ones, and their dates differ), settled on the shared repeat-grain question; QC rows (handled by roles).",
+   "meaning": "Settled on the shared repeat-grain question (with metab-person-fingerprint and metab-low-biological-icc): technical replicate, repeat visit, or different person. Asked only when the name grammar and the value test disagree.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "the unit is the sample",
+     "inference": "Replicates are averaged on the log scale within the sample before the seal, and n counts samples. The replicates also feed metab-correction-honest-check as an independent reference.",
+     "prediction": "Same, with a deployment note: averaging halves the technical variance, so a model trained on averages meets more noise on single injections."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "grouped by sample if not averaged",
+     "inference": "CR2 clustering by sample.",
+     "prediction": "Folds grouped by sample, so a pair is never split."
+    },
+    {
+     "stage": "reporting",
+     "decision": "counts",
+     "inference": "Counts are by sample, not by injection.",
+     "prediction": "Same, plus the deployment note."
+    }
+   ],
+   "failure_prevented": "Random CV puts one replicate in training and its pair in test, so the score measures memory. Under inference, n is doubled and intervals are too narrow.",
+   "magic": "'48 rows are 24 samples injected twice. With the pairs split across folds the score was 0.93; with each sample kept on one side, it is 0.71.'",
+   "layout": "Flow (48 injections -> 24 samples) plus Angles (score with pairs split vs grouped).",
+   "sentence": "Duplicate injections of the same sample ({n} pairs) were averaged on the log scale; all analyses treat the sample as the unit.",
+   "sources": [
+    "turbotab/packs.py:2102 _repeated_subjects (routes to set_grain)",
+    "turbotab/core/models/folds.py:199-224 (grouped folds)",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Roberts DR et al. 2017, Ecography 40:913-929",
+    "Kirwan JA et al. 2022, Metabolomics 18:70"
+   ],
+   "engine": "partial: the grain and repeat machinery and grouped folds exist. The replicate-profile value test and averaging are new.",
+   "tier": "stated",
+   "rank_signal": "Pairs above the 99.9th-percentile profile correlation; asked only when the name grammar and the value test disagree.",
+   "critic_notes": "Sound. 'Twins' changed to 'pairs', the averaging deployment note added, and the meaning moved to the shared repeat-grain question."
+  },
+  {
+   "id": "metab-merge-artifacts",
+   "lens": "metabolomics",
+   "title": "A two-polarity merge left duplicate features, a duplicated sample, empty blocks and mixed ion modes",
+   "looks_at": "structure",
+   "detector": "duplicate_ids, empty_blocks and _ion_modes. On metabolomics_merged_modes: 6 feature columns renamed with '.1' (read_csv's signature of a repeated label), sample S040 on two rows (a re-injection exported under the original id), 8 all-zero features, 5 constant gap-filled features, 1 empty sample (S080, handed to metab-failed-injection), and _pos and _neg blocks together. Cross-mode duplicates (one compound seen in both modes) pass to metab-one-compound-many-features.",
+   "meaning": "Stated as one batch of repairs with undo. Asked only which S040 copy to keep when the two copies differ.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "structural repairs",
+     "inference": "Duplicates and empties are removed, and the duplicated sample is resolved before the seal.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "representation",
+     "decision": "per-mode processing",
+     "inference": "Each mode is normalized separately, with drift corrected per mode when the modes were separate runs.",
+     "prediction": "Same, in-fold where the step reads participants."
+    },
+    {
+     "stage": "reporting",
+     "decision": "counts",
+     "inference": "Corrected feature and sample counts.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Feature counts are 6 too high, an empty sample enters the model, a duplicated sample sits on both sides of a split, and the two modes are normalized together.",
+   "magic": "'Six features arrived twice under new names, and S040 is in the table twice: every count of metabolites downstream would have been six too high.'",
+   "layout": "Strip: the duplicated and empty features beside their twins, then Flow for the duplicated and empty samples.",
+   "sentence": "Duplicate features (6), constant or empty features (13) and an empty injection were removed; positive and negative ion modes were normalized separately.",
+   "sources": [
+    "turbotab/packs.py:2518 _duplicate_ids, :2574 _empty_blocks, :2745 _ion_modes",
+    "turbotab/sample_data/metabolomics_merged_modes.md"
+   ],
+   "engine": "exists (packs.py:2518, :2574, :2745).",
+   "tier": "stated",
+   "rank_signal": "Fires on merge signatures; asked only when the S040 copies differ.",
+   "critic_notes": "Sound. Framed as one stated batch with undo; S080 shared with metab-failed-injection."
+  },
+  {
+   "id": "metab-subdomain",
+   "lens": "metabolomics",
+   "title": "Which kind of assay this is (untargeted LC- or GC-MS, targeted panel, NMR, lipidomics) decides which rules apply",
+   "looks_at": "measurement",
+   "detector": "Feature-name grammar (m/z_RT, M###T###, ppm bins, lipid shorthand like PC 34:1, named metabolites); value range (uM concentrations with LLOQ flags vs intensities spanning 10^2-10^9); feature count; and the presence of QC and blank roles. Names never corroborate, and a targeted uM panel and logged intensities share value ranges, so this is user-settled with the guess pre-filled (\u00a714.3).",
+   "meaning": "The 'about your assay' card, asked once and pre-filled: platform (including LC vs GC for the RSD threshold), matrix (plasma, serum, urine, tissue; from metab-dilution), any measured normalizer, and prior processing (from metab-already-transformed, only when its range signal fires alone). Every other thread that needs these reads them from here.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "limits",
+     "inference": "For targeted panels, the kit's own LOD/LLOQ/ULOQ govern censoring (metab-limit-flags-in-cells) instead of a derived limit.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "representation",
+     "decision": "rule set by platform",
+     "inference": "QC-RSD threshold 20% for LC, 30% for GC. No RSD filter on validated targeted analytes. IS normalization for targeted panels and lipidomics. PQN by default for NMR and biofluids, with water/urea bins excluded from NMR spectra. Drift corrected per mode when positive and negative modes are separate runs.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "platform-specific QC rules",
+     "inference": "Stated, with identification levels (targeted = level 1).",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "The untargeted RSD filter deletes validated targeted analytes. PQN distorts calibrated absolute concentrations. A GC-MS run held to the LC threshold loses many of its features.",
+   "magic": "'These 188 columns are a targeted kit panel in uM with LOD flags. The untargeted 20% RSD rule would have removed 41 validated analytes; for a calibrated panel, the kit's limits and its QC accuracy govern.'",
+   "layout": "Angles: features kept under each sub-domain's rule set | which steps switch on or off.",
+   "sentence": "Data were acquired by {platform} on {matrix}; {platform-specific QC criteria} were applied.",
+   "sources": [
+    "turbotab/core/methods/qc_drift.py:56 (lc_ms/gc_ms option)",
+    "turbotab/packs.py:2436 (targeted-uM alternative)",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Kirwan JA et al. 2022, Metabolomics 18:70",
+    "Siskos AP et al. 2017, Anal Chem 89:656-665",
+    "Sumner LW et al. 2007, Metabolomics 3:211-221"
+   ],
+   "engine": "partial: the platform option (qc_drift.py:56) and the targeted-uM alternative (packs.py:2436) exist. The sub-domain reading, the assay card and its routing are new.",
+   "tier": "asked",
+   "rank_signal": "The lens's first opening question.",
+   "critic_notes": "Sound. Made the single assay card that also carries matrix, normalizer and prior processing, so the platform is never asked again in qc-drift or technical-reliability."
+  },
+  {
+   "id": "metab-already-transformed",
+   "lens": "metabolomics",
+   "title": "The values were logged, normalized, autoscaled or closed to a constant sum before upload",
+   "looks_at": "measurement",
+   "detector": "transformation_signals and _already_transformed check five signals. (1) Negative values in an abundance block (an ion count cannot be negative). (2) A compressed maximum (below about 40) with a positive minimum. (3) Dynamic range under 10^2: metabolomics_paired_logged runs 5.67-22.11; offered, not asserted, because a targeted uM panel looks the same. (4) Column means near 0 with SDs near 1 (autoscaled). (5) Row sums equal to a constant (TIC-, sum- or mol%-normalized, so closure is imposed). scale_reading separates raw intensities (thousands and up) from log2 (under about 40).",
+   "meaning": "Stated when negative values, an autoscaling signature or constant row sums settle it from the values. Joins the assay card as a question only when the range signal fires alone (log base, normalization, scaling: declared_normalized).",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "no second transform",
+     "inference": "No second log. PQN is refused on logged or centred values. On constant-sum rows the closure warning escalates (the compositionality hedge), and CLR is offered only as a sensitivity analysis with a multiplicative zero replacement.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect units",
+     "inference": "Effects are expressed on the declared scale. A fold change is reported only when the log base is known and the values are unscaled.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "prior processing",
+     "inference": "Stated as given.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A double log, PQN quotients computed on logs, 'fold changes' in z-units, and relative (closed) data read as absolute. All of these render as normal-looking output.",
+   "magic": "'These values run from -3.1 to 4.2 with every mean at zero: they were already logged and autoscaled. Logging again would make every effect a log of a z-score.' Or, on the paired file: 'These are already logs: the whole table spans 5.7 to 22.1.'",
+   "layout": "Focus: the value distribution with the signal that settled it. Normalization options greyed out with the reason (Routing when the declared step removes a later one).",
+   "sentence": "Values were provided {log2-transformed and autoscaled} by the acquisition software; no further transformation was applied, and effects are expressed per {unit}.",
+   "sources": [
+    "turbotab/packs.py:2361 transformation_signals, :2425 _already_transformed, :987 compositionality hedge",
+    "turbotab/core/methods/omics.py:167 scale_reading",
+    "turbotab/core/detectors/genomics.py:71 log_signature",
+    "turbotab/sample_data/metabolomics_paired_logged.md",
+    "van den Berg RA et al. 2006, BMC Genomics 7:142",
+    "Dieterle F et al. 2006, Anal Chem 78:4281-4290",
+    "docs/turbotab/research/METABOLOMICS_PACK.md \u00a701"
+   ],
+   "engine": "exists (packs.py:2425; omics.py:167); fires on metabolomics_paired_logged.csv. The constant-row-sum signal is new.",
+   "tier": "stated",
+   "rank_signal": "Number of agreeing signals; joins the assay card only when the range test fires alone.",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "metab-zeros-meaning",
+   "lens": "metabolomics",
+   "title": "Zeros in the intensity block: non-detections, failed measurements, or real values on an already-centred scale?",
+   "looks_at": "measurement",
+   "detector": "packs._zeros_or_missing fires because exporters disagree: MZmine, MaxQuant and Progenesis write 0 where XCMS fillPeaks writes a small number. omics.zeros_finding catches zeros a log cannot take where the pack is silent. On metabolomics_mzmine_zeros there are 4,316 zeros and no blank cells, so the export destroyed the evidence the left-censoring reading needs. A value test restores it: read as non-detections, the zeros' share per feature against the feature's log mean abundance gives back the left-censoring signature (rho -0.99 on this fixture, which is metabolomics_untargeted with its blanks written as 0). A true zero and a below-LOD value are both left-censored for MS intensities, so 'absent vs not detected' is not a fork. The forks that matter: non-detection (the default); a failed or unmeasured cell (zeros clustered by sample or batch, which hands over to metab-failed-injection or metab-missing-by-batch); a real value on an already logged or centred scale (metab-already-transformed).",
+   "meaning": "Default non-detection, shown with the spike and the abundance relation as evidence: one click. Asked only when the block is already logged or centred, or when zeros cluster by sample or batch.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "apply_repair zeros_nondetect",
+     "inference": "Logged normalizations wait for the answer (_logged_options_wait_for_the_zeros). Recoded zeros join metab-left-censored-nondetects.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "model",
+     "decision": "select_models",
+     "inference": "Linear families are refused until scale and zeros are answered.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "what a zero meant",
+     "inference": "Stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "log(x+1) puts zeros at 0, about 4 natural-log units below the smallest detected value and up to 15 below the largest, so a few rows dominate a linear model. A median fill of zeros makes non-detections average. A complete-looking table hides the left-censoring that every later fill depends on.",
+   "magic": "'4,316 cells are zero and none is blank: your exporter wrote non-detections as 0. Logged, they form a spike at 0, about 4 units below the smallest value it detected. Read as non-detections, they gather in the least abundant features exactly as blanks would (rho -0.99): too small to see, not absent.'",
+   "layout": "Focus: one feature on the log scale with the zero spike, flipping to the recoded censored view; beside it, zero share against abundance.",
+   "sentence": "Zero intensities were treated as non-detections (left-censored), not as measured absence.",
+   "sources": [
+    "turbotab/packs.py:2261 _zeros_or_missing",
+    "turbotab/core/methods/omics.py:900 unanswered_zeros, :957 zeros_refusal, :996 _logged_options_wait_for_the_zeros, :1775 zeros_finding",
+    "turbotab/core/repairs.py:1068, :1129 zeros_nondetect",
+    "turbotab/sample_data/metabolomics_mzmine_zeros.md (4,316 zeros, 0 blanks, range 50.95 to 4.541e+06)"
+   ],
+   "engine": "exists; fires on metabolomics_mzmine_zeros.csv. The zero-share vs abundance value test is new.",
+   "tier": "stated",
+   "rank_signal": "Zero share; takes precedence over every logged option.",
+   "critic_notes": "Fixed: the forks are now non-detection vs failed/missing vs a real value on a centred scale; default non-detection in one click; the '14 log units below the next value' claim corrected (zeros sit about 3.9 ln units below the minimum of 50.95 and about 15 below the maximum)."
+  },
+  {
+   "id": "metab-left-censored-nondetects",
+   "lens": "metabolomics",
+   "title": "Missingness tracks abundance: blanks are below a detection limit, not lost at random",
+   "looks_at": "measurement",
+   "detector": "packs._left_censored: Spearman rho between each feature's missing rate and its log mean abundance. It fires at rho <= -0.5; on metabolomics_untargeted it is -0.99, and 304 of 392 features have blanks, up to 55% missing. Each feature's censored share is computed on participant rows (censored_shares). The mechanism figure plots missing rate against intensity with a LOESS. Alternatives it must reject: peak-picking or alignment failures (a flat relation, MAR); batch-clustered missingness (metab-missing-by-batch); zeros exported in place of blanks (metab-zeros-meaning).",
+   "meaning": "At rho -0.99 the reading is value-settled: the confirmation is the accept on the surfaced figure (the detection_limit reading). Asked only when rho is weak or missingness is batch-clustered.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "fill family by mechanism, before the log",
+     "inference": "Median, mean, kNN and RF fills are refused. The fill is a censored-normal (Tobit) draw inside multiple imputation, conditional on the outcome (Lubin 2004); the rule is fixed pre-lock from the outcome-blind mechanism and run post-lock. An outcome-blind single fill attenuates slopes (ME-08: 0.38 of a true 0.5 at 60% censoring).",
+     "prediction": "In-fold and outcome-blind: half-minimum at <= 10% censored, otherwise QRILC or the expected value below the limit (LogScaleCensoredFill). Zeros are never median-filled."
+    },
+    {
+     "stage": "selection",
+     "decision": "missingness filters",
+     "inference": "QC detection-rate and censored-share rules are fixed outcome-blind on the feature-flow screen.",
+     "prediction": "Same, in-fold."
+    },
+    {
+     "stage": "model",
+     "decision": "detection split",
+     "inference": "A detected/level split where chosen (metab-group-specific-detection).",
+     "prediction": "Same, refit in-fold."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "second fill scheme",
+     "inference": "The primary analysis is repeated under a second fill, and features that change are named.",
+     "prediction": "Score under both fills."
+    },
+    {
+     "stage": "explanation",
+     "decision": "censored share beside each top feature",
+     "inference": "A feature that is 60% censored is read as mostly detected-vs-not. A shape view showing a step at the fill value is not read as a threshold.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "detection_details",
+     "inference": "Mechanism evidence, method, share, and the sensitivity analysis.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A median or kNN fill puts non-detects mid-distribution, so a low-abundance feature looks unrelated or reversed. A deterministic half-minimum deflates variance and inflates significance. Dropping non-detects biases comparisons when detection differs by group.",
+   "magic": "The strip shows blanks rising from 2% in the most abundant features to 46% in the least (rho -0.99). Flipping the option shows median-filled values landing mid-distribution and censored fills landing below the lowest observed: 'They are too small to see, not lost.'",
+   "layout": "At the noticing, Focus: missing rate vs abundance. At the fill decision, Angles: where filled values land | the slope under each fill (the slope panel only after the lock under inference).",
+   "sentence": "Missing values were attributed to left-censoring (missing rate vs log mean intensity, Spearman rho = {rho}) and imputed by {method} within each training fold, before log transformation; the primary analysis was repeated with {alt}.",
+   "sources": [
+    "turbotab/packs.py:625 _left_censored, :675 (half_minimum still the default suggestion)",
+    "turbotab/core/stages/finding_words.py:802 _left_censored (routes_to missing)",
+    "turbotab/core/methods/missing.py:180-235",
+    "turbotab/core/methods/omics.py:1137 QRILCFill, :1229 LogScaleCensoredFill, :1295 detection_limit_options, :1336 censored_shares, :2148 detection_details",
+    "turbotab/core/methods/imputation.py:350 tobit_fit",
+    "turbotab/core/readings.py:3410 _non_detections_are_not_filled_by_the_median",
+    "turbotab/sample_data/metabolomics_untargeted.md (rho -0.99; 304/392 with blanks; max 55%)",
+    "docs/turbotab-next/MODELING_SEQUENCE.md:157-160, :168-169, :240-241, :289",
+    "Wei R et al. 2018, Sci Rep 8:663",
+    "Lubin JH et al. 2004, Environ Health Perspect 112:1691-1696",
+    "Lazar C et al. 2016, J Proteome Res 15:1116-1125",
+    "Do KT et al. 2018, Metabolomics 14:128",
+    "Gromski PS et al. 2014, Metabolites 4:433-452"
+   ],
+   "engine": "exists; fires on metabolomics_untargeted.csv. New: the two-fill sensitivity (stages/sensitivity.py varies rows only) and the explanation consumer.",
+   "tier": "surfaced",
+   "rank_signal": "|rho| of missing rate vs abundance and the share of features with blanks; asked only when rho is weak or missingness is batch-clustered.",
+   "critic_notes": "Sound. The confirmation is now the accept on the surfaced figure."
+  },
+  {
+   "id": "metab-missing-by-batch",
+   "lens": "metabolomics",
+   "title": "Non-detects cluster by batch or late in the run: a technical detection failure, not low concentrations",
+   "looks_at": "structure",
+   "detector": "Outcome-blind. QC trajectories are checked first: a feature drifting below detection late in the run gives the same signature and belongs to metab-qc-drift. Then, per feature: detection rate by batch (Fisher or chi-square, BH), flagged when detection is at least 80% in some batches and at most 20% in others; and the missing indicator against injection order. The share of affected features is shown against chance. Split pairs (a feature present only in batch A beside one present only in batch B) are merged only on an m/z and RT match; without m/z and RT a complementary pair is shown as a hint, never merged. Alternatives: biology unevenly spread over batches (checked against metab-run-order-aligned-with-outcome); a single LOD with balanced batches (flat).",
+   "meaning": "Stated: batch-specific limits apply. Asked only to confirm merges of split feature pairs.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "batch-specific floors and merges",
+     "inference": "Detection limits are batch-specific (fill within batch at that batch's limit). A batch-wide failure is never imputed as below the LOD: the feature is excluded or analyzed within batch. Confirmed split pairs are merged.",
+     "prediction": "In-fold, per batch. Missingness indicators are not proposed as features, because they encode batch."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "leak check",
+     "inference": "Disclosure.",
+     "prediction": "When batch is aligned with the outcome, the score without these features is shown beside the full score."
+    },
+    {
+     "stage": "explanation",
+     "decision": "batch-shaped importance",
+     "inference": "A reported feature whose signal rests on batch-aligned missingness is flagged.",
+     "prediction": "Same for importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "batch-specific limits",
+     "inference": "Limits, exclusions and merges stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A batch-wide failure imputed as 'below detection', a global-minimum fill, or a missingness indicator all encode batch. With any batch-outcome imbalance, 'detection' predicts the outcome. Split features each look half-missing.",
+   "magic": "'feature_88 is detected in 95% of batch 1-2 samples and 3% of batch 3, and its QCs do not drift down: that is a peak-picking failure, not low abundance. Filled with one global minimum, batch 3 would look like a different population.'",
+   "layout": "Focus: a missingness heatmap (features x samples, samples ordered by injection, batch shading). Then Strip of the affected features with their per-batch detection rates.",
+   "sentence": "Detection limits were treated as batch-specific: {n} features with batch-dependent missingness (BH q < 0.05) were {imputed within batch | excluded}, and {k} feature pairs split across batches by alignment were merged on m/z and retention time.",
+   "sources": [
+    "turbotab/packs.py:2574 _empty_blocks (related)",
+    "turbotab/core/methods/qc_drift.py docstring step 2 (features drifting below detection)",
+    "Wehrens R et al. 2016, Metabolomics 12:88",
+    "Do KT et al. 2018, Metabolomics 14:128",
+    "Smith CA et al. 2006, Anal Chem 78:779-787",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Wei R et al. 2018, Sci Rep 8:663"
+   ],
+   "engine": "new.",
+   "tier": "surfaced",
+   "rank_signal": "Share of features with batch-dependent detection vs chance, raised when batch is aligned with the outcome.",
+   "critic_notes": "Fixed: merges only on m/z+RT (a hint otherwise), QC trajectories checked first, asked only for merges."
+  },
+  {
+   "id": "metab-group-specific-detection",
+   "lens": "metabolomics",
+   "title": "A feature present in one group and absent in the other is information, not a missing value",
+   "looks_at": "predictor-outcome",
+   "detector": "An outcome-blind precursor, always allowed: features with a censored share of at least 50% and a bimodal detected/not pattern become candidates for a two-part representation. The outcome-reading part is detection proportion by outcome level (Fisher, BH). Under inference it is not shown until the plan locks, then reported as a presence/absence result. Under prediction it is computed in training folds only, to propose indicators that resampling tests, recorded.",
+   "meaning": "None beyond the non-detect reading already settled (metab-left-censored-nondetects); the two-part rule is fixed from the censored share alone.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "two-part rather than imputed",
+     "inference": "The rule is fixed before the lock, from the censored share alone, on the feature-flow screen.",
+     "prediction": "Detection indicators are proposed, and resampling decides whether they stay."
+    },
+    {
+     "stage": "selection",
+     "decision": "80% rule",
+     "inference": "The class-wise (modified) 80% rule is not used before the lock; an outcome-blind censored-share rule replaces it.",
+     "prediction": "The class-wise rule runs only inside each training fold."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect in two parts",
+     "inference": "After the lock: detection odds plus the level among detected.",
+     "prediction": "Indicator importance shown separately."
+    },
+    {
+     "stage": "reporting",
+     "decision": "two-part handling",
+     "inference": "Stated, with which 80% rule.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Half-minimum fill of a feature absent in controls manufactures a huge fold change with false precision. The plain 80% rule deletes the one group-specific metabolite. A label-based filter run once on all rows leaks into CV.",
+   "magic": "After the plan locks: 'Feature M287T412 is in 92% of cases and 8% of controls. Half-minimum fill would have reported a 40-fold change made of numbers that do not exist; reported as detection, it is an odds ratio with an honest interval.'",
+   "layout": "Angles: detection by group | level among the detected | fold change under fill vs two-part.",
+   "sentence": "Features with {X}% or more non-detects were analyzed as detected/not detected and, among detected samples, by log intensity (a two-part model), rather than imputed.",
+   "sources": [
+    "turbotab/packs.py:1143 eighty_percent_rule hedge",
+    "turbotab/core/methods/omics.py:1775 zeros_finding",
+    "Taylor SL, Leiserowitz GS, Kim K 2013, Stat Appl Genet Mol Biol 12:703-722",
+    "Smilde AK et al. 2005, Anal Chem 77:6729-6736",
+    "Bijlsma S et al. 2006, Anal Chem 78:567-574",
+    "Wei R et al. 2018, Sci Rep 8:663",
+    "Ambroise C, McLachlan GJ 2002, PNAS 99:6562-6566"
+   ],
+   "engine": "partial: the 80%-rule hedge (packs.py:1143). The two-part representation and the in-fold class-wise filter are new.",
+   "tier": "silent",
+   "rank_signal": "Censored share >= 50% with a bimodal detected/not pattern; surfaced only post-lock under inference, or from fold results under prediction, when a two-part feature is reported.",
+   "critic_notes": "Sound. No extra question; the rule rides on the settled non-detect reading."
+  },
+  {
+   "id": "metab-dilution",
+   "lens": "metabolomics",
+   "title": "Samples differ in overall concentration (dilution, total signal), and the totals may differ with the outcome",
+   "looks_at": "measurement",
+   "detector": "The scale reading (raw intensities vs counts vs logs). Each sample's PQN dilution factor (the median quotient against the QC or training reference) and its spread; whether all PC1 loadings share a sign; any creatinine, specific-gravity or osmolality column tracking PC1. These are all outcome-blind. Total signal against the outcome on training rows only (library_size_check) is a design-balance view of a technical summary, recorded as an outcome view; it can make normalization mandatory, never choose features. On metabolomics_untargeted the omics_scale finding fires ('394 columns hold raw intensities, and total signal differs by sample'), and total signal vs responder is AUC 0.535, a negative control.",
+   "meaning": "The matrix and any measured normalizer come from the assay card (metab-subdomain); the PQN default is stated with its reference.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "normalization",
+     "inference": "PQN against the pooled-QC reference before the seal (row-local), or specific gravity for urine. Linear families are refused on raw values.",
+     "prediction": "PQN against a training reference fitted in-fold, or the QC-reference variant before the seal."
+    },
+    {
+     "stage": "model",
+     "decision": "linear families on raw values",
+     "inference": "Refused until a scale is recorded.",
+     "prediction": "Same, with a concern on every family while unnormalized."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "how much was dilution",
+     "inference": "After the lock, the count of features that 'differ' with and without normalization.",
+     "prediction": "Raw vs normalized score on the same folds."
+    },
+    {
+     "stage": "explanation",
+     "decision": "nuisance association",
+     "inference": "Each feature's r with the dilution factor.",
+     "prediction": "Same, beside importance. Importance that vanishes under normalization is labelled dilution."
+    },
+    {
+     "stage": "reporting",
+     "decision": "normalization named",
+     "inference": "Normalization, transformation and scaling named separately, with the PQN reference.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "With raw intensities, a more concentrated sample is larger in every feature. Urine 25% more dilute in cases makes every metabolite 'lower in disease' (ME-09: AUC 0.83-1.0 on null data). A PQN reference computed from all samples lets the test rows into the fit (Kapoor L1.2).",
+   "magic": "When it fires: 'Cases' urine was 25% more dilute, so every metabolite looked lower in cases. Unnormalized, the model scores 0.88; after PQN, 0.61. The 0.27 was water.' On metabolomics_untargeted total signal does not track responder (AUC 0.535), so PQN is a stated default and one methods line.",
+   "layout": "Angles: per-sample dilution factor against run order and design | one feature raw vs normalized | score before/after (prediction).",
+   "sentence": "Sample dilution was corrected by probabilistic quotient normalization (Dieterle et al. 2006) against the median {pooled-QC | training-sample} spectrum{, fitted within each training fold}, followed by log2 transformation.",
+   "sources": [
+    "turbotab/core/methods/omics.py:1-30 (ME-09), :167 scale_reading, :409 QuotientLog, :565 scale_finding, :753 library_size_check, :868 refusal_for, :973",
+    "turbotab/core/methods/qc_drift.py:401 qc_reference, :418 dilution",
+    "docs/turbotab-next/audit/AUDIT_REPORT.md ME-09",
+    "metabolomics_untargeted.csv measured (total signal vs responder AUC 0.535)",
+    "Dieterle F et al. 2006, Anal Chem 78:4281-4290",
+    "Wu Y, Li L 2016, J Chromatogr A 1430:80-95",
+    "Hornung R et al. 2015, BMC Med Res Methodol 15:95",
+    "STROBE-ME ME-6 (Gallo V et al. 2011, PLoS Med 8:e1001117)"
+   ],
+   "engine": "exists (omics.py:409, :753, :868; qc_drift.py:401, :418). New: the dilution factor shown in exploration.",
+   "tier": "stated",
+   "rank_signal": "Dilution-factor spread and its alignment with the outcome beyond its null; surfaced only when aligned.",
+   "critic_notes": "Sound. Matrix moved to the assay card; the fixture's negative result stated in the magic."
+  },
+  {
+   "id": "metab-normalizer-carries-biology",
+   "lens": "metabolomics",
+   "title": "The normalizer itself moves with the outcome or exposure: creatinine in kidney disease, a global shift that breaks PQN, TIC closure",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind checks. Any creatinine, osmolality or specific-gravity column, and its correlation with covariates that change excretion (age, sex, muscle mass or BMI, eGFR, diabetes medication, a high-protein diet). The PQN quotient distribution per sample: bimodal or skewed means a global shift that violates PQN's assumption that most features do not change. Its alignment with design variables (fasting/fed, matrix, intervention arm). The share of total signal carried by the few largest features, the closure risk under TIC or sum normalization. The normalizer's relation to the outcome is a predictor-outcome view: under inference the question is asked outcome-blind; under prediction it is computed in training folds and recorded.",
+   "meaning": "The researcher says whether the outcome or exposure changes urine output or creatinine excretion (polyuria in diabetes, CKD, muscle mass), or causes a global metabolic shift.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "normalizer choice",
+     "inference": "Creatinine normalization is refused when the outcome or exposure changes creatinine excretion; creatinine then enters as a covariate (covariate-adjusted standardization, O'Brien 2016), except when kidney function is the outcome, where creatinine can be neither normalizer nor covariate and PQN or specific gravity is used. Under a global shift, the PQN assumption is stated or the reference restricted. TIC/sum normalization carries the escalated closure warning.",
+     "prediction": "PQN in-fold against the training reference. A creatinine-normalized version is tested against PQN by resampling, recorded."
+    },
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Creatinine or specific gravity, and eGFR, considered as covariates by meaning (not when kidney function is the outcome).",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "normalizer sensitivity",
+     "inference": "After the lock only, results under the alternative normalizer are a disclosed sensitivity analysis, never a reason to choose.",
+     "prediction": "Recorded resampling comparison."
+    },
+    {
+     "stage": "explanation",
+     "decision": "relative language",
+     "inference": "Results under a sum-based normalizer are phrased as relative shifts.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "normalizer and why",
+     "inference": "States the normalizer and the reason it was chosen.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "The normalizer injects the outcome into every feature, or removes it. With TIC normalization, one dominant compound pushes every other feature the other way.",
+   "magic": "Before any estimate: 'Your outcome is diabetes and your samples are urine. Diabetes dilutes urine and kidney damage lowers creatinine, so dividing by creatinine would move every metabolite with the outcome. The app normalizes by PQN fitted in each fold and keeps creatinine as a covariate.' After the lock, the creatinine-normalized sensitivity shows how many hits depend on that choice.",
+   "layout": "Angles: 'How dilute is each sample?' (dilution factor by design) | 'Does the normalizer depend on the people?' (creatinine against eGFR, age, sex) | PQN quotient distribution.",
+   "sentence": "Urinary features were normalized by probabilistic quotient normalization fitted on training samples; creatinine was {a covariate | not used} because it relates to {outcome/exposure}.",
+   "sources": [
+    "turbotab/core/methods/omics.py:409 QuotientLog",
+    "turbotab/core/methods/qc_drift.py:418 dilution",
+    "turbotab/packs.py:987 compositionality hedge (closure warning escalation)",
+    "turbotab/core/covariate_guesses.py:16-17, :172 (kidney group)",
+    "Dieterle F et al. 2006, Anal Chem 78:4281-4290",
+    "Waikar SS et al. 2010, Kidney Int 78:486-494",
+    "O'Brien KM et al. 2016, Environ Health Perspect 124:220-227",
+    "Kapoor S, Narayanan A 2023, Patterns 4:100804 (L1.2)"
+   ],
+   "engine": "partial: PQN and the dilution factor exist, and the closure warning is specified (packs.py:987). Nothing reads whether the normalizer relates to the outcome or exposure, or checks PQN's global-shift assumption.",
+   "tier": "asked",
+   "rank_signal": "Urine matrix or a creatinine/SG/osmolality column, then PQN quotient bimodality; silent for plasma or serum without such a column.",
+   "critic_notes": "Fixed: the '31 of 40 hits vanish' comparison moved to a post-lock sensitivity under inference (never a reason to choose); creatinine-as-covariate excluded when kidney function is the outcome; asked only for urine or when a normalizer column exists."
+  },
+  {
+   "id": "metab-variance-structure",
+   "lens": "metabolomics",
+   "title": "Variance rises with abundance and explodes near the detection floor after the log",
+   "looks_at": "predictors",
+   "detector": "A mean-SD plot (running SD against the rank of the mean) on raw, log2 and glog scales. The noise floor lambda is estimated from QC technical variance at low intensities (reference rows, so before the seal). The read is the SD slope in the lowest decile after log2. Alternative: heteroscedasticity from mixed matrices or batches (check those threads first).",
+   "meaning": "none.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "log2 vs glog; scaling",
+     "inference": "log2 by default; glog (lambda from the QCs) is proposed only when the lowest-decile SD after log2 exceeds a stated bound. Under glog, effects are reported on log2 or back-transformed, because glog differences are not log fold changes at low intensity. Effects are estimated on normalized, unscaled values.",
+     "prediction": "Scaling (none, autoscale, Pareto) runs in-fold for penalized models and PCA, and the choice is tested by resampling."
+    },
+    {
+     "stage": "explanation",
+     "decision": "what importance ranks",
+     "inference": "Fold changes come from normalized but unscaled data.",
+     "prediction": "Importance under autoscaling ranks pattern, not abundance, and says so."
+    },
+    {
+     "stage": "reporting",
+     "decision": "three steps named",
+     "inference": "Normalization, transformation and scaling named separately.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "After log plus autoscaling, noisy near-floor features get equal weight, so PCA and penalized models latch onto noise, and fold changes come out in z-units.",
+   "magic": "None in the journey. On demand: 'After log2, your 200 least abundant features vary four times as much as the rest, almost all of it noise at the floor. Under glog with lambda from your QCs, the mean-SD line goes flat.'",
+   "layout": "On demand and in the record: Focus on the mean-SD plot with the transform player.",
+   "sentence": "Intensities were {log2 | glog}-transformed {(lambda estimated from pooled-QC technical variance; Parsons et al. 2007)} and {autoscaled within each training fold}; fold changes are reported on the log2 scale from normalized, unscaled values.",
+   "sources": [
+    "turbotab/core/methods/omics.py:78 TRANSFORMS, :1108 (glog mentioned)",
+    "turbotab/packs.py:964 pareto_vs_autoscaling hedge",
+    "Parsons HM et al. 2007, BMC Bioinformatics 8:234",
+    "Durbin BP et al. 2002, Bioinformatics 18 Suppl 1:S105-S110",
+    "Huber W et al. 2002, Bioinformatics 18 Suppl 1:S96-S104",
+    "van den Berg RA et al. 2006, BMC Genomics 7:142"
+   ],
+   "engine": "partial: log2 exists (omics.py:78). glog is only mentioned. The mean-SD reading is new.",
+   "tier": "silent",
+   "rank_signal": "Not ranked; glog proposed only when the lowest-decile SD after log2 exceeds the stated bound.",
+   "critic_notes": "Automate-silently applied: moved to silent, mean-SD plot kept on demand and in the record. Fixed: glog effects reported on log2 or back-transformed."
+  },
+  {
+   "id": "metab-one-compound-many-features",
+   "lens": "metabolomics",
+   "title": "Hundreds of features are a few dozen compounds (adducts, isotopes, in-source fragments, both ion modes)",
+   "looks_at": "predictors",
+   "detector": "redundancy_reading: Spearman clusters at average linkage with r >= 0.9, each group re-read leaving out each sample in turn (a group resting on one sample is reported). Where m/z and RT exist, co-elution (+/- 0.05-0.1 min) plus known mass differences confirm adduct families: 13C +1.00336, Na-H +21.98194, K-H +37.95588, NH4-H +17.02655. Cross-mode duplicates come from _ion_modes. Each compound's representative is chosen outcome-blind (highest median intensity, ties to the best D-ratio). Alternatives it must reject: pathway co-regulation (correlated but at a different RT, so separate compounds); one extreme sample (leave-one-out). On metabolomics_redundant, 404 features fall in about 100 compounds (105 groups).",
+   "meaning": "The researcher confirms feature groups as one compound each (a block confirmation, \u00a714.2), or acknowledges the effective dimension.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "per-mode normalization",
+     "inference": "Each ion mode is normalized separately.",
+     "prediction": "Same, in-fold."
+    },
+    {
+     "stage": "selection",
+     "decision": "effective number of tests; representative",
+     "inference": "One test per compound, on its outcome-blind representative; multiplicity is counted in compounds, and BH holds under the positive dependence of adduct families. Counts are reported per compound.",
+     "prediction": "Cluster representatives or summaries are proposed in-fold, and group-aware selection is tested by resampling."
+    },
+    {
+     "stage": "model",
+     "decision": "inductive bias with siblings",
+     "inference": "n/a",
+     "prediction": "A family that shares weight across correlated inputs (elastic net, grouped penalties) instead of a lasso picking one sibling at random, with the bias stated."
+    },
+    {
+     "stage": "explanation",
+     "decision": "grouped importance",
+     "inference": "Effects are reported per compound, after the lock.",
+     "prediction": "Grouped permutation importance or SHAP over the cluster, with selection frequency per group and importance stability across reseeds disclosed."
+    },
+    {
+     "stage": "reporting",
+     "decision": "how many metabolites",
+     "inference": "'404 features, about 100 compounds'.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A 'top 10 biomarkers' list that is three compounds' adducts. Importance is diluted or split arbitrarily across siblings, a different sibling is chosen per fold, BH runs over redundant tests, and discovery counts overstate compounds about fourfold. Choosing each compound's representative by its outcome association would be selection on the outcome.",
+   "magic": "At opening, outcome-blind: '404 features. About 100 compounds.' At explanation (after the lock under inference): 'Your top three features (M181T312, M203T312, M182T312) are one compound's [M+H]+, [M+Na]+ and 13C isotope. Grouped, it is the signal; apart, the model swapped between them fold to fold.'",
+   "layout": "At the noticing, Strip: clusters ranked by size, members listed with their m/z relationships, the first focused as a correlation block. At explanation, Angles: per-feature vs per-compound importance.",
+   "sentence": "Features were grouped into {k} putative compounds (co-elution within {rt} min, Spearman rho > 0.9, adduct and isotope mass differences), each represented by its most intense member; {n_features} significant features corresponded to {n_compounds} compounds, and importance is reported per compound.",
+   "sources": [
+    "turbotab/core/detectors/assay.py:9-20, :159-257 (:165 average_linkage_groups, :185 _rests_on_one_sample, :197 redundancy_reading, :222 redundancy_finding)",
+    "turbotab/packs.py:2745 _ion_modes, :1295 (RT and mass half unbuilt)",
+    "turbotab/core/stages/finding_words.py:822 _redundancy (no lever)",
+    "turbotab/core/models/explain.py:28-33 (importance stability), :393 (grouped attribution by origin column)",
+    "turbotab/sample_data/metabolomics_redundant.csv.md",
+    "Mahieu NG, Patti GJ 2017, Anal Chem 89:10397-10406",
+    "Kuhl C et al. 2012, Anal Chem 84:283-289",
+    "Saccenti E et al. 2014, Metabolomics 10:361-374",
+    "Broadhurst DI, Kell DB 2006, Metabolomics 2:171-196",
+    "Benjamini Y, Yekutieli D 2001, Ann Stat 29:1165-1188 (BH under positive dependence)"
+   ],
+   "engine": "partial: the correlation grouping fires on metabolomics_redundant (assay.py:222) but has no lever and no downstream consumer. The RT/mass test, the outcome-blind representative and grouped importance wired to the clusters are new.",
+   "tier": "surfaced",
+   "rank_signal": "Features-to-compounds ratio; one block confirmation (\u00a714.2).",
+   "critic_notes": "Fixed: the representative is chosen outcome-blind; the opening noticing is outcome-blind and the 'top three are one compound' moment moved to explanation, after the lock under inference."
+  },
+  {
+   "id": "metab-annotation-confidence",
+   "lens": "metabolomics",
+   "title": "Which features are identified, and how confidently (MSI level), sets what a name in a result may claim",
+   "looks_at": "measurement",
+   "detector": "Feature metadata: an MSI-level column (MSI 1-4, Schymanski 1-5), annotation columns, names vs m/z_RT IDs, and the share annotated. A name-only reading is medium confidence at most; the codebook or the user settles it.",
+   "meaning": "Stated when an MSI-level column exists. Asked once, per annotation source, only when named features arrive without one.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "rollups",
+     "inference": "Class or pathway rollups only over annotated features.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "explanation",
+     "decision": "how a feature is named",
+     "inference": "Level 2 reads 'putatively annotated as'. Unknowns are shown by m/z and RT, never named. Isomers that share a mass (leucine/isoleucine) are named as the pair. The level is a column of the trust row.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "identification statement",
+     "inference": "MSI level per reported metabolite.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A library match is reported as 'identified citrate'. An isomer or an unknown is reported as a named metabolite, and an explanation narrative is built on a misannotation.",
+   "magic": "'Your top feature is labelled \"Leucine\". It is a level-2 library match, and isoleucine has the same mass, so the results say \"putatively annotated as leucine/isoleucine\". Four of your top ten have no name, and the app shows them by mass and retention time rather than inventing one.'",
+   "layout": "Focus: the importance or effects table with its identification-level column.",
+   "sentence": "Metabolites were annotated at MSI levels 1-4 (Sumner et al. 2007); level-2 annotations are reported as putative, and {k} of the 10 top features were identified at level 1.",
+   "sources": [
+    "turbotab/core/stages/working.py:441-448 (feature-metadata recognition)",
+    "Sumner LW et al. 2007, Metabolomics 3:211-221",
+    "Schymanski EL et al. 2014, Environ Sci Technol 48:2097-2098",
+    "Kirwan JA et al. 2022, Metabolomics 18:70"
+   ],
+   "engine": "partial: feature metadata is recognized (working.py:441-448). The naming rules in explanation and reporting are new.",
+   "tier": "stated",
+   "rank_signal": "Any named feature among the reported; its load sits at explanation as a column, not a separate moment.",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "metab-enrichment-background",
+   "lens": "metabolomics",
+   "title": "Only a fraction of features have names, so any pathway reading runs over what the assay could name",
+   "looks_at": "structure",
+   "detector": "The share of features annotated, and annotation coverage by class or pathway. The universe is the set of measured, annotated metabolites.",
+   "meaning": "None beyond the annotation source already asked by metab-annotation-confidence.",
+   "consumers": [
+    {
+     "stage": "explanation",
+     "decision": "pathway over-representation",
+     "inference": "Computed against the assay's measured, annotated background, never the whole database, if a pathway reading is ever offered.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "background stated",
+     "inference": "Background set and annotation bias stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A whole-database background inflates enrichment toward well-studied, abundant, easily annotated pathways.",
+   "magic": "None until a pathway reading exists. Then: 'Against the whole database, amino acid metabolism looks enriched; against the metabolites your assay can actually name, it is not.'",
+   "layout": "None now. With a future pathway reading, Angles: enrichment under the database background vs under the assay background.",
+   "sentence": "Over-representation analysis used the {n} annotated metabolites measured in this study as the background set (Wieder et al. 2021).",
+   "sources": [
+    "Wieder C et al. 2021, PLoS Comput Biol 17:e1009105",
+    "Sumner LW et al. 2007, Metabolomics 3:211-221"
+   ],
+   "engine": "new (the engine has no pathway interpretation yet).",
+   "tier": "parked (silent)",
+   "rank_signal": "None: parked as a requirement on any future pathway feature (inbox).",
+   "critic_notes": "The skeptic said cut (no consumer: the engine has no pathway reading) but the evidence checker found it sound, so by the rule it is not cut; it is parked at the lowest tier as a requirement attached to any future over-representation feature."
+  },
+  {
+   "id": "metab-treatment-marker",
+   "lens": "metabolomics",
+   "title": "A top feature is a drug, or its metabolite, given for the outcome: it marks the diagnosis, not the biology",
+   "looks_at": "predictor-outcome",
+   "detector": "Two routes. (a) Outcome-blind, always allowed: an annotation in a drug or xenobiotic class (an HMDB class column), a medication column in the metadata, or the presence/absence bimodality typical of xenobiotics (absent in most samples, intense in a few). (b) Prediction only, inside training folds: a feature whose detection alone nearly separates the outcome (single-feature AUC >= 0.95, or presence-by-class purity) is proposed for meaning review, recorded. Under inference the annotation alone decides the role. Alternatives: a genuine strong biomarker (asked); a food-derived xenobiotic (the shared diet-biomarker bridge); the outcome's defining analyte (metab-outcome-defined-by-a-feature).",
+   "meaning": "The researcher confirms the compound is a medication or treatment marker, which condition it treats, and when it is taken relative to the outcome.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "routed out as post-outcome",
+     "inference": "Medication becomes a confounder or mediator reading for the adjustment set, decided by meaning before the lock. When all cases are treated (no positivity), the analysis is restricted to untreated people or stated as impossible.",
+     "prediction": "Excluded by rule from the deployable model. Scores with and without are recorded."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "honest score without treatment markers",
+     "inference": "Sensitivity analysis excluding treated participants.",
+     "prediction": "The headline score is without them, with the reason."
+    },
+    {
+     "stage": "explanation",
+     "decision": "naming",
+     "inference": "A confirmed drug is named as a treatment marker.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "exclusion",
+     "inference": "Exclusion and reason stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "The model 'diagnoses' diabetes by metformin (Kapoor L2: it detects the treatment, not the disease), and a treatment signature is reported as a disease signature. A score actively rewards keeping the feature.",
+   "magic": "'Your top feature, m/z 130.109, appears in 96% of cases and 2% of controls. It is metformin: the model found the prescription. Without it and its two metabolites, the AUC is 0.71, not 0.97, and 0.71 is what the metabolome earns.'",
+   "layout": "Routing: drug features routed out of the inputs, beside the score with and without them. Angles at explanation: single-feature separation | the compound's detection pattern.",
+   "sentence": "Features annotated as drugs or drug metabolites ({list}) were excluded from the predictors because their presence follows from diagnosis or treatment.",
+   "sources": [
+    "turbotab/core/covariate_guesses.py:30-40 (medication that treats the outcome)",
+    "Forslund K et al. 2015, Nature 528:262-266 (treatment confounding exemplar; a microbiome study)",
+    "Wishart DS et al. 2022, Nucleic Acids Res 50:D622-D631 (HMDB 5.0)",
+    "Kapoor S, Narayanan A 2023, Patterns 4:100804 (L2)",
+    "Kaufman S et al. 2012, ACM Trans Knowl Discov Data 6(4):15",
+    "Geirhos R et al. 2020, Nat Mach Intell 2:665-673"
+   ],
+   "engine": "new: no outcome-proxy or separation detector exists. covariate_guesses.py reasons about medications among covariates, not among features.",
+   "tier": "asked",
+   "rank_signal": "Drug-class annotation, a medication column, or in-fold near-separation under prediction; top of explanation when it fires.",
+   "critic_notes": "Sound. A metabolomics-specific source for the metformin example is still owed (Forslund 2015 is a microbiome paper, kept as the treatment-confounding exemplar)."
+  },
+  {
+   "id": "metab-preanalytical-aligned",
+   "lens": "metabolomics",
+   "title": "How samples were collected, handled or stored differs between the groups",
+   "looks_at": "design",
+   "detector": "Outcome-blind: protocol columns (collection time of day, fasting hours, time to processing, storage years, freeze-thaw count, tube type such as EDTA vs heparin, matrix serum vs plasma, hemolysis flags or hemolysis-marker features) and their association with the top PCs. The by-outcome balance table of these technical variables is a recorded diagnostic and disclosure, never the trigger for adjustment. Alternatives: protocol variation unrelated to the metabolome (no PC association); a matrix mix that is a failed sample (metab-failed-injection).",
+   "meaning": "The researcher says, from design knowledge, whether the protocol differed by group (cases drawn non-fasting in hospital and controls in the community; older case samples; a tube change mid-study).",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility",
+     "inference": "Hemolyzed or wrong-matrix samples are excluded by a row-local rule, with a flow line.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "selection",
+     "decision": "protocol covariates",
+     "inference": "Included in the adjustment set from the researcher's design knowledge; the by-outcome table is disclosed, never the reason.",
+     "prediction": "Residualized in each fold, or kept out of the inputs."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "shortcut check",
+     "inference": "n/a",
+     "prediction": "Scores within protocol strata."
+    },
+    {
+     "stage": "reporting",
+     "decision": "imbalance",
+     "inference": "Stated, with how it was handled.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A pre-analytical shortcut: storage degradation, fasting differences or hemolysis are read as disease.",
+   "magic": "'PC2 is storage time: samples from 2009 have 40% less of 12 lipids. Did cases and controls come out of the freezer from the same years?' Once answered, the 'signature' may turn out to be the freezer.",
+   "layout": "Strip: protocol variables ranked by their association with the top PCs, the first focused large.",
+   "sentence": "{Protocol variable} differed between groups and was {adjusted for | balanced by design}.",
+   "sources": [
+    "turbotab/clinical.py:138 (failure tokens incl. 'hemolyzed')",
+    "turbotab/packs.py (fasting recognition); turbotab/core/covariate_guesses.py",
+    "Yin P, Lehmann R, Xu G 2015, Anal Bioanal Chem 407:4879-4892",
+    "Haid M et al. 2018, J Proteome Res 17:203-211",
+    "Geirhos R et al. 2020, Nat Mach Intell 2:665-673"
+   ],
+   "engine": "new (fasting and hemolysis tokens are recognized elsewhere; there is no protocol-by-PC reading).",
+   "tier": "asked",
+   "rank_signal": "Only when protocol columns exist and associate with top PCs (silent otherwise); ranked by protocol-PC association.",
+   "critic_notes": "Fixed: under inference the adjustment comes from design knowledge, with the by-outcome table as a recorded balance diagnostic only; the magic now asks rather than reading cases' storage from the outcome."
+  },
+  {
+   "id": "metab-low-biological-icc",
+   "lens": "metabolomics",
+   "title": "One blood draw captures little of a person's usual level of a metabolite",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind, where there are repeated biological samples per person months apart: per-feature biological ICC, separated from the technical CV given by QCs or technical replicates, ranked by low ICC. In pre/post or intervention designs the ICC is estimated from controls or pre-intervention repeats, because within-person variance there contains the effect.",
+   "meaning": "Settled on the shared repeat-grain question (with metab-technical-replicates and metab-person-fingerprint): biological repeats or technical ones.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "flag low-ICC features",
+     "inference": "Flagged.",
+     "prediction": "Tested in-fold as usual, with the flag shown."
+    },
+    {
+     "stage": "model",
+     "decision": "attenuation correction",
+     "inference": "Regression calibration via the ICC, conditional on the adjustment set, as a declared secondary analysis after the lock.",
+     "prediction": "Refused (deployment uses one draw too)."
+    },
+    {
+     "stage": "explanation",
+     "decision": "a null is not no effect",
+     "inference": "Stated for low-ICC features.",
+     "prediction": "Low importance carries the reliability caveat."
+    },
+    {
+     "stage": "reporting",
+     "decision": "ICCs",
+     "inference": "States the ICCs.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Attenuation: a metabolite with ICC below 0.4 loses most of its association, and nulls are misread as absence of effect.",
+   "magic": "'A single draw captures only 35% of a person's usual TMAO. Its weak association is what a noisy ruler gives; corrected, it nearly triples, and more once age and sex are in the model.' (Under inference, the corrected estimate appears after the lock.)",
+   "layout": "Angles: 'How reliable is one draw?' (ICC strip) | 'Raw against corrected' (after the lock).",
+   "sentence": "Single-sample reliability (ICC) of {feature} was {r}; associations were corrected for within-person variation in a secondary analysis.",
+   "sources": [
+    "turbotab/core/methods/calibration.py (built for dietary recalls)",
+    "turbotab/core/methods/qc_drift.py:377 qc_rsd (technical only)",
+    "Sampson JN et al. 2013, Cancer Epidemiol Biomarkers Prev 22:631-640",
+    "Townsend MK et al. 2013, Clin Chem 59:1657-1667",
+    "Keogh RH et al. 2020, Stat Med 39:2197-2231"
+   ],
+   "engine": "partial: technical RSD exists, and the regression-calibration machinery is built for recalls. There is no per-feature biological ICC.",
+   "tier": "stated",
+   "rank_signal": "Fires only with biological repeats months apart; share of low-ICC features among the reported.",
+   "critic_notes": "Fixed: 'doubles' corrected to 'nearly triples' (1/0.35 = 2.9) with the conditional reliability noted; ICC from controls or pre-intervention repeats in pre/post designs; meaning moved to the shared repeat-grain question."
+  },
+  {
+   "id": "metab-clinical-factors",
+   "lens": "metabolomics",
+   "title": "Age, sex, BMI, kidney function and fasting move much of the metabolome, and may differ by outcome",
+   "looks_at": "predictor-outcome",
+   "detector": "Outcome-blind part: the share of features associated with each clinical covariate. On metabolomics_untargeted, 22 features have |rho| > 0.3 with BMI. Covariates are grouped by covariate_guesses (body size, kidney: creatinine, eGFR, urea; medications). The covariate-outcome view (age 53.8 in responders vs 49.3; BMI 27.5 vs 26.9) is Table 1 disclosure, recorded; under inference it never chooses the adjustment set, which is chosen by meaning. Alternatives: covariates unrelated to the features.",
+   "meaning": "On the cross-lens covariate-role card (not a new metabolomics question): each factor as a confounder, a mediator (BMI between diet and disease, declared with and without), or a baseline predictor the metabolites must beat.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "adjustment set",
+     "inference": "Age, sex, kidney function and fasting enter each featurewise model. BMI is declared with and without when it may mediate.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "incremental value",
+     "inference": "n/a",
+     "prediction": "A clinical-only model (age, sex, BMI, eGFR) vs clinical plus metabolites on the same folds: the fold-paired difference in AUC and in log-likelihood, or a decision curve. DeLong for nested models and the NRI are not used."
+    },
+    {
+     "stage": "explanation",
+     "decision": "conditional importance",
+     "inference": "Estimates with and without BMI, after the lock.",
+     "prediction": "Metabolite importance conditional on the clinical factors."
+    },
+    {
+     "stage": "reporting",
+     "decision": "added value",
+     "inference": "Adjustment set and reasons stated.",
+     "prediction": "The increment over the clinical model stated."
+    }
+   ],
+   "failure_prevented": "A metabolite panel's AUC is reported when age and BMI alone would do as well. Uremic solutes are read as risk factors when kidney function drives both them and the outcome.",
+   "magic": "Under prediction: 'Before crediting the metabolites: how far do age, sex and BMI get on their own? Here, 0.66; with the metabolites, 0.70, a fold-paired gain of 0.04.' Under inference: 'TMAO tracks eGFR at r = -0.48; kidney function enters the adjustment set by meaning, before any estimate.'",
+   "layout": "Angles: 'What do the clinical factors already explain?' (share of features per covariate) | clinical-only vs clinical + metabolites score, fold by fold (prediction).",
+   "sentence": "The metabolite model was compared with a clinical-only model (age, sex, BMI, eGFR) on identical folds (fold-paired difference in AUC and log-likelihood); featurewise associations were adjusted for {Z}.",
+   "sources": [
+    "turbotab/core/covariate_guesses.py:16-17, :30-45, :172",
+    "turbotab/core/models/baseline.py:69 versus_baseline (no-predictor baseline)",
+    "turbotab/core/stages/evaluation.py (spline benchmark)",
+    "metabolomics_untargeted.csv measured (22 features |rho| > 0.3 with BMI)",
+    "Pepe MS et al. 2013, Stat Med 32:1467-1482 (testing improvement for nested models; from memory)",
+    "Kerr KF et al. 2014, Epidemiology 25:114-121 (NRI critique; from memory)",
+    "Vickers AJ, Elkin EB 2006, Med Decis Making 26:565-574 (decision curves)",
+    "Schisterman EF, Cole SR, Platt RW 2009, Epidemiology 20:488-495",
+    "Sekula P et al. 2016, J Am Soc Nephrol 27:1175-1188 (kidney function and the metabolome)"
+   ],
+   "engine": "partial: covariate roles are guessed (covariate_guesses.py), and the no-predictor baseline exists. No clinical-only baseline was found.",
+   "tier": "asked",
+   "rank_signal": "Asked via the cross-lens covariate-role card; the clinical-only baseline is surfaced under prediction; ranked by the share of features associated with each covariate.",
+   "critic_notes": "Fixed: Pencina 2008 (NRI) replaced by the fold-paired AUC/log-likelihood difference or a decision curve, DeLong for nested models ruled out. The NRI critique and Pepe 2013 citations are from memory (web verification blocked)."
+  },
+  {
+   "id": "metab-detectable-effect",
+   "lens": "metabolomics",
+   "title": "What fold change this study could have seen, given its own technical and biological variance",
+   "looks_at": "design",
+   "detector": "Outcome-blind: per-feature total SD on the log scale, technical SD from QCs, n per group (the outcome alone), and an FDR-adjusted alpha from the effective number of tests (metab-one-compound-many-features). Together they give the minimal detectable log2 fold change at 80% power, as a design statement. Each null result is read from its own confidence interval's upper bound, not from the MDE and never from post-hoc power. Riley criteria need an anticipated R2 (or C-statistic) that the data alone cannot supply, so they run only when the researcher gives one.",
+   "meaning": "none.",
+   "consumers": [
+    {
+     "stage": "model",
+     "decision": "family guidance",
+     "inference": "n/a",
+     "prediction": "Only with a researcher-supplied anticipated R2: too few events for the planned family pushes toward simpler or penalized families. Otherwise the family-size limit comes from metab-wide-noise-ceiling."
+    },
+    {
+     "stage": "explanation",
+     "decision": "how to read a null",
+     "inference": "A non-significant result is read from its CI: 'not larger than its upper bound'.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "reporting",
+     "decision": "limitations sentence",
+     "inference": "The detectable effect as a design statement; no post-hoc power.",
+     "prediction": "Sample-size adequacy stated only when an anticipated R2 was given."
+    }
+   ],
+   "failure_prevented": "A null is reported as 'no change', or a meaningless post-hoc power figure is given.",
+   "magic": "None in the journey; one limitations sentence. 'Your null for TMAO has an upper bound of 1.6-fold: it did not change by more than that, which is not the same as not changing.'",
+   "layout": "In the record: detectable fold change by feature, ranked by CV.",
+   "sentence": "Given {n} participants per group, a median per-feature SD of {sd} (log2) and BH-adjusted alpha, the minimal detectable fold change at 80% power was {fc}; null results are reported with their confidence intervals.",
+   "sources": [
+    "turbotab/packs.py:1114 sample_size hedge",
+    "Hoenig JM, Heisey DM 2001, Am Stat 55:19-24",
+    "Billoir E, Navratil V, Blaise BJ 2015, Brief Bioinform 16:813-819",
+    "Blaise BJ 2013, Anal Chem 85:8943-8950",
+    "Riley RD et al. 2020, BMJ 368:m441"
+   ],
+   "engine": "new (only the hedge text exists, packs.py:1114-1134).",
+   "tier": "silent",
+   "rank_signal": "Not ranked; one limitations sentence.",
+   "critic_notes": "Automate-silently applied: moved to silent. Fixed: each null read from its CI upper bound (Hoenig and Heisey's remedy), MDE kept as a design statement, Riley criteria only with a researcher-supplied anticipated R2."
+  },
+  {
+   "id": "metab-limit-flags-in-cells",
+   "lens": "metabolomics",
+   "title": "Cells hold '<LOD', '<0.20' or '>ULOQ': the export says where the limits are, on both sides",
+   "looks_at": "measurement",
+   "detector": "Text tokens in numeric feature columns are matched by the limit grammar ('<LOD', 'ND', 'BLQ', '<0.20', '>ULOQ') and set aside by text_numbers, counted per feature and per side (left or right). The detector also reads a numeric limit attached to the token, a kit limit table (LOD/LLOQ/ULOQ per analyte), or a pile-up at one value (a limit the exporter substituted, such as LOD/2 written in). Alternatives it must reject: a token meaning 'not measured' or 'sample failed' (QNS, hemolyzed), which is missing, not censored (\u00a714.2); a pile-up that is a genuinely common value.",
+   "meaning": "Stated from the grammar. Asked only for unknown tokens or missing limit values: what each token means (below detection, below quantification, above the upper limit, not measured) and the limit value when it is not written.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "parse, never drop",
+     "inference": "Each flagged cell becomes a censored value with its side and limit, not a blank. A column is never dropped for its text.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "representation",
+     "decision": "fill on both sides",
+     "inference": "Left-censored at the LOD (Tobit MI, metab-left-censored-nondetects). Values between LOD and LLOQ are kept as detected but imprecise. Right-censored at the ULOQ, never median-filled.",
+     "prediction": "In-fold and outcome-blind: left at the stated limit (LogScaleCensoredFill with the given LOD), right at the ULOQ. Exporter-substituted constants are recognized as limits."
+    },
+    {
+     "stage": "model",
+     "decision": "shape at the ceiling",
+     "inference": "A plateau at the ULOQ is not offered as a threshold shape (metab-dilution-linearity).",
+     "prediction": "Same, recorded."
+    },
+    {
+     "stage": "explanation",
+     "decision": "censoring beside each feature",
+     "inference": "Share censored on each side shown on the trust row.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "limits used",
+     "inference": "Counts per side and the limits used.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "'<LOD' is coerced to NaN and median-filled, so low values become average. '>ULOQ' is read as missing and filled at the median, so the highest concentrations become typical and the top of the dose-response vanishes. A column of text is dropped as 'not numeric'.",
+   "magic": "'Glutamate has 14 cells reading \">ULOQ\". They are the highest values in the study, not missing ones. Filled at the median, the people with the most glutamate would sit in the middle.'",
+   "layout": "Focus: one analyte's distribution with left- and right-censored cells stacked at their limits, flipping between fills.",
+   "sentence": "Values reported below the limit of detection ({n_left}) and above the upper limit of quantification ({n_right}) were treated as left- and right-censored at the kit's limits, not as missing.",
+   "sources": [
+    "turbotab/core/repairs.py:614-632 (limit token grammar)",
+    "turbotab/core/readings.py:645 text_numbers, :1183, :1194",
+    "turbotab/core/stages/working.py:476",
+    "turbotab/clinical.py:138 (failure tokens)",
+    "turbotab/core/methods/omics.py:1229 LogScaleCensoredFill",
+    "Lubin JH et al. 2004, Environ Health Perspect 112:1691-1696",
+    "Helsel DR 2012, Statistics for Censored Environmental Data Using Minitab and R, 2nd ed. (Wiley)",
+    "Siskos AP et al. 2017, Anal Chem 89:656-665"
+   ],
+   "engine": "partial: tokens are parsed and set aside (repairs.py:614-632, readings.py:645). Right-censoring at the ULOQ, the LOD-LLOQ band and kit-limit tables are not consumed by any fill. Shares its engine path with the clinical lens's limit handling.",
+   "tier": "stated",
+   "rank_signal": "Flagged-cell count, right-censored first; asked only for unknown tokens or missing limit values.",
+   "critic_notes": "Sound. Engine path to be shared with the clinical lens."
+  },
+  {
+   "id": "metab-pre-corrected-batches",
+   "lens": "metabolomics",
+   "title": "The batches were already corrected before export, possibly with the outcome in the model",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind signatures, read when a batch or plate column is present: (1) within-batch variances equalized per feature across batches (ComBat's scale step); (2) a study-sample between-batch shift far below the shift the QCs still show (the QCs were left out of the correction); (3) both shifts at zero to numerical precision (mean or median centring). Exporter metadata that names a correction (MetaboAnalyst, sva) settles it. Equal batch medians alone detect centring, not ComBat (empirical-Bayes shrinkage leaves small residual differences), and outcome-protected ComBat in an unbalanced design leaves study-sample batch means apart in proportion to the outcome imbalance, so medians alone would miss the dangerous case. Contrast with the drift reading: within-batch drift may remain while between-batch steps vanish. Alternatives it must reject: a well-behaved instrument (QC medians differ by noise, and within-batch variances are not equalized); a batch column that is not the analytical batch (the acquisition card).",
+   "meaning": "The researcher says whether a between-batch correction was applied before export, which method, and whether the outcome or exposure was a covariate in it.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "batch handling",
+     "inference": "No second correction; batch is kept as a covariate. If the outcome was protected in an unbalanced design, the app states that group differences may be inflated and asks for the uncorrected export.",
+     "prediction": "A correction fitted on all rows before the split has seen the test rows (and the labels, if protected). The honest path is the uncorrected export with ReferenceComBat fitted in-fold."
+    },
+    {
+     "stage": "selection",
+     "decision": "featurewise p-values",
+     "inference": "Featurewise results from outcome-protected, pre-corrected, unbalanced data are not reported as confirmatory.",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "optimism label",
+     "inference": "n/a",
+     "prediction": "The score is labelled optimistic when the correction saw the test rows."
+    },
+    {
+     "stage": "reporting",
+     "decision": "prior correction",
+     "inference": "Method and covariates of the prior correction stated, with its consequence.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "ComBat with the group as a covariate in an unbalanced design manufactures FDR-significant differences (Nygaard 2016). In prediction, a correction that saw the test rows inflates the score, and the uploaded file looks clean.",
+   "magic": "'Within each batch, every feature's spread is the same to three decimals, and your study samples' batch shift is a tenth of the shift your QCs still show: someone batch-corrected this file and left the QCs out. If the case label was in that correction, and cases were 70% of batch 1, part of any difference you find was put there by it.'",
+   "layout": "Angles: 'Were the batches already aligned?' (per-feature within-batch SDs and study-sample batch shifts beside the QC shifts) | 'Was the outcome in the correction?' (batch x outcome table, a design view).",
+   "sentence": "Data were supplied after {method} batch correction {with | without} {outcome} as a covariate; {consequence}.",
+   "sources": [
+    "turbotab/core/methods/batch.py:8-17 (ReferenceComBat in-fold; outcome-protected ComBat refused), :465",
+    "turbotab/packs.py:1028 batch_correction hedge",
+    "Nygaard V, Rodland EA, Hovig E 2016, Biostatistics 17:29-39",
+    "Zindler T et al. 2020, BMC Bioinformatics 21:271 (methylation arrays; mechanism source)",
+    "Johnson WE, Li C, Rabinovic A 2007, Biostatistics 8:118-127"
+   ],
+   "engine": "partial: the app refuses outcome-protected ComBat that it would run itself (batch.py:17) and states the fork (packs.py:1028). Nothing reads whether a correction was applied before upload.",
+   "tier": "asked",
+   "rank_signal": "Ratio of the study-sample between-batch shift to the QC-measured shift, plus equalized within-batch variances.",
+   "critic_notes": "Fixed: the detector now uses outcome-blind signatures that catch ComBat and QC-excluded corrections, not only exact centring; the magic matches the new detector."
+  },
+  {
+   "id": "metab-metabolome-role",
+   "lens": "metabolomics",
+   "title": "Is the metabolome the exposure, the outcome of a diet, or the path between them?",
+   "looks_at": "design",
+   "detector": "The roles reading: an exposure column that is not a feature (intervention arm, intake, a diet score) beside the metabolite block and an outcome. The detector also states the featurewise direction the engine would take today: a numeric outcome gives outcome ~ x_j + Z; a two-level outcome gives x_j ~ event + Z (featurewise.py:14-17), so a continuous exposure with the metabolome as the outcome block is not reachable. No value test can settle a causal role, so it is user-settled (\u00a714.3), with the guess pre-filled from the declared roles.",
+   "meaning": "On the study-question card (with sample timing and matched design): metabolites as exposures of an outcome; metabolites as outcomes of an exposure ('which metabolites does the diet change?'); metabolites as mediators (meet-in-the-middle); or metabolites as markers of intake.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "adjustment set follows the role",
+     "inference": "For diet -> metabolite: adjust for confounders of both (age, sex, kidney function, fasting; BMI only if not a mediator). For the total effect of diet on disease, metabolites are never adjusted for (overadjustment). For mediation, mediator-outcome confounders are required.",
+     "prediction": "The metabolome is the input block. 'Predict intake from the metabolome' (a biomarker panel) is a different outcome, and is asked."
+    },
+    {
+     "stage": "model",
+     "decision": "featurewise direction",
+     "inference": "Metabolome as outcome block: metabolite_j ~ exposure + Z, one model per metabolite with BH (the limma design), so the metabolite's technical error sits in the response (precision, not bias). When the exposure is self-reported intake, its own error attenuates this slope, so the dietary lens's calibration thread applies. Metabolome as exposure: outcome ~ metabolite_j + Z, where metabolite error attenuates (metab-feature-technical-reliability).",
+     "prediction": "Fixed by what is to be predicted."
+    },
+    {
+     "stage": "explanation",
+     "decision": "effect wording",
+     "inference": "Worded by direction: 'per weekly serving, metabolite X rose 12%' vs 'per doubling of X, the odds of T2D'. Mediation proportions only with the meet-in-the-middle criteria met.",
+     "prediction": "Importance is read as association, never as mechanism."
+    },
+    {
+     "stage": "reporting",
+     "decision": "the question",
+     "inference": "Role, direction, adjustment set and any intake calibration stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "A score-driven pipeline always places the metabolome on the predictor side. Diet's effect on metabolites is then estimated in reverse, and adjusting for metabolites blocks the diet effect it meant to estimate. Self-reported intake error, ignored, attenuates every metabolite-on-diet slope.",
+   "magic": "'You have a fish-intake column and 392 metabolites. Asked \"which metabolites does fish raise?\", each metabolite is the outcome. The default direction would have regressed fish intake on each metabolite: an answer to a question you did not ask. And because fish intake is self-reported, its own error shrinks every slope; the dietary calibration applies here too.'",
+   "layout": "Routing: the lineage showing the metabolite block moving between the exposure side and the outcome side, with the adjustment set redrawn.",
+   "sentence": "Each metabolite was modeled as an outcome of {exposure} (one linear model per metabolite on log2 values, adjusted for {Z}; Benjamini-Hochberg FDR){; intake was corrected for measurement error by regression calibration}.",
+   "sources": [
+    "turbotab/core/models/featurewise.py:1-35 (direction fixed by outcome type, :14-17)",
+    "turbotab/core/covariate_guesses.py:30-45 (mediators, the outcome's own group)",
+    "turbotab/core/methods/calibration.py (dietary regression calibration)",
+    "Chadeau-Hyam M et al. 2011, Biomarkers 16:83-88 (meet-in-the-middle)",
+    "Schisterman EF, Cole SR, Platt RW 2009, Epidemiology 20:488-495",
+    "VanderWeele TJ 2015, Explanation in Causal Inference (Oxford University Press)",
+    "Smyth GK 2004, Stat Appl Genet Mol Biol 3:Article 3",
+    "Carroll RJ et al. 2006, Measurement Error in Nonlinear Models, 2nd ed."
+   ],
+   "engine": "partial: featurewise.py:14-17 fixes the direction by the outcome's type; the metabolome as the outcome block of a continuous exposure is not offered. covariate_guesses.py already reasons about mediators among covariates.",
+   "tier": "asked",
+   "rank_signal": "Asked once, only when a non-feature exposure column sits beside the block; otherwise stated from declared roles.",
+   "critic_notes": "Fixed: when the exposure is self-reported intake, its error attenuates the metabolite-on-exposure slope, so the dietary lens's calibration thread is wired to this direction; the 'noise on the wrong side' wording corrected."
+  },
+  {
+   "id": "metab-outcome-defined-by-a-feature",
+   "lens": "metabolomics",
+   "title": "The outcome is defined by a metabolite that is in the panel (glucose for diabetes, creatinine for CKD, urate for gout)",
+   "looks_at": "predictor-outcome",
+   "detector": "Outcome-blind first: the outcome's definition (asked, or from the codebook) is matched against annotated features with a dictionary of defining analytes (diabetes: glucose; CKD: creatinine, cystatin C; gout: urate; dyslipidemia: triglycerides and cholesterol esters in lipidomics), extending covariate_guesses' outcome-group map to features. Prediction only, inside training folds: a single feature whose relation to the outcome is a step near a clinical cutoff (single-feature AUC >= 0.95) is proposed for meaning review, recorded. The MS feature measures the defining analyte with different error from the clinical assay, so separation is near-deterministic rather than exact. Whether this is leakage depends on timing (metab-sample-timing-vs-diagnosis): in a prevalent or same-visit design it is the definition; in an incident design, baseline glucose is the legitimate clinical baseline to beat. Alternatives: a strong genuine biomarker that is not definitional (asked); an annotation mismatch (metab-annotation-confidence).",
+   "meaning": "The researcher confirms the outcome's definition, that feature X is or measures the defining analyte, and (from the timing card) whether the design is prevalent or incident.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "route out, redefine, or treat as baseline",
+     "inference": "Prevalent or same-visit design: the defining analyte and its adduct group are routed out, or the outcome is redefined. Adjusting for it is not offered, because with a deterministic threshold the model is not estimable (separation). Incident design: the analyte stays out of the metabolite block and becomes part of the clinical comparator (metab-clinical-factors).",
+     "prediction": "Prevalent: routed out of the inputs by rule, scores with and without recorded. Incident: baseline glucose joins the clinical-only baseline the metabolites must beat."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "honest score",
+     "inference": "n/a",
+     "prediction": "The headline score excludes the defining analyte (prevalent) or is the increment over it (incident), paired fold by fold."
+    },
+    {
+     "stage": "explanation",
+     "decision": "labelled definitional",
+     "inference": "Named as the outcome's definition, not a discovery.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "reporting",
+     "decision": "exclusion and reason",
+     "inference": "Stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "The model 'discovers' that glucose predicts diabetes defined by glucose. The AUC is the definition, and the reported panel's novelty is zero. Or, in a prospective design, baseline glucose is wrongly thrown away when it is the bar the metabolites must clear.",
+   "magic": "'Your top feature (glucose [M+Na]+) splits cases near the 7.0 mmol/L line: diabetes here is defined by fasting glucose of 7 or more, measured at the same visit. Without it and its adducts, the metabolome's AUC is 0.68. That is the part a new biomarker would add.'",
+   "layout": "Routing: the defining analyte and its adduct group moved out of the inputs (or into the clinical baseline), beside the score with and without.",
+   "sentence": "Glucose and its adducts were excluded from the predictors because the outcome was defined by fasting glucose at the same visit; the reported performance is that of the remaining features.",
+   "sources": [
+    "turbotab/core/covariate_guesses.py:16-17, :41 (a clinical measurement of the outcome's own group), :172, :186",
+    "Kaufman S et al. 2012, ACM Trans Knowl Discov Data 6(4):15",
+    "Kapoor S, Narayanan A 2023, Patterns 4:100804",
+    "VanderWeele TJ 2019, Eur J Epidemiol 34:211-219",
+    "American Diabetes Association 2024, Diabetes Care 47(Suppl 1):S20-S42 (diagnostic criteria)"
+   ],
+   "engine": "partial: covariate_guesses.py:41 recognizes a measurement of the outcome's own group among covariates. Nothing applies it to annotated metabolite features or detects a cutoff-shaped separator.",
+   "tier": "asked",
+   "rank_signal": "Only on a dictionary match with an annotated feature, or in-fold cutoff-shaped separation under prediction.",
+   "critic_notes": "Fixed: 'adjusted for glucose' removed (not estimable under a deterministic threshold); the prevalent vs incident split added and tied to sample timing; near-deterministic separation noted."
+  },
+  {
+   "id": "metab-sample-timing-vs-diagnosis",
+   "lens": "metabolomics",
+   "title": "Some samples were drawn after diagnosis or treatment began: the metabolome may be the disease, not its risk",
+   "looks_at": "time",
+   "detector": "Sample collection date against diagnosis or event date gives each case's lag. Dates are parsed by their values (repeats.py:112), or a prevalent/incident flag is read. The view shows the lag distribution among cases: the share drawn after diagnosis, and the share within 2 years before. It reads when the outcome happened (the outcome alone plus a design column), never the outcome's relation to features, so it is allowed before the lock. Alternatives: a date that is the processing or analysis date (asked); controls' dates, which are the index date of their matched case (metab-matched-sets).",
+   "meaning": "On the study-question card: whether samples precede diagnosis (a prospective nested design) or follow it (prevalent cases, possibly treated), and what each date means. Becomes stated when collection and diagnosis dates give the lag strip.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "eligibility",
+     "inference": "Cases sampled after diagnosis are excluded or analyzed separately. A lag exclusion (first 1-2 years) is a pre-specified sensitivity analysis.",
+     "prediction": "The intended use (screening years ahead vs at presentation) fixes which samples are eligible."
+    },
+    {
+     "stage": "selection",
+     "decision": "estimand",
+     "inference": "A post-diagnosis sample estimates a disease signature (consequence), not a risk association, and the estimand is stated. The answer also decides metab-outcome-defined-by-a-feature (prevalent vs incident).",
+     "prediction": "n/a"
+    },
+    {
+     "stage": "evaluation",
+     "decision": "by lag",
+     "inference": "After the lock, estimates by lag stratum.",
+     "prediction": "Score by time-to-diagnosis stratum. A model trained on samples drawn at diagnosis is not scored as a years-ahead predictor."
+    },
+    {
+     "stage": "explanation",
+     "decision": "reverse causation flag",
+     "inference": "After the lock, features whose association is concentrated in short-lag cases are flagged as plausibly early disease.",
+     "prediction": "Same, from fold results."
+    },
+    {
+     "stage": "reporting",
+     "decision": "timing",
+     "inference": "Time between sampling and diagnosis (STROBE-ME).",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Metabolites changed by disease or its treatment are reported as risk factors. A 'predictive' panel built from post-diagnosis samples performs near chance on pre-diagnostic ones.",
+   "magic": "Before any estimate: '31 of your 120 cases gave blood after their diagnosis, and 12 more within the year before it. What those people have is partly the disease or its treatment. Which question are you answering: risk, or signature?' After the lock, the by-lag comparison shows whether the signal holds in samples drawn five or more years ahead.",
+   "layout": "Focus: each case's sample date relative to diagnosis (a lag strip with the zero line marked), with controls at their index dates.",
+   "sentence": "Samples were collected a median of {m} years (IQR {q1}-{q3}) before diagnosis; {k} cases sampled after diagnosis were {excluded | analysed separately}, and analyses excluding cases diagnosed within 2 years of sampling are reported.",
+   "sources": [
+    "turbotab/repeats.py:112 (dates parsed by values)",
+    "turbotab/core/estimand.py:169 (outcomes followed over time)",
+    "Gallo V et al. 2011, PLoS Med 8:e1001117 (STROBE-ME)",
+    "Wang TJ et al. 2011, Nat Med 17:448-453",
+    "Hernan MA, Robins JM 2020, Causal Inference: What If (Chapman & Hall/CRC)"
+   ],
+   "engine": "new: dates parse by value (repeats.py:112), but there is no sample-to-diagnosis lag reading.",
+   "tier": "asked",
+   "rank_signal": "Asked whenever the outcome is a disease state; stated once dates give the lag strip; ranked by the share of cases sampled after diagnosis.",
+   "critic_notes": "Sound. Now gates metab-outcome-defined-by-a-feature."
+  },
+  {
+   "id": "metab-matched-sets",
+   "lens": "metabolomics",
+   "title": "The rows are matched case-control sets, not independent people",
+   "looks_at": "design",
+   "detector": "A set-identifier column whose sets each contain exactly one case (or a fixed case:control ratio). Members agree on candidate matching factors: age within a few years, sex, fasting status, storage time, batch. The outcome is balanced exactly by design (outcome alone). grain.py recognizes the shape only through DESIGN_NOT_DESCRIBED. Alternatives: repeat samples of one person (metab-person-fingerprint); households or sites (asked); a frequency-matched design without sets.",
+   "meaning": "On the study-question card: the matched sets, the matching factors, and the case:control ratio.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "grain",
+     "inference": "The matched set is the unit, and every split keeps a set together.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "selection",
+     "decision": "matching factors",
+     "inference": "Matching factors are not estimated (their effects are fixed by design). Residual confounding by them is stated.",
+     "prediction": "Matching factors cannot show added value inside the matched sample (Janes & Pepe 2008)."
+    },
+    {
+     "stage": "model",
+     "decision": "family",
+     "inference": "Conditional logistic regression for each feature. An unconditional model is disclosed as biased under fine matching.",
+     "prediction": "The case fraction is fixed by design, so predicted probabilities are not risks."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "resampling and calibration",
+     "inference": "Set-grouped resampling for intervals.",
+     "prediction": "Folds by set. AUC within a sample matched on predictors misstates population discrimination. Calibration is reweighted to cohort incidence, or not reported."
+    },
+    {
+     "stage": "reporting",
+     "decision": "design",
+     "inference": "Matched design and conditional analysis stated.",
+     "prediction": "Same, with the prevalence caveat."
+    }
+   ],
+   "failure_prevented": "An unconditional analysis of a finely matched design biases odds ratios. Random folds split sets, so the model learns set-level patterns (plate, storage) shared by a case and its control. Probabilities from a 1:1 matched design are read as risks.",
+   "magic": "'Your 240 rows are 120 pairs, each one case and one control, matched on age, sex and freezer time. Analysed as 240 independent people, the matching is thrown away; analysed by pair, each comparison is within a pair run on the same plate.'",
+   "layout": "Flow: 240 rows -> 120 matched sets -> folds drawn by set, with the analysis unit drawn on the flow.",
+   "sentence": "Odds ratios were estimated by conditional logistic regression within the {n} matched sets; resampling kept each set together.",
+   "sources": [
+    "turbotab/grain.py:50-75 (DESIGN_NOT_DESCRIBED: matched sets)",
+    "turbotab/repeats.py:322-330",
+    "turbotab/core/models/folds.py:199-224",
+    "Pearce N 2016, BMJ 352:i969",
+    "Janes H, Pepe MS 2008, Biometrics 64:1-9",
+    "Breslow NE, Day NE 1980, IARC Sci Publ 32",
+    "Gallo V et al. 2011, PLoS Med 8:e1001117"
+   ],
+   "engine": "partial: grain.py:58 recognizes matched sets only through the escape hatch (design_not_described, [AUTHOR REQUIRED]). Grouped folds exist. There is no conditional family or matched-set reading.",
+   "tier": "asked",
+   "rank_signal": "A set-ID column with exactly one case per set.",
+   "critic_notes": "Sound."
+  },
+  {
+   "id": "metab-person-fingerprint",
+   "lens": "metabolomics",
+   "title": "Repeated samples from one person are more alike than any intervention effect: the metabolome is a fingerprint",
+   "looks_at": "structure",
+   "detector": "Subject IDs repeat (_repeated_subjects routes to set_grain). As a value test on predictors only: within-person vs between-person profile correlation, the per-feature share of variance between people, and a nearest-profile identification rate (how often a sample's closest other sample belongs to the same person) against chance. Alternatives: technical replicates (closer still, same date; metab-technical-replicates); unrelated people under one ID (identification rate at chance). metabolomics_paired_logged carries IDs with no biological pairing, so it is a working negative control.",
+   "meaning": "Settled on the shared repeat-grain question: the repeats are the same person at different times (pre/post, crossover period, repeat visit). Under prediction, whether the model is for a new person or a known person over time is asked on the deployment question.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "grain",
+     "inference": "The person is the unit.",
+     "prediction": "Same."
+    },
+    {
+     "stage": "representation",
+     "decision": "within-person change",
+     "inference": "Within-person change (post - pre on the log scale), or person-centring for a crossover.",
+     "prediction": "Person-centring only if the person has a baseline at deployment (deployment question)."
+    },
+    {
+     "stage": "model",
+     "decision": "paired or mixed",
+     "inference": "Paired or mixed model with person as the unit (CR2 when rows repeat), separating the within-person effect from the between-person one.",
+     "prediction": "Fixed by the deployment answer: a new person, or a known person over time."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "grouped by person",
+     "inference": "Intervals clustered by person.",
+     "prediction": "Folds grouped by person, with the random-fold score shown beside to reveal identification."
+    },
+    {
+     "stage": "explanation",
+     "decision": "within vs between",
+     "inference": "Within-person and between-person effects named separately.",
+     "prediction": "Same for importance."
+    },
+    {
+     "stage": "reporting",
+     "decision": "unit and pairing",
+     "inference": "Stated.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Random folds put one person's pre and post samples on both sides, so the model identifies people and scores the identification. Between-person metabotype differences swamp a within-person intervention effect in an unpaired test.",
+   "magic": "'Each sample's nearest neighbour is the same person's other sample 88% of the time: the metabolome is a fingerprint. With random folds the model scored 0.95 by recognizing people; grouped by person, it is 0.64. Paired, each change is measured against the person's own baseline, not the crowd.' On metabolomics_paired_logged the rate sits at chance, and the app says the IDs carry no pairing.",
+   "layout": "Angles: 'Who is this sample?' (identification rate vs chance) | score with folds random vs grouped by person.",
+   "sentence": "Samples from the same participant ({k} per person) were analysed as paired: within-person changes were modelled, and resampling kept each participant's samples together.",
+   "sources": [
+    "turbotab/packs.py:2102 _repeated_subjects",
+    "turbotab/core/models/folds.py:199-224",
+    "turbotab/core/models/featurewise.py (CR2 when rows repeat)",
+    "turbotab/sample_data/metabolomics_paired_logged.md (subject_id pairing is a label with no biological pairing)",
+    "Assfalg M et al. 2008, PNAS 105:1420-1424",
+    "Roberts DR et al. 2017, Ecography 40:913-929"
+   ],
+   "engine": "partial: repeated subjects route to the grain, and grouped folds and CR2 exist. The identification-rate test and the within/between decomposition are new.",
+   "tier": "surfaced",
+   "rank_signal": "Identification rate over chance.",
+   "critic_notes": "Sound. Meaning moved to the shared repeat-grain question; the new-vs-known-person question moved to the deployment question."
+  },
+  {
+   "id": "metab-cross-batch-transport",
+   "lens": "metabolomics",
+   "title": "The next batch, lab or platform will not look like these: the honest score is across batches",
+   "looks_at": "measurement",
+   "detector": "After correction, the residual between-batch shift, all outcome-blind: QC medians per batch, study-sample RLA medians, and the share of top-PC variance explained by batch. Also the number of batches, sites, instruments or platforms, and whether feature IDs are lab-specific (m/z@RT). Under prediction, the leave-one-batch-out score beside the random-fold score, and calibration-in-the-large per held-out batch. With 2 batches LOBO is only 2 folds, so its spread is shown. Alternatives: a residual shift within QC noise (no transport problem); batch confounded with the outcome (metab-run-order-aligned-with-outcome takes precedence).",
+   "meaning": "Under prediction only, the deployment question: a new batch in the same lab, another lab or platform, or a targeted re-assay of the panel (also carrying new vs known person, and short reproducible panel vs best score).",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "deployment requirement",
+     "inference": "Batch handled as a covariate.",
+     "prediction": "ReferenceComBat fitted in-fold. The deployment record says a new batch must carry its own interspersed pooled QCs, and that its location and scale are estimated from that batch's own unlabeled samples before scoring."
+    },
+    {
+     "stage": "model",
+     "decision": "robust inputs",
+     "inference": "n/a",
+     "prediction": "When transport is the goal, fewer features and robust inputs (ranks, ratios) are proposed and tested by resampling."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "honest score and calibration",
+     "inference": "After the lock, heterogeneity of estimates across batches or sites as a sensitivity analysis.",
+     "prediction": "Leave-one-batch-out (or site-out) is the honest score when deployment is a new batch, with the per-batch calibration slope and intercept and the LOBO spread."
+    },
+    {
+     "stage": "reporting",
+     "decision": "setting and validation",
+     "inference": "Batches and sites stated.",
+     "prediction": "The validation design by batch stated (TRIPOD), with the deployment requirements."
+    }
+   ],
+   "failure_prevented": "Random folds mix batches, so the model never meets a new batch. At deployment every intensity shifts and calibration fails, and features defined as m/z@RT do not exist in the next lab.",
+   "magic": "'Random folds score 0.84. Holding out a whole batch, 0.71, and the predicted risks in batch 3 run 12 points high. That is what the next run of this instrument would see.'",
+   "layout": "Angles: 'Does a new batch look like the old ones?' (per-batch RLA) | score with random folds vs batch held out | calibration per held-out batch.",
+   "sentence": "Performance was estimated by leave-one-batch-out validation (AUC {auc_lobo}; random-fold {auc_cv}), with calibration reported for each held-out batch.",
+   "sources": [
+    "turbotab/core/methods/batch.py:8-17 (ReferenceComBat in-fold)",
+    "turbotab/core/models/folds.py:199-224 (grouped folds)",
+    "Soneson C, Gerster S, Delorenzi M 2014, PLoS One 9:e100335",
+    "Riley RD et al. 2016, BMJ 353:i3140",
+    "Debray TPA et al. 2015, J Clin Epidemiol 68:279-289",
+    "Collins GS et al. 2015, Ann Intern Med 162:55-63 (TRIPOD)",
+    "Wehrens R et al. 2016, Metabolomics 12:88"
+   ],
+   "engine": "partial: grouped folds could take batch as the unit, and ReferenceComBat fits in-fold. There is no leave-one-batch-out score, per-batch calibration or deployment-requirement record.",
+   "tier": "asked under prediction; silent under inference",
+   "rank_signal": "Residual between-batch shift after correction.",
+   "critic_notes": "Sound. Added the 2-batch LOBO spread, the new-batch ReferenceComBat requirement, and folded qc-drift's interspersed-QC requirement into the same deployment record."
+  },
+  {
+   "id": "metab-wide-noise-ceiling",
+   "lens": "metabolomics",
+   "title": "With 392 features and 72 people, noise alone reaches a high score: the bar any finding must clear",
+   "looks_at": "structure",
+   "detector": "Outcome-blind: the shape (n, events, p, and the effective number of quantities from metab-one-compound-many-features). Random labels are drawn with the outcome's own class counts (its marginal only, never its pairing with features) against the actual feature matrix, giving the null distribution of the best single-feature association (max |t| or AUC) and of the full pipeline's cross-validated score. Then, as recorded outcome views: under prediction, the honest score's label-permutation p-value with every filter, screen and tuning step inside the permutation (Ojala & Garriga 2010); under inference, after the lock, the metabolome-wide significance level by permutation. Whole-pipeline permutation is CPU-heavy: it is scheduled, or run with fewer permutations and a Monte Carlo interval on its p. Alternative: a ceiling inflated by one outlier sample (rank statistics).",
+   "meaning": "none: the researcher reads the bar.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "screening and multiplicity",
+     "inference": "Multiplicity is counted over the effective number of tests, with a permutation metabolome-wide significance level after the lock.",
+     "prediction": "Any screen that reads the outcome runs inside each training fold. A screen run once on all rows is refused."
+    },
+    {
+     "stage": "model",
+     "decision": "what the shape allows",
+     "inference": "featurewise with FDR. No multivariable fit at p >= n.",
+     "prediction": "PLS-DA is not on the shelf (with its reason). Penalized families use nested tuning, and the shape sets how many inputs the family may fit."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "permutation null of the honest score",
+     "inference": "n/a",
+     "prediction": "The honest score is reported with its label-permutation null (whole pipeline, scheduled; fewer permutations with a Monte Carlo interval when compute is tight) and the repeated-CV spread."
+    },
+    {
+     "stage": "explanation",
+     "decision": "against the ceiling",
+     "inference": "After the lock, a reported feature's statistic is set against the null maximum.",
+     "prediction": "A single-feature AUC below the null's 95th percentile is labelled 'within what noise reaches'."
+    },
+    {
+     "stage": "reporting",
+     "decision": "permutation result",
+     "inference": "The metabolome-wide threshold stated.",
+     "prediction": "The permutation p-value, its number of permutations, and the in-fold screening stated."
+    }
+   ],
+   "failure_prevented": "Screening on all rows before CV gives near-perfect scores on noise. A PLS-DA score plot or VIP list on random labels is read as separation. The best of 400 null features is reported as a biomarker.",
+   "magic": "(Prediction; under inference, after the lock) 'Give these 72 people random labels with the same 39/33 split, keep the 392 features, and the best single feature still reaches an AUC of about 0.69. Your strongest, mz_0094, reaches 0.70: no higher than noise reaches here.'",
+   "layout": "Angles: 'How high does noise reach?' (null distribution of the best feature, with your top feature marked) | 'Score vs its permutation null'.",
+   "sentence": "The cross-validated AUC ({auc}) was compared with its permutation null ({B} label permutations of the full pipeline, p = {p}, Monte Carlo 95% interval {lo}-{hi}); all screening ran within training folds.",
+   "sources": [
+    "turbotab/core/models/featurewise.py:58 PLS_DA_ABSENT",
+    "turbotab/packs.py:1068 oplsda_is_a_rotation, :1087 q2_threshold hedge (permutation test named), :1114",
+    "Analytic null ceiling at the fixture's 39/33 split: Mann-Whitney null SD sqrt(73/(12*39*33)) = 0.069, times the expected maximum |z| of about 120 independent quantities (~2.8), giving ~0.69; mz_0094's 0.702 is the fixtures finder's measurement",
+    "Ambroise C, McLachlan GJ 2002, PNAS 99:6562-6566",
+    "Ojala M, Garriga GC 2010, J Mach Learn Res 11:1833-1863",
+    "Westerhuis JA et al. 2008, Metabolomics 4:81-89",
+    "Chadeau-Hyam M et al. 2010, J Proteome Res 9:4620-4627",
+    "Varma S, Simon R 2006, BMC Bioinformatics 7:91"
+   ],
+   "engine": "partial: PLS-DA is refused with its reason (featurewise.py:58), and the permutation-test hedge is text only (packs.py:1087). There is no noise-ceiling reading and no whole-pipeline label-permutation test.",
+   "tier": "surfaced",
+   "rank_signal": "Always shown when p > n.",
+   "critic_notes": "Sound. The analytic check uses the real 39/33 split (it was written as 36/36); compute note added because whole-pipeline permutation is a heavy run on the bedroom machine and must be scheduled."
+  },
+  {
+   "id": "metab-panel-instability",
+   "lens": "metabolomics",
+   "title": "The 'panel' changes from fold to fold: which features are chosen is itself an estimate",
+   "looks_at": "predictor-outcome",
+   "detector": "Under prediction: each feature's selection frequency, and its compound group's, across resamples (CV folds x reseeds, or stability selection's B pairs); Jaccard overlap between fold panels, against the frequency expected under a null of the same panel size. Under inference: for any multivariable selection, the bootstrap inclusion frequency (Heinze 2018). The outcome-blind precursor is p/n and redundancy, which predict instability before any fit. Alternative: instability within a compound group only, where the group itself is stable (metab-one-compound-many-features).",
+   "meaning": "none, except the goal (a short reproducible panel vs the best score), which rides on the deployment question.",
+   "consumers": [
+    {
+     "stage": "selection",
+     "decision": "selection method",
+     "inference": "Data-driven selection is discouraged; inclusion frequencies are reported when it is used.",
+     "prediction": "Stability selection is offered for a short reproducible panel, ranked after the elastic net."
+    },
+    {
+     "stage": "explanation",
+     "decision": "selection frequency beside importance",
+     "inference": "Bootstrap inclusion frequencies beside the estimates.",
+     "prediction": "Each top feature's and group's selection frequency, beside importance stability across reseeds."
+    },
+    {
+     "stage": "reporting",
+     "decision": "what the panel is",
+     "inference": "Stated with frequencies.",
+     "prediction": "The panel is reported with selection frequencies. Features chosen in fewer than half the resamples are not named as the panel."
+    }
+   ],
+   "failure_prevented": "A '12-metabolite signature' that is one draw of many. The next study's panel shares two features, and the field calls it a failure to replicate.",
+   "magic": "'Your 12-metabolite panel: across 50 refits, only 3 features appear more than half the time; grouped by compound, 5 groups do. The panel is those 5 groups, not those 12 features.'",
+   "layout": "Strip: features ranked by selection frequency, grouped by compound, with the null frequency as a gray band.",
+   "sentence": "Selection frequencies over {B} resamples are reported; {k} features (in {g} compound groups) were selected in at least {tau} of resamples.",
+   "sources": [
+    "turbotab/core/models/variable_selection.py:14, :52-79 (stability selection, INSTABILITY)",
+    "turbotab/core/models/explain.py:28-33 (importance stability across reseeds)",
+    "Meinshausen N, Buhlmann P 2010, J R Stat Soc B 72:417-473",
+    "Shah RD, Samworth RJ 2013, J R Stat Soc B 75:55-80",
+    "Heinze G, Wallisch C, Dunkler D 2018, Biom J 60:431-449",
+    "Broadhurst DI, Kell DB 2006, Metabolomics 2:171-196"
+   ],
+   "engine": "partial: stability selection and importance stability exist. Per-feature and per-group selection frequency across the evaluation's resamples is not a reading carried to explanation or reporting.",
+   "tier": "surfaced",
+   "rank_signal": "At explanation and reporting under prediction when a selecting family is used; Jaccard overlap of fold panels vs the null.",
+   "critic_notes": "Sound. The goal question folded into the deployment question."
+  },
+  {
+   "id": "metab-ratio-features",
+   "lens": "metabolomics",
+   "title": "Two features are a substrate and its product: their ratio indexes a pathway step, and it cancels dilution",
+   "looks_at": "predictors",
+   "detector": "Outcome-blind: annotated substrate-product or precursor-product pairs from a pathway table among features at MSI level 2 or better (kynurenine/tryptophan, citrulline/ornithine/arginine, the BCAA/AAA Fischer ratio, lysoPC/PC, ADMA/arginine). For each pair: whether the ratio is more reliable than its parts (QC RSD of the ratio below both) and whether it is dilution-invariant (uncorrelated with the PQN dilution factor while the parts are not; a common dilution cancels in a log difference). A ratio is never chosen by its association with the outcome before the lock. Under prediction, an all-pairs ratio search is a proposal that runs inside folds and is recorded. Alternative: pairs that only co-vary through dilution, whose ratio carries nothing new.",
+   "meaning": "Stated from the pathway table, never asked: the listed ratios are offered as pathway-step indices, a hypothesis the researcher may decline.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "engineered ratio features",
+     "inference": "Pre-specified ratios are formed row-locally (log differences) before the lock.",
+     "prediction": "Proposed ratios are formed row-locally and kept only if resampling shows added value."
+    },
+    {
+     "stage": "selection",
+     "decision": "multiplicity",
+     "inference": "Each ratio counts as a test. A ratio and both its parts are not entered as independent findings.",
+     "prediction": "Same, recorded."
+    },
+    {
+     "stage": "explanation",
+     "decision": "reading a ratio",
+     "inference": "A ratio's effect is read as an index of the pathway step, a hypothesis, with its parts beside it; it is not a measured enzyme activity.",
+     "prediction": "Same, as association."
+    },
+    {
+     "stage": "reporting",
+     "decision": "ratios stated",
+     "inference": "The ratios and their interpretation as indices.",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Score-driven pipelines never form biologically meaningful ratios, or search all p^2 ratios on the full data and leak. A pathway signal split across two noisy parts is missed or misread.",
+   "magic": "'Kynurenine and tryptophan each track dilution (r = 0.6). Their ratio does not, and its QC RSD is half of either part's. It indexes the tryptophan-to-kynurenine step, where inflammation acts, though other enzymes and free tryptophan move it too.'",
+   "layout": "Focus: the pair's parts and their ratio against the dilution factor, flipping parts and ratio.",
+   "sentence": "Pre-specified metabolite ratios ({list}) were analysed as log differences and interpreted as indices of the {pathway step}, not as measured enzyme activity.",
+   "sources": [
+    "turbotab/core/methods/qc_drift.py:377 qc_rsd, :418 dilution (inputs to the outcome-blind test)",
+    "Petersen AK et al. 2012, BMC Bioinformatics 13:120 (p-gain)",
+    "Gieger C et al. 2008, PLoS Genet 4:e1000282",
+    "Suhre K et al. 2011, Nature 477:54-60",
+    "Badawy AAB, Guillemin G 2019, Int J Tryptophan Res 12:1178646919868978 (the K/T ratio is not a reliable IDO index; from memory)"
+   ],
+   "engine": "new (no ratio features exist).",
+   "tier": "stated",
+   "rank_signal": "Offered only when annotated MSI <= 2 pathway pairs exist; ranked by pairs whose ratio QC RSD is below both parts'.",
+   "critic_notes": "Fixed: 'it reads one enzyme: IDO' replaced by a pathway-step index worded as a hypothesis (Badawy & Guillemin's reading is from memory; web verification was blocked)."
+  },
+  {
+   "id": "metab-feature-flow",
+   "lens": "metabolomics",
+   "title": "How 2,400 features became 900: each filter's count, and which thresholds decide which features",
+   "looks_at": "measurement",
+   "detector": "The ordered filter chain as a feature flow, counted at each step: merge artifacts -> internal standards routed out -> blanks -> QC detection (sparing unrepresented features) -> QC RSD -> dilution linearity -> D-ratio (in-fold) -> censored share or 80% rule (two-part where chosen). The cost of each alternative threshold is shown (RSD 20/30%, blank ratio 3/5/10/20, D-ratio 0.4/0.5, linearity r 0.7), all outcome-blind. Which retained top features sit within a threshold's reach is shown after the lock under inference, or from fold results under prediction.",
+   "meaning": "The researcher fixes every filter threshold here, once, before the lock, with its cost shown. This screen absorbs the threshold decisions of metab-blank-contamination, metab-feature-technical-reliability, metab-dilution-linearity, metab-qc-representativeness and metab-group-specific-detection.",
+   "consumers": [
+    {
+     "stage": "representation",
+     "decision": "thresholds",
+     "inference": "Fixed before the seal; the step that removes the most is shown first.",
+     "prediction": "Same; in-fold steps are counted per fold."
+    },
+    {
+     "stage": "explanation",
+     "decision": "threshold-dependent findings",
+     "inference": "After the lock, a reported feature that a neighbouring threshold would remove is labelled threshold-dependent.",
+     "prediction": "Same, from fold results."
+    },
+    {
+     "stage": "reporting",
+     "decision": "feature flow",
+     "inference": "A feature-flow figure (the analogue of the participant flow) and one sentence of counts (mQACC).",
+     "prediction": "Same."
+    }
+   ],
+   "failure_prevented": "Filtering decisions vanish into a final feature count. A threshold quietly decides the finding, and reviewers cannot reconstruct the path from 2,400 features to 900.",
+   "magic": "'Of 2,412 features, 1,046 reach the model. The RSD threshold alone decides 310 of them, and the choice between 20% and 30% is yours to make here, before any result exists.' Later: 'at 20% instead of 30%, your #4 feature would have been removed.'",
+   "layout": "Flow applied to columns: each filter step lit, with a Strip at each step of the removed features ranked by the measure that removed them, and the threshold-cost Angles beside it.",
+   "sentence": "Of {n0} features, {n_blank} were removed as background, {n_qcdet} for QC detection below 70%, {n_rsd} for QC RSD of {t}% or more, and {n_d} for a D-ratio of 50% or more within training folds, leaving {n_final}.",
+   "sources": [
+    "turbotab/core/methods/qc_drift.py:741 rlsc_details",
+    "turbotab/core/methods/omics.py:2148 detection_details",
+    "docs/turbotab-next/INBOX.md:186",
+    "Kirwan JA et al. 2022, Metabolomics 18:70",
+    "Broadhurst D et al. 2018, Metabolomics 14:72",
+    "Schiffman C et al. 2019, BMC Bioinformatics 20:334",
+    "Considine EC et al. 2018, Metabolomics 14:7"
+   ],
+   "engine": "partial: each filter reports its own count (qc_drift.py:741, omics.py:2148). There is no ordered feature flow and no threshold-cost view.",
+   "tier": "stated",
+   "rank_signal": "Always, once: the one screen where all filter thresholds are fixed.",
+   "critic_notes": "Sound. Made the single threshold screen for representation, which is the main load reducer."
+  },
+  {
+   "id": "metab-affinity-proteomics",
+   "lens": "metabolomics",
+   "title": "The assay block is affinity proteomics (Olink NPX or SomaScan RFU), with vendor normalization, plates and LOD flags",
+   "looks_at": "measurement",
+   "detector": "Outcome-blind. Olink naming (OID, UniProt, NPX) or SomaScan naming (seq.NNNN.NN, RFU). NPX values are on a log2 relative scale, can be negative, and plate medians sit near zero after normalization; RFU values are positive and log-normal. Signs of vendor processing: per-sample QC or assay warning columns, per-assay LOD columns, a plate ID, and bridging samples (one sample ID on two plates). It must reject MS intensities and expression matrices.",
+   "meaning": "proteomics_scale: NPX, raw RFU, or ANML-normalized (vendor normalization already applied). Also whether plates were bridged, and whether below-LOD values were kept or set missing.",
+   "consumers": [
+    {
+     "stage": "opening",
+     "decision": "QC-flagged samples and assays",
+     "inference": "Excluded with an exit, and shown in the flow.",
+     "prediction": "The same."
+    },
+    {
+     "stage": "representation",
+     "decision": "scale and plate",
+     "inference": "NPX is never re-logged. Bridging normalization is learned on the bridge rows (reference rows) and frozen at the lock. Below-LOD NPX is kept as measured, with a censoring sensitivity analysis.",
+     "prediction": "The same, in-fold whenever it learns from study samples."
+    },
+    {
+     "stage": "selection",
+     "decision": "epitope effects",
+     "inference": "A protein whose pQTL alters the protein reads genotype or ancestry, not abundance. It is flagged when genotype or ancestry is in the study.",
+     "prediction": "The same flag, beside importance."
+    },
+    {
+     "stage": "evaluation",
+     "decision": "plate as process",
+     "inference": "Plate \u00d7 outcome is a design-balance check (O2).",
+     "prediction": "Leave-one-plate-out. Transport to the other platform is stated as unknown."
+    },
+    {
+     "stage": "explanation",
+     "decision": "units",
+     "inference": "One NPX unit means a doubling on a relative scale, not a concentration.",
+     "prediction": "The same."
+    }
+   ],
+   "failure_prevented": "Consequential: HIGH. Family K1, S6, S1. The failures: re-logging NPX, treating NPX from different plates as comparable without bridging, dropping below-LOD values (which biases low-abundance proteins), and reading an epitope effect as a diet-protein association. No thread names affinity proteomics, and metab-subdomain lists MS and NMR only.",
+   "magic": "These values are NPX: already log2, and relative to each plate. Plate 3 sits 0.4 NPX above the others on its bridging samples. (Illustrative.)",
+   "layout": "Angles: plate medians, bridge-sample agreement, and the below-LOD share per assay.",
+   "sentence": "Protein levels were analyzed as Olink NPX (log2 scale) after bridging-sample normalization across plates; values below the limit of detection were retained.",
+   "sources": [
+    "Sun et al. 2018, Nature 558:73 (epitope effects)",
+    "Sun et al. 2023, Nature 622:329 (UKB-PPP)",
+    "Candia et al. 2017, Sci Rep 7:14248",
+    "Katz et al. 2022, Sci Adv 8:eabm5164",
+    "Eldjarn et al. 2023, Nature 622:348"
+   ],
+   "engine": "new.",
+   "added_by": "completeness critic"
+  }
+ ],
+ "top_moments": [
+  "metab-run-order-aligned-with-outcome: 'Injection order alone predicts case status at AUC 0.81; your model's 0.86 is 0.05 above the instrument.' The shortcut is in every random fold, so no score can see it. On metabolomics_untargeted it correctly stays silent (order vs responder AUC 0.545).",
+  "metab-treatment-marker (with metab-outcome-defined-by-a-feature): 'Your top feature, m/z 130.109, is metformin: the model found the prescription. Without it, 0.71, not 0.97.' Or: 'diabetes here is defined by glucose measured at the same visit, and glucose [M+Na]+ is your top feature.' A score rewards keeping both.",
+  "metab-wide-noise-ceiling: 'Give these 72 people random labels with the same 39/33 split, and the best of 392 features still reaches AUC ~0.69. Your strongest, mz_0094, reaches 0.70.' Analytically checked on the fixture.",
+  "metab-sample-timing-vs-diagnosis: '31 of your 120 cases gave blood after their diagnosis: which question are you answering, risk or signature?' This is asked before any estimate, and it decides eligibility, the estimand and whether glucose counts as leakage or as the baseline to beat.",
+  "metab-qc-drift with metab-qc-design-insufficient: the pooled QCs (one sample) slope over run order within each batch. On this export, 'each batch has four QCs and its last nine injections come after its final QC: 18 samples no QC curve can reach.' Later, which top features were the end of the run.",
+  "metab-one-compound-many-features: '404 features. About 100 compounds.' At explanation: 'your top three features are one compound's [M+H]+, [M+Na]+ and 13C isotope, and the model swapped between them fold to fold.'",
+  "metab-metabolome-role: 'Asked which metabolites fish raises, each metabolite is the outcome. The default direction regresses fish intake on each metabolite, an answer to a question you did not ask, and self-reported intake error shrinks every slope.'",
+  "metab-left-censored-nondetects with metab-zeros-meaning: '4,316 cells are zero and none is blank. Read as non-detections, they gather in the least abundant features (rho -0.99): too small to see, not absent. A median fill would put them mid-distribution.'",
+  "metab-person-fingerprint (with metab-technical-replicates): 'Each sample's nearest neighbour is the same person's other sample 88% of the time. Random folds scored 0.95 by recognizing people; grouped by person, 0.64.'",
+  "metab-pre-corrected-batches: 'Every feature's within-batch spread is identical, and your samples' batch shift is a tenth of your QCs': someone batch-corrected this file without the QCs. If the case label was in that correction, part of any difference was put there by it.'"
+ ],
+ "journey_load": "TYPICAL STUDY (untargeted LC-MS plasma, binary outcome, like metabolomics_untargeted). Tier counts across the 42 threads: 11 asked (most of them conditional), 8 surfaced, 16 stated, 6 silent, 1 parked.\n\nQuestions are grouped into shared cards, so no fact is asked twice:\n1. Assay card (metab-subdomain), always asked once and pre-filled: platform, LC vs GC, matrix, any measured normalizer, and prior processing (only when the range signal fires alone).\n2. Reference rows and acquisition card, pre-filled; usually one accept:\n   - pool and roles from values (metab-reference-rows);\n   - order and batch columns (metab-qc-drift);\n   - 'was the run randomized?' only when imbalance fires;\n   - 'were QCs run but not exported?' only when no_pooled_qc fires.\n3. Study-question card: metabolome role, sample timing, matched sets. Asked only when an exposure column, a disease-state outcome or a set ID exists.\n4. Cross-lens covariate-role card (metab-clinical-factors). Not a new metabolomics question.\n5. Repeat-grain question, shared by technical-replicates, person-fingerprint and low-biological-ICC. Only when IDs or profiles repeat.\n6. Deployment question, under prediction only: new batch, lab or re-assay; new vs known person; short panel vs best score.\n\nFixed asks: 2 to 4 cards (3 to 5 under prediction). Conditional asks, each firing in about one journey in three or fewer: treatment marker, defining analyte, pre-corrected batches, urine normalizer, pre-analytical protocol.\n\nSurfaced noticings: 5 to 7 per journey:\n- QC drift strip with run-order balance\n- non-detect mechanism\n- missing-by-batch, when present\n- features vs compounds\n- noise ceiling\n- person fingerprint, when repeats exist\nUnder prediction, panel stability is added. The feature-flow screen is the single place where every filter threshold is fixed. It absorbs five threads' threshold decisions.\n\nOn metabolomics_untargeted itself the journey is light:\n- Asked: the assay card and the covariate-role card (plus deployment under prediction).\n- Stated: reference rows (one accept), QC insufficiency with the fallback pre-selected (4 QCs per batch, 18 unbracketed injections), PQN as default (a negative control at AUC 0.535), and the feature flow.\n- Surfaced: the drift strip (run-order balance at 0.545 becomes one methods line), the -0.99 non-detect figure, and the noise ceiling (mz_0094 at the null).\n\nLoad controls still owed:\n- Explanation: a top feature could carry about 10 badges (drift rho, D-ratio, censoring, blank ratio, MSI level, selection frequency, treatment or definitional flag). Show one trust row per feature with only the failing badges.\n- Evaluation under prediction: up to about 11 alternate scores (correction off, raw vs PQN, two fills, run-position baseline, clinical baseline, LOBO, grouped vs random folds, with/without flagged rows, permutation null). Show one ladder with only the deltas above a stated margin.\n- Compute: whole-pipeline label permutation multiplied by these refits is a long CPU-heavy run on the machine beside the bed. Schedule it with Nolan, or run fewer permutations with a Monte Carlo interval.",
+ "report": "The final metabolomics catalog has 42 threads after the critic's verdicts: 0 cut, 2 moved to silent, every fix applied, and tiers and rank signals taken from the overwhelm critic. The 24 fixed threads each name their change in critic_notes.\n\nWHAT WAS CHANGED\n- **Nothing cut.** The critic marked metab-enrichment-background 'cut', but the evidence check found it sound. The rule cuts only when both reject, so it stays, parked at the lowest tier as a requirement for any future pathway feature. If you would rather cut whatever the skeptic alone rejects, this is the only thread affected.\n- **Moved to silent:** metab-variance-structure and metab-detectable-effect (the two automate-silently verdicts).\n- **Tiers:**\n  - asked: 11, mostly conditional\n  - surfaced: 8\n  - stated: 16\n  - silent: 6\n  - parked: 1\n- **Fixes that change engine work, not just wording:**\n  1. **qc-drift:** the detector is now QC-only, with a batch offset and an exact or permutation p. assay.py:99 drift_reading tests all 80 rows, including age and bmi, and stays only as the study-sample reading for the no-QC fallback and the run-order thread. At 4 QCs per batch, a per-batch Spearman test can never reach significance (p \u2265 0.083). Permuting within batch across both batches can (minimum p = 2/576). The AUC 0.31 \u2192 0.49 figures came from the fixtures finder's linear detrend, not an engine path, so they are dropped.\n  2. **qc-design-insufficient:** the fixture has 4 QCs per batch and 9 unbracketed study injections at the end of each batch, 18 in all. sufficiency (qc_drift.py:220) returns at the QC count before it checks bracketing, so reporting both reasons is new work.\n  3. **correction-honest-check:** choose_spans' leave-one-out (qc_drift.py:151-163) includes the end QCs, where the curve has to extrapolate. The held-out RSD now uses interior QCs only, and refusing a correction needs a margin.\n  4. **feature-technical-reliability:** the D < 0.5 filter already guarantees lambda > 0.75, so the prediction flag moves to lambda < 0.9. Reliability is conditional on the covariates, and the magic's arithmetic is corrected.\n  5. **pre-corrected-batches:** the detector now uses outcome-blind signatures: equalized within-batch variances, and a study-sample batch shift far below the QC shift. These catch ComBat and outcome-protected corrections; equal batch medians only catch simple centring.\n  6. **outcome-defined-by-a-feature:** split into prevalent vs incident designs, gated by sample timing. 'Adjust for glucose' is removed, because the model cannot be estimated when the outcome is a glucose threshold.\n  7. **metabolome-role:** self-reported intake error is wired to the dietary lens's calibration thread.\n  8. **Smaller fixes:**\n     - reference-rows magic matches the fixture: QC is a level of sample_type, responder is NaN on QC rows, and 'less than half' replaces 'a quarter'.\n     - zeros: the '14 log units' claim is corrected (zeros sit about 3.9 ln units below the minimum of 50.95), and a test of zero share against abundance is added.\n     - S080 on merged_modes anchors failed-injection.\n     - IS magic is re-anchored, since the D-ratio filter already removes standards.\n     - Dilution-linearity uses a single threshold, r < 0.7.\n     - ICC magic says 'nearly triples'.\n     - glog effects are reported on log2.\n     - Each compound's representative is chosen without looking at the outcome.\n     - Split features merge only on an m/z and RT match.\n     - The normalizer comparison runs only after the lock.\n     - The pre-analytical outcome table is disclosure only.\n     - clinical-factors uses a fold-paired AUC or log-likelihood difference, or a decision curve, instead of NRI or DeLong.\n     - The noise ceiling uses the real 39/33 split.\n     - Ratios are worded as pathway-step indices.\n- **Shared cards replace duplicated questions:**\n  - assay: platform, matrix, prior processing\n  - acquisition and reference roles\n  - study question: role, timing, matched sets\n  - repeat grain\n  - deployment, under prediction only\n  - cross-lens covariate roles\n\nWHAT IS MEASURED VS ILLUSTRATIVE\n- **Measured or checked on fixtures:**\n  - QC RSD 0.25 vs 0.59\n  - non-detect rho \u22120.99; 304 of 392 features have blanks\n  - QC positions, and 18 unbracketed injections\n  - order vs responder AUC 0.545\n  - total signal vs responder AUC 0.535\n  - 22 features with |rho| > 0.3 against BMI\n  - minimum lambda 0.750\n  - noise ceiling ~0.69 (analytic) vs mz_0094 at 0.702\n  - merged_modes counts and S080\n  - zeros range 50.95 to 4.54e6\n  - 404 features in about 100 compounds\n- **Illustrative, describing a case the thread would catch:** metformin, glucose, urine dilution, matched pairs, the 88% fingerprint, the LOBO scores, the 38 spared features, the 188-analyte kit panel, storage time.\n\nFor this pass I only read fixture notes and code. I ran nothing; the measured numbers come from the critic's run and the fixture notes. Two citations rest on memory because web checks were blocked: the NRI critique (Kerr 2014; Pepe 2013) and Badawy & Guillemin 2019 on the kynurenine/tryptophan ratio. The metformin example still needs a metabolomics-specific source.\n\nGAPS NOT YET THREADED (Nolan's completeness concern; for the next round, unreviewed)\n- Medications that confound but do not treat the outcome, such as statins in a diet study. These are found only through metadata.\n- Ion suppression and matrix effects.\n- Retention-time misalignment beyond splits across batches.\n- A fasting-state signature in the features (ketone bodies) when there is no fasting column.\n- The food-xenobiotic intake bridge, which treatment-marker refers to but which has no thread of its own.\n\nCOMPUTE: whole-pipeline label permutation times the sensitivity refits is a long CPU-heavy run on the machine beside Nolan's bed. Schedule it with him, or run fewer permutations with a Monte Carlo interval.\n\nFiles read: /Users/nhedglin/tabular-ml-lab/turbotab/sample_data/metabolomics_untargeted.md, metabolomics_merged_modes.md, metabolomics_no_qc.md, metabolomics_mzmine_zeros.md; /Users/nhedglin/tabular-ml-lab/turbotab/core/detectors/assay.py:80-140; /Users/nhedglin/tabular-ml-lab/turbotab/core/methods/qc_drift.py:45-70, :140-260."
+}
