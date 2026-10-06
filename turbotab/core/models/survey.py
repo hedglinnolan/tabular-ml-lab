@@ -514,11 +514,15 @@ def design_table(labels: Sequence[str], estimate: np.ndarray, scores: np.ndarray
     V = (V + V.T) / 2
     se = np.sqrt(np.clip(np.diag(V), 0, None))
     if var.df < 1:
+        # Blocked and recorded (BLUEPRINT §11.3): the way forward is to estimate for these
+        # participants, as every curve over the same design offers (MULTISUB repair).
         return _refused(labels, estimate, estimator, design, domain.n,
                         f"The analysis rows lie in {var.domain_psu} PSU"
                         f"{'s' if var.domain_psu != 1 else ''} of {var.domain_strata} "
                         f"strat{'a' if var.domain_strata != 1 else 'um'}: no design degrees of "
-                        f"freedom are left for an interval.")
+                        f"freedom are left for an interval.",
+                        [{"label": SAMPLE_EXIT,
+                          "decision": {"kind": "set_survey", "estimand": "sample"}}])
     rows = _t_rows(labels, estimate, se, np.full(len(estimate), float(var.df)))
     concerns = _concerns(design, var, domain.n, len(estimate), domain.left)
     if not converged:
@@ -871,6 +875,17 @@ def population_curve(family: Any, task: str, pipeline: Any, X: pd.DataFrame, y: 
     curve = substitution_curve(lambda frame: fit.mean(matrix_of(frame))[0], X, weights=weights,
                                **curve_args)
     band = design_curve(fit, matrix_of, X, curve_args["shift"], curve["ks"], curve["live"])
+    from turbotab.core.methods.substitution import no_design_df
+
+    none_left = no_design_df(band["variance"])
+    if none_left:
+        # No interval and no population's uncertainty: blocked and recorded as the coefficient
+        # table is refused, never drawn as points under a caption that promises intervals.
+        support = substitution_curve(lambda frame: np.zeros(len(frame)), X, weights=weights,
+                                     **curve_args)
+        return PopulationCurve(curve=support, refused=f"No design-based curve: {none_left}",
+                               exits=[{"label": SAMPLE_EXIT,
+                                       "decision": {"kind": "set_survey", "estimand": "sample"}}])
     return PopulationCurve(curve=curve, band=band)
 
 

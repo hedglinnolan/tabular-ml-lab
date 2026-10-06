@@ -7,6 +7,14 @@ extended"; MODELING_SEQUENCE §2 and §4; the package's acceptance items, in its
 2. The curves sum to zero across classes at every k (asserted).
 3. Under multiple imputation the per-class curves are pooled per k; under a population estimand
    they use the weights and the design-based variance (wave 1's APIs).
+
+   The verifier's repair (MODELING_SEQUENCE §2, MS3: "A single-fill curve under inference is a
+   defect"): where the missing-values answer blocks the coefficient table (passive imputation with
+   a declared spline; imputation that cannot run), every curve is blocked and recorded with the
+   table's own refusal and exits, for one curve per class and for one curve alike; a family with no
+   table of its own is refit on each imputed copy and pooled; with no copies drawn at all, the
+   curves are blocked with a way to draw them; and a design with no degrees of freedom left draws
+   no curve over the surveyed population (the table refused, and both with the sample-only exit).
 4. The label states the estimand (probability scale, isocaloric, at the stated population), and the
    energy-model rules of §2 hold (omitted sources block and record under inference).
 
@@ -22,6 +30,12 @@ Then the §13 contract and its chain test: every relation the contract declares 
   at the first k with under half the rows), and Rubin's rules with Barnard & Rubin's degrees of
   freedom written out. The band's bootstrap is reproduced on the same resamples (the app's
   seeded draws), each refit by the NumPy fit.
+* **Simulation and counting** for the repair: which rows are blank and which (stratum, PSU) pairs
+  hold the analysis rows are counted from the table with pandas, so the design's degrees of freedom
+  (PSUs minus strata) and the columns to impute are known without the app; each copy's curve for a
+  family with no table is averaged over the support written out by hand, through that family
+  refit on the copy (the fitted model is the family's; the curve, the support and the pooling are
+  the reference's).
 * **R 4.6** in a subprocess (``survey_r.run_r``; skipped without ``Rscript``): ``VGAM::vglm`` with
   the survey weights for the weighted multinomial fit, R's ``predict`` for each class's probability,
   each row's influence from VGAM's fit written in R, and ``survey::svyrecvar`` for the design's
@@ -50,9 +64,9 @@ from scipy.special import logsumexp
 
 import turbotab.core.models  # noqa: F401 - registers the families
 from turbotab.core import voice
-from turbotab.core.decisions import (EnergyAdjustment, MissingSpec, Refusal, SetSubstitution,
-                                     SplitSpec, SubstitutionSpec, SurveySpec, parse_decision,
-                                     validate)
+from turbotab.core.decisions import (EnergyAdjustment, ExposureFormSpec, MissingSpec, Refusal,
+                                     SetSubstitution, SplitSpec, SubstitutionSpec, SurveySpec,
+                                     parse_decision, validate)
 from turbotab.core.models.artifacts import SubstitutionArtifact
 from turbotab.core.stages.modeling import design_stage, fit_stage, substitution_stage
 from turbotab.core.tests import modeling_fixtures as mf
@@ -99,17 +113,21 @@ def diet_classes(seed: int = 7, n: int = 1200, blanks: bool = False) -> pd.DataF
 def run(folder: Path, frame: pd.DataFrame, *, purpose: str = "inference", n_boot: int = 0,
         models: tuple[str, ...] = ("linear",), holdout: float = 0.0, missing: Any = None,
         roles: dict[str, str] | None = None, acknowledged: bool = False,
-        method: str = "all_components") -> dict[str, Any]:
+        method: str = "all_components", forms: dict[str, Any] | None = None,
+        task: str = "multiclass") -> dict[str, Any]:
     """The design, fit and substitution stages (``STEP`` kcal from carbohydrate to protein; the
-    energy model ``method`` of the exposures and total energy, all-components by default), as the
-    engine runs them."""
+    energy model ``method`` of the exposures and total energy, all-components by default; the
+    declared ``forms``; a ``task`` other than multiclass for the one-curve path), as the engine
+    runs them."""
     roles = roles or ROLES
     exposures = [c for c, r in roles.items() if r == "exposure"]
     paths = mf.ingest_frame(frame, folder)
     slots: dict[str, Any] = {}
     if missing is not None:
         slots["missing"] = missing
-    st = mf.state(roles=roles, target="y", task="multiclass", models=list(models), purpose=purpose,
+    if forms:
+        slots["exposure_forms"] = forms
+    st = mf.state(roles=roles, target="y", task=task, models=list(models), purpose=purpose,
                   energy_adjustment=EnergyAdjustment(method=method, energy_column="kcal",
                                                      nutrients=exposures),
                   substitution=SubstitutionSpec(donor=DONOR, recipient=RECIPIENT, step_kcal=STEP,
@@ -117,7 +135,7 @@ def run(folder: Path, frame: pd.DataFrame, *, purpose: str = "inference", n_boot
                   split=SplitSpec(holdout=holdout, seed=0, folds=5),
                   column_units=mf.grams(*SOURCES), **slots)
     split = mf.split_bundle(np.arange(len(frame)), holdout=holdout)
-    ti = mf.target_info("multiclass", "y")
+    ti = mf.target_info(task, "y")
     design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
     fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
     sub = substitution_stage(mf.context(st, {"design": design, "fit": fit}, paths))
@@ -555,18 +573,21 @@ def crp_table() -> pd.DataFrame:
 
 
 def survey_run(folder: Path, f: pd.DataFrame, *, models: list[str], n_boot: int = 0,
-               survey: dict | None = POPULATION, missing: Any = None) -> dict[str, Any]:
+               survey: dict | None = POPULATION, missing: Any = None,
+               target: str = "crp_class", task: str = "multiclass") -> dict[str, Any]:
     """The design, fit and substitution stages under inference on the survey table (every row in
-    the design, the under-20s outside the analysis), ``STEP`` kcal from fat to carbohydrate."""
+    the design, the under-20s outside the analysis), ``STEP`` kcal from fat to carbohydrate; the
+    CRP classes, or with ``target`` ``high_crp`` the yes/no outcome (the one-curve path)."""
     analyzed = np.flatnonzero(f["eligible"].to_numpy() == 1)
-    frame = f.drop(columns=["eligible", "over", "high_crp", "crp"])
+    other = "high_crp" if target == "crp_class" else "crp_class"
+    frame = f.drop(columns=["eligible", "over", other, "crp"])
     paths = mf.ingest_frame(frame, folder)
     confirmations = {"code_or_count:female": "code", "code_or_count:SDMVSTRA": "code",
                      "code_or_count:SDMVPSU": "code"}
     slots: dict[str, Any] = {}
     if missing is not None:
         slots["missing"] = missing
-    st = mf.state(roles=DIET_ROLES, target="crp_class", task="multiclass", models=models,
+    st = mf.state(roles=DIET_ROLES, target=target, task=task, models=models,
                   purpose="inference", split=SplitSpec(holdout=0.0, seed=0, folds=5),
                   survey=SurveySpec(**survey) if survey else None,
                   substitution=SubstitutionSpec(donor="fat_g", recipient="carb_g", step_kcal=STEP,
@@ -574,7 +595,7 @@ def survey_run(folder: Path, f: pd.DataFrame, *, models: list[str], n_boot: int 
                   column_units=mf.grams("protein_g", "fat_g", "carb_g"),
                   shape_confirmations=confirmations, **slots)
     split = mf.split_bundle(analyzed, holdout=0.0)
-    ti = mf.target_info("multiclass", "crp_class")
+    ti = mf.target_info(task, target)
     design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
     fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
     sub = substitution_stage(mf.context(st, {"design": design, "fit": fit}, paths))
@@ -806,6 +827,393 @@ def weighted_curves(proba: Any, copy: pd.DataFrame, ks: list[float], weight: np.
     return out
 
 
+# ── 3 · the repair: under inference no curve follows one fill ────────────────
+#
+# The verifier (MS3; the contract's own pooled_per_k: "a curve from one fill is never shown"): with
+# the multiple-imputation answer blocked and recorded, the coefficient table was blocked with its
+# exits while the class curves were still served from one outcome-free fill with a bootstrap band,
+# under a note saying the table used multiple imputations it did not.
+
+# The table's refusal, word for word (MODELING_SEQUENCE §4, "passive MI with a declared nonlinear
+# term": block and record; a multiclass outcome has no compatible imputation built here).
+PASSIVE_REFUSAL = (
+    "Under inference passive multiple imputation with a restricted cubic spline of `fat_g` is "
+    "blocked until it is recorded: passive imputation draws each value from a model linear in it "
+    "and only then derives the declared nonlinear terms, so the curvature and the nonlinearity "
+    "tests would be biased toward the null (Bartlett et al. 2015). No imputation compatible with "
+    "this outcome's model is built here, so the copies would be passive.")
+# What the substitution note says when the answer holds every curve, word for word.
+HELD_NOTE = ("No curve is drawn while the missing-values answer is blocked: the curve reads the "
+             "same rows as the coefficient table, and on them it would follow one fill of their "
+             "blanks, which under inference is never shown (MODELING_SEQUENCE §2).")
+NO_COPIES_NOTE = ("No curve is drawn: under multiple imputation every estimate shown under "
+                  "inference is pooled over the imputed copies, and a curve on one fill of the "
+                  "blanks would leave out the imputations' uncertainty (MODELING_SEQUENCE §2).")
+COMPLETE_CASES = "Complete cases, with their assumption stated"
+KEEP = "Keep it, recorded as a limitation"
+SPLINE = {"fat_g": ExposureFormSpec(form="spline", knots=4)}
+
+
+def one_thread() -> Any:
+    """Boosted trees' OpenMP threads held to one while these runs fit it: on a machine other jobs
+    share, two threads spin against each other (a 400-row fit measured at 12 s with two, 0.1 s
+    with one). The numbers do not depend on it: the app's run and the reference refit both run
+    under it."""
+    from threadpoolctl import threadpool_limits
+
+    return threadpool_limits(limits=1, user_api="openmp")
+
+
+def blank_columns(frame: pd.DataFrame) -> list[str]:
+    """The model inputs with a blank, counted from the table (in the roles' order)."""
+    return [c for c in ROLES if frame[c].isna().any()]
+
+
+def as_yes_no(frame: pd.DataFrame) -> pd.DataFrame:
+    """The same table with a yes/no outcome (``high`` or not): the one-curve path."""
+    return frame.assign(y=np.where(frame["y"] == "high", "yes", "no"))
+
+
+def frame_curves(predict: Any, frame: pd.DataFrame, ks: list[float], masks: list, live: list,
+                 fixed: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """:func:`numpy_curves` through any model of the raw inputs (``predict``: a frame → its
+    n × class probabilities)."""
+    base = np.asarray(predict(frame), dtype=float)
+    curve = np.full((len(ks), base.shape[1]), np.nan)
+    fixed_curve = np.full_like(curve, np.nan)
+    for i, k in enumerate(ks):
+        if not live[i]:
+            continue
+        diff = np.asarray(predict(moved(frame, k)), dtype=float) - base
+        curve[i] = diff[masks[i]].mean(axis=0)
+        fixed_curve[i] = diff[fixed].mean(axis=0)
+    return curve, fixed_curve
+
+
+def assert_held(out: dict, refused: str, exits: list[dict], note: str, n_families: int) -> None:
+    """Every family's curve is blocked and recorded with ``refused`` and ``exits`` (one entry per
+    family, no class, no point, no band), and the note says so: ``note`` then the refusal."""
+    sub = out["sub"]
+    assert len(sub["models"]) == n_families
+    for entry in sub["models"]:
+        assert entry["level"] is None and entry["refused"] == refused, entry["label"]
+        assert entry["exits"] == exits
+        assert all(v is None for v in entry["delta"])
+        assert all(v is None for v in entry["fixed_delta"])
+        assert entry["ci_low"] is None and entry["fixed_ci_low"] is None
+        assert entry["pooled"] is None and entry["effect_label"] is None
+    assert sub["band"] is None and sub["band_estimate"] is None
+    assert f"{note} {refused}" in sub["note"]
+    for said in ("filled once", "not pooled over", "Each class's curve is pooled over",
+                 "The curve is pooled over", "shaded bands", "bootstrap"):
+        assert said not in sub["note"], said
+    for e in exits:
+        if e["decision"] is not None:
+            parse_decision(e["decision"])  # each way forward is a decision the app takes
+
+
+@pytest.fixture(scope="module")
+def passive_blocked(tmp_path_factory):
+    """Passive imputation with a spline on fat under the standard energy model (the verifier's
+    case), a band asked for, two families chosen."""
+    frame = diet_classes(seed=41, n=500, blanks=True)
+    with one_thread():
+        out = run(tmp_path_factory.mktemp("passive"), frame, method="standard", forms=SPLINE,
+                  missing=MissingSpec(strategy="multiple_imputation"), n_boot=20,
+                  models=("linear", "boosted_trees"))
+    return {"frame": frame, **out}
+
+
+def test_3_a_blocked_imputation_blocks_every_class_curve_with_the_tables_refusal_and_exits(
+        passive_blocked):
+    """MODELING_SEQUENCE §4, "passive MI with a declared nonlinear term": block and record under
+    inference. The coefficient table is blocked with its exits (complete cases; keep it, recorded),
+    and so is every family's set of class curves, with the same refusal and the same exits, word
+    for word: no curve, no band from one outcome-free fill, no claim of multiple imputations."""
+    fit = passive_blocked["fit"]
+    table = next(m for m in fit.data["models"] if m["family"] == "linear")["inference"]
+    assert table["refused"] == PASSIVE_REFUSAL
+    exits = table["exits"]
+    assert [e["label"] for e in exits] == [COMPLETE_CASES, KEEP]
+    assert fit.objects["imputations"] is None  # no copy was drawn
+    assert_held(passive_blocked, PASSIVE_REFUSAL, exits, HELD_NOTE, n_families=2)
+    sub = passive_blocked["sub"]
+    assert [m["label"] for m in sub["models"]] == ["Linear model", "Boosted trees"]
+    assert sub["support"]["n_rows"] == 500
+
+
+def test_3_a_the_recorded_exit_draws_class_curves_pooled_over_the_passive_copies(passive_blocked,
+                                                                                 tmp_path):
+    """The exit "Keep it, recorded as a limitation", taken: the passive copies are drawn and each
+    class's curve is pooled over them at each k, through each copy's own fit. Reference: each
+    copy's model matrix (the fit's spline basis on that copy, knots fixed across copies) refit by
+    the NumPy multinomial fit, its curves averaged over the support written out by hand, the pooled
+    curve their mean over the copies (bound 1e-8, as item 1's)."""
+    from turbotab.core.models.linear import model_matrix
+
+    exits = next(m for m in passive_blocked["fit"].data["models"]
+                 if m["family"] == "linear")["inference"]["exits"]
+    kept = next(e["decision"] for e in exits if e["label"] == KEEP)
+    assert kept["acknowledged"] is True and kept["strategy"] == "multiple_imputation"
+    frame = passive_blocked["frame"]
+    out = run(tmp_path, frame, method="standard", forms=SPLINE,
+              missing=MissingSpec(**{k: v for k, v in kept.items() if k != "kind"}))
+    sub, imputed = out["sub"], out["fit"].objects["imputations"]
+    classes = by_class(sub)
+    assert sorted(classes) == CLASSES and all(e.get("refused") is None for e in sub["models"])
+    copies, fits = imputed["frames"], imputed["fits"]["linear"]
+    m = len(copies)
+    assert m == 20
+    y = frame["y"].to_numpy()
+    ks = sub["ks"]
+    curves, lives = [], []
+    for copy, fitted in zip(copies, fits):
+        columns = list(model_matrix(fitted, copy).columns)
+        assert any("fat_g" in str(c) for c in columns) and len(columns) > 5  # the spline's basis
+        proba = numpy_multinomial(model_matrix(fitted, copy).to_numpy(dtype=float), y)
+        masks, live, fixed = numpy_support(copy, ks)
+        curve, _ = frame_curves(lambda f, _f=fitted, _p=proba: _p(
+            model_matrix(_f, f).to_numpy(dtype=float)), copy, ks, masks, live, fixed)
+        curves.append(curve)
+        lives.append(live)
+    live = [all(lv[i] for lv in lives) for i in range(len(ks))]
+    Q = np.asarray(curves)
+    for c, level in enumerate(CLASSES):
+        assert classes[level]["pooled"] == "per_k"
+        for i in range(len(ks)):
+            if live[i]:
+                assert abs(classes[level]["delta"][i] - Q[:, i, c].mean()) <= 1e-8, (level, i)
+            else:
+                assert classes[level]["delta"][i] is None
+    assert_sums_to_zero(classes)
+    assert (f"Each class's curve is pooled over the {m} imputations: the mean at each k of each "
+            f"copy's class curves, with no band until one is asked for.") in sub["note"]
+
+
+@pytest.fixture(scope="module")
+def cannot_run(tmp_path_factory):
+    """Imputation that cannot run: `age` recorded on one row only (a covariate with nothing to
+    impute from), with two families, as one curve per class and as one curve for a yes/no outcome;
+    and the verifier's own case, a covariate (`bmi`) blank on every row, as one curve per class."""
+    frame = diet_classes(seed=43, n=400, blanks=True)
+    frame.loc[frame.index[1:], "age"] = np.nan
+    blank = diet_classes(seed=43, n=400, blanks=True).assign(bmi=np.nan)
+    folder = tmp_path_factory.mktemp("cannot")
+    mi = MissingSpec(strategy="multiple_imputation")
+    with one_thread():
+        return {"frame": frame, "blank": blank,
+                "classes": run(folder / "classes", frame, missing=mi, n_boot=20,
+                               models=("linear", "boosted_trees")),
+                "yes_no": run(folder / "yes_no", as_yes_no(frame), missing=mi, n_boot=20,
+                              models=("linear", "boosted_trees"), task="binary"),
+                "all_blank": run(folder / "all_blank", blank, missing=mi, n_boot=20,
+                                 models=("linear", "boosted_trees"),
+                                 roles={**ROLES, "bmi": "covariate"})}
+
+
+def test_3_imputation_that_cannot_run_blocks_one_curve_per_class_and_one_curve_alike(cannot_run):
+    """With `age` recorded once (counted here: one observed value, so no imputation model can be
+    fit for it), multiple imputation cannot run; the table is blocked with complete cases as its
+    exit, and every family's curves take that refusal and exit, word for word, for the multiclass
+    outcome and for the yes/no outcome (the one-curve path the multiclass path inherits from).
+    With `bmi` blank on every row (counted here) the same holds, under its own refusal."""
+    frame = cannot_run["frame"]
+    assert int(frame["age"].notna().sum()) == 1
+    assert int(cannot_run["blank"]["bmi"].notna().sum()) == 0
+    once = ("Multiple imputation cannot run on these data: `age` has fewer than two observed "
+            "values, so it cannot be imputed.")
+    never = ("Multiple imputation cannot run on these data: `bmi` has no recorded value to start "
+             "its imputations from.")
+    for name, refused in (("classes", once), ("yes_no", once), ("all_blank", never)):
+        out = cannot_run[name]
+        table = next(m for m in out["fit"].data["models"] if m["family"] == "linear")["inference"]
+        assert table["refused"] == refused, name
+        exits = table["exits"]
+        assert [e["label"] for e in exits] == [COMPLETE_CASES]
+        assert exits[0]["decision"]["strategy"] == "complete_case"
+        assert_held(out, refused, exits, HELD_NOTE, n_families=2)
+
+
+@pytest.fixture(scope="module")
+def no_copies(tmp_path_factory):
+    """Boosted trees alone under multiple imputation: no chosen family has a coefficient table, so
+    the fit draws no copies; as one curve per class and as one curve."""
+    frame = diet_classes(seed=47, n=400, blanks=True)
+    folder = tmp_path_factory.mktemp("no_copies")
+    mi = MissingSpec(strategy="multiple_imputation")
+    with one_thread():
+        return {"frame": frame,
+                "classes": run(folder / "classes", frame, missing=mi, models=("boosted_trees",)),
+                "yes_no": run(folder / "yes_no", as_yes_no(frame), missing=mi,
+                              models=("boosted_trees",), task="binary")}
+
+
+def test_3_with_no_imputed_copies_drawn_no_curve_is_drawn_on_one_fill(no_copies):
+    """Under inference with the multiple-imputation answer, a family with no coefficient table is
+    fit on one fill of the blanks; with no copies drawn there is nothing to pool its curves over,
+    so they are blocked and recorded, word for word, the blank columns named (counted from the
+    table here). The exits: the linear model added (its table draws the copies; the next test takes
+    it), and complete cases."""
+    frame = no_copies["frame"]
+    gaps = blank_columns(frame)
+    assert gaps == ["protein_g", "kcal", "age"]
+    refused = ("Under inference with multiple imputation each curve is pooled over the imputed "
+               "copies, and none were drawn for this fit: no chosen family has a coefficient "
+               "table, and the copies are drawn with the table. A curve on one fill of the blanks "
+               "in `protein_g`, `kcal` and `age` would leave out the imputations' uncertainty.")
+    for name in ("classes", "yes_no"):
+        out = no_copies[name]
+        assert out["fit"].objects["imputations"] is None
+        exits = out["sub"]["models"][0]["exits"]
+        assert exits[0] == {"label": "Add the linear model, whose coefficient table draws the "
+                                     "imputed copies",
+                            "decision": {"kind": "select_models",
+                                         "models": ["boosted_trees", "linear"]}}
+        assert exits[1]["label"] == COMPLETE_CASES
+        assert exits[1]["decision"]["kind"] == "set_missing"
+        assert exits[1]["decision"]["strategy"] == "complete_case"
+        assert_held(out, refused, exits, NO_COPIES_NOTE, n_families=1)
+
+
+@pytest.fixture(scope="module")
+def refit_on_copies(tmp_path_factory):
+    """The exit taken: the linear model added beside boosted trees, so the copies are drawn; as one
+    curve per class and as one curve (the yes/no outcome)."""
+    frame = diet_classes(seed=47, n=400, blanks=True)
+    folder = tmp_path_factory.mktemp("refit")
+    mi = MissingSpec(strategy="multiple_imputation")
+    with one_thread():
+        return {"frame": frame,
+                "classes": run(folder / "classes", frame, missing=mi,
+                               models=("boosted_trees", "linear")),
+                "yes_no": run(folder / "yes_no", as_yes_no(frame), missing=mi,
+                              models=("boosted_trees", "linear"), task="binary")}
+
+
+def per_copy_trees(out: dict, y: np.ndarray, columns: list[int]) -> tuple:
+    """Each copy's boosted-trees curves (the ``columns`` of its predicted probabilities), refit on
+    the copy and averaged over the support written out by hand: (curves, fixed-population curves,
+    the ks live on every copy), copies × k × column."""
+    from sklearn.base import clone
+
+    from turbotab.core.models.inner_cv import fit_pipeline
+
+    imputed = out["fit"].objects["imputations"]
+    assert "boosted_trees" not in (imputed["fits"] or {})  # the table's copies hold no fit of it
+    template = out["design"].objects["pipelines"]["boosted_trees"]
+    ks = out["sub"]["ks"]
+    curves, fixed_curves, lives = [], [], []
+    for copy in imputed["frames"]:
+        with one_thread():
+            model = fit_pipeline(clone(template), copy, y, groups=None)
+            masks, live, fixed = numpy_support(copy, ks)
+            curve, fixed_curve = frame_curves(lambda f, _m=model: _m.predict_proba(f)[:, columns],
+                                              copy, ks, masks, live, fixed)
+        curves.append(curve)
+        fixed_curves.append(fixed_curve)
+        lives.append(live)
+    live = [all(lv[i] for lv in lives) for i in range(len(ks))]
+    return np.asarray(curves), np.asarray(fixed_curves), live
+
+
+def test_3_a_family_with_no_table_is_refit_on_each_copy_and_pooled_per_k(refit_on_copies):
+    """Boosted trees has no coefficient table, so the table's copies hold no fit of it; its curves
+    were drawn on one fill beside the pooled linear ones, under a note saying every curve was
+    pooled. Now it is refit on each completed copy and pooled at each k, one curve per class and
+    one curve alike. Reference: on each copy the family refit (the same estimator, same seed), each
+    class's curve (or the yes/no outcome's) averaged over the support written out by hand, the
+    pooled curve their mean over the copies (bound 1e-12); the note says the refit, word for
+    word."""
+    frame = refit_on_copies["frame"]
+    out = refit_on_copies["classes"]
+    sub, ks = out["sub"], out["sub"]["ks"]
+    Q, F, live = per_copy_trees(out, frame["y"].to_numpy(), [0, 1, 2])
+    assert sum(live) >= 4
+    trees = by_class(sub, "boosted_trees")
+    for c, level in enumerate(CLASSES):
+        assert trees[level]["pooled"] == "per_k"
+        for i in range(len(ks)):
+            if not live[i]:
+                assert trees[level]["delta"][i] is None
+                continue
+            assert abs(trees[level]["delta"][i] - Q[:, i, c].mean()) <= 1e-12, (level, i)
+            assert abs(trees[level]["fixed_delta"][i] - F[:, i, c].mean()) <= 1e-12, (level, i)
+    assert_sums_to_zero(trees)
+    # The copies' curves differ (a real pooling, not one fill drawn twenty times).
+    assert max(float(Q[:, i, 0].std()) for i in range(len(ks)) if live[i] and ks[i] > 0) > 1e-4
+    assert all(e["pooled"] == "per_k" for e in by_class(sub, "linear").values())
+    refit = ("Boosted trees has no coefficient table of its own, so it was refit on each completed "
+             "copy.")
+    assert refit in sub["note"]
+    assert ("Each class's curve is pooled over the 20 imputations: the mean at each k of each "
+            "copy's class curves, with no band until one is asked for.") in sub["note"]
+    yes_no = refit_on_copies["yes_no"]["sub"]
+    Q, F, live = per_copy_trees(refit_on_copies["yes_no"],
+                                as_yes_no(frame)["y"].to_numpy(), [1])  # P(yes)
+    (entry,) = [m for m in yes_no["models"] if m["family"] == "boosted_trees"]
+    assert entry["pooled"] == "per_k" and entry.get("refused") is None
+    for i in range(len(ks)):
+        if live[i]:
+            assert abs(entry["delta"][i] - Q[:, i, 0].mean()) <= 1e-12, i
+            assert abs(entry["fixed_delta"][i] - F[:, i, 0].mean()) <= 1e-12, i
+        else:
+            assert entry["delta"][i] is None
+    assert refit in yes_no["note"]
+    assert ("The curve is pooled over the 20 imputations: the mean at each k of each copy's "
+            "curve, with no band until one is asked for.") in yes_no["note"]
+
+
+@pytest.fixture(scope="module")
+def lonely(crp, tmp_path_factory):
+    """MS4's dietary table with each stratum's two PSUs merged into one: the analysis rows lie in
+    as many PSUs as strata. One curve per class, one curve (the yes/no outcome), and the exit."""
+    f = crp.assign(SDMVPSU=1)
+    folder = tmp_path_factory.mktemp("lonely")
+    return {"f": f,
+            "classes": survey_run(folder / "classes", f, models=["linear"], n_boot=20),
+            "yes_no": survey_run(folder / "yes_no", f, models=["linear"], n_boot=20,
+                                 target="high_crp", task="binary"),
+            "sample": survey_run(folder / "sample", f, models=["linear"], n_boot=20,
+                                 survey={"estimand": "sample"})}
+
+
+def test_3_a_design_with_no_degrees_of_freedom_draws_no_curve_and_names_the_exit(lonely):
+    """The verifier's minor finding (MS4's one-curve design path, inherited): with the analysis
+    rows' PSUs no more than their strata (counted from the table: 15 PSUs in 15 strata, so 0 design
+    degrees of freedom), the coefficient table is refused, and the class curves were still drawn as
+    weighted points with no band, under a caption promising 95% intervals on t(0). Now no curve is
+    drawn, one curve per class or one curve, each blocked and recorded with the sample-only
+    attestation as its exit, which the table now names too; the exit, taken, draws the curves for
+    these participants with their refit band."""
+    from turbotab.core.models.survey import SAMPLE_EXIT
+
+    f = lonely["f"]
+    held = f.loc[f["eligible"] == 1, ["SDMVSTRA", "SDMVPSU"]].drop_duplicates()
+    psu, strata = len(held), held["SDMVSTRA"].nunique()
+    assert (psu, strata) == (15, 15)
+    why = (f"The analysis rows lie in {psu} PSUs of {strata} strata: no design degrees of freedom "
+           f"are left for an interval.")
+    exit_ = {"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}}
+    for name, prefix in (("classes", "No design-based curves: "),
+                         ("yes_no", "No design-based curve: ")):
+        out = lonely[name]
+        table = out["fit"].data["models"][0]["inference"]
+        assert table["refused"] == why and table["exits"] == [exit_], name
+        sub = out["sub"]
+        (entry,) = sub["models"]
+        assert entry["refused"] == prefix + why and entry["exits"] == [exit_], name
+        assert all(v is None for v in entry["delta"]) and entry["ci_low"] is None
+        assert sub["band"] is None
+        assert f"Linear model: no curve. {prefix}{why}" in sub["note"]
+        assert "t(0)" not in sub["note"] and "Taylor linearization" not in sub["note"]
+    sample = lonely["sample"]["sub"]
+    classes = by_class(sample)
+    assert sorted(classes) == CRP_CLASSES and all(e.get("refused") is None
+                                                  for e in sample["models"])
+    assert sample["band"]["n_boot"] == 20 and sample["band"]["method"] == "bootstrap"
+    assert_sums_to_zero(classes)
+
+
 # ── 4 · the label, and the energy model's rules ──────────────────────────────
 
 
@@ -1011,7 +1419,9 @@ def blocked_run(crp, tmp_path_factory):
 
 
 def test_chain_every_relation_the_contract_declares_fires(inference_run, imputed_run,
-                                                         population_run, blocked_run, omitted):
+                                                         population_run, blocked_run, omitted,
+                                                         passive_blocked, no_copies,
+                                                         refit_on_copies, lonely):
     """The chain test (BLUEPRINT §13): each relation the contract declares, observed on the run it
     governs. A relation added to the contract without a check here fails."""
     from turbotab.core.contracts import contract, fired
@@ -1032,8 +1442,31 @@ def test_chain_every_relation_the_contract_declares_fires(inference_run, imputed
 
     def pooled_per_k() -> bool:
         entries = by_class(imputed_run["sub"]).values()
+        trees = by_class(refit_on_copies["classes"]["sub"],
+                         "boosted_trees").values()  # refit on each copy
         return (all(e["pooled"] == "per_k" and e["df"] is not None for e in entries)
+                and all(e["pooled"] == "per_k" for e in trees)
                 and "Each class's curve is pooled over the 20 imputations" in imputed_run["sub"]["note"])
+
+    def blocked_with_the_table() -> bool:
+        fit, sub = passive_blocked["fit"], passive_blocked["sub"]
+        table = next(m for m in fit.data["models"] if m["family"] == "linear")["inference"]
+        held = no_copies["classes"]["sub"]["models"]
+        return (all(e["refused"] == table["refused"] and e["exits"] == table["exits"]
+                    for e in sub["models"])
+                and sub["note"].count(table["refused"]) == 1
+                and all(e["exits"][0]["decision"] == {"kind": "select_models",
+                                                      "models": ["boosted_trees", "linear"]}
+                        for e in held))
+
+    def no_design_df() -> bool:
+        from turbotab.core.models.survey import SAMPLE_EXIT
+
+        entries = lonely["classes"]["sub"]["models"]
+        return (len(entries) == 1 and entries[0]["refused"].endswith(
+                    "no design degrees of freedom are left for an interval.")
+                and [e["label"] for e in entries[0]["exits"]] == [SAMPLE_EXIT]
+                and lonely["classes"]["sub"]["band"] is None)
 
     def design_based() -> bool:
         sub = population_run["sub"]
@@ -1079,8 +1512,9 @@ def test_chain_every_relation_the_contract_declares_fires(inference_run, imputed
                 and "analyzed rows, each counted once" in inference_run["sub"]["estimand"])
 
     checks = {"curves_sum_to_zero": curves_sum_to_zero, "refit_band": refit_band,
-              "pooled_per_k": pooled_per_k, "design_based": design_based,
-              "blocked_family": blocked_family, "omitted_sources": omitted_sources,
+              "pooled_per_k": pooled_per_k, "blocked_with_the_table": blocked_with_the_table,
+              "design_based": design_based, "blocked_family": blocked_family,
+              "no_design_df": no_design_df, "omitted_sources": omitted_sources,
               "omitted_stated": omitted_stated, "estimand_label": estimand_label}
     assert set(checks) == {r.name for r in declared.relations}
     failed = [name for name, check in checks.items() if not check()]
@@ -1088,4 +1522,10 @@ def test_chain_every_relation_the_contract_declares_fires(inference_run, imputed
     under = {f.relation.name for f in fired({CLASS_CONTRACT: "class_curves",
                                              "multiple_imputation_compatible": "compatible",
                                              "survey_population": "population"}, "inference")}
-    assert {"pooled_per_k", "design_based", "blocked_family"} <= under
+    assert {"pooled_per_k", "design_based", "blocked_family", "no_design_df"} <= under
+    held = {f.relation.name for f in fired({CLASS_CONTRACT: "class_curves"}, "inference",
+                                           consequences=("imputation_blocked",))}
+    assert "blocked_with_the_table" in held
+    assert "blocked_with_the_table" not in {
+        f.relation.name for f in fired({CLASS_CONTRACT: "class_curves"}, "prediction",
+                                       consequences=("imputation_blocked",))}
