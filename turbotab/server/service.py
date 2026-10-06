@@ -832,9 +832,9 @@ class ProjectService:
             if status is not None and status.status == "fresh" and status.key:
                 artifacts[stage] = self._artifact(pid, stage, status.key, public=True)
         if "forms" not in artifacts:
-            # FORM: while the card recomputes (a new exclusion, say), an answered form question
-            # stays answered on the card last computed; it is asked again once the fresh card
-            # lists a column with no form.
+            # FORM: the card last computed, which the Router reads only when the card's stage
+            # failed or was cancelled; while it recomputes the form question waits on it
+            # (``interview.route``), so no later question is answered on an older card.
             shown = self._shown(pid, "forms")
             if isinstance(shown, dict):
                 artifacts["forms_shown"] = shown

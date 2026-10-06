@@ -8597,6 +8597,11 @@
             "type": "boolean",
             "title": "Post Hoc",
             "default": false
+          },
+          "withdrawn": {
+            "type": "boolean",
+            "title": "Withdrawn",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -8608,10 +8613,11 @@
           "high",
           "levels",
           "answers",
-          "post_hoc"
+          "post_hoc",
+          "withdrawn"
         ],
         "title": "ModificationSpec",
-        "description": "One declared modifier or second exposure (``turbotab.core.methods.interaction``).\n\n``exposure`` is the declared exposure the analysis is about (it holds while that is the\nexposure); ``low`` and ``high`` its contrast on its final scale (None: the interquartile\ncontrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th\npercentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure\nof an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates\nwere seen, or so marked); it counts in the family either way."
+        "description": "One declared modifier or second exposure (``turbotab.core.methods.interaction``).\n\n``exposure`` is the declared exposure the analysis is about (it holds while that is the\nexposure); ``low`` and ``high`` its contrast on its final scale (None: the interquartile\ncontrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th\npercentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure\nof an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates\nwere seen, or so marked); it counts in the family either way. ``withdrawn``: withdrawn after\nthe estimates were seen: no longer estimated, its heterogeneity test still counted in the\nfamily the record states (the analyst saw it)."
       },
       "MultiplicitySpec": {
         "properties": {
@@ -14235,7 +14241,7 @@
           "modifier"
         ],
         "title": "SetModification",
-        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure. A\nwithdrawal after the estimates were seen (``post_hoc``, set by the server from the plan lock)\nleaves the modifier unestimated but counted in the family of tests."
       },
       "SetModification-Output": {
         "properties": {
@@ -14339,7 +14345,7 @@
           "withdraw"
         ],
         "title": "SetModification",
-        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure. A\nwithdrawal after the estimates were seen (``post_hoc``, set by the server from the plan lock)\nleaves the modifier unestimated but counted in the family of tests."
       },
       "SetMultiplicity-Input": {
         "properties": {
@@ -25977,6 +25983,40 @@
         "title": "FormStated",
         "type": "object"
       },
+      "FormWaiting": {
+        "additionalProperties": false,
+        "description": "A column the question would ask about if it holds amounts, while its code-or-amount reading\nis unsettled: the reading is asked first (the question's ask card), and no form is proposed.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "exposure",
+              "confounder"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "guess": {
+            "title": "Guess",
+            "type": "string"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "role",
+          "guess",
+          "why"
+        ],
+        "title": "FormWaiting",
+        "type": "object"
+      },
       "FormsArtifact": {
         "additionalProperties": false,
         "description": "The ``forms`` stage: the functional-form question's card (MODELING_SEQUENCE §1 row 5).",
@@ -26051,6 +26091,14 @@
             "title": "Stated",
             "type": "array"
           },
+          "waiting": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FormWaiting"
+            },
+            "title": "Waiting",
+            "type": "array"
+          },
           "answer": {
             "anyOf": [
               {
@@ -26085,6 +26133,7 @@
           "rule",
           "needs",
           "stated",
+          "waiting",
           "answer",
           "beside"
         ],
@@ -29304,6 +29353,11 @@
             "default": null,
             "title": "Pooled"
           },
+          "penalized": {
+            "default": false,
+            "title": "Penalized",
+            "type": "boolean"
+          },
           "concerns": {
             "default": [],
             "items": {
@@ -29326,6 +29380,7 @@
           "additive",
           "heterogeneity",
           "pooled",
+          "penalized",
           "concerns"
         ],
         "title": "ModificationFit",
@@ -34943,7 +34998,7 @@
       },
       "SetModification": {
         "additionalProperties": false,
-        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure.",
+        "description": "Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure. A\nwithdrawal after the estimates were seen (``post_hoc``, set by the server from the plan lock)\nleaves the modifier unestimated but counted in the family of tests.",
         "properties": {
           "kind": {
             "const": "set_modification",

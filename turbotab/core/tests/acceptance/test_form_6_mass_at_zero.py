@@ -153,8 +153,9 @@ class _Store:
 
 
 def test_6_a_column_without_zeros_has_no_non_consumers_to_set_apart(frame):
+    # (the analyzed rows are known: every row; None would say they are still being read)
     ctx = {"state": _state(), "columns": list(frame.columns), "column_info": _info(frame),
-           "store": lambda: _Store(frame), "analyzed": lambda: None}
+           "store": lambda: _Store(frame), "analyzed": lambda: np.arange(len(frame))}
     with pytest.raises(d.Refusal) as refused:
         d.validate({"kind": "set_exposure_form", "column": "age", "form": "zero_spline"}, ctx)
     assert refused.value.code == "no_mass_at_zero"

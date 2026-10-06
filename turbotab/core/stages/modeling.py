@@ -1312,6 +1312,30 @@ def _pool_form_tests(tests: Sequence[Sequence[dict[str, Any]]], tables: Sequence
                 U.append(np.asarray(table.cov, dtype=float)[np.ix_(ids, ids)])
             result = (pooled_wald(np.asarray(Q, dtype=float), np.asarray(U, dtype=float), df_com)
                       if Q else None)
+            if result is None and not Q and all(
+                    t.get("distribution") == "chi2" and t.get("statistic") is not None
+                    for t in same):
+                # FORM (repair round): a separated logistic model's penalized likelihood-ratio
+                # tests have no covariance for D1; their χ² statistics are pooled by D2.
+                from turbotab.core.methods.exposure_form import pooled_chi_square
+
+                d2 = pooled_chi_square([float(t["statistic"]) for t in same],
+                                       int(test["df_num"]))
+                if d2 is not None:
+                    stat = (f"F({d2['df_num']}, {d2['df_den']:,.0f}) = {d2['statistic']:.2f}"
+                            if d2["df_den"] is not None else
+                            f"χ²({d2['df_num']}) = {d2['statistic'] * d2['df_num']:.2f}")
+                    out.append({**test, "statistic": d2["statistic"] if d2["df_den"] is not None
+                                else d2["statistic"] * d2["df_num"],
+                                "df_num": d2["df_num"], "df_den": d2["df_den"],
+                                "distribution": "F" if d2["df_den"] is not None else "chi2",
+                                "p": d2["p"],
+                                "caption": (f"Pooled over {m} imputations by Li, Meng, "
+                                            f"Raghunathan & Rubin's D2 (each copy's χ² statistic; "
+                                            f"no covariance for D1): {stat}, p = "
+                                            f"{format_p(d2['p'])}. Within each imputation: "
+                                            f"{test['caption']}")})
+                continue
             if result is None:
                 continue
             f_ref = result["df_den"] is not None

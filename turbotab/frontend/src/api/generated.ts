@@ -2852,7 +2852,9 @@ export interface components {
          *     contrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th
          *     percentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure
          *     of an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates
-         *     were seen, or so marked); it counts in the family either way.
+         *     were seen, or so marked); it counts in the family either way. ``withdrawn``: withdrawn after
+         *     the estimates were seen: no longer estimated, its heterogeneity test still counted in the
+         *     family the record states (the analyst saw it).
          */
         ModificationSpec: {
             /**
@@ -2877,6 +2879,11 @@ export interface components {
              * @default false
              */
             post_hoc: boolean;
+            /**
+             * Withdrawn
+             * @default false
+             */
+            withdrawn: boolean;
         };
         /** MultiplicitySpec */
         MultiplicitySpec: {
@@ -4926,7 +4933,9 @@ export interface components {
         };
         /**
          * SetModification
-         * @description Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure.
+         * @description Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure. A
+         *     withdrawal after the estimates were seen (``post_hoc``, set by the server from the plan lock)
+         *     leaves the modifier unestimated but counted in the family of tests.
          */
         "SetModification-Input": {
             /**
@@ -4967,7 +4976,9 @@ export interface components {
         };
         /**
          * SetModification
-         * @description Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure.
+         * @description Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure. A
+         *     withdrawal after the estimates were seen (``post_hoc``, set by the server from the plan lock)
+         *     leaves the modifier unestimated but counted in the family of tests.
          */
         "SetModification-Output": {
             /**
@@ -9572,6 +9583,24 @@ export interface components {
             why: string;
         };
         /**
+         * FormWaiting
+         * @description A column the question would ask about if it holds amounts, while its code-or-amount reading
+         *     is unsettled: the reading is asked first (the question's ask card), and no form is proposed.
+         */
+        FormWaiting: {
+            /** Column */
+            column: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "exposure" | "confounder";
+            /** Guess */
+            guess: string;
+            /** Why */
+            why: string;
+        };
+        /**
          * FormsArtifact
          * @description The ``forms`` stage: the functional-form question's card (MODELING_SEQUENCE §1 row 5).
          */
@@ -9594,6 +9623,11 @@ export interface components {
             needs: components["schemas"]["FormNeed"][];
             /** Stated */
             stated: components["schemas"]["FormStated"][];
+            /**
+             * Waiting
+             * @default []
+             */
+            waiting: components["schemas"]["FormWaiting"][];
             /** Answer */
             answer: {
                 [key: string]: unknown;
@@ -10961,6 +10995,11 @@ export interface components {
              * @default null
              */
             pooled: string | null;
+            /**
+             * Penalized
+             * @default false
+             */
+            penalized: boolean;
             /**
              * Concerns
              * @default []
@@ -13262,7 +13301,9 @@ export interface components {
         };
         /**
          * SetModification
-         * @description Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure.
+         * @description Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure. A
+         *     withdrawal after the estimates were seen (``post_hoc``, set by the server from the plan lock)
+         *     leaves the modifier unestimated but counted in the family of tests.
          */
         SetModification: {
             /**

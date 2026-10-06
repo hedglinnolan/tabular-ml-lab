@@ -1078,13 +1078,22 @@ export function fold(records: DecisionRecord[]): ProjectState {
       continue;
     }
     if (d.kind === "set_modification") {
-      // FORM: a keyed slot, one declared modifier per column (null once withdrawn).
+      // FORM: a keyed slot, one declared modifier per column (null once withdrawn before the
+      // estimates were seen; withdrawn after them, it stays counted: ModificationSpec.withdrawn).
       const { kind: _k, modifier, withdraw, modification, ...rest } = d;
-      const spec = withdraw ? null : {
-        kind: modification ?? "effect_modification", exposure: rest.exposure ?? null,
-        low: rest.low ?? null, high: rest.high ?? null, levels: rest.levels ?? null,
-        answers: rest.answers ?? {}, post_hoc: rest.post_hoc ?? false,
-      };
+      const kind = modification ?? "effect_modification";
+      const spec = withdraw
+        ? rest.post_hoc
+          ? {
+              kind, exposure: rest.exposure ?? null, low: null, high: null, levels: null,
+              answers: {}, post_hoc: true, withdrawn: true,
+            }
+          : null
+        : {
+            kind, exposure: rest.exposure ?? null,
+            low: rest.low ?? null, high: rest.high ?? null, levels: rest.levels ?? null,
+            answers: rest.answers ?? {}, post_hoc: rest.post_hoc ?? false, withdrawn: false,
+          };
       state.modifications = { ...(state.modifications ?? {}), [modifier]: spec };
       continue;
     }
