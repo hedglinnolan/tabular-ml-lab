@@ -410,6 +410,12 @@ def smoke(server: Server, health: dict, interface: str) -> int:
             time.sleep(0.5)
         else:
             failures.append(f"ingest and profile were not fresh after 300 s: {stages}")
+            for name in ("ingest", "profile"):  # what the job runner says about the job waiting
+                jid = ((view.get("stages") or {}).get(name) or {}).get("job_id")
+                job = get_json(f"{server.api}/projects/{pid}/jobs/{jid}", timeout=10) if jid else None
+                if job:
+                    failures.append(f"{name}'s job is {job.get('state')}: "
+                                    f"{job.get('error') or job.get('message') or 'no word from it'}")
         if not failures:
             n = (view.get("summary") or {}).get("n_rows")
             say(f"smoke: ingested and profiled ({n} rows).")

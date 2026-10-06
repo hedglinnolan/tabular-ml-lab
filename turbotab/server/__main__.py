@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import os
 import socket
 import sys
 import threading
 import time
 import webbrowser
+from typing import Callable
 
 from turbotab.core.config import MODES, Settings
 
@@ -73,16 +75,50 @@ def main(argv: list[str] | None = None) -> int:
                             timeout_graceful_shutdown=2, **extra)
     server = uvicorn.Server(config)
     if args.stop_on_eof:
-        def stop_when_stdin_closes() -> None:
-            try:
-                sys.stdin.buffer.read()
-            except (OSError, ValueError):
-                pass
+        def stop() -> None:
             server.should_exit = True  # the same graceful stop as Ctrl+C
 
-        threading.Thread(target=stop_when_stdin_closes, daemon=True).start()
+        stop_on_eof(stop)
     server.run()
     return 0
+
+
+def stop_on_eof(stop: Callable[[], None]) -> threading.Thread | None:
+    """Call ``stop`` once standard input closes, reading it on a thread of its own.
+
+    The pipe is moved off descriptor 0 before the read begins, and descriptor 0 (on Windows also
+    the process's standard input handle) becomes the null device, so no process started from now
+    on shares the pipe. On Windows that is what lets a job worker start at all: a new process is
+    handed this one's standard handles, a read pending on a synchronous pipe blocks every other
+    use of that pipe, and a worker holding it hung as it started, before any Python ran, until the
+    read ended (that is, until TurboTab stopped). Returns the thread, or None when there is no
+    standard input to watch.
+    """
+    try:
+        private = os.dup(0)  # not inheritable
+    except OSError:
+        print("TurboTab: --stop-on-eof has no standard input to watch; stop it with Ctrl+C.",
+              file=sys.stderr, flush=True)
+        return None
+    null = os.open(os.devnull, os.O_RDONLY)
+    try:
+        os.dup2(null, 0)
+    finally:
+        os.close(null)
+
+    def watch() -> None:
+        try:
+            while os.read(private, 65536):
+                pass
+        except OSError:
+            pass  # a broken pipe is a closed one
+        finally:
+            os.close(private)
+        stop()
+
+    thread = threading.Thread(target=watch, name="turbotab-stop-on-eof", daemon=True)
+    thread.start()
+    return thread
 
 
 if __name__ == "__main__":
