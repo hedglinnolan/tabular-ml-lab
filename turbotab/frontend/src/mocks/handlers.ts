@@ -15,7 +15,13 @@ import { m3Handlers } from "./m3";
 import { datasetAt, listDir } from "./fs";
 import { columnSummary, findColumn, histogram, isNumericDtype } from "./stats";
 
-const HEALTH: Health = { version: "0.1.0-mock", mode: "local", workers: 3 };
+const HEALTH: Health = {
+  version: "0.1.0-mock",
+  mode: "local",
+  workers: 3,
+  user: null,
+  auth: "none",
+};
 
 function refusal(code: string, message: string): Refusal {
   return { error: { code, message, exits: [] } };

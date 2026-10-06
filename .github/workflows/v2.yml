@@ -1,0 +1,211 @@
+name: TurboTab v2
+
+# TurboTab v2 (turbotab/core, turbotab/server, turbotab/frontend, turbotab/deploy). Classic's
+# workflows are ci.yml, deploy.yml and release.yml; this one does not replace them.
+
+on:
+  push:
+    branches: [turbotab-next]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: core and server tests, frontend check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90   # the acceptance suite fits many models
+    env:
+      TURBOTAB_WORKERS: "2"
+      OMP_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            turbotab/server/requirements.txt
+            turbotab/server/requirements-dev.txt
+
+      - name: Install the Python dependencies
+        run: python -m pip install -r turbotab/server/requirements.txt -r turbotab/server/requirements-dev.txt
+
+      - name: Core and server tests
+        # The R reference tests skip without Rscript (turbotab/server/requirements-dev-R.txt).
+        run: python -m pytest turbotab/core turbotab/server -q -n 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: turbotab/frontend/package-lock.json
+
+      - name: Frontend check (tsc, eslint, vitest)
+        working-directory: turbotab/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+
+  docker:
+    name: server image (build, accounts, sign-in, upload)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -f turbotab/deploy/Dockerfile -t turbotab:ci .
+
+      - name: Create an account
+        run: |
+          mkdir -p cfg
+          sudo chown 10001:10001 cfg   # the image's turbotab user writes and reads the users file
+          password="ci-$(openssl rand -hex 12)"
+          echo "::add-mask::$password"
+          echo "TT_PASSWORD=$password" >> "$GITHUB_ENV"
+          echo "$password" | docker run --rm -i -v "$PWD/cfg:/etc/turbotab" turbotab:ci \
+            python -m turbotab.server.users add ci --password-stdin
+          docker run --rm -v "$PWD/cfg:/etc/turbotab:ro" turbotab:ci python -m turbotab.server.users list
+
+      - name: Run it
+        run: |
+          docker run -d --name turbotab -p 8787:8787 \
+            -v "$PWD/cfg:/etc/turbotab:ro" -v turbotab-data:/data turbotab:ci
+          for _ in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:8787/healthz && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8787/healthz
+          test "$(docker exec turbotab id -u)" = 10001   # not root
+
+      - name: Without a session, every kind of request is refused
+        run: |
+          base=http://127.0.0.1:8787
+          for path in /api/health /api/projects /api/projects/p0123456789 \
+                      /api/projects/p0123456789/events /api/projects/p0123456789/export; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$base$path")
+            echo "GET $path -> $code"
+            test "$code" = 401
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' -F "file=@turbotab/sample_data/dietary_recalls.csv" \
+            "$base/api/projects/upload")
+          echo "POST /api/projects/upload -> $code"
+          test "$code" = 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$base/")
+          echo "GET / -> $code (to the sign-in page)"
+          test "$code" = 303
+          code=$(curl -s -o /dev/null -w '%{http_code}' --data-urlencode "username=ci" \
+            --data-urlencode "password=not-the-password" "$base/login")
+          echo "POST /login with a wrong password -> $code"
+          test "$code" = 401
+
+      - name: Sign in over HTTP, check health, upload a CSV
+        run: |
+          base=http://127.0.0.1:8787
+          code=$(curl -s -o /dev/null -w '%{http_code}' -c jar.txt --data-urlencode "username=ci" \
+            --data-urlencode "password=$TT_PASSWORD" --data-urlencode "next=/" "$base/login")
+          echo "POST /login -> $code"
+          test "$code" = 303
+          curl -fsS -b jar.txt "$base/api/health" | tee health.json
+          python3 -c "import json; h = json.load(open('health.json')); assert (h['mode'], h['user'], h['auth']) == ('server', 'ci', 'password'), h"
+          pid=$(curl -fsS -b jar.txt -F "file=@turbotab/sample_data/dietary_recalls.csv" \
+            "$base/api/projects/upload" | python3 -c "import json, sys; print(json.load(sys.stdin)['id'])")
+          echo "uploaded as $pid"
+          for _ in $(seq 1 120); do
+            status=$(curl -fsS -b jar.txt "$base/api/projects/$pid" | python3 -c "import json, sys; v = json.load(sys.stdin); print(v['stages']['ingest']['status'], v['stages']['profile']['status'], v['summary']['n_rows'])")
+            echo "$status"
+            test "$status" = "fresh fresh 600" && break
+            sleep 2
+          done
+          test "$status" = "fresh fresh 600"
+          docker exec turbotab test -f "/data/users/ci/projects/$pid/project.json"   # the user's own workspace
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -b jar.txt "$base/logout")
+          test "$code" = 303
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b jar.txt "$base/api/health")
+          echo "after signing out: GET /api/health -> $code"
+          test "$code" = 401
+
+      - name: The container's health check passes
+        run: |
+          for _ in $(seq 1 60); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' turbotab)
+            echo "$state"
+            test "$state" = healthy && exit 0
+            sleep 3
+          done
+          exit 1
+
+      - name: Server log
+        if: always()
+        run: docker logs turbotab || true
+
+  launcher:
+    name: launcher (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      TURBOTAB_WORKERS: "2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # the oldest Python TurboTab supports
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: First start (sets up, then health, an upload, a clean stop)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          TURBOTAB_HOME: ${{ runner.temp }}/turbotab-home
+          TURBOTAB_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          test -x "turbotab/deploy/Start TurboTab.command"
+          "turbotab/deploy/Start TurboTab.command" --smoke
+
+      - name: Second start (set up already; seconds)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          TURBOTAB_HOME: ${{ runner.temp }}/turbotab-home
+          TURBOTAB_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          "turbotab/deploy/Start TurboTab.command" --smoke | tee second.log
+          grep -q "Python environment: up to date" second.log
+          grep -q "interface: built" second.log
+
+      - name: First start (sets up, then health, an upload, a clean stop)
+        if: runner.os == 'Windows'
+        shell: cmd
+        env:
+          TURBOTAB_HOME: ${{ runner.temp }}\turbotab-home
+          TURBOTAB_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: call "turbotab\deploy\Start TurboTab.bat" --smoke
+
+      - name: Second start (set up already; seconds)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TURBOTAB_HOME: ${{ runner.temp }}\turbotab-home
+          TURBOTAB_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          & ".\turbotab\deploy\Start TurboTab.bat" --smoke | Tee-Object -FilePath second.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Quiet "Python environment: up to date" second.log)) { exit 1 }
+          if (-not (Select-String -Quiet "interface: built" second.log)) { exit 1 }

@@ -108,8 +108,8 @@ def test_a_built_frontend_is_served_with_a_single_page_fallback(tmp_path):
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text("<!doctype html><title>app</title>")
     (dist / "assets" / "app.js").write_text("console.log(1)")
-    app = create_app(Settings(home=tmp_path, mode="server", workers=1, memory_budget_bytes=1 << 30), frontend_dist=dist)
-    plain = TestClient(app)  # no lifespan: the frontend needs no engine
+    app = create_app(Settings(home=tmp_path, mode="local", workers=1, memory_budget_bytes=1 << 30), frontend_dist=dist)
+    plain = TestClient(app, base_url="http://127.0.0.1")  # no lifespan: the frontend needs no engine
     assert plain.get("/assets/app.js").text == "console.log(1)"
     assert "<title>app</title>" in plain.get("/projects/p0123456789").text
     assert "<title>app</title>" in plain.get("/../../etc/passwd").text

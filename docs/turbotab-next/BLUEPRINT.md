@@ -84,6 +84,7 @@ turbotab/core/tests/      pytest
 turbotab/server/          FastAPI app (HTTP + SSE only; no statistics here)
 turbotab/server/tests/    pytest (TestClient)
 turbotab/frontend/        Vite + React app; builds to turbotab/frontend/dist, served by the server
+turbotab/deploy/          the desktop launcher (macOS, Windows) and the server image (Docker); DEPLOY.md
 turbotab/*.py             legacy domain modules Classic or turbotab/core imports (§9.1), and their tests
 docs/turbotab-next/       BLUEPRINT.md (this), INBOX.md, milestone notes
 docs/turbotab-next/reference/   the binding material carried from the legacy app (§9.1; README there)

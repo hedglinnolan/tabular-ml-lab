@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI
@@ -24,6 +24,9 @@ from turbotab.server import __version__, errors
 from turbotab.server.errors import ApiError
 from turbotab.server.routes import build_router
 from turbotab.server.schemas import ARTIFACT_MODELS
+
+if TYPE_CHECKING:  # pragma: no cover
+    from turbotab.server.auth import AuthConfig
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1"})
@@ -137,9 +140,30 @@ def install_frontend(app: FastAPI, dist: Path) -> None:
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
-def create_app(settings: Settings, *, frontend_dist: Path = FRONTEND_DIST) -> FastAPI:
+def create_app(settings: Settings, *, frontend_dist: Path = FRONTEND_DIST,
+               auth: "AuthConfig | None" = None) -> FastAPI:
+    """Local mode: one workspace, no sign-in, the localhost guards. Server mode: every request
+    from a signed-in user (``auth``, else ``AuthConfig.from_env``; a setting that would leave the
+    server open raises ``AuthConfigError`` here, before anything starts), each user in a
+    workspace of their own (``turbotab.server.tenancy``)."""
+    from turbotab.server import auth as signin
+
+    auth_config = None
+    if settings.mode == "server":
+        auth_config = auth if auth is not None else signin.AuthConfig.from_env(settings)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if settings.mode == "server":
+            from turbotab.server.tenancy import Tenants
+
+            tenants = await run_in_threadpool(Tenants, settings)
+            app.state.tenants = tenants
+            try:
+                yield
+            finally:
+                await run_in_threadpool(tenants.close)
+            return
         from turbotab.server.service import ProjectService
 
         service = await run_in_threadpool(ProjectService, settings)
@@ -158,6 +182,8 @@ def create_app(settings: Settings, *, frontend_dist: Path = FRONTEND_DIST) -> Fa
     app.state.settings = settings
     errors.install(app)
     app.include_router(build_router())
+    if auth_config is not None:
+        signin.install(app, settings, auth_config)  # before the frontend's catch-all route
     install_frontend(app, frontend_dist)
     if settings.mode == "local":
         app.add_middleware(LocalHostGuard)

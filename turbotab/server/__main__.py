@@ -1,13 +1,15 @@
 """Launch TurboTab: ``venv/bin/python -m turbotab.server --port 8787 [--mode local|server] [--open]``.
 
 Local mode binds 127.0.0.1 only. Server mode listens where ``--host`` says
-(default 127.0.0.1, so exposing it is a deliberate choice).
+(default 127.0.0.1, so exposing it is a deliberate choice) and signs users in
+(``turbotab.server.auth``; accounts: ``python -m turbotab.server.users``).
 """
 from __future__ import annotations
 
 import argparse
 import dataclasses
 import socket
+import sys
 import threading
 import time
 import webbrowser
@@ -32,6 +34,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=MODES, default=None, help="default: $TURBOTAB_MODE, else local")
     parser.add_argument("--host", default=None, help="server mode only; local mode always binds 127.0.0.1")
     parser.add_argument("--open", action="store_true", help="open the app in a browser once it is up")
+    parser.add_argument("--stop-on-eof", action="store_true",
+                        help="shut down cleanly when standard input closes: how the desktop "
+                             "launcher (turbotab/deploy/launch.py) stops the server on every OS, "
+                             "and why closing the launcher's window stops it too")
     args = parser.parse_args(argv)
 
     settings = Settings.from_env()
@@ -44,16 +50,38 @@ def main(argv: list[str] | None = None) -> int:
     import uvicorn
 
     from turbotab.server.app import create_app
+    from turbotab.server.auth import AuthConfigError, describe
 
-    app = create_app(settings)
+    try:
+        app = create_app(settings)
+    except AuthConfigError as exc:
+        parser.exit(2, f"TurboTab did not start: {exc}\n")
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
     url = f"http://{shown}:{args.port}/"
     print(f"TurboTab ({settings.mode} mode, {settings.workers} workers, home {settings.home})", flush=True)
+    if settings.mode == "server":
+        print(describe(app.state.auth), flush=True)
     print(f"Open {url}", flush=True)
     if args.open:
         probe = "127.0.0.1" if host == "0.0.0.0" else host
         threading.Thread(target=_open_when_ready, args=(probe, args.port, url), daemon=True).start()
-    uvicorn.run(app, host=host, port=args.port, log_level="info", timeout_graceful_shutdown=2)
+    # Server mode reads X-Forwarded-For and X-Forwarded-Proto itself, and only from
+    # TURBOTAB_TRUSTED_PROXIES (turbotab.server.auth): uvicorn's own reading would replace the
+    # peer address that the proxy check rests on.
+    extra = {"proxy_headers": False} if settings.mode == "server" else {}
+    config = uvicorn.Config(app, host=host, port=args.port, log_level="info",
+                            timeout_graceful_shutdown=2, **extra)
+    server = uvicorn.Server(config)
+    if args.stop_on_eof:
+        def stop_when_stdin_closes() -> None:
+            try:
+                sys.stdin.buffer.read()
+            except (OSError, ValueError):
+                pass
+            server.should_exit = True  # the same graceful stop as Ctrl+C
+
+        threading.Thread(target=stop_when_stdin_closes, daemon=True).start()
+    server.run()
     return 0
 
 

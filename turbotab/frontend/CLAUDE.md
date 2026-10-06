@@ -8,7 +8,8 @@ Vite + React 19 + TypeScript (strict). Read `docs/turbotab-next/BLUEPRINT.md` (Â
 ```
 src/api/generated.ts  the JSON contract, generated from turbotab/server/openapi.json (never edit)
 src/api/schema.ts     thin named aliases over generated.ts, the enum lists, typed StageResult, SSE events
-src/api/client.ts     the ONLY module that calls fetch; one typed function per route; 409 -> RefusalError
+src/api/client.ts     the ONLY module that calls fetch; one typed function per route; 409 -> RefusalError;
+                      401 (server mode, no session) -> an event main.tsx answers with the sign-in page
 src/api/queries.ts    TanStack Query hooks; every project key starts with the pid: [pid, ...]
 src/api/events.ts     SSE -> cache (applyProjectEvent is pure; useProjectEvents opens the stream)
 src/motion/           the motion primitives: prefs (durations, reduced motion), Arrive, StaleVeil,
