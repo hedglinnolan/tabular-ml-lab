@@ -28,5 +28,7 @@ Documents they name that are not in this folder are in `docs/turbotab/archive/`,
 `DOMAIN_SCIENCE.md`, `data/` and `tools/`, which stay in `docs/turbotab/` because Classic's tests read
 them. Git keeps the code.
 
-Reference material that v2 produces itself, such as a methods reference generated from the method
-contracts, goes in this folder too.
+Reference material that v2 produces itself goes in this folder too. `METHODS_REFERENCE.md` is
+generated from the method contracts by `python -m turbotab.core.reference.methods` and is never
+edited by hand; `turbotab/core/tests/test_reference.py` fails when it is stale. The expert review
+packets built from the same contracts are in `../review-packets/`.

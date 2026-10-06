@@ -1,0 +1,1188 @@
+{
+ "journey": {
+  "name": "survey-prediction",
+  "lens": "survey",
+  "purpose": "prediction",
+  "question": "How well do a support scale and its respondents' characteristics predict who sought support?",
+  "fixture": "turbotab/sample_data/survey_instrument.csv",
+  "why": "MODELING_SEQUENCE §6 chain 4: a reflective scale scored from its items (the instrument's key reverse-codes item_05), its reliability stated (300 respondents, 40 five-point items).",
+  "lenses": [
+   "survey"
+  ],
+  "target": "sought_support",
+  "exposure": null
+ },
+ "captured": {
+  "commit": "2ba3c5727a",
+  "date": "2026-10-05",
+  "seconds": 1887,
+  "workers": 2
+ },
+ "answers": [
+  {
+   "kind": "set_lens",
+   "status": 200,
+   "summary": "{\"lenses\": [\"survey\"]}",
+   "source": "the journey",
+   "seq": 1,
+   "sentence": "The table was read through the `survey` lens."
+  },
+  {
+   "kind": "set_target",
+   "status": 200,
+   "summary": "{\"column\": \"sought_support\"}",
+   "source": "the journey",
+   "seq": 2,
+   "sentence": "`sought_support` was chosen as the outcome; it is measured on all `300` rows."
+  },
+  {
+   "kind": "set_event",
+   "status": 200,
+   "summary": "{\"column\": \"sought_support\", \"level\": \"1\"}",
+   "source": "the journey",
+   "seq": 3,
+   "sentence": "`1` of `sought_support` was taken as the event and coded 1; `0` was coded 0."
+  },
+  {
+   "kind": "set_purpose",
+   "status": 200,
+   "summary": "{\"purpose\": \"prediction\"}",
+   "source": "the journey",
+   "seq": 4,
+   "sentence": "The analysis was declared for `prediction`: models are judged on rows they never saw."
+  },
+  {
+   "kind": "set_roles",
+   "status": 200,
+   "summary": "identifier: respondent_id; covariate: age, sex, education; exposure: item_01, item_02, item_03, item_04, item_05, item_06 and 34 more",
+   "source": "the app's proposed roles, confirmed",
+   "seq": 5,
+   "sentence": "Column roles were set for `44` columns: exposures `item_01`, `item_02`, `item_03` and 37 more; covariates `age`, `sex` and `education`; identifier `respondent_id`; `education`, `item_01` and 39 more were proposed below high confidence and wait for their own confirmation before any default reads them."
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "41 readings (role 41): role:education=covariate, role:item_01=exposure, role:item_02=exposure, role:item_03=exposure and 37 more",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 6,
+   "sentence": "Confirmed together, each as the question showed it: `education` was confirmed as a covariate; `40` columns (from `item_01`) were confirmed as an exposure."
+  },
+  {
+   "kind": "set_exclusions",
+   "status": 200,
+   "summary": "{\"rules\": []}",
+   "source": "the app's first-ranked option",
+   "seq": 7,
+   "sentence": "No rows were excluded: every row with `sought_support` measured stays in the analysis."
+  },
+  {
+   "kind": "set_missing",
+   "status": 200,
+   "summary": "{\"strategy\": \"impute\"}",
+   "source": "the app's first-ranked option",
+   "seq": 8,
+   "sentence": "Missing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor."
+  },
+  {
+   "kind": "set_split",
+   "status": 200,
+   "summary": "{\"holdout\": 0.0, \"seed\": 0, \"folds\": 5, \"validation\": \"bootstrap\"}",
+   "source": "the app's first-ranked option (the seal plan)",
+   "seq": 9,
+   "sentence": "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`, stratified by `sought_support`); the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004)."
+  },
+  {
+   "kind": "set_scales",
+   "status": 200,
+   "summary": "{\"scales\": [{\"name\": \"support_scale\", \"items\": [\"item_01\", \"item_02\", \"item_03\", \"item_04\", \"item_05\", \"item_06\", \"item_07\", \"item_08\", \"item_09\", \"item_10\"], \"reverse\": [\"item_05\"], \"low\": 1, \"high\": 5, \"kind\": \"reflective\", \"role\": \"covariate\"}]}",
+   "source": "the journey (declared, not asked)",
+   "seq": 10,
+   "sentence": "`support_scale` is the sum of its 10 items, `item_05` reverse-coded on the 1–5 response scale, a reflective scale entering the models as a covariate; its coefficient is not corrected for measurement error."
+  },
+  {
+   "kind": "select_models",
+   "status": 409,
+   "summary": "{\"models\": [\"elastic_net\", \"screened_elastic_net\"]}",
+   "source": "the shelf's first-ranked families",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "`age`, `item_11`, `item_12`, `item_13`, `item_14`, `item_15`, `item_16`, `item_17`, `item_18`, `item_19`, `item_20`, `item_21`, `item_22`, `item_23`, `item_24`, `item_25`, `item_26`, `item_27`, `item_28`, `item_29`, `item_30`, `item_31`, `item_32`, `item_33`, `item_34`, `item_35`, `item_36`, `item_37`, `item_38`, `item_39` and `item_40` hold whole numbers, which may be codes for categories (one indicator per level) or amounts (one slope); the fit waits for the answer for each. Tell me about these columns: `age`: an amount? (`62` whole-number values from 18 to 81); 30 columns like `item_11`: codes for categories?.",
+    "exits": [
+     "Confirm each of the 31 as shown",
+     "`age` is a count or an amount (a slope; a unit's rows averaged)",
+     "`age` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_11` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_11` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_12` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_12` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_13` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_13` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_14` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_14` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_15` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_15` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_16` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_16` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_17` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_17` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_18` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_18` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_19` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_19` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_20` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_20` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_21` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_21` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_22` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_22` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_23` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_23` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_24` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_24` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_25` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_25` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_26` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_26` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_27` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_27` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_28` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_28` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_29` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_29` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_30` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_30` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_31` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_31` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_32` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_32` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_33` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_33` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_34` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_34` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_35` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_35` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_36` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_36` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_37` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_37` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_38` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_38` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_39` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_39` is a count or an amount (a slope; a unit's rows averaged)",
+     "`item_40` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`item_40` is a count or an amount (a slope; a unit's rows averaged)",
+     "Change the roles (the roles question)"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "31 readings (code_or_count 31): code_or_count:age=amount, code_or_count:item_11=code, code_or_count:item_12=code, code_or_count:item_13=code and 27 more",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 11,
+   "sentence": "Confirmed together, each as the question showed it: `age` was confirmed to hold amounts or counts; `30` columns (from `item_11`) were confirmed to hold codes for categories."
+  },
+  {
+   "kind": "select_models",
+   "status": 200,
+   "summary": "{\"models\": [\"elastic_net\", \"screened_elastic_net\"]}",
+   "source": "the shelf's first-ranked families",
+   "seq": 12,
+   "sentence": "Two model families were chosen: elastic net and `screened_elastic_net`; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score. Read from the values, no question asked: `respondent_id` is the unit's identifier (Named like a participant's identifier; `300` labels, one per row); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sought_support` is a binary outcome (Only `0` and `1` — read as a binary outcome); `education` holds codes for categories (one indicator per label) (`4` labels, not numbers); `sex` is coded F female, M male (the labels spell the sexes (`F` female))."
+  }
+ ],
+ "readings": {
+  "fixture": "survey_instrument.csv",
+  "from_fixture": {
+   "code_or_count:age": "amount",
+   "code_or_count:item_01": "code",
+   "code_or_count:item_02": "code",
+   "code_or_count:item_03": "code",
+   "code_or_count:item_04": "code",
+   "code_or_count:item_05": "code",
+   "code_or_count:item_06": "code",
+   "code_or_count:item_07": "code",
+   "code_or_count:item_08": "code",
+   "code_or_count:item_09": "code",
+   "code_or_count:item_10": "code",
+   "code_or_count:item_11": "code",
+   "code_or_count:item_12": "code",
+   "code_or_count:item_13": "code",
+   "code_or_count:item_14": "code",
+   "code_or_count:item_15": "code",
+   "code_or_count:item_16": "code",
+   "code_or_count:item_17": "code",
+   "code_or_count:item_18": "code",
+   "code_or_count:item_19": "code",
+   "code_or_count:item_20": "code",
+   "code_or_count:item_21": "code",
+   "code_or_count:item_22": "code",
+   "code_or_count:item_23": "code",
+   "code_or_count:item_24": "code",
+   "code_or_count:item_25": "code",
+   "code_or_count:item_26": "code",
+   "code_or_count:item_27": "code",
+   "code_or_count:item_28": "code",
+   "code_or_count:item_29": "code",
+   "code_or_count:item_30": "code",
+   "code_or_count:item_31": "code",
+   "code_or_count:item_32": "code",
+   "code_or_count:item_33": "code",
+   "code_or_count:item_34": "code",
+   "code_or_count:item_35": "code",
+   "code_or_count:item_36": "code",
+   "code_or_count:item_37": "code",
+   "code_or_count:item_38": "code",
+   "code_or_count:item_39": "code",
+   "code_or_count:item_40": "code"
+  },
+  "journey_own": {
+   "code_or_count:education": "code",
+   "adjust:sex": "no,yes,no",
+   "adjust:education": "no,yes,no",
+   "adjust:item_01": "no,yes,no",
+   "adjust:item_02": "no,yes,no",
+   "adjust:item_03": "no,yes,no",
+   "adjust:item_04": "no,yes,no",
+   "adjust:item_05": "no,yes,no",
+   "adjust:item_06": "no,yes,no",
+   "adjust:item_07": "no,yes,no",
+   "adjust:item_08": "no,yes,no",
+   "adjust:item_09": "no,yes,no",
+   "adjust:item_10": "no,yes,no"
+  },
+  "set_aside": []
+ },
+ "guessed": [],
+ "app_ranked": [],
+ "notes": [],
+ "export": {
+  "status": 200,
+  "engine": "2.0.0.dev0",
+  "files": [
+   "README.md",
+   "analysis_plan.json",
+   "checklist/tripod_ai.json",
+   "checklist/tripod_ai.md",
+   "decisions.jsonl",
+   "figures/lineage.svg",
+   "figures/participant_flow.svg",
+   "manifest.json",
+   "methods.json",
+   "methods.md",
+   "methods.txt",
+   "provenance.json",
+   "results/performance.csv",
+   "results/performance.md"
+  ],
+  "model_matrix": [
+   "sex_M",
+   "education_Graduate",
+   "education_High school",
+   "education_Some college",
+   "item_11_2",
+   "item_11_3",
+   "item_11_4",
+   "item_11_5",
+   "item_12_2",
+   "item_12_3",
+   "item_12_4",
+   "item_12_5",
+   "item_13_2",
+   "item_13_3",
+   "item_13_4",
+   "item_13_5",
+   "item_14_2",
+   "item_14_3",
+   "item_14_4",
+   "item_14_5",
+   "item_15_2",
+   "item_15_3",
+   "item_15_4",
+   "item_15_5",
+   "item_16_2",
+   "item_16_3",
+   "item_16_4",
+   "item_16_5",
+   "item_17_2",
+   "item_17_3",
+   "item_17_4",
+   "item_17_5",
+   "item_18_2",
+   "item_18_3",
+   "item_18_4",
+   "item_18_5",
+   "item_19_2.0",
+   "item_19_3.0",
+   "item_19_4.0",
+   "item_19_5.0",
+   "item_20_2",
+   "item_20_3",
+   "item_20_4",
+   "item_20_5",
+   "item_21_2",
+   "item_21_3",
+   "item_21_4",
+   "item_21_5",
+   "item_22_2",
+   "item_22_3",
+   "item_22_4",
+   "item_22_5",
+   "item_23_2",
+   "item_23_3",
+   "item_23_4",
+   "item_23_5",
+   "item_24_2",
+   "item_24_3",
+   "item_24_4",
+   "item_24_5",
+   "item_25_2",
+   "item_25_3",
+   "item_25_4",
+   "item_25_5",
+   "item_26_2",
+   "item_26_3",
+   "item_26_4",
+   "item_26_5",
+   "item_27_2",
+   "item_27_3",
+   "item_27_4",
+   "item_27_5",
+   "item_28_2",
+   "item_28_3",
+   "item_28_4",
+   "item_28_5",
+   "item_29_2",
+   "item_29_3",
+   "item_29_4",
+   "item_29_5",
+   "item_30_2",
+   "item_30_3",
+   "item_30_4",
+   "item_30_5",
+   "item_31_2.0",
+   "item_31_3.0",
+   "item_31_4.0",
+   "item_31_5.0",
+   "item_32_2",
+   "item_32_3",
+   "item_32_4",
+   "item_32_5",
+   "item_33_2",
+   "item_33_3",
+   "item_33_4",
+   "item_33_5",
+   "item_34_2",
+   "item_34_3",
+   "item_34_4",
+   "item_34_5",
+   "item_35_2",
+   "item_35_3",
+   "item_35_4",
+   "item_35_5",
+   "item_36_2",
+   "item_36_3",
+   "item_36_4",
+   "item_36_5",
+   "item_37_2",
+   "item_37_3",
+   "item_37_4",
+   "item_37_5",
+   "item_38_2",
+   "item_38_3",
+   "item_38_4",
+   "item_38_5",
+   "item_39_2",
+   "item_39_3",
+   "item_39_4",
+   "item_39_5",
+   "item_40_2",
+   "item_40_3",
+   "item_40_4",
+   "item_40_5",
+   "age",
+   "support_scale"
+  ],
+  "table2": [],
+  "methods_md": "# Methods: survey_instrument\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `survey` lens.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `sought_support` measured stays in the analysis.\n\n## Outcome (TRIPOD+AI 8)\n\n`sought_support` was chosen as the outcome; it is measured on all `300` rows. `1` of `sought_support` was taken as the event and coded 1; `0` was coded 0.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `44` columns: exposures `item_01`, `item_02`, `item_03` and 37 more; covariates `age`, `sex` and `education`; identifier `respondent_id`; `education`, `item_01` and 39 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `education` was confirmed as a covariate; `40` columns (from `item_01`) were confirmed as an exposure. `support_scale` is the sum of its 10 items, `item_05` reverse-coded on the 1–5 response scale, a reflective scale entering the models as a covariate; its coefficient is not corrected for measurement error. Confirmed together, each as the question showed it: `age` was confirmed to hold amounts or counts; `30` columns (from `item_11`) were confirmed to hold codes for categories.\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`, stratified by `sought_support`); the optimism of each model's apparent performance was estimated by Harrell's bootstrap (`500` resamples, the whole pipeline refit on each) and subtracted, except for a family that nearly memorizes its rows (boosted trees), whose cross-validated score stands because the bootstrap overstates it; models were compared with each other and with the no-predictor baseline on `5`-fold cross-validation repeated `10` times, by the corrected repeated k-fold t (Nadeau & Bengio 2003; Bouckaert & Frank 2004). Two model families were chosen: elastic net and `screened_elastic_net`; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score. Read from the values, no question asked: `respondent_id` is the unit's identifier (Named like a participant's identifier; `300` labels, one per row); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sought_support` is a binary outcome (Only `0` and `1` — read as a binary outcome); `education` holds codes for categories (one indicator per label) (`4` labels, not numbers); `sex` is coded F female, M male (the labels spell the sexes (`F` female)).\n\nWithin each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned by an inner CV within the rows each fit was given.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `2ba3c5727a13`, with local changes). The supplementary provenance record holds the decision log (`12` records), the SHA-256 of the input file `survey_instrument.csv` (SHA-256 `b646927ae201`), the analysis plan (SHA-256 `5335d293113f`) and the model matrix (`300` rows by `126` columns; SHA-256 `56275f500156` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "checklist": {
+   "checklist": "TRIPOD+AI",
+   "title": "TRIPOD+AI checklist for the reporting of prediction model studies",
+   "citation": "Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. BMJ 2024;385:e078378. doi:10.1136/bmj-2023-078378",
+   "counts": {
+    "items": 52,
+    "answered": 3,
+    "partly_answered": 12,
+    "unanswered": 37
+   },
+   "items": [
+    {
+     "id": "1",
+     "section": "Title",
+     "topic": "Title",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "2",
+     "section": "Abstract",
+     "topic": "Abstract",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3a",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3b",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3c",
+     "section": "Introduction",
+     "topic": "Background",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "4",
+     "section": "Introduction",
+     "topic": "Objectives",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "seq": 4
+      }
+     ],
+     "owed": "the study's objectives, and whether it develops or validates a model (or both)"
+    },
+    {
+     "id": "5a",
+     "section": "Methods",
+     "topic": "Data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "5b",
+     "section": "Methods",
+     "topic": "Data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6a",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6b",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 7
+      }
+     ],
+     "owed": "the study's own eligibility criteria before the table was assembled"
+    },
+    {
+     "id": "6c",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "7",
+     "section": "Methods",
+     "topic": "Data preparation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 6
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 11
+      }
+     ],
+     "owed": "whether the checks were similar across sociodemographic groups"
+    },
+    {
+     "id": "8a",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_target",
+       "seq": 2
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_event",
+       "seq": 3
+      }
+     ],
+     "owed": "how and when the outcome was assessed, why it was chosen, and whether its assessment is consistent across sociodemographic groups"
+    },
+    {
+     "id": "8b",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "8c",
+     "section": "Methods",
+     "topic": "Outcome",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "9a",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_roles",
+       "seq": 5
+      }
+     ],
+     "owed": "why these predictors, and any pre-selection of predictors before model building"
+    },
+    {
+     "id": "9b",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_roles",
+       "seq": 5
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 6
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 11
+      }
+     ],
+     "owed": "how and when each predictor was measured"
+    },
+    {
+     "id": "9c",
+     "section": "Methods",
+     "topic": "Predictors",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "10",
+     "section": "Methods",
+     "topic": "Sample size",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "11",
+     "section": "Methods",
+     "topic": "Missing data",
+     "kind": null,
+     "scope": "D;E",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 8
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12a",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "seq": 4
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_split",
+       "seq": 9
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12b",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_scales",
+       "seq": 10
+      },
+      {
+       "source": "file",
+       "file": "figures/lineage.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12c",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_split",
+       "seq": 9
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "select_models",
+       "seq": 12
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      }
+     ],
+     "owed": "the rationale for each model family"
+    },
+    {
+     "id": "12d",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12e",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "fit",
+       "seq": null
+      },
+      {
+       "source": "file",
+       "file": "results/performance.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the rationale for each measure"
+    },
+    {
+     "id": "12f",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12g",
+     "section": "Methods",
+     "topic": "Analytical methods",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "13",
+     "section": "Methods",
+     "topic": "Class imbalance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "14",
+     "section": "Methods",
+     "topic": "Fairness",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "15",
+     "section": "Methods",
+     "topic": "Model output",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "16",
+     "section": "Methods",
+     "topic": "Training versus evaluation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "17",
+     "section": "Methods",
+     "topic": "Ethical approval",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18a",
+     "section": "Open science",
+     "topic": "Funding",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18b",
+     "section": "Open science",
+     "topic": "Conflicts of interest",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18c",
+     "section": "Open science",
+     "topic": "Protocol",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18d",
+     "section": "Open science",
+     "topic": "Registration",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18e",
+     "section": "Open science",
+     "topic": "Data sharing",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "18f",
+     "section": "Open science",
+     "topic": "Code sharing",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "provenance.json",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "where the bundle, and the TurboTab version it names, can be obtained"
+    },
+    {
+     "id": "19",
+     "section": "Patient and public involvement",
+     "topic": "Patient and public involvement",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "20a",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the number of participants with and without the outcome, and any follow-up time"
+    },
+    {
+     "id": "20b",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "20c",
+     "section": "Result",
+     "topic": "Participants",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "21",
+     "section": "Result",
+     "topic": "Model development",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the number of participants (and outcome events) in each analysis: development, tuning and evaluation"
+    },
+    {
+     "id": "22",
+     "section": "Result",
+     "topic": "Model specification",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "23a",
+     "section": "Result",
+     "topic": "Model performance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "results/performance.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "performance in key subgroups, with intervals"
+    },
+    {
+     "id": "23b",
+     "section": "Result",
+     "topic": "Model performance",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "24",
+     "section": "Result",
+     "topic": "Model updating",
+     "kind": null,
+     "scope": "E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "25",
+     "section": "Discussion",
+     "topic": "Interpretation",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "26",
+     "section": "Discussion",
+     "topic": "Limitations",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27a",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27b",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "27c",
+     "section": "Discussion",
+     "topic": "Usability of the model in the context of current care",
+     "kind": null,
+     "scope": "D;E",
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    }
+   ],
+   "unanswered": [
+    "1",
+    "2",
+    "3a",
+    "3b",
+    "3c",
+    "5a",
+    "5b",
+    "6a",
+    "6c",
+    "8b",
+    "8c",
+    "9c",
+    "10",
+    "12d",
+    "12f",
+    "12g",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18a",
+    "18b",
+    "18c",
+    "18d",
+    "18e",
+    "19",
+    "20b",
+    "20c",
+    "22",
+    "23b",
+    "24",
+    "25",
+    "26",
+    "27a",
+    "27b",
+    "27c"
+   ]
+  }
+ },
+ "beside_the_bundle": {
+  "scales": {
+   "methods": "`support_scale` was the sum of its 10 items, `item_05` reverse-coded on the 1–5 response scale. Its reliability was ω-total = 0.79 for the score (McDonald's ω; minimum-residual factor analysis of the item correlations, one factor; Cronbach's α = 0.78, reported as customary). Its coefficient was not corrected for measurement error.",
+   "scales": [
+    {
+     "name": "support_scale",
+     "role": "covariate",
+     "reliability": {
+      "coefficient": "omega_total",
+      "label": "ω-total",
+      "value": 0.789252121852146,
+      "alpha": 0.7846777811637634,
+      "alpha_label": "Cronbach's α, customary: shown because the field reports it, not as the reliability (McNeish 2018: its assumptions usually fail and it usually understates reliability).",
+      "n": 288,
+      "reason": null
+     },
+     "correction": null,
+     "not_corrected": null,
+     "methods": "`support_scale` was the sum of its 10 items, `item_05` reverse-coded on the 1–5 response scale. Its reliability was ω-total = 0.79 for the score (McDonald's ω; minimum-residual factor analysis of the item correlations, one factor; Cronbach's α = 0.78, reported as customary). Its coefficient was not corrected for measurement error."
+    }
+   ]
+  }
+ }
+}

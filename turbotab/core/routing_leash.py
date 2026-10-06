@@ -137,6 +137,15 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
                     {"inference": "Sound for the intervals; between-group confounding stays",
                      "prediction": "Not offered: under prediction a grouping decides validation"},
                     {"inference": "available", "prediction": "not_offered"}),
+            _option("group", "Rows sharing it are one group: the folds keep each group whole",
+                    "customary for a multicenter prediction model (internal–external "
+                    "validation by center)",
+                    {"inference": "Not offered: under inference a grouping is adjusted for or "
+                                  "clusters the intervals",
+                     "prediction": "Sound: no group trains and scores at once, so the score is a "
+                                   "new group's; internal–external cross-validation folds by it "
+                                   "(Steyerberg & Harrell 2016)"},
+                    {"inference": "not_offered", "prediction": "recommended"}),
             _option("none", "Nothing groups the participants",
                     "customary when no site or household is named",
                     {"inference": "Unsound over a column that reads as a grouping: intervals too "
@@ -160,7 +169,8 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
                       "turbotab.core.estimand:_no_grouping_is_recorded", rung="block_and_record",
                       exits=("adjust for it and cluster by it", "record that they group nothing")),
         ),
-        sources=("MODELING_SEQUENCE §2", "Bell & McCaffrey 2002, Surv Methodol 28:169")),
+        sources=("MODELING_SEQUENCE §2", "Bell & McCaffrey 2002, Surv Methodol 28:169",
+                 "Steyerberg & Harrell 2016, J Clin Epidemiol 69:245–247")),
     _contract(
         key="copies_not_repeats", label="Rows read as imputed copies are not repeats",
         slot="reshape", scope="row_local",
