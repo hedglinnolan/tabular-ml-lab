@@ -1,5 +1,67 @@
 # Handoff
 
+**State (2026-10-06, paused by Nolan after the platform fixes).** `turbotab-next` is at the merge that adds the design docs (on top of `9c349c4e`). The last CI run (`9c349c4e`) is green on all four jobs: Linux core and server tests, the Docker server image, and the macOS and Windows launchers.
+
+**The engine (done and independently verified).** Waves 1, 2a, 2b and 2c and their repairs cover nearly every method in `V2_DEFINITION_OF_DONE.md`:
+- data in: XPT, codebooks, joins;
+- survey across families;
+- multiple imputation compatible with the analysis model;
+- prediction validation;
+- omics: QC-RLSC and ComBat;
+- scales;
+- NCI usual intake;
+- estimands and Table 2;
+- causal ML and time-varying exposures;
+- explainability;
+- regression calibration;
+- functional form;
+- Explore;
+- multiclass substitution;
+- the leash;
+- previews for every number-changing kind;
+- the export bundle with replay.
+
+The release track also landed: the legacy app is retired, with its references in `reference/`; the one-command launcher; server mode with sign-in; Docker; the generated methods reference and the five expert review packets.
+
+**The design direction (Nolan's rulings, 2026-10-05).**
+- Calm over complete: `calm/FOUNDATION.md` sets the five-second test, two registers, desktop only, the color roles and the canvas grammar.
+- The Q&A card is the likely structure. Four synchronized structures sit on branch `explore/calm` for his comparison.
+- Exploration is a guide plus a gallery, walked on the first visit.
+- Noticings become threads that return at later stages.
+
+The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 17 families, with sentinels and a coverage test. It is **not built yet**; about one thread in five has engine pieces.
+
+**Approved and not yet built** (the DoD amendment, 2026-10-05):
+- the families ridge, Huber, random forest and XGBoost;
+- Table 1;
+- stacking NHANES cycles;
+- nested tuning;
+- explanations, evaluation and robustness on screen;
+- Classic's missing exploration views.
+
+`RECIPES_AND_TUNING.md` specifies the recipes, overrides and tuning, with three decisions open.
+
+**Waiting on Nolan:**
+1. `RECIPES_AND_TUNING.md` "Decisions for Nolan": the missing-values card wording, whether fits over about 2 min wait for Fit, and the scope cuts.
+2. Whether to commit the NHANES export as a test fixture.
+3. His pick among the four calm structures.
+4. `UNDERSTANDING_LAYER.md` §7's three questions.
+
+**Engine follow-ups found (not started):**
+- the energy preview that quotes a coefficient before the lock;
+- the exposure and estimand previews that draw nothing;
+- the metabolomics zero-row crash;
+- the elastic net's penalty, which is platform-dependent (a methods decision: a tighter tolerance or a one-standard-error rule);
+- the speed targets (DoD gate 5), which need a quiet machine;
+- the final re-audit.
+See INBOX.md.
+
+**Next, when resumed.** Build in vertical slices: each is an engine thread, its calm screen and a drive. Start with the prototype plan's phase 0 (`UNDERSTANDING_LAYER.md` §6) on the chosen structure, together with the shelf and tuning work.
+
+---
+
+## History: the state on 2026-10-01
+
 **State (2026-10-01): M1 is done and tagged `next-m1`.** The production app runs the full NHANES
 journey in a real browser: the Record with its card-based decisions, the pipeline banner, and the
 stage. The stage has the transform player (the flip plays each method's real storyboard), previews
