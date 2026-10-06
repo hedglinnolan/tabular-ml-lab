@@ -4,9 +4,9 @@ M2 is done when each of the five lenses can take its characteristic fixture thro
 sequence in a browser. Every structural choice previews on the canvas, the seal states its basis and
 withholds held-out scores until it is opened once, and the wide omics tables stay fast.
 
-Read first: BLUEPRINT (North star, §0, §11, §11.1), `docs/turbotab/OPENING_SEQUENCE.md` (the
-sequence, its copy and its firing rules — authoritative), `docs/turbotab/ROADMAP.md` §"The lockbox
-constitution" (§01–§07 — authoritative on what the app may know and when), DRIVE_RUBRIC, and
+Read first: BLUEPRINT (North star, §0, §11, §11.1), `docs/turbotab-next/reference/OPENING_SEQUENCE.md` (the
+sequence, its copy and its firing rules — authoritative), `docs/turbotab-next/reference/LOCKBOX_CONSTITUTION.md`
+(§01–§07 — authoritative on what the app may know and when), DRIVE_RUBRIC, and
 M1_CONTRACT (what exists). Contract-as-code already on `turbotab-next`: the M2 decision kinds and
 slots in `decisions.py` (keyed slots: `findings` holds one disposition per finding id), `SetMissing.
 categorical` / `.indicators`, and `Bundle.files` in `graph.py`.
@@ -60,7 +60,7 @@ ingest ─▶ oriented ─▶ findings
   references the oriented file rather than copying it.
 - Row identity: `__row_id` on the working table is dense over its rows. The row map is the bridge.
 
-## 3 · The seal (ROADMAP lockbox constitution §01–§05)
+## 3 · The seal (lockbox constitution §01–§05)
 
 - **The seal states its basis, in three states, never two:** `grouped by <column>` · `repetition
   found but grouping abandoned` · `undetermined`. The basis is persisted in the split artifact and

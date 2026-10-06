@@ -16,7 +16,7 @@ The package's seven acceptance tests, in its order:
    with energy like observed rows (reference today: −1.000 against +0.78)."
 4. **Methods sentence.** "It names the method ('median for numbers, most frequent for categories',
    or 'multiple imputation, m = 20'). Source check: STROBE-nut nut-13."
-5. **One rule.** "ROADMAP §07, the M2_CONTRACT Tier A test and the MISSING drawer state the same
+5. **One rule.** "The lockbox constitution §07, the M2_CONTRACT Tier A test and the MISSING drawer state the same
    purpose-conditional rule, citing Sisk et al. 2023 and Moons 2006 (via Harrell)."
 6. **Below detection.** "When left-censoring fires, median fill is refused unless overridden with a
    reason; half-minimum and a censoring-aware option are offered; on the log-scale censoring
@@ -693,7 +693,7 @@ def _flat(text: str) -> str:
 
 
 def test_5_roadmap_contract_and_drawer_state_one_purpose_conditional_rule():
-    """ROADMAP §07, M2_CONTRACT §4 (its Tier A test) and the MISSING drawer quote one rule, by
+    """The lockbox constitution §07, M2_CONTRACT §4 (its Tier A test) and the MISSING drawer quote one rule, by
     purpose, citing Sisk et al. 2023 and Moons et al. 2006 via Harrell; the purpose-blind sentences
     the audit quoted ("never place the outcome in the imputation model, which is a blocker in any
     configuration"; "The outcome belongs in the imputation model") are gone."""
@@ -701,7 +701,7 @@ def test_5_roadmap_contract_and_drawer_state_one_purpose_conditional_rule():
 
     assert "Sisk et al. 2023" in RULE and "Moons et al. 2006, via Harrell" in RULE
     assert "Under inference" in RULE and "Under prediction" in RULE
-    roadmap = _flat((REPO / "docs/turbotab/ROADMAP.md").read_text())
+    roadmap = _flat((REPO / "docs/turbotab-next/reference/LOCKBOX_CONSTITUTION.md").read_text())
     section = roadmap[roadmap.index("### 07 · Missingness"):roadmap.index("### 08 ·")]
     contract = _flat((REPO / "docs/turbotab-next/M2_CONTRACT.md").read_text())
     drawer = " ".join(s["body"] for s in MISSING["drawer"]["sections"])

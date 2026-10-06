@@ -47,7 +47,7 @@ from pathlib import Path
 
 import pytest
 
-PACK = (Path(__file__).resolve().parents[1] / "docs" / "turbotab" /
+PACK = (Path(__file__).resolve().parents[1] / "docs" / "turbotab-next" / "reference" /
         "research" / "NUTRITION_PACK.md")
 
 

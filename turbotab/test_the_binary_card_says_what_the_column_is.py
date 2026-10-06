@@ -45,6 +45,8 @@ and the behavior did not**, which is the whole of this row.
 `WRITTEN_SHAPES` runs the load-bearing claim against all four writings the
 composer distinguishes. `SHAPES_NOT_COVERED` names the rest.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import glob
@@ -55,12 +57,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml import binary_text as B                    # noqa: E402
-from turbotab import api                           # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 FIXTURE = "binary_shapes.csv"
@@ -91,11 +91,6 @@ SHAPES_NOT_COVERED = {
 
 #: The sentence that used to sit on every hit.
 OLD = "is a binary variable written as text"
-
-
-@pytest.fixture(scope="module")
-def client():
-    return TestClient(api.app)
 
 
 def _frame():
@@ -207,42 +202,6 @@ def test_the_repair_is_unchanged_for_every_shape(shape):
     assert len(values) == 2, (column, values)
     assert int(frame[column].isna().sum()) == int(df[column].isna().sum()), (
         "the repair changed how many blanks the column has")
-
-
-# ── 3 · the card the user actually opens ─────────────────────────────────────
-
-def test_the_repair_group_card_titles_every_member_by_what_it_holds(client):
-    """The surface the finding was raised against: one card, five members, each
-    with its own title. Driven through the real API rather than composed here.
-    """
-    with open(DATA / FIXTURE, "rb") as fh:
-        body = client.post("/project", files={
-            "file": (FIXTURE, fh, "text/csv")}).json()
-    pid = body["id"]
-    hits = [f for f in body["findings"] if f["fix_kind"] == "read_as_binary"]
-    assert len(hits) == 5, [f["title"] for f in hits]                 # control
-
-    df = _frame()
-    text_columns = {c for c in df.columns
-                    if B.value_shape(df[c]) == B.OBJECT_TEXT}
-    called_text = {f["affected_columns"][0] for f in hits if OLD in f["title"]}
-    assert called_text == (text_columns & {f["affected_columns"][0]
-                                           for f in hits}), (
-        f"the card calls these columns text: {sorted(called_text)}; only "
-        f"{sorted(text_columns)} hold text")
-    assert len(called_text) == 1, sorted(called_text)
-    assert len(hits) - len(called_text) == 4, (
-        "the reproduction is meant to carry four hits the old sentence was "
-        "wrong about")
-
-    group = client.get(f"/project/{pid}/repair_group/read_as_binary").json()
-    member_titles = {m["title"] for m in group["members"]}
-    assert member_titles == {f["title"] for f in hits}, (
-        "the group card and the finding list give different titles for the "
-        "same columns")
-    wrong = [t for t in member_titles
-             if OLD in t and not any(c in t for c in text_columns)]
-    assert not wrong, wrong
 
 
 # ── 4 · the sweep, over every shipped fixture ────────────────────────────────

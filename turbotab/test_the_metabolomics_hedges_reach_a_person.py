@@ -39,6 +39,8 @@ Two target shapes, and the shapes not covered are named in
 `SHAPES_NOT_COVERED` — including the one that would actually change the content,
 which is a **sub-domain** rather than a target.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import json
@@ -50,7 +52,8 @@ import pytest
 from turbotab import packs as P
 
 DATA = Path(__file__).resolve().parent / "sample_data"
-RESEARCH = (Path(__file__).resolve().parents[1] / "docs" / "turbotab"
+RESEARCH = (Path(__file__).resolve().parents[1] / "docs" / "turbotab-next"
+            / "reference"
             / "research" / "METABOLOMICS_PACK.md")
 
 #: `GUIDED-097`. Two target shapes on the metabolomics lens. The hedges are
@@ -367,138 +370,3 @@ def test_a_pack_with_no_section_11_produces_nothing_rather_than_an_empty_block()
     for lens in ([P.CLINICAL], [P.DIETARY], [P.SURVEY], [P.GENOMICS], [P.OTHER]):
         assert P.hedges(lens) is None, lens
     assert P.hedges([P.CLINICAL, P.METABOLOMICS])["n"] == 13
-
-
-# ═══════════ AND IT REACHES A PERSON ═══════════
-
-@pytest.mark.parametrize("shape", sorted(TARGET_SHAPES))
-def test_the_hedge_block_is_served_under_the_metabolomics_lens(shape):
-    """Driven through the real API, and across two target shapes.
-
-    Not `packs.hedges(...)`, which would prove the function and prove nothing
-    about the app.
-    """
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    fixture, target = TARGET_SHAPES[shape]
-    client = TestClient(api.app)
-    with open(DATA / fixture, "rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-
-    # BEFORE THE LENS IS ANSWERED there is no pack and therefore no position.
-    assert client.get(f"/project/{pid}").json()["pack_hedges"] is None
-
-    for kind, payload in (("set_lens", {"lens": [P.METABOLOMICS]}),
-                          ("set_target", {"column": target})):
-        ok = client.post(f"/project/{pid}/decision",
-                         json={"kind": kind, "payload": payload})
-        assert ok.status_code == 200, (kind, ok.text[:400])
-
-    block = client.get(f"/project/{pid}").json()["pack_hedges"]
-    assert block is not None and block["n"] == 13
-    assert [i["rank"] for i in block["items"]] == list(range(1, 14))
-    for item in block["items"]:
-        assert item["evidence_status"] in P.EVIDENCE_STATUSES
-        assert item["source"].startswith("research/METABOLOMICS_PACK.md#")
-        assert item["what_the_app_does"]
-        if item["evidence_status"] == P.DISPUTED:
-            assert item["both_sides"] and item["sensitivity"]
-
-
-@pytest.mark.parametrize("shape", sorted(TARGET_SHAPES))
-def test_the_hedge_block_reaches_a_person(shape):
-    """**Trap #6, which this door has paid for at six surfaces.** Composed
-    correctly and rendered nowhere is the failure mode; the check is the page's
-    own controller, run for real.
-
-    Every DISPUTED item's `both_sides` is asserted ON THE PAGE, because that is
-    the string the badge's tooltip promises and nothing rendered before this:
-    the tooltip said *"both positions are stated"* while no surface stated them.
-    """
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    fixture, target = TARGET_SHAPES[shape]
-    client = TestClient(api.app)
-    with open(DATA / fixture, "rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-    for kind, payload in (("set_lens", {"lens": [P.METABOLOMICS]}),
-                          ("set_target", {"column": target})):
-        assert client.post(f"/project/{pid}/decision",
-                           json={"kind": kind, "payload": payload}
-                           ).status_code == 200
-
-    project = client.get(f"/project/{pid}").json()
-    routes = {
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore":
-            client.get(f"/project/{pid}/interview?step=explore").json(),
-        f"/project/{pid}/evidence/missingness": {"cards": []},
-        f"/project/{pid}/capabilities":
-            client.get(f"/project/{pid}/capabilities").json(),
-    }
-    out = PH.run(
-        "__emit({hedges: (__harness.html('packHedges') || '').slice(0, 200000),"
-        " parent: (__harness.html('card-eda') || '').slice(0, 400000)});",
-        routes=routes, search=f"?project={pid}")
-    html = out["hedges"]
-    assert html, "the hedge block rendered nothing at all"
-
-    block = project["pack_hedges"]
-    for item in block["items"]:
-        head = item["statement"][:40]
-        assert head in html, (
-            f"item {item['rank']} ({item['key']}) is on the wire and not on "
-            f"the page: {head!r}")
-        assert item["what_the_app_does"][:40] in html, item["key"]
-        if item["both_sides"]:
-            assert item["both_sides"][:60] in html, (
-                f"{item['key']} is DISPUTED and the page shows the badge "
-                f"without either position — which is the badge's tooltip "
-                f"asserting something the surface does not do")
-        if item["sensitivity"]:
-            assert item["sensitivity"][:50] in html, item["key"]
-
-    # ALL THREE BADGE STATUSES ON THE PAGE, so a reader can see the register is
-    # not uniformly cautious.
-    statuses = set(re.findall(r'class="badge (\w+)"', html))
-    assert {"settled", "convention", "disputed"} <= statuses, sorted(statuses)
-
-    # THE BOUND, and it is the server's number rather than the page's count.
-    assert 'data-hedge-showing="13"' in html and 'data-hedge-of="13"' in html
-    assert "Showing 13 of 13" in html
-
-    # ITEM 12'S REFUSALS, rendered with what to do instead.
-    for refusal in block["refuses"]:
-        assert refusal["reason"][:40] in html, refusal["key"]
-        assert refusal["offer"]["label"] in html, refusal["key"]
-
-    # AND THE CONTAINER SITS INSIDE THE EXPLORE STEP.
-    #
-    # **This one is a file claim and is answered from the file, deliberately.**
-    # `out["parent"]` is empty and that is the harness being honest rather than
-    # a defect: it reports what was ASSIGNED to a node, and `#card-eda` is
-    # static markup nothing assigns. Driving cannot answer *is this container
-    # inside that section* without layout, so the honest instrument is the
-    # markup — `LOOP.md` trap #5's own carve-out, reserved for claims that are
-    # genuinely about the file. What the drive above proves is the harder half:
-    # the controller wrote into it.
-    page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
-        encoding="utf-8")
-    explore = page[page.index('id="sec-eda"'):]
-    explore = explore[:explore.index('id="sec-', 10)]
-    assert 'id="profList"' in explore, (
-        "the Explore section no longer holds the findings list, so this test "
-        "is measuring the wrong region")
-    assert 'id="packHedges"' in explore

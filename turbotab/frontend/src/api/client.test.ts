@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, RefusalError, api, isRefusalError, parseRefusal } from "./client";
+import {
+  ApiError,
+  RefusalError,
+  api,
+  isRefusalError,
+  parseRefusal,
+  UNAUTHENTICATED_EVENT,
+  signInUrl,
+} from "./client";
 import type { ProjectView, Refusal } from "./schema";
 
 function respond(status: number, body: unknown) {
@@ -111,5 +119,30 @@ describe("parseRefusal", () => {
     expect(
       parseRefusal({ error: { code: "c", message: "m", exits: [{ label: "x", decision: 3 }] } }),
     ).toBeNull();
+  });
+});
+
+describe("a request without a session (server mode, 401)", () => {
+  it("announces that the session ended and still rejects the call", async () => {
+    respond(401, { error: { code: "unauthenticated", message: "Sign in.", exits: [] } });
+    const signIn = vi.fn();
+    window.addEventListener(UNAUTHENTICATED_EVENT, signIn);
+    try {
+      const err = await api.listProjects().catch((e) => e);
+      expect(signIn).toHaveBeenCalledTimes(1);
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).status).toBe(401);
+      respond(409, refusal);
+      await api.listProjects().catch(() => null);
+      expect(signIn).toHaveBeenCalledTimes(1); // only a 401 means the session ended
+    } finally {
+      window.removeEventListener(UNAUTHENTICATED_EVENT, signIn);
+    }
+  });
+
+  it("names where to come back to as one encoded parameter", () => {
+    expect(signInUrl("/projects/p1?tab=rows&x=1")).toBe(
+      "/login?next=%2Fprojects%2Fp1%3Ftab%3Drows%26x%3D1",
+    );
   });
 });

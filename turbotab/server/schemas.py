@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from turbotab.core.consequences import CoachNote, PreviewResult, RowStep  # noqa: F401 - re-exported
 from turbotab.core.decisions import (  # noqa: F401 - re-exported contract models
@@ -63,6 +63,10 @@ class Health(Model):
     version: str
     mode: Mode
     workers: int
+    user: str | None = Field(None, description="Server mode: the signed-in user; null in local mode")
+    auth: Literal["none", "password", "proxy"] = Field(
+        "none", description="How users sign in: none (local mode), password, or proxy (the "
+                            "institution's single sign-on)")
 
 
 # ── projects ─────────────────────────────────────────────────────────────────

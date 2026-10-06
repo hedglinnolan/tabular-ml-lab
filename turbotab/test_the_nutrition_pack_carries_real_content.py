@@ -33,6 +33,8 @@ Four refusals, each for a different reason, and each **offering what it can
 draw** — because a refusal that offers nothing is indistinguishable from a
 missing feature, and the user still has a real question.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -45,7 +47,6 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import figure_specs as FS                               # noqa: E402
 from turbotab import nutrition as N                                   # noqa: E402
 from turbotab import packs as P                                       # noqa: E402
 
@@ -229,7 +230,7 @@ def test_every_nutrition_finding_offers_no_automatic_repair():
 
 def test_every_advisory_carries_its_badge_and_a_resolvable_source():
     """`GUIDED-047`, applied to the pack's new content."""
-    root = Path(__file__).resolve().parents[1] / "docs" / "turbotab"
+    root = Path(__file__).resolve().parents[1] / "docs" / "turbotab-next" / "reference"
     for evidence in (N.ATWATER_EVIDENCE, N.DESIGN_EVIDENCE,
                      N.PREVALENCE_EVIDENCE):
         assert evidence.status in P.EVIDENCE_STATUSES
@@ -284,45 +285,6 @@ def test_it_is_refused_from_single_day_and_from_a_naive_mean(basis):
     assert caught.value.offer["draw"] == "shrinkage", (
         "the refusal offers nothing to look at, which is indistinguishable "
         "from a missing feature")
-
-
-def test_every_refusal_offers_something_it_can_draw():
-    """A refusal that offers nothing is indistinguishable from a missing
-    feature, and the user still has a real question.
-
-    **This test used to assert the offer strings were non-empty**, which is the
-    shape of the claim and not its resolution — `GUIDED-060`. Two of the four
-    offers named a figure that does not exist, and three truthy strings passed
-    every time. The target is RESOLVED now: registered, or declared pending
-    with what it needs and the row blocking it. An id in neither raises.
-    """
-    from turbotab import figures
-    from turbotab import figure_specs                                 # noqa: F401
-
-    cases = [
-        ("fiber", N.USUAL_INTAKE, "AI"),
-        ("calcium", N.USUAL_INTAKE, "RDA"),
-        ("calcium", N.SINGLE_DAY, "EAR"),
-        ("calcium", N.NAIVE_MEAN, "EAR"),
-    ]
-    for nutrient, basis, kind in cases:
-        with pytest.raises(N.PrevalenceRefusal) as caught:
-            N.prevalence_of_inadequacy(nutrient, basis=basis,
-                                       reference_kind=kind)
-        offer = caught.value.offer
-        assert offer["draw"] and offer["label"] and offer["caption_note"]
-        assert offer["forbidden"], "the refusal does not name what it refused"
-        assert len(str(caught.value)) > 120, "the refusal states no reason"
-
-        resolved = figures.resolve(offer["draw"])
-        assert resolved["status"] in (figures.REGISTERED_STATUS,
-                                      figures.PENDING_STATUS)
-        if resolved["status"] == figures.PENDING_STATUS:
-            # A pending target is honest only while it says what is missing.
-            assert len(resolved["needs"]) > 60, offer["draw"]
-            assert resolved["blocked_by"].startswith(("GUIDED-", "DRIVE-")), (
-                f"{offer['draw']} is pending and names no ledger row, so "
-                f"nothing tracks it back into existence")
 
 
 def test_a_nutrient_name_is_matched_exactly_and_never_by_substring():
@@ -403,78 +365,3 @@ def _three_series(n=500, seed=3):
             "usual_intake": usual}
 
 
-def test_the_shrinkage_checklist_passes_and_the_narrowing_is_real():
-    payload = FS.shrinkage_payload(_three_series(), nutrient="calcium",
-                                   unit="mg", n_days=2)
-    failed = [r for r in FS.SHRINKAGE.score(payload) if not r["passed"]]
-    assert not failed, [(r["id"], r["because"]) for r in failed]
-    # The claim, as arithmetic: each step narrows.
-    assert (payload["spread_usual_intake"] < payload["spread_mean_of_days"]
-            < payload["spread_single_day"])
-
-
-def test_two_series_is_refused_rather_than_drawn():
-    """The claim is the narrowing ACROSS three. Two of them is a different
-    figure making a weaker claim while wearing this one's caption."""
-    series = _three_series()
-    del series["usual_intake"]
-    with pytest.raises(ValueError, match="needs all three series"):
-        FS.shrinkage_payload(series, nutrient="calcium")
-
-
-def test_the_caption_says_the_third_distribution_is_modeled():
-    """Reporting modeled individual predictions as measured usual intakes is a
-    named failure in this field."""
-    caption = FS.SHRINKAGE.caption(
-        FS.shrinkage_payload(_three_series(), nutrient="calcium", unit="mg",
-                             n_days=2))
-    assert "MODELED" in caption
-    assert "not measured usual intakes" in caption
-    assert "overstated in both tails" in caption or "both tails" in caption
-
-
-def test_the_narrowing_item_can_fail():
-    """`GUIDED-045`'s axis: an item that cannot fail is not a check.
-
-    If the modeled distribution is not narrower, the figure does not make the
-    argument it is drawn to make — and saying so is more useful than drawing it
-    anyway.
-    """
-    payload = FS.shrinkage_payload(_three_series(), nutrient="calcium")
-    item = next(i for i in FS.SHRINKAGE.checklist
-                if i.id == "narrowing_is_visible")
-    assert item.check(payload) is True
-    assert item.check(dict(payload, spread_usual_intake=1e9)) is False
-
-
-def test_the_per_series_annotations_are_keyed_and_not_generalized():
-    """What the third figure cost the abstraction, asserted so the note is not
-    just prose.
-
-    Every annotation until this figure named ONE number. Here the same
-    annotation exists three times, once per series, and it is keyed per series
-    rather than by adding an axis to `Annotation` — a generalization on one
-    example is how a field becomes a taxonomy nobody can apply.
-    """
-    keys = {a.key for a in FS.SHRINKAGE.annotations}
-    assert keys == {f"{s}_{k}" for k in FS.SERIES for s in ("p05", "p95")}
-    assert len(keys) == 6
-    # `Annotation` itself is unchanged: still one key, one label, one source.
-    for annotation in FS.SHRINKAGE.annotations:
-        assert annotation.key and annotation.label and annotation.source
-
-
-def test_the_third_figure_did_not_need_a_third_tier():
-    """The one thing that genuinely did not fit, recorded rather than resolved.
-
-    The shrinkage plot is EXPLORATORY by the two-tier logic — it sees no group
-    labels and makes no group claim — but it is the *argument for a method*,
-    which is neither exploration nor confirmation. Adding a tier on one example
-    is how a two-value distinction becomes a taxonomy nobody can apply, so it
-    is filed (`GUIDED-056`) rather than built.
-    """
-    assert FS.SHRINKAGE.tier == FS.EXPLORATORY
-    from turbotab.figures import TIERS
-    assert len(TIERS) == 2, (
-        "a third tier was added; if that is right it needs more than one "
-        "example behind it")

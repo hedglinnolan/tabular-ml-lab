@@ -1,6 +1,6 @@
 """Energy adjustment: the models of NUTRITION_PACK §04 as an in-fold sklearn step.
 
-Source: ``docs/turbotab/research/NUTRITION_PACK.md`` §04, "The five models, formally", with the
+Source: ``docs/turbotab-next/reference/research/NUTRITION_PACK.md`` §04, "The five models, formally", with the
 two forms of the residual method (McCullough & Byrd 2023) and the all-components model (Tomova et
 al. 2022) beside them. Let N be a nutrient, E total energy, Y the outcome, C other covariates.
 
@@ -109,7 +109,7 @@ METHODS: Tuple[str, ...] = ("none", "standard", "residual", "residual_energy_dro
 RESIDUAL_METHODS: Tuple[str, ...] = ("residual", "residual_energy_dropped")
 PARTITION_METHODS: Tuple[str, ...] = ("partition", "all_components")
 
-SOURCE = "docs/turbotab/research/NUTRITION_PACK.md#04 · Energy adjustment"
+SOURCE = "docs/turbotab-next/reference/research/NUTRITION_PACK.md#04 · Energy adjustment"
 _TOMOVA = "Tomova et al. 2022, AJCN 115(1):189-198"
 _MCCULLOUGH = "McCullough & Byrd 2023, AJE 192(11):1801-1805"
 _DISPUTE = "Willett, Stampfer & Tobias 2022, AJCN 116(2):608-609"

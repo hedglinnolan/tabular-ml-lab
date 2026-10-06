@@ -35,6 +35,8 @@ untested:
 4. The lens contradiction detector stays quiet while the shape is feature-major
    (`GUIDED-042`), because its evidence is computed across the wrong axis.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import io
@@ -71,13 +73,6 @@ def _transposed_bytes(name: str = "metabolomics_untargeted") -> bytes:
     buf = io.StringIO()
     t.to_csv(buf, index=False)
     return buf.getvalue().encode()
-
-
-def _client():
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    return TestClient(api.app)
 
 
 def _pushed(client, pid, step="data"):
@@ -136,174 +131,6 @@ def test_it_takes_an_assay_lens_as_well_as_a_shape():
     assert O.fires(["clinical"], reading) is False
     assert O.fires(["survey", "dietary"], reading) is False
     assert O.fires(["metabolomics"], {"reading": O.SAMPLE_MAJOR}) is False
-
-
-# ── the sequence ─────────────────────────────────────────────────────────────
-
-def test_it_is_asked_at_position_one_point_five_and_the_target_waits():
-    """The ordering, with teeth.
-
-    On a feature-major table the column list is a list of samples, so a target
-    chosen from it is a participant identifier — and `set_orientation` refuses
-    to turn a table around once a target exists, because after the turn that
-    column is a row. Offering both at once would let the user make the second
-    question unanswerable.
-    """
-    client = _client()
-    pid = client.post("/project", files={
-        "file": ("t.csv", _transposed_bytes(), "text/csv")}).json()["id"]
-    assert client.post(f"/project/{pid}/decision", json={
-        "kind": "set_lens", "payload": {"lens": ["metabolomics"]}}).status_code == 200
-
-    asked = _pushed(client, pid)
-    assert "state_orientation" in asked, sorted(asked)
-    assert asked["state_orientation"]["seq"] == "1.5"
-    assert asked["state_orientation"]["clause"] == "lockbox-01"
-    assert "choose_target" not in asked, (
-        "the target is offered while the table may be the other way round, so "
-        "the column list on offer is a list of samples")
-
-
-@pytest.mark.parametrize("name,lens", [
-    ("metabolomics_untargeted", ["metabolomics"]),
-    ("genomics_expression", ["genomics"]),
-    ("wide_assay", ["metabolomics"]),
-    ("clinic_visits", ["clinical"]),
-])
-def test_it_is_not_asked_of_a_table_that_is_the_right_way_round(name, lens):
-    """Guard #2, over HTTP rather than over the detector.
-
-    The detector being quiet and the interview being quiet are two claims, and
-    only the second is what a driver meets.
-    """
-    client = _client()
-    with open(DATA / f"{name}.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": (name, fh, "text/csv")}).json()["id"]
-    assert client.post(f"/project/{pid}/decision", json={
-        "kind": "set_lens", "payload": {"lens": lens}}).status_code == 200
-    assert "state_orientation" not in _pushed(client, pid)
-
-
-# ── the effect ───────────────────────────────────────────────────────────────
-
-def test_answering_features_in_rows_turns_the_table_around():
-    """The read-back on the FRAME, not on the record.
-
-    396 × 81 in, 80 × 397 out, and the sample identifiers are the old column
-    names. A test that asserted only `decisions[-1]["kind"] == "set_orientation"`
-    would pass on an implementation that recorded the answer and left the frame
-    exactly as it was.
-    """
-    client = _client()
-    pid = client.post("/project", files={
-        "file": ("t.csv", _transposed_bytes(), "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": ["metabolomics"]}})
-
-    before = client.get(f"/project/{pid}").json()
-    assert (before["n_rows"], before["n_columns"]) == (396, 81)
-
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "set_orientation", "payload": {"answer": "rows_are_features"}})
-    assert r.status_code == 200, r.text
-
-    after = client.get(f"/project/{pid}").json()
-    assert (after["n_rows"], after["n_columns"]) == (80, 397), (
-        f"the frame was not turned around: {after['n_rows']} × "
-        f"{after['n_columns']}")
-    names = [c["name"] for c in after["columns"]]
-    assert names[0] == "sample_id"
-    assert "mz_0001" in names, "the feature names did not become columns"
-    assert after["orientation"]["answer"] == "rows_are_features"
-
-
-def test_the_diagnosis_the_user_sees_is_computed_on_the_turned_around_table():
-    """**The clause itself**, and the assertion the record cannot stand in for.
-
-    *"Answering features-in-rows transposes the frame before diagnosis runs."*
-    An implementation that transposed the frame and left the old finding list in
-    place would satisfy every other test in this file, and the user would act on
-    findings computed across the wrong axis while a green sentence in the
-    transcript said the table had been turned around. That is the shape of the
-    critical this project closed last loop, one clause over.
-
-    So: the findings after the answer must be the findings of the turned-around
-    table, checked by comparing them against a direct engine call on the frame
-    the project now holds — never against the project's own description of what
-    it did.
-    """
-    from turbotab import engine
-    client = _client()
-    pid = client.post("/project", files={
-        "file": ("t.csv", _transposed_bytes(), "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": ["metabolomics"]}})
-    before = {f["id"] for f in client.get(f"/project/{pid}").json()["findings"]}
-
-    client.post(f"/project/{pid}/decision", json={
-        "kind": "set_orientation", "payload": {"answer": "rows_are_features"}})
-    after_payload = client.get(f"/project/{pid}").json()
-    after = {f["id"] for f in after_payload["findings"]}
-
-    assert after != before, (
-        "the finding list did not change when the table was turned around, so "
-        "the user is acting on a diagnosis computed across the other axis")
-
-    # Recomputed against the engine directly, on the frame the project holds.
-    from turbotab.api import STORE
-    project = STORE.get(pid)
-    direct = {f["id"] for f in engine.rank_findings(
-        engine.diagnose(project.df, target=project.target),
-        engine.profile(project.df, project.target, project.task_type),
-        lens=project.lens or [], df=project.df)}
-    assert after == direct, (
-        "the served findings are not the ones this frame produces:\n"
-        f"  only served: {sorted(after - direct)[:5]}\n"
-        f"  only direct: {sorted(direct - after)[:5]}")
-
-
-def test_both_answers_are_recorded_because_both_are_claims():
-    """§09's recorded-absence rule.
-
-    *"The table was already one row per sample"* is a claim, and without a
-    record a table that was checked reads exactly like a table nobody looked at.
-    """
-    client = _client()
-    pid = client.post("/project", files={
-        "file": ("t.csv", _transposed_bytes(), "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": ["metabolomics"]}})
-    client.post(f"/project/{pid}/decision", json={
-        "kind": "set_orientation", "payload": {"answer": "rows_are_samples"}})
-
-    payload = client.get(f"/project/{pid}").json()
-    said = [d for d in payload["decisions"] if d["kind"] == "set_orientation"]
-    assert len(said) == 1
-    assert said[0]["text"] == O.methods_sentence(O.ROWS_ARE_SAMPLES)
-    assert "not transposed" in said[0]["text"]
-    # And nothing moved.
-    assert (payload["n_rows"], payload["n_columns"]) == (396, 81)
-    assert "state_orientation" not in _pushed(client, pid)
-    assert "choose_target" in _pushed(client, pid), (
-        "answering the question did not release the target question")
-
-
-def test_the_methods_sentence_travels_into_the_record_verbatim():
-    """Quoted, not composed — §05.1 rule 3, on the one decision that rewrites
-    the table."""
-    client = _client()
-    pid = client.post("/project", files={
-        "file": ("t.csv", _transposed_bytes(), "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": ["metabolomics"]}})
-    client.post(f"/project/{pid}/decision", json={
-        "kind": "set_orientation", "payload": {"answer": "rows_are_features"}})
-    payload = client.get(f"/project/{pid}").json()
-    said = next(d for d in payload["decisions"] if d["kind"] == "set_orientation")
-    assert said["text"] == O.methods_sentence(
-        O.ROWS_ARE_FEATURES, payload["orientation"])
-    assert "396 measurements across 80 samples" in said["text"]
 
 
 # ── the refusals ─────────────────────────────────────────────────────────────

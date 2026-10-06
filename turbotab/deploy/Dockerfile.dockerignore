@@ -1,0 +1,21 @@
+# The build context of turbotab/deploy/Dockerfile (BuildKit reads this file in place of the root
+# .dockerignore, which is Classic's): only what the image copies.
+*
+!data_processor.py
+!ml
+!utils
+!models
+!static/fonts
+!turbotab
+
+turbotab/frontend/node_modules
+turbotab/frontend/dist
+turbotab/frontend/test-results
+turbotab/frontend/playwright-report
+turbotab/web
+turbotab/test_*.py
+turbotab/sessions
+**/tests
+**/__pycache__
+**/*.pyc
+**/.DS_Store

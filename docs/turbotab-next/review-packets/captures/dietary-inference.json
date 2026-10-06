@@ -1,0 +1,1474 @@
+{
+ "journey": {
+  "name": "dietary-inference",
+  "lens": "dietary",
+  "purpose": "inference",
+  "question": "Is a higher sugar intake, at the same total energy, associated with fasting glucose?",
+  "fixture": "_tt_tmp_nhanes.csv (the NHANES export, untracked)",
+  "why": "V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference journeys.",
+  "lenses": [
+   "dietary"
+  ],
+  "target": "glucose",
+  "exposure": "sugar"
+ },
+ "captured": {
+  "commit": "2ba3c5727a",
+  "date": "2026-10-05",
+  "seconds": 17,
+  "workers": 2
+ },
+ "answers": [
+  {
+   "kind": "set_lens",
+   "status": 200,
+   "summary": "{\"lenses\": [\"dietary\"]}",
+   "source": "the journey",
+   "seq": 1,
+   "sentence": "The table was read through the `dietary` lens."
+  },
+  {
+   "kind": "apply_repair",
+   "status": 200,
+   "summary": "{\"finding_id\": \"sas_zeros\", \"option\": \"zero\"}",
+   "source": "the finding's first repair option",
+   "seq": 2,
+   "sentence": "`152` cells holding `5.4e-79`, a misread SAS transport zero, were read as `0`."
+  },
+  {
+   "kind": "set_target",
+   "status": 200,
+   "summary": "{\"column\": \"glucose\"}",
+   "source": "the journey",
+   "seq": 3,
+   "sentence": "`glucose` was chosen as the outcome; it is measured on all `21,849` rows."
+  },
+  {
+   "kind": "set_purpose",
+   "status": 200,
+   "summary": "{\"purpose\": \"inference\"}",
+   "source": "the journey",
+   "seq": 4,
+   "sentence": "The analysis was declared for `inference`: associations are estimated with their uncertainty."
+  },
+  {
+   "kind": "set_roles",
+   "status": 200,
+   "summary": "identifier: SEQN; exposure: sugar, protein, carb, fat_total, fat_sat, fat_mon and 1 more; energy: kcal; covariate: age, gender, cycle_begin_year, weight, height, bmi and 7 more; flag: imputed_weight, imputed_height, imputed_bmi, imputed_waist, imputed_bp_sys, imputed_bp_di",
+   "source": "the journey (the fixture's author)",
+   "seq": 5,
+   "sentence": "Column roles were set for `28` columns: energy `kcal`; exposures `sugar`, `protein`, `carb` and 4 more; covariates `age`, `gender`, `cycle_begin_year` and 10 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more; `cycle_begin_year`, `bp_sys` and 14 more were proposed below high confidence and wait for their own confirmation before any default reads them."
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "16 readings (role 16): role:cycle_begin_year=covariate, role:bp_sys=covariate, role:bp_di=covariate, role:weight=covariate and 12 more",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 6,
+   "sentence": "Confirmed together, each as the question showed it: `10` columns (from `cycle_begin_year`) were confirmed as a covariate; `6` columns (from `imputed_weight`) were confirmed as a flag."
+  },
+  {
+   "kind": "set_exclusions",
+   "status": 409,
+   "summary": "{\"rules\": [{\"kind\": \"goldberg\", \"column\": \"kcal\", \"energy_unit\": \"kcal\", \"days\": 1.0, \"days_column\": null, \"sex\": \"gender\", \"female\": [\"female\"], \"male\": [\"male\"], \"age\": \"age\", \"weight\": \"weight\", \"weight_unit\": \"kg\", \"height\": \"height\", \"height_unit\": \"cm\",…",
+   "source": "the app's first-ranked option",
+   "refusal": {
+    "code": "energy_unit_unconfirmed",
+    "message": "The rule on `kcal` reads its bounds in a day's kcal, but how many days each value spans is not settled: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too). Record it first; then the screen's bounds are read in it.",
+    "exits": [
+     "`kcal` is one day's intake, in kcal",
+     "`kcal` is a total over 2 days, in kcal"
+    ]
+   }
+  },
+  {
+   "kind": "set_column_unit",
+   "status": 200,
+   "summary": "{\"column\": \"kcal\", \"unit\": \"kcal\", \"days\": 1}",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 7,
+   "sentence": "`kcal` was recorded as a day's energy in kcal."
+  },
+  {
+   "kind": "set_exclusions",
+   "status": 409,
+   "summary": "{\"rules\": [{\"kind\": \"goldberg\", \"column\": \"kcal\", \"energy_unit\": \"kcal\", \"days\": 1.0, \"days_column\": null, \"sex\": \"gender\", \"female\": [\"female\"], \"male\": [\"male\"], \"age\": \"age\", \"weight\": \"weight\", \"weight_unit\": \"kg\", \"height\": \"height\", \"height_unit\": \"cm\",…",
+   "source": "the app's first-ranked option",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "The screen reads `age` and `weight`'s units are not recorded: a header or a median tells kg from lb, or years from months, no better than a heavy cohort from a light one. Confirm each first.",
+    "exits": [
+     "`age` is in years",
+     "`weight` is in kg",
+     "`weight` is in lb",
+     "Keep only the screens that read settled columns"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "2 readings (unit 2): unit:age=years, unit:weight=kg",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 8,
+   "sentence": "Confirmed together, each as the question showed it: `age` was confirmed to be in years; `weight` was confirmed to be in kg."
+  },
+  {
+   "kind": "set_exclusions",
+   "status": 200,
+   "summary": "{\"rules\": [{\"kind\": \"goldberg\", \"column\": \"kcal\", \"energy_unit\": \"kcal\", \"days\": 1.0, \"days_column\": null, \"sex\": \"gender\", \"female\": [\"female\"], \"male\": [\"male\"], \"age\": \"age\", \"weight\": \"weight\", \"weight_unit\": \"kg\", \"height\": \"height\", \"height_unit\": \"cm\",…",
+   "source": "the app's first-ranked option",
+   "seq": 9,
+   "sentence": "`5,212` rows with `kcal` over Schofield (weight and height) BMR outside the Goldberg cut-offs for PAL `1.55` and `1` day or not screened were excluded as implausible energy reports (Goldberg cut-offs, Black 2000)."
+  },
+  {
+   "kind": "set_missing",
+   "status": 200,
+   "summary": "{\"strategy\": \"multiple_imputation\"}",
+   "source": "the app's first-ranked option",
+   "seq": 10,
+   "sentence": "Missing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome and total energy (`kcal`) in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor."
+  },
+  {
+   "kind": "set_split",
+   "status": 200,
+   "summary": "{\"holdout\": 0.0, \"seed\": 0, \"folds\": 5, \"validation\": \"kfold\"}",
+   "source": "the app's first-ranked option (the seal plan)",
+   "seq": 11,
+   "sentence": "No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); R² was measured against the training rows' mean and pooled over every out-of-fold prediction."
+  },
+  {
+   "kind": "set_estimand",
+   "status": 200,
+   "summary": "{\"exposure\": \"sugar\", \"effect\": \"total\", \"measure\": \"mean_difference\", \"contrast\": \"substitution\"}",
+   "source": "the journey's exposure, else the fixture's declared one, else the estimand card's first column; the estimand card's first-ranked measure unless the readings declare one (listed below); an energy-bearing exposure's contrast from the readings, else the substitution",
+   "seq": 12,
+   "sentence": "The analysis estimates the total effect of `sugar` on `glucose` (a substitution: in place of other energy sources at fixed total energy), as a difference in the mean outcome per unit of `sugar`."
+  },
+  {
+   "kind": "set_adjustment",
+   "status": 200,
+   "summary": "{\"exposure\": \"sugar\", \"answers\": {\"age\": {\"causes_exposure\": \"yes\", \"causes_outcome\": \"yes\", \"after_exposure\": \"no\"}, \"gender\": {\"causes_exposure\": \"yes\", \"causes_outcome\": \"yes\", \"after_exposure\": \"no\"}}}",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
+   "seq": 13,
+   "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `age` and `gender` are confounders, adjusted for."
+  },
+  {
+   "kind": "set_adjustment",
+   "status": 200,
+   "summary": "{\"exposure\": \"sugar\", \"answers\": {\"protein\": {\"causes_exposure\": \"unknown\", \"causes_outcome\": \"unknown\", \"after_exposure\": \"no\"}, \"carb\": {\"causes_exposure\": \"unknown\", \"causes_outcome\": \"unknown\", \"after_exposure\": \"no\"}, \"fat_total\": {\"causes_exposure\": \"un…",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
+   "seq": 14,
+   "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `protein`, `carb`, `fat_total`, `fat_sat` and 2 more are confounders, adjusted for."
+  },
+  {
+   "kind": "set_adjustment",
+   "status": 200,
+   "summary": "{\"exposure\": \"sugar\", \"answers\": {\"weight\": {\"after_exposure\": \"unknown\", \"causes_exposure\": \"unknown\", \"causes_outcome\": \"yes\", \"instrument\": false, \"proxy\": false}, \"height\": {\"after_exposure\": \"unknown\", \"causes_exposure\": \"unknown\", \"causes_outcome\": \"yes…",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
+   "seq": 15,
+   "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `weight`, `height`, `bmi` and `waist` are of unknown timing, left out of the primary model and adjusted for in a declared secondary one."
+  },
+  {
+   "kind": "set_adjustment",
+   "status": 200,
+   "summary": "{\"exposure\": \"sugar\", \"answers\": {\"bp_sys\": {\"after_exposure\": \"yes\", \"causes_exposure\": \"no\", \"causes_outcome\": \"yes\", \"instrument\": false, \"proxy\": false}, \"bp_di\": {\"after_exposure\": \"yes\", \"causes_exposure\": \"no\", \"causes_outcome\": \"yes\", \"instrument\": fa…",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
+   "seq": 16,
+   "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `bp_sys`, `bp_di`, `hdl`, `triglycerides` and 2 more are mediators, left out."
+  },
+  {
+   "kind": "set_adjustment",
+   "status": 200,
+   "summary": "{\"exposure\": \"sugar\", \"answers\": {\"cycle_begin_year\": {\"after_exposure\": \"no\", \"causes_exposure\": \"yes\", \"causes_outcome\": \"yes\", \"instrument\": false, \"proxy\": false}}}",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
+   "seq": 17,
+   "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `cycle_begin_year` is a confounder, adjusted for."
+  },
+  {
+   "kind": "set_energy_adjustment",
+   "status": 200,
+   "summary": "{\"method\": \"standard\", \"energy_column\": \"kcal\", \"nutrients\": [\"protein\", \"sugar\", \"carb\", \"fat_total\", \"fat_sat\", \"fat_mon\", \"fat_poly\"]}",
+   "source": "the app's first-ranked applicable option",
+   "seq": 18,
+   "sentence": "Energy was adjusted by the standard (multivariate) model: `kcal` enters the models beside `protein`, `sugar`, `carb`, `fat_total`, `fat_sat`, `fat_mon` and `fat_poly`, so each nutrient's effect is at fixed total energy."
+  },
+  {
+   "kind": "set_forms",
+   "status": 200,
+   "summary": "{\"forms\": {\"sugar\": {\"form\": \"spline\"}, \"protein\": {\"form\": \"spline\"}, \"carb\": {\"form\": \"spline\"}, \"fat_total\": {\"form\": \"spline\"}, \"fat_sat\": {\"form\": \"spline\"}, \"fat_mon\": {\"form\": \"spline\"}, \"fat_poly\": {\"form\": \"spline\"}, \"age\": {\"form\": \"spline\"}}}",
+   "source": "the form card's proposal for each column it asks about (a spline, k by the card's rule; non-consumers apart for an exposure with a mass at zero), unless the readings declare a form (listed below)",
+   "seq": 19,
+   "sentence": "`sugar` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; quintiles were reported beside it, their boundaries and reference stated, with the p for linear trend (customary) across quintile medians; `protein` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `carb` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_total` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_sat` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_mon` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_poly` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `age` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line."
+  },
+  {
+   "kind": "set_model_sequence",
+   "status": 200,
+   "summary": "{\"exposure\": \"sugar\", \"model_1\": [\"age\", \"gender\", \"kcal\"]}",
+   "source": "the app's proposed model sequence",
+   "seq": 20,
+   "sentence": "The estimate of `sugar` is reported in a declared sequence of models: unadjusted; Model 1, adjusted for `age`, `gender` and `kcal`; Model 2, the primary, with the full adjustment set; and Model 3, further adjusted for any possible mediators the answers set beside the primary, which is not a total effect."
+  },
+  {
+   "kind": "select_models",
+   "status": 409,
+   "summary": "{\"models\": [\"linear\"]}",
+   "source": "the shelf's first-ranked families",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "`kcal`, `age` and `cycle_begin_year` hold whole numbers, which may be codes for categories (one indicator per level) or amounts (one slope); the fit waits for the answer for each. Tell me about these columns: `kcal`: an amount? (`4,276` whole-number values from 0 to 15,594); `age`: an amount? (`68` whole-number values from 18 to 85); `cycle_begin_year`: codes for categories? (`9` whole-number values from 2,001 to 2,017, few of them).",
+    "exits": [
+     "Confirm each of the 3 as shown",
+     "`kcal` is a count or an amount (a slope; a unit's rows averaged)",
+     "`kcal` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`age` is a count or an amount (a slope; a unit's rows averaged)",
+     "`age` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`cycle_begin_year` holds codes for categories (one indicator per level; a unit's rows take their most frequent value)",
+     "`cycle_begin_year` is a count or an amount (a slope; a unit's rows averaged)",
+     "Change the roles (the roles question)"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "3 readings (code_or_count 3): code_or_count:kcal=amount, code_or_count:age=amount, code_or_count:cycle_begin_year=code",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 21,
+   "sentence": "Confirmed together, each as the question showed it: `kcal` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories."
+  },
+  {
+   "kind": "select_models",
+   "status": 200,
+   "summary": "{\"models\": [\"linear\"]}",
+   "source": "the shelf's first-ranked families",
+   "seq": 22,
+   "sentence": "One model family was chosen: linear regression. Read from the values, no question asked: `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm)."
+  },
+  {
+   "kind": "set_substitution",
+   "status": 409,
+   "summary": "{\"donor\": \"sugar\", \"recipient\": \"protein\", \"step_kcal\": 100}",
+   "source": "the first pair the design offers, 100 kcal a step",
+   "refusal": {
+    "code": "reading_unsettled",
+    "message": "`sugar` reads as an energy-bearing nutrient, but its unit is not recorded, so the kcal each unit carries is a guess (a name never says it). Record the unit first.",
+    "exits": [
+     "`sugar` is in grams",
+     "`sugar` is in kilograms",
+     "`sugar` is in kcal",
+     "`sugar` is in kJ",
+     "`sugar` is a share of energy: move a share of energy instead (the substitution's share-of-energy scale)",
+     "Choose two nutrients whose units are stated"
+    ]
+   }
+  },
+  {
+   "kind": "confirm_readings",
+   "status": 200,
+   "summary": "1 reading (unit 1): unit:sugar=g",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
+   "seq": 23,
+   "sentence": "Confirmed together, each as the question showed it: `sugar` was confirmed to be in g."
+  },
+  {
+   "kind": "set_substitution",
+   "status": 200,
+   "summary": "{\"donor\": \"sugar\", \"recipient\": \"protein\", \"step_kcal\": 100}",
+   "source": "the first pair the design offers, 100 kcal a step",
+   "seq": 24,
+   "sentence": "The substitution studied is `sugar` replaced by `protein`, in steps of `100` kcal with `kcal` held fixed."
+  }
+ ],
+ "readings": {
+  "fixture": "_tt_tmp_nhanes.csv",
+  "from_fixture": {
+   "unit:kcal": "kcal",
+   "day_count:kcal": "1",
+   "code_or_count:age": "amount",
+   "code_or_count:hdl": "amount",
+   "code_or_count:triglycerides": "amount",
+   "code_or_count:kcal": "amount",
+   "code_or_count:cycle_begin_year": "code",
+   "unit:weight": "kg",
+   "unit:height": "cm",
+   "unit:age": "years",
+   "exposure:glucose": "sugar",
+   "contrast:sugar": "substitution",
+   "adjust:age": "yes,yes,no",
+   "adjust:gender": "yes,yes,no",
+   "adjust:cycle_begin_year": "yes,yes,no",
+   "adjust:protein": "unknown,unknown,no",
+   "adjust:carb": "unknown,unknown,no",
+   "adjust:fat_total": "unknown,unknown,no",
+   "adjust:fat_sat": "unknown,unknown,no",
+   "adjust:fat_mon": "unknown,unknown,no",
+   "adjust:fat_poly": "unknown,unknown,no",
+   "adjust:weight": "unknown,yes,unknown",
+   "adjust:height": "unknown,yes,unknown",
+   "adjust:bmi": "unknown,yes,unknown",
+   "adjust:waist": "unknown,yes,unknown",
+   "adjust:bp_sys": "no,yes,yes",
+   "adjust:bp_di": "no,yes,yes",
+   "adjust:hdl": "no,yes,yes",
+   "adjust:triglycerides": "no,yes,yes",
+   "adjust:meds_hbp": "no,yes,yes",
+   "adjust:meds_chol": "no,yes,yes"
+  },
+  "journey_own": {
+   "unit:sugar": "g",
+   "unit:protein": "g",
+   "unit:carb": "g",
+   "unit:fat_total": "g",
+   "unit:fat_sat": "g",
+   "unit:fat_mon": "g",
+   "unit:fat_poly": "g",
+   "nested_in:sugar": "carb",
+   "nested_in:fat_sat": "fat_total",
+   "nested_in:fat_mon": "fat_total",
+   "nested_in:fat_poly": "fat_total"
+  },
+  "set_aside": []
+ },
+ "guessed": [],
+ "app_ranked": [
+  {
+   "reading": "measure",
+   "column": "sugar",
+   "value": "mean_difference"
+  },
+  {
+   "reading": "form",
+   "column": "sugar",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "protein",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "carb",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "fat_total",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "fat_sat",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "fat_mon",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "fat_poly",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "age",
+   "value": "spline"
+  }
+ ],
+ "notes": [
+  "findings with repairs: sas_zeros, binary_text__gender",
+  "the goldberg_schofield screen was offered pending a confirmation: Refused until `kcal`'s days are recorded: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too), so whether each value is one day's intake or a total over several is not settled, and the screen's bounds are read in a day's.",
+  "the export waited for the plan lock: the estimates were shown (effects), and the first shown locks it"
+ ],
+ "export": {
+  "status": 200,
+  "engine": "2.0.0.dev0",
+  "files": [
+   "README.md",
+   "analysis_plan.json",
+   "checklist/strobe_nut.json",
+   "checklist/strobe_nut.md",
+   "decisions.jsonl",
+   "figures/lineage.svg",
+   "figures/participant_flow.svg",
+   "manifest.json",
+   "methods.json",
+   "methods.md",
+   "methods.txt",
+   "provenance.json",
+   "results/table2.csv",
+   "results/table2.md",
+   "results/table2_appendix.csv",
+   "results/table2_appendix.md",
+   "results/table2_sensitivity.csv",
+   "results/table2_sensitivity.md"
+  ],
+  "model_matrix": [
+   "gender_male",
+   "cycle_begin_year_2003",
+   "cycle_begin_year_2005",
+   "cycle_begin_year_2007",
+   "cycle_begin_year_2009",
+   "cycle_begin_year_2011",
+   "cycle_begin_year_2013",
+   "cycle_begin_year_2015",
+   "cycle_begin_year_2017",
+   "sugar",
+   "sugar'",
+   "sugar''",
+   "sugar'''",
+   "kcal",
+   "protein",
+   "protein'",
+   "protein''",
+   "protein'''",
+   "carb",
+   "carb'",
+   "carb''",
+   "carb'''",
+   "fat_total",
+   "fat_total'",
+   "fat_total''",
+   "fat_total'''",
+   "fat_sat",
+   "fat_sat'",
+   "fat_sat''",
+   "fat_sat'''",
+   "fat_mon",
+   "fat_mon'",
+   "fat_mon''",
+   "fat_mon'''",
+   "fat_poly",
+   "fat_poly'",
+   "fat_poly''",
+   "fat_poly'''",
+   "age",
+   "age'",
+   "age''",
+   "age'''"
+  ],
+  "table2": [
+   {
+    "model": "Unadjusted",
+    "adjusted_for": "nothing",
+    "terms": [
+     "sugar",
+     "sugar'",
+     "sugar''",
+     "sugar'''"
+    ]
+   },
+   {
+    "model": "Model 1",
+    "adjusted_for": "kcal, age, gender",
+    "terms": [
+     "sugar",
+     "sugar'",
+     "sugar''",
+     "sugar'''"
+    ]
+   },
+   {
+    "model": "Model 2 (primary)",
+    "adjusted_for": "kcal, protein, carb, fat_total, fat_sat, fat_mon, fat_poly, age, gender, cycle_begin_year",
+    "terms": [
+     "sugar",
+     "sugar'",
+     "sugar''",
+     "sugar'''"
+    ]
+   },
+   {
+    "model": "Model 3",
+    "adjusted_for": "kcal, protein, carb, fat_total, fat_sat, fat_mon, fat_poly, age, gender, cycle_begin_year, weight, height, bmi, waist",
+    "terms": [
+     "sugar",
+     "sugar'",
+     "sugar''",
+     "sugar'''"
+    ]
+   }
+  ],
+  "methods_md": "# Methods: _tt_tmp_nhanes\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the estimates were seen is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow STROBE and STROBE-nut; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Study design (STROBE 4)\n\nThe analysis was declared for `inference`: associations are estimated with their uncertainty.\n\n## Participants (STROBE 6)\n\n`5,212` rows with `kcal` over Schofield (weight and height) BMR outside the Goldberg cut-offs for PAL `1.55` and `1` day or not screened were excluded as implausible energy reports (Goldberg cut-offs, Black 2000).\n\n## Variables (STROBE 7)\n\n`glucose` was chosen as the outcome; it is measured on all `21,849` rows. Column roles were set for `28` columns: energy `kcal`; exposures `sugar`, `protein`, `carb` and 4 more; covariates `age`, `gender`, `cycle_begin_year` and 10 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more; `cycle_begin_year`, `bp_sys` and 14 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `10` columns (from `cycle_begin_year`) were confirmed as a covariate; `6` columns (from `imputed_weight`) were confirmed as a flag. `kcal` was recorded as a day's energy in kcal. Confirmed together, each as the question showed it: `age` was confirmed to be in years; `weight` was confirmed to be in kg. The analysis estimates the total effect of `sugar` on `glucose` (a substitution: in place of other energy sources at fixed total energy), as a difference in the mean outcome per unit of `sugar`. Confirmed together, each as the question showed it: `kcal` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories. Confirmed together, each as the question showed it: `sugar` was confirmed to be in g.\n\n## Data sources and measurement (STROBE 8)\n\nThe table was read through the `dietary` lens. `152` cells holding `5.4e-79`, a misread SAS transport zero, were read as `0`.\n\n## Quantitative variables (STROBE 11)\n\n`sugar` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; quintiles were reported beside it, their boundaries and reference stated, with the p for linear trend (customary) across quintile medians; `protein` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `carb` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_total` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_sat` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_mon` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_poly` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `age` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line.\n\n## Statistical methods (STROBE 12)\n\nMissing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome and total energy (`kcal`) in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor. No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); R² was measured against the training rows' mean and pooled over every out-of-fold prediction. For the effect of `sugar`, by the disjunctive cause criterion: `age` and `gender` are confounders, adjusted for. For the effect of `sugar`, by the disjunctive cause criterion: `protein`, `carb`, `fat_total`, `fat_sat` and 2 more are confounders, adjusted for. For the effect of `sugar`, by the disjunctive cause criterion: `weight`, `height`, `bmi` and `waist` are of unknown timing, left out of the primary model and adjusted for in a declared secondary one. For the effect of `sugar`, by the disjunctive cause criterion: `bp_sys`, `bp_di`, `hdl`, `triglycerides` and 2 more are mediators, left out. For the effect of `sugar`, by the disjunctive cause criterion: `cycle_begin_year` is a confounder, adjusted for. Energy was adjusted by the standard (multivariate) model: `kcal` enters the models beside `protein`, `sugar`, `carb`, `fat_total`, `fat_sat`, `fat_mon` and `fat_poly`, so each nutrient's effect is at fixed total energy. The estimate of `sugar` is reported in a declared sequence of models: unadjusted; Model 1, adjusted for `age`, `gender` and `kcal`; Model 2, the primary, with the full adjustment set; and Model 3, further adjusted for any possible mediators the answers set beside the primary, which is not a total effect. One model family was chosen: linear regression. Read from the values, no question asked: `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm). The substitution studied is `sugar` replaced by `protein`, in steps of `100` kcal with `kcal` held fixed.\n\nThe estimate of `sugar` is reported across a declared sequence of models fit on all 16,637 analyzed rows: unadjusted; Model 1, adjusted for `kcal`, `age` and `gender`; Model 2, the primary, adjusted for `kcal`, `protein`, `carb`, `fat_total`, `fat_sat`, `fat_mon`, `fat_poly` and 3 more; Model 3, further adjusted for `weight`, `height`, `bmi` and `waist`, possible mediators, so not a total effect. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(43, 16,594) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding of the straight-line estimate beside the curve is reported by the Cinelli–Hazlett robustness value (each adjusted covariate a named benchmark; its form for the 95% interval, and the benchmarks' intervals, are not reported, as they assume classical standard errors and the intervals reported are HC3) and by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.\n\nThe analysis plan recorded above was declared in TurboTab before any estimate was displayed (SHA-256 `620e598a2dff`); every later change is marked as made after the estimates were seen.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `2ba3c5727a13`, with local changes). The supplementary provenance record holds the decision log (`25` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `620e598a2dff`) and the model matrix (`16,637` rows by `42` columns; SHA-256 `feadf5ed50be` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "checklist": {
+   "checklist": "STROBE-nut",
+   "title": "STROBE-nut: an extension of the STROBE statement for nutritional epidemiology",
+   "citation": "Lachat C, Hawwash D, Ocké MC, et al. Strengthening the Reporting of Observational Studies in Epidemiology—Nutritional Epidemiology (STROBE-nut): an extension of the STROBE statement. PLoS Med 2016;13(6):e1002036. doi:10.1371/journal.pmed.1002036",
+   "counts": {
+    "items": 58,
+    "answered": 9,
+    "partly_answered": 11,
+    "unanswered": 38
+   },
+   "items": [
+    {
+     "id": "1a",
+     "section": "Title and Abstract",
+     "topic": "Title and Abstract",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-1",
+     "section": "Title and Abstract",
+     "topic": "Title and Abstract",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "1b",
+     "section": "Title and Abstract",
+     "topic": "Title and Abstract",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "2",
+     "section": "Introduction",
+     "topic": "Background Rationale",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "3",
+     "section": "Introduction",
+     "topic": "Objectives",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_estimand",
+       "seq": 12
+      }
+     ],
+     "owed": "the study's objectives and hypotheses, in the author's words"
+    },
+    {
+     "id": "4",
+     "section": "Methods",
+     "topic": "Study Design",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_purpose",
+       "seq": 4
+      }
+     ],
+     "owed": "the study design by its usual name (cohort, case-control or cross-sectional)"
+    },
+    {
+     "id": "5",
+     "section": "Methods",
+     "topic": "Settings",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-5",
+     "section": "Methods",
+     "topic": "Settings",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6a",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 9
+      }
+     ],
+     "owed": "the sources and methods of selection of participants, and of follow-up"
+    },
+    {
+     "id": "nut-6",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "6b",
+     "section": "Methods",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "7",
+     "section": "Methods",
+     "topic": "Variables",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_target",
+       "seq": 3
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_roles",
+       "seq": 5
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 6
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_column_unit",
+       "seq": 7
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 8
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_estimand",
+       "seq": 12
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 21
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "confirm_readings",
+       "seq": 23
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 13
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 14
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 15
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 16
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 17
+      }
+     ],
+     "owed": "each variable's definition beyond its column, and any diagnostic criteria"
+    },
+    {
+     "id": "nut-7.1",
+     "section": "Methods",
+     "topic": "Variables",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_column_unit",
+       "seq": 7
+      }
+     ],
+     "owed": "the definition of each food, food group or nutrient"
+    },
+    {
+     "id": "nut-7.2",
+     "section": "Methods",
+     "topic": "Variables",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "8",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.1",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.2",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.3",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.4",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.5",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-8.6",
+     "section": "Methods",
+     "topic": "Data Sources—Measurements",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "9",
+     "section": "Methods",
+     "topic": "Bias",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 13
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 14
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 15
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 16
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 17
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "effects",
+       "seq": null
+      }
+     ],
+     "owed": "any other source of bias the author addressed, and how"
+    },
+    {
+     "id": "nut-9",
+     "section": "Methods",
+     "topic": "Bias",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 9
+      }
+     ],
+     "owed": "any other bias in dietary assessment (changes in habit from being measured, imputation from other sources)"
+    },
+    {
+     "id": "10",
+     "section": "Methods",
+     "topic": "Study Size",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "11",
+     "section": "Methods",
+     "topic": "Quantitative Variables",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_energy_adjustment",
+       "seq": 18
+      }
+     ],
+     "owed": "why each quantitative variable has the form it has"
+    },
+    {
+     "id": "nut-11",
+     "section": "Methods",
+     "topic": "Quantitative Variables",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12a",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 13
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 14
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 15
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 16
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 17
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_energy_adjustment",
+       "seq": 18
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_model_sequence",
+       "seq": 20
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "select_models",
+       "seq": 22
+      },
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "effects",
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12b",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12c",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 10
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "12d",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "12e",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "analysis",
+       "file": "methods.md",
+       "kind": "effects",
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "nut-12.1",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-12.2",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_energy_adjustment",
+       "seq": 18
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "nut-12.3",
+     "section": "Methods",
+     "topic": "Statistical Methods",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "13a",
+     "section": "Results",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 9
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 10
+      },
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the numbers before the table was assembled: potentially eligible, examined for eligibility, and completing follow-up"
+    },
+    {
+     "id": "13b",
+     "section": "Results",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the reasons for nonparticipation before the table was assembled"
+    },
+    {
+     "id": "13c",
+     "section": "Results",
+     "topic": "Participants",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "nut-13",
+     "section": "Results",
+     "topic": "Participants",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_exclusions",
+       "seq": 9
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 10
+      },
+      {
+       "source": "file",
+       "file": "figures/participant_flow.svg",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "14a",
+     "section": "Results",
+     "topic": "Descriptive Data",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "14b",
+     "section": "Results",
+     "topic": "Descriptive Data",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "14c",
+     "section": "Results",
+     "topic": "Descriptive Data",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-14",
+     "section": "Results",
+     "topic": "Descriptive Data",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "15",
+     "section": "Results",
+     "topic": "Outcome Data",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "16a",
+     "section": "Results",
+     "topic": "Main Results",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 13
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 14
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 15
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 16
+      },
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_adjustment",
+       "seq": 17
+      },
+      {
+       "source": "file",
+       "file": "results/table2.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "16b",
+     "section": "Results",
+     "topic": "Main Results",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "16c",
+     "section": "Results",
+     "topic": "Main Results",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-16",
+     "section": "Results",
+     "topic": "Main Results",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "17",
+     "section": "Results",
+     "topic": "Other Analyses",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "results/table2_sensitivity.md",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "nut-17",
+     "section": "Results",
+     "topic": "Other Analyses",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "answered",
+     "where": [
+      {
+       "source": "record",
+       "file": "methods.md",
+       "kind": "set_missing",
+       "seq": 10
+      }
+     ],
+     "owed": null
+    },
+    {
+     "id": "18",
+     "section": "Discussion",
+     "topic": "Key Results",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "19",
+     "section": "Discussion",
+     "topic": "Limitation",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-19",
+     "section": "Discussion",
+     "topic": "Limitation",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "20",
+     "section": "Discussion",
+     "topic": "Interpretation",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-20",
+     "section": "Discussion",
+     "topic": "Interpretation",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "21",
+     "section": "Discussion",
+     "topic": "Generalizability",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "22",
+     "section": "Other Information",
+     "topic": "Funding",
+     "kind": "STROBE",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-22.1",
+     "section": "Other Information",
+     "topic": "Ethics",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "unanswered",
+     "where": [],
+     "owed": null
+    },
+    {
+     "id": "nut-22.2",
+     "section": "Other Information",
+     "topic": "Supplementary Material",
+     "kind": "STROBE-nut",
+     "scope": null,
+     "status": "partly answered",
+     "where": [
+      {
+       "source": "file",
+       "file": "provenance.json",
+       "kind": null,
+       "seq": null
+      }
+     ],
+     "owed": "the data collection tools and the data, or how they can be accessed"
+    }
+   ],
+   "unanswered": [
+    "1a",
+    "nut-1",
+    "1b",
+    "2",
+    "5",
+    "nut-5",
+    "nut-6",
+    "6b",
+    "nut-7.2",
+    "8",
+    "nut-8.1",
+    "nut-8.2",
+    "nut-8.3",
+    "nut-8.4",
+    "nut-8.5",
+    "nut-8.6",
+    "10",
+    "nut-11",
+    "12b",
+    "12d",
+    "nut-12.1",
+    "nut-12.3",
+    "14a",
+    "14b",
+    "14c",
+    "nut-14",
+    "15",
+    "16b",
+    "16c",
+    "nut-16",
+    "18",
+    "19",
+    "nut-19",
+    "20",
+    "nut-20",
+    "21",
+    "22",
+    "nut-22.1"
+   ]
+  }
+ }
+}

@@ -38,6 +38,8 @@ unchecked against the thing it describes, which is the defect one layer up.
 `GUIDED-097`. `SHAPES` covers a 0/1 numeric target and a three-level string
 target. `SHAPES_NOT_COVERED` names the rest.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -46,12 +48,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 from sklearn.impute import SimpleImputer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api, eventfixture, missingness as M            # noqa: E402
+from turbotab import missingness as M                                   # noqa: E402
 from turbotab import pipeline_plan, training                        # noqa: E402
 from turbotab import selection as _sel                               # noqa: E402
 
@@ -84,35 +85,6 @@ SHAPES_NOT_COVERED = {
         "`test_every_deferring_strategy_takes_its_scope_from_the_one_table` "
         "but is not driven end-to-end through a fit here."),
 }
-
-
-@pytest.fixture(scope="module")
-def client():
-    return TestClient(api.app)
-
-
-def _sealed(client, shape):
-    fixture, target, task, model, column = SHAPES[shape]
-    with open(DATA / fixture, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": (fixture, fh, "text/csv")}).json()["id"]
-
-    def decide(kind, **payload):
-        r = client.post(f"/project/{pid}/decision",
-                        json={"kind": kind, "payload": payload})
-        assert r.status_code == 200, (kind, r.text[:250])
-        return r
-
-    decide("set_target", column=target)
-    decide("set_purpose", answer="prediction")
-    decide("set_grain", answer="one_row_per_person")
-    decide("set_eligibility", answer="everyone")
-    decide("seal", fraction=0.25)
-    # `DRIVE-041`. Over the route, and only where the engine asks.
-    # Not `required`: this file's shapes include a three-level classification,
-    # which is not asked the question at all.
-    eventfixture.choose_event_over_http(client, pid, target)
-    return pid, api.STORE.get(pid), decide
 
 
 def _train_partition(project):
@@ -149,109 +121,6 @@ def _fitted_median_for(project, model_key, task, column):
     raise AssertionError(
         f"no fitted SimpleImputer covers {column!r}; this test is about the "
         f"wrong object")
-
-
-# ── 1 · the hardest case: the fit itself, not the sentence about it ──────────
-
-@pytest.mark.parametrize("shape", sorted(SHAPES), ids=sorted(SHAPES))
-def test_the_declared_median_is_fitted_over_the_training_rows_the_record_names(
-        client, shape):
-    """**The consequence the corrected sentence asserts, observed.**
-
-    The record now says the median is computed *"once over the training rows
-    (held-out rows excluded)"*. That is two claims — ONCE, and TRAINING ROWS —
-    and the second is the checkable one here: the fitted `SimpleImputer` must
-    carry the median of the training partition and not the median of the whole
-    column. The two differ on every covered shape, and the test refuses to run
-    vacuously if a fixture ever makes them coincide.
-    """
-    fixture, target, task, model, column = SHAPES[shape]
-    pid, project, decide = _sealed(client, shape)
-    blanks = int(project.df[column].isna().sum())
-    assert blanks > 0, f"{column} has no blanks, so this drive proves nothing"
-
-    decide("route_missingness", column=column,
-           mechanism=M.NOT_SURE, strategy=M.IMPUTE_MEDIAN)
-
-    fitted, X_train = _fitted_median_for(project, model, task, column)
-    features, _, _ = _train_partition(project)
-    train_median = float(X_train[column].median())
-    whole_median = float(features[column].median())
-
-    assert train_median != whole_median, (
-        "the training-rows median equals the whole-column median on this "
-        "fixture, so this probe cannot tell the two scopes apart and is "
-        "vacuous — change the fixture rather than the assertion")
-    assert fitted == pytest.approx(train_median), (
-        f"the imputer was fitted over something other than the training rows "
-        f"the record names: fitted={fitted}, train={train_median}, "
-        f"whole-column={whole_median}")
-
-
-# ── 2 · the record, prose and machine-readable, saying the same true thing ───
-
-@pytest.mark.parametrize("shape", sorted(SHAPES), ids=sorted(SHAPES))
-def test_the_recorded_sentence_claims_the_scope_this_door_actually_fits(
-        client, shape):
-    """The sentence a user answered into, and the manuscript quotes verbatim.
-
-    `pipeline_plan` asserts `Step.sentence is declaration['sentence']` by
-    identity, so this string IS the manuscript's Missing Data line. It must not
-    claim a fold structure, and — the half that keeps this from being a
-    deletion — it must still state where the statistic came from.
-    """
-    fixture, target, task, model, column = SHAPES[shape]
-    pid, project, decide = _sealed(client, shape)
-    decide("route_missingness", column=column,
-           mechanism=M.NOT_SURE, strategy=M.IMPUTE_MEDIAN)
-
-    record = [d for d in project.missingness if d["column"] == column][0]
-    text = record["sentence"]
-
-    assert "training fold" not in text, (
-        f"the record claims a fold structure this door does not have: {text!r}")
-    assert "once over the training rows (held-out rows excluded)" in text, (
-        f"the fold claim was removed without the true one replacing it — the "
-        f"shelf is never shortened: {text!r}")
-
-    # Trap 7: the structured payload is what everything downstream reads, so it
-    # must not be lossier — or falser — than the prose beside it.
-    assert record["fit_scope"] == M.TRAIN_ROWS
-    assert record["fit_on"] == "training rows only"
-    assert record["defers"] is True, (
-        "a median fill is stateful; if this flips, this test is about the "
-        "wrong strategy")
-
-
-@pytest.mark.parametrize("shape", sorted(SHAPES), ids=sorted(SHAPES))
-def test_the_run_note_over_the_whole_plan_makes_the_same_claim_as_the_record(
-        client, shape):
-    """One level up, and it was wrong in the same way.
-
-    `training.train` appends a run-level note summarizing the composed plan. It
-    read *"Every statistic in it is fitted inside the training folds."* over a
-    single `pipe.fit`. The note and the per-column record are two objects with
-    different lifetimes describing one event; when they disagree the archive
-    keeps whichever the reader happened to open.
-    """
-    fixture, target, task, model, column = SHAPES[shape]
-    pid, project, decide = _sealed(client, shape)
-    decide("route_missingness", column=column,
-           mechanism=M.NOT_SURE, strategy=M.IMPUTE_MEDIAN)
-
-    run = training.train(project, [model])
-    assert run.results and run.results[0].metrics, run.results[0].error
-
-    note = run.notes[0]
-    assert "training folds" not in note, (
-        f"the run note claims folds this door does not run: {note!r}")
-    assert "fitted once over the" in note and "training rows" in note, note
-    assert "held-out rows inform none of them" in note, (
-        "the guarantee the note exists to give was dropped rather than "
-        "restated")
-    # The number in it is the partition it describes, not a constant.
-    _, X_train, _ = _train_partition(project)
-    assert f"{len(X_train):,} training rows" in note, note
 
 
 # ── 3 · the premise, re-derived rather than quoted ───────────────────────────

@@ -449,7 +449,7 @@ def test_1_under_inference_the_spline_ranks_first_and_quintiles_are_tagged_custo
     quintiles = ef.options("inference")[2]
     assert quintiles["customary"].startswith("Customary") and "quintiles remain expected" in quintiles["customary"]
     assert quintiles["sound"].startswith("Weaker for inference")
-    pack = (REPO / "docs" / "turbotab" / "research" / "NUTRITION_PACK.md").read_text()
+    pack = (REPO / "docs" / "turbotab-next" / "reference" / "research" / "NUTRITION_PACK.md").read_text()
     assert "now near-default; quintiles remain expected alongside" in pack
     assert "using the median of each quintile as a continuous score, not the quintile number" in pack
 

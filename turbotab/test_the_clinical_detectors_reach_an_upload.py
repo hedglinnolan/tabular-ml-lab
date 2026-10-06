@@ -45,9 +45,10 @@ mmol/L. The core already knew, and had said so in a field nothing was reading.
 Two clinical fixtures of different shape, plus the four the pack must stay
 silent on. `SHAPES_NOT_COVERED` names what neither reaches.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import numpy as np
@@ -124,51 +125,6 @@ def load(name: str) -> pd.DataFrame:
 
 # ═══════════ EVERY DETECTOR REACHES AN UPLOAD ═══════════
 
-def test_every_detector_fires_from_an_upload_and_not_from_its_own_test():
-    """**`GUIDED-058`'s class, checked before it can recur.**
-
-    L27 built four nutrition detectors and a refusal, all correct, all tested,
-    and imported by nothing but their own tests. The rule that came out of it is
-    that a capability ships with the path that consumes it, and the check is not
-    *does something import this* — it is *does an upload reach it.*
-
-    Driven through the API: a file, a lens answer, and the findings the project
-    serves. Not `clinical.findings(df)`, which would prove the module and prove
-    nothing about the app.
-    """
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with open(DATA / "clinical_labs.csv", "rb") as handle:
-        project_id = client.post("/project", files={
-            "file": ("clinical_labs.csv", handle, "text/csv")}).json()["id"]
-    answered = client.post(f"/project/{project_id}/decision", json={
-        "kind": "set_lens", "payload": {"lens": [P.CLINICAL]}})
-    assert answered.status_code == 200, answered.text
-
-    served = client.get(f"/project/{project_id}").json()["findings"]
-    reached = {f["id"] for f in served if f["id"].startswith("pack::clinical::")}
-    declared = {f"pack::clinical::{name}" for name in (
-        "censored_values", "text_numeric", "mixed_result_type", "mixed_units",
-        "default_value_mass", "temporal_implausibility", "number_format",
-        "impossible_vs_extreme")}
-    assert reached == declared, (
-        f"these detectors are registered and no upload reaches them: "
-        f"{sorted(declared - reached)}")
-
-    # AND EVERY ONE CARRIES ITS BADGE AND ITS SOURCE ON THE WIRE. The evidence
-    # gate checks the call site; this checks that the boundary did not drop it,
-    # which is `DRIVE-001`'s class and the reason `PackRefusal` has one
-    # serializer.
-    for finding in served:
-        if not finding["id"].startswith("pack::clinical::"):
-            continue
-        badge = finding["evidence"]
-        assert badge["evidence_status"] in ("SETTLED", "CONVENTION", "DISPUTED")
-        assert badge["source"].startswith("research/CLINICAL_SURVEY_PACK.md#")
-
 
 #: `GUIDED-142`. Every pack that has detectors, with a fixture that fires them
 #: and the target that opens Explore. Parametrized over all of them rather than
@@ -194,112 +150,6 @@ PACKS_WITH_DETECTORS = {
     # number here, and a length read off the pack would move with it silently.
     "genomics": ("genomics_expression.csv", "genomics", "condition", 2),
 }
-
-
-@pytest.mark.parametrize("lens", sorted(PACKS_WITH_DETECTORS))
-def test_every_pack_finding_reaches_a_person_and_carries_its_badge(lens):
-    """**`GUIDED-142`, and it is the largest instance of trap #6 this door has
-    had.**
-
-    `bySource("profile")` and `bySource("structure")` were the only two callers
-    in the page. Every finding a LENS produces — the Atwater reconstruction, the
-    pooled-QC rows, the mixed-unit analyte, the sentinel codes, all eight of
-    L41-B's — was computed correctly, served correctly on `/project/{id}`, and
-    **rendered nowhere.** Five packs, eighteen detectors.
-
-    That is `GUIDED-058`'s class one layer past where L28 closed it: the L28
-    fix made the detectors reachable from an upload through the API, and the
-    test that closed it never drove the page. `GUIDED-075` is the same story
-    about `/figures` and cost two loops.
-
-    **And the badge travels with them**, because a pack claim without one is
-    the uniform confidence `DOMAIN_SCIENCE.md` §01.1 exists to end — and the
-    badge is nested on a finding, which is why the flat renderer did not pick
-    it up for free.
-    """
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    fixture, key, target, expected = PACKS_WITH_DETECTORS[lens]
-    client = TestClient(api.app)
-    with open(DATA / fixture, "rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-    for kind, payload in (("set_lens", {"lens": [key]}),
-                          ("set_target", {"column": target})):
-        ok = client.post(f"/project/{pid}/decision",
-                         json={"kind": kind, "payload": payload})
-        assert ok.status_code == 200, (kind, ok.text[:300])
-
-    project = client.get(f"/project/{pid}").json()
-    served = [f for f in project["findings"] if f["source"] == "pack"]
-    assert len(served) == expected, (
-        f"{lens} serves {len(served)} pack findings, not {expected}: "
-        f"{[f['id'] for f in served]}")
-
-    routes = {
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore":
-            client.get(f"/project/{pid}/interview?step=explore").json(),
-        f"/project/{pid}/evidence/missingness": {"cards": []},
-        f"/project/{pid}/capabilities":
-            client.get(f"/project/{pid}/capabilities").json(),
-    }
-    # THE STACK IS BOUNDED SINCE `GUIDED-149`, so "reaches a person" is no
-    # longer "is in `profList`". A finding that ranked below the bound reaches a
-    # person THROUGH THE COUNTED AFFORDANCE, and the honest form of this claim is
-    # to press it — which makes the assertion stronger than it was, because a
-    # collapsed group whose expand did not work would now fail here rather than
-    # pass on a card nobody can open.
-    #
-    # `LOOP.md` trap #3c in the direction it is usually not read: this test went
-    # red against a correct change, its NAME states the property worth keeping,
-    # and what had to move was the locus of the assertion rather than the claim.
-    out = PH.run(
-        "var shut = (__harness.html('profList') || '');\n"
-        "__harness.dispatch('click', __harness.target("
-        "{'data-stack-more':'1','aria-expanded':'false'}));\n"
-        "__emit({shut: shut.slice(0, 90000),"
-        " open: ((__harness.html('profList') || '') +"
-        "        (__harness.html('profRest') || '')).slice(0, 200000),"
-        " more: (__harness.html('profMore') || '')});",
-        routes=routes, search=f"?project={pid}")
-    html = out["open"]
-    assert out["shut"], "the Explore findings list rendered nothing at all"
-
-    missing = [f["id"] for f in served if f["title"][:28] not in html]
-    assert not missing, (
-        f"the {lens} pack computes {missing} and the page never shows them, "
-        f"pushed or collapsed. Server-composed and never rendered is the class "
-        f"this door has already paid for at six surfaces.")
-
-    # AND THE BOUND MAY NOT SWALLOW ONE SILENTLY. If any pack finding is only
-    # reachable behind the affordance, the affordance has to have said so — the
-    # count it states is the count behind it, which is the property `GUIDED-149`
-    # turns on and the one an off-by-one would break invisibly.
-    stack = project["explore_stack"]
-    behind = [f["id"] for f in served if f["id"] in stack["collapsed"]]
-    if behind:
-        assert str(stack["remainder"]["n"]) in out["more"], (
-            f"{len(behind)} {lens} findings are behind an affordance that does "
-            f"not state its count: {out['more'][:200]}")
-
-    # THE BADGE, because a pack claim without one is the app being uniformly
-    # confident — and the finding's is NESTED, so a renderer written for the
-    # question's flat shape shows nothing and raises nothing.
-    statuses = set(re.findall(r'class="badge (\w+)"', html))
-    expected_statuses = {f["evidence"]["evidence_status"].lower()
-                         for f in served}
-    assert expected_statuses <= statuses, (
-        f"these badge statuses are on the wire and not on the page: "
-        f"{sorted(expected_statuses - statuses)}")
 
 
 def test_no_detector_offers_a_repair():

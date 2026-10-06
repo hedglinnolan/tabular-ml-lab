@@ -23,6 +23,8 @@ and this module never read it, so it asserted a universal it had the information
 to qualify — which makes it an `AUDIT-008` instance as well as a governing-rule
 one. The prediction branch is unchanged and is still a blocker.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -32,11 +34,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api, missingness as M, purpose as P                # noqa: E402
+from turbotab import missingness as M, purpose as P                     # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -136,49 +137,4 @@ def test_the_note_is_absent_when_the_outcome_is_not_in_scope():
 
 # ── and from outside, because a refusal a client cannot reach is a claim ──
 
-@pytest.fixture(scope="module")
-def client():
-    return TestClient(api.app)
 
-
-def _project(client, purpose_answer):
-    raw = _frame().to_csv(index=False).encode()
-    pid = client.post("/project", files={
-        "file": ("s.csv", raw, "text/csv")}).json()["id"]
-
-    def decide(what, **payload):
-        r = client.post(f"/project/{pid}/decision",
-                        json={"kind": what, "payload": payload})
-        assert r.status_code < 400, (what, r.text[:250])
-
-    decide("set_target", column="hba1c")
-    if purpose_answer:
-        decide("set_purpose", answer=purpose_answer)
-    return pid
-
-
-def _route(client, pid):
-    return client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness",
-        "payload": {"column": "glucose", "mechanism": M.NOT_SURE,
-                    "strategy": M.IMPUTE_MICE,
-                    "uses_columns": ["age", "hba1c"]}})
-
-
-def test_the_fork_reaches_a_user_through_the_api(client):
-    """The same request, the same table, two recorded purposes, two answers."""
-    refused = _route(client, _project(client, P.PREDICTION))
-    assert refused.status_code >= 400
-    assert "not offered as a choice here" in refused.text
-
-    accepted = _route(client, _project(client, P.INFERENCE))
-    assert accepted.status_code == 200, accepted.text[:300]
-    routed = [r for r in accepted.json()["missingness"]
-              if r["column"] == "glucose"]
-    assert routed and routed[0]["outcome_in_scope"]["refuse"] is False
-
-
-def test_an_unanswered_purpose_still_refuses_through_the_api(client):
-    refused = _route(client, _project(client, None))
-    assert refused.status_code >= 400
-    assert "purpose question has not been answered" in refused.text

@@ -22,6 +22,8 @@ The tests below are ordered by what a revert would break first, and every one of
 them asserts against a **produced** finding or a **raised** refusal rather than
 against a constant's shape. That distinction is the whole finding.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -39,12 +41,11 @@ from turbotab import nutrition as N                                  # noqa: E40
 from turbotab import packs as P                                      # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOLS = ROOT / "docs" / "turbotab" / "tools"
 
 
 def _resolves(source: str) -> bool:
     filename, _, section = (source or "").partition("#")
-    path = ROOT / "docs" / "turbotab" / filename
+    path = ROOT / "docs" / "turbotab-next" / "reference" / filename
     if not filename or not section or not path.exists():
         return False
     headings = {m.group(1).strip() for m in
@@ -172,37 +173,3 @@ def test_every_refusal_says_where_the_field_stands(nutrient, basis, kind):
 def test_a_refusal_cannot_be_raised_without_a_badge():
     with pytest.raises(P.PackError, match="states where the field stands"):
         raise P.PackRefusal("a refusal with no citation behind it")
-
-
-# ── the gate ────────────────────────────────────────────────────────────────
-
-def _tool():
-    sys.path.insert(0, str(TOOLS))
-    import importlib
-    return importlib.import_module("evidence")
-
-
-def test_the_gate_opens_the_files_the_claims_live_in():
-    """The file-scope half. `PACKS = turbotab/packs.py` meant `nutrition.py` and
-    `figure_specs.py` were outside the scan entirely, and the module docstring
-    named the gate as the guarantor of numbers it had never read."""
-    emitters = {p.name for p in _tool().call_sites()[1]}
-    assert {"packs.py", "nutrition.py", "figure_specs.py"} <= emitters, emitters
-
-
-def test_no_finding_or_refusal_anywhere_is_emitted_without_a_badge():
-    """The static half, which catches the detector that never fires on a
-    fixture — precisely the one whose missing badge nobody would notice."""
-    problems, _, n_calls = _tool().call_sites()
-    assert n_calls >= 15, f"only {n_calls} call sites found; the walk is wrong"
-    assert problems == [], "\n".join(problems)
-
-
-def test_the_gate_exits_zero_and_still_states_its_own_limit():
-    tool = _tool()
-    assert tool.check() == 0
-    text = (TOOLS / "evidence.py").read_text(encoding="utf-8")
-    assert "does not check the claim is faithful to it" in text
-    # And the limit this loop added, which is the more useful one: a threshold
-    # the research never mentions is marked nowhere and is invisible here.
-    assert "invented" in text and "GUIDED-061" in text

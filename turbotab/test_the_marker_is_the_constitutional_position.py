@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Dict
 
 ROOT = Path(__file__).resolve().parents[1]
-DOC = ROOT / "docs" / "turbotab" / "OPENING_SEQUENCE.md"
+DOC = ROOT / "docs" / "turbotab-next" / "reference" / "OPENING_SEQUENCE.md"
 
 #: The one mapping in the document that is not a question: the seal has a row in
 #: §01's table and no Router key, because it is a decision rather than a

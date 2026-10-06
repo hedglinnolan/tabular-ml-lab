@@ -12,6 +12,13 @@ from turbotab.server.service import ProjectService
 
 
 def get_service(request: Request) -> ProjectService:
+    """The workspace this request works in: in server mode the signed-in user's own
+    (``turbotab.server.tenancy``), else the one workspace of local mode."""
+    tenants = getattr(request.app.state, "tenants", None)
+    if tenants is not None:
+        from turbotab.server.auth import current_user
+
+        return tenants.for_user(current_user(request))
     return request.app.state.service
 
 

@@ -71,9 +71,10 @@ Two consequences, both driven below:
 * A column with 96 distinct values, or with one, renders the server's reason in
   place of a control rather than 96 empty dropdowns.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -82,25 +83,6 @@ from turbotab import features as F
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 
-#: NOT COVERED, said out loud (`GUIDED-097`, `LOOP.md` §10 rule 4).
-SHAPES_NOT_COVERED = (
-    "Whether any of it is ON SCREEN. `pageharness.py` has no layout and says "
-    "so in its own docstring; every claim here is that a control was rendered "
-    "into an addressable node and that a press carried what it held.",
-    "A MULTICLASS target. Both fixtures are two-shaped — `readmitted` is 0/1 "
-    "and `hba1c` is continuous — and `multiclass_stage.csv` is not driven. The "
-    "features step does not read the target's shape, which is why it was not "
-    "the axis chosen, but it is a shape this file does not cover.",
-    "A table with NO orderable column at all. Both fixtures have at least one, "
-    "so the branch where `ordinal_declared` can be offered a column and none "
-    "of them has a statable order is reasoned about and not driven.",
-    "The browser's own enforcement of `min` on the number input. The attribute "
-    "is asserted to be on the control and the server's refusal is asserted to "
-    "fire; what a real browser does with it is outside a DOM shim.",
-    "Typing into the `edges` box character by character. The page reads it on "
-    "`change`, so this drives `change`; a per-keystroke `input` handler is not "
-    "built and is not claimed.",
-)
 
 #: `GUIDED-097`. Two fixtures of different target shape.
 FIXTURES = {"clinical_labs.csv": "readmitted", "clinic_visits.csv": "hba1c"}
@@ -216,24 +198,6 @@ __emit({row: before, filled: filled,
 """
 
 
-def _project(fixture: str, target: str):
-    """A project driven as far as the Features step, over HTTP."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with (DATA / fixture).open("rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-    live = client.post(f"/project/{pid}/decision", json={
-        "kind": "set_target", "payload": {"column": target}})
-    assert live.status_code == 200, (
-        f"{fixture} no longer accepts `{target}` as a target "
-        f"({live.status_code}), so nothing below is driving the Features step")
-    return client, pid
-
-
 def _routes(client, pid):
     """Every response one render of this page asks for."""
     out = {f"/project/{pid}": client.get(f"/project/{pid}").json()}
@@ -250,16 +214,6 @@ def _routes(client, pid):
     # with a real project rather than left to render `{}`.
     out[f"POST /project/{pid}/decision"] = out[f"/project/{pid}"]
     return out
-
-
-def _drive(client, pid, key, column=None, typed=TYPED_EDGES):
-    from turbotab import pageharness as PH
-
-    return PH.run(
-        _HELPERS + (_DRIVE % {"key": json.dumps(key),
-                              "col": json.dumps(column),
-                              "typed": json.dumps(typed)}),
-        routes=_routes(client, pid), search=f"?project={pid}")
 
 
 def _orderable(features):
@@ -285,291 +239,6 @@ def _params_from_descriptors(features, row, column_levels_row):
     return out
 
 
-# ── the counts ───────────────────────────────────────────────────────────────
-
-@pytest.mark.parametrize("fixture", sorted(FIXTURES),
-                         ids=["classification target", "regression target"])
-def test_every_transform_the_catalogue_offers_can_be_satisfied(fixture, capsys):
-    """Eighteen of eighteen, at the preview and at the decision — and the six.
-
-    Both halves are asserted, because *twelve worked* was true before the fix
-    too. The reproduction is re-derived here so the number in the report is a
-    record: with what the page used to send, exactly six refuse, and they are
-    the six the row names.
-    """
-    client, pid = _project(fixture, FIXTURES[fixture])
-    served = client.get(f"/project/{pid}/features").json()
-    rows = [(r, "add_feature") for r in served["row_local"]] + \
-           [(r, "defer_feature") for r in served["deferred"]]
-    assert len(rows) == 18, (
-        f"the catalogue serves {len(rows)} transforms, not 18; the counts this "
-        f"file reports are against a shape that has changed")
-
-    numeric = served["numeric_columns"]
-    orderable = _orderable(served)
-    assert orderable, (
-        f"{fixture} serves no column an order can be stated over, so "
-        f"`ordinal_declared` cannot be satisfied on it and this fixture cannot "
-        f"carry the claim below")
-
-    before_ok, after_ok, refused = 0, 0, {}
-    for row, kind in rows:
-        by_column = [p for p in row["needs"] if p["from_column"]]
-        columns = ([orderable[0]["column"]] if by_column
-                   else numeric[:row.get("n_inputs", 1)])
-        after = _params_from_descriptors(served, row, orderable[0])
-
-        for params, tally in ((None, "before"), (after, "after")):
-            query = {"transform": row["key"], "columns": ",".join(columns)}
-            if params:
-                query["params"] = json.dumps(params)
-            preview = client.get(f"/project/{pid}/feature/preview", params=query)
-            fresh_client, fresh_pid = _project(fixture, FIXTURES[fixture])
-            decision = fresh_client.post(f"/project/{fresh_pid}/decision", json={
-                "kind": kind, "subject": row["key"],
-                "payload": {"transform": row["key"], "columns": columns,
-                            "params": params or {}}})
-            both = preview.status_code == 200 and decision.status_code == 200
-            if tally == "before":
-                before_ok += both
-                if not both:
-                    refused[row["key"]] = str(preview.json().get("detail"))
-            else:
-                after_ok += both
-                assert both, (
-                    f"`{row['key']}` still cannot be satisfied with the "
-                    f"parameters the server itself describes: preview "
-                    f"{preview.status_code} {preview.text[:200]}; decision "
-                    f"{decision.status_code} {decision.text[:200]}")
-
-    with capsys.disabled():
-        print(f"\n  ── GUIDED-198 · {fixture} ({FIXTURES[fixture]}) ──")
-        print(f"  satisfiable with what the page USED to send   {before_ok}/18")
-        print(f"  satisfiable with the served descriptors       {after_ok}/18")
-        for key in sorted(refused):
-            print(f"      {key}: {refused[key][:96]}")
-
-    assert after_ok == 18, f"{after_ok} of 18"
-    assert before_ok == 12, (
-        f"{before_ok} of 18 transforms used to be satisfiable with no "
-        f"parameters, not 12 — the reproduction this file records has moved")
-    assert set(refused) == {"bin_fixed", "ordinal_declared", "bin_quantile",
-                            "bin_uniform", "bin_kmeans", "pca"}, sorted(refused)
-
-
-# ── the page ─────────────────────────────────────────────────────────────────
-
-@pytest.mark.parametrize("fixture", sorted(FIXTURES),
-                         ids=["classification target", "regression target"])
-@pytest.mark.parametrize("key", PARAMETERIZED)
-def test_the_press_carries_the_parameter_the_row_rendered_a_control_for(
-        key, fixture):
-    """Fill the row's `data-feat-param` control, press, and replay the request.
-
-    The press is on `data-feat-preview` and `data-feat-add`, both read off the
-    buttons the page emitted. What is asserted is the REQUEST — the URL the
-    preview built and the body the decision posted — and then that request is
-    replayed against the real API, so the claim is *the server accepts what the
-    page sends* rather than *the page contains a string*.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    client, pid = _project(fixture, FIXTURES[fixture])
-    served = client.get(f"/project/{pid}/features").json()
-    row = next((r for r in served["row_local"] + served["deferred"]
-                if r["key"] == key), None)
-    assert row is not None and row["needs"], (
-        f"`{key}` is no longer a transform this catalogue says needs a "
-        f"parameter, so this drive is pressing something else")
-
-    # `ordinal_declared` is driven on a column an order CAN be stated over,
-    # because a user picking one is the case the fix is about. Which column is
-    # the server's answer, not this file's.
-    wanted = (_orderable(served)[0]["column"]
-              if any(p["from_column"] for p in row["needs"]) else None)
-    out = _drive(client, pid, key, column=wanted)
-
-    assert out["preview_button"] and out["add_button"], (
-        f"the `{key}` row rendered no press after a column was picked, so "
-        f"nothing was driven: {out['row'][:400]!r}")
-    # The two presses are this row's own, read off the buttons the page emitted.
-    assert out["preview_button"]["data-feat-preview"] == key, out["preview_button"]
-    assert out["add_button"]["data-feat-add"] == key, out["add_button"]
-
-    controls = out["params"] + out["inputs"]
-    assert controls, (
-        f"the `{key}` row rendered no control for {[p['name'] for p in row['needs']]}"
-        f" — the page is still not reading `needs`, which is the finding. Row: "
-        f"{out['row'][:600]!r}")
-    assert out["filled"], (
-        f"the `{key}` row's controls were found and none of them took a value: "
-        f"{controls!r}")
-    for control in controls:
-        attrs = control["attrs"] if "attrs" in control else control
-        assert attrs["data-feat-param"] == key, (
-            f"a parameter control in the `{key}` row is addressed to "
-            f"`{attrs.get('data-feat-param')}`, so its value would be held "
-            f"against a different transform: {attrs!r}")
-        assert attrs["data-feat-pname"] in {p["name"] for p in row["needs"]}, attrs
-        assert attrs["data-feat-pkind"] in {"integer", "numbers", "levels"}, attrs
-
-    # EVERY FIELD OF THE DESCRIPTOR HAS A READER, pinned rather than assumed.
-    # `/features` is one of the payloads `fieldsweep` declares NOT SWEPT, so a
-    # field the server composes and the page drops would be invisible there.
-    for param in row["needs"]:
-        assert param["because"][:50] in out["row"], (
-            f"the row renders no reason for `{param['name']}`, so the control "
-            f"arrives as a demand rather than as a question")
-        assert param["label"] in out["row"], (
-            f"the row renders no label for `{param['name']}`: {out['row'][:600]!r}")
-        if param["kind"] == "integer":
-            assert any(str(int(param["minimum"])) == a.get("min")
-                       for a in out["inputs"]), (
-                f"the control publishes no `min`, so the bound the server "
-                f"states reaches nobody: {out['inputs']!r}")
-        if param["kind"] == "numbers":
-            assert any(a.get("placeholder") == param["hint"]
-                       for a in out["inputs"]), (
-                f"the served `hint` is not on the control, so the only "
-                f"statement of the format is one the page would have to "
-                f"invent: {out['inputs']!r}")
-
-    gets = [c for c in out["calls"] if c["method"] == "GET"]
-    posts = [c for c in out["calls"] if c["method"] == "POST"]
-    assert gets and posts, out["calls"]
-
-    for param in row["needs"]:
-        assert f"{param['name']}" in gets[0]["path"], (
-            f"the preview URL carries no `{param['name']}`, so the press asks "
-            f"the server a question it has already refused: {gets[0]['path']}")
-        assert param["name"] in (posts[0]["body"]["payload"]["params"] or {}), (
-            f"the decision posted no `{param['name']}`: "
-            f"{posts[0]['body']['payload']}")
-
-    # AND THE SERVER TAKES IT. Replayed against the real API rather than against
-    # the harness's canned routes, which answer 200 to anything.
-    replay_get = client.get(gets[0]["path"])
-    assert replay_get.status_code == 200, (
-        f"the preview the page built is still refused: "
-        f"{replay_get.status_code} {replay_get.text[:300]}")
-    fresh_client, fresh_pid = _project(fixture, FIXTURES[fixture])
-    replay_post = fresh_client.post(f"/project/{fresh_pid}/decision",
-                                    json=posts[0]["body"])
-    assert replay_post.status_code == 200, (
-        f"the decision the page posted is still refused: "
-        f"{replay_post.status_code} {replay_post.text[:300]}")
-
-
-@pytest.mark.parametrize("fixture", sorted(FIXTURES),
-                         ids=["classification target", "regression target"])
-def test_the_order_offered_is_the_chosen_columns_own_levels(fixture):
-    """The `order` control is the column's levels, not a list written in the page.
-
-    Every option in every `data-feat-pslot` select is compared against
-    `/features`'s `column_levels` for the column that was picked, because a page
-    holding its own idea of what the levels are would be the second copy this
-    whole change exists to avoid.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    client, pid = _project(fixture, FIXTURES[fixture])
-    served = client.get(f"/project/{pid}/features").json()
-    entry = _orderable(served)[0]
-
-    out = _drive(client, pid, "ordinal_declared", column=entry["column"])
-    controls = out["params"]
-    assert len(controls) == len(entry["levels"]), (
-        f"`{entry['column']}` has {len(entry['levels'])} levels and the row "
-        f"rendered {len(controls)} position(s) to order them into")
-    for i, control in enumerate(controls):
-        assert control["attrs"]["data-feat-pname"] == "order"
-        assert int(control["attrs"]["data-feat-pslot"]) == i
-        offered = [v for v in control["options"] if v != ""]
-        assert offered == list(entry["levels"]), (
-            f"position {i + 1} offers {offered}, and the server says the "
-            f"levels of `{entry['column']}` are {entry['levels']}")
-
-    posted = [c for c in out["calls"] if c["method"] == "POST"]
-    assert posted, "the order was filled and nothing was posted"
-    assert posted[0]["body"]["payload"]["params"]["order"] == list(entry["levels"]), (
-        f"the order that reached the wire is not the one the controls held: "
-        f"{posted[0]['body']['payload']['params']}")
-
-
-@pytest.mark.parametrize("fixture", sorted(FIXTURES),
-                         ids=["classification target", "regression target"])
-def test_a_column_with_no_statable_order_says_so_instead_of_offering_a_control(
-        fixture):
-    """The refusal branch, which is what keeps the widened picker honest.
-
-    The picker now offers `ordinal_declared` every column, so it offers columns
-    an order cannot be stated over — an identifier, or a constant. Those render
-    the server's sentence in place of the control, which is *state the
-    precondition* where the precondition genuinely cannot be met, sitting beside
-    the case where it can.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    client, pid = _project(fixture, FIXTURES[fixture])
-    served = client.get(f"/project/{pid}/features").json()
-    unorderable = [r for r in served["column_levels"] if r.get("refusal")]
-    assert unorderable, (
-        f"{fixture} serves no column an order cannot be stated over, so this "
-        f"branch is not reachable on it and the assertion below is vacuous")
-    entry = unorderable[0]
-
-    out = _drive(client, pid, "ordinal_declared", column=entry["column"])
-    assert not out["params"] and not out["inputs"], (
-        f"`{entry['column']}` has {entry['n_levels']} distinct values and the "
-        f"row still offered a control to order them into")
-    assert entry["refusal"][:60] in out["row"], (
-        f"the row says nothing about why `{entry['column']}` has no statable "
-        f"order; a control that is simply absent is silence where a reason "
-        f"belongs. Rendered: {out['row'][-600:]!r}")
-
-
-@pytest.mark.parametrize("fixture", sorted(FIXTURES),
-                         ids=["classification target", "regression target"])
-def test_the_picker_for_an_order_offers_more_columns_than_the_numeric_ones(
-        fixture):
-    """The widening. `ordinal_declared` encodes categories and was offered none.
-
-    `data-feat-col` used to be filled from `numeric_columns` for every entry in
-    the catalogue, so the one transform whose parameter is a list of category
-    levels could only be pointed at columns that are not categories.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    client, pid = _project(fixture, FIXTURES[fixture])
-    served = client.get(f"/project/{pid}/features").json()
-    out = _drive(client, pid, "ordinal_declared",
-                 column=_orderable(served)[0]["column"])
-
-    assert len(out["pickers"]) == 1, out["pickers"]
-    picker = out["pickers"][0]
-    assert picker["attrs"]["data-feat-col"] == "ordinal_declared", picker["attrs"]
-    offered = [v for v in picker["options"] if v != ""]
-    assert offered == [r["column"] for r in served["column_levels"]], (
-        f"the picker is not offering the columns the server served levels for: "
-        f"{offered}")
-    categorical = [c for c in offered if c not in served["numeric_columns"]]
-    assert categorical, (
-        "the picker still offers only numeric columns, so the transform that "
-        "encodes categories is pointed at nothing that is one")
-
-
 # ── the descriptors themselves ───────────────────────────────────────────────
 
 def test_the_control_carries_the_engines_own_refusal_rather_than_a_paraphrase():
@@ -590,32 +259,6 @@ def test_the_control_carries_the_engines_own_refusal_rather_than_a_paraphrase():
     with pytest.raises(F.FeatureRefusal) as caught:
         F.preview(frame, "ordinal_declared", ["g"], {})
     assert str(caught.value) == F.PARAMETERS["order"].because == F.ORDER_REFUSAL
-
-
-def test_every_name_in_needs_resolves_to_a_descriptor_a_page_can_render():
-    """Trap #3, applied to the catalogue: a `needs` entry stands for a control.
-
-    A transform declaring a parameter with no descriptor would ship a button
-    that cannot be satisfied, which is this row restated. The `kind` is checked
-    against the vocabulary the page branches on, because a descriptor the page
-    has no arm for renders nothing at all.
-    """
-    renderable = {"integer", "numbers", "levels"}
-    page = (Path(__file__).resolve().parent / "web" / "index.html"
-            ).read_text(encoding="utf-8")
-    for key, transform in sorted(F.CATALOGUE.items()):
-        for name in transform.needs:
-            param = F.PARAMETERS.get(name)
-            assert param is not None, f"`{key}` needs `{name}` and nothing describes it"
-            assert param.kind in renderable, f"{key}/{name}: {param.kind}"
-            assert param.because.strip(), f"{key}/{name} has no reason"
-            assert f'"{param.kind}"' in page or f"'{param.kind}'" in page, (
-                f"the page has no arm for a `{param.kind}` parameter, so "
-                f"`{key}` renders a reason and no control")
-    assert sorted(F.PARAMETERS) == sorted(
-        {n for t in F.CATALOGUE.values() for n in t.needs}), (
-        "a descriptor exists for a parameter no transform needs, or the other "
-        "way round")
 
 
 def test_a_bound_the_control_publishes_is_a_bound_the_engine_keeps():

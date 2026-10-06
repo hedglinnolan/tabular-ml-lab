@@ -19,6 +19,8 @@ The metric is **questions added**, not findings changed. A pack that reframes an
 existing finding without asking anything new has not violated guard #2 — it has
 done exactly what §02 says a pack is for, which is to change the answers.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -680,126 +682,7 @@ def _diagnose(df, target):
     return engine.rank_findings(engine.diagnose(df, target=target), None)
 
 
-def test_the_compositional_gate_reaches_the_figure_it_says_it_gates():
-    """`params["gates"] = "collinearity_figure"` was a field a test asserted the
-    existence of and nothing read.
-
-    Correlation between parts of a whole is negatively biased BY CONSTRUCTION,
-    so a matrix drawn over them is not a figure with a caveat — it is a figure
-    that cannot be read. The gate annotates rather than withholds, for the same
-    reason reframing annotates rather than deletes: the other columns'
-    correlations are real.
-    """
-    from fastapi.testclient import TestClient
-    from turbotab import api
-
-    client = TestClient(api.app)
-    fixture = DATA / "dietary_recalls.csv"
-    with open(fixture, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
-
-    ungated = client.get(f"/project/{pid}/evidence/correlations").json()
-    assert not ungated.get("gated")
-
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": ["dietary"]}})
-    gated = client.get(f"/project/{pid}/evidence/correlations").json()
-    assert gated.get("gated") is True
-    assert len(gated["gates"]) == 1
-    assert set(gated["gates"][0]["columns"]) == {
-        "protein_pct_kcal", "fat_pct_kcal",
-        "carbohydrate_pct_kcal", "alcohol_pct_kcal"}
-    assert gated["gates"][0]["draw"] == "log_ratio"
-    assert "parts of a whole" in gated["gates"][0]["reason"]
-
-    # The matrix itself is still served. A user who asked to see it gets it.
-    assert ungated.keys() <= gated.keys()
-
-
-def test_the_gate_is_on_the_chip_before_the_figure_is_opened():
-    """A caveat discovered after looking is a caveat applied to a reading the
-    user has already taken."""
-    from fastapi.testclient import TestClient
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with open(DATA / "dietary_recalls.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
-    for kind, payload in [("set_lens", {"lens": ["dietary"]}),
-                          ("set_target", {"column": "hba1c"})]:
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": kind, "payload": payload})
-
-    iv = client.get(f"/project/{pid}/interview?step=explore").json()
-    chips = {q["key"]: q for q in iv["questions"] if q["mode"] == "pull"}
-    # `TEST-059`, swept at L52-D. THIS SKIPPED WHEN THE CHIP WAS ABSENT, which
-    # is the precise shape the row was filed for: the gate under test lives ON
-    # the chip, so a regression that stopped raising the chip removed the thing
-    # being guarded AND turned this guard into a skip, which pytest counts as
-    # not-a-failure. The chip's presence is the precondition and is asserted.
-    assert "look::r8_collinearity" in chips, (
-        f"the correlation affordance is not offered on this record, so the "
-        f"gate this test checks has nothing to sit on. Chips present: "
-        f"{sorted(chips)}")
-    chip = chips["look::r8_collinearity"]
-    assert chip.get("gated") is True
-    assert chip["gate"]["packs"] == ["dietary"]
-    assert chip["gate"]["draw"] == "log_ratio"
-
-
-def test_no_lens_gates_nothing():
-    """The app is fully functional with no lens, and a gate is a pack's claim."""
-    from fastapi.testclient import TestClient
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with open(DATA / "dietary_recalls.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
-    assert not client.get(
-        f"/project/{pid}/evidence/correlations").json().get("gated")
-
-
 # ── the lens reaches the diagnosis the app presents ──────────────────────────
-
-def test_the_lens_reaches_every_finding_list_the_app_presents():
-    """`OPENING_SEQUENCE.md` orders the lens BEFORE the diagnosis.
-
-    The detectors in `ml/import_doctor.py` take a frame and nothing else, are
-    field-blind by construction, and are frozen. So the lens is a parameter of
-    `rank_findings` — the one function that produces the finding list the app
-    presents — rather than of the detector pass underneath it.
-
-    **And it must be, rather than acting at generation.** Reframing annotates
-    and never deletes: a user who reads *"these are different analytes"* and
-    still wants to reshape can. `apply` and `preview` re-run `diagnose()` and
-    need the real `fix_kind` to execute the repair, so a lens that erased the
-    reading at generation would take that route away and turn the annotation
-    into a deletion by another name.
-
-    This is the executable half. `_recompute` is the only path from a frame to
-    the findings a user sees, and it must pass the lens.
-
-    Discharges `lockbox-01`: the lens comes first.
-    """
-    import inspect
-    from turbotab import api
-
-    source = inspect.getsource(api._recompute)
-    assert "rank_findings" in source
-    assert "lens=project.lens" in source, (
-        "`_recompute` builds the presented finding list without the lens. The "
-        "sequence says the lens comes before the diagnosis; this is where that "
-        "is true or is not.")
-
-    # And nothing else in the API builds one. `diagnose()` is still called
-    # directly by `apply` and `preview`, and those want the RAW reading.
-    api_source = inspect.getsource(api)
-    presented = [line for line in api_source.splitlines()
-                 if "rank_findings(" in line and "def " not in line]
-    assert len(presented) == 1, presented
 
 
 def test_the_raw_reading_survives_for_the_user_who_wants_it_anyway():
@@ -962,30 +845,6 @@ def test_the_contradiction_fires_before_any_prior_is_granted(tmp_path):
         "stated_assay_lens_but_blanks_are_not_censored"
 
 
-def test_the_contradiction_reaches_the_wire_as_a_409_with_its_exits():
-    from fastapi.testclient import TestClient
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with open(DATA / "metabolomics_untargeted.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("metabolomics_untargeted.csv", fh, "text/csv")}).json()["id"]
-
-    r = client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_lens", "payload": {"lens": [P.CLINICAL]}})
-    assert r.status_code == 409, r.text
-    detail = r.json()["detail"]
-    assert detail["contradiction"]["kind"] == \
-        "stated_lens_but_shape_is_an_assay"
-    assert [e["kind"] for e in detail["exits"]] == ["resolve", "attest"]
-
-    ok = client.post(f"/project/{pid}/decision",
-                     json={"kind": "set_lens",
-                           "payload": {"lens": [P.CLINICAL],
-                                       "acknowledge_contradiction": True}})
-    assert ok.status_code == 200
-
-
 def test_the_suggestion_can_hint_clinical():
     """`suggest()` was asymmetric the same way — four lenses could be hinted and
     the fifth could not, so the shape a clinical table has was the one shape the
@@ -1000,42 +859,6 @@ def test_the_suggestion_can_hint_clinical():
 
 
 # ── GUIDED-027, audited rather than assumed ──────────────────────────────────
-
-def test_no_consumer_reads_a_column_scoped_prior_at_table_scope():
-    """`GUIDED-027`'s claim, checked across every consumer rather than the one
-    path the finding named.
-
-    The skip path is scoped. This asserts the property the finding is actually
-    about: **a prior that is a fact about a column is never resolved without
-    columns.** A consumer that called `priors()` with no frame would get the
-    declaration unscoped — which is right for reading the catalogue and wrong
-    for acting on a dataset — so the two uses are separated and every acting
-    site is named here.
-    """
-    import inspect
-    from turbotab import api, repeats
-
-    column_scoped = {p.question for pack in P.PACKS.values()
-                     for p in pack.priors if p.scope == P.COLUMNS}
-    assert column_scoped, "no column-scoped priors; the finding cannot be checked"
-
-    # Every call that ACTS on a dataset resolves against the frame. A call with
-    # no `df` is reading the catalogue and may not reach a user.
-    source = inspect.getsource(api) + inspect.getsource(repeats)
-    acting = [line.strip() for line in source.splitlines()
-              if ("_packs.priors(" in line or "packs.priors(" in line
-                  or "_packs.prior_for_column(" in line)
-              and not line.strip().startswith("#")]
-    assert acting, "no consumers found; the search is wrong, not the code"
-
-    for call in acting:
-        if "prior_for_column(" in call:
-            continue                       # column-scoped by construction
-        question = call.split('"')[1] if '"' in call else ""
-        if question in column_scoped:
-            assert "df" in call or "project.df" in call, (
-                f"{question!r} is a fact about a column and this call resolves "
-                f"it without a frame: {call}")
 
 
 def test_a_column_scoped_prior_resolved_without_a_frame_carries_no_columns():
@@ -1075,70 +898,6 @@ def test_every_column_scoped_prior_names_a_detector_that_exists():
                 f"forever and that is a silence, not a scope")
 
 
-def test_every_prior_has_a_consumer_or_is_declared_unconsumed():
-    """`GUIDED-024` closed the layer; this counts what is left of it.
-
-    A prior nothing reads is the finding's own defect surviving for a subset —
-    reasoned, shape-tested and inert. Rather than assert that none remain, the
-    residue is DECLARED with a reason, so a sixth cannot join it quietly. The
-    same shape as the substring-registry guard, and for the same reason: the
-    failure mode is silence, so silence is made a test failure.
-    """
-    import inspect
-    from turbotab import api, repeats
-
-    import re
-
-    all_questions = {p.question for pack in P.PACKS.values() for p in pack.priors}
-    source = inspect.getsource(api) + inspect.getsource(repeats)
-    consumed = set()
-    for line in source.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            continue
-        if "priors(" not in stripped and "prior_for_column(" not in stripped:
-            continue
-        # EVERY quoted token on the line, intersected with the known questions —
-        # not `split('"')[1]`, which on
-        #     "priors": _packs.priors(project.lens or [], "model_ranking", ...)
-        # reads the dict KEY and reports a wired prior as inert. The first
-        # version of this test did exactly that.
-        consumed |= set(re.findall(r'"([a-z_]+)"', stripped)) & all_questions
-
-    declared = {
-        "energy_adjustment": (
-            "GUIDED-030. Needs an energy-adjustment step, which is not built. "
-            "The finding pack::dietary::energy_adjustment carries the claim to "
-            "the user today; the prior carries the FORM (residual versus "
-            "nutrient density) and has nowhere to be offered."),
-        "ordinal_encoding": (
-            "GUIDED-030. The recipe table carries the survey pack's VARIANT "
-            "(encode/ordinal, registered at pack load). This prior carries the "
-            "separate claim that the encoding is ROW-LOCAL because the order is "
-            "declared, and the recipe table holds scope per operation rather "
-            "than per column, so there is nowhere to put it yet."),
-        "reverse_coding": (
-            "GUIDED-030. The router's reverse-coding question is gated on the "
-            "survey detector rather than on this prior. Wiring it would let a "
-            "pack turn the question off, which guard 1 forbids — so the prior "
-            "is the RECORD of a considered refusal and the question is asked "
-            "regardless."),
-
-    }
-
-    inert = sorted(all_questions - consumed)
-    assert inert == sorted(declared), (
-        f"priors with no consumer: {inert}. Wire it, or declare it here with "
-        f"the reason — a prior nothing reads is GUIDED-024 surviving for a "
-        f"subset.\n  declared: {sorted(declared)}")
-
-    stale = sorted(q for q in declared if q in consumed)
-    assert not stale, (
-        f"these are declared unconsumed and now have a consumer: {stale}. "
-        f"Remove them — a declaration that outlives its reason is the register "
-        f"lying.")
-
-
 # ── GUIDED-033 · a derived claim that described behavior the app did not have ─
 
 def test_the_qc_prior_is_offered_because_excluding_rows_changes_n():
@@ -1170,64 +929,3 @@ def test_the_qc_prior_is_offered_because_excluding_rows_changes_n():
     assert found["severity"] == "critical"
 
 
-def test_the_qc_rows_are_offered_as_an_eligibility_criterion(client=None):
-    """The other half: the prior goes somewhere.
-
-    Offered through the eligibility question, which is the mechanism clause §04
-    already specifies for an exclusion that changes N and is reported in
-    participant flow.
-    """
-    from fastapi.testclient import TestClient
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with open(DATA / "metabolomics_untargeted.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("metabolomics_untargeted.csv", fh, "text/csv")}).json()["id"]
-    for kind, payload in (("set_lens", {"lens": [P.METABOLOMICS]}),
-                          ("set_target", {"column": "responder"}),
-                          ("set_grain", {"answer": "one_row_per_person"})):
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": kind, "payload": payload})
-
-    body = client.post(f"/project/{pid}/decision",
-                       json={"kind": "eligibility_candidates",
-                             "payload": {}}).json()
-    assert len(body["candidates"]) == 1
-    candidate = body["candidates"][0]
-    assert candidate["column"] == "sample_type"
-    assert candidate["keep_values"] == ["participant"]
-    assert candidate["n_excluded"] == 8
-    assert "never applied" in body["note"]
-
-    # Nothing has happened yet. Offered is not applied.
-    assert client.get(f"/project/{pid}").json()["n_rows"] == 80
-
-    applied = client.post(f"/project/{pid}/decision", json={
-        "kind": "set_eligibility",
-        "payload": {"answer": "restricted", "column": candidate["column"],
-                    "keep_values": candidate["keep_values"],
-                    "reason": candidate["criterion_reason"]}}).json()
-    assert applied["n_rows"] == 72
-    # And it lands in participant flow, which is what §04 requires of anything
-    # that changes N.
-    assert applied["eligibility"]["n_excluded"] == 8
-    assert "excluded before the held-out set was drawn" in \
-        applied["eligibility"]["sentence"]
-
-
-def test_no_qc_candidate_is_offered_where_no_qc_rows_exist():
-    """A candidate criterion over nothing would be the app inventing work."""
-    from fastapi.testclient import TestClient
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with open(DATA / "clinic_visits.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("clinic_visits.csv", fh, "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": [P.CLINICAL]}})
-    body = client.post(f"/project/{pid}/decision",
-                       json={"kind": "eligibility_candidates",
-                             "payload": {}}).json()
-    assert body["candidates"] == []

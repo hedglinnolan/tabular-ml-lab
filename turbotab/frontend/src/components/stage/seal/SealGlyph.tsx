@@ -1,5 +1,5 @@
 /**
- * The seal's glyph (lifted from /lab/m2), in the three states its basis can take (ROADMAP lockbox
+ * The seal's glyph (lifted from /lab/m2), in the three states its basis can take (lockbox
  * constitution §03). Only a verified basis is drawn closed. Grouping abandoned is a ring with a gap;
  * undetermined is a dashed ring around a question mark — never a clean lock. A recorded seal wears
  * --ok (sealed is a recorded claim); a preview wears ink; an exploratory basis wears the coach's

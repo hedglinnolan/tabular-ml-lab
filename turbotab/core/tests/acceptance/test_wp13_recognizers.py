@@ -551,7 +551,7 @@ def test_4b_a_proposed_unit_reaches_a_sentence_only_once_recorded(tmp_path):
     from turbotab.core import voice
     from turbotab.core.stages.target import target_info_stage
 
-    pack = (REPO / "docs/turbotab/research/CLINICAL_SURVEY_PACK.md").read_text("utf-8")
+    pack = (REPO / "docs/turbotab-next/reference/research/CLINICAL_SURVEY_PACK.md").read_text("utf-8")
     flat = " ".join(" ".join(line.lstrip("> ") for line in pack.splitlines()).split())
     assert ("Please confirm units per analyte against the source data dictionary — TurboTab will "
             "not guess.") in flat

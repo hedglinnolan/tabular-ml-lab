@@ -33,6 +33,8 @@ largest off-diagonal correlation anywhere in the matrix is **0.87** — so the
 detector must be silent on it, and that silence is asserted here with the
 measured number beside it rather than as an absence nobody checked.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 from pathlib import Path
@@ -203,8 +205,8 @@ def test_the_thresholds_are_badged_as_the_conventions_they_are():
     assert claims["cut_points"]["evidence_status"] == "CONVENTION"
     assert finding["evidence"]["weakest_status"] == "CONVENTION"
     for claim in claims.values():
-        assert claim["source"].startswith(
-            "research/METABOLOMICS_PACK.md#Redundancy detection")
+        assert claim["source"] == (
+            "research/METABOLOMICS_PACK.md#Redundancy detection — a real differentiator")
 
 
 # ═══════════ 2 · THE HALF THAT IS NOT BUILT ═══════════
@@ -288,78 +290,3 @@ def test_the_retention_time_criterion_is_not_built():
         "the three co-eluting pairs are one compound each and the three "
         "four-minutes-apart pairs are two each; requiring co-elution is what "
         "separates them, and 45 rather than 42 is the effective count")
-
-
-# ═══════════ 3 · AND IT REACHES A PERSON ═══════════
-
-def test_the_redundancy_estimate_reaches_a_person_and_carries_its_badge():
-    """**Trap #1.** The assertions above prove the detector and prove nothing
-    about the app. Driven through the real API and then through the page's real
-    controller in node, with the headline number read back off the DOM —
-    `GUIDED-142` is why the page half is here and not only the API half.
-    """
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    client = TestClient(api.app)
-    with open(DATA / "metabolomics_redundant.csv", "rb") as handle:
-        pid = client.post("/project", files={
-            "file": ("metabolomics_redundant.csv", handle,
-                     "text/csv")}).json()["id"]
-    for kind, payload in (("set_lens", {"lens": [P.METABOLOMICS]}),
-                          ("set_target", {"column": "responder"})):
-        ok = client.post(f"/project/{pid}/decision",
-                         json={"kind": kind, "payload": payload})
-        assert ok.status_code == 200, (kind, ok.text[:300])
-
-    project = client.get(f"/project/{pid}").json()
-    served = [f for f in project["findings"] if f["source"] == "pack"]
-    reached = {f["id"] for f in served}
-    assert "pack::metabolomics::redundancy" in reached, sorted(reached)
-
-    redundancy = next(f for f in served
-                      if f["id"] == "pack::metabolomics::redundancy")
-    # THE BADGE SURVIVED THE BOUNDARY, at claim granularity. `DRIVE-001`'s class
-    # is a status computed on the server and dropped on the wire, and the
-    # per-claim statuses are the part a flat serializer loses first.
-    assert redundancy["evidence"]["weakest_status"] == "CONVENTION"
-    assert {c["key"] for c in redundancy["evidence"]["claims"]} == {
-        "not_independent", "cut_points"}
-
-    routes = {
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore":
-            client.get(f"/project/{pid}/interview?step=explore").json(),
-        f"/project/{pid}/evidence/missingness": {"cards": []},
-        f"/project/{pid}/capabilities":
-            client.get(f"/project/{pid}/capabilities").json(),
-    }
-    out = PH.run(
-        "var shut = (__harness.html('profList') || '');\n"
-        "__harness.dispatch('click', __harness.target("
-        "{'data-stack-more':'1','aria-expanded':'false'}));\n"
-        "__emit({shut: shut.slice(0, 90000),"
-        " open: ((__harness.html('profList') || '') +"
-        "        (__harness.html('profRest') || '')).slice(0, 200000)});",
-        routes=routes, search=f"?project={pid}")
-    html = out["open"]
-    assert out["shut"], "the Explore findings list rendered nothing at all"
-
-    missing = [f["id"] for f in served if f["title"][:28] not in html]
-    assert not missing, (
-        f"the metabolomics pack computes {missing} and the page never shows "
-        f"them, pushed or collapsed")
-
-    # THE NUMBER ITSELF, not just the card. `GUIDED-207`: the server composes
-    # the sentence and the page renders it, so the sentence a reader acts on has
-    # to arrive intact — "105 independent quantities" is the whole finding, and
-    # a card that showed the title with the count stripped would pass a
-    # title-only assertion.
-    assert "105 independent quantities" in html

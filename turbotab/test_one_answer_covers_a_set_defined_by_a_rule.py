@@ -16,6 +16,8 @@ defined by a **rule**, and the user edits the rule rather than the members.
 Run:  venv/bin/python -m pytest \\
           turbotab/test_one_answer_covers_a_set_defined_by_a_rule.py -q
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -25,80 +27,17 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml import router                                                 # noqa: E402
-from turbotab import api, bulk as B, missingness as MISS              # noqa: E402
+from turbotab import bulk as B, missingness as MISS                     # noqa: E402
 from turbotab.project import AnalysisProject, ProjectError            # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 
 
-@pytest.fixture
-def client():
-    return TestClient(api.app)
-
-
-def _upload(client, path: Path) -> str:
-    with open(path, "rb") as fh:
-        return client.post(
-            "/project", files={"file": (path.name, fh, "text/csv")}).json()["id"]
-
-
-def _asked(client, pid: str, step: str = "preprocess"):
-    iv = client.get(f"/project/{pid}/interview?step={step}").json()
-    return [q for q in iv["questions"]
-            if q["mode"] == "push" and q["status"] == "asked"]
-
-
-def _prepared(client, path: Path, target: str, lens=("other",)) -> str:
-    pid = _upload(client, path)
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_lens", "payload": {"lens": list(lens)}})
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": target}})
-    return pid
-
-
 # ── the finding, measured before and after ───────────────────────────────────
-
-def test_a_wide_table_with_no_lens_no_longer_asks_one_question_per_column(client):
-    """The number in the finding: 308 columns with blanks, 308 questions.
-
-    This is the fixture and the answer that produced the 313 — the lens is
-    `other`, so no pack settles anything and nothing is rescued.
-    """
-    df = pd.read_csv(DATA / "metabolomics_untargeted.csv")
-    with_blanks = [c for c in df.columns
-                   if df[c].isna().any() and c != "responder"]
-    assert len(with_blanks) > 300, "the fixture no longer has the shape"
-
-    pid = _prepared(client, DATA / "metabolomics_untargeted.csv", "responder")
-    missingness = [q for q in _asked(client, pid)
-                   if q["kind"] == "missingness"]
-
-    assert len(missingness) <= 3, (
-        f"{len(missingness)} missingness questions for {len(with_blanks)} "
-        f"columns; the interview still scales with p")
-
-    bulk = [q for q in missingness if q["key"].startswith("missingness_bulk::")]
-    assert len(bulk) == 1
-    assert bulk[0]["key"] == "missingness_bulk::numeric"
-    assert "306 numeric columns have blanks" in bulk[0]["title"]
-    # The user edits the RULE, and the rule is in the question.
-    assert "every numeric column with blanks" in bulk[0]["why"]
-
-
-def test_a_group_of_one_is_asked_rather_than_ruled(client):
-    """*"A bulk affordance offered over one leftover column is worse than
-    asking."* `sex` is the only categorical column with blanks on this fixture,
-    so it gets the ordinary question and no rule is invented for it."""
-    pid = _prepared(client, DATA / "metabolomics_untargeted.csv", "responder")
-    keys = {q["key"] for q in _asked(client, pid)}
-    assert "missingness::sex" in keys
-    assert "missingness_bulk::categorical" not in keys
 
 
 def test_the_two_branches_are_never_one_answer():
@@ -126,54 +65,6 @@ def test_the_group_is_what_remains_after_the_lens_settles_its_columns():
 
 # ── one decision, not N ──────────────────────────────────────────────────────
 
-def test_one_answer_writes_one_decision_and_one_sentence(client):
-    pid = _prepared(client, DATA / "metabolomics_untargeted.csv", "responder")
-    before = client.get(f"/project/{pid}").json()
-    bulk = next(q for q in _asked(client, pid)
-                if q["key"] == "missingness_bulk::numeric")
-
-    project = api.STORE.get(pid)
-    columns = [r["column"] for r in project.missingness_survey()
-               if r["branch"] == "numeric"]
-    assert len(columns) > 300
-
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness_bulk",
-        "payload": {"branch": "numeric", "mechanism": MISS.NOT_INFORMATIVE,
-                    "strategy": MISS.IMPUTE_MEDIAN, "columns": columns}})
-    assert r.status_code == 200, r.text
-    after = r.json()
-
-    added = [d for d in after["decisions"]
-             if d not in before["decisions"]
-             and d["kind"] == "route_missingness_bulk"]
-    assert len(added) == 1, "one answer must be one decision, not N"
-    assert added[0]["payload"]["n_columns"] == len(columns)
-
-    # THE SENTENCE A READER WANTS.
-    assert added[0]["text"].startswith(
-        f"Missing values in {len(columns):,} numeric column(s) will be filled")
-    # `AUDIT-028`. THIS DOOR HAS NO FOLDS. `turbotab/training.py:416`:
-    # nothing under `turbotab/` imports `KFold`, `cross_val_score` or
-    # `cross_validate`. This assertion read "training folds only" for a
-    # dozen loops, which made it a GREEN TEST PINNING THE DEFECT — the
-    # shape filed this same loop as `TEST-060`.
-    assert "over the training rows" in added[0]["text"]
-
-    # The plan is still per column, because everything downstream reads it —
-    # what changed is that the user answered once.
-    assert len(after["missingness"]) == len(columns)
-    assert all(d["bulk"] == "numeric" for d in after["missingness"])
-
-    # ONE cascade entry. A cascade that fires 306 times for one answer trains
-    # the user to ignore it.
-    grew = (len(after["stale_downstream"])
-            - len(before["stale_downstream"]))
-    assert grew == 1, f"the cascade fired {grew} times for one answer"
-
-    # And the question retires.
-    assert "missingness_bulk::numeric" not in {q["key"] for q in _asked(client, pid)}
-
 
 def test_a_bulk_answer_cannot_cross_the_dtype_branch():
     df = pd.DataFrame({"n": [1.0, np.nan, 3.0] * 5,
@@ -193,28 +84,6 @@ def test_a_bulk_answer_over_nothing_is_refused():
     with pytest.raises(ProjectError, match="empty set"):
         p.route_missingness_bulk("numeric", MISS.NOT_INFORMATIVE,
                                  MISS.IMPUTE_MEDIAN, [])
-
-
-# ── the user edits the rule, not the members ─────────────────────────────────
-
-def test_pulling_a_column_out_narrows_the_rule_and_the_sentence_says_so(client):
-    pid = _prepared(client, DATA / "metabolomics_untargeted.csv", "responder")
-    before = next(q for q in _asked(client, pid)
-                  if q["key"] == "missingness_bulk::numeric")
-    n_before = int(before["title"].split()[0].replace(",", ""))
-
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "except_from_bulk", "payload": {"column": "mz_0022"}})
-    assert r.status_code == 200, r.text
-
-    keys = {q["key"] for q in _asked(client, pid)}
-    after = next(q for q in _asked(client, pid)
-                 if q["key"] == "missingness_bulk::numeric")
-    n_after = int(after["title"].split()[0].replace(",", ""))
-    assert n_after == n_before - 1
-    assert "1 you pulled out" in after["why"]
-    # And it rejoins the individually-asked columns.
-    assert "missingness::mz_0022" in keys
 
 
 # ── bulk plus evidence-driven exceptions ─────────────────────────────────────
@@ -265,37 +134,6 @@ def test_no_exception_is_raised_against_an_informative_answer():
                     members=tuple(c for c in df.columns if c != "y"))
     assert B.exceptions(df, group, MISS.INFORMATIVE, "y")["columns"] == []
     assert B.exceptions(df, group, MISS.NOT_SURE, "y")["columns"] == []
-
-
-def test_the_exceptions_are_one_question_and_not_n(client, tmp_path):
-    """Otherwise this reintroduces the defect it exists to remove: 500
-    exceptions asked one at a time is the unbounded interview arriving through
-    the back door."""
-    path = tmp_path / "exceptions.csv"
-    rng = np.random.default_rng(3)
-    n = 200
-    y = rng.integers(0, 2, n)
-    data = {"y": y}
-    for i in range(40):
-        col = rng.normal(size=n)
-        col[(y == 1) & (rng.random(n) < 0.9)] = np.nan     # ALL informative
-        data[f"lab_{i:02d}"] = col
-    pd.DataFrame(data).to_csv(path, index=False)
-
-    pid = _prepared(client, path, "y")
-    project = api.STORE.get(pid)
-    columns = [r["column"] for r in project.missingness_survey()]
-    client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness_bulk",
-        "payload": {"branch": "numeric", "mechanism": MISS.NOT_INFORMATIVE,
-                    "strategy": MISS.IMPUTE_MEDIAN, "columns": columns}})
-
-    exceptions = [q for q in _asked(client, pid)
-                  if q["key"].startswith("missingness_exceptions::")]
-    assert len(exceptions) == 1, (
-        f"{len(exceptions)} exception questions; they must be a group too")
-    assert "of those columns look like exceptions" in exceptions[0]["title"]
-    assert "40" in exceptions[0]["title"] or "39" in exceptions[0]["title"]
 
 
 # ── the scaling claim, at both ends ──────────────────────────────────────────
@@ -368,32 +206,6 @@ def test_the_old_per_column_path_is_unchanged_when_no_groups_are_built():
 
 
 # ── the skip scales too ──────────────────────────────────────────────────────
-
-def test_a_pack_settling_three_hundred_columns_renders_one_skip_not_three_hundred(client):
-    """A rendered skip is still a rendered thing.
-
-    Wiring the priors layer turned 306 questions into 306 SKIPS, which is a real
-    improvement in what is being asked and no improvement at all in what is
-    being drawn. `DESIGN_LANGUAGE.md` §09 wants skips to group *"so their
-    density reads as machine work at a glance"*, and 306 of them is not a
-    glance.
-    """
-    pid = _prepared(client, DATA / "metabolomics_untargeted.csv", "responder",
-                    lens=("metabolomics",))
-    iv = client.get(f"/project/{pid}/interview?step=preprocess").json()
-    missingness = [q for q in iv["questions"] if q["kind"] == "missingness"]
-
-    assert len(missingness) <= 4, (
-        f"{len(missingness)} missingness entries rendered; the SKIP is scaling "
-        f"with p even though the question is not")
-
-    settled = [q for q in missingness if q["status"] == "skipped"]
-    assert len(settled) == 1
-    assert "settled by the" in settled[0]["title"]
-    assert settled[0]["skip_reason"], "audit() refuses a skip with no reason"
-    # It names the count, and it names the pack that made the claim.
-    assert "300" in settled[0]["title"] or "306" in settled[0]["title"]
-    assert "metabolomics" in settled[0]["skip_reason"].lower()
 
 
 def test_two_packs_settling_different_columns_stay_two_facts():

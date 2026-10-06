@@ -16,10 +16,22 @@ SAMPLES = REPO / "turbotab" / "sample_data"
 DIETARY = SAMPLES / "dietary_recalls.csv"
 
 
+SERVER_USER = "researcher"
+SERVER_PASSWORD = "a long enough test password"
+
+
 def make_client(home: Path, mode: str, workers: int, base_url: str) -> TestClient:
     settings = Settings(home=home, mode=mode, workers=workers, memory_budget_bytes=2 << 30)
+    auth = None
+    if mode == "server":  # server mode signs users in: one account, cheap to hash
+        from turbotab.server.auth import AuthConfig
+        from turbotab.server.users import Account, hash_password, write_accounts
+
+        users_file = home / "users.toml"
+        write_accounts(users_file, [Account(SERVER_USER, hash_password(SERVER_PASSWORD, n=2**10))])
+        auth = AuthConfig(users_file=users_file)
     # A dist folder that does not exist: the server answers / with its build hint.
-    app = create_app(settings, frontend_dist=home / "no-frontend-here")
+    app = create_app(settings, frontend_dist=home / "no-frontend-here", auth=auth)
     return TestClient(app, base_url=base_url)
 
 
@@ -32,7 +44,11 @@ def client(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def server_client(tmp_path_factory):
+    """A server-mode server with one worker, signed in as ``SERVER_USER``."""
     with make_client(tmp_path_factory.mktemp("server"), "server", 1, "http://turbotab.example") as c:
+        signed_in = c.post("/login", data={"username": SERVER_USER, "password": SERVER_PASSWORD},
+                           follow_redirects=False)
+        assert signed_in.status_code == 303, signed_in.text
         yield c
 
 

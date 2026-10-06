@@ -347,3 +347,35 @@ def test_the_performance_table_keeps_the_fits_unweighted_label():
         " The surveyed population's performance, by design-based cross-validation, is not in this "
         "table.")
     assert [r["estimate"] for r in population.rows] == [r["estimate"] for r in plain.rows]
+
+
+def test_table_2_names_a_declared_scale_it_is_adjusted_for_not_the_items_scored_into_it():
+    """The survey inference journey's Table 2 and methods said Model 2 was "adjusted for sex,
+    education, item_01 … item_10" while its model matrix held `support_scale` and none of the
+    items: the effects stage read each matrix column's raw sources, and a scale's are its items.
+    The adjustment set names what is in the model: the scale, by its own name (MS8)."""
+    from sklearn.linear_model import LinearRegression
+    from sklearn.pipeline import Pipeline
+
+    from turbotab.core.methods.scales import ScaleScorer
+    from turbotab.core.stages.effects import _Run, matrix_sources
+
+    rng = np.random.default_rng(0)
+    items = [f"item_{i:02d}" for i in range(1, 5)]
+    X = pd.DataFrame({"age": rng.normal(50, 10, 60), "sex_M": rng.integers(0, 2, 60) * 1.0,
+                      **{c: rng.integers(1, 6, 60) * 1.0 for c in items}})
+    scale = {"name": "support_scale", "items": items, "reverse": ["item_02"], "low": 1, "high": 5,
+             "scoring": "sum", "role": "exposure"}
+    fitted = Pipeline([("score", ScaleScorer([scale])),
+                       ("model", LinearRegression())]).fit(X, rng.normal(size=60))
+    sources = matrix_sources(fitted, list(X.columns))
+    assert sources["support_scale"][0] == set(items)  # its raw sources are the items
+    spec = SimpleNamespace(inputs=[*X.columns, "support_scale"], scales=[scale],
+                           predictors=["age", "sex_M", *items])
+    run = _Run(spec=spec, exposures=["age"])
+    assert run._raw(["age", "sex_M", "support_scale"], ["age"], sources) == \
+        ["sex_M", "support_scale"]
+    assert run._scored(spec.predictors) == ["age", "sex_M", "support_scale"]
+    plain = _Run(spec=SimpleNamespace(inputs=list(X.columns), scales=[]), exposures=["age"])
+    assert plain._raw(["age", "sex_M", "support_scale"], ["age"], sources) == \
+        ["sex_M", *items]  # without a declared scale, the columns it came from
