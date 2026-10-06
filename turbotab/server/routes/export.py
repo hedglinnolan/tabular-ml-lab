@@ -48,5 +48,7 @@ def export(request: Request, pid: str) -> Response:
 def checklist(request: Request, pid: str) -> ChecklistReport:
     """The reporting checklist of the declared purpose (STROBE-nut under inference, TRIPOD+AI
     under prediction): every item quoted from its source, with where the record answers it or
-    "unanswered — the author must supply this", and what the export still waits for."""
+    "unanswered — the author must supply this", and what the export still waits for. Reading it
+    records nothing, so it shows no score that was not already shown: under prediction the
+    declared result is quoted only once the fit's cross-validated scores have been shown."""
     return get_service(request).checklist(pid)

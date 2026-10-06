@@ -19,9 +19,13 @@ building, drawn on their own rows in the closed vocabulary (BLUEPRINT §11 rule 
 |                       | state the whole one-tap answer leaves (wave 2b integration)              |
 | ``set_modification``  | distribution of the modifier with the strata the effect is reported at   |
 |                       | marked (wave 2b integration; outcome-blind)                              |
-| ``set_clusters``      | distribution of the rows per group · lineage (fixed effects)             |
+| ``set_clusters``      | distribution of the rows per group, captioned with what the fit does by  |
+|                       | purpose: the intervals (clustered, or the survey design's, or refused,   |
+|                       | with the leash's exits), or the validation across its levels under       |
+|                       | prediction · lineage (fixed effects)                                     |
 | ``set_survey``        | distribution of the exposure, unweighted and weighted · row flow of the  |
-|                       | rows the design holds                                                    |
+|                       | rows the design holds; when the fit refuses the design (a unit's rows in |
+|                       | more than one PSU), the PSUs each group spans, with the leash's exits    |
 | ``set_follow_up``     | row flow with the landmark · distribution of follow-up with the horizon  |
 | ``set_outcome_scale`` | distribution of the outcome, as recorded and on the log scale            |
 | ``set_categorical``   | lineage: each coded column into its indicators                           |
@@ -53,9 +57,9 @@ import numpy as np
 import pandas as pd
 
 from turbotab.core.consequences import (
-    CAPTION_WORDS, FRAME_WORDS, MAX_VIEWS, TITLE_WORDS, DistributionView, FitLine, HistogramData,
-    Lineage, LineageFrame, LineageLink, LineageNode, LineageView, Mark, PreviewContext,
-    RelationshipFrame, RelationshipView, RowFlowView, RowStep, TableFocusView,
+    CAPTION_WORDS, FRAME_WORDS, MAX_VIEWS, TITLE_WORDS, Caution, CautionExit, DistributionView,
+    FitLine, HistogramData, Lineage, LineageFrame, LineageLink, LineageNode, LineageView, Mark,
+    PreviewContext, RelationshipFrame, RelationshipView, RowFlowView, RowStep, TableFocusView,
     TableRow, after_state, clip_words, fmt_count, fmt_value, register_consequence,
 )
 
@@ -172,10 +176,23 @@ def pool(ctx: PreviewContext) -> Any:
     return ctx.sample_row_ids(ctx.training_row_ids)
 
 
+def ask(ctx: PreviewContext, asked: Any) -> None:
+    """BLUEPRINT §14: a number-changing consumer asks before it computes on an unsettled reading,
+    so a preview that cannot draw says what the fit asks and offers each confirmation the ask
+    offers (``readings.Unsettled``: one per reading), as the ledger's ask card does. An exit with
+    no decision (a question to revisit) is in the text alone."""
+    if ctx.caution is not None:
+        return
+    exits = [CautionExit(label=str(e["label"]), decision=dict(e["decision"]))
+             for e in getattr(asked, "exits", ()) or () if e.get("decision")]
+    ctx.caution = Caution(text=str(asked), exits=exits)
+
+
 def fit_design(ctx: PreviewContext, state: Any, ids: Any, extra: Sequence[str] = ()) -> Design | None:
     """The design stage's shared steps (``stages.modeling.design_stage``: the same spec, the same
     column summaries, the same energy factors) fitted on ``ids``; None when the state names no
-    predictor yet, or a reading the fit needs is unsettled (the fit asks for it first)."""
+    predictor yet, or a reading the fit needs is unsettled (the fit asks for it first, and so does
+    the preview of the answer: :func:`ask`, for the answer's state, never the recorded one)."""
     from turbotab.core.decisions import left_out
     from turbotab.core.methods.batch import batch_inputs
     from turbotab.core.models.lineage import missing_counts, trace
@@ -188,7 +205,9 @@ def fit_design(ctx: PreviewContext, state: Any, ids: Any, extra: Sequence[str] =
     try:
         predictors_or_ask(state, {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
                                   for c in info_cols}, drop=left_out(state), store=store)
-    except Unsettled:
+    except Unsettled as asked:
+        if state is not ctx.state:  # the answer's state: what recording it would meet
+            ask(ctx, asked)
         return None
     predictors = model_predictors(state)
     if not predictors:
@@ -331,9 +350,10 @@ def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         after=then.lineage,
     )]
     # MODELING_SEQUENCE §2: a declared exposure invalidates the adjustment answers given for
-    # another one; they are asked again, and until then the covariates they left out are back.
+    # another one; they are asked again, and until then the covariates they left out are back. A
+    # column the answers left out that is now the exposure is no covariate coming back.
     reopened = [c for c in est.adjustment_left_out(ctx.state)
-                if c not in est.adjustment_left_out(after)]
+                if c not in est.adjustment_left_out(after) and c not in exposures]
     if reopened:
         ctx.read["note"] = (f"The adjustment answers were given for another exposure, so they are "
                             f"asked again; until then {names(reopened)} "
@@ -895,21 +915,91 @@ def modification_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 # ── set_clusters ─────────────────────────────────────────────────────────────
 
 
+def split_grouping(ctx: PreviewContext) -> str | None:
+    """The column the current split keeps whole (its ``grouped_by``), which the fit reads among
+    the columns that may name the unit; None before a split, or when it groups nothing."""
+    split = ctx.artifact("split")
+    data = getattr(split, "data", None)
+    found = data.get("grouped_by") if isinstance(data, Mapping) else None
+    return str(found) if found else None
+
+
+def split_facts(ctx: PreviewContext) -> Mapping[str, Any]:
+    """The current split's record (validation, the cluster it folds by, its fold scheme), {}
+    before one exists."""
+    data = getattr(ctx.artifact("split"), "data", None)
+    return data if isinstance(data, Mapping) else {}
+
+
+def fit_unit(ctx: PreviewContext, state: Any) -> str | None:
+    """The column the fit's intervals cluster by under ``state``, as the fit stage resolves it
+    (``models.inference.resolve_clusters`` over every analyzed row, the split's grouping among the
+    candidates); None under prediction, or when no unit repeats."""
+    if getattr(state, "purpose", None) != "inference":
+        return None
+    from turbotab.core.models.inference import cluster_columns, resolve_clusters
+
+    grouped_by = split_grouping(ctx)
+    units = cluster_columns(state, ctx.datastore.columns, [grouped_by])
+    if not units:
+        return None
+    rows = next((r for r in (ctx.training_row_ids, ctx.cohort_row_ids) if r is not None), None)
+    rows = ctx.unsealed_row_ids() if rows is None else rows
+    found = resolve_clusters(state, ctx.datastore.materialize(units, rows), [grouped_by])
+    return found.column if found.clustered else None
+
+
+def fit_survey(ctx: PreviewContext, state: Any, unit: str | None) -> Any:
+    """The survey answer as the fit applies it (``methods.survey.for_fit``, read over every row of
+    the table, the stage's ``_survey``): under inference with ``unit``, the column the intervals
+    cluster by, which a population design must hold within one PSU (or take as its sampling unit
+    when it has no PSU column). None with no design."""
+    from turbotab.core.methods.survey import for_fit
+
+    try:
+        return for_fit(state, ctx.datastore, unit)
+    except (KeyError, ValueError):
+        return None
+
+
+# MODELING_SEQUENCE §4, "population estimand without a design-based estimator": block and record,
+# its exit the sample-only attestation (the survey question's own "these participants" answer).
+SAMPLE_ONLY = {"kind": "set_survey", "estimand": "sample"}
+
+
+def population_blocked(ctx: PreviewContext, refusal: str, decision: Any, unit: str | None,
+                       record: str) -> None:
+    """The fit's own refusal as the preview's caution, with the leash's exits: the sample-only
+    attestation, and recording the answer as it is (the coefficients then wait, and say why)."""
+    sample = ("These participants: unweighted, intervals clustered by " + tick(unit) if unit else
+              "These participants: unweighted, the estimates this sample's")
+    ctx.caution = Caution(text=refusal, exits=[
+        CautionExit(label=sample, decision=dict(SAMPLE_ONLY)),
+        CautionExit(label=record, decision=decision.model_dump(mode="json"))])
+
+
 def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
-    """The grouping the intervals will cluster by, read as the fit reads it
-    (``models.inference.resolve_clusters`` under the answer's state): how many groups, and how many
-    rows each holds; under fixed effects, the indicators the group adds to the matrix."""
+    """What the grouping does, as the fit does it. Under inference, the intervals: clustered by the
+    unit the fit resolves (``models.inference.resolve_clusters`` under the answer's state), or,
+    under the surveyed population, Taylor linearization over the design, which holds each group
+    within one PSU (``methods.survey.for_fit``) or refuses every coefficient when it cannot (§4,
+    block and record); how many groups, and how many rows each holds; under fixed effects, the
+    indicators the group adds to the matrix. Under prediction, the validation across its levels
+    (:func:`site_views`)."""
     from turbotab.core.models.inference import cluster_columns, min_clusters, resolve_clusters
 
     after = after_state(decision, ctx)
     named = decision.column or next(iter(decision.none_of or []), None)
     if named is None or named not in ctx.datastore.columns:
         return []
+    if getattr(after, "purpose", None) != "inference":
+        return site_views(decision, ctx, after, named)
     ids = ctx.sample_row_ids(ctx.training_row_ids) if ctx.training_row_ids is not None \
         else ctx.sample_row_ids()
-    units = cluster_columns(after, ctx.datastore.columns)
+    grouped_by = split_grouping(ctx)
+    units = cluster_columns(after, ctx.datastore.columns, [grouped_by])
     frame = ctx.datastore.materialize(list(dict.fromkeys([*units, named])), ids)
-    clusters = resolve_clusters(after, frame[units]) if units else None
+    clusters = resolve_clusters(after, frame[units], [grouped_by]) if units else None
     column = clusters.column if clusters is not None and clusters.clustered else None
     shown = column or named
     sizes = frame[shown].dropna().value_counts().to_numpy(dtype=float)
@@ -917,17 +1007,53 @@ def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         return []
     g = int(clusters.n_clusters) if column is not None else int(len(sizes))
     hist = histogram(sizes, bins=min(20, max(5, len(sizes))))
-    floor = min_clusters()
-    if column is None:
-        text = (f"No grouping: the {fmt_count(len(frame))} sampled rows are read as independent, "
-                f"{tick(named)}'s {fmt_count(len(sizes))} levels ignored.")
-    elif decision.adjust == "fixed_effects" and getattr(after, "purpose", None) == "inference":
-        text = (f"{fmt_count(g)} groups of {num(sizes.min())}–{num(sizes.max())} rows: one "
-                f"intercept each, intervals clustered by {tick(column)}.")
+    fixed = decision.adjust == "fixed_effects"
+    span = f"{fmt_count(g)} groups of {num(sizes.min())}–{num(sizes.max())} rows"
+    survey = fit_survey(ctx, after, column)
+    population = survey is not None and survey.answer == "population"
+    if population and survey.refusal:
+        # The fit refuses every coefficient (``models.survey.blocked``); because of this grouping
+        # when the design alone would stand.
+        alone = fit_survey(ctx, after, None) if column is not None else survey
+        because = alone is not None and not alone.refusal
+        text = (f"{span}, not each within one PSU: under the surveyed population no coefficient "
+                f"is reported." if because else
+                f"{span}; under the surveyed population no coefficient is reported yet.")
+        population_blocked(ctx, survey.refusal, decision, column,
+                           "Record this grouping: no coefficient until the survey or grouping answer "
+                           "changes")
+        record = {"grouped_by": None, "n_clusters": None, "covariance": "none",
+                  "refused": survey.refusal}
+    elif population:
+        design = survey.design
+        where = "each in one PSU" if design.psu_column else "each a sampling unit"
+        if column is None:
+            text = (f"No grouping: intervals by Taylor linearization over the survey design; "
+                    f"{tick(named)}'s {fmt_count(len(sizes))} levels ignored.")
+        elif fixed:
+            text = (f"{span}, {where}: one intercept each; intervals by Taylor linearization over "
+                    f"the design.")
+        else:
+            text = f"{span}, {where}: intervals by Taylor linearization over the survey design."
+        record = {"grouped_by": None, "n_clusters": None, "covariance": "design"}
     else:
-        text = (f"{fmt_count(g)} groups of {num(sizes.min())}–{num(sizes.max())} rows; intervals "
-                f"are clustered by {tick(column)}.")
-    ctx.read["clusters"] = {"column": column, "n_clusters": g if column else None}
+        if column is None:
+            text = (f"No grouping: the {fmt_count(len(frame))} sampled rows are read as "
+                    f"independent, {tick(named)}'s {fmt_count(len(sizes))} levels ignored.")
+        elif fixed:
+            text = f"{span}: one intercept each, intervals clustered by {tick(column)}."
+        else:
+            text = f"{span}; intervals are clustered by {tick(column)}."
+        record = {"grouped_by": column, "n_clusters": g if column else None,
+                  "covariance": "cluster" if column else "independent"}
+        floor = min_clusters()
+        if column is not None and g < floor:
+            ctx.read["note"] = (f"{g} groups is fewer than the {floor} a cluster-robust interval "
+                                f"needs, so no interval is reported.")
+        elif survey is not None and survey.answer is None:
+            ctx.read["note"] = ("Whether the estimates describe the surveyed population is asked "
+                                "next; under it the intervals are the survey design's.")
+    ctx.read["clusters"] = {"column": column, "groups": g, **record}
     views: list[Any] = [DistributionView(
         title=title(f"Rows in each {tick(shown)} group"),
         caption=caption(text),
@@ -935,10 +1061,7 @@ def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         column=shown, before=hist, after=hist,
         before_label="rows per group", after_label="rows per group",
     )]
-    if column is not None and g < floor:
-        ctx.read["note"] = (f"{g} groups is fewer than the {floor} a cluster-robust interval needs, "
-                            f"so no interval is reported.")
-    if decision.adjust == "fixed_effects" and ctx.training_row_ids is not None:
+    if fixed and ctx.training_row_ids is not None:
         rows = ctx.sample_row_ids(ctx.training_row_ids)
         then = fit_design(ctx, after, rows)
         now = fit_design(ctx, ctx.state, rows)
@@ -954,6 +1077,67 @@ def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                     after=then.lineage,
                 ))
     return views
+
+
+def site_views(decision: Any, ctx: PreviewContext, after: Any, named: str) -> list[Any]:
+    """Under prediction the grouping the question names is validated internal–externally beside
+    the headline (MS6; MODELING_SEQUENCE §2, performance across sites), as the fit stage runs it:
+    one fold per level of the training rows (``models.validation.site_folds``), for 2 to
+    ``SITE_LIMIT`` levels and not when the folds follow time; it is the headline itself when the
+    split already folds by it. No interval is computed under prediction, and the held-out rows and
+    folds stay as the split draws them (by the unit's identifier, never by a site; WP13)."""
+    from turbotab.core.estimand import cluster_answer
+    from turbotab.core.models.validation import SITE_LIMIT, site_folds
+
+    site = cluster_answer(after)
+    split = split_facts(ctx)
+    rows = ctx.training_row_ids
+    pool = "training rows"
+    if rows is None:
+        rows, pool = ctx.unsealed_row_ids(), "rows not held out"
+    levels = ctx.datastore.materialize([named], rows)[named].to_numpy(dtype=object)
+    codes, labels = site_folds(levels)
+    sizes = np.bincount(codes, minlength=len(labels)).astype(float)
+    n = len(labels)
+    if not n:
+        return []
+    span = f"{fmt_count(n)} groups of {num(sizes.min())}–{num(sizes.max())} rows"
+    if site is None:
+        text = f"No grouping: performance is not reported across {tick(named)}'s {fmt_count(n)} levels."
+        ctx.read["sites"] = None
+    else:
+        headline = (split.get("validation") == "internal_external" and split.get("cluster") == site)
+        why = None
+        if headline:
+            pass
+        elif split.get("fold_scheme") == "time_ordered":
+            why = f"the folds follow time, and validation by `{site}` would fit on later rows"
+        elif n < 2:
+            why = f"`{site}` has one level among the training rows"
+        elif n > SITE_LIMIT:
+            why = (f"`{site}` has {n:,} levels, more than the {SITE_LIMIT} this app validates one "
+                   f"by one")
+        ctx.read["sites"] = {"column": site, "levels": n, "ran": why is None, "why": why}
+        if headline:
+            text = f"{span}: the folds are its levels, each scored by models fit on the others."
+        elif why is None:
+            text = f"{span}: each scored in turn by models fit on the others, beside the headline."
+            if split_grouping(ctx) != site:
+                ctx.read["note"] = (f"The held-out rows and the folds are not drawn by `{site}`; "
+                                    f"the split question offers its levels as the folds.")
+        else:
+            text = f"{span}; performance across them is not reported."
+            ctx.read["note"] = f"Performance across `{site}`'s levels is not reported: {why}."
+    ctx.read["basis"] = (f"`{named}` counted on every one of the {len(rows):,} {pool}, as the fit "
+                         f"counts its levels; held-out rows stay sealed.")
+    hist = histogram(sizes, bins=min(20, max(5, n)))
+    return [DistributionView(
+        title=title(f"Rows in each {tick(named)} group"),
+        caption=caption(text),
+        emphasis=[named],
+        column=named, before=hist, after=hist,
+        before_label="rows per group", after_label="rows per group",
+    )]
 
 
 # ── set_survey ───────────────────────────────────────────────────────────────
@@ -991,11 +1175,55 @@ def whole(shares: Any) -> list[int]:
     return [int(v) for v in floor]
 
 
-def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
-    from turbotab.core.methods.survey import analysis_weights
-    from turbotab.core.models.survey import build_design, domain_of
+def psus_per_group(ctx: PreviewContext, unit: str, strata: str | None, psu: str) -> pd.Series:
+    """How many PSUs (within their strata) each ``unit`` group's rows sit in, over every row of the
+    table that has all three: the picture of why a population design cannot hold the group."""
+    columns = list(dict.fromkeys([unit, psu, *([strata] if strata else [])]))
+    placed = ctx.datastore.materialize(columns, None).dropna(subset=columns)
+    keys = placed[psu].astype(str)
+    if strata:
+        keys = placed[strata].astype(str) + "\x1f" + keys
+    return keys.groupby(placed[unit]).nunique()
 
-    column = survey_column(after_state(decision, ctx))
+
+def survey_refused_views(decision: Any, ctx: PreviewContext, found: Any,
+                         unit: str | None) -> list[Any]:
+    """The population answer the fit refuses (§4: block and record): the caution is the fit's own
+    refusal with its exits; when a unit's rows span PSUs, the picture is how many each spans."""
+    population_blocked(ctx, found.refusal, decision, unit,
+                       "Record the surveyed population: no coefficient until the design or "
+                       "grouping changes")
+    spread = psus_per_group(ctx, unit, decision.strata, decision.psu) \
+        if unit is not None and decision.psu else None
+    if spread is None or not (spread > 1).any():
+        ctx.read["survey"] = {"refused": found.refusal}
+        return []
+    counts = spread.to_numpy(dtype=float)
+    top = int(counts.max())
+    hist = histogram(counts, edges=[k + 0.5 for k in range(top + 1)])
+    across = int((counts > 1).sum())
+    ctx.read["survey"] = {"refused": found.refusal, "unit": unit, "groups": int(len(counts)),
+                          "spanning": across, "most_psus": top}
+    ctx.read["basis"] = (f"The design's strata and PSUs and `{unit}` read on every row of the "
+                         f"table, as the fit reads them.")
+    return [DistributionView(
+        title=title(f"PSUs holding each {tick(unit)} group's rows"),
+        caption=caption(f"{fmt_count(across)} of {fmt_count(len(counts))} {tick(unit)} groups have "
+                        f"rows in more than one PSU, up to {fmt_count(top)}."),
+        emphasis=[unit, decision.psu], column=unit, before=hist, after=hist,
+        before_label="PSUs per group", after_label="PSUs per group",
+        marks=[Mark(value=1.0, label="one PSU, as the design needs")])]
+
+
+def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
+    """The exposure as these participants show it and as the surveyed population does (the design's
+    weights), with the design's degrees of freedom over the analysis rows; the design is the fit's
+    own (``methods.survey.for_fit`` with the unit the intervals cluster by), so where the fit
+    refuses it, the preview shows that refusal instead (:func:`survey_refused_views`)."""
+    from turbotab.core.models.survey import domain_of
+
+    after = after_state(decision, ctx)
+    column = survey_column(after)
     if column is None or column not in ctx.datastore.columns:
         return []
     ids = ctx.sample_row_ids(ctx.training_row_ids) if ctx.training_row_ids is not None \
@@ -1017,15 +1245,16 @@ def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                                decision.four_year_weight) if c]
     if any(c not in ctx.datastore.columns for c in design_cols):
         return []
-    # The design over every row of the working table (a domain keeps its strata and PSUs), as
-    # ``methods.survey.for_fit`` reads it.
-    whole = ctx.datastore.materialize(list(dict.fromkeys(design_cols)), None)
-    pooled = analysis_weights(whole, decision.weight, decision.cycle, decision.four_year_weight)
-    if pooled.refusal:
-        ctx.read["note"] = pooled.refusal
+    # The design over every row of the working table (a domain keeps its strata and PSUs), as the
+    # fit reads it (``methods.survey.for_fit``): under inference with the unit its intervals
+    # cluster by, which the PSUs must hold whole, or which is the sampling unit without them.
+    unit = fit_unit(ctx, after)
+    found = fit_survey(ctx, after, unit)
+    if found is None:
         return []
-    design = build_design(whole, pooled.weights, weight_column=decision.weight,
-                          strata_column=decision.strata, psu_column=decision.psu)
+    if found.refusal:
+        return survey_refused_views(decision, ctx, found, unit)
+    design = found.design
     position = pd.Index(design.row_ids).get_indexer(np.asarray(ids, dtype=np.int64))
     w = np.where(position >= 0, design.weight[np.clip(position, 0, None)], np.nan)
     weighted = HistogramData(edges=edges, counts=weighted_counts(x, w, edges),
@@ -1061,7 +1290,8 @@ def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
             emphasis=["in_design"], before=[start], after=steps,
         ))
     ctx.read["survey"] = {"df": df, "n_psu": design.n_psu, "n_strata": design.n_strata,
-                          "domain": held, "mean_unweighted": mean_u, "mean_weighted": mean_w}
+                          "domain": held, "mean_unweighted": mean_u, "mean_weighted": mean_w,
+                          "unit": unit}
     sampled = ctx.read.get("sample")
     values = (f"a sample of {sampled[2]:,} of the {sampled[1]:,} {rows_word(ctx)} rows"
               if sampled is not None and sampled[2] < sampled[1] else

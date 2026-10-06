@@ -84,6 +84,15 @@ CONTRACT = contracts.register_contract(MethodContract(
                  "winner's own score.",
                  purposes=("prediction",), enforced_by="turbotab.core.export.tables:performance",
                  id="declared_result_only"),
+        Relation("implies", "no_unseen_score",
+                 "The live checklist records nothing, so it quotes no score a client was not "
+                 "shown: until the fit's cross-validated scores have been shown, the declared "
+                 "result's sentence is kept out of it, and reading it leaves the choice of "
+                 "families open; a bundle handed over counts as every score it prints seen.",
+                 purposes=("prediction",),
+                 enforced_by="turbotab.core.export.bundle:live_checklist", id="no_unseen_score",
+                 condition="no rows held out, and a fit holding a family's cross-validated score "
+                           "not yet shown for the outcome"),
         Relation("implies", "unanswered_listed",
                  "Every checklist item is listed with where the bundle answers it, or as "
                  "unanswered — the author must supply this.",
