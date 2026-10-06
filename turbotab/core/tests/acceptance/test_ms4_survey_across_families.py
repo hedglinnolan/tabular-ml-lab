@@ -1013,6 +1013,14 @@ CALIBRATION_POPULATION = (
     "declared as a secondary analysis beside the uncorrected estimate, with intervals from `{n}` "
     "bootstrap resamples of the whole chain, resampling PSUs within strata with the fits "
     "survey-weighted.")
+# MS4's block and record (its verifier's finding (a)), restored by REPAIR-RC after MS5 dropped it:
+# with one PSU in every stratum the calibration is not run, and the record in force says so.
+CALIBRATION_BLOCKED = (
+    "Regression calibration of every intake the recalls measure from the repeated recalls was "
+    "declared as a secondary analysis beside the uncorrected estimate, but under the surveyed "
+    "population no stratum held two PSUs with analyzed participants, leaving no bootstrap by PSU "
+    "within strata for its interval; it was blocked and recorded, and the estimates are "
+    "uncorrected.")
 SEEN = "After the estimates were seen, "
 
 
@@ -1314,7 +1322,9 @@ def test_4_the_calibration_block_exits_are_decisions_that_run_and_the_record_fol
       factor) is WP12c's NumPy reference from the CSV (``reference``) to 1e-6, and the methods text
       follows, word for word;
     * with one PSU in every stratum, the block names its exits as decisions: the sample-only
-      attestation, and no correction; the second, taken, records no correction: nothing is
+      attestation, and no correction, and the record in force says it was blocked and recorded,
+      word for word (REPAIR-RC restored this); the second exit, taken, records no correction:
+      nothing is
       blocked, the stage states the recall days, and the methods text says the intakes were not
       corrected."""
     from turbotab.core.stages.calibration import POPULATION as CALIBRATION_BLOCK
@@ -1384,6 +1394,7 @@ def test_4_the_calibration_block_exits_are_decisions_that_run_and_the_record_fol
         said_applied = force(d, "set_measurement_error")
         b = project(client, lonely_path)
         blocked = b.artifact("calibration")
+        said_blocked = force(b, "set_measurement_error")
         b.decide(blocked["exits"][1]["decision"])  # no correction
         uncorrected = b.artifact("calibration")
         said_none = force(b, "set_measurement_error")
@@ -1402,6 +1413,7 @@ def test_4_the_calibration_block_exits_are_decisions_that_run_and_the_record_fol
     assert (blocked["applies"], blocked["reason"], blocked["exits"]) == (False, CALIBRATION_BLOCK,
                                                                           exits)
     assert "these participants" in CALIBRATION_BLOCK
+    assert said_blocked == CALIBRATION_BLOCKED
     assert uncorrected["method"] == "none" and not uncorrected["applies"]
     assert uncorrected["exits"] == [] and uncorrected["reason"] != CALIBRATION_BLOCK
     assert uncorrected["methods"] == ("Intakes were the mean of each participant's recalls (2 "

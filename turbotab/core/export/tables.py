@@ -1,5 +1,9 @@
 """The results tables of the bundle, as CSV and Markdown (V2 definition of done §3.6).
 
+**Inference, a declared regression calibration** (REPAIR-RC; MODELING_SEQUENCE §0 ruling 7): the
+calibrated estimates beside the uncorrected ones, whose estimate, interval and test are the
+primary's (:func:`calibration_table`).
+
 **Inference: Table 2 and its appendix** (MODELING_SEQUENCE §1 row 11; Westreich & Greenland
 2013). The exposure's rows across the declared models, the unadjusted one first (STROBE 16a: "Give
 unadjusted estimates and, if applicable, confounder-adjusted estimates and their precision"), as the
@@ -302,7 +306,65 @@ def table2(effects: Mapping[str, Any], target: str | None) -> list[Table]:
     return out
 
 
+def calibration_table(cal: Mapping[str, Any]) -> list[Table]:
+    """The declared regression calibration beside the uncorrected estimate (REPAIR-RC; MS5,
+    MODELING_SEQUENCE §0 ruling 7), from the ``calibration`` stage's artifact as served: for each
+    reported intake, the primary's estimate, interval and test, the calibrated estimate with its
+    whole-chain bootstrap interval and no test of its own, and the attenuation; the substitution
+    as the difference of calibrated coefficients when one is drawn. Nothing when it did not run
+    (the record's sentence says it was blocked)."""
+    if not cal.get("applies"):
+        return []
+    n_primary, n = int(cal.get("n_primary") or 0), int(cal.get("n_persons") or 0)
+    rows: list[dict[str, Any]] = []
+    for e in cal.get("exposures") or []:
+        rows.append({"key": str(e.get("feature")), "term": e.get("feature"),
+                     "intake": e.get("source"), "n_primary": n_primary, "n": n,
+                     "uncorrected": e.get("naive"), "uncorrected_low": e.get("naive_ci_low"),
+                     "uncorrected_high": e.get("naive_ci_high"), "p": e.get("p"),
+                     "uncorrected_same": e.get("naive_refit"), "calibrated": e.get("estimate"),
+                     "ci_low": e.get("ci_low"), "ci_high": e.get("ci_high"), "se": e.get("se"),
+                     "attenuation": e.get("attenuation"), "n_boot_ok": e.get("n_boot_ok")})
+    for c in cal.get("contrasts") or []:
+        step = _finite(c.get("step_kcal"))
+        rows.append({"key": f"contrast/{c.get('donor')}/{c.get('recipient')}",
+                     "term": (f"{step:g} kcal from {c.get('donor')} to {c.get('recipient')}"
+                              if step is not None else None),
+                     "intake": None, "n_primary": n_primary, "n": n,
+                     "uncorrected": c.get("naive"), "uncorrected_low": None,
+                     "uncorrected_high": None, "p": None, "uncorrected_same": None,
+                     "calibrated": c.get("estimate"), "ci_low": c.get("ci_low"),
+                     "ci_high": c.get("ci_high"), "se": c.get("se"), "attenuation": None,
+                     "n_boot_ok": cal.get("n_boot_ok")})
+    fewer = (f" Refit on the same {n:,} participants, the uncorrected coefficient is in the column "
+             f"uncorrected_same." if n < n_primary else "")
+    caption = (f"Each intake's coefficient uncorrected (the primary's estimate, interval and test "
+               f"of no association, on its {n_primary:,} participants) beside it calibrated for "
+               f"day-to-day error in the recalls ({n:,} participants; the percentile interval of "
+               f"{int(cal.get('n_boot_ok') or 0):,} bootstrap resamples of the whole chain, and no "
+               f"test of its own).{fewer} A declared secondary analysis: it {cal.get('label')}.")
+    floats = ("uncorrected", "uncorrected_low", "uncorrected_high", "uncorrected_same",
+              "calibrated", "ci_low", "ci_high", "se", "attenuation")
+    return [Table(
+        name="calibration",
+        title="Regression calibration, the declared secondary analysis",
+        caption=caption,
+        columns=[Column(key="term", header="term", kind="text"),
+                 Column(key="intake", header="intake", kind="text"),
+                 Column(key="n_primary", header="n_primary", kind="int"),
+                 Column(key="n", header="n", kind="int"),
+                 *[Column(key=k, header=k) for k in floats[:3]],
+                 Column(key="p", header="p", kind="p"),
+                 *[Column(key=k, header=k) for k in floats[3:]],
+                 Column(key="n_boot_ok", header="n_boot_ok", kind="int")],
+        rows=rows,
+        shown=["term", "uncorrected|uncorrected_low|uncorrected_high", "p",
+               "calibrated|ci_low|ci_high", "attenuation", "n"])]
+
+
 TABLE2_HEADERS = {
+    "uncorrected|uncorrected_low|uncorrected_high": "Uncorrected (95% CI), the primary's",
+    "calibrated|ci_low|ci_high": "Calibrated (95% CI)", "attenuation": "Attenuation",
     "model": "Model", "adjusted_for": "Adjusted for", "n": "n", "term": "Term",
     "estimate|ci_low|ci_high": "Estimate (95% CI)", "ratio|ratio_low|ratio_high": "Ratio (95% CI)",
     "p": "p", "why": "Why it is not an effect", "setting": "Setting",
@@ -466,8 +528,12 @@ def results_tables(source: Any) -> list[Table]:
     """The bundle's results tables for the declared purpose."""
     if source.purpose == "inference":
         effects = source.artifact("effects")
-        return table2(effects, getattr(source.state, "target", None)) if isinstance(effects, dict) \
-            else []
+        out = (table2(effects, getattr(source.state, "target", None))
+               if isinstance(effects, dict) else [])
+        calibration = source.artifact("calibration")
+        if isinstance(calibration, dict):
+            out.extend(calibration_table(calibration))
+        return out
     fit = source.artifact("fit")
     return performance(fit) if isinstance(fit, dict) else []
 
@@ -477,5 +543,5 @@ def headers_for(table: Table) -> dict[str, str]:
 
 
 __all__ = ["BASIS", "Column", "NOT_RESULT", "PERFORMANCE_HEADERS", "RESULT", "TABLE2_HEADERS",
-           "Table", "csv_value", "estimates", "fmt", "fmt_p", "headers_for", "markdown",
-           "performance", "results_tables", "table2", "to_csv"]
+           "Table", "calibration_table", "csv_value", "estimates", "fmt", "fmt_p", "headers_for",
+           "markdown", "performance", "results_tables", "table2", "to_csv"]

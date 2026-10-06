@@ -630,6 +630,9 @@ def time_varying_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 # ── set_measurement_error ────────────────────────────────────────────────────
 
+IMPUTED_LAMBDA = ("Blanks among the model's inputs: the calibration runs inside each imputed copy "
+                  "when the stage runs, so λ is not drawn here.")
+
 
 def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     """Each reported error-prone intake's recalls, mean and calibrated value, and its attenuation
@@ -638,14 +641,20 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     them, each day through the same steps and centered on the person's value
     (``recall_matrix``), every error-prone column calibrated jointly with every other column of the
     model as a covariate (``methods.calibration.calibrate``)), without the outcome model or its
-    bootstrap. None when the stage would not calibrate (its reason is the stage's)."""
+    bootstrap. None when the stage would not calibrate (its reason is the stage's).
+
+    REPAIR-RC: the design is read as the stage reads it (``stages.calibration.analysis_design``):
+    under the surveyed population only the survey domain is calibrated, survey-weighted, as the
+    stage does. With a blank among the model's inputs and the blanks not dropped (complete cases),
+    the stage calibrates inside each imputed copy, so no λ is drawn here (``{"withheld": why}``),
+    as the scales preview does."""
     from sklearn.base import clone
 
     from turbotab.core.methods.calibration import CalibrationRefused, Recalls, calibrate
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
-    from turbotab.core.stages.calibration import (_nonlinear, combine_rule, day_rows, error_prone,
-                                                  recall_matrix)
+    from turbotab.core.stages.calibration import (_nonlinear, analysis_design, combine_rule,
+                                                  day_rows, error_prone, recall_matrix)
     from turbotab.core.stages.data import open_store
 
     spec_me = after.measurement_error
@@ -660,6 +669,15 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     with open_store(sctx) as store:
         frame = modeling_frame(store, list(spec.inputs), rows)
     X_all = frame[list(spec.inputs)]
+    strategy = (spec.missing or {}).get("strategy")
+    complete_case = strategy == "complete_case"
+    if X_all.isna().to_numpy().any() and not complete_case:
+        # Multiple imputation: the stage calibrates each copy. A single fill: the stage's own
+        # missing-data handling for the inference table decides, so nothing is drawn here.
+        return {"withheld": IMPUTED_LAMBDA} if strategy == "multiple_imputation" else None
+    _, survey, in_domain, weights_all = analysis_design(sctx, after, frame.index)
+    if survey is not None and survey.refusal:
+        return None
     raw_columns = list(dict.fromkeys([*spec.inputs, *([energy] if energy else [])]))
     days = day_rows(sctx, raw_columns, rows)
     day_unit = days.pop("__unit").to_numpy(dtype=np.int64)
@@ -693,8 +711,8 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     on_day = day_person >= 0
     day_frame = days.loc[on_day].reset_index(drop=True)
     day_of = day_person[on_day]
-    keep = np.bincount(day_of, minlength=len(frame)) >= 1
-    if X_all.isna().to_numpy().any() and (spec.missing or {}).get("strategy") == "complete_case":
+    keep = (np.bincount(day_of, minlength=len(frame)) >= 1) & in_domain
+    if X_all.isna().to_numpy().any() and complete_case:
         keep &= ~X_all.isna().any(axis=1).to_numpy()
     persons = np.flatnonzero(keep)
     remap = np.full(len(frame), -1)
@@ -717,8 +735,9 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     J = [columns.index(f) for f in features]
     others = [c for c in range(len(columns)) if c not in set(J)]
     Xm = matrix.to_numpy(dtype=float)[have]
+    w = None if weights_all is None else weights_all[persons][have]
     try:
-        cal = calibrate(rec, Xm[:, others] if others else None)
+        cal = calibrate(rec, Xm[:, others] if others else None, w)
     except CalibrationRefused as refused:
         return {"exposures": [{**i, "refused": str(refused)} for i in reported]}
     modal = cal.modal_k
@@ -747,6 +766,9 @@ def measurement_error_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if sctx is None:
         return []
     found = calibration_numbers(sctx, after)
+    if found is not None and found.get("withheld"):
+        ctx.read["note"] = found["withheld"]
+        return []
     good = [e for e in (found or {}).get("exposures", []) if e.get("lambda") is not None]
     if not good:
         return []
