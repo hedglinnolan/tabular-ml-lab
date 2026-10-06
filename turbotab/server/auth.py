@@ -5,11 +5,18 @@ Two ways to know who is asking, chosen by ``TURBOTAB_AUTH``:
 * ``password`` (the default): accounts in the users file (``turbotab.server.users``), a sign-in
   page at ``/login``, and a session cookie: a random 256-bit id that names a session kept in this
   process (only its SHA-256 is stored), sent ``HttpOnly`` and ``SameSite=Strict``, and ``Secure``
-  when ``TURBOTAB_SECURE_COOKIES`` is set or the request came over https. A session ends after
+  when ``TURBOTAB_SECURE_COOKIES`` is set or the request came over https, under the name
+  ``__Host-turbotab_session``, the only name then read: a page on a sibling subdomain can set a
+  plain-named cookie for the whole domain, and so sign a visitor in to its own account, but it
+  cannot set a ``__Host-`` one. A session ends after
   ``TURBOTAB_SESSION_IDLE_MINUTES`` without a request (default 120), after
   ``TURBOTAB_SESSION_MAX_HOURS`` however busy (default 12), at sign-out, and when its account is
   removed or given a new password. Sign-in attempts are limited per username and per client
-  address, each counted as it starts, so attempts sent at once count too.
+  address, each counted as it starts, so attempts sent at once count too. Passwords are checked
+  in threads of their own, ``MAX_CONCURRENT_HASHES`` at a time, never in the pool every other
+  route shares, so sign-ins waiting their turn hold up no signed-in user; once
+  ``sign_in_queue`` of them are waiting or being checked, another is told the server is busy (503),
+  and that attempt does not count.
 * ``proxy``: an institution's single sign-on in front of TurboTab names the user in a header
   (``TURBOTAB_PROXY_HEADER``, default ``X-Forwarded-User``). The header is read only from a peer
   in ``TURBOTAB_TRUSTED_PROXIES`` (addresses or networks); from anyone else it is ignored. The
@@ -31,6 +38,7 @@ the visitor's next upload would land in the attacker's workspace. Statistics nev
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import html
@@ -41,21 +49,22 @@ import secrets
 import threading
 import time
 from collections import OrderedDict, deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Callable, Literal, NamedTuple
 from urllib.parse import parse_qs, quote, urlsplit
 
 import anyio
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
-from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from turbotab.core.config import Settings
 from turbotab.server.errors import ApiError
 from turbotab.server.tenancy import owns
 from turbotab.server.users import (
+    MAX_CONCURRENT_HASHES,
     InvalidUsername,
     UsersFile,
     burn_time,
@@ -127,6 +136,7 @@ class AuthConfig:
     user_attempts: int = 5       # failed sign-ins per username per window
     ip_attempts: int = 20        # failed sign-ins per client address per window
     attempt_window: float = 15 * 60
+    sign_in_queue: int = 32      # sign-ins waiting for or in a password check; more are told "busy"
     stream_recheck: float = 15.0  # how often an open event stream checks that its session lives
     clock: Callable[[], float] = field(default=time.monotonic, compare=False, repr=False)
 
@@ -227,8 +237,9 @@ class SessionStore:
 
 
 class Attempts:
-    """Failed sign-ins per key in a sliding window; at ``limit`` the key waits. ``Auth.sign_in``
-    counts each attempt as it starts and forgives the ones that succeed."""
+    """Failed sign-ins per key in a sliding window; at ``limit`` the key waits.
+    ``Auth.count_attempt`` counts each attempt as it starts; the ones that succeed, and the ones
+    never checked, are forgiven."""
 
     def __init__(self, limit: int, window: float, clock: Callable[[], float], max_keys: int = 10_000):
         self.limit = limit
@@ -312,6 +323,28 @@ def _cookies(scope: Scope) -> dict[str, str]:
     return out
 
 
+NO_MATCH = "That username and password do not match an account on this server."
+BUSY = ("This server is checking other sign-ins just now. Try again in a few seconds; this "
+        "attempt did not count against the limits.")
+BUSY_RETRY_SECONDS = 5.0
+
+
+@dataclass(frozen=True)
+class Counted:
+    """A sign-in attempt counted against its address and its username, waiting to be checked."""
+    address: str
+    name: str
+    at_address: float
+    at_user: float | None
+
+
+class Outcome(NamedTuple):
+    token: str | None
+    note: str
+    status: int          # 303 signed in, 401 no match, 429 too many attempts, 503 busy
+    retry_after: float   # seconds, for 429 and 503
+
+
 class Auth:
     def __init__(self, settings: Settings, config: AuthConfig):
         self.settings = settings
@@ -321,6 +354,12 @@ class Auth:
         self.by_user = Attempts(config.user_attempts, config.attempt_window, config.clock)
         self.by_address = Attempts(config.ip_attempts, config.attempt_window, config.clock)
         self._counting = threading.Lock()  # the limits' check and the count, as one step
+        # Password checks run here, never in the thread pool every other route shares: a check
+        # waiting for one of scrypt's slots in that pool held a thread every signed-in user needed.
+        self._checker = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_HASHES,
+                                           thread_name_prefix="turbotab-sign-in")
+        self._queue_lock = threading.Lock()
+        self._queued = 0  # sign-ins waiting for or in a password check
 
     # addresses and https, believing forwarded headers only from a trusted proxy
     def trusted(self, address: str | None) -> bool:
@@ -358,8 +397,12 @@ class Auth:
 
     # identity
     def tokens(self, scope: Scope) -> list[str]:
-        cookies = _cookies(scope)
-        return [t for t in (cookies.get(SECURE_COOKIE), cookies.get(COOKIE)) if t]
+        """The session id the request carries under the one name this server gives it: behind TLS
+        ``__Host-turbotab_session`` alone. A page on a sibling subdomain can set the plain name for
+        the whole domain (``turbotab_session=<its own session>; Domain=univ.edu``) and would sign
+        the visitor in to its account; the ``__Host-`` prefix forbids a Domain."""
+        token = _cookies(scope).get(SECURE_COOKIE if self.secure(scope) else COOKIE)
+        return [token] if token else []
 
     def session_user(self, token: str | None, *, touch: bool = True) -> str | None:
         if not token:
@@ -395,24 +438,33 @@ class Auth:
         return None, None
 
     # signing in
-    def sign_in(self, scope: Scope, username: str, password: str) -> tuple[str | None, str, float]:
-        """(token or None, a message for the page, seconds to wait when refused for attempts)."""
+    def count_attempt(self, scope: Scope, username: str) -> tuple[Counted | None, str, float]:
+        """Count a sign-in attempt, or refuse it for the limits: (the count or None, a message for
+        the page, seconds to wait). Quick: it never hashes.
+
+        The attempt counts as a failure before its password is checked, in the same step as the
+        limits' check, and :meth:`check_password` takes it back if it succeeds. Counted after the
+        hash instead, every attempt sent at once would pass the check while the others hashed."""
         address = self.client_address(scope)
         name = username.strip().lower()
-        # Count the attempt as a failure before checking the password, in the same step as the
-        # limits' check, and take it back if it succeeds. Counted after the hash instead, every
-        # attempt sent at once would pass the check while the others were still hashing.
-        counted = 0.0
         with self._counting:
             wait = max(self.by_address.wait(address), self.by_user.wait(name) if name else 0.0)
             if wait <= 0:
-                counted = self.by_address.fail(address)
-                if name:
-                    self.by_user.fail(name)
-        if wait > 0:
-            minutes = max(1, int(-(-wait // 60)))
-            return None, (f"Too many sign-in attempts for this account or from this address. Try "
-                          f"again in {minutes} minute{'s' if minutes != 1 else ''}."), wait
+                return Counted(address, name, self.by_address.fail(address),
+                               self.by_user.fail(name) if name else None), "", 0.0
+        minutes = max(1, int(-(-wait // 60)))
+        return None, (f"Too many sign-in attempts for this account or from this address. Try "
+                      f"again in {minutes} minute{'s' if minutes != 1 else ''}."), wait
+
+    def uncount(self, counted: Counted) -> None:
+        """Take back an attempt whose password was never checked."""
+        self.by_address.forgive(counted.address, counted.at_address)
+        if counted.name and counted.at_user is not None:
+            self.by_user.forgive(counted.name, counted.at_user)
+
+    def check_password(self, counted: Counted, password: str) -> tuple[str | None, str]:
+        """(token or None, a message for the page). The slow part: scrypt."""
+        name = counted.name
         try:
             check_username(name)
             account = self.users.get(name)
@@ -424,10 +476,46 @@ class Auth:
         else:
             ok = verify_password(password, account.hash)
         if not ok or account is None:
-            return None, "That username and password do not match an account on this server.", 0.0
+            return None, NO_MATCH
         self.by_user.clear(name)
-        self.by_address.forgive(address, counted)  # an address's own sign-ins never use it up
-        return self.sessions.create(name, account.hash), "", 0.0
+        self.by_address.forgive(counted.address, counted.at_address)  # never uses up its own limit
+        return self.sessions.create(name, account.hash), ""
+
+    def sign_in(self, scope: Scope, username: str, password: str) -> tuple[str | None, str, float]:
+        """(token or None, a message for the page, seconds to wait when refused for attempts),
+        checked in the calling thread. The sign-in form uses :meth:`sign_in_in_turn`."""
+        counted, note, wait = self.count_attempt(scope, username)
+        if counted is None:
+            return None, note, wait
+        token, note = self.check_password(counted, password)
+        return token, note, 0.0
+
+    async def sign_in_in_turn(self, scope: Scope, username: str, password: str) -> Outcome:
+        """Sign in from the event loop: the limits first, then a place in the queue for a
+        password check (or "busy", uncounted, when it is full), then the check in the sign-in
+        threads, awaited without holding a thread of the shared pool."""
+        counted, note, wait = self.count_attempt(scope, username)
+        if counted is None:
+            return Outcome(None, note, 429, wait)
+        with self._queue_lock:
+            busy = self._queued >= self.config.sign_in_queue
+            if not busy:
+                self._queued += 1
+        if busy:
+            self.uncount(counted)
+            return Outcome(None, BUSY, 503, BUSY_RETRY_SECONDS)
+        try:
+            future = self._checker.submit(self.check_password, counted, password)
+        except BaseException:
+            self._leave_queue()
+            raise
+        future.add_done_callback(self._leave_queue)  # done, failed, or dropped unstarted
+        token, note = await asyncio.wrap_future(future)
+        return Outcome(token, note, 303 if token else 401, 0.0)
+
+    def _leave_queue(self, *_: object) -> None:
+        with self._queue_lock:
+            self._queued -= 1
 
     def cookie(self, scope: Scope, token: str) -> str:
         if self.secure(scope):
@@ -715,18 +803,17 @@ def install(app: FastAPI, settings: Settings, config: AuthConfig) -> Auth:
         form = await _form(request)
         target = safe_next(form.get("next"))
         username = form.get("username", "")[:128]
-        token, note, wait = await run_in_threadpool(
-            auth.sign_in, request.scope, username, form.get("password", "")[:1024])
-        if token is None:
-            status = 429 if wait else 401
+        outcome = await auth.sign_in_in_turn(request.scope, username,
+                                             form.get("password", "")[:1024])
+        if outcome.token is None:
             headers = dict(PAGE_HEADERS)
-            if wait:
-                headers["Retry-After"] = str(int(-(-wait // 1)))
-            return HTMLResponse(login_page(next_path=target, username=username.strip().lower(),
-                                           note=note, no_accounts=not auth.users.accounts()),
-                                status_code=status, headers=headers)
+            if outcome.retry_after:
+                headers["Retry-After"] = str(int(-(-outcome.retry_after // 1)))
+            body = login_page(next_path=target, username=username.strip().lower(),
+                              note=outcome.note, no_accounts=not auth.users.accounts())
+            return HTMLResponse(body, status_code=outcome.status, headers=headers)
         response = RedirectResponse(target, status_code=303, headers={"Cache-Control": "no-store"})
-        response.headers.append("set-cookie", auth.cookie(request.scope, token))
+        response.headers.append("set-cookie", auth.cookie(request.scope, outcome.token))
         return response
 
     @app.post("/logout", include_in_schema=False)

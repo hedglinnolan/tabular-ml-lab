@@ -74,7 +74,11 @@ and reports nothing but "ok".
 **Accounts and sessions.** Each account is a username with a `hashlib.scrypt` hash (N = 2^17,
 r = 8, p = 1) and its own salt. A username is lowercase letters, digits and `. _ @ -`, so it can
 never name a path. Signing in gives a session cookie: a random 256-bit id, `HttpOnly`,
-`SameSite=Strict`, and `Secure` behind TLS. Sessions are held in the server's memory. A session
+`SameSite=Strict`, and `Secure` behind TLS. Behind TLS the cookie is named
+`__Host-turbotab_session`, and TurboTab reads no other name. A page on a sibling subdomain can set a
+plain-named cookie for the whole domain and so sign visitors in to its own account, but it cannot
+set a `__Host-` cookie. TurboTab knows it is behind TLS from `TURBOTAB_SECURE_COOKIES=1` or from
+the trusted proxy's `X-Forwarded-Proto`. Sessions are held in the server's memory. A session
 ends:
 
 - after 2 hours without a request (`TURBOTAB_SESSION_IDLE_MINUTES`);
@@ -85,7 +89,9 @@ ends:
 
 After 5 failed sign-ins for one account, or 20 from one address, within 15 minutes, further
 attempts wait. Each attempt counts as it starts, so a burst sent at once is held to the same
-limits. TurboTab takes a change (a sign-in, a sign-out, an upload, a run) only from its own pages.
+limits. Passwords are checked two at a time, in threads of their own, so a burst of sign-ins never
+slows the people already signed in. When 32 sign-ins are already waiting, the next one is told the
+server is busy (503) and to try again in a few seconds, and that attempt does not count. TurboTab takes a change (a sign-in, a sign-out, an upload, a run) only from its own pages.
 A browser request that a page on another site or on a sibling subdomain sent is refused.
 
 **Workspaces.** Each user works in `/data/users/<name>/`, and no user can list, open or change

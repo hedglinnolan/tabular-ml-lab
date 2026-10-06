@@ -12,10 +12,13 @@ import subprocess
 import sys
 import threading
 import time
+from functools import partial
 from pathlib import Path
+from typing import Callable
 from urllib.parse import unquote
 
 import anyio
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -385,6 +388,36 @@ def test_the_cookie_is_httponly_strict_and_secure_when_it_should_be(tmp_path):
     assert "Secure" not in cookie(headers={"x-forwarded-proto": "https"})
 
 
+def test_behind_tls_only_the_host_prefixed_cookie_signs_a_request_in(tmp_path):
+    """A page on a sibling subdomain (people.univ.example) can set ``turbotab_session=<its own
+    session>; Domain=univ.example``, which the browser then sends to TurboTab as well. Read, it
+    signed a visitor without a live session in to the attacker's account, and their uploads went
+    to its workspace. The ``__Host-`` prefix forbids a Domain, so behind TLS that name alone is
+    read, with no falling back to the other."""
+    for base_url, config in (("http://turbotab.univ.example", {"secure_cookies": True}),
+                             ("https://turbotab.univ.example", {})):
+        home = tmp_path / base_url.split(":")[0]
+        client = TestClient(server_app(home, **config), base_url=base_url)
+        signed = client.post("/login", data={"username": "bob", "password": PASSWORD},
+                             follow_redirects=False)
+        assert signed.headers["set-cookie"].startswith(f"{SECURE_COOKIE}="), base_url
+        bob = re.match(rf"{SECURE_COOKIE}=([^;]+)", signed.headers["set-cookie"]).group(1)
+        client.cookies.clear()
+
+        def signed_in(cookie: str) -> bool:
+            page = client.get("/", headers={"cookie": cookie}, follow_redirects=False)
+            assert page.status_code in (200, 303)
+            return page.status_code == 200
+
+        assert signed_in(f"{SECURE_COOKIE}={bob}")
+        assert not signed_in(f"{COOKIE}={bob}"), base_url                     # a sibling's
+        assert not signed_in(f"{SECURE_COOKIE}=ended; {COOKIE}={bob}"), base_url
+        upload = client.post("/api/projects/upload", headers={"cookie": f"{COOKIE}={bob}"},
+                             files={"file": ("x.csv", CSV, "text/csv")})
+        assert upload.status_code == 401, base_url
+        assert not (user_home(home, "bob") / "projects").exists()
+
+
 # ── sign-in attempts ─────────────────────────────────────────────────────────
 
 
@@ -456,6 +489,83 @@ def test_sign_ins_sent_at_once_are_held_to_the_limits(tmp_path, monkeypatch):
     for _ in range(12):
         assert client.post("/login", data={"username": "bob", "password": PASSWORD},
                            follow_redirects=False).status_code == 303
+
+
+def slow_scrypt(seconds: float, entered: list[str]) -> Callable[..., bytes]:
+    """A stand-in for ``users._scrypt``: one of the real slots, then scrypt's time; never a match."""
+    def scrypt(password: str, *_: object) -> bytes:
+        with users._hashing:
+            entered.append(password)
+            time.sleep(seconds)
+        return b"\0" * users.KEY_BYTES
+    return scrypt
+
+
+def test_sign_ins_waiting_for_a_password_check_hold_up_no_signed_in_user(tmp_path, monkeypatch):
+    """Each sign-in waited for one of scrypt's two slots inside a thread of the pool every sync
+    route shares, so a burst of sign-ins within the limits (from several addresses behind the
+    proxy) took that pool, and every signed-in user's requests waited for the hashing to catch
+    up: 2.5 s for /api/health over HTTP. The checks now wait outside that pool."""
+    app = server_app(tmp_path, user_attempts=100, ip_attempts=100)
+    alice = sign_in(TestClient(app, base_url="http://turbotab.example"), "alice")
+    entered: list[str] = []
+    monkeypatch.setattr(users, "_scrypt", slow_scrypt(1.0, entered))
+
+    async def burst() -> tuple[int, int, float]:
+        shared = anyio.to_thread.current_default_thread_limiter()
+        shared.total_tokens = 6  # the pool every sync route shares (40 threads by default)
+        transport = httpx.ASGITransport(app=app, client=("198.51.100.20", 1))
+        async with httpx.AsyncClient(transport=transport, base_url="http://turbotab.example") as c:
+            async with anyio.create_task_group() as tg:
+                for i in range(12):
+                    tg.start_soon(partial(c.post, "/login", data={
+                        "username": ("alice", "bob")[i % 2], "password": f"guess-{i}"}))
+                with anyio.fail_after(20):
+                    while len(entered) < 2:
+                        await anyio.sleep(0.01)
+                await anyio.sleep(0.2)  # the others reach whatever they wait on
+                held = shared.borrowed_tokens
+                started = time.perf_counter()
+                page = await c.get("/", headers=as_user(alice))  # a sync route: the shared pool
+                took = time.perf_counter() - started
+                tg.cancel_scope.cancel()
+        return held, page.status_code, took
+
+    held, status, took = anyio.run(burst)
+    assert held == 0, f"sign-ins held {held} of the shared pool's 6 threads"
+    assert status == 200 and took < 1.0, (status, took)
+
+
+def test_a_full_sign_in_queue_says_busy_at_once_and_that_attempt_does_not_count(tmp_path,
+                                                                                 monkeypatch):
+    """Sign-ins past ``sign_in_queue`` waiting or being checked are answered 503 at once, with
+    Retry-After, rather than queued without end; their passwords are not checked, so they do not
+    count against the limits."""
+    app = server_app(tmp_path, user_attempts=4, ip_attempts=100, sign_in_queue=3)
+    entered: list[str] = []
+    monkeypatch.setattr(users, "_scrypt", slow_scrypt(0.5, entered))
+
+    async def burst() -> list[httpx.Response]:
+        answered: list[httpx.Response] = []
+        transport = httpx.ASGITransport(app=app, client=("198.51.100.21", 1))
+        async with httpx.AsyncClient(transport=transport, base_url="http://turbotab.example") as c:
+            async def one(i: int) -> None:
+                answered.append(await c.post("/login", data={
+                    "username": "alice", "password": f"guess-{i}"}))
+            async with anyio.create_task_group() as tg:
+                for i in range(8):
+                    tg.start_soon(one, i)
+        return answered
+
+    answered = anyio.run(burst)
+    assert [r.status_code for r in answered] == [503] * 5 + [401] * 3  # "busy" before any check
+    assert int(answered[0].headers["retry-after"]) > 0
+    assert "checking other sign-ins" in answered[0].text
+    assert len(entered) == 3
+    monkeypatch.undo()
+    client = TestClient(app, base_url="http://turbotab.example", client=("198.51.100.21", 1))
+    assert client.post("/login", data={"username": "alice", "password": PASSWORD},
+                       follow_redirects=False).status_code == 303  # 3 counted of alice's 4
 
 
 def test_an_unknown_name_and_a_wrong_password_get_the_same_answer(tmp_path):
