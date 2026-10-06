@@ -47,6 +47,10 @@ Per screen:
 
 ## 3 · Page zones
 
+**Desktop only (Nolan, 2026-10-05: "TurboTab will never be used on a phone").** Design for laptop
+and desktop screens, from 1280 px wide up. A narrow window must not break: no lost controls and
+no overlapping text. But no layout is designed for phones, and audits do not test phone width.
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ CHAIN Data · Participants · Columns · Exposure · Confounders · Energy · Model … │
