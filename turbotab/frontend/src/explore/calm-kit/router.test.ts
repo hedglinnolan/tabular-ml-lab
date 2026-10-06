@@ -43,7 +43,8 @@ describe("the canvas router", () => {
         all_components: "refused",
         partition: "refused",
       },
-      model1: { guess: "routing", empty: "routing" },
+      // Model 1 is what the question decides: "nothing" leaves it `sugar` alone, as it reads now
+      model1: { guess: "routing", empty: "none" },
       codes: { confirm: "focus" },
       lock: { lock: "none" },
     });

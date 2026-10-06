@@ -374,6 +374,17 @@
   color: var(--faint);
   cursor: default;
 }
+/* The one primary action stays in view (FOUNDATION §1): on a long question the card's action row
+   holds to the bottom of the screen until the card's own end scrolls up to it. */
+.card .actRow {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--ground);
+  padding-block: 12px;
+  margin-block-end: -12px;
+  box-shadow: 0 -1px 0 var(--line);
+}
 @media (max-width: 900px) {
   .card .actRow {
     display: none;
@@ -571,6 +582,12 @@
   border-radius: 2px;
   display: inline-block;
 }
+/* a line swatch: what the indigo paths of a lineage beside the bars mean */
+.key i.keyLine {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
 .more summary {
   cursor: pointer;
   width: fit-content;
@@ -622,6 +639,11 @@
 .ctx {
   fill: var(--data-context);
 }
+/* rows that left before this question (gray: your data as it is), drawn lighter than who stays */
+.gone {
+  fill: var(--data-context);
+  opacity: 0.45;
+}
 .hit {
   fill: var(--data-affected);
 }
@@ -653,6 +675,7 @@
   color: var(--canvas-ink);
 }
 .stripRow:hover,
+.stripRow[data-lit="true"],
 .stripRow[data-focus="true"] {
   background: var(--surface);
 }

@@ -14,6 +14,7 @@ import {
   manuscript,
   plan,
   reduce,
+  refitFor,
   results,
   sentenceCount,
   stepLabel,
@@ -53,6 +54,13 @@ export interface WalkApi {
   results: ReturnType<typeof results>;
   plan: ReturnType<typeof plan>;
   blocked: ReturnType<typeof blockedBy>;
+  /** After the lock, the plan the chosen option would make; not ok when this walk has no fit for
+   *  it, and then the option cannot be recorded (null before the lock). */
+  refit: ReturnType<typeof refitFor>;
+  /** The Strip's focused column (FOUNDATION §5 rule 4: every view follows it); null: the default,
+   *  the column the engine's own views picture. Kept across options, reset with each question. */
+  focus: string | null;
+  setFocus: (column: string | null) => void;
 }
 
 const reducedMotion = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -71,9 +79,11 @@ interface Moment {
   /** The storyboard frame shown for `story` (null: the final state). */
   frame: number | null;
   story: string | null;
+  /** The Strip's focused column. */
+  focus: string | null;
 }
 
-const fresh = (at: string): Moment => ({ at, pointed: null, flip: "now", frame: null, story: null });
+const fresh = (at: string): Moment => ({ at, pointed: null, flip: "now", frame: null, story: null, focus: null });
 
 export function useWalk(init?: WalkState): WalkApi {
   const [state, dispatch] = useReducer(reduce, init ?? initial());
@@ -135,11 +145,14 @@ export function useWalk(init?: WalkState): WalkApi {
   );
   const setFrame = useCallback((i: number | null) => update(() => ({ frame: i, story: activeId })), [update, activeId]);
 
+  const setFocus = useCallback((c: string | null) => update(() => ({ focus: c })), [update]);
+
   const blocked = useMemo(() => (step ? blockedBy(state, step.id) : []), [state, step]);
   const p = useMemo(() => plan(state), [state]);
   const chosenOption = step ? optionOf(step, chosen) : null;
+  const refit = useMemo(() => (step && chosen ? refitFor(state, step.id, chosen) : null), [state, step, chosen]);
   const canProceed = step
-    ? !!chosenOption && !chosenOption.disabled && !blocked.length && (step.id !== "lock" || p.ok)
+    ? !!chosenOption && !chosenOption.disabled && !blocked.length && (step.id !== "lock" || p.ok) && refit?.ok !== false
     : state.open === "table2";
 
   const proceed = useCallback(() => {
@@ -183,5 +196,8 @@ export function useWalk(init?: WalkState): WalkApi {
     results: useMemo(() => results(state), [state]),
     plan: p,
     blocked,
+    refit,
+    focus: moment.focus,
+    setFocus,
   };
 }

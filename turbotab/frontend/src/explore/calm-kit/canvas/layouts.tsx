@@ -24,6 +24,7 @@ export function View({
   frame,
   linked,
   touch,
+  keep,
   bare = false,
 }: {
   view: ConsequenceView;
@@ -31,6 +32,8 @@ export function View({
   frame: number | null;
   linked: Linked;
   touch?: string[];
+  /** Columns named in a lineage even where the others are grouped (the question's own). */
+  keep?: string[];
   bare?: boolean;
 }) {
   switch (view.kind) {
@@ -62,7 +65,7 @@ export function View({
       return (
         <div className={k.panel}>
           {bare ? null : <h3>{plain(view.title)}</h3>}
-          <Lineage view={view} after_on={after} frame={frame} touch={touch} linked={linked} />
+          <Lineage view={view} after_on={after} frame={frame} touch={touch} keep={keep} linked={linked} />
         </div>
       );
     case "table_focus":
@@ -70,11 +73,11 @@ export function View({
   }
 }
 
-export function Views({ views, ...p }: { views: ConsequenceView[] } & Omit<LayoutProps, "option">) {
+export function Views({ views, keep, ...p }: { views: ConsequenceView[]; keep?: string[] } & Omit<LayoutProps, "option">) {
   return (
     <div className={k.panels}>
       {views.map((v, i) => (
-        <View key={`${v.kind}-${i}`} view={v} after={p.after} frame={p.frame} linked={p.linked} />
+        <View key={`${v.kind}-${i}`} view={v} after={p.after} frame={p.frame} linked={p.linked} keep={keep} />
       ))}
     </div>
   );
@@ -95,26 +98,38 @@ function measure(c: StripColumn, after: boolean): string {
 
 export interface StripProps {
   cols: StripColumn[];
+  /** With this choice; false also for a storyboard frame that still draws the data as recorded. */
   after: boolean;
   linked: Linked;
+  /** The engine's views for the focused column (its scatter against total calories). */
   rest: ReactNode;
   /** The heading when the choice is not shown (at rest: the columns as recorded). */
   title?: string;
-  /** A column to focus (the option pointed at, when the options are the columns). */
+  /** The focused column: every view on the canvas follows it (FOUNDATION §5 rule 4). Without it
+   *  the strip keeps its own focus, starting on the first column. */
+  focus?: string | null;
+  onFocus?: (column: string | null) => void;
+  /** The focused column's own values, drawn large (they follow the storyboard); without it, its
+   *  histogram from the strip's numbers. */
+  focusView?: ReactNode;
+  /** @deprecated a column to focus; pass `focus`. */
   focusColumn?: string | null;
 }
 
-export function Strip({ cols, after, linked, rest, title, focusColumn }: StripProps) {
-  const [focus, setFocus] = useState(0);
-  const lit = linked.lit ? cols.findIndex((c) => c.column === linked.lit || c.output === linked.lit) : -1;
-  const asked = focusColumn ? cols.findIndex((c) => c.column === focusColumn) : -1;
-  const f = cols[lit >= 0 ? lit : asked >= 0 ? asked : Math.min(focus, cols.length - 1)]!;
+export function Strip({ cols, after, linked, rest, title, focus, onFocus, focusView, focusColumn }: StripProps) {
+  const [own, setOwn] = useState<string | null>(null);
+  const chosen = focusColumn ?? (focus !== undefined ? focus : own);
+  const setChosen = onFocus ?? setOwn;
+  const at = chosen ? cols.findIndex((c) => c.column === chosen) : -1;
+  const f = cols[at >= 0 ? at : 0]!;
   const max = Math.max(...cols.map((c) => c.shift), 1e-9);
   const shown = cols.slice(0, STRIP_TOP);
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      setFocus((i) => Math.max(0, Math.min(shown.length - 1, i + (e.key === "ArrowDown" ? 1 : -1))));
+      const i = Math.max(0, Math.min(shown.length - 1, shown.indexOf(f) + (e.key === "ArrowDown" ? 1 : -1)));
+      setChosen(shown[i]!.column);
+      (e.currentTarget.querySelectorAll("button")[i] as HTMLButtonElement | undefined)?.focus();
     }
   };
   return (
@@ -122,20 +137,25 @@ export function Strip({ cols, after, linked, rest, title, focusColumn }: StripPr
       <div className={k.panel}>
         <h3>{after || !title ? "Every column this choice changes, most first" : title}</h3>
         <ul className={k.strip} onKeyDown={onKey} aria-label={after ? "Changed columns" : "Columns"} data-now={!after || undefined}>
-          {shown.map((c, i) => (
+          {shown.map((c) => (
             <li key={c.column}>
               <button
                 type="button"
                 className={k.stripRow}
                 title={c.desc}
                 data-focus={c === f}
-                onPointerEnter={() => {
-                  setFocus(i);
-                  linked.setLit(c.column);
+                data-lit={linked.lit === c.column || linked.lit === c.output || undefined}
+                aria-pressed={c === f}
+                // Pointing moves the focus, and every view follows it. Only a pointer that really
+                // moves does: when the views above change height, the browser re-hovers whatever now
+                // sits under a still pointer, which must not move the focus again.
+                onPointerMove={(e) => {
+                  if (e.pointerType === "mouse" && (e.movementX || e.movementY) && c !== f) setChosen(c.column);
                 }}
+                onPointerEnter={() => linked.setLit(c.column)}
                 onPointerLeave={() => linked.setLit(null)}
-                onFocus={() => setFocus(i)}
-                onClick={() => setFocus(i)}
+                onFocus={() => setChosen(c.column)}
+                onClick={() => setChosen(c.column)}
               >
                 <span className={k.stripName}>{after ? c.output : c.column}</span>
                 <span className={k.stripBar} aria-hidden="true">
@@ -148,14 +168,16 @@ export function Strip({ cols, after, linked, rest, title, focusColumn }: StripPr
         </ul>
         {cols.length > STRIP_TOP ? <p className={k.stripMore}>and {cols.length - STRIP_TOP} more</p> : null}
       </div>
-      <Hist
-        title={`${after ? f.output : f.column}, ${after ? "with this choice" : "as recorded"}`}
-        before={f.hist_before}
-        after={f.hist_after}
-        mode="transform"
-        after_on={after}
-        unit={f.column}
-      />
+      {focusView ?? (
+        <Hist
+          title={`${after ? f.output : f.column}, ${after ? "with this choice" : "as recorded"}`}
+          before={f.hist_before}
+          after={f.hist_after}
+          mode="transform"
+          after_on={after}
+          unit={f.column}
+        />
+      )}
       {rest}
     </div>
   );

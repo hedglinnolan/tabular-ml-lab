@@ -27,6 +27,9 @@ export interface WalkState {
   locked: boolean;
   /** The plan's fit key at the lock ("<exclusions>|<energy>"). */
   lockedKey: string | null;
+  /** The plan's SHA-256 (twelve hex digits) as recorded at the lock: the plan declared before any
+   *  estimate was displayed. A later change never rewrites it; the change is marked instead. */
+  lockedDigest: string | null;
   /** Steps whose answer changed after the estimates were seen. */
   afterLock: string[];
 }
@@ -38,7 +41,7 @@ export type Action =
   | { type: "reset" };
 
 export function initial(): WalkState {
-  return { answers: {}, order: [], open: ORDER[0]!, locked: false, lockedKey: null, afterLock: [] };
+  return { answers: {}, order: [], open: ORDER[0]!, locked: false, lockedKey: null, lockedDigest: null, afterLock: [] };
 }
 
 export const isResult = (id: string): id is ResultStep => (RESULT_STEPS as readonly string[]).includes(id);
@@ -85,8 +88,11 @@ export function reduce(s: WalkState, a: Action): WalkState {
         const p = plan(s);
         if (!p.ok || s.locked) return s;
         const answers = { ...s.answers, lock: "lock" };
-        return { ...s, answers, order: [...s.order, "lock"], locked: true, lockedKey: p.key, open: "table2" };
+        return { ...s, answers, order: [...s.order, "lock"], locked: true, lockedKey: p.key, lockedDigest: digest(s), open: "table2" };
       }
+      // After the lock an answer is recorded only with the estimates for the plan it makes: the
+      // record and the numbers never disagree (this walk holds the engine's fits it captured).
+      if (refitFor(s, a.step, a.option)?.ok === false) return s;
       const changed = s.answers[a.step] !== a.option;
       const answers = { ...s.answers, [a.step]: a.option };
       const order = [...s.order.filter((x) => x !== a.step), a.step];
@@ -164,7 +170,8 @@ const SENSITIVITY_MASK: Record<string, string[]> = {
   none: [],
 };
 
-/** The plan's SHA-256 (twelve hex digits), as the engine recorded it for these answers. */
+/** The plan's SHA-256 (twelve hex digits), as the engine recorded it for these answers. After the
+ *  lock the record keeps the one recorded then (`lockedDigest`), whatever changed since. */
 export function digest(s: WalkState): string | null {
   const keys = SENSITIVITY_MASK[s.answers.sensitivity ?? ""] ?? [];
   const mask = FX.lock.sensitivity_keys.reduce((m, k, i) => (keys.includes(k) ? m | (1 << i) : m), 0);
@@ -173,9 +180,18 @@ export function digest(s: WalkState): string | null {
   return FX.lock.digests[`${excl}d${e}-${mask}g`] ?? null;
 }
 
+/** The lock's sentence: the fingerprint recorded at the lock, never one recomputed from later
+ *  answers (the template says every later change is marked, and the manuscript marks each). */
 export function lockSentence(s: WalkState): string | null {
-  const d = s.locked ? digest(s) : null;
+  const d = s.locked ? s.lockedDigest : null;
   return d ? FX.lock.template.replace("{digest}", d) : null;
+}
+
+/** After the lock: the plan an answer would make, which must have a captured fit to be recorded
+ *  (null before the lock, and for the lock itself). */
+export function refitFor(s: WalkState, step: string, option: string): Plan | null {
+  if (!s.locked || step === "lock") return null;
+  return plan({ ...s, answers: { ...s.answers, [step]: option } });
 }
 
 export interface T2Row {
@@ -234,9 +250,12 @@ export function screenName(label: string): { name: string; term?: string } {
 export function results(s: WalkState): Results | null {
   if (!s.locked || !s.lockedKey) return null;
   // After the lock an answer may change (marked as made after the estimates were seen); the
-  // results follow it when the engine's fit for the new plan was captured.
+  // results follow it. reduce() records such a change only when the engine's fit for the new
+  // plan was captured, so the plan always has its fit here; without one there is no Table 2
+  // rather than the locked plan's numbers under a different record.
   const p = plan(s);
-  const fit = p.ok ? p.fit : FX.fits[s.lockedKey]!;
+  if (!p.ok) return null;
+  const fit = p.fit;
   const table2: T2Row[] = fit.sequence.map((row) => {
     const e = row.effects[0]!;
     return {

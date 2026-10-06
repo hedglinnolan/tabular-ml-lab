@@ -30,7 +30,13 @@ In process: the engine's sentence for each alternative (``voice.sentence_for`` o
 question is asked in, checked against the server's sentence for the scenario's answer), and the
 Strip's per-column change for each energy model (``models.steps.energy_step`` on the preview's own
 sample, scored by ``consequences._shifts``, the measure the engine ranks its views by; the
-fixture's ``derived`` says how each number was made).
+fixture's ``derived`` says how each number was made), each nutrient's own views under each model
+(``strip_views``: the engine's preview helpers for the nutrient it pictures, applied to every
+nutrient), and who has every model input before and after the 13-column block (``block_rows``).
+``--only derived`` recomputes these last two in process from the drives already captured:
+
+    venv/bin/python turbotab/frontend/src/explore/calm-kit/capture/capture.py \
+        --raw /tmp/calm-raw.json --only derived                                 # repo root
 
 ``build.py`` then writes ``../fixture.json`` from this capture and the methods map's.
 """
@@ -415,15 +421,115 @@ def strip_numbers(main: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def strip_views() -> dict[str, Any]:
+    """Each nutrient's own views under each energy model, as the engine's preview draws the one
+    nutrient it pictures (``models.previews.energy_adjustment_preview``, its body for a given
+    nutrient): the same sample and fitted step as ``strip_numbers``, the same 800 points
+    (``POINTS``, ``default_rng(0).permutation``), and the engine's own helpers for the points, r,
+    the caption (``_relationship_caption``, the branch without the outcome-model gap), the residual
+    storyboard (``_residual_story``), the histograms and the coach (``coach.energy_coach``). The
+    Strip's linked views follow the column pointed at (FOUNDATION §5 rule 4); for the nutrient the
+    engine pictures, these equal its own views (build.py checks)."""
+    import numpy as np
+    import pandas as pd
+
+    from turbotab.core import coach as C
+    from turbotab.core.consequences import CAPTION_WORDS, TITLE_WORDS, DistributionView, RelationshipView
+    from turbotab.core.decisions import EnergyAdjustment
+    from turbotab.core.models import previews as PV
+    from turbotab.core.models.pipeline import normalize_frame
+    from turbotab.core.models.steps import energy_step
+
+    raw = pd.read_csv(S.nhanes())
+    ids = np.sort(np.random.default_rng(0).choice(np.arange(len(raw)), size=5000, replace=False))
+    nutrients = list(S.NUTRIENTS)
+    E = S.ENERGY_COLUMN
+    cols = [E, *nutrients]
+    frame = normalize_frame(raw.iloc[ids][cols].copy())
+    e = frame[E].to_numpy(dtype=float)
+    keep = np.zeros(len(e), dtype=bool)
+    keep[np.random.default_rng(0).permutation(len(e))[:PV.POINTS]] = True
+    out: dict[str, Any] = {}
+    for method in ("standard", "residual", "residual_energy_dropped", "density_multivariate", "density"):
+        adj = EnergyAdjustment(method=method, energy_column=E, nutrients=nutrients)
+        step = energy_step(adj, cols)
+        fitted = step.fit(frame[cols]) if step is not None else None
+        after_frame = fitted.transform(frame[cols]) if fitted is not None else frame
+        lineage = ({x["inputs"][0]: str(x["output"]) for x in fitted.lineage()
+                    if x["inputs"] and x["operation"] != "partition-other"} if fitted is not None else {})
+        per: dict[str, Any] = {}
+        for n in nutrients:
+            raw_n = frame[n].to_numpy(dtype=float)
+            out_name = lineage.get(n, n)
+            after = after_frame[out_name].to_numpy(dtype=float) if out_name in after_frame.columns else raw_n
+            r0, r1 = PV._corr(raw_n, e), PV._corr(after, e)
+            story: list[Any] = []
+            hist_story: list[Any] = []
+            if method in ("residual", "residual_energy_dropped"):
+                story, hist_story = PV._residual_story(fitted, n, E, e, raw_n, after, keep, None)
+            rel = RelationshipView(
+                title=PV.fit_words(f"{n} against {E}, before and after", TITLE_WORDS),
+                caption=PV._relationship_caption(method, n, E, out_name, r0, r1, None),
+                emphasis=[n, E], x_label=E, y_label_before=n, y_label_after=out_name,
+                points_before=PV._points(e, raw_n, keep), points_after=PV._points(e, after, keep),
+                r_before=r0, r_after=r1, story=story)
+            C.energy_coach(adj, [rel], None)
+            views = [rel.model_dump(mode="json")]
+            if out_name != n or method in ("density", "density_multivariate"):
+                f0, f1 = raw_n[np.isfinite(raw_n)], after[np.isfinite(after)]
+                caption = (f"Mean {PV._num(f0.mean())} → {PV._num(f1.mean())}; SD {PV._num(f0.std())} → "
+                           f"{PV._num(f1.std())}, on the sampled analyzed rows.")
+                views.append(DistributionView(
+                    title=PV.fit_words(f"Values of {n}, before and after", TITLE_WORDS),
+                    caption=PV.fit_words(caption, CAPTION_WORDS), emphasis=[n], column=n,
+                    before=PV._histogram(raw_n), after=PV._histogram(after),
+                    before_label=f"{n} as recorded", after_label=out_name, story=hist_story,
+                ).model_dump(mode="json"))
+            per[n] = views
+        out[method] = per
+    return out
+
+
+def block_rows(main: dict[str, Any]) -> dict[str, Any]:
+    """Who has every model input before and after the 13-column block, by the engine's own reading
+    of the model's columns (``models.pipeline.model_predictors`` on the captured states) and the
+    complete-case rule its flow applies (glucose recorded, no model input missing). The block's
+    captured flow is the state after it; the state before it is what the question finds."""
+    import pandas as pd
+
+    from turbotab.core.decisions import ProjectState
+    from turbotab.core.models.pipeline import model_predictors, normalize_frame
+
+    raw = pd.read_csv(S.nhanes())
+    out: dict[str, Any] = {}
+    for key, name in (("before", f"after_single:{S.SINGLES[-1]}"), ("after", "estimand")):
+        st = ProjectState(**main["states"][name])
+        preds = [c for c in model_predictors(st) if c in raw.columns]
+        frame = normalize_frame(raw[[st.target, *preds]].copy())
+        measured = frame[st.target].notna()
+        complete = measured & frame[preds].notna().all(axis=1)
+        out[key] = {"state": name, "predictors": preds, "measured": int(measured.sum()),
+                    "complete": int(complete.sum())}
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://127.0.0.1:8977")
     ap.add_argument("--raw", required=True, help="write the raw capture here (JSON)")
-    ap.add_argument("--only", choices=["main", "branch", "direct", "inprocess"], default=None)
+    ap.add_argument("--only", choices=["main", "branch", "direct", "inprocess", "derived"], default=None)
     args = ap.parse_args()
     path = Path(args.raw)
     raw: dict[str, Any] = json.loads(path.read_text()) if path.exists() else {}
     t = time.time()
+    if args.only == "derived":
+        # In process only, on the drives already captured: their `captured` time stands.
+        raw["strip_views"] = strip_views()
+        raw["block_rows"] = block_rows(raw["main"])
+        raw["derived_captured"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        path.write_text(json.dumps(raw, default=str))
+        print(f"wrote {path} in {time.time() - t:.0f}s")
+        return
     if args.only in (None, "main"):
         raw["main"] = drive(args.base)
         path.write_text(json.dumps(raw, default=str))
@@ -438,6 +544,8 @@ def main() -> None:
     if args.only in (None, "inprocess"):
         raw["in_process"] = in_process(raw["main"], raw["branch"])
         raw["strip"] = strip_numbers(raw["main"])
+        raw["strip_views"] = strip_views()
+        raw["block_rows"] = block_rows(raw["main"])
         path.write_text(json.dumps(raw, default=str))
     raw["captured"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     path.write_text(json.dumps(raw, default=str))

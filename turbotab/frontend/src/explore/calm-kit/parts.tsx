@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { STEP_BY_ID, type Option, type Step } from "./fixture";
 import { plain, Plain } from "./text";
 import type { WalkApi } from "./useWalk";
-import { readoutOf } from "./canvas/Canvas";
+import { readoutFor } from "./canvas/Canvas";
 import type { Section } from "./walk";
 import k from "./kit.module.css";
 
@@ -147,6 +147,7 @@ export function Hint({ walk }: { walk: WalkApi }) {
   const o = step.options.find((x) => x.id === walk.chosen);
   if (!o) return <span className={k.hint}>Choose an option to continue.</span>;
   if (walk.state.answers[step.id] === o.id) return <span className={k.hint}>Recorded. Continue to the next question.</span>;
+  if (walk.refit?.ok === false) return <span className={k.hint}>This walk has no estimates for this answer.</span>;
   return (
     <span className={k.hint}>
       You picked <b>{plain(o.name)}</b>. Nothing is recorded until you continue.
@@ -173,6 +174,18 @@ function Blocked({ walk }: { walk: WalkApi }) {
         );
       })}
       . Change that answer to go on.
+    </p>
+  );
+}
+
+/** After the lock: an answer this walk holds no estimates for cannot be recorded, so the record
+ *  and the numbers never disagree. */
+function RefitNote({ walk }: { walk: WalkApi }) {
+  if (walk.refit?.ok !== false) return null;
+  return (
+    <p className={k.note} data-testid="refit-blocked">
+      After the lock, a change is recorded together with its estimates, and this walk has none computed for this answer. Its other
+      answers can still change.
     </p>
   );
 }
@@ -217,7 +230,7 @@ export function Card({ walk, kicker, children, continueLabel }: CardProps) {
     if (opened.current !== walk.state.open) heading.current?.focus();
     opened.current = walk.state.open;
   }, [walk.state.open]);
-  if (!step) return <ResultCard walk={walk} kicker={kicker} />;
+  if (!step) return <ResultCard walk={walk} kicker={kicker} heading={heading} />;
   return (
     <section className={k.card} data-testid="card" data-step={step.id}>
       <p className={k.stageLabel}>{kicker ?? walk.label}</p>
@@ -231,6 +244,7 @@ export function Card({ walk, kicker, children, continueLabel }: CardProps) {
       <Blocked walk={walk} />
       <OptionList step={step} chosen={walk.chosen} pointed={walk.pointed} onPoint={walk.point} onChoose={walk.choose} />
       <LockNote walk={walk} />
+      <RefitNote walk={walk} />
       {children}
       <div className={k.actRow}>
         <Hint walk={walk} />
@@ -240,18 +254,24 @@ export function Card({ walk, kicker, children, continueLabel }: CardProps) {
   );
 }
 
-function ResultCard({ walk, kicker }: { walk: WalkApi; kicker?: ReactNode }) {
+/** Table 2's lede: the plan was locked before any estimate was shown, and, once an answer has
+ *  changed since, that it did and that these estimates follow it (the record marks each). */
+export function table2Lede(changed: number): string {
+  if (!changed) return "The plan was locked before any estimate was shown; Model 2 is the reported estimate.";
+  const one = changed === 1;
+  return `The plan was locked before any estimate was shown. Since then ${one ? "one answer has" : `${changed} answers have`} changed, marked in the manuscript as made after the estimates were seen; these estimates follow ${one ? "it" : "them"}. Model 2 is the reported estimate.`;
+}
+
+function ResultCard({ walk, kicker, heading }: { walk: WalkApi; kicker?: ReactNode; heading?: React.RefObject<HTMLHeadingElement | null> }) {
   const t2 = walk.state.open === "table2";
   return (
     <section className={k.card} data-testid="card" data-step={walk.state.open}>
       <p className={k.stageLabel}>{kicker ?? walk.label}</p>
-      <h1 className={k.question} tabIndex={-1}>
+      <h1 className={k.question} tabIndex={-1} ref={heading}>
         {t2 ? "Table 2: the estimate in each declared model" : "Which of my decisions mattered?"}
       </h1>
-      <p className={k.lede}>
-        {t2
-          ? "The plan was locked before any estimate was shown; Model 2 is the reported estimate."
-          : "The estimate across the alternatives declared before any estimate was shown."}
+      <p className={k.lede} data-testid="result-lede">
+        {t2 ? table2Lede(walk.state.afterLock.length) : "The estimate across the alternatives declared before any estimate was shown."}
       </p>
       {t2 ? (
         <div className={k.actRow}>
@@ -271,7 +291,7 @@ function ResultCard({ walk, kicker }: { walk: WalkApi; kicker?: ReactNode }) {
 
 /** The live readout and Continue, fixed at the bottom on narrow screens (≤ 900 px). */
 export function Footer({ walk, inline = false }: { walk: WalkApi; inline?: boolean }) {
-  const readout = readoutOf(walk.active, walk.flip === "after" ? walk.frame : null);
+  const readout = readoutFor(walk.active, { after: walk.flip === "after", frame: walk.frame, focus: walk.focus });
   return (
     <div className={k.footer} data-testid="footer" style={inline ? { position: "static", display: "block", borderRadius: 10, border: "1px solid var(--line)" } : undefined}>
       <div className={k.actRow}>

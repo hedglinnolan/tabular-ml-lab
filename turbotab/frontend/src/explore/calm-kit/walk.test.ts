@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fmtCI, fmtEst } from "../methods-shared/results";
-import { FX, STEPS } from "./fixture";
+import { FX, STEPS, STEP_BY_ID, type ConsequenceView } from "./fixture";
+import { focusPreview, readoutFor, restOf } from "./canvas/Canvas";
 import {
   ORDER,
   SCENARIO_ANSWERS,
@@ -12,8 +13,10 @@ import {
   frontier,
   initial,
   manuscript,
+  lockSentence,
   plan,
   reduce,
+  refitFor,
   results,
   sentenceCount,
   stepLabel,
@@ -141,6 +144,32 @@ describe("the scenario walk", () => {
     expect(s).toEqual(initial());
   });
 
+  it("keeps the fingerprint recorded at the lock when an answer changes after it", () => {
+    let s = scenario();
+    s = reduce(s, { type: "open", step: "exclusions" });
+    s = reduce(s, { type: "record", step: "exclusions", option: "willett_2013_by_sex" });
+    // the estimates follow the change, the record marks it, and the declared plan's SHA-256 stands
+    expect(results(s)!.table2.find((r) => r.primary)!.n).toBe(20235);
+    expect(s.afterLock).toEqual(["exclusions"]);
+    expect(lockSentence(s)).toContain("c9efee9fb0b2");
+    expect(lockSentence(s)).not.toContain(digest(s)!);
+  });
+
+  it("after the lock, records a change only with its estimates", () => {
+    const s = scenario();
+    // no fit was captured for an addition: the record and Table 2 would disagree, so it is refused
+    expect(refitFor(s, "contrast", "addition")?.ok).toBe(false);
+    const t = reduce(s, { type: "record", step: "contrast", option: "addition" });
+    expect(t.answers.contrast).toBe("substitution");
+    expect(t.afterLock).toEqual([]);
+    // the density model's fit was captured: recorded, marked, and Table 2 follows it
+    expect(refitFor(s, "energy", "density")?.ok).toBe(true);
+    const u = reduce(s, { type: "record", step: "energy", option: "density" });
+    expect(u.afterLock).toEqual(["energy"]);
+    expect(results(u)!.table2[0]!.feature).toBe("sugar_per_kcal");
+    expect(refitFor(initial(), "contrast", "addition")).toBeNull();
+  });
+
   it("covers every moment the brief names, and ends with Table 2 and what mattered", () => {
     expect(ORDER.slice(-2)).toEqual(["table2", "mattered"]);
     for (const id of ["unit", "exclusions", "sensitivity", "missing", "block", "exposure", "effect", "contrast", "energy", "model1", "codes", "lock"])
@@ -168,6 +197,46 @@ describe("the kit's data", () => {
       // the strip at rest is the columns as recorded: nothing in it changes
       for (const c of n.strip ?? []) expect([c.shift, c.output, c.sd_after], `${s.id}: ${c.column}`).toEqual([0, c.column, c.sd_before]);
     }
+  });
+
+  it("draws one 'your data now' per question: every option starts from the picture at rest", () => {
+    const inputs = (l: { nodes: { lane: string; count?: number | null }[] }) => l.nodes.filter((n) => n.lane === "matrix").reduce((c, n) => c + (n.count || 1), 0);
+    for (const s of STEPS) {
+      const rest = restOf(s)!;
+      const lin = rest.views.find((v) => v.kind === "lineage");
+      const flow = rest.views.find((v) => v.kind === "row_flow");
+      for (const o of s.options)
+        for (const v of o.preview.views as ConsequenceView[]) {
+          if (v.kind === "lineage" && lin?.kind === "lineage" && !o.preview.beside) {
+            expect(v.before, `${s.id}/${o.id}: a before`).toBeTruthy();
+            expect(inputs(v.before!), `${s.id}/${o.id}: inputs now`).toBe(inputs(lin.before ?? lin.after));
+            // no storyboard frame draws fewer inputs than either end (the roles frame did: sugar alone)
+            for (const f of v.story ?? []) expect(inputs(f.lineage), `${s.id}/${o.id}: ${f.label}`).toBeGreaterThanOrEqual(Math.min(inputs(v.before!), inputs(v.after)));
+          }
+          if (v.kind === "row_flow" && flow?.kind === "row_flow")
+            expect(v.before[v.before.length - 1]!.n, `${s.id}/${o.id}: people now`).toBe(flow.before[flow.before.length - 1]!.n);
+        }
+    }
+  });
+
+  it("reads the people and the inputs as each question finds them", () => {
+    const opt = (step: string, id: string) => STEP_BY_ID[step]!.options.find((o) => o.id === id)!;
+    const line = (step: string, id: string, focus: string | null = null) =>
+      readoutFor(opt(step, id), { after: true, focus }).map((r) => `${r.label} ${r.now}${r.after ? ` → ${r.after}` : ""}`);
+    expect(line("block", "confirm")).toEqual(["People 21,849 → 2,996", "Model inputs 14 → 21"]);
+    // a check reported beside removes no one from the main analysis
+    expect(line("sensitivity", "both")).toEqual(["People in the main analysis 21,849", "In the checks 20,235 and 20,430"]);
+    expect(line("model1", "guess")).toEqual(["Model 1's inputs 1 → 4"]);
+    expect(line("model1", "empty")).toEqual([]);
+    // an addition swaps four inputs for four, counted as the question finds the plan
+    const lane = (id: string) => (opt("contrast", id).preview.views[0] as Extract<ConsequenceView, { kind: "lineage" }>).after.nodes.filter((n) => n.lane === "matrix").length;
+    expect([lane("substitution"), lane("addition")]).toEqual([11, 11]);
+    // the Strip's focus moves every view: the caption, the readout and the scatter follow it
+    expect(line("energy", "residual")).toEqual(["Correlation of fat_total with kcal 0.88 → 0.00", "Model inputs 11"]);
+    expect(line("energy", "residual", "sugar")).toEqual(["Correlation of sugar with kcal 0.66 → 0.00", "Model inputs 11"]);
+    const pv = focusPreview(opt("energy", "residual").preview, "sugar");
+    expect(pv.caption).toContain("`sugar` correlates");
+    expect((pv.views as ConsequenceView[]).map((v) => (v.kind === "relationship" ? v.y_label_before : v.kind))).toEqual(["sugar", "lineage", "distribution"]);
   });
 
   it("gives each Angles panel one question and one picture, and the option table at most three short columns", () => {

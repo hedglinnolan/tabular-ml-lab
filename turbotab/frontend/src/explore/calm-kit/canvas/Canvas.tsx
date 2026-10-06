@@ -7,11 +7,10 @@
  * lock it holds Table 2 and "Which of my decisions mattered?".
  */
 import { useState, type ReactNode } from "react";
-import type { ConsequenceView, Now, Option, Step } from "../fixture";
+import type { ConsequenceView, LineageView, Now, Option, Preview, Step, StripColumn } from "../fixture";
 import { route, viewsFor, type Layout } from "../router";
 import { fmtInt, fmtR, plain } from "../text";
 import type { Flip, WalkApi } from "../useWalk";
-import { storyLength } from "../useWalk";
 import k from "../kit.module.css";
 import { Angles, Strip, View, Views } from "./layouts";
 import { Mattered, Table2 } from "./Results";
@@ -25,6 +24,10 @@ export interface Readout {
 
 const matrixSize = (l: { nodes: { lane: string; count?: number | null }[] }) =>
   l.nodes.filter((n) => n.lane === "matrix").reduce((c, n) => c + (n.count || 1), 0);
+
+/** What a lineage's model-input lane counts, when it is not the one model ("Model 1's inputs"):
+ *  the readout and the lane say the same. */
+export const inputsLabel = (v: LineageView): string | undefined => (v as LineageView & { inputs_label?: string }).inputs_label;
 
 /** The headline numbers pinned beside the views (BLUEPRINT §11.1): people, r, the model's inputs.
  *  With a storyboard frame shown, the "after" side is that frame's (the readout follows the picture). */
@@ -48,17 +51,81 @@ export function readoutOfViews(views: ConsequenceView[], restOnly = false, frame
   }
   const lin = views.find((v) => v.kind === "lineage");
   if (lin && lin.kind === "lineage" && out.length < 2) {
+    const label = inputsLabel(lin) ?? "Model inputs";
     const a = matrixSize(lin.before ?? lin.after);
     const at = frame !== null ? lin.story?.[frame]?.lineage : undefined;
     const b = matrixSize(at ?? lin.after);
-    if (restOnly) out.push({ label: "Model inputs", now: fmtInt(a), after: null });
-    else if (lin.before && a !== b) out.push({ label: "Model inputs", now: fmtInt(a), after: fmtInt(b) });
+    // the count as it is, and where the choice changes it, the count after (as the flow's people)
+    if (restOnly) out.push({ label, now: fmtInt(a), after: null });
+    else if (lin.before) out.push({ label, now: fmtInt(a), after: a !== b ? fmtInt(b) : null });
   }
   return out.slice(0, 2);
 }
 
-export function readoutOf(o: Option | null, frame: number | null = null): Readout[] {
-  return o ? readoutOfViews(o.preview.views as ConsequenceView[], false, frame) : [];
+/** The checks reported beside the main analysis (`Preview.beside`): the main analysis keeps its
+ *  people whatever is chosen; each check runs on the people its rule keeps. */
+function besideReadout(views: ConsequenceView[], after: boolean): Readout[] {
+  const flows = views.filter((v) => v.kind === "row_flow");
+  const first = flows[0];
+  if (!first) return [];
+  const main: Readout = { label: "People in the main analysis", now: fmtInt(first.before[first.before.length - 1]?.n ?? 0), after: null };
+  if (!after) return [main];
+  const checks = flows.map((f) => fmtInt(f.after[f.after.length - 1]?.n ?? 0));
+  return [main, { label: flows.length > 1 ? "In the checks" : "In the check", now: checks.join(" and "), after: null }];
+}
+
+// ── the Strip's focus: every view follows the focused column (FOUNDATION §5 rule 4) ─────────────
+
+/** The focused column: the one asked for, else the one the engine's own views picture, else the
+ *  first (the largest change). */
+export function stripFocus(cols: StripColumn[] | undefined, views: ConsequenceView[], focus: string | null): StripColumn | null {
+  if (!cols?.length) return null;
+  const asked = focus ? cols.find((c) => c.column === focus) : undefined;
+  if (asked) return asked;
+  const rel = views.find((v) => v.kind === "relationship");
+  const pictured = rel ? cols.find((c) => c.column === plain(rel.y_label_before)) : undefined;
+  return pictured ?? cols[0]!;
+}
+
+/** The engine's views with the focused column's own in place of the column it pictures. */
+function swapViews(views: ConsequenceView[], own: ConsequenceView[]): ConsequenceView[] {
+  const rel = own.find((v) => v.kind === "relationship");
+  const dist = own.find((v) => v.kind === "distribution");
+  const out = views.flatMap((v): ConsequenceView[] => (v.kind === "relationship" ? (rel ? [rel] : []) : v.kind === "distribution" ? (dist ? [dist] : []) : [v]));
+  if (dist && !views.some((v) => v.kind === "distribution")) out.push(dist);
+  return out;
+}
+
+/** A preview as the canvas draws it: under the Strip, the focused column's views and caption. */
+export function focusPreview(p: Preview, focus: string | null): Preview {
+  const col = stripFocus(p.strip, p.views as ConsequenceView[], focus);
+  if (!col?.views?.length) return p;
+  return { ...p, caption: col.caption ?? p.caption, views: swapViews(p.views as ConsequenceView[], col.views) };
+}
+
+/** Your data now under the Strip: the focused column's own picture and caption. */
+function focusNow(rest: Now, focus: string | null): Now {
+  if (rest.layout !== "strip") return rest;
+  const col = stripFocus(rest.strip, rest.views, focus);
+  if (!col?.views?.length) return rest;
+  return { ...rest, caption: col.caption ?? rest.caption, views: swapViews(rest.views, col.views) };
+}
+
+/** The readout for an option, as the canvas shows it (and the footer on narrow screens): none for
+ *  Angles (each panel answers its own question) or for a choice that changes nothing. */
+export function readoutFor(o: Option | null, { after, frame = null, focus = null }: { after: boolean; frame?: number | null; focus?: string | null }): Readout[] {
+  if (!o) return [];
+  const layout = route(o.preview, { disabled: o.disabled });
+  if (layout === "angles" || layout === "none" || layout === "refused") return [];
+  const p = focusPreview(o.preview, focus);
+  if (p.beside) return besideReadout(p.views as ConsequenceView[], after);
+  const r = readoutOfViews(p.views as ConsequenceView[], false, after ? frame : null);
+  return after ? r : r.map((x) => ({ ...x, after: null }));
+}
+
+/** The readout with this choice (kept for callers that name a frame only). */
+export function readoutOf(o: Option | null, frame: number | null = null, focus: string | null = null): Readout[] {
+  return readoutFor(o, { after: true, frame, focus });
 }
 
 /** Your data now for a question: its own, or the one an earlier answer leaves (the lock's). */
@@ -70,33 +137,47 @@ export function restOf(step: Step | null, answers?: Record<string, string>): Now
 }
 
 /** The canvas's one line: what it shows, in the card's register. */
-function captionOf(o: Option | null, layout: Layout, after: boolean, primary: ConsequenceView | undefined, rest: Now | null): ReactNode {
-  if (!o) return rest ? plain(rest.caption) : "";
+function captionOf(o: Option | null, pv: Preview | null, layout: Layout, after: boolean, primary: ConsequenceView | undefined, rest: Now | null): ReactNode {
+  if (!o || !pv) return rest ? plain(rest.caption) : "";
   if (layout === "refused") {
     // one calm line: what it would do and why not when the fixture says so plainly; else the
     // refusal when it is short; else the option's own line, which says why
-    if (o.preview.caption) return plain(o.preview.caption);
-    const full = plain(o.refusal ?? o.preview.refusal?.message);
+    if (pv.caption) return plain(pv.caption);
+    const full = plain(o.refusal ?? pv.refusal?.message);
     return full.split(/\s+/).length <= 30 ? full : plain(o.what);
   }
-  if (layout === "none") return plain(o.preview.caption ?? o.preview.note ?? o.preview.views[0]?.caption ?? null);
+  if (layout === "none") return plain(pv.caption ?? pv.note ?? pv.views[0]?.caption ?? null);
   if (!after) return rest ? plain(rest.caption) : "Your data now, before this choice.";
-  return plain(o.preview.caption ?? primary?.caption ?? o.preview.note);
+  return plain(pv.caption ?? primary?.caption ?? pv.note);
 }
 
-function Key({ now, cut }: { now: boolean; cut: boolean }) {
+/** The key: gray is now; indigo is what the choice touches, said for what each picture draws. */
+function Key({ now, cut, lines, beside }: { now: boolean; cut: boolean; lines: boolean; beside: boolean }) {
+  if (now)
+    return (
+      <div className={k.key}>
+        <span>
+          <i style={{ background: "var(--data-context)" }} />
+          Your data now
+        </span>
+      </div>
+    );
   return (
     <div className={k.key}>
       <span>
         <i style={{ background: "var(--data-context)" }} />
-        {cut && !now ? "Stays" : "Your data now"}
+        {cut ? (beside ? "In the check" : "Stays") : "Your data now"}
       </span>
-      {now ? null : (
+      <span>
+        <i style={{ background: "var(--data-affected)" }} />
+        {cut ? (beside ? "Left out of the check only" : "Leaves with this choice") : "What this choice touches"}
+      </span>
+      {cut && lines ? (
         <span>
-          <i style={{ background: "var(--data-affected)" }} />
-          {cut ? "Leaves with this choice" : "What this choice touches"}
+          <i className={k.keyLine} style={{ background: "var(--data-affected)" }} />
+          Columns this choice changes
         </span>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -110,54 +191,93 @@ export interface CanvasFrameProps {
   setFrame: (i: number | null) => void;
   /** The recorded answers, for a rest picture that follows one (the lock's). */
   answers?: Record<string, string>;
+  /** The Strip's focused column (the walk's); without it the canvas keeps its own. */
+  focus?: string | null;
+  setFocus?: (column: string | null) => void;
   title?: string;
   testid?: string;
 }
 
+/** A storyboard frame that still draws the data as recorded (the residual's fit step): the views
+ *  without a storyboard of their own (the Strip's bars and measures) stay on "now" for it. */
+function frameStillBefore(v: ConsequenceView | undefined, frame: number | null): boolean {
+  if (!v || frame === null || v.kind !== "relationship") return false;
+  const f = v.story?.[frame];
+  if (!f) return false;
+  const a = f.points;
+  const b = v.points_before;
+  return a === b || (a.length === b.length && a.every((p, i) => p[0] === b[i]![0] && p[1] === b[i]![1]));
+}
+
 /** The question's columns as they are now, in gray, in the layout its options use. */
-function RestPicture({ step, rest, option, linked }: { step: Step; rest: Now; option: Option | null; linked: Linked }) {
+function RestPicture({
+  step,
+  rest,
+  option,
+  linked,
+  focus,
+  setFocus,
+}: {
+  step: Step;
+  rest: Now;
+  option: Option | null;
+  linked: Linked;
+  focus: string | null;
+  setFocus: (c: string | null) => void;
+}) {
   const p = { after: false, frame: null, linked };
   if (rest.layout === "angles")
     return <Angles step={step} angles={rest.angles ?? []} views={rest.views} activeId={option?.id ?? null} {...p} />;
-  if (rest.layout === "strip")
+  if (rest.layout === "strip") {
+    // the option pointed at, when the options are the columns (the exposure); else the focus
+    const asked = option && rest.strip?.some((c) => c.column === option.id) ? option.id : focus;
+    const col = stripFocus(rest.strip, rest.views, asked);
     return (
       <Strip
         cols={rest.strip ?? []}
         title={rest.title}
-        focusColumn={option?.id ?? null}
-        rest={rest.views.length ? <Views views={rest.views} {...p} /> : null}
+        focus={col?.column ?? null}
+        onFocus={setFocus}
+        rest={rest.views.length ? <Views views={rest.views} keep={rest.columns} {...p} /> : null}
         {...p}
       />
     );
-  return <Views views={rest.views} {...p} />;
+  }
+  return <Views views={rest.views} keep={rest.columns} {...p} />;
 }
 
 /** The canvas for one option, or for none (no walk needed: the kit demo draws every layout with it). */
-export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, answers, title = "Your data", testid = "canvas" }: CanvasFrameProps) {
+export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, answers, focus: walkFocus, setFocus: setWalkFocus, title = "Your data", testid = "canvas" }: CanvasFrameProps) {
   const [lit, setLit] = useState<string | null>(null);
+  const [ownFocus, setOwnFocus] = useState<string | null>(null);
+  const focus = walkFocus !== undefined ? walkFocus : ownFocus;
+  const setFocus = setWalkFocus ?? setOwnFocus;
   const linked: Linked = { lit, setLit };
-  const rest = restOf(step, answers);
+  const stored = restOf(step, answers);
+  const rest = stored ? focusNow(stored, option && stored.strip?.some((c) => c.column === option.id) ? option.id : focus) : null;
   const layout: Layout = option ? route(option.preview, { disabled: option.disabled }) : "none";
   // Nothing pointed at, a choice that changes nothing, or one not available: your data now.
   const quiet = !option || layout === "none" || layout === "refused";
   const after = flip === "after" && !quiet;
-  const { shown, more } = option && !quiet ? viewsFor(layout, option.preview) : { shown: [], more: [] };
-  const primary = shown[0] ?? (option?.preview.views[0] as ConsequenceView | undefined);
-  const n = storyLength(option);
+  const pv = option ? focusPreview(option.preview, focus) : null;
+  const { shown, more: allMore } = pv && !quiet ? viewsFor(layout, pv) : { shown: [], more: [] };
+  // Under the Strip the focused column's values are its large view (beside the strip), not an angle.
+  const focusDist = layout === "strip" ? allMore.find((v) => v.kind === "distribution") : undefined;
+  const more = focusDist ? allMore.filter((v) => v !== focusDist) : allMore;
+  const primary = shown[0] ?? (pv?.views[0] as ConsequenceView | undefined);
   const story = primary && "story" in primary ? (primary.story ?? []) : [];
+  const n = pv ? Math.max(0, ...(pv.views as ConsequenceView[]).map((v) => ("story" in v ? (v.story?.length ?? 0) : 0))) : 0;
   const coach = after ? shown.flatMap((v) => v.coach)[0]?.text : undefined;
   const readout = quiet
-    ? rest
+    ? rest && rest.layout !== "angles"
       ? readoutOfViews(rest.views, true)
       : []
-    : layout === "angles"
-      ? []
-      : after
-        ? readoutOf(option, frame)
-        : readoutOf(option).map((r) => ({ ...r, after: null }));
+    : readoutFor(option, { after, frame, focus });
   const p = { after, frame, linked };
   const cut = !quiet && (primary?.kind === "row_flow" || (primary?.kind === "distribution" && primary.before_label === "Every measured value"));
-  const basis = quiet ? (rest?.basis ?? option?.preview.basis) : option?.preview.basis;
+  const lines = [...shown, ...more].some((v) => v.kind === "lineage");
+  const basis = quiet ? (rest?.basis ?? option?.preview.basis) : pv?.basis;
+  const col = layout === "strip" && pv ? stripFocus(pv.strip, option!.preview.views as ConsequenceView[], focus) : null;
   return (
     <section
       className={k.canvas}
@@ -194,7 +314,7 @@ export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, answ
         </div>
       ) : null}
       <p className={k.caption} data-testid="caption">
-        {captionOf(option, layout, after, primary, rest)}
+        {captionOf(option, pv, layout, after, primary, rest)}
       </p>
       {readout.length ? (
         <div className={k.readout} data-testid="readout">
@@ -210,11 +330,23 @@ export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, answ
         </div>
       ) : null}
       {coach ? <div className={k.coach}>{plain(coach)}</div> : null}
-      {quiet && step && rest ? <RestPicture step={step} rest={rest} option={option} linked={linked} /> : null}
-      {option && !quiet && step && layout === "angles" ? (
-        <Angles step={step} angles={option.preview.angles ?? []} views={option.preview.views as ConsequenceView[]} activeId={option.id} {...p} />
+      {quiet && step && rest ? <RestPicture step={step} rest={rest} option={option} linked={linked} focus={focus} setFocus={setFocus} /> : null}
+      {option && pv && !quiet && step && layout === "angles" ? (
+        <Angles step={step} angles={pv.angles ?? []} views={pv.views as ConsequenceView[]} activeId={option.id} {...p} />
       ) : null}
-      {option && !quiet && layout === "strip" ? <Strip cols={option.preview.strip ?? []} {...p} rest={<Views views={shown} {...p} />} /> : null}
+      {option && pv && !quiet && layout === "strip" ? (
+        <Strip
+          cols={pv.strip ?? []}
+          {...p}
+          // the strip's bars and measures follow the storyboard too: a frame that still draws the
+          // data as recorded shows them as recorded
+          after={after && !frameStillBefore(primary, frame)}
+          focus={col?.column ?? null}
+          onFocus={setFocus}
+          focusView={focusDist ? <View view={focusDist} after={after} frame={frame} linked={linked} /> : undefined}
+          rest={<Views views={shown} {...p} />}
+        />
+      ) : null}
       {option && !quiet && (layout === "flow" || layout === "focus" || layout === "routing") ? <Views views={shown} {...p} /> : null}
       {more.length ? (
         <details className={k.more}>
@@ -226,7 +358,7 @@ export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, answ
           </div>
         </details>
       ) : null}
-      <Key now={quiet || !after} cut={cut} />
+      <Key now={quiet || !after} cut={cut} lines={lines} beside={!!pv?.beside} />
       {basis ? <p className={k.basis}>{plain(basis)}</p> : null}
     </section>
   );
@@ -254,6 +386,8 @@ export function Canvas({ walk, title }: { walk: WalkApi; title?: string }) {
       frame={walk.frame}
       setFrame={walk.setFrame}
       answers={walk.state.answers}
+      focus={walk.focus}
+      setFocus={walk.setFocus}
       title={title}
     />
   );

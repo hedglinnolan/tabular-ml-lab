@@ -38,6 +38,12 @@ export interface StripColumn {
   mean_after: number;
   hist_before: { edges: number[]; counts: number[] };
   hist_after: { edges: number[]; counts: number[] };
+  /** The column's own views under this choice (its scatter against total calories with the
+   *  storyboard, and its values before and after), as the engine draws the one nutrient it pictures
+   *  (fixture `derived.strip_views`): the Strip's focus moves every view to it (FOUNDATION §5 rule 4). */
+  views?: ConsequenceView[];
+  /** The canvas caption when this column is focused, in the card's register. */
+  caption?: string;
 }
 
 /** One declared tradeoff: one question and the one picture that answers it (FOUNDATION §5). */
@@ -68,6 +74,9 @@ export interface Preview {
   angles?: Angle[];
   refusal?: { code: string; message: string } | null;
   withheld?: string;
+  /** The views draw analyses reported beside the main one (the checks): the main analysis keeps
+   *  everyone, so who a check leaves out never leaves the analysis. */
+  beside?: boolean;
 }
 
 export interface Option {
@@ -102,6 +111,8 @@ export interface Now {
   views: ConsequenceView[];
   strip?: StripColumn[];
   angles?: Angle[];
+  /** The columns the question is about: named in the picture even where others are grouped. */
+  columns?: string[];
 }
 
 export interface Step {
@@ -168,6 +179,8 @@ export interface Fixture {
     captured: string;
     map_captured: string;
     paper_captured: string;
+    /** When capture.py's in-process numbers (strip_views, block_rows) were last taken. */
+    derived_captured?: string | null;
     scenario: string;
     sources: Record<string, string>;
   };
@@ -181,6 +194,8 @@ export interface Fixture {
   /** "<exclusions>|<energy model>" → the captured fit (the scenario's other answers). */
   fits: Record<string, Fit>;
   lock: { template: string; digests: Record<string, string>; energy_codes: string[]; sensitivity_keys: string[] };
+  /** Scatter points the Strip's per-column views share, by key (a view names them as "@p:<key>"). */
+  points?: Record<string, [number, number][]>;
 }
 
 export const FX = raw as unknown as Fixture;
@@ -197,9 +212,28 @@ function resolveNow(step: Step, now: Now): void {
     return v.title ? ({ ...view, title: v.title } as ConsequenceView) : view;
   });
 }
+/** A per-column view names its shared points ("@p:<key>") rather than repeating them. */
+type Points = [number, number][];
+function points(p: Points | string): Points {
+  if (typeof p !== "string") return p;
+  const got = FX.points?.[p.replace(/^@p:/, "")];
+  if (!got) throw new Error(`no points ${p}`);
+  return got;
+}
+function resolveColumns(cols: StripColumn[] | undefined): void {
+  for (const c of cols ?? [])
+    for (const v of c.views ?? []) {
+      if (v.kind !== "relationship") continue;
+      v.points_before = points(v.points_before as Points | string);
+      v.points_after = points(v.points_after as Points | string);
+      for (const f of v.story ?? []) f.points = points(f.points as Points | string);
+    }
+}
 for (const step of FX.steps) {
   resolveNow(step, step.now);
   for (const n of Object.values(step.now_by?.options ?? {})) resolveNow(step, n);
+  resolveColumns(step.now.strip);
+  for (const o of step.options) resolveColumns(o.preview.strip);
 }
 
 export const STEPS: Step[] = FX.steps;

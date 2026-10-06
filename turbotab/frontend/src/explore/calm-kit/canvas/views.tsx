@@ -8,6 +8,7 @@ import { scaleLinear } from "d3-scale";
 import { linkHorizontal } from "d3-shape";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { HistogramData, LineageView, RelationshipView, RowFlowView, TableFocusView } from "../fixture";
+import { routingOf } from "../router";
 import { fmtInt, fmtR, fmtTick, plain } from "../text";
 import k from "../kit.module.css";
 
@@ -168,7 +169,10 @@ export function Scatter({ view, after_on, frame }: { view: RelationshipView; aft
     .nice()
     .range([H - MB, MT]);
   const line = f?.fit_line;
-  const yLabel = !after_on ? view.y_label_before : (f?.y_label ?? view.y_label_after);
+  // A frame that names no axis of its own and still draws the values as recorded (the residual's
+  // fit step) is labeled as recorded, not with the result's name.
+  const recorded = !!f && (f.points === view.points_before || (f.points.length === view.points_before.length && f.points.every((p, i) => p[0] === view.points_before[i]![0] && p[1] === view.points_before[i]![1])));
+  const yLabel = !after_on ? view.y_label_before : (f?.y_label ?? (recorded ? view.y_label_before : view.y_label_after));
   const r = !after_on ? view.r_before : f ? f.r : view.r_after;
   return (
     <figure className={k.panel} style={{ margin: 0 }} ref={ref as React.RefObject<HTMLElement>}>
@@ -217,6 +221,9 @@ export function Scatter({ view, after_on, frame }: { view: RelationshipView; aft
 export function FlowBars({ view, after_on, linked, bare = false }: { view: RowFlowView; after_on: boolean; linked?: Linked; bare?: boolean }) {
   const tip = useTip();
   const steps = after_on ? view.after : view.before;
+  // Indigo is only what the choice changes: a step's drop that differs from the drop it has now.
+  // Rows that left before this question are your data as it is: gray, drawn lighter.
+  const was = new Map(view.before.map((s) => [s.key, s.dropped]));
   const total = Math.max(1, ...view.before.map((s) => s.n), ...view.after.map((s) => s.n + s.dropped));
   const x = scaleLinear().domain([0, total]).range([0, 1]);
   return (
@@ -225,6 +232,7 @@ export function FlowBars({ view, after_on, linked, bare = false }: { view: RowFl
       <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
         {steps.map((s) => {
           const lit = linked?.lit === s.key;
+          const changed = after_on && s.dropped !== (was.get(s.key) ?? 0);
           return (
             <li
               key={s.key}
@@ -232,18 +240,20 @@ export function FlowBars({ view, after_on, linked, bare = false }: { view: RowFl
               onPointerLeave={() => linked?.setLit(null)}
               style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "2px 12px", fontSize: 15 }}
             >
-              <span style={{ fontWeight: lit || s.dropped ? 600 : 400 }}>{plain(s.label)}</span>
+              <span style={{ fontWeight: lit || changed ? 600 : 400 }}>{plain(s.label)}</span>
               <span>
                 <b>{fmtInt(s.n)}</b>
-                {s.dropped ? <span style={{ color: "var(--data-affected)", fontWeight: 600 }}> −{fmtInt(s.dropped)}</span> : null}
+                {s.dropped ? (
+                  <span style={{ color: changed ? "var(--data-affected)" : "var(--canvas-muted)", fontWeight: changed ? 600 : 400 }}> −{fmtInt(s.dropped)}</span>
+                ) : null}
               </span>
               <svg viewBox="0 0 400 10" preserveAspectRatio="none" style={{ gridColumn: "1 / 3", height: 10 }} aria-hidden="true">
                 <rect className={`${k.bar} ${k.ctx}`} style={{ x: 0, y: 0, width: 400 * x(s.n), height: 10 }} rx={2} {...tip.on(`${fmtInt(s.n)} rows`)} />
                 <rect
-                  className={`${k.bar} ${k.hit}`}
+                  className={`${k.bar} ${changed ? k.hit : k.gone}`}
                   style={{ x: 400 * x(s.n), y: 0, width: 400 * x(s.dropped), height: 10 }}
                   rx={2}
-                  {...tip.on(`${fmtInt(s.dropped)} rows leave here`)}
+                  {...tip.on(`${fmtInt(s.dropped)} rows ${changed ? "leave here" : "left here"}`)}
                 />
               </svg>
             </li>
@@ -261,6 +271,8 @@ interface Row {
   id: string;
   label: string;
   touched: boolean;
+  /** One of the question's own columns, named at rest (in gray). */
+  named?: boolean;
   /** the node ids this row stands for */
   members: string[];
   count: number;
@@ -272,14 +284,15 @@ const LANES: { id: "raw" | "adjusted" | "matrix"; title: string; short: string }
   { id: "matrix", title: "The model's inputs", short: "Inputs" },
 ];
 
-function compact(nodes: LineageView["after"]["nodes"], touched: Set<string>, limit = 9): Row[] {
+function compact(nodes: LineageView["after"]["nodes"], touched: Set<string>, keep: Set<string>, limit = 9): Row[] {
   const rows: Row[] = [];
   const quiet = new Map<string, LineageView["after"]["nodes"]>();
   const isTouched = (n: (typeof nodes)[number]) => !!n.column && touched.has(n.column);
+  const isKept = (n: (typeof nodes)[number]) => !!n.column && keep.has(n.column);
   const many = nodes.length > limit;
   for (const n of nodes) {
-    if (isTouched(n) || !many) {
-      rows.push({ id: n.id, label: n.column && n.lane !== "adjusted" ? n.column : plain(n.label), touched: isTouched(n), members: [n.id], count: n.count || 1 });
+    if (isTouched(n) || isKept(n) || !many) {
+      rows.push({ id: n.id, label: n.column && n.lane !== "adjusted" ? n.column : plain(n.label), touched: isTouched(n), named: isKept(n), members: [n.id], count: n.count || 1 });
       continue;
     }
     const key = `${n.role ?? ""}|${n.group ?? ""}`;
@@ -309,20 +322,26 @@ export function Lineage({
   touch = [],
   frame = null,
   linked,
+  keep = [],
 }: {
   view: LineageView;
   after_on: boolean;
   touch?: string[];
   frame?: number | null;
   linked?: Linked;
+  /** Columns named even where the others are grouped: the question's own, at rest. */
+  keep?: string[];
 }) {
   const [ref, W] = useWidth();
   const story = view.story ?? [];
   const lineage = !after_on ? (view.before ?? view.after) : frame !== null && story[frame] ? story[frame]!.lineage : view.after;
-  const touched = new Set<string>(after_on ? [...view.emphasis, ...touch] : []);
+  // What the choice touches: what the engine emphasizes, what a panel names, and every column the
+  // choice moves into or out of the model's inputs.
+  const touched = new Set<string>(after_on ? [...view.emphasis, ...touch, ...routingOf(view).map((r) => r.column)] : []);
   if (linked?.lit) touched.add(linked.lit);
   const lanes = LANES.filter((l) => lineage.nodes.some((n) => n.lane === l.id));
-  const byLane = lanes.map((l) => compact(lineage.nodes.filter((n) => n.lane === l.id), touched));
+  const kept = new Set(keep);
+  const byLane = lanes.map((l) => compact(lineage.nodes.filter((n) => n.lane === l.id), touched, kept));
   const rowOf = new Map<string, { lane: number; i: number }>();
   byLane.forEach((rows, li) => rows.forEach((r, i) => r.members.forEach((m) => rowOf.set(m, { lane: li, i }))));
   const RH = 22;
@@ -346,13 +365,14 @@ export function Lineage({
     seen.set(key, { s: [xOut(a.lane, ra, a.i) + 4, yRow(a.i)], t: [xText(b.lane) - 8, yRow(b.i)], touched: t || !!prev?.touched });
   }
   const count = (li: number) => byLane[li]!.reduce((c, r) => c + r.count, 0);
+  const inputs = (view as LineageView & { inputs_label?: string }).inputs_label;
   const maxChars = Math.max(10, Math.floor((colW - 34) / 6.6));
   return (
     <figure className={k.panel} style={{ margin: 0 }} ref={ref as React.RefObject<HTMLElement>}>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Which columns feed which role and the model's inputs">
         {lanes.map((l, li) => (
           <text key={l.id} className={k.axis} x={xText(li)} y={14} style={{ fontSize: 12, fontWeight: 600 }}>
-            {colW < 150 ? l.short : l.title} · {count(li)}
+            {l.id === "matrix" ? (inputs ?? (colW < 150 ? l.short : l.title)) : colW < 150 ? l.short : l.title} · {count(li)}
           </text>
         ))}
         {[...seen.values()]
@@ -381,7 +401,7 @@ export function Lineage({
                 style={{
                   fontFamily: "var(--font)",
                   fontSize: 13,
-                  fill: r.touched ? "var(--canvas-ink)" : "var(--canvas-muted)",
+                  fill: r.touched || r.named ? "var(--canvas-ink)" : "var(--canvas-muted)",
                   fontWeight: r.touched ? 600 : 400,
                 }}
               >

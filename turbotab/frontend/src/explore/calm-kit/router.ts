@@ -41,7 +41,8 @@ function histDistance(a: HistogramData, b: HistogramData): number {
 const matrixNamed = (l: LineageView["after"] | null, c: string) =>
   !!l && l.nodes.some((n) => n.lane === "matrix" && n.column === c);
 
-function routingOf(v: LineageView, touch: string[] = []): Footprint["routing"] {
+/** The columns a lineage's choice re-routes: into or out of the model's inputs, or to a new role. */
+export function routingOf(v: LineageView, touch: string[] = []): Footprint["routing"] {
   const out: Footprint["routing"] = [];
   const cols = new Set<string>([...v.emphasis, ...touch]);
   for (const n of v.after.nodes) if (n.lane === "matrix" && n.column && !v.before?.nodes.some((m) => m.lane === "matrix" && m.column === n.column)) cols.add(n.column);

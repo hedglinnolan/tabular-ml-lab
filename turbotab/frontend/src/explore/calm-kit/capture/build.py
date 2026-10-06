@@ -314,6 +314,11 @@ def main() -> None:
             opt("none", "No checks", "Only the main analysis is reported.",
                 SEN["sensitivity"]["none"], preview(SV["none"], "calm"), term="no sensitivity analysis"),
         ], "both", requires={"unit": ["kcal_1"]}))
+    # Each check's flow is the check's own rows: the main analysis keeps everyone, so the canvas says
+    # who each check leaves out, never that anyone leaves the analysis (Preview.beside).
+    for o in steps[-1]["options"]:
+        if o["preview"]["views"]:
+            o["preview"]["beside"] = True
 
     mi_labels = I["missing"]["labels"]
     mw = T["missing"]["why"]
@@ -405,8 +410,41 @@ def main() -> None:
     # the block's own lineage, then the rows complete cases keep on the state it leaves
     block_pv["views"] = [*rows_pv["views"][:1], *block_pv["views"]]
     block_pv["sources"] = {"0": "row flow: set_missing complete_case previewed on the state the block "
-                                "leaves (the estimand question, after the block)",
-                           "1": "the block's own preview"}
+                                "leaves (the estimand question, after the block); its before, the state "
+                                "the question finds (derived.block_rows)",
+                           "1": "the block's own preview (derived.block_lineage)"}
+    # The captured flow is the state after the block, so its before and after are the same. Its
+    # before is the state the question finds: the same steps, with who has every model input there
+    # (capture.py block_rows: the engine's model columns on each captured state, its complete-case
+    # rule; the same count on the state after reproduces the engine's 2,996).
+    BR = raw["block_rows"]
+    flow_b = block_pv["views"][0]
+    assert flow_b["kind"] == "row_flow" and flow_b["before"] == flow_b["after"], flow_b["before"]
+    last = flow_b["after"][-1]
+    assert last["key"] == "complete_cases" and last["n"] == BR["after"]["complete"] == 2996, (last, BR)
+    assert BR["before"]["measured"] == BR["after"]["measured"] == flow_b["after"][-2]["n"], BR
+    flow_b["before"] = [*json.loads(json.dumps(flow_b["after"][:-1])),
+                        {**last, "n": BR["before"]["complete"],
+                         "dropped": BR["before"]["measured"] - BR["before"]["complete"]}]
+    # The block's lineage: the engine groups `meds_chol` into "7 covariate columns" though its own
+    # emphasis and caption name it among the seven that enter; it is drawn as its own column, and
+    # every column the confirmation settles is what the choice touches (derived.block_lineage).
+    items = [i["column"] for i in block["decision"]["items"]]
+    lin_b = block_pv["views"][1]
+    after_b = json.loads(json.dumps(lin_b["after"]))
+    named = {n["column"] for n in after_b["nodes"] if n.get("column")}
+    for lane, prefix in (("raw", "raw"), ("matrix", "matrix")):
+        g = next(n for n in after_b["nodes"] if n["lane"] == lane and n["label"] == "7 covariate columns")
+        g["count"], g["label"] = 6, "6 covariate columns"
+    assert "meds_chol" not in named and "meds_chol" in lin_b["emphasis"], lin_b["emphasis"]
+    like = next(n for n in after_b["nodes"] if n["id"] == "raw:meds_hbp")
+    for lane, nid in (("raw", "raw:meds_hbp"), ("matrix", "matrix:meds_hbp")):  # beside its sibling
+        at = next(i for i, n in enumerate(after_b["nodes"]) if n["id"] == nid)
+        after_b["nodes"].insert(at + 1, {**like, "id": f"{lane}:meds_chol", "column": "meds_chol", "label": "meds_chol",
+                                         "lane": lane})
+    after_b["links"].append({"source": "raw:meds_chol", "target": "matrix:meds_chol", "operation": "kept"})
+    lin_b["after"] = after_b
+    lin_b["emphasis"] = items
     n_block = len(block["decision"]["items"])
     kinds = [i["value"] for i in block["decision"]["items"]]
     n_cov, n_flag = kinds.count("covariate"), kinds.count("flag")
@@ -486,6 +524,16 @@ def main() -> None:
     # total effect's capture of the same view on the same plan (fixture `derived.effect_angles`).
     direct_route["views"][0]["before"] = total_route["views"][0]["after"]
     direct_rows["views"][0]["before"] = total_rows["views"][0]["after"]
+    # One "your data now" for the question: the total effect's own capture was taken before the
+    # mediators were answered (its before has them in the model); its now is the same plan as the
+    # rest and the direct effect's before (derived.effect_angles).
+    total_route["views"][0]["before"] = total_route["views"][0]["after"]
+    # The storyboard's one frame ("each column's role") draws the roles before the model's inputs
+    # are traced, so its input lane holds `sugar` alone; no choice does that (derived.story).
+    for r in (total_route, direct_route):
+        assert [len(f["lineage"]["nodes"]) and f["label"] for f in r["views"][0]["story"]] == \
+            ["Each covariate's role, from your answers"], r["views"][0]["story"]
+        r["views"][0]["story"] = []
     mediators = adj_groups[med_key]["columns"]
 
     def kept(rows: dict) -> int:
@@ -680,9 +728,33 @@ def main() -> None:
     m_std = re.fullmatch(r"The model matrix keeps the same (\d+) columns\.", std_lineage["caption"])
     m_add = re.fullmatch(r"(.+ leave; .+ arrive)\. The model sees (\d+) columns\.", add_lineage["caption"])
     assert m_std and m_add, (std_lineage["caption"], add_lineage["caption"])
+    # The addition was captured on the whole plan, after the codes question read `cycle_begin_year`
+    # as categories (its one-hot inputs `cycle_begin_year_2003` … `_2017`); the substitution, before
+    # it, has the one column. The contrast is asked before the codes, so the addition is drawn as the
+    # question finds the plan: the one-hot inputs back to the one column, as the substitution's
+    # lineage draws it (derived.contrast_angles). An addition swaps four inputs for four.
+    std_year = next(n for n in std_lineage["after"]["nodes"] if n["lane"] == "matrix" and n.get("column") == "cycle_begin_year")
+
+    def one_column(state: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        state = json.loads(json.dumps(state))
+        hot = {l["target"] for l in state["links"] if l["source"] == "adj:cycle_begin_year" and l["operation"] == "one-hot"}
+        if not hot:
+            return state, 0
+        state["nodes"] = [n for n in state["nodes"] if n["id"] not in hot] + [dict(std_year)]
+        state["links"] = [l for l in state["links"] if l["target"] not in hot] + [
+            {"source": "adj:cycle_begin_year", "target": std_year["id"], "operation": "kept"}]
+        return state, len(hot)
+
+    add_lineage["before"], hot_b = one_column(add_lineage["before"])
+    add_lineage["after"], hot_a = one_column(add_lineage["after"])
+    for f in add_lineage["story"]:
+        f["lineage"], _ = one_column(f["lineage"])
+    inputs = lambda st: sum(1 for n in st["nodes"] if n["lane"] == "matrix")  # noqa: E731
+    assert hot_a == hot_b == 8 and int(m_add[2]) - hot_a + 1 == inputs(add_lineage["after"]) == int(m_std[1]) \
+        == inputs(add_lineage["before"]), (hot_a, inputs(add_lineage["after"]), m_std[1])
     con_caption = {
         "substitution": f"The model keeps the same {m_std[1]} inputs, total calories (`kcal`) among them.",
-        "addition": f"{m_add[1]}: {m_add[2]} inputs in all.",
+        "addition": f"{m_add[1]}: still {inputs(add_lineage['after'])} inputs in all.",
     }
     for o in steps[-1]["options"]:
         o["preview"]["caption"] = con_caption[o["id"]]
@@ -749,6 +821,7 @@ def main() -> None:
                   "2019). So you are asked what causes what: adjust for causes of `sugar` or `glucose`; leave out "
                   "columns that affect only `sugar` (instruments) and what `sugar` changed; estimate a column of "
                   "unknown timing with and without it (the disjunctive cause criterion).")
+    adjust_cols: dict[str, list[str]] = {}
     for g in B["groups"]:
         cols = g["columns"]
         scen_role = derive[",".join(g["scenario"])]["role"]
@@ -769,6 +842,13 @@ def main() -> None:
                                        "Model 3")))
         if guessed:
             options.sort(key=lambda o: o["id"] != guessed)
+        # The storyboard's one frame draws the roles before the model's inputs are traced (its input
+        # lane holds `sugar` alone, which no choice does): the picture is the result (derived.story).
+        for o in options:
+            v0 = o["preview"]["views"][0]
+            assert [f["label"] for f in v0["story"]] == ["Each covariate's role, from your answers"], v0["story"]
+            v0["story"] = []
+        adjust_cols[f"adjust:{g['key']}"] = cols
         reason = group["reason"]
         reason = re.sub(r" \(NUTRITION_PACK §08 \(the nested model table:.*\)\)\.$", ".", reason)
         reason = reason.split("; ")[0].rstrip(".") + "."  # its first clause
@@ -1036,12 +1116,18 @@ def main() -> None:
             if g != "not answered" and c not in matrix:
                 out.setdefault(g, []).append(c)
         waiting = [c for c, g in roles if g == "not answered"]
-        parts = [f"Adjusted for {len(adjusted)} ({names(adjusted, 3)})" if adjusted else "Adjusted for none"]
+        # A column not answered yet stays in the model's inputs until it is (the lineage draws it
+        # there), so the caption says so rather than "adjusted for none" beside a full input lane.
+        assert all(c in matrix for c in waiting), waiting
+        if waiting and not adjusted and not out:
+            return f"None answered yet: all {len(waiting)} columns stay in the model until answered."
+        parts = [f"Adjusted for {len(adjusted)} ({names(adjusted, 3)})"] if adjusted else []
         if out:
             parts.append("left out: " + ", ".join(f"{names(cs, 2)} ({ROLE_LABEL[g]})" for g, cs in out.items()))
         if waiting:
-            parts.append(f"{len(waiting)} not answered yet")
-        return "; ".join(parts) + "."
+            parts.append(f"{len(waiting)} not answered yet, in the model until answered")
+        text = "; ".join(parts) + "."
+        return text[0].upper() + text[1:]
 
     def engine_numbers_kept(engine: str, plain: str) -> None:
         """A caption restated from the view: every number the engine's (possibly cut) caption gives."""
@@ -1093,6 +1179,13 @@ def main() -> None:
          "With this choice r is {}: what is left is the diet's makeup, not how much is eaten."),
         (r"With this method r `([\d.]+)`: some of energy's signal remains\.",
          "With this choice r is {}: some of total calories' signal remains."),
+        # the Strip's other nutrients (derived.strip_views), in the same words
+        (r"`(\w+)` tracks `kcal` at r `([\d.]+)`: energy explains most, `(\d+%)`\.",
+         "`{}` has r {} with `kcal`: calories explain most of its spread, {}."),
+        (r"`(\w+)` tracks `kcal` at r `([\d.]+)`: energy explains `(\d+%)` of it\.",
+         "`{}` has r {} with `kcal`: calories explain {} of its spread."),
+        (r"With this method r `(-?[\d.]+)`: it no longer tracks energy\.",
+         "With this choice r is {}: it no longer tracks total calories."),
     ]
     # The engine's group nodes in the card's words (characteristics, nutrients, total calories, ID).
     GROUP = {"covariate": ("characteristic", "characteristics"), "exposure": ("nutrient", "nutrients"),
@@ -1108,8 +1201,8 @@ def main() -> None:
              "`kcal` read in kJ a day": "`kcal` column, read as kJ a day",
              "Rows kept when values are missing": "Who stays when values are missing",
              "The exposure in the model": "The studied nutrient in the model",
-             "Rows in “Willett 2013, by sex”": "Ranges by sex, men up to 4,000: who stays",
-             "Rows in “NHS/HPFS, by sex”": "Ranges by sex, men up to 4,200: who stays",
+             "Rows in “Willett 2013, by sex”": "Ranges by sex, men up to 4,000: who the check keeps",
+             "Rows in “NHS/HPFS, by sex”": "Ranges by sex, men up to 4,200: who the check keeps",
              "Which covariates the model adjusts for": "Which columns the model adjusts for",
              "The declared models, one by one": "The planned models, one by one",
              "Who these rules would exclude": "Who this rule would remove"}
@@ -1152,6 +1245,7 @@ def main() -> None:
                     break
         for f in v.get("story") or []:
             f["label"] = re.sub(r"^Model 2 \(primary\)", "Model 2 (main)", STORY.get(f["label"], f["label"]))
+            f["label"] = re.sub(r"^Fit (\w+) on kcal$", r"Predict \1 from kcal", f["label"])
             if v["kind"] == "lineage":
                 relabel(f["lineage"])
         if v["kind"] == "lineage":
@@ -1165,6 +1259,80 @@ def main() -> None:
                 if id(v) not in seen_views:  # a view two previews share is restated once
                     seen_views.add(id(v))
                     plain_view(v)
+
+    # ── the Strip's linked views (FOUNDATION §5 rule 4) ──────────────────────
+    # The engine's energy preview pictures one nutrient (the one closest to total calories). The
+    # Strip lists every nutrient; pointing at one moves every view to it, so each nutrient carries
+    # its own views (capture.py strip_views: the engine's helpers on the same sample and points)
+    # and its caption in the card's words. The pictured nutrient keeps the engine's own views.
+    SVW = raw["strip_views"]
+    point_keys: dict[str, str] = {}
+    points_table: dict[str, Any] = {}
+
+    def shared_points(pts: list[Any], col: str) -> str:
+        text = json.dumps(pts, separators=(",", ":"))
+        if text not in point_keys:
+            point_keys[text] = f"{col}:{sum(1 for k in points_table if k.startswith(col + ':'))}"
+            points_table[point_keys[text]] = pts
+        return "@p:" + point_keys[text]
+
+    def share(v: dict[str, Any], col: str) -> None:
+        if v["kind"] != "relationship":
+            return
+        v["points_before"] = shared_points(v["points_before"], col)
+        v["points_after"] = shared_points(v["points_after"], col)
+        for f in v["story"]:
+            f["points"] = shared_points(f["points"], col)
+
+    RX = r"(-?[\d.]+)"
+    ENERGY_PLAIN = {
+        "standard": (rf"`(\w+)` stays as recorded \(r = {RX} with `kcal`\); `kcal` enters the model beside it\.",
+                     "No nutrient changes: `{}` stays as recorded (r {} with `kcal`); `kcal` enters the model beside it."),
+        "residual": (rf"`(\w+)` correlates {RX} with `kcal`; after residual adjustment, {RX}, with `kcal` kept in the "
+                     r"model\.",
+                     "`{}` correlates {} with `kcal`; its calorie-adjusted amount, {}; `kcal` stays in the model."),
+        "residual_energy_dropped": (rf"`(\w+)` correlates {RX} with `kcal`; after residual adjustment, {RX}; `kcal` "
+                                    r"leaves the outcome model\.",
+                                    "`{}` correlates {} with `kcal`; its calorie-adjusted amount, {}; `kcal` leaves the "
+                                    "model."),
+        "density_multivariate": (rf"`(\w+)_per_kcal` correlates {RX} with `kcal`, down from {RX}; `kcal` stays as its "
+                                 r"own term\.",
+                                 "Per calorie, `{}` correlates {} with `kcal`, down from {}; `kcal` stays in the model."),
+        "density": (rf"`(\w+)_per_kcal` correlates {RX} with `kcal`, down from {RX}; `kcal` leaves the model\.",
+                    "Per calorie, `{}` correlates {} with `kcal`, down from {}; `kcal` leaves the model."),
+    }
+
+    def column_views(method: str, col: str) -> tuple[list[dict[str, Any]], str]:
+        views = [trim_view(v) for v in json.loads(json.dumps(SVW[method][col]))]
+        for v in views:
+            plain_view(v)
+        rel = views[0]
+        pattern, template = ENERGY_PLAIN[method]
+        m = re.fullmatch(pattern, rel["caption"])
+        assert m and m[1] == col, (method, col, rel["caption"])
+        assert "coefficient" not in json.dumps(views), (method, col)  # the leash
+        return views, same_numbers(template.format(*m.groups()), rel["caption"])
+
+    for o in S["energy"]["options"]:
+        if not o["preview"].get("strip"):
+            continue
+        m = o["id"]
+        rel_e = next(v for v in o["preview"]["views"] if v["kind"] == "relationship")
+        pictured = rel_e["y_label_before"]
+        # The derivation reproduces the engine's own views of the nutrient it pictures: the same r,
+        # and the same points but for the engine's last-digit rounding of a few.
+        mine = trim_view(json.loads(json.dumps(SVW[m][pictured][0])))
+        assert abs(mine["r_before"] - rel_e["r_before"]) < 1e-5 and abs(mine["r_after"] - rel_e["r_after"]) < 1e-5, m
+        for a, b in ((mine["points_before"], rel_e["points_before"]), (mine["points_after"], rel_e["points_after"])):
+            off = sum(1 for x, y in zip(a, b) if x != y)
+            assert len(a) == len(b) and off <= len(a) // 50, (m, off)
+            assert all(abs(x[1] - y[1]) <= 1e-3 * max(1.0, abs(y[1])) for x, y in zip(a, b)), m
+        for c in o["preview"]["strip"]:
+            if c["column"] == pictured:
+                continue
+            c["views"], c["caption"] = column_views(m, c["column"])
+            for v in c["views"]:
+                share(v, c["column"])
 
     # ── the canvas at rest: your data now (FOUNDATION §5 rule 8) ─────────────
     def ref(opt_id: str, view: int, title: str | None = None) -> dict[str, Any]:
@@ -1230,8 +1398,14 @@ def main() -> None:
         f"{len(mediators)} marked as on `sugar`'s path (mediators), and all {n_total:,} people in.",
         [ref("direct", 0), ref("direct", 1)], basis=whole,
         angles=[{**MEDIATORS, "view": 0}, {**WHO, "view": 1}])
-    now("contrast", "angles", f"The model now has {m_std[1]} inputs, total calories (`kcal`) among them.",
-        [ref("substitution", 0)], basis=basis_of("contrast", "substitution"), angles=[{**HELD, "view": 0}])
+    # Like the effect's, these panels are drawn on this example's plan (the energy question's), not
+    # on the walk's own answers so far: said so, and no readout counts them as the model now.
+    whole_plan = ("Drawn from this example's plan, before any estimate; your own answers come later, under "
+                  "Confounders and Energy.")
+    for o in S["contrast"]["options"]:
+        o["preview"]["basis"] = whole_plan
+    now("contrast", "angles", f"In this example's plan, the model has {m_std[1]} inputs, total calories (`kcal`) "
+        "among them.", [ref("substitution", 0)], basis=whole_plan, angles=[{**HELD, "view": 0}])
 
     # The first group has no captured "before" (nothing was answered): its confounder preview's
     # lineage with its own two columns set back to "not answered" (derived.rest).
@@ -1244,46 +1418,95 @@ def main() -> None:
     now("adjust:demographic", "routing", roles_caption(blank),
         [{**first, "before": blank, "after": blank, "emphasis": [], "story": [], "coach": [],
           "title": first["title"], "caption": roles_caption(blank)}],
-        basis=basis_of("adjust:demographic", "confounder"), source="calm (derived.rest)")
+        basis=basis_of("adjust:demographic", "confounder"), source="calm (derived.rest)",
+        columns=adjust_cols["adjust:demographic"])
+    # One "your data now" for the question: every option's before is the rest (the first group's
+    # captures have none, derived.rest).
+    for o in S["adjust:demographic"]["options"]:
+        assert o["preview"]["views"][0]["before"] is None, o["id"]
+        o["preview"]["views"][0]["before"] = blank
     for st in steps:
         if st["id"].startswith("adjust:") and st["id"] != "adjust:demographic":
             o0 = st["options"][0]
             now(st["id"], "routing", roles_caption(o0["preview"]["views"][0]["before"]), [ref(o0["id"], 0)],
-                basis=o0["preview"]["basis"])
+                basis=o0["preview"]["basis"], columns=adjust_cols[st["id"]])
     std_coach = view_of("energy", "standard", 0)["coach"][0]["text"]
     r_fat = re.search(r"has r ([\d.]+)", std_coach)[1]
     # fat_total is the nutrient the engine's energy previews draw: the one closest to total calories
     # (the highest r with kcal on the Strip's sample)
     assert max(as_recorded, key=lambda c: c["r_before"])["column"] == "fat_total"
+    # At rest each nutrient carries its picture as recorded (the standard model changes none), so
+    # pointing at one moves the views to it, as under every option (derived.strip_views).
+    energy_rest = json.loads(json.dumps(as_recorded))
+    for c in energy_rest:
+        if c["column"] == "fat_total":
+            continue
+        views, _ = column_views("standard", c["column"])
+        views[0]["title"] = f"`{c['column']}` against `kcal`, as recorded"
+        r0 = views[0]["r_before"]
+        c["views"] = views
+        c["caption"] = (f"The nutrients as recorded; the views follow `{c['column']}` "
+                        f"(r {0.0 if abs(r0) < 0.005 else r0:.2f} with `kcal`).")
+        for v in views:
+            share(v, c["column"])
     now("energy", "strip", f"The nutrients as recorded; the views follow `fat_total`, the nutrient closest to "
         f"total calories (r {r_fat} with `kcal`).",
         [ref("standard", 0, "`fat_total` against `kcal`, as recorded")], basis=basis_of("energy", "standard"),
-        strip=as_recorded, title="The nutrients, as recorded")
-    # Model 1's question: the models planned so far (the "Nothing" answer's sequence, which adds no
-    # Model 1), drawn as its largest model, Model 3 (derived.rest).
-    assert view_of("model1", "guess", 0)["story"][0]["label"] == "Unadjusted: sugar alone"
-    v_empty = view_of("model1", "empty", 0)
+        strip=energy_rest, title="The nutrients, as recorded")
+    # Model 1's question is what Model 1 adjusts for, so the canvas draws Model 1 (its own label on
+    # the readout and the input lane): your data now is the models planned so far, where Model 1
+    # still reads `sugar` alone (the engine's first storyboard frame, the unadjusted model); each
+    # option draws the Model 1 it makes (its second frame), so "nothing" changes nothing (derived.rest).
+    M1 = "Model 1's inputs"
+    v_guess, v_empty = view_of("model1", "guess", 0), view_of("model1", "empty", 0)
+    assert v_guess["story"][0]["label"] == v_empty["story"][0]["label"] == "Unadjusted: sugar alone"
     seq = model_caption(v_empty)
     assert seq.startswith("Model 1 adjusts for nothing; "), seq
-    n3 = sum(1 for n in v_empty["after"]["nodes"] if n["lane"] == "matrix")
-    planned = {**v_empty, "before": v_empty["after"], "emphasis": [], "story": [], "coach": [],
-               "title": "The planned models so far: Model 3, the largest"}
-    rest_m1 = (f"Planned so far: unadjusted, `sugar` alone; " + seq.removeprefix("Model 1 adjusts for nothing; ")
-               .rstrip(".").replace("Model 2 adds", "Model 2 (main) adds") + f", for {n3} inputs. Model 1 is chosen here.")
-    same_numbers(rest_m1.removesuffix(f", for {n3} inputs. Model 1 is chosen here.") + ".", v_empty["caption"])
-    now("model1", "routing", rest_m1, [planned], basis=basis_of("model1", "empty"), source="map (derived.rest)")
+    unadj = v_empty["story"][0]["lineage"]
+    mx = lambda st: [n["column"] for n in st["nodes"] if n["lane"] == "matrix"]  # noqa: E731
+    assert mx(unadj) == ["sugar"], mx(unadj)
+    planned_so_far = ("Planned so far: unadjusted, `sugar` alone; " + seq.removeprefix("Model 1 adjusts for nothing; ")
+                      .rstrip(".").replace("Model 2 adds", "Model 2 (main) adds") + ".")
+    same_numbers(planned_so_far, v_empty["caption"])
+    now("model1", "routing", planned_so_far + " Model 1 is chosen here; until then it reads `sugar` alone.",
+        [{**v_empty, "before": unadj, "after": unadj, "emphasis": [], "story": [], "coach": [],
+          "title": "Model 1, until it is chosen", "inputs_label": M1}],
+        basis=basis_of("model1", "empty"), source="map (derived.rest)")
     n_codes = re.fullmatch(r"Values on a sample of (\d+) of the [\d,]+ rows\.", basis_of("codes", "confirm"))[1]
     now("codes", "focus", f"`age` and `cycle_begin_year` as recorded, on {n_codes} sample rows.", [ref("confirm", 0)],
         basis=basis_of("codes", "confirm"))
-    # The lock: the plan's models as the Model 1 answer leaves them (that answer's preview, after).
+    # The lock: the models the plan will fit, as the Model 1 answer leaves them (the caption), drawn
+    # as the main model the plan fits, after the codes question: the engine's own lineage of the whole
+    # plan (the estimand's capture at the lock's moment), where `cycle_begin_year` enters as its
+    # one-hot categories (derived.rest).
+    sugar_v = view_of("exposure", "sugar", 0)
+    hot = [c for c in mx(sugar_v["after"]) if c.startswith("cycle_begin_year_")]
+    first_year = year(ev["cycle_begin_year"][2])
+    assert len(hot) == 8 and f"cycle_begin_year_{first_year}" not in hot, hot
+    model2 = v_guess["story"][2]
+    assert model2["label"].startswith("Model 2"), model2["label"]
+    as_column = lambda c: "cycle_begin_year" if c in hot else c.removesuffix("_male")  # noqa: E731
+    assert sorted({as_column(c) for c in mx(sugar_v["after"])}) == sorted(mx(model2["lineage"])), \
+        (mx(sugar_v["after"]), mx(model2["lineage"]))
+    main_model = {**sugar_v, "before": sugar_v["after"], "emphasis": [], "story": [], "coach": [],
+                  "title": "Model 2 (main), as the plan will fit it", "inputs_label": "Main model's inputs"}
     by: dict[str, Any] = {}
     for k in ("guess", "empty"):
         v = view_of("model1", k, 0)
-        settled = {**v, "before": v["after"], "emphasis": [], "story": [], "coach": []}
-        by[k] = {"layout": "routing", "caption": "The models the plan will fit. " + model_caption(v),
-                 "basis": basis_of("model1", k), "source": "map (derived.rest)", "views": [settled]}
+        by[k] = {"layout": "routing",
+                 "caption": f"The models the plan will fit. {model_caption(v)} `cycle_begin_year` enters as "
+                            f"{len(hot)} categories, each compared with {first_year}.",
+                 "basis": basis_of("model1", k), "source": "calm (derived.rest)", "views": [main_model]}
     S["lock"]["now"] = by[S["model1"]["scenario"]]
     S["lock"]["now_by"] = {"step": "model1", "options": by}
+    # Each Model 1 option draws the Model 1 it makes, from the unadjusted model (its storyboard's first
+    # two frames): what the choice decides is Model 1's inputs; the caption keeps the whole sequence.
+    for k in ("guess", "empty"):
+        v = view_of("model1", k, 0)
+        assert v["story"][1]["label"].startswith("Model 1"), v["story"][1]["label"]
+        before, after = v["story"][0]["lineage"], v["story"][1]["lineage"]
+        v.update(before=before, after=after, story=[], emphasis=[c for c in mx(after) if c not in mx(before)],
+                 title="What Model 1 adjusts for", inputs_label=M1)
     for st in steps:
         assert st.get("now"), st["id"]
 
@@ -1311,7 +1534,8 @@ def main() -> None:
         "meta": {
             "file": MAP["meta"]["file"], "rows": MAP["meta"]["rows"], "cols": MAP["meta"]["cols"],
             "captured": raw.get("captured"), "map_captured": MAP["meta"]["captured"],
-            "paper_captured": DOC["captured"], "scenario": "../methods-shared/SCENARIO.md",
+            "paper_captured": DOC["captured"], "derived_captured": raw.get("derived_captured"),
+            "scenario": "../methods-shared/SCENARIO.md",
             "sources": {
                 "calm": "capture/capture.py: the previews on the state each question is asked in; the "
                         "estimand's on the whole plan; the adjustment groups one at a time",
@@ -1328,18 +1552,44 @@ def main() -> None:
                       "views by), r with kcal and the mean and SD before and after; 30-bin histograms "
                       "for the focused column. fat_total's numbers equal the engine's caption."),
             "block_rows": ("The block's row flow is the engine's complete-case preview on the state the "
-                           "block leaves (taken at the estimand question, after the block)."),
+                           "block leaves (taken at the estimand question, after the block), whose before and after "
+                           "are the same. Its before is the state the question finds: the same steps, with the "
+                           "people who have every model input there (capture.py block_rows: the engine's "
+                           "models.pipeline.model_predictors on the captured state before the block, its "
+                           "complete-case rule on the table as loaded: 21,849 of 21,849; the same count on the "
+                           "state after reproduces the engine's 2,996)."),
+            "block_lineage": ("The block's lineage is the engine's, with `meds_chol` drawn as its own column: the "
+                              "engine groups it into \"7 covariate columns\" though its emphasis and caption name it "
+                              "among the seven that enter (the group drawn as 6); what the choice touches is every "
+                              "column the confirmation settles (the block's 13 items)."),
+            "story": ("The adjustment and effect previews' one-frame storyboard (\"each column's role\") draws "
+                      "the roles before the model's inputs are traced, so its input lane holds `sugar` alone, "
+                      "which no choice does; it is left out and the result is drawn. Model 1's options draw "
+                      "the engine's first two frames of the model sequence (derived.rest)."),
+            "strip_views": ("Each nutrient's own views under each energy model, for the Strip's linked focus: "
+                            "capture.py strip_views calls the engine's own helpers (models.previews _points, "
+                            "_corr, _relationship_caption without the outcome-model gap, _residual_story, "
+                            "_histogram; coach.energy_coach) on the Strip's sample, the same 800 points the engine "
+                            "draws; for fat_total, the nutrient the engine pictures, they match its views but for "
+                            "the last digit of a few points, and the engine's own are kept. Points shared between "
+                            "views are stored once (`points`)."),
             "effect_angles": ("The effect's panels: the adjustment card's mediators previewed on the whole "
                               "plan under each effect, and the complete-case row flow on each (the direct "
                               "effect recorded on a stopped, never-fitted project). The direct effect's "
                               "\"now\" is the total effect's capture of the same view: the plan as the "
                               "question finds it. The table's cells are those views' facts: whether the "
-                              "lineage keeps the mediators in the model, and the flow's last count."),
+                              "lineage keeps the mediators in the model, and the flow's last count. The total "
+                              "effect's own lineage capture was taken before the mediators were answered; its "
+                              "\"now\" is the plan as the question finds it, the same as the rest's."),
             "contrast_angles": ("The contrast's panels: the standard model's lineage at the energy question "
                                 "(substitution) and the partition the engine offers as its way out under an "
                                 "addition (taken on the stopped project with the addition recorded); which "
                                 "energy adjustments can follow is the engine's applicability at the energy "
-                                "question (substitution) and its refusals under an addition."),
+                                "question (substitution) and its refusals under an addition. The addition was "
+                                "captured after the codes question read `cycle_begin_year` as categories (8 one-hot "
+                                "inputs, `cycle_begin_year_2003` … `_2017`); the contrast is asked before it, so "
+                                "those are drawn back as the one column the substitution's lineage has: 18 − 8 + 1 "
+                                "= 11 inputs, four swapped for four."),
             "plain": ("Two registers (FOUNDATION §2): the card's question, lede, option names and lines, and "
                       "the canvas's captions, coach lines, panel titles, storyboard labels and role labels "
                       "restate the engine's text in plain words (build.py keeps each beside its source and "
@@ -1354,9 +1604,13 @@ def main() -> None:
                      "recorded (the Strip's before numbers, capture.py strip_numbers, the standard model "
                      "changing none). Three are derived: the first adjustment group's, which has no captured "
                      "before, is its confounder preview's lineage with age and gender set back to \"not "
-                     "answered\"; Model 1's is the \"Nothing\" answer's lineage after it (the models planned "
-                     "so far, which add no Model 1), drawn as its largest model; the lock's is the Model 1 "
-                     "answer's lineage after it, the models the plan will fit."),
+                     "answered\"; Model 1's says the models planned so far (the \"Nothing\" answer's "
+                     "sequence) and draws Model 1 as it still reads, `sugar` alone (the engine's first "
+                     "storyboard frame, the unadjusted model), each option drawing the Model 1 it makes (the "
+                     "second frame); the lock's caption is the Model 1 answer's sequence and its picture the main "
+                     "model the plan fits, the engine's lineage of the whole plan after the codes question "
+                     "(the estimand's capture at that moment), `cycle_begin_year` as its 8 categories. Every "
+                     "adjustment option's before is the rest: the first group's captures have none."),
             "leash": ("No outcome-model estimate appears before the lock (FOUNDATION §5 rule 6). The "
                       "engine's preview of the energy-dropped residual quotes the nutrient's coefficient on "
                       "the outcome; the kit replaces that caption with the engine's own caption for the "
@@ -1388,6 +1642,7 @@ def main() -> None:
         "steps": steps,
         "estimand_sentences": combo,
         "fits": fits,
+        "points": points_table,
         "lock": {"template": I["lock"]["template"], "digests": digests,
                  "energy_codes": ENERGY_ORDER, "sensitivity_keys": I["sensitivity"]["keys"]},
     }
