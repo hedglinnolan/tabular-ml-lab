@@ -1334,16 +1334,17 @@ In-fold PCA for omics stays its own DoD item.
 The methods above are the orchestrator's call. Three choices were product-level. **Nolan ruled on them on 2026-10-06, and draft 3 must fold the rulings in before anything is built from this spec.**
 1. **Missing values: "Try both" is the default.** Under prediction, with the rows kept, the tree families' missing slot defaults to `choose: [native, fill]`. Each training fold picks whether the trees keep blanks as blanks or take the shared fill, and the score includes the choice (§3.3(c)). This replaces "keep blanks as blanks" as the default in §2.2, §2.3 and §6.1. "Fill in each fold" still becomes "Keep every row". (Proposed: keep blanks as blanks by default.)
 2. **A fit expected to take over about 2 minutes waits for the Fit action**, as proposed (§4.4). BLUEPRINT §4's "live" rule changes for long fits only.
-3. **Scope cuts.** Three groups move to INBOX as proposed:
+3. **Scope cuts.** Three of the four proposed groups **stay in v2**:
    - faster search for big tables: halving, Hyperband, TPE and BOHB; the Thorough budget and the tuning curve;
    - more preprocessing options: native categories, per-family Pareto and robust scaling, and the per-model log1p;
-   - the inference extensions: Huber under inference; nuisance learners from the registry, and their tuning.
+   - the inference extensions: Huber under inference, as a weighted M-estimator with a design-based or cluster sandwich checked against R `robsurvey`; nuisance learners from the registry, and their tuning inside cross-fitting.
 
-   **One group stays in v2:** "Compare with standard settings" as a kept version, shared-step changes after scores kept as versions, and re-tuned substitution bands.
+   **One group moves to INBOX as proposed:** "Compare with standard settings" as a kept version, shared-step changes after scores kept as versions, and re-tuned substitution bands.
 
 **Left to the orchestrator in draft 3:**
 - how "Try both" runs below an effective size of 300, where searched families otherwise use their standard settings (§4.6);
-- the design and cost of trunk versions and re-tuned bands.
+- how adaptive and multi-fidelity search keep replay exact and the estimate known in advance (§4.2's first two reasons). One way is to run them only above a stated size, with the order of trials fixed and recorded;
+- the design and references for the three restored groups.
 
 ---
 

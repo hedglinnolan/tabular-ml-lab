@@ -58,7 +58,7 @@ The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 
 1. **`RECIPES_AND_TUNING.md` "Decisions for Nolan":**
    - the trees "Try both" by default, keeping blanks or taking the fill, chosen in each training fold;
    - fits over about 2 minutes wait for Fit;
-   - three scope-cut groups go to INBOX, and the kept-comparisons group (standard settings as a kept version, trunk versions, re-tuned bands) stays in v2.
+   - three scope-cut groups stay in v2: faster search for big tables, more preprocessing options and the inference extensions. Only the kept-comparisons group goes to INBOX: standard settings as a kept version, trunk versions and re-tuned bands.
 2. **The NHANES export:** commit it **gzipped** as a test fixture. The harness reads the `.gz`, and CI then runs the 42 test files that read it.
 3. **The structure:** the quest log, redesigned (above).
 4. **`UNDERSTANDING_LAYER.md` §7:**
