@@ -10,6 +10,21 @@ goalposts move."
 additions: multivariate regression calibration, and sensitivity to unmeasured confounding. Each resolves a
 conflict inside rows already in v2.
 
+**Amended 2026-10-05 (Nolan, after the Classic parity audit, `docs/turbotab-next/parity/CLASSIC_PARITY.md`).** He approved bringing these into v2:
+- **The prediction shelf:** **ridge** and **Huber**, as linear and penalized models; **random forest**; **XGBoost**. Each enters as a plug-in through the method contract, with a reference test and an explanation path.
+- **Table 1:** the participant characteristics table every nutrition paper has.
+- **Stacking files:** stacking with a shared schema, so NHANES cycles can be pooled. Joins were already in.
+- **In-scope fixes:**
+  - explanations, evaluation and robustness drawn on screen;
+  - each model's preprocessing recipe drawn with its reason;
+  - boosted trees' own missing-value handling made reachable;
+  - nested tuning for boosted trees;
+  - in-fold PCA for omics.
+- **Classic's audit and exploration views**, returned as First look views and threads: missingness patterns, the skew and outlier table, a pre-fit VIF table, residual Q-Q, a cross-model importance table, and the split and seed control.
+- **Classic's practice datasets,** folded into the demo.
+
+LightGBM, ExtraTrees, kNN, SVM, naive Bayes, LDA and neural networks stay v2.x. Per-model preprocessing overrides and hyperparameter optimization are being specified.
+
 **The one-sentence test.** v2 is done when a nutrition researcher in any of the five lenses can take
 their own table from upload to a defensible prediction *or* inference result and a methods section a
 reviewer accepts, and every number, label and sentence on the way is verified against an
