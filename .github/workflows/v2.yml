@@ -5,7 +5,7 @@ name: TurboTab v2
 
 on:
   push:
-    branches: [turbotab-next]
+    branches: [turbotab-next, "ci/**"]   # ci/** lets a fix iterate on Linux and Windows runners
   pull_request:
     branches: [main]
 
