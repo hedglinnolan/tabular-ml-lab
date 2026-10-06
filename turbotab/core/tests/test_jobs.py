@@ -135,3 +135,48 @@ def test_a_worker_with_work_is_not_retired(tmp_path: Path):
         job = pool.submit(toy.cooperative, 20, label="busy")  # longer than the idle timeout
         assert pool.wait(job, timeout=30).state == "done"
         # A retirement mid-job would have killed it and reported an error.
+
+
+# ── a worker that does not start ──────────────────────────────────────────────
+
+TOY_START = "turbotab.core.tests.toy_worker_start"
+
+
+def test_a_worker_silent_while_starting_fails_the_queued_job_with_what_it_was_doing(monkeypatch):
+    """A worker that hangs as it starts (on Windows one hung before any Python ran while the
+    server read its stdin) used to leave its job queued forever; it is stopped, and the job says
+    where the worker was."""
+    from turbotab.core.jobs import JobRunner
+
+    monkeypatch.setenv("TURBOTAB_TOY_WORKER_START", "hang")
+    with JobRunner(workers=1, preload=("os", TOY_START), start_seconds=3.0) as pool:
+        started = time.monotonic()
+        job = pool.submit(toy.add, 1, 2, label="waits")
+        view = pool.wait(job, timeout=60)
+        assert view.state == "error", view
+        assert time.monotonic() - started < 30
+        assert "No worker process could be started" in (view.error or "")
+        assert "said nothing for 3 s while starting" in view.error
+        assert f"it was importing {TOY_START}" in view.error
+        assert pool.live_workers == 0
+        assert _wait_until(lambda: not pool._retired, timeout=5.0), "the stopped worker was not reaped"
+        # Nothing is wrong with the slot itself: once workers can start, work runs again.
+        monkeypatch.delenv("TURBOTAB_TOY_WORKER_START")
+        again = pool.submit(toy.add, 2, 2, label="again")
+        assert pool.wait(again, timeout=60).state == "done"
+
+
+def test_a_worker_that_dies_while_starting_reports_its_own_traceback(monkeypatch):
+    from turbotab.core.jobs import MAX_FAILED_STARTS, JobRunner
+
+    monkeypatch.setenv("TURBOTAB_TOY_WORKER_START", "fail")
+    with JobRunner(workers=1, preload=(TOY_START,)) as pool:
+        job = pool.submit(toy.add, 1, 2, label="waits")
+        view = pool.wait(job, timeout=60)
+        assert view.state == "error", view
+        error = view.error or ""
+        assert "worker 1 (process " in error
+        assert "stopped with exit code 1 before it was ready" in error
+        assert f"it was importing {TOY_START}" in error
+        assert "SystemExit: toy: this worker cannot start" in error  # its own traceback
+        assert pool._failed[0] == MAX_FAILED_STARTS

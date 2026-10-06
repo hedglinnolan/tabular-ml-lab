@@ -426,6 +426,27 @@ def test_1_complete_cases_stay_available_with_their_assumption_stated(inference_
 
 
 REFERENCE = Path(__file__).with_name("wp7_prediction_reference.json")
+# The families whose numbers are their platform's own. The elastic net's penalty is the minimum of
+# its inner cross-validation's curve, which coordinate descent computes only to scikit-learn's
+# tolerance (a duality gap of 1e-4) and in the BLAS's summation order. The curve is flat at its
+# minimum, so another BLAS picks a neighboring penalty, and every number of the fit moves with it.
+# Linear least squares and boosted trees have no such argmin, and they reproduce across platforms.
+PLATFORM_TUNED = {"elastic_net"}
+
+
+def _where_recorded() -> bool:
+    """Whether this is the platform the reference was recorded on: macOS on Apple silicon, with
+    NumPy and SciPy on Apple's Accelerate."""
+    import platform
+
+    import scipy
+
+    def blas(config: dict) -> str:
+        return str(config["Build Dependencies"]["blas"]["name"]).lower()
+
+    return ((platform.system(), platform.machine()) == ("Darwin", "arm64")
+            and blas(np.show_config(mode="dicts")) == blas(scipy.show_config(mode="dicts"))
+            == "accelerate")
 
 
 def prediction_fixture() -> pd.DataFrame:
@@ -458,20 +479,48 @@ PREDICTION_CONFIGS = {
 
 
 def _numbers(a, b, path=()):
-    """Every number of ``a`` against ``b`` (the same shape): the largest absolute difference."""
+    """Every number of ``a`` against ``b`` (the same shape), as (absolute difference, path, the
+    reference's value, the run's value)."""
     if isinstance(a, dict):
         assert set(a) == set(b), (path, set(a) ^ set(b))
-        return max([_numbers(a[k], b[k], (*path, k)) for k in a] or [0.0])
+        return [d for k in a for d in _numbers(a[k], b[k], (*path, k))]
     if isinstance(a, list):
         assert len(a) == len(b), path
-        return max([_numbers(u, v, (*path, i)) for i, (u, v) in enumerate(zip(a, b))] or [0.0])
+        return [d for i, (u, v) in enumerate(zip(a, b)) for d in _numbers(u, v, (*path, i))]
     if isinstance(a, (int, float)) and not isinstance(a, bool):
         if isinstance(a, float) and np.isnan(a):
             assert b is None or np.isnan(b), path
-            return 0.0
-        return abs(float(a) - float(b))
+            return []
+        return [(abs(float(a) - float(b)), path, a, b)]
     assert a == b, (path, a, b)
-    return 0.0
+    return []
+
+
+def _worst_first(diffs, tolerance: float, shown: int = 10) -> str:
+    """The differences above ``tolerance``, the worst first, one per line, with their path; then
+    the worst of each config, family and part (absolute, and relative to the reference)."""
+    over = sorted((d for d in diffs if d[0] > tolerance), key=lambda d: -d[0])
+    lines = [f"{len(over)} numbers differ by more than {tolerance:g}; the worst first:"]
+    lines += [f"{diff:.3g} at {'/'.join(map(str, path))}: reference {ref!r}, now {got!r}"
+              for diff, path, ref, got in over[:shown]]
+    worst: dict[str, tuple[float, float]] = {}
+    for diff, path, ref, _ in diffs:
+        key = "/".join(map(str, path[:3]))
+        rel = diff / abs(ref) if ref else (0.0 if diff == 0 else float("inf"))
+        a, r = worst.get(key, (0.0, 0.0))
+        worst[key] = (max(a, diff), max(r, rel))
+    lines.append("worst by part (abs, rel): " + "; ".join(f"{k} {a:.2g} {r:.2g}"
+                                                          for k, (a, r) in worst.items()))
+    return "\n".join(lines)
+
+
+def _by_family(results: dict) -> dict:
+    """One config's results as family → its parts: the sealed held-out scores (records of family,
+    metric and value) moved under their family as ``sealed``, metric → value."""
+    out = {f: dict(v) for f, v in results.items() if f != "__sealed__"}
+    for r in results.get("__sealed__", []):
+        out.setdefault(r["family"], {}).setdefault("sealed", {})[r["metric"]] = r["value"]
+    return out
 
 
 @pytest.fixture(scope="module")
@@ -501,7 +550,23 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
     """Every cross-validated score (estimate, fold values, standard error, interval), every
     training-fit coefficient and every sealed held-out score of linear, elastic net and boosted
     trees, under a plain fill, indicators with blanks as a level, and the residual energy method,
-    equal the fit stage's output at commit 514336c to 10⁻⁹."""
+    equal the fit stage's output at commit 514336c to 10⁻⁹.
+
+    Linear and boosted trees are held to 10⁻⁹ everywhere: on Linux CI (ubuntu-latest, OpenBLAS)
+    their worst difference was 4.7e-11. They share the elastic net's in-fold fill, folds,
+    encoding and scoring, so they carry "unchanged" onto every platform. The elastic net is held
+    to 10⁻⁹ where the reference was recorded (``_where_recorded``). Elsewhere its penalty is
+    chosen afresh (``PLATFORM_TUNED``): on Linux CI the inner cross-validation chose a neighboring
+    penalty, the intercept moved by up to 6.4 and the fold RMSEs by up to 0.24. So there its
+    structure is held exactly (the same coefficients by name, metrics and folds), and each
+    cross-validated estimate must fall inside the reference's own 95% interval. That bound is the
+    score's sampling uncertainty, so a penalty that moves a score by less leaves every reading of it
+    standing. On Linux CI the estimates moved by up to 0.011 in R² and 0.073 in RMSE, against
+    interval half-widths of 0.067 and 0.63. A Linux reference recorded at 514336c was not chosen.
+    No such record exists, and Linux CI's runners vary between runs (an AMD EPYC 9V45 on
+    OpenBLAS's SkylakeX kernels, then an EPYC 7763 on its Haswell kernels), and each kernel sums in
+    its own order, which can move the penalty again (the plain fill's: 0.356 on macOS, 0.274 on the
+    EPYC 7763)."""
     reference = json.loads(REFERENCE.read_text())["configs"]
     _, _, _, now = prediction_run
     assert set(now) == set(reference)
@@ -518,8 +583,20 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
             assert set(got["cv"]) - set(reference[name][family]["cv"]) == added
             trimmed[name][family] = {**got, "cv": {k: v for k, v in got["cv"].items()
                                                    if k not in added}}
-    worst = max(_numbers(reference[name], trimmed[name], (name,)) for name in reference)
-    assert worst <= 1e-9, worst
+    diffs = [d for name in reference
+             for d in _numbers(_by_family(reference[name]), _by_family(trimmed[name]), (name,))]
+    here = _where_recorded()
+    exact = [d for d in diffs if here or d[1][1] not in PLATFORM_TUNED]
+    assert max(d[0] for d in exact) <= 1e-9, _worst_first(exact, 1e-9)
+    if here:
+        return
+    outside = [(name, family, metric, trimmed[name][family]["cv"][metric]["estimate"],
+                (ref["ci_low"], ref["ci_high"]))
+               for name in reference for family in PLATFORM_TUNED & set(reference[name])
+               for metric, ref in reference[name][family]["cv"].items()
+               if not ref["ci_low"] <= trimmed[name][family]["cv"][metric]["estimate"]
+               <= ref["ci_high"]]
+    assert not outside, outside
 
 
 def test_2_the_linear_scores_match_scikit_learn_alone(prediction_run):

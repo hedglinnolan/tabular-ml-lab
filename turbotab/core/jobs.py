@@ -14,6 +14,11 @@
   fresh one spawned. CPU stops within about 1.5 s either way.
 * A worker that dies mid-job (``os._exit``, a segfault, the OOM killer) marks
   that job ``error``; the slot is respawned and the pool keeps working.
+* A worker says what it is doing while it starts. One that dies before it is
+  ready, or says nothing for ``TURBOTAB_WORKER_START_TIMEOUT`` seconds (default
+  180) while starting, is a failed start; when no worker is left to take the
+  queued jobs, they fail with what the worker last said and its traceback, or
+  that it never reached this module's code (it hung or failed as Python started).
 * Callbacks (``on_progress(view)``, ``on_done(view, result)``) all run on the
   runner's single dispatcher thread, never on the caller's thread and never
   while the runner's lock is held, so a callback may call ``submit``/``cancel``.
@@ -55,6 +60,7 @@ KILL_SECONDS = 0.5  # SIGTERM -> SIGKILL window
 PROGRESS_INTERVAL = 0.1  # worker-side throttle for progress messages
 KEEP_FINISHED = 1000  # finished jobs remembered for get()
 MAX_FAILED_STARTS = 3  # a slot whose worker dies before ready this often is given up
+START_SECONDS = 180.0  # a starting worker silent this long is stopped (TURBOTAB_WORKER_START_TIMEOUT)
 PRELOAD = ("numpy", "pandas", "sklearn")
 
 
@@ -116,19 +122,28 @@ def current() -> JobContext | None:
 
 def _worker_main(conn: Any, flag: Any, preload: tuple[str, ...]) -> None:
     global _CURRENT
-    # Ctrl-C in the server's terminal reaches the whole process group; the
-    # runner decides when workers stop, not the keyboard.
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    for name in preload:
-        try:
-            importlib.import_module(name)
-        except Exception:  # an optional package missing must not kill the pool
-            pass
-    send_lock = threading.Lock()
+    pid = os.getpid()
     try:
-        conn.send(("ready", os.getpid()))
-    except OSError:
-        return
+        conn.send(("starting", pid, "running the worker's own code"))
+        # Ctrl-C in the server's terminal reaches the whole process group; the
+        # runner decides when workers stop, not the keyboard.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        for name in preload:
+            conn.send(("starting", pid, f"importing {name}"))
+            try:
+                importlib.import_module(name)
+            except Exception:  # an optional package missing must not kill the pool
+                pass
+        conn.send(("ready", pid))
+    except (EOFError, OSError):
+        return  # the runner went away
+    except BaseException:
+        try:  # the runner reports it with the start that failed
+            conn.send(("failed", pid, traceback.format_exc()))
+        except Exception:
+            pass
+        raise
+    send_lock = threading.Lock()
     while True:
         try:
             message = conn.recv()
@@ -182,6 +197,21 @@ class _Worker:
         self.failed_starts = failed_starts
         self.idle_since = time.monotonic()  # meaningful while ready and without a job
         self.stop_by: float | None = None  # once retired: terminate if still alive then
+        self.heard = time.monotonic()  # while starting: when it last said anything
+        self.doing: str | None = None  # while starting: what it last said it was doing
+        self.traceback: str | None = None  # why it failed to start, in its own words
+
+    def start_failure(self, what: str) -> str:
+        """Why this worker did not start, for the jobs that waited on it."""
+        pid = f" (process {self.pid or self.process.pid})"
+        if self.doing:
+            said = f"; it was {self.doing}"
+        else:  # hung or failed in Python's own start, multiprocessing's, or importing this module
+            said = "; it never reached TurboTab's worker code"
+        text = f"worker {self.index + 1}{pid} {what}{said}"
+        if self.traceback:
+            text += ":\n" + "\n".join(self.traceback.strip().splitlines()[-12:])
+        return text
 
 
 @dataclass(eq=False)
@@ -220,6 +250,14 @@ def default_workers() -> int:
     return capped()
 
 
+def default_start_seconds() -> float:
+    """``TURBOTAB_WORKER_START_TIMEOUT`` (seconds) if set, else :data:`START_SECONDS`."""
+    configured = os.environ.get("TURBOTAB_WORKER_START_TIMEOUT", "").strip()
+    if configured:
+        return max(0.1, float(configured))
+    return START_SECONDS
+
+
 def default_idle_seconds() -> float:
     """``TURBOTAB_WORKER_IDLE`` (seconds) if set, else :data:`IDLE_SECONDS`."""
     configured = os.environ.get("TURBOTAB_WORKER_IDLE", "").strip()
@@ -240,7 +278,9 @@ class JobRunner:
     """Up to ``workers`` worker processes, each running one job at a time, FIFO.
 
     Workers start when there is work for them and retire after ``idle_seconds``
-    without any (default: ``TURBOTAB_WORKER_IDLE``, else 300 s).
+    without any (default: ``TURBOTAB_WORKER_IDLE``, else 300 s). One that says
+    nothing for ``start_seconds`` while it starts (default:
+    ``TURBOTAB_WORKER_START_TIMEOUT``, else 180 s) is stopped as a failed start.
     """
 
     def __init__(
@@ -250,6 +290,7 @@ class JobRunner:
         preload: tuple[str, ...] = PRELOAD,
         grace: float = GRACE_SECONDS,
         idle_seconds: float | None = None,
+        start_seconds: float | None = None,
     ):
         if workers < 1:
             raise ValueError("a JobRunner needs at least one worker")
@@ -257,6 +298,7 @@ class JobRunner:
         self._preload = tuple(preload)
         self._grace = grace
         self._idle = default_idle_seconds() if idle_seconds is None else max(0.0, float(idle_seconds))
+        self._start = default_start_seconds() if start_seconds is None else max(0.1, float(start_seconds))
         self._lock = threading.Lock()
         self._changed = threading.Condition(self._lock)
         self._jobs: dict[str, _Job] = {}
@@ -268,6 +310,7 @@ class JobRunner:
         # worker retires or dies; `_failed` counts a slot's failed starts.
         self._workers: list[_Worker | None] = [None] * workers
         self._failed: list[int] = [0] * workers
+        self._why: list[str | None] = [None] * workers  # each slot's last failed start
         self._retired: list[_Worker] = []  # stopped by us, not yet reaped
         self._thread = threading.Thread(target=self._loop, name="turbotab-jobs", daemon=True)
         self._thread.start()
@@ -430,9 +473,9 @@ class JobRunner:
                 for w in self._retired:
                     watch[w.process.sentinel] = ("reap", w)
                 timeout = 0.05 if pending_deadline or self._retired else 2.0
-                retire_at = self._next_retirement()
-                if retire_at is not None:
-                    timeout = min(timeout, max(0.0, retire_at - time.monotonic()) + 0.01)
+                for due in (self._next_retirement(), self._next_start_deadline()):
+                    if due is not None:
+                        timeout = min(timeout, max(0.0, due - time.monotonic()) + 0.01)
             # Everything else wakes us (pipes, exits, the wake channel); only a
             # pending cancel deadline, a retirement or a reaping needs a clock.
             ready = mp_wait(list(watch), timeout=timeout)
@@ -450,6 +493,7 @@ class JobRunner:
                         if what == "exit":
                             self._on_exit(w)
                 self._check_deadlines()
+                self._check_starts()
                 self._dispatch()
                 self._retire_idle()
                 self._reap()
@@ -477,12 +521,19 @@ class JobRunner:
 
     def _handle(self, w: _Worker, message: tuple[Any, ...]) -> None:
         tag = message[0]
+        if tag == "starting":
+            w.pid, w.doing, w.heard = message[1], message[2], time.monotonic()
+            return
+        if tag == "failed":
+            w.pid, w.traceback = message[1], message[2]
+            return
         if tag == "ready":
             w.ready = True
             w.pid = message[1]
             w.failed_starts = 0
             w.idle_since = time.monotonic()
             self._failed[w.index] = 0
+            self._why[w.index] = None
             return
         job = w.job
         if job is None or job.id != message[1]:
@@ -537,6 +588,9 @@ class JobRunner:
         if self._workers[w.index] is w:
             self._workers[w.index] = None  # _dispatch starts another when there is work
         self._failed[w.index] = failed
+        if not w.ready:
+            self._why[w.index] = w.start_failure(f"stopped with exit code {code} before it was ready")
+            log.warning("a job worker did not start: %s", self._why[w.index])
         if failed >= MAX_FAILED_STARTS and not self._closed:
             log.error("worker slot %d failed to start %d times; giving it up", w.index, failed)
 
@@ -552,12 +606,41 @@ class JobRunner:
                 w.process.kill()
                 w.kill_at = now + 60.0
 
+    def _next_start_deadline(self) -> float | None:
+        """When the next starting worker will have been silent too long (monotonic clock), or None."""
+        due = [w.heard + self._start for w in self._workers if w is not None and w.alive and not w.ready]
+        return min(due) if due else None
+
+    def _check_starts(self) -> None:
+        """Stop a starting worker that has said nothing for ``start_seconds``: a failed start."""
+        now = time.monotonic()
+        for index, w in enumerate(self._workers):
+            if w is None or not w.alive or w.ready or now - w.heard < self._start:
+                continue
+            self._workers[index] = None
+            w.alive = False
+            w.process.kill()  # it is not listening: there is nothing to ask
+            w.stop_by = now
+            self._retired.append(w)
+            self._failed[index] = w.failed_starts + 1
+            self._why[index] = w.start_failure(f"said nothing for {self._start:.0f} s while starting")
+            log.error("a job worker did not start: %s", self._why[index])
+            # Another start would most likely hang the same way: the jobs waiting fail now, with
+            # the reason, unless another worker is up or starting to take them.
+            if not any(o is not None and o.alive for o in self._workers):
+                self._fail_queue()
+
+    def _fail_queue(self) -> None:
+        reasons = "\n".join(why for why in self._why if why)
+        error = "No worker process could be started" + (f": {reasons}" if reasons else ".")
+        while self._queue:
+            self._finish(self._queue.popleft(), "error", error=error)
+
     def _dispatch(self) -> None:
         self._spawn_for_queue()
         live = [w for w in self._workers if w is not None and w.alive]
         if not live:
-            while self._queue:
-                self._finish(self._queue.popleft(), "error", error="No worker process could be started.")
+            self._fail_queue()
             return
         for w in live:
             if not self._queue:
