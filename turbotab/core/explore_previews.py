@@ -299,7 +299,33 @@ def intended_use_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     for column in decision.subgroups[:1]:
         if column not in ctx.datastore.columns:
             continue
+        from turbotab.core.models.decision_curve import grouping_of, value_facts
+        from turbotab.core.readings import whole_facts
+
         values = ctx.datastore.materialize([column], ids)[column]
+        # The groups the evaluation stage scores: the column's levels as codes, its thirds as an
+        # amount, as the readings ledger holds it (BLUEPRINT §14.3).
+        facts = whole_facts([column], None, ctx.datastore)
+        how, _ = grouping_of(after, column, facts[column] if column in facts
+                             else value_facts(values))
+        if how == "thirds":
+            x = pd.to_numeric(values, errors="coerce").to_numpy(dtype=float)
+            x = x[np.isfinite(x)]
+            if len(x):
+                cuts = np.quantile(x, [1 / 3, 2 / 3])
+                hist = histogram(x)
+                views.append(DistributionView(
+                    title=title(f"Rows in each third of {tick(column)}"),
+                    caption=caption(f"Performance is reported in each third of {tick(column)}, "
+                                    f"cut at {num(cuts[0])} and {num(cuts[1])}, with intervals."),
+                    emphasis=[column], column=column, before=hist, after=hist,
+                    before_label="rows", after_label="rows",
+                    marks=[Mark(value=float(c), label=f"cut {i + 1}") for i, c in enumerate(cuts)]))
+            continue
+        if how is None:
+            ctx.read["note"] = (f"Whether {tick(column)}'s numbers are codes or amounts is asked "
+                                f"before its groups are drawn.")
+            continue
         n_levels = int(values.dropna().astype(str).nunique())
         found_view = _level_view(values, column, (
             f"Performance is reported in each of the {fmt_count(n_levels)} levels of "
@@ -316,7 +342,7 @@ def intended_use_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 
 def updating_views(decision: Any, ctx: PreviewContext) -> list[Any]:
-    from turbotab.core.models.decision_curve import shrinkage, slope_of
+    from turbotab.core.models.decision_curve import deployed_coefficients, shrinkage, slope_of
     from turbotab.core.models.linear import model_matrix
 
     after = after_state(decision, ctx)
@@ -338,12 +364,18 @@ def updating_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     task = str(after.task or "regression")
     X = X.loc[keep]
     matrix = model_matrix(pipeline, X)
-    model = pipeline[-1]
-    coef = np.asarray(model.coef_, dtype=float).ravel()
-    lp = matrix.to_numpy(dtype=float) @ coef + float(np.ravel(model.intercept_)[0])
+    deployed = deployed_coefficients(pipeline[-1])  # the recalibrated model's, as the stage's
+    if deployed is None:
+        return []
+    intercept, coef = deployed
+    lp = matrix.to_numpy(dtype=float) @ coef + intercept
     yy = (np.asarray(y, dtype=float) if task == "regression" else
           (np.asarray(y) == sorted(pd.unique(np.asarray(y)).tolist(), key=str)[-1]).astype(float))
-    done = shrinkage(task, matrix, yy, coef, slope)
+    try:
+        done = shrinkage(task, matrix, yy, coef, slope)
+    except ValueError as exc:  # the stage says so in the record; the preview says it here
+        ctx.read["note"] = f"{exc} The model would not be updated."
+        return []
     shrunk = float(done["intercept"]) + slope * (matrix.to_numpy(dtype=float) @ coef)
     if task == "binary":
         lp, shrunk = 1 / (1 + np.exp(-lp)), 1 / (1 + np.exp(-shrunk))

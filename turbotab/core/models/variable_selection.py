@@ -409,8 +409,13 @@ class Selector(TransformerMixin, BaseEstimator):
             return lifted(freq >= tau)
         if m == "stepwise":
             if p >= len(y) - 1:
-                raise ValueError("Backward elimination starts from every predictor, which needs "
-                                 "more rows than predictors.")
+                # The answer is refused where the cohort shows it (``_stepwise_has_rows``); this is
+                # the backstop when a later answer added columns, and it names the way forward.
+                raise ValueError(
+                    f"Backward elimination starts from all {p:,} candidate columns, and these "
+                    f"training rows number {len(y):,}: a model with every column and an intercept "
+                    f"needs more rows than that. Choose the elastic net or in-fold screening in the "
+                    f"selection question.")
             return backward_aic(Z, y, self.task_, groups)
         if m == "univariable":
             return univariable_p(Z, y, self.task_, groups) < float(self.threshold or UNIVARIABLE_P)
@@ -645,6 +650,16 @@ def _register_contract() -> None:
                      exits=("Run it in-fold",), condition="where = outside, or a pre-selection on "
                      "these rows' outcome (TRIPOD+AI 9a)",
                      enforced_by=f"{here}:_selection_runs_in_fold", id="selection_outside_refused"),
+            Relation("conflicts", "too_few_rows_for_every_column",
+                     "backward elimination starts from every candidate column and an intercept, "
+                     "so it is refused where the smallest training fold has too few rows to fit "
+                     "them", purposes=("prediction",), rung="refused", when=("stepwise",),
+                     exits=("Elastic net, in each training fold",
+                            "In-fold screening by correlation with the outcome", "No selection",
+                            "Keep every predictor linear"),
+                     condition="candidate columns at least the smallest training fold's rows less "
+                               "one", enforced_by=f"{here}:_stepwise_has_rows",
+                     id="stepwise_needs_rows"),
             Relation("implies", "inclusion_frequencies",
                      "each candidate's inclusion frequency across the folds and resamples is "
                      "reported", purposes=("prediction",),
@@ -754,6 +769,70 @@ def _selection_fits_the_task(decision: Any, ctx: Any) -> None:
             f"The selection methods here read a numeric or yes/no outcome; a {str(task).replace('_', '-')} "
             f"outcome keeps every candidate (a penalized family shrinks them instead).",
             exits=[{"label": "No selection", "decision": SetSelection(method="none")}])
+    if decision.method == "stepwise" and not decision.sensitivity \
+            and getattr(state, "purpose", None) != "inference":
+        _stepwise_has_rows(decision, ctx, state, task)
+
+
+def stepwise_room(state: Any, ctx: Any, task: str | None) -> tuple[int, int] | None:
+    """(candidate columns, rows of the smallest training fold) for backward elimination under
+    prediction, from the cohort's predictors and the table's summaries; None when they are not
+    known yet. The columns are those the selection step receives: a number one, a category of k
+    levels k − 1, a declared spline its k − 1, a form rule's splines theirs
+    (``stages.modeling.rule_spline_terms``, k read on the fold's rows, never fewer than its
+    effective size gives), and a missing-value indicator per predictor with blanks when indicators
+    are kept. The fold holds (K − 1)/K of the training rows, the holdout drawn first."""
+    from turbotab.core.decisions import _ctx
+    from turbotab.core.methods.exposure_form import model_terms
+    from turbotab.core.readings import confirmed_codes
+    from turbotab.core.sequence import artifact
+    from turbotab.core.stages.modeling import _summary, predictor_parameters, rule_spline_terms
+
+    cohort = artifact(ctx, "cohort") or {}
+    info = _ctx(ctx, "column_info") or {}
+    n = cohort.get("n_final")
+    predictors = [c for c in cohort.get("predictors") or [] if c in info]
+    if not n or not predictors or state is None:
+        return None
+    split = getattr(state, "split", None)
+    holdout = float(getattr(split, "holdout", 0.0) or 0.0)
+    folds = int(getattr(split, "folds", 5) or 5)
+    n_train = int(math.floor(int(n) * (1.0 - holdout)))
+    n_fold = int(math.floor(n_train * (folds - 1) / folds))
+    columns = (predictor_parameters(predictors, info, confirmed_codes(state))
+               + model_terms(predictors, getattr(state, "exposure_forms", None)) - len(predictors)
+               + rule_spline_terms(state, predictors, info, n_fold))
+    missing = getattr(state, "missing", None)
+    if getattr(missing, "indicators", False):
+        columns += sum(1 for c in predictors if int(_summary(info[c], "n_missing") or 0) > 0)
+    return columns, n_fold
+
+
+def _stepwise_has_rows(decision: Any, ctx: Any, state: Any, task: str | None) -> None:
+    """Backward elimination starts from the model with every candidate column and an intercept,
+    which least squares or the logistic likelihood can fit only with fewer columns than rows less
+    one (``MASS::stepAIC`` stops there too: "AIC is -infinity for this model"). Where the smallest
+    training fold has too few rows, the answer is refused with the selections that work at p ≫ n
+    (MODELING_SEQUENCE §1 row 8)."""
+    from turbotab.core.decisions import Refusal
+
+    room = stepwise_room(state, ctx, task)
+    if room is None:
+        return
+    columns, n_fold = room
+    if columns < n_fold - 1:
+        return
+    raise Refusal(
+        "stepwise_needs_rows",
+        f"Backward elimination starts from all {columns:,} candidate columns, and the smallest "
+        f"training fold has {n_fold:,} rows: a model with every column and an intercept needs more "
+        f"rows than that, so it cannot start. At p ≫ n a penalized or screening selection comes "
+        f"first.",
+        exits=[{"label": "Elastic net, in each training fold",
+                "decision": decision.model_copy(update={"method": "elastic_net"})},
+               {"label": "In-fold screening by correlation with the outcome",
+                "decision": decision.model_copy(update={"method": "screening"})},
+               {"label": "No selection", "decision": decision.model_copy(update={"method": "none"})}])
 
 
 def _register_validators() -> None:

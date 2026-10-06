@@ -205,6 +205,10 @@ def test_a1_a_text_bmi_is_asked_and_fit_as_one_slope_through_the_server(tmp_path
         assert {("bmi", "amount"), ("bmi", "code")} <= offered, offered
         assert "numbers with missing marks" in error["message"] and "`.`" in error["message"]
         drive.decide(plan["models"])
+        # FORM: `bmi`, an amount now, is a continuous confounder the form question asks about once
+        # its card is read again; until it is answered no estimate is served (the served gate). Read
+        # the fit after answering it, as the sibling test does; reading it before raced the card.
+        settle_forms(drive)
         coef = coefficients(drive.artifact("fit", timeout=600))
     assert set(coef) == {"(intercept)", "age", "bmi"}, set(coef)
     for i, name in enumerate(("(intercept)", "age", "bmi")):

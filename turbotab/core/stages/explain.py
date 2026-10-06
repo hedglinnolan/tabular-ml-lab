@@ -5,10 +5,12 @@ refit on all of them (the fit's ``fitted``); under inference every analyzed row 
 refit on them (``every_row``; BLUEPRINT §12 ruling 3), a family with no coefficient table refit on
 them here, as the substitution stage does. Nothing it computes reads a held-out row.
 
-The floor reads each family's cross-validated score against the no-predictor baseline's on the
-same folds (``versus_baseline``), which is how far the fit stage itself says the model generalizes.
-Under inference the stage is an estimate stage (``estimand.ESTIMATE_STAGES``): it is withheld until
-the exposure, its effect and the adjustment set are answered, and its first display locks the plan.
+Under prediction the floor reads each family's cross-validated score against the no-predictor
+baseline's on the same folds (``versus_baseline``), which is how far the fit stage itself says the
+model generalizes. Under inference no cross-validated score is shown (MODELING_SEQUENCE ruling 13;
+§1 row 11), so none is read and no floor is served. The stage is then an estimate stage
+(``estimand.ESTIMATE_STAGES``): it is withheld until the exposure, its effect and the adjustment set
+are answered, and its first display locks the plan.
 """
 from __future__ import annotations
 
@@ -103,12 +105,14 @@ def explain_stage(ctx: StageContext) -> Bundle:
             ctx.progress(0.03, f"{family.label}: refitting on every analyzed row")
             fitted[key] = refit(clone(pipelines[key]), X, y, units)
         m = by_key[key]
-        cv = (m.get("cv") or {}).get(primary) or {}
+        # Under inference no cross-validated score is shown (MODELING_SEQUENCE ruling 13; §1 row
+        # 11): none is read, so no floor gates or quotes one (``models.explain.floor_of``).
+        cv = {} if inference else (m.get("cv") or {}).get(primary) or {}
         families.append(E.FamilyFit(
             key=key, label=family.label, fitted=fitted[key],
             unfitted=pinned_to_full_fit(clone(pipelines[key]), fitted[key]),
-            versus=m.get("versus_baseline"), score=cv.get("estimate"),
-            baseline=(m.get("baseline") or {}).get("value")))
+            versus=None if inference else m.get("versus_baseline"), score=cv.get("estimate"),
+            baseline=None if inference else (m.get("baseline") or {}).get("value")))
     roles = settled_roles(state)
     exposures = [c for c in spec.predictors if roles.get(c) == "exposure"]
     declared: list[str] = []
