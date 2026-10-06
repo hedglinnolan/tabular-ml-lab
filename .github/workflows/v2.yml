@@ -40,7 +40,12 @@ jobs:
 
       - name: Core and server tests
         # The R reference tests skip without Rscript (turbotab/server/requirements-dev-R.txt).
-        run: python -m pytest turbotab/core turbotab/server -q -n 2
+        # On failure, the failing tests become annotations, which anyone can read (logs need admin).
+        run: |
+          python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --junitxml=pytest-report.xml || {
+            python .github/scripts/annotate_failures.py pytest-report.xml
+            exit 1
+          }
 
       - uses: actions/setup-node@v4
         with:
@@ -196,7 +201,20 @@ jobs:
         env:
           TURBOTAB_HOME: ${{ runner.temp }}\turbotab-home
           TURBOTAB_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: call "turbotab\deploy\Start TurboTab.bat" --smoke
+        run: |
+          call "turbotab\deploy\Start TurboTab.bat" --smoke > first-start.log 2>&1
+          set rc=%errorlevel%
+          type first-start.log
+          exit /b %rc%
+
+      - name: Report the first start's failure as annotations
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path first-start.log) {
+            $tail = (Get-Content first-start.log -Tail 40) -join "%0A"
+            Write-Output "::error title=Windows launcher, first start (last 40 lines)::$tail"
+          } else { Write-Output "::error title=Windows launcher::first-start.log was not written" }
 
       - name: Second start (set up already; seconds)
         if: runner.os == 'Windows'
