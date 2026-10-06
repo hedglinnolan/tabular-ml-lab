@@ -38,21 +38,38 @@ guesses"). The exposure's and the outcome's own classes decide it:
   treatment as a binary covariate" is "fundamentally flawed" for a treated quantitative trait, as
   is ignoring the treatment; their remedies (a constant added to treated values, censored normal
   regression) are not built, so the card says so;
-* a clinical measurement of the outcome's own group (HbA1c beside fasting glucose, weight beside
-  BMI): another measure of the outcome, a consequence of it rather than a cause, so the criterion
-  leaves it out (no, no, yes; VanderWeele 2019);
+* a measurement of the outcome's own group taken at the same visit as the outcome (HbA1c beside
+  fasting glucose, HDL beside LDL, weight beside BMI): another measure of the state the outcome
+  measures, so the exposure could have changed it as it could the outcome, and adjusting for it
+  would remove part of the effect. It is a descending proxy for an intermediate in Schisterman's
+  sense, not a cause of the exposure, so the criterion leaves it out (no, no, yes). It is not
+  called a consequence of the outcome: HDL is no consequence of LDL;
+* the same measurement at baseline beside an outcome measured over follow-up (HbA1c beside
+  incident diabetes, blood pressure beside incident hypertension, LDL beside LDL at twelve
+  months): measured before the outcome, it is no consequence of it and can predict it, and it may
+  have changed the diet or been changed by it, so it takes its class's own guess, the declared
+  with-and-without pair (unknown, yes, unknown). Beside a change since baseline, adjusting for the
+  baseline the exposure may have changed can itself bias the analysis (Glymour et al. 2005, *Am J
+  Epidemiol* 162:267–278), so neither model alone is the default;
 * a measurement of the exposure's own group (total cholesterol beside an LDL exposure), or a
   habit of the exposure's own (caffeine beside a coffee exposure): another measure of the exposure;
   the packs have no guess, and it is asked.
+
+**An outcome over follow-up** is a time-to-event outcome, a yes/no outcome whose name says it is
+incident (``incident_diabetes``, ``t2d_onset``, ``new_htn``), or an outcome whose name says it was
+measured at follow-up, as a change since baseline, or at a time since it (``ldl_followup``,
+``hba1c_change``, ``delta_bmi``, ``weight_12m``). The name only leads a guess the user confirms.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 VANDERWEELE = "VanderWeele 2019, Eur J Epidemiol 34:211–219"
 SCHISTERMAN = "Schisterman, Cole & Platt 2009, Epidemiology 20:488"
 TOBIN = "Tobin et al. 2005, Stat Med 24:2911–2935"
+GLYMOUR = "Glymour et al. 2005, Am J Epidemiol 162:267–278"
 PACK08 = "NUTRITION_PACK §08"
 SCHISTERMAN_QUOTE = ("We define overadjustment bias as control for an intermediate variable (or "
                      "a descending proxy for an intermediate variable) on a causal path from "
@@ -118,9 +135,11 @@ GUESSES: dict[str, dict[str, Any]] = {
     "outcome_measure": {
         "label": "Other measures of the outcome",
         "answers": dict(OUTCOME_MEASURE),
-        "reason": "another measure of the outcome, a consequence of it rather than a cause, so the "
-                  "criterion leaves it out",
-        "source": f"{VANDERWEELE} (a cause of neither the exposure nor the outcome is left out)",
+        "reason": "another measure of the state the outcome measures, taken at the same visit: the "
+                  "exposure could have changed it as it could the outcome, and adjusting for it "
+                  "would remove part of the effect, so the criterion leaves it out",
+        "source": f"{SCHISTERMAN} (\"a descending proxy for an intermediate variable\"); "
+                  f"{VANDERWEELE}",
     },
 }
 # The order the card lists the classes in, within a block and between blocks.
@@ -187,6 +206,15 @@ _DISEASE_GROUP = {
     "liver": {"nafld", "masld", "steatosis"},
 }
 _OBESITY = {"obesity", "obese", "overweight"}
+# A yes/no outcome named as new disease over follow-up (``incident_diabetes``, ``t2d_onset``).
+_INCIDENT = {"incident", "incidence", "onset", "new", "developed", "conversion", "converted"}
+# An outcome of any kind named as measured over follow-up, or as a change since baseline
+# (``ldl_followup``, ``weight_fu``, ``hba1c_change``, ``delta_bmi``, ``sbp_endline``), or with a
+# time since baseline (``hba1c_12m``, ``weight_5y``, ``ldl_24wk``). ``v1``, ``t0`` and ``w2`` name
+# an occasion that may be the baseline itself, so they read as nothing.
+_FOLLOW_UP = {"followup", "fu", "change", "changes", "delta", "endline", "final"}
+_SINCE = re.compile(r"^\d+(?:m|mo|mos|mth|mths|month|months|y|yr|yrs|year|years|w|wk|wks|week|"
+                    r"weeks)$")
 
 _MED_WORDS = {"med", "meds", "medication", "medications", "medicine", "medicines", "drug", "drugs",
               "pill", "pills", "rx", "treated", "treatment", "therapy", "use", "user", "users",
@@ -283,8 +311,9 @@ class Pairing:
     exposure_group: str | None
     outcome_cls: str | None
     outcome_group: str | None
-    followed: bool  # an event over follow-up: the covariates were measured at baseline
+    followed: bool  # an outcome over follow-up: the covariates were measured at baseline
     exposure_habit: str | None = None  # a lifestyle exposure's habit (smoking, alcohol, …)
+    task: str | None = None
 
     @property
     def when(self) -> str:
@@ -304,9 +333,27 @@ def pairing_of(state: Any) -> Pairing:
         e_cls, e_group = "dietary", None  # an exposure family: nutrients or features in turn
     o_cls, o_group = _measured_group(outcome) if outcome else (None, None)
     habit = read_name(exposure) if exposure and e_cls == "lifestyle" else None
-    return Pairing(exposure, outcome, e_cls, e_group, o_cls, o_group,
-                   _get(state, "task") == "time_to_event",
-                   habit.what if habit is not None else None)
+    task = _get(state, "task")
+    return Pairing(exposure, outcome, e_cls, e_group, o_cls, o_group, followed(outcome, task),
+                   habit.what if habit is not None else None, task)
+
+
+def followed(outcome: Any, task: Any) -> bool:
+    """The outcome was measured over follow-up, so the covariates were measured at baseline, before
+    it: a time to event, a yes/no outcome whose name says it is incident, or an outcome whose name
+    says it was measured at follow-up, as a change since baseline, or at a time since it. A name
+    only leads the guess the user confirms (BLUEPRINT §14)."""
+    from turbotab.core.recognizers import tokens
+
+    if task == "time_to_event":
+        return True
+    if outcome is None:
+        return False
+    words = tokens(str(outcome))
+    if task == "binary" and set(words) & _INCIDENT:
+        return True
+    return (bool(set(words) & _FOLLOW_UP) or {"follow", "up"} <= set(words)
+            or any(_SINCE.match(w) for w in words))
 
 
 @dataclass(frozen=True)
@@ -359,10 +406,31 @@ def guess(column: str, state: Any, pairing: Pairing | None = None) -> Guess | No
     if found.cls in ("body", "clinical"):
         what = ("body size or composition" if found.cls == "body"
                 else f"a clinical measurement ({found.group})")
+        kind = "body size" if found.cls == "body" else found.group
+        if same_outcome and p.followed:
+            # A baseline level of the outcome's own kind beside an outcome measured over follow-up
+            # (HbA1c beside incident diabetes, LDL beside LDL at twelve months): before the
+            # outcome, so no consequence of it, and it can predict it. The pack's row for a
+            # measurement taken with the exposure applies.
+            event = p.task in ("time_to_event", "binary")
+            later = "the event" if event else "the outcome's measurement"
+            change = (f"{GLYMOUR} (adjusting for a baseline the exposure may have changed can bias "
+                      f"an analysis of change); ")
+            return made(found.cls, f"{what}, a baseline level of the outcome's own kind",
+                        f"a level of the outcome {_tick(p.outcome)}'s own kind ({kind}) {p.when}, "
+                        f"so before {later}: no consequence of the "
+                        f"{'event' if event else 'outcome'}, and it can predict it; it may have "
+                        f"changed the diet (a confounder) or been changed by it (a mediator), so "
+                        f"the estimate is declared without it and, beside, with it",
+                        f"{PACK08} (a measurement taken with the exposure: unknown, yes, unknown); "
+                        f"{SCHISTERMAN}; {'' if event else change}MODELING_SEQUENCE §1 step 3 "
+                        f"(unknown timing: a declared with-and-without pair)")
         if same_outcome:
             return made("outcome_measure", f"{what}, the outcome's own kind",
-                        f"another measure of the outcome {_tick(p.outcome)} ({found.group}), a "
-                        f"consequence of it rather than a cause, so the criterion leaves it out")
+                        f"another measure of the outcome {_tick(p.outcome)}'s own kind ({kind}), "
+                        f"{p.when}: it measures the state the outcome measures, so the exposure "
+                        f"could have changed it as it could the outcome, and adjusting for it "
+                        f"would remove part of the effect; the criterion leaves it out")
         if same_exposure:
             return None  # another measure of the exposure: no guess, it is asked
         if found.cls == "body":
@@ -391,6 +459,24 @@ def guess(column: str, state: Any, pairing: Pairing | None = None) -> Guess | No
                 f"estimate is declared without it and, beside, with it")
 
 
-__all__ = ["CLASS_ORDER", "DIETARY", "GUESSES", "Guess", "OUTCOME_MEASURE", "PRE_EXPOSURE",
-           "Pairing", "Reading", "SCHISTERMAN", "SCHISTERMAN_QUOTE", "TIMING_UNKNOWN", "TOBIN",
-           "TOBIN_QUOTE", "guess", "pairing_of", "read_name"]
+def outcome_measures(answers: Mapping[str, Any], state: Any) -> list[str]:
+    """The covariates whose answers take the packs' guess "another measure of the outcome's own
+    kind" under the state's pairing (the three answers equal to it, the guess the card showed), so
+    the record says what the card said rather than the criterion's generic "consequence of the
+    exposure". Each is the user's answer; the name only says which guess it agreed with."""
+    pairing = pairing_of(state)
+    out = []
+    for column, a in answers.items():
+        given = {k: (a.get(k) if isinstance(a, Mapping) else getattr(a, k, None))
+                 for k in OUTCOME_MEASURE}
+        if given != OUTCOME_MEASURE:
+            continue
+        found = guess(column, state, pairing)
+        if found is not None and found.key == "outcome_measure":
+            out.append(str(column))
+    return out
+
+
+__all__ = ["CLASS_ORDER", "DIETARY", "GLYMOUR", "GUESSES", "Guess", "OUTCOME_MEASURE",
+           "PRE_EXPOSURE", "Pairing", "Reading", "SCHISTERMAN", "SCHISTERMAN_QUOTE", "TIMING_UNKNOWN", "TOBIN",
+           "TOBIN_QUOTE", "followed", "guess", "outcome_measures", "pairing_of", "read_name"]

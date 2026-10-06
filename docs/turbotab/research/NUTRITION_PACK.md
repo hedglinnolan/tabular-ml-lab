@@ -892,7 +892,8 @@ The guess depends on what the exposure and the outcome are (`turbotab/core/covar
 | Body size and composition | diet or a biomarker → a clinical measurement or an event | unknown, yes, unknown | declared without it and, beside, with it (Model 3) |
 | Clinical measurements (lipids, CRP, HbA1c, liver and kidney markers, blood pressure) | diet → another measurement, or an event; measured with the exposure | unknown, yes, unknown | declared without it and, beside, with it |
 | Medications (statins, antihypertensives, glucose-lowering) | any; measured with the exposure | unknown, yes, unknown | declared without it and, beside, with it |
-| A measurement of the outcome's own group (HbA1c beside fasting glucose; weight beside BMI) | that outcome | no, no, yes | another measure of the outcome, left out |
+| A measurement of the outcome's own group (HbA1c beside fasting glucose; HDL beside LDL; weight beside BMI) | that outcome, measured at the same visit | no, no, yes | another measure of the outcome's own kind, left out |
+| The same measurement at baseline (HbA1c beside incident diabetes; blood pressure beside incident hypertension; LDL beside LDL at twelve months) | an outcome over follow-up (a time to event, a yes/no outcome named incident, or a measurement named as taken at follow-up, as a change, or at a time since baseline) | unknown, yes, unknown | declared without it and, beside, with it, as its class's row |
 | A measurement of the exposure's own group, or a habit of the exposure's own (caffeine beside coffee) | that exposure | no guess | asked |
 
 **[CONVENTION]** for the nested models the first three rows follow (this section's Presentation).
@@ -906,8 +907,17 @@ Med* 24:2911–2935) found three common analyses of a treated quantitative trait
 flawed", among them *"(ii) fitting a conventional regression model with treatment as a binary
 covariate"* and ignoring the treatment; they recommend adding a sensible constant to treated values
 or a censored normal regression, which the app does not build yet, so the card says so beside the
-pair. **[SETTLED]** that another measure of the outcome is left out: the criterion adjusts for causes
-of the exposure or the outcome (VanderWeele 2019), and a consequence of the outcome is neither.
+pair. **[SETTLED]** that another measure of the outcome's own kind, taken at the same visit, is left
+out: it measures the state the outcome measures, so the exposure could have changed it as it could
+the outcome, and adjusting for it is the overadjustment Schisterman, Cole & Platt (2009) define,
+control for "a descending proxy for an intermediate variable"; it is no cause of the exposure, so
+the criterion (VanderWeele 2019) does not keep it. It is not a consequence of the outcome (HDL is no
+consequence of LDL), and the card and the record say "another measure of the outcome's own kind",
+never "a possible collider". At baseline beside an outcome over follow-up it is measured before the
+outcome, no consequence of it, and a predictor of it, so it takes its class's with-and-without pair;
+beside a change since baseline, Glymour et al. (2005, *Am J Epidemiol* 162:267–278) show that
+adjusting for a baseline the exposure may have changed can bias an analysis of change, so neither
+model alone is the default.
 
 ### Anti-patterns
 

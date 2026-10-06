@@ -12,21 +12,30 @@ question is asked of **any column that can structurally group rows**:
 * its values repeat: more than :data:`GROUPING_LEVELS` distinct values, and at least
   :data:`GROUPING_ROWS` rows on the median value and on average (several rows per level);
 * they are labels: text, or whole numbers (a value with decimals is a measurement);
-* the packs read no characteristic or measured quantity in its name (an age, a sex, an income, a
-  blood pressure, minutes of activity: :mod:`turbotab.core.covariate_guesses`);
-* and, for whole numbers whose name reads as no grouping, the counts do not fall away from the
-  middle of the values as a measured quantity's distribution does (:func:`profile`: Spearman's ρ
-  between each value's count and its distance from the median, at most
-  :data:`MEASUREMENT_PROFILE`); under an assay's lens the numbers are its measured features (a
-  gene's counts, a metabolite's intensities), so only a grouping's name asks about one.
+* and the packs read no characteristic or measured quantity in its name (an age, a sex, an income,
+  a blood pressure, minutes of activity: :mod:`turbotab.core.covariate_guesses`) **unless** the
+  name also reads as a grouping (``alcohol_clinic``, ``coffee_shop_id``): such a name reads both
+  ways, so it is asked, and its values lead the guess. Under an assay's lens the numbers are its
+  measured features (a gene's counts, a metabolite's intensities), so only a grouping's name asks
+  about one.
+
+No value test scopes a column out (BLUEPRINT §14.3: a test that cannot reject the grouping
+alternative must not change the intervals without a question). Whole numbers whose counts fall
+away from the middle of the values, as a measured quantity's distribution does (:func:`profile`:
+Spearman's ρ between each value's count and its distance from the median, at most
+:data:`MEASUREMENT_PROFILE`), are still asked, with the guess "no": a grouping's sizes fall that way
+by chance often enough (about one random labeling in fifty, in the LEASH verifier's simulation)
+that dropping them clustered nothing where clustering belonged (the verifier's seed 99: an HC3
+standard error of 0.052 where R clubSandwich's CR2 gives 0.117).
 
 Names never settle anything here (BLUEPRINT §14): a name that reads as a grouping adds the
-question, and one that reads as a measured quantity scopes it out, but whether rows sharing a value
-belong together is only ever the user's answer (the ``cluster`` reading,
-``readings.cluster_reading``). The question shows a guess for each column: it **groups the
-participants** (a name that reads as a grouping or an identifier, codes with digits, whole numbers
-whose counts follow no order), or it is **a category with many labels** (words, such as country of
-birth). A sex, an education level, or any category of ten values or fewer never triggers it.
+question, and one that reads as a measured quantity alone scopes it out, but whether rows sharing a
+value belong together is only ever the user's answer (the ``cluster`` reading,
+``readings.cluster_reading``). The question shows a guess for each column, and what it rests on
+(``by``: its name, or its values): it **groups the participants** (a name that reads as a grouping
+or an identifier, codes with digits, whole numbers whose counts follow no order), or **no** (words,
+a category with many labels such as country of birth; whole numbers shaped as a measurement). A
+sex, an education level, or any category of ten values or fewer never triggers it.
 """
 from __future__ import annotations
 
@@ -67,11 +76,18 @@ def named_grouping(name: Any) -> bool:
 
 def measured_name(name: Any) -> bool:
     """The packs read a measured quantity in the name (a characteristic, a clinical measurement,
-    a body measure, a lifestyle amount, a nutrient): its whole numbers are no group's labels."""
+    a body measure, a lifestyle amount, a nutrient). Alone it scopes the column out; beside a
+    grouping's name (``alcohol_clinic``) the name reads both ways and the column is asked."""
+    return measured_as(name) is not None
+
+
+def measured_as(name: Any) -> str | None:
+    """What the packs read the name as when it is a measured quantity (``"lifestyle"``,
+    ``"clinical"``, …), or None."""
     from turbotab.core.covariate_guesses import read_name
 
     found = read_name(name)
-    return found is not None and found.cls != "medication"
+    return None if found is None or found.cls == "medication" else found.cls
 
 
 def profile(values: Any) -> float | None:
@@ -155,27 +171,43 @@ def structural_facts(store: Any, columns: Sequence[Mapping[str, Any]], *,
     return out
 
 
-def guess_of(fact: Mapping[str, Any]) -> tuple[str, str] | None:
+_MEASURED_WORDS = {"demographic": "a characteristic", "lifestyle": "a lifestyle habit",
+                   "dietary": "a nutrient", "body": "a body measure",
+                   "clinical": "a clinical measurement"}
+
+
+def guess_of(fact: Mapping[str, Any]) -> tuple[str, str, str] | None:
     """The guess the question shows for one structural candidate (``yes``: it groups the
-    participants; ``no``: a category with many labels) and its evidence, or None when the column
-    is no candidate at all (whole numbers read as a measurement)."""
+    participants; ``no``: a category with many labels, or whole numbers shaped as a measurement),
+    its evidence, and what the guess rests on (``name`` or ``values``); None only when the packs
+    read a characteristic or a measured quantity in a name that reads as no grouping (an age, a
+    sex, a blood pressure). No value test scopes a column out (BLUEPRINT §14.3)."""
     column = str(fact["column"])
     levels, median = int(fact["levels"]), float(fact["median_rows"])
     shape = f"`{levels:,}` values, `{median:g}` rows on the median one"
-    if measured_name(column):
+    measured = measured_as(column)
+    named = bool(fact.get("named"))
+    if measured is not None and not named:
         return None  # the packs read a characteristic or a measured quantity (age, sex, income)
-    if fact.get("named"):
-        return "yes", f"named like a group of participants or an identifier, and {shape}"
+    if named and measured is None:
+        return "yes", f"named like a group of participants or an identifier, and {shape}", "name"
+    # The name reads as a grouping and as a measured quantity (``alcohol_clinic``), or as neither:
+    # its values lead the guess.
+    lead = (f"named like a group of participants and like {_MEASURED_WORDS[measured]}, so its "
+            f"values lead the guess: " if named and measured is not None else "")
     kind = fact.get("kind")
     if kind == "codes":
-        return "yes", f"codes written with digits that repeat: {shape}"
+        return "yes", f"{lead}codes written with digits that repeat: {shape}", "values"
     if kind == "words":
-        return "no", f"words that repeat, as a category with many labels does: {shape}"
+        return "no", f"{lead}words that repeat, as a category with many labels does: {shape}", \
+            "values"
     rho = fact.get("profile")
     if rho is not None and rho <= MEASUREMENT_PROFILE:
-        return None  # the counts fall away from the middle: a measured quantity
+        return "no", (f"{lead}whole numbers whose counts fall away from the middle as a measured "
+                      f"quantity's do (ρ = {rho:.2f}), though a grouping's sizes can fall so by "
+                      f"chance: {shape}"), "values"
     said = f"their counts follow no order (ρ = {rho:.2f})" if rho is not None else "few values"
-    return "yes", f"whole numbers that repeat as labels do, {said}: {shape}"
+    return "yes", f"{lead}whole numbers that repeat as labels do, {said}: {shape}", "values"
 
 
 def candidates(state: Any, roles: Any) -> list[dict[str, Any]]:
@@ -219,10 +251,11 @@ def candidates(state: Any, roles: Any) -> list[dict[str, Any]]:
         found = guess_of(fact)
         if found is None:
             continue
-        out.append({"column": column, "guess": found[0], "why": found[1], "structural": True})
+        out.append({"column": column, "guess": found[0], "why": found[1], "by": found[2],
+                    "structural": True})
     return out
 
 
 __all__ = ["GROUPING_LEVELS", "GROUPING_ROWS", "GROUP_WORDS", "MEASUREMENT_PROFILE",
-           "candidates", "guess_of", "measured_name", "named_grouping", "profile",
+           "candidates", "guess_of", "measured_as", "measured_name", "named_grouping", "profile",
            "structural_facts"]

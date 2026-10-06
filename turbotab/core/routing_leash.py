@@ -90,9 +90,19 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
                       "the primary leaves it out and the declared secondary adds it (Model 3)",
                       "turbotab.core.covariate_guesses:guess"),
             _relation("guess-outcome-measure-out", "implies", "left out",
-                      "a clinical measurement of the outcome's own group (HbA1c beside glucose)",
-                      "another measure of the outcome is a consequence of it, so the criterion "
-                      "leaves it out", "turbotab.core.covariate_guesses:guess"),
+                      "a measurement of the outcome's own group taken at the same visit (HbA1c "
+                      "beside glucose, HDL beside LDL)",
+                      "it measures the state the outcome measures, so the criterion leaves it "
+                      "out, and the card and the record call it another measure of the outcome's "
+                      "own kind, never a consequence of the outcome or a possible collider",
+                      "turbotab.core.covariate_guesses:guess"),
+            _relation("guess-baseline-outcome-kind-pair", "implies", "the with-and-without pair",
+                      "a baseline measurement of the outcome's own group beside an outcome over "
+                      "follow-up (HbA1c beside incident diabetes, blood pressure beside incident "
+                      "hypertension, LDL beside LDL at twelve months)",
+                      "measured before the outcome it is no consequence of it, so it takes its "
+                      "class's guess: declared without it and, beside, with it",
+                      "turbotab.core.covariate_guesses:guess"),
             _relation("block-settles-listed", "implies", "exactly the listed covariates",
                       "a block's tap or a multi-select answer",
                       "the answer settles exactly the columns it lists, never another",
@@ -147,8 +157,11 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
         relations=(
             _relation("structure-asks", "implies", "the grouping question",
                       "a column with more than ten repeating values and several rows on each, "
-                      "under inference, whatever its name",
-                      "the grouping question is asked of it, with its guess",
+                      "under inference, whatever its name or the shape of its counts (a "
+                      "measurement's shape turns the guess to no; a measured word beside a "
+                      "grouping word lets the values lead)",
+                      "the grouping question is asked of it, with its guess; only a name read as a "
+                      "measured quantity and no grouping scopes a column out",
                       "turbotab.core.groupings:candidates"),
             _relation("grouping-implies-cr2", "implies", "cluster-robust intervals",
                       "a grouping answered under inference",
@@ -156,9 +169,13 @@ CONTRACTS = tuple(contracts.register_contract(c) for c in (
                       "turbotab.core.models.inference:resolve_clusters"),
             _relation("none-over-grouping", "conflicts", "independent intervals over a grouping",
                       "\"nothing groups them\" over a column guessed to group the participants",
-                      "blocked and recorded: the exits adjust and cluster, or record the answer",
+                      "blocked and recorded: the exits adjust and cluster, say that a column "
+                      "guessed from its values alone marks no group (its reading confirmed no), "
+                      "or record the answer",
                       "turbotab.core.estimand:_no_grouping_is_recorded", rung="block_and_record",
-                      exits=("adjust for it and cluster by it", "record that they group nothing")),
+                      exits=("adjust for it and cluster by it",
+                             "a column guessed from its values alone marks no group",
+                             "record that they group nothing")),
         ),
         sources=("MODELING_SEQUENCE §2", "Bell & McCaffrey 2002, Surv Methodol 28:169")),
     _contract(
