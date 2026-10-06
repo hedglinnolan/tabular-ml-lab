@@ -65,6 +65,33 @@ def machine() -> None:
     say("diag machine", lines)
 
 
+def wp7_elastic_net() -> None:
+    import json
+
+    from turbotab.core.stages.modeling import design_stage, fit_stage
+    from turbotab.core.tests import modeling_fixtures as mf
+    from turbotab.core.tests.acceptance import test_wp7_missing_data as T
+
+    reference = json.loads(T.REFERENCE.read_text())["configs"]
+    frame = T.prediction_fixture()
+    paths = mf.ingest_frame(frame, Path(tempfile.mkdtemp()))
+    split = mf.split_bundle(np.arange(len(frame)), seed=707)
+    ti = mf.target_info("regression")
+    lines = []
+    for name, slots in T.PREDICTION_CONFIGS.items():
+        st = mf.state(**slots)
+        design = design_stage(mf.context(st, {"split": split, "target_info": ti}, paths))
+        fit = fit_stage(mf.context(st, {"design": design, "split": split, "target_info": ti}, paths))
+        m = next(m for m in fit.data["models"] if m["family"] == "elastic_net")
+        for metric, ref in reference[name]["elastic_net"]["cv"].items():
+            got = m["cv"][metric]["estimate"]
+            lines.append(f"{name} {metric} ref {ref['estimate']:.6g} [{ref['ci_low']:.6g}, "
+                         f"{ref['ci_high']:.6g}] now {got:.6g} diff {got - ref['estimate']:+.3g}")
+        model = fit.objects["fitted"]["elastic_net"][-1]
+        lines.append(f"{name} alpha_ {model.alpha_:.6g} l1_ratio_ {model.l1_ratio_:.3g}")
+    say("diag wp7 elastic net", lines)
+
+
 if __name__ == "__main__":
     machine()
-    explain_regression()
+    wp7_elastic_net()
