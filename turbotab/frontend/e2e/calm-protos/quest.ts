@@ -2,8 +2,8 @@
  * The quest log (calm.html#/quest): its walk from the first draft to the locked Table 2 and what
  * mattered. Each objective the card holds is answered and continued; the objective line's counts
  * fill as it goes. Once Participants is done, the walk does what the quest log is for: it opens
- * the section's objectives from the line, reopens a recorded one on the card, and comes back to
- * the open slot with "Next objective". No request reaches /api/ on the way.
+ * the section's objectives from the line, reopens an answered one on the card, and comes back to
+ * the open question with "Next objective". No request reaches /api/ on the way.
  */
 import { expect } from "@playwright/test";
 import { SCENARIO, proceed, watchApi } from "./scenario";
@@ -20,12 +20,18 @@ export const walker: Walker = {
     await expect(page.getByTestId("count-participants")).toHaveText("0 of 2");
     for (const [step, option] of SCENARIO) {
       await expect(card).toHaveAttribute("data-step", step);
+      // The card speaks the kit's plain stage label, as in the other three structures.
+      if (step === "effect") await expect(card).toContainText("Exposure · step 2 of 3");
       await page.getByTestId(`opt-${option}`).click();
       await proceed(page).click();
       if (step === "sensitivity") {
         await expect(page.getByTestId("count-participants")).toHaveText("2 of 2");
         await expect(page.getByTestId("next-objective")).toHaveCount(0);
         await page.getByTestId("section-participants").click();
+        // Each objective is named by its question, in the card's words.
+        await expect(page.getByTestId("objective-exclusions")).toHaveText(
+          "Should people with implausible energy intakes be removed?",
+        );
         await page.getByTestId("objective-exclusions").click();
         await expect(card).toHaveAttribute("data-step", "exclusions");
         await expect(page.getByTestId("opt-none").locator("input")).toBeChecked();

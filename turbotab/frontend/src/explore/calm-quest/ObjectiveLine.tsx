@@ -1,21 +1,21 @@
 /**
  * The objective line: the quest log's interface, where the kit puts its chain. The methods
- * section's guideline sections in order, each with how many of its objectives are recorded; the
- * one the card is on is marked as the chain marks its stage. Choosing a section discloses its
- * objectives beneath it (recorded ones marked, the open one ready, later ones waiting); choosing
- * one opens it on the card. "Next objective" returns the card to the open slot. The look is the
- * chain's own (kit.module.css); quest.module.css only places it.
+ * section's sections in order, each with how many of its questions (its objectives) are answered;
+ * the one the card is on is marked as the chain marks its stage. Choosing a section discloses its
+ * objectives beneath it, each named by its question (answered ones marked, the open one ready,
+ * later ones waiting); choosing one opens it on the card. "Next objective" returns the card to the
+ * open question. The look is the chain's own (kit.module.css); quest.module.css only places it.
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { kit as k, type SectionId, type WalkApi } from "../calm-kit";
 import { nextObjective, questSections, type QuestSection } from "./objectives";
 import q from "./quest.module.css";
 
+/** The disclosure's widest (quest.module.css .menu): the card column's. */
+const MENU = 420;
+
 export function ObjectiveLine({ walk }: { walk: WalkApi }) {
-  const sections = useMemo(
-    () => questSections(walk.manuscript, walk.state.open),
-    [walk.manuscript, walk.state.open],
-  );
+  const sections = useMemo(() => questSections(walk.state), [walk.state]);
   const [shown, setShown] = useState<{ id: SectionId; left: number } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const buttons = useRef<Partial<Record<SectionId, HTMLButtonElement | null>>>({});
@@ -54,8 +54,8 @@ export function ObjectiveLine({ walk }: { walk: WalkApi }) {
     const b = buttons.current[sec.id];
     const box = wrap.current?.getBoundingClientRect();
     const at = b && box ? b.getBoundingClientRect().left - box.left : 0;
-    // Keep the disclosure inside the line: it is at most 380 px wide.
-    const left = box ? Math.max(0, Math.min(at, box.width - Math.min(380, box.width))) : 0;
+    // Keep the disclosure inside the line: it is at most MENU px wide.
+    const left = box ? Math.max(0, Math.min(at, box.width - Math.min(MENU, box.width))) : 0;
     setShown({ id: sec.id, left });
   };
 
@@ -118,9 +118,7 @@ export function ObjectiveLine({ walk }: { walk: WalkApi }) {
           style={{ left: shown!.left }}
           data-testid={`objectives-${open.id}`}
         >
-          <p className={q.menuHead}>
-            {open.title} <small>{open.item}</small>
-          </p>
+          <p className={q.menuHead}>{open.title}</p>
           <ul className={q.items} aria-label={`${open.title}: its objectives`}>
             {open.objectives.map((o) => (
               <li key={o.id}>
