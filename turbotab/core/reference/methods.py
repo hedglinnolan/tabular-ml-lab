@@ -225,6 +225,23 @@ def relation_rows(relations: Iterable[Any]) -> list[str]:
     return lines
 
 
+def data_ranked(key: str) -> list[str]:
+    """Where the app ranks ``key``'s options by the data, what it offers first under each condition
+    (``defaults``: computed by the app's own ranking code), as Markdown lines; empty where the
+    registry's rank holds."""
+    from turbotab.core.reference import defaults
+
+    lines: list[str] = []
+    for p in PURPOSES:
+        for case in defaults.cases(key, p) or []:
+            lines.append(f"- Under {p}, {case.when}: {case.first}")
+    if not lines:
+        return []
+    return ["**Ranked by the data:** the app offers these options in another order than the "
+            "rank above where the data decide it; what it offers first under each condition:", "",
+            *lines, ""]
+
+
 def lens_words(lenses: Sequence[str]) -> str:
     if catalog.SHARED in lenses:
         return "every lens (shared)"
@@ -252,9 +269,14 @@ def contract_section(c: Any, level: int = 3) -> list[str]:
     else:
         facts.append("- **Needs:** nothing declared.")
     facts.append(f"- **Question:** {question_words(c)}")
+    if c.key in catalog.NOT_ASKED:
+        facts.append(f"- **Asked:** never, so never applied from the app. "
+                     f"{catalog.NOT_ASKED[c.key]}")
     asked = []
-    if c.decision:
-        asked.append(f"recorded by `{c.decision}`")
+    kind = catalog.recorded_by(c)
+    if kind:
+        asked.append(f"recorded by `{kind}`"
+                     + ("" if c.decision else " (the contract does not name it)"))
     if c.stage:
         asked.append(f"run by the `{c.stage}` stage")
     if c.place:
@@ -269,7 +291,9 @@ def contract_section(c: Any, level: int = 3) -> list[str]:
     lines += facts + ["", "**Options**, each labeled customary and sound for each purpose, with "
                           "its leash rung and its rank (1 is offered first):", ""]
     lines += option_table(c)
-    lines += ["", "**Storyboard** (the transform player's real steps):", ""]
+    lines.append("")
+    lines += data_ranked(c.key)
+    lines += ["**Storyboard** (the transform player's real steps):", ""]
     lines += [f"{i}. {step}" for i, step in enumerate(c.storyboard, 1)] or ["None declared."]
     lines += ["", "**Methods sentence:**", ""]
     lines += [f"- {s}" for s in sentence_words(c)]
@@ -318,9 +342,63 @@ def family_section(f: Any, level: int = 3) -> list[str]:
 
 
 def labeled_questions() -> list[tuple[str, str]]:
-    """``(question, words)`` for each question ``custom_sound`` labels."""
+    """``(question, words)`` for each question whose options are labeled outside the registry:
+    the four ``custom_sound`` labels, and the causal lane's (``causal.options``)."""
     return [("energy_adjustment", "the energy model"), ("exclusions", "the eligibility screens"),
-            ("missing", "missing values"), ("split", "the split and the validation")]
+            ("missing", "missing values"), ("split", "the split and the validation"),
+            ("causal", "the causal lane's estimator")]
+
+
+def question_section(question: str, title: str, level: int = 3) -> list[str]:
+    """A labeled question's options, soundest first, with both labels."""
+    if question == "causal":
+        return causal_section(title, level)
+    return custom_sound_section(question, title, level)
+
+
+def question_first(question: str, purpose: str) -> tuple[str, str, str] | None:
+    """(key, verdict, reason) of the option a labeled question ranks first for ``purpose`` with no
+    data in front of it; None where it is not asked under ``purpose``."""
+    if question == "causal":
+        if purpose != "inference":
+            return None
+        from turbotab.core.causal import STATED
+
+        return "none", "stated", f"Stated, not asked: {STATED}"
+    from turbotab.core import custom_sound
+
+    first = custom_sound.labels_for(question, purpose).options[0]
+    return first.key, first.sound.verdict, first.sound.reason
+
+
+def causal_section(title: str, level: int = 3) -> list[str]:
+    """The causal lane's question (``turbotab/core/causal.py``): stated, never asked by default,
+    and its estimators' order under each condition the lane ranks by (``defaults``)."""
+    from turbotab.core.causal import STATED, plan_reason
+    from turbotab.core.reference import defaults
+
+    h = "#" * level
+    lines = [f"{h} {title[:1].upper()}{title[1:]} (`causal`)", "",
+             "Under **prediction** it is not asked (`causal.plan_reason`): "
+             f"“{plan_reason({'purpose': 'prediction'})}”", "",
+             "Under **inference** it is stated, never asked by default (`causal.causal_gate`): "
+             f"“{STATED}” The primary model only (`none`) is the declared analysis; “Ask me "
+             "anyway” opens the lane, whose estimators are each a method contract (`dml_plr`, "
+             "`dml_irm`, `tmle`, `pds_lasso`) recorded by `set_causal`. Its options are labeled "
+             "in `causal.options`, outside the registry, and ranked by the exposure's kind, the "
+             "outcome, how many candidate terms there are for n (more than one per 10 of the "
+             "limiting sample size), and the survey answer. Soundest first under each condition:",
+             "", "| When | Rank | Option | Customary (field: text, source) | Sound | Reason |",
+             "|---|---|---|---|---|---|"]
+    for when, ranked in defaults.causal_rankings():
+        for i, o in enumerate(ranked, 1):
+            lines.append(f"| {cell(when) if i == 1 else ''} | {i} | `{o.key}`: {cell(o.label)} | "
+                         f"{cell(o.customary.field)}: {cell(o.customary.text)} "
+                         f"({cell(o.customary.source)}) | {o.sound.verdict} | "
+                         f"{cell(o.sound.reason)} |")
+    lines.append("")
+    lines += data_ranked("causal")
+    return lines
 
 
 def custom_sound_section(question: str, title: str, level: int = 3) -> list[str]:
@@ -339,6 +417,7 @@ def custom_sound_section(question: str, title: str, level: int = 3) -> list[str]
                          f"{cell(o.customary.text)} ({cell(o.customary.source)}) | "
                          f"{o.sound.verdict} | {cell(o.sound.reason)} |")
         lines.append("")
+    lines += data_ranked(question)
     return lines
 
 
@@ -346,8 +425,8 @@ def custom_sound_section(question: str, title: str, level: int = 3) -> list[str]
 
 
 def gap_rows(gaps: Sequence[catalog.Gap]) -> list[str]:
-    lines = ["| Method | V2 row | Lenses | Recorded by | Implemented in | Labels | Contracts "
-             "covering part of it | Note |", "|---|---|---|---|---|---|---|---|"]
+    lines = ["| Method | Where v2 offers it | Lenses | Recorded by | Implemented in | Labels | "
+             "Contracts covering part of it | Note |", "|---|---|---|---|---|---|---|---|"]
     for g in gaps:
         lines.append("| " + " | ".join([
             cell(g.name), cell(g.row), lens_words(g.lenses),
@@ -376,19 +455,26 @@ def render() -> str:
         "`turbotab/core/tests/test_reference.py` regenerates it and fails when this copy is "
         "stale.*", "",
         f"It covers {len(contracts)} method contracts, {len(fams)} model families, "
-        f"{len(questions)} questions whose options are labeled outside the registry, and "
-        f"{len(catalog.GAPS)} methods v2 offers that have no contract yet.", "",
+        f"{len(questions)} questions whose options are labeled outside the registry, "
+        f"{len(catalog.GAPS)} methods v2 offers that have no contract yet, and the "
+        f"{len(catalog.NOT_METHODS)} decisions that record no method.", "",
         "## How to read an entry", "",
         "- **Slot**: where the method runs. Ingest, repairs, reshape and eligibility come before "
         "the seal; in-fold steps are fit on training rows only; then the model and its "
         "evaluation.",
         "- **Data scope**: what the method may learn from. Lockbox constitution §06 decides it: "
-        "does row *i*'s output depend on other rows, or on the outcome? The acceptance suite "
-        "holds each declared scope to the scope a perturbation test observes "
-        "(`contracts.observed_scope`).",
+        "does row *i*'s output depend on other rows, or on the outcome? Where an acceptance "
+        "test perturbs a method's rows or outcome, it holds the declared scope to the scope it "
+        "observes (`contracts.observed_scope`); not every contract has such a test yet.",
         "- **Options**: each option carries two independent labels (North star 5): *customary* "
         "(where the field uses it, with a source) and *sound* for each purpose (with the reason). "
-        "The rank is the order the app offers them in for that purpose, soundest first.",
+        "The rank is the registry's order for that purpose, soundest first. Where the app ranks "
+        "the options again on the data in front of it (the outcome's event share, the number of "
+        "units, time order, the data's kind, what can run on the table, a failed check), the entry "
+        "says what it offers first under each condition, computed by the app's own ranking code "
+        "(`turbotab/core/reference/defaults.py`).",
+        "- **Asked**: a method no Router question, card or control asks says so; from the app it "
+        "is never applied, whatever its rank.",
         "- **Rungs** (BLUEPRINT §11.3, the leash): " + "; ".join(
             f"*{v}* (`{k}`)" for k, v in RUNG_WORDS.items()) + ".",
         "- **Relations** (BLUEPRINT §13): " + "; ".join(
@@ -401,7 +487,7 @@ def render() -> str:
     for c in contracts:
         lines.append(f"| [{cell(c.label)}](#{anchor(c.label, c.key)}) | `{c.key}` | {c.slot} | "
                      f"{c.scope} | {lens_words(catalog.lenses_of_contract(c.key))} | "
-                     f"{code(c.decision) or 'not declared'} |")
+                     f"{code(catalog.recorded_by(c)) or 'not declared'} |")
     lines += ["", "## Method contracts", "",
               "In run order: by slot, then the method's place in it (MODELING_SEQUENCE §1.1).", ""]
     for c in contracts:
@@ -415,15 +501,24 @@ def render() -> str:
         lines += family_section(f)
     lines += ["## Questions labeled outside the contract registry", "",
               "These questions' options carry the customary and sound labels "
-              "(`turbotab/core/custom_sound.py`) but are not method contracts; each is listed "
-              "again under the gaps.", ""]
+              "(`turbotab/core/custom_sound.py`, and the causal lane's in `turbotab/core/causal.py`) "
+              "but are not method contracts; the first four are listed again under the gaps, and "
+              "the causal lane's estimators are each a contract above.", ""]
     for question, title in questions:
-        lines += custom_sound_section(question, title)
+        lines += question_section(question, title)
     lines += ["## Gaps: methods with no contract entry", "",
-              "Each method V2_DEFINITION_OF_DONE §2 lists for which no contract declares a slot, "
-              "a scope, options labeled per purpose, a leash, a storyboard, a sentence and "
+              "Each method v2 offers (V2_DEFINITION_OF_DONE §2 lists it, or a question the Router "
+              "asks records it and the export writes its sentence) for which no contract declares "
+              "a slot, a scope, options labeled per purpose, a leash, a storyboard, a sentence and "
               "relations. The code named implements it; the contract is what is missing.", ""]
     lines += gap_rows(catalog.GAPS)
+    lines += ["", "## Decisions that record no method", "",
+              "Every other decision kind the decision log accepts records a contract's method "
+              "(its `decision`, or one it records without naming it: "
+              + ", ".join(f"`{k}` for `{v}`" for k, v in catalog.UNDECLARED_DECISIONS.items())
+              + ") or a gap above. These record none:", "",
+              "| Decision | Why it is not a method |", "|---|---|"]
+    lines += [f"| `{k}` | {cell(v)} |" for k, v in catalog.NOT_METHODS.items()]
     lines.append("")
     return "\n".join(lines)
 

@@ -59,7 +59,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Literal, Mapping, Sequence
+from typing import Any, Callable, Literal, Mapping, NamedTuple, Sequence
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
@@ -812,6 +812,41 @@ def outcome_counts(task: str | None, labels: Any, event: Any = None) -> list[int
     return [events, len(keys) - events]
 
 
+class SplitOffer(NamedTuple):
+    """The split question's options in the order the seal plan offers them (:func:`split_offer`)."""
+
+    options: list[HoldoutOption]
+    cv_first: bool
+    reason: str
+    validation: ValidationPlan
+    order: list[str]  # "holdout" and the validation options, as offered (``custom_sound.split``)
+
+
+def split_offer(purpose: str | None, task: str | None, n_analyzed: int,
+                class_counts: Sequence[int] | None = None, *, n_units: int | None = None,
+                time_ordered: bool = False) -> SplitOffer:
+    """The order the split question offers its options in, and why: the holdouts by what each size
+    can measure (:func:`holdout_options`), the validations by purpose and size
+    (``validation.validation_plan``; ``n_units`` when rows are grouped into units), then under
+    inference no holdout first (audit ME-12) and, where resampling leads, the holdout last with its
+    tension (audit ME-11). :func:`plan` offers exactly this; the methods reference states it."""
+    options, cv_first, reason = holdout_options(task, int(n_analyzed), class_counts)
+    validation = validation_plan(
+        purpose, int(n_units) if n_units else int(n_analyzed), time_ordered=time_ordered,
+        unit="units" if n_units else "rows")
+    if purpose == "inference":
+        # Audit ME-12 and BLUEPRINT §12 ruling 3: under inference every analyzed row estimates the
+        # coefficients whatever is held out, so no holdout leads; a holdout stays on offer.
+        options = [o for o in options if o.holdout == 0] + [o for o in options if o.holdout > 0]
+        cv_first, reason = True, INFERENCE_SPLIT_REASON
+    elif validation.resampling_first and not cv_first:  # audit ME-11: the holdout keeps its tension
+        options = [o for o in options if o.holdout == 0] + [o for o in options if o.holdout > 0]
+        cv_first, reason = True, f"{validation.reason} {validation.holdout_note}"
+    order = [*([] if cv_first else ["holdout"]), *[o.validation for o in validation.options],
+             *(["holdout"] if cv_first else [])]
+    return SplitOffer(options, cv_first, reason, validation, order)
+
+
 def plan(state: Any, universe: Any, store: Any, task: str | None,
          analyzed: Any | None = None, structure: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The ``seal_plan`` artifact (see :class:`SealPlan`).
@@ -829,27 +864,18 @@ def plan(state: Any, universe: Any, store: Any, task: str | None,
         frame = store.materialize([state.target], analyzed)
         counts = outcome_counts(task, frame[state.target].to_numpy(dtype=object),
                                 getattr(state, "event", None))
-    options, cv_first, reason = holdout_options(task, int(len(analyzed)), counts)
     grouped = draw.basis is not None and draw.basis.state == "grouped" and draw.basis.n_units
-    validation = validation_plan(
-        getattr(state, "purpose", None),
-        min(int(draw.basis.n_units), int(len(analyzed))) if grouped else int(len(analyzed)),
-        time_ordered=draw.order is not None, unit="units" if grouped else "rows")
-    if getattr(state, "purpose", None) == "inference":
-        # Audit ME-12 and BLUEPRINT §12 ruling 3: under inference every analyzed row estimates the
-        # coefficients whatever is held out, so no holdout leads; a holdout stays on offer.
-        options = [o for o in options if o.holdout == 0] + [o for o in options if o.holdout > 0]
-        cv_first, reason = True, INFERENCE_SPLIT_REASON
-    elif validation.resampling_first and not cv_first:  # audit ME-11: the holdout keeps its tension
-        options = [o for o in options if o.holdout == 0] + [o for o in options if o.holdout > 0]
-        cv_first, reason = True, f"{validation.reason} {validation.holdout_note}"
+    offered = split_offer(
+        getattr(state, "purpose", None), task, int(len(analyzed)), counts,
+        n_units=min(int(draw.basis.n_units), int(len(analyzed))) if grouped else None,
+        time_ordered=draw.order is not None)
+    options, cv_first, reason, validation = (offered.options, offered.cv_first, offered.reason,
+                                             offered.validation)
     # WP17 (north star 5): each option labeled customary and sound, in the order offered here.
     from turbotab.core import custom_sound
     from turbotab.core.estimand import cluster_answer
 
-    order = [*([] if cv_first else ["holdout"]), *[o.validation for o in validation.options],
-             *(["holdout"] if cv_first else [])]
-    labels = custom_sound.split(getattr(state, "purpose", None), order)
+    labels = custom_sound.split(getattr(state, "purpose", None), offered.order)
     grouping = cluster_answer(state)
     if grouping:  # the grouping question named the cluster internal–external validation folds by
         validation = validation.model_copy(update={"options": [
@@ -1756,5 +1782,5 @@ __all__ = [
     "first_opening", "opening", "plan", "post_seal_changes", "post_seal_sentence",
     "read_sealed_scores", "reported_result",
     "read_times", "seal_inputs", "sealed_scores_frame", "serve_fit", "slots_read_by",
-    "split_writer", "state_at_opening", "unsettled_on_the_draw",
+    "split_offer", "split_writer", "state_at_opening", "unsettled_on_the_draw",
 ]

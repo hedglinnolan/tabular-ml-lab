@@ -13,7 +13,7 @@
   "exposure": null
  },
  "captured": {
-  "commit": "caa9563bbd",
+  "commit": "2ba3c5727a",
   "date": "2026-10-05",
   "seconds": 15,
   "workers": 2
@@ -77,7 +77,7 @@
    "kind": "set_censoring",
    "status": 200,
    "summary": "{\"column\": \"progressed\"}",
-   "source": "the same follow-up for everyone",
+   "source": "the same follow-up for everyone: the yes/no outcome counted over one period (the journey's answer and the drivers' alike)",
    "seq": 6,
    "sentence": "`progressed` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period."
   },
@@ -133,7 +133,7 @@
    "kind": "confirm_readings",
    "status": 200,
    "summary": "9 readings (role 9): role:visit=time, role:visit_date=time, role:height_cm=covariate, role:weight_kg=covariate and 5 more",
-   "source": "a reading the server asked about, answered from the fixture's truth",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
    "seq": 13,
    "sentence": "Confirmed together, each as the question showed it: `visit` was confirmed as a time column; `visit_date` was confirmed as a time column; `height_cm` was confirmed as a covariate; `weight_kg` was confirmed as a covariate; `sbp` was confirmed as a covariate; `dbp` was confirmed as a covariate; and 3 more."
   },
@@ -189,7 +189,7 @@
    "kind": "confirm_readings",
    "status": 200,
    "summary": "5 readings (code_or_count 5): code_or_count:glucose=amount, code_or_count:sbp=amount, code_or_count:dbp=amount, code_or_count:heart_rate=amount and 1 more",
-   "source": "a reading the server asked about, answered from the fixture's truth",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
    "seq": 17,
    "sentence": "Confirmed together, each as the question showed it: `5` columns (from `glucose`) were confirmed to hold amounts or counts."
   },
@@ -199,10 +199,28 @@
    "summary": "{\"models\": [\"elastic_net\", \"screened_elastic_net\"]}",
    "source": "the shelf's first-ranked families",
    "seq": 18,
-   "sentence": "Two model families were chosen: elastic net and `screened_elastic_net`; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score. Read from the values, no question asked: `subject_id` is the unit's identifier (Names each unit; `200` units, up to `3` rows each); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `progressed` is a binary outcome (Only `0` and `1` — read as a binary outcome); `height_cm` is an amount (one slope) (`155` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight_kg` is an amount (one slope) (`389` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hba1c` is an amount (one slope) (`52` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height_cm` is in cm (its median, 165.9, is a human height only in cm)."
+   "sentence": "Two model families were chosen: elastic net and `screened_elastic_net`; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score. Read from the values, no question asked: `progressed` is a binary outcome (Only `0` and `1` — read as a binary outcome); `height_cm` is an amount (one slope) (`155` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight_kg` is an amount (one slope) (`389` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hba1c` is an amount (one slope) (`52` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height_cm` is in cm (its median, 165.9, is a human height only in cm)."
   }
  ],
+ "readings": {
+  "fixture": "clinical_longitudinal.csv",
+  "from_fixture": {
+   "code_or_count:visit": "code",
+   "code_or_count:age": "amount",
+   "code_or_count:sbp": "amount",
+   "code_or_count:dbp": "amount",
+   "code_or_count:heart_rate": "amount",
+   "code_or_count:glucose": "amount",
+   "code_or_count:progressed": "code",
+   "unit:weight_kg": "kg",
+   "unit:height_cm": "cm",
+   "unit:age": "years"
+  },
+  "journey_own": {},
+  "set_aside": []
+ },
  "guessed": [],
+ "app_ranked": [],
  "notes": [
   "findings with repairs: pack::clinical::impossible_vs_extreme, binary_text__sex",
   "apply_repair refused (choose_repair); took its first “`f` counts as 1”"
@@ -226,7 +244,19 @@
    "results/performance.csv",
    "results/performance.md"
   ],
-  "methods_md": "# Methods: clinical_longitudinal\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `clinical` lens. Participants were declared to appear in more than one row, identified by `subject_id`: `600` rows from `200` of them, at most `3` each. Each `subject_id`'s rows were taken as different time points. The analysis was kept at one row per record; each `subject_id`'s rows stay together on one side of the split. The model was declared to predict a later outcome from earlier measurements: the held-out rows are the latest by `visit_date`, with each `subject_id`'s rows kept together.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `progressed` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\n`14` physiologically impossible values in `dbp` and 4 more were set to missing. `sex` was recoded with `f` as `1` and `m` as `0`.\n\n## Outcome (TRIPOD+AI 8)\n\n`progressed` was chosen as the outcome; it is measured on all `600` rows. `1` of `progressed` was taken as the event and coded 1; `0` was coded 0. `progressed` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `12` columns: exposures `heart_rate`, `glucose` and `hba1c`; covariates `age`, `sex`, `height_cm` and 3 more; identifier `subject_id`; time columns `visit` and `visit_date`; `visit`, `visit_date` and 7 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `visit` was confirmed as a time column; `visit_date` was confirmed as a time column; `height_cm` was confirmed as a covariate; `weight_kg` was confirmed as a covariate; `sbp` was confirmed as a covariate; `dbp` was confirmed as a covariate; and 3 more. Confirmed together, each as the question showed it: `5` columns (from `glucose`) were confirmed to hold amounts or counts.\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. No rows were held out; performance was estimated by cross-validation over `5` time-ordered folds, each scored by models fit on earlier units (seed `0`, keeping each `subject_id`'s rows together). Two model families were chosen: elastic net and `screened_elastic_net`; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score. Read from the values, no question asked: `subject_id` is the unit's identifier (Names each unit; `200` units, up to `3` rows each); `age` is a covariate (A person's characteristic, usually adjusted for rather than studied); `sex` is a covariate (A person's characteristic, usually adjusted for rather than studied); `progressed` is a binary outcome (Only `0` and `1` — read as a binary outcome); `height_cm` is an amount (one slope) (`155` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight_kg` is an amount (one slope) (`389` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hba1c` is an amount (one slope) (`52` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height_cm` is in cm (its median, 165.9, is a human height only in cm).\n\nWithin each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned in an inner CV nested in an outer CV. Folds kept each `subject_id`'s rows together.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `caa9563bbdfb`). The supplementary provenance record holds the decision log (`18` records), the SHA-256 of the input file `clinical_longitudinal.csv` (SHA-256 `c1010ed1a053`), the analysis plan (SHA-256 `90b6555ec57d`) and the model matrix (`600` rows by `9` columns; SHA-256 `8f8f76b7f792` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "model_matrix": [
+   "age",
+   "sex",
+   "height_cm",
+   "weight_kg",
+   "sbp",
+   "dbp",
+   "heart_rate",
+   "glucose",
+   "hba1c"
+  ],
+  "table2": [],
+  "methods_md": "# Methods: clinical_longitudinal\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the held-out rows were opened is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow TRIPOD+AI; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Data (TRIPOD+AI 5)\n\nThe table was read through the `clinical` lens. Participants were declared to appear in more than one row, identified by `subject_id`: `600` rows from `200` of them, at most `3` each. Each `subject_id`'s rows were taken as different time points. The analysis was kept at one row per record; each `subject_id`'s rows stay together on one side of the split. The model was declared to predict a later outcome from earlier measurements: the held-out rows are the latest by `visit_date`, with each `subject_id`'s rows kept together.\n\n## Participants (TRIPOD+AI 6)\n\nNo rows were excluded: every row with `progressed` measured stays in the analysis.\n\n## Data preparation (TRIPOD+AI 7)\n\n`14` physiologically impossible values in `dbp` and 4 more were set to missing. `sex` was recoded with `f` as `1` and `m` as `0`.\n\n## Outcome (TRIPOD+AI 8)\n\n`progressed` was chosen as the outcome; it is measured on all `600` rows. `1` of `progressed` was taken as the event and coded 1; `0` was coded 0. `progressed` was analyzed as a yes/no outcome: everyone was followed for the same time, as answered, so it counts events over one period.\n\n## Predictors (TRIPOD+AI 9)\n\nColumn roles were set for `12` columns: exposures `heart_rate`, `glucose` and `hba1c`; covariates `age`, `sex`, `height_cm` and 3 more; identifier `subject_id`; time columns `visit` and `visit_date`; `visit`, `visit_date` and 7 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `visit` was confirmed as a time column; `visit_date` was confirmed as a time column; `height_cm` was confirmed as a covariate; `weight_kg` was confirmed as a covariate; `sbp` was confirmed as a covariate; `dbp` was confirmed as a covariate; and 3 more. Confirmed together, each as the question showed it: `5` columns (from `glucose`) were confirmed to hold amounts or counts.\n\n## Missing data (TRIPOD+AI 11)\n\nMissing predictor values were imputed in each training fold without the outcome: the median for numbers, the most frequent value for categories; no row was dropped for a missing predictor.\n\n## Analytical methods (TRIPOD+AI 12)\n\nThe analysis was declared for `prediction`: models are judged on rows they never saw. No rows were held out; performance was estimated by cross-validation over `5` time-ordered folds, each scored by models fit on earlier units (seed `0`, keeping each `subject_id`'s rows together). Two model families were chosen: elastic net and `screened_elastic_net`; with no rows held out, the choice among them is corrected by bootstrap bias-corrected cross-validation (Tsamardinos et al. 2018), and that selection-corrected estimate is the reported result, not the best family's own score. Read from the values, no question asked: `progressed` is a binary outcome (Only `0` and `1` — read as a binary outcome); `height_cm` is an amount (one slope) (`155` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight_kg` is an amount (one slope) (`389` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `hba1c` is an amount (one slope) (`52` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height_cm` is in cm (its median, 165.9, is a human height only in cm).\n\nWithin each training fold, sure independence screening were fitted and applied to the held-out fold; elastic-net parameters were tuned in an inner CV nested in an outer CV. Folds kept each `subject_id`'s rows together.\n\nCross-validated scores are the mean over folds; the fold values show the spread.\n\nEach standard error counts which rows were scored, with each fold's model as fitted (LeDell et al. 2015; DeLong's for the AUC); it leaves out how the models would vary with other training rows.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `2ba3c5727a13`, with local changes). The supplementary provenance record holds the decision log (`18` records), the SHA-256 of the input file `clinical_longitudinal.csv` (SHA-256 `c1010ed1a053`), the analysis plan (SHA-256 `90b6555ec57d`) and the model matrix (`600` rows by `9` columns; SHA-256 `8f8f76b7f792` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
   "checklist": {
    "checklist": "TRIPOD+AI",
    "title": "TRIPOD+AI checklist for the reporting of prediction model studies",

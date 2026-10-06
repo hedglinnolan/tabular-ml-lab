@@ -13,9 +13,9 @@
   "exposure": "sugar"
  },
  "captured": {
-  "commit": "caa9563bbd",
+  "commit": "2ba3c5727a",
   "date": "2026-10-05",
-  "seconds": 24,
+  "seconds": 17,
   "workers": 2
  },
  "answers": [
@@ -63,7 +63,7 @@
    "kind": "confirm_readings",
    "status": 200,
    "summary": "16 readings (role 16): role:cycle_begin_year=covariate, role:bp_sys=covariate, role:bp_di=covariate, role:weight=covariate and 12 more",
-   "source": "a reading the server asked about, answered from the fixture's truth",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
    "seq": 6,
    "sentence": "Confirmed together, each as the question showed it: `10` columns (from `cycle_begin_year`) were confirmed as a covariate; `6` columns (from `imputed_weight`) were confirmed as a flag."
   },
@@ -85,7 +85,7 @@
    "kind": "set_column_unit",
    "status": 200,
    "summary": "{\"column\": \"kcal\", \"unit\": \"kcal\", \"days\": 1}",
-   "source": "a reading the server asked about, answered from the fixture's truth",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
    "seq": 7,
    "sentence": "`kcal` was recorded as a day's energy in kcal."
   },
@@ -109,7 +109,7 @@
    "kind": "confirm_readings",
    "status": 200,
    "summary": "2 readings (unit 2): unit:age=years, unit:weight=kg",
-   "source": "a reading the server asked about, answered from the fixture's truth",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
    "seq": 8,
    "sentence": "Confirmed together, each as the question showed it: `age` was confirmed to be in years; `weight` was confirmed to be in kg."
   },
@@ -141,7 +141,7 @@
    "kind": "set_estimand",
    "status": 200,
    "summary": "{\"exposure\": \"sugar\", \"effect\": \"total\", \"measure\": \"mean_difference\", \"contrast\": \"substitution\"}",
-   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "source": "the journey's exposure, else the fixture's declared one, else the estimand card's first column; the estimand card's first-ranked measure unless the readings declare one (listed below); an energy-bearing exposure's contrast from the readings, else the substitution",
    "seq": 12,
    "sentence": "The analysis estimates the total effect of `sugar` on `glucose` (a substitution: in place of other energy sources at fixed total energy), as a difference in the mean outcome per unit of `sugar`."
   },
@@ -149,7 +149,7 @@
    "kind": "set_adjustment",
    "status": 200,
    "summary": "{\"exposure\": \"sugar\", \"answers\": {\"age\": {\"causes_exposure\": \"yes\", \"causes_outcome\": \"yes\", \"after_exposure\": \"no\"}, \"gender\": {\"causes_exposure\": \"yes\", \"causes_outcome\": \"yes\", \"after_exposure\": \"no\"}}}",
-   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
    "seq": 13,
    "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `age` and `gender` are confounders, adjusted for."
   },
@@ -157,7 +157,7 @@
    "kind": "set_adjustment",
    "status": 200,
    "summary": "{\"exposure\": \"sugar\", \"answers\": {\"protein\": {\"causes_exposure\": \"unknown\", \"causes_outcome\": \"unknown\", \"after_exposure\": \"no\"}, \"carb\": {\"causes_exposure\": \"unknown\", \"causes_outcome\": \"unknown\", \"after_exposure\": \"no\"}, \"fat_total\": {\"causes_exposure\": \"un…",
-   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
    "seq": 14,
    "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `protein`, `carb`, `fat_total`, `fat_sat` and 2 more are confounders, adjusted for."
   },
@@ -165,7 +165,7 @@
    "kind": "set_adjustment",
    "status": 200,
    "summary": "{\"exposure\": \"sugar\", \"answers\": {\"weight\": {\"after_exposure\": \"unknown\", \"causes_exposure\": \"unknown\", \"causes_outcome\": \"yes\", \"instrument\": false, \"proxy\": false}, \"height\": {\"after_exposure\": \"unknown\", \"causes_exposure\": \"unknown\", \"causes_outcome\": \"yes…",
-   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
    "seq": 15,
    "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `weight`, `height`, `bmi` and `waist` are of unknown timing, left out of the primary model and adjusted for in a declared secondary one."
   },
@@ -173,7 +173,7 @@
    "kind": "set_adjustment",
    "status": 200,
    "summary": "{\"exposure\": \"sugar\", \"answers\": {\"bp_sys\": {\"after_exposure\": \"yes\", \"causes_exposure\": \"no\", \"causes_outcome\": \"yes\", \"instrument\": false, \"proxy\": false}, \"bp_di\": {\"after_exposure\": \"yes\", \"causes_exposure\": \"no\", \"causes_outcome\": \"yes\", \"instrument\": fa…",
-   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
    "seq": 16,
    "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `bp_sys`, `bp_di`, `hdl`, `triglycerides` and 2 more are mediators, left out."
   },
@@ -181,7 +181,7 @@
    "kind": "set_adjustment",
    "status": 200,
    "summary": "{\"exposure\": \"sugar\", \"answers\": {\"cycle_begin_year\": {\"after_exposure\": \"no\", \"causes_exposure\": \"yes\", \"causes_outcome\": \"yes\", \"instrument\": false, \"proxy\": false}}}",
-   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "source": "each covariate's causal place from the journey's readings (listed below), grouped as the adjustment card groups them",
    "seq": 17,
    "sentence": "For the effect of `sugar`, by the disjunctive cause criterion: `cycle_begin_year` is a confounder, adjusted for."
   },
@@ -196,10 +196,10 @@
   {
    "kind": "set_forms",
    "status": 200,
-   "summary": "{\"forms\": {\"sugar\": {\"form\": \"linear\"}, \"protein\": {\"form\": \"linear\"}, \"carb\": {\"form\": \"linear\"}, \"fat_total\": {\"form\": \"linear\"}, \"fat_sat\": {\"form\": \"linear\"}, \"fat_mon\": {\"form\": \"linear\"}, \"fat_poly\": {\"form\": \"linear\"}, \"age\": {\"form\": \"linear\"}}}",
-   "source": "the acceptance drivers' answer_wp17: the fixture's declared truth, else the card's first option",
+   "summary": "{\"forms\": {\"sugar\": {\"form\": \"spline\"}, \"protein\": {\"form\": \"spline\"}, \"carb\": {\"form\": \"spline\"}, \"fat_total\": {\"form\": \"spline\"}, \"fat_sat\": {\"form\": \"spline\"}, \"fat_mon\": {\"form\": \"spline\"}, \"fat_poly\": {\"form\": \"spline\"}, \"age\": {\"form\": \"spline\"}}}",
+   "source": "the form card's proposal for each column it asks about (a spline, k by the card's rule; non-consumers apart for an exposure with a mass at zero), unless the readings declare a form (listed below)",
    "seq": 19,
-   "sentence": "`sugar` entered the models as a straight line; `protein` entered the models as a straight line; `carb` entered the models as a straight line; `fat_total` entered the models as a straight line; `fat_sat` entered the models as a straight line; `fat_mon` entered the models as a straight line; `fat_poly` entered the models as a straight line; `age` entered the models as a straight line."
+   "sentence": "`sugar` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; quintiles were reported beside it, their boundaries and reference stated, with the p for linear trend (customary) across quintile medians; `protein` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `carb` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_total` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_sat` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_mon` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_poly` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `age` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line."
   },
   {
    "kind": "set_model_sequence",
@@ -233,7 +233,7 @@
    "kind": "confirm_readings",
    "status": 200,
    "summary": "3 readings (code_or_count 3): code_or_count:kcal=amount, code_or_count:age=amount, code_or_count:cycle_begin_year=code",
-   "source": "a reading the server asked about, answered from the fixture's truth",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
    "seq": 21,
    "sentence": "Confirmed together, each as the question showed it: `kcal` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories."
   },
@@ -266,8 +266,8 @@
   {
    "kind": "confirm_readings",
    "status": 200,
-   "summary": "1 readings (unit 1): unit:sugar=g",
-   "source": "a reading the server asked about, answered from the fixture's truth",
+   "summary": "1 reading (unit 1): unit:sugar=g",
+   "source": "a reading the server asked about, answered from the journey's readings (the fixture's declared truth and the journey's own, listed below), else the app's guess (listed below)",
    "seq": 23,
    "sentence": "Confirmed together, each as the question showed it: `sugar` was confirmed to be in g."
   },
@@ -280,7 +280,104 @@
    "sentence": "The substitution studied is `sugar` replaced by `protein`, in steps of `100` kcal with `kcal` held fixed."
   }
  ],
+ "readings": {
+  "fixture": "_tt_tmp_nhanes.csv",
+  "from_fixture": {
+   "unit:kcal": "kcal",
+   "day_count:kcal": "1",
+   "code_or_count:age": "amount",
+   "code_or_count:hdl": "amount",
+   "code_or_count:triglycerides": "amount",
+   "code_or_count:kcal": "amount",
+   "code_or_count:cycle_begin_year": "code",
+   "unit:weight": "kg",
+   "unit:height": "cm",
+   "unit:age": "years",
+   "exposure:glucose": "sugar",
+   "contrast:sugar": "substitution",
+   "adjust:age": "yes,yes,no",
+   "adjust:gender": "yes,yes,no",
+   "adjust:cycle_begin_year": "yes,yes,no",
+   "adjust:protein": "unknown,unknown,no",
+   "adjust:carb": "unknown,unknown,no",
+   "adjust:fat_total": "unknown,unknown,no",
+   "adjust:fat_sat": "unknown,unknown,no",
+   "adjust:fat_mon": "unknown,unknown,no",
+   "adjust:fat_poly": "unknown,unknown,no",
+   "adjust:weight": "unknown,yes,unknown",
+   "adjust:height": "unknown,yes,unknown",
+   "adjust:bmi": "unknown,yes,unknown",
+   "adjust:waist": "unknown,yes,unknown",
+   "adjust:bp_sys": "no,yes,yes",
+   "adjust:bp_di": "no,yes,yes",
+   "adjust:hdl": "no,yes,yes",
+   "adjust:triglycerides": "no,yes,yes",
+   "adjust:meds_hbp": "no,yes,yes",
+   "adjust:meds_chol": "no,yes,yes"
+  },
+  "journey_own": {
+   "unit:sugar": "g",
+   "unit:protein": "g",
+   "unit:carb": "g",
+   "unit:fat_total": "g",
+   "unit:fat_sat": "g",
+   "unit:fat_mon": "g",
+   "unit:fat_poly": "g",
+   "nested_in:sugar": "carb",
+   "nested_in:fat_sat": "fat_total",
+   "nested_in:fat_mon": "fat_total",
+   "nested_in:fat_poly": "fat_total"
+  },
+  "set_aside": []
+ },
  "guessed": [],
+ "app_ranked": [
+  {
+   "reading": "measure",
+   "column": "sugar",
+   "value": "mean_difference"
+  },
+  {
+   "reading": "form",
+   "column": "sugar",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "protein",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "carb",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "fat_total",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "fat_sat",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "fat_mon",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "fat_poly",
+   "value": "spline"
+  },
+  {
+   "reading": "form",
+   "column": "age",
+   "value": "spline"
+  }
+ ],
  "notes": [
   "findings with repairs: sas_zeros, binary_text__gender",
   "the goldberg_schofield screen was offered pending a confirmation: Refused until `kcal`'s days are recorded: its median, 1,950, is an adult's day's intake (a child's total over two days sits there too), so whether each value is one day's intake or a total over several is not settled, and the screen's bounds are read in a day's.",
@@ -309,7 +406,93 @@
    "results/table2_sensitivity.csv",
    "results/table2_sensitivity.md"
   ],
-  "methods_md": "# Methods: _tt_tmp_nhanes\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the estimates were seen is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow STROBE and STROBE-nut; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Study design (STROBE 4)\n\nThe analysis was declared for `inference`: associations are estimated with their uncertainty.\n\n## Participants (STROBE 6)\n\n`5,212` rows with `kcal` over Schofield (weight and height) BMR outside the Goldberg cut-offs for PAL `1.55` and `1` day or not screened were excluded as implausible energy reports (Goldberg cut-offs, Black 2000).\n\n## Variables (STROBE 7)\n\n`glucose` was chosen as the outcome; it is measured on all `21,849` rows. Column roles were set for `28` columns: energy `kcal`; exposures `sugar`, `protein`, `carb` and 4 more; covariates `age`, `gender`, `cycle_begin_year` and 10 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more; `cycle_begin_year`, `bp_sys` and 14 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `10` columns (from `cycle_begin_year`) were confirmed as a covariate; `6` columns (from `imputed_weight`) were confirmed as a flag. `kcal` was recorded as a day's energy in kcal. Confirmed together, each as the question showed it: `age` was confirmed to be in years; `weight` was confirmed to be in kg. The analysis estimates the total effect of `sugar` on `glucose` (a substitution: in place of other energy sources at fixed total energy), as a difference in the mean outcome per unit of `sugar`. Confirmed together, each as the question showed it: `kcal` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories. Confirmed together, each as the question showed it: `sugar` was confirmed to be in g.\n\n## Data sources and measurement (STROBE 8)\n\nThe table was read through the `dietary` lens. `152` cells holding `5.4e-79`, a misread SAS transport zero, were read as `0`.\n\n## Quantitative variables (STROBE 11)\n\n`sugar` entered the models as a straight line; `protein` entered the models as a straight line; `carb` entered the models as a straight line; `fat_total` entered the models as a straight line; `fat_sat` entered the models as a straight line; `fat_mon` entered the models as a straight line; `fat_poly` entered the models as a straight line; `age` entered the models as a straight line.\n\n## Statistical methods (STROBE 12)\n\nMissing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome and total energy (`kcal`) in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor. No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); R² was measured against the training rows' mean and pooled over every out-of-fold prediction. For the effect of `sugar`, by the disjunctive cause criterion: `age` and `gender` are confounders, adjusted for. For the effect of `sugar`, by the disjunctive cause criterion: `protein`, `carb`, `fat_total`, `fat_sat` and 2 more are confounders, adjusted for. For the effect of `sugar`, by the disjunctive cause criterion: `weight`, `height`, `bmi` and `waist` are of unknown timing, left out of the primary model and adjusted for in a declared secondary one. For the effect of `sugar`, by the disjunctive cause criterion: `bp_sys`, `bp_di`, `hdl`, `triglycerides` and 2 more are mediators, left out. For the effect of `sugar`, by the disjunctive cause criterion: `cycle_begin_year` is a confounder, adjusted for. Energy was adjusted by the standard (multivariate) model: `kcal` enters the models beside `protein`, `sugar`, `carb`, `fat_total`, `fat_sat`, `fat_mon` and `fat_poly`, so each nutrient's effect is at fixed total energy. The estimate of `sugar` is reported in a declared sequence of models: unadjusted; Model 1, adjusted for `age`, `gender` and `kcal`; Model 2, the primary, with the full adjustment set; and Model 3, further adjusted for any possible mediators the answers set beside the primary, which is not a total effect. One model family was chosen: linear regression. Read from the values, no question asked: `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm). The substitution studied is `sugar` replaced by `protein`, in steps of `100` kcal with `kcal` held fixed.\n\nThe estimate of `sugar` is reported across a declared sequence of models fit on all 16,637 analyzed rows: unadjusted; Model 1, adjusted for `kcal`, `age` and `gender`; Model 2, the primary, adjusted for `kcal`, `protein`, `carb`, `fat_total`, `fat_sat`, `fat_mon`, `fat_poly` and 3 more; Model 3, further adjusted for `weight`, `height`, `bmi` and `waist`, possible mediators, so not a total effect. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(19, 16,618) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding is reported by the Cinelli–Hazlett robustness value (each adjusted covariate a named benchmark; its form for the 95% interval, and the benchmarks' intervals, are not reported, as they assume classical standard errors and the intervals reported are HC3) and by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.\n\nThe analysis plan recorded above was declared in TurboTab before any estimate was displayed (SHA-256 `7e88770cf246`); every later change is marked as made after the estimates were seen.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `caa9563bbdfb`). The supplementary provenance record holds the decision log (`25` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `7e88770cf246`) and the model matrix (`16,637` rows by `18` columns; SHA-256 `5bbcd150bc72` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
+  "model_matrix": [
+   "gender_male",
+   "cycle_begin_year_2003",
+   "cycle_begin_year_2005",
+   "cycle_begin_year_2007",
+   "cycle_begin_year_2009",
+   "cycle_begin_year_2011",
+   "cycle_begin_year_2013",
+   "cycle_begin_year_2015",
+   "cycle_begin_year_2017",
+   "sugar",
+   "sugar'",
+   "sugar''",
+   "sugar'''",
+   "kcal",
+   "protein",
+   "protein'",
+   "protein''",
+   "protein'''",
+   "carb",
+   "carb'",
+   "carb''",
+   "carb'''",
+   "fat_total",
+   "fat_total'",
+   "fat_total''",
+   "fat_total'''",
+   "fat_sat",
+   "fat_sat'",
+   "fat_sat''",
+   "fat_sat'''",
+   "fat_mon",
+   "fat_mon'",
+   "fat_mon''",
+   "fat_mon'''",
+   "fat_poly",
+   "fat_poly'",
+   "fat_poly''",
+   "fat_poly'''",
+   "age",
+   "age'",
+   "age''",
+   "age'''"
+  ],
+  "table2": [
+   {
+    "model": "Unadjusted",
+    "adjusted_for": "nothing",
+    "terms": [
+     "sugar",
+     "sugar'",
+     "sugar''",
+     "sugar'''"
+    ]
+   },
+   {
+    "model": "Model 1",
+    "adjusted_for": "kcal, age, gender",
+    "terms": [
+     "sugar",
+     "sugar'",
+     "sugar''",
+     "sugar'''"
+    ]
+   },
+   {
+    "model": "Model 2 (primary)",
+    "adjusted_for": "kcal, protein, carb, fat_total, fat_sat, fat_mon, fat_poly, age, gender, cycle_begin_year",
+    "terms": [
+     "sugar",
+     "sugar'",
+     "sugar''",
+     "sugar'''"
+    ]
+   },
+   {
+    "model": "Model 3",
+    "adjusted_for": "kcal, protein, carb, fat_total, fat_sat, fat_mon, fat_poly, age, gender, cycle_begin_year, weight, height, bmi, waist",
+    "terms": [
+     "sugar",
+     "sugar'",
+     "sugar''",
+     "sugar'''"
+    ]
+   }
+  ],
+  "methods_md": "# Methods: _tt_tmp_nhanes\n\n_Each sentence below is the decision record's own, as it stood when this bundle was exported: answers changed before anything was seen are folded out, every change made after the estimates were seen is kept and marked, and a sentence that counts rows counts them as they stand. Sections follow STROBE and STROBE-nut; a paragraph that is not the record's was written by the analysis on these answers._\n\n## Study design (STROBE 4)\n\nThe analysis was declared for `inference`: associations are estimated with their uncertainty.\n\n## Participants (STROBE 6)\n\n`5,212` rows with `kcal` over Schofield (weight and height) BMR outside the Goldberg cut-offs for PAL `1.55` and `1` day or not screened were excluded as implausible energy reports (Goldberg cut-offs, Black 2000).\n\n## Variables (STROBE 7)\n\n`glucose` was chosen as the outcome; it is measured on all `21,849` rows. Column roles were set for `28` columns: energy `kcal`; exposures `sugar`, `protein`, `carb` and 4 more; covariates `age`, `gender`, `cycle_begin_year` and 10 more; identifier `SEQN`; flags `imputed_weight`, `imputed_height`, `imputed_bmi` and 3 more; `cycle_begin_year`, `bp_sys` and 14 more were proposed below high confidence and wait for their own confirmation before any default reads them. Confirmed together, each as the question showed it: `10` columns (from `cycle_begin_year`) were confirmed as a covariate; `6` columns (from `imputed_weight`) were confirmed as a flag. `kcal` was recorded as a day's energy in kcal. Confirmed together, each as the question showed it: `age` was confirmed to be in years; `weight` was confirmed to be in kg. The analysis estimates the total effect of `sugar` on `glucose` (a substitution: in place of other energy sources at fixed total energy), as a difference in the mean outcome per unit of `sugar`. Confirmed together, each as the question showed it: `kcal` was confirmed to hold amounts or counts; `age` was confirmed to hold amounts or counts; `cycle_begin_year` was confirmed to hold codes for categories. Confirmed together, each as the question showed it: `sugar` was confirmed to be in g.\n\n## Data sources and measurement (STROBE 8)\n\nThe table was read through the `dietary` lens. `152` cells holding `5.4e-79`, a misread SAS transport zero, were read as `0`.\n\n## Quantitative variables (STROBE 11)\n\n`sugar` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; quintiles were reported beside it, their boundaries and reference stated, with the p for linear trend (customary) across quintile medians; `protein` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `carb` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_total` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_sat` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_mon` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `fat_poly` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line; `age` entered the models as a restricted cubic spline with `5` knots, k = 5 by Harrell's rule (3 knots below an effective sample size of 30, 5 from 100, else 4; here 16,637, the number of analyzed rows), at the 5, 27.5, 50, 72.5 and 95 percentiles of its values in the rows each model was fit on (Harrell's placement); the test of association is the Wald test that every term is zero, and nonlinearity was tested by a Wald test that its nonlinear terms are zero, a non-significant result never refitting a straight line.\n\n## Statistical methods (STROBE 12)\n\nMissing predictor values were imputed by multiple imputation compatible with the analysis model (SMC-FCS where the model holds a spline, a log, a ratio, or a logistic or Cox outcome; chained equations where it is linear in the imputed values), m = 20 or the percentage of rows with an imputed value if that is larger, with the outcome and total energy (`kcal`) in the imputation model, and every estimate pooled over the imputations by Rubin's rules; no row was dropped for a missing predictor. No rows were held out; performance was estimated by `5`-fold cross-validation (seed `0`); R² was measured against the training rows' mean and pooled over every out-of-fold prediction. For the effect of `sugar`, by the disjunctive cause criterion: `age` and `gender` are confounders, adjusted for. For the effect of `sugar`, by the disjunctive cause criterion: `protein`, `carb`, `fat_total`, `fat_sat` and 2 more are confounders, adjusted for. For the effect of `sugar`, by the disjunctive cause criterion: `weight`, `height`, `bmi` and `waist` are of unknown timing, left out of the primary model and adjusted for in a declared secondary one. For the effect of `sugar`, by the disjunctive cause criterion: `bp_sys`, `bp_di`, `hdl`, `triglycerides` and 2 more are mediators, left out. For the effect of `sugar`, by the disjunctive cause criterion: `cycle_begin_year` is a confounder, adjusted for. Energy was adjusted by the standard (multivariate) model: `kcal` enters the models beside `protein`, `sugar`, `carb`, `fat_total`, `fat_sat`, `fat_mon` and `fat_poly`, so each nutrient's effect is at fixed total energy. The estimate of `sugar` is reported in a declared sequence of models: unadjusted; Model 1, adjusted for `age`, `gender` and `kcal`; Model 2, the primary, with the full adjustment set; and Model 3, further adjusted for any possible mediators the answers set beside the primary, which is not a total effect. One model family was chosen: linear regression. Read from the values, no question asked: `glucose` is a regression outcome (Continuous, with 1,154 distinct values — read as a regression outcome); `sugar` is an amount (one slope) (`18,084` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is an amount (one slope) (`16,081` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `carb` is an amount (one slope) (`19,586` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_total` is an amount (one slope) (`16,330` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_sat` is an amount (one slope) (`19,838` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_mon` is an amount (one slope) (`20,021` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `fat_poly` is an amount (one slope) (`19,108` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `weight` is an amount (one slope) (`1,463` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `height` is an amount (one slope) (`834` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bmi` is an amount (one slope) (`3,201` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `waist` is an amount (one slope) (`1,599` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_sys` is an amount (one slope) (`1,957` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `bp_di` is an amount (one slope) (`1,933` values with decimals that fill their grid as a measurement's do (a code list's sit apart)); `protein` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.01), kcal (1.13), kJ (1.17)); `carb` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.61), kJ (1.91)); `fat_total` is in grams (its kcal per unit is its Atwater factor) (the Atwater identity holds with total energy in grams (ratio 0.99) and fails were it in kg (0.00), kcal (1.45), kJ (1.51)); `gender` is coded female female, male male (the labels spell the sexes (`female` female)); `height` is in cm (its median, 167.2, is a human height only in cm). The substitution studied is `sugar` replaced by `protein`, in steps of `100` kcal with `kcal` held fixed.\n\nThe estimate of `sugar` is reported across a declared sequence of models fit on all 16,637 analyzed rows: unadjusted; Model 1, adjusted for `kcal`, `age` and `gender`; Model 2, the primary, adjusted for `kcal`, `protein`, `carb`, `fat_total`, `fat_sat`, `fat_mon`, `fat_poly` and 3 more; Model 3, further adjusted for `weight`, `height`, `bmi` and `waist`, possible mediators, so not a total effect. Only the exposure's estimates are shown as effects; every other coefficient is listed apart as an adjustment term, not an effect estimate (Westreich & Greenland 2013, Am J Epidemiol 177:292). Influence was checked by Cook's distance against the median of F(43, 16,594) (Cook 1977, Technometrics 19:15): 0 rows above it. Sensitivity to unmeasured confounding of the straight-line estimate beside the curve is reported by the Cinelli–Hazlett robustness value (each adjusted covariate a named benchmark; its form for the 95% interval, and the benchmarks' intervals, are not reported, as they assume classical standard errors and the intervals reported are HC3) and by the E-value for the estimate and for the confidence limit nearer the null, never as a pass or a fail.\n\nThe analysis plan recorded above was declared in TurboTab before any estimate was displayed (SHA-256 `620e598a2dff`); every later change is marked as made after the estimates were seen.\n\n## Reproducibility\n\nThe analysis was run in TurboTab 2.0.0.dev0 (source revision `2ba3c5727a13`, with local changes). The supplementary provenance record holds the decision log (`25` records), the SHA-256 of the input file `_tt_tmp_nhanes.csv` (SHA-256 `dbb2df487d50`), the analysis plan (SHA-256 `620e598a2dff`) and the model matrix (`16,637` rows by `42` columns; SHA-256 `feadf5ed50be` as Parquet). Replaying it with `python -m turbotab.replay` checks each input file against its hash and refuses one that differs; otherwise it rebuilds the analysis from the input files and the decision log alone and compares the model matrix and every reported estimate with these.\n",
   "checklist": {
    "checklist": "STROBE-nut",
    "title": "STROBE-nut: an extension of the STROBE statement for nutritional epidemiology",

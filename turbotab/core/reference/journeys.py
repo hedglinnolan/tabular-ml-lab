@@ -13,14 +13,22 @@ capture; nothing in a capture is written by hand.
 its spec gives one (the research question: the lens, the outcome, the purpose, the exposure, the
 roles where the fixture's author knows them); else the app's own first-ranked option, read from
 the artifact that offers it (the proposals' labeled options for the screens, the missing values
-and the energy model; the seal plan for the split; the shelf for the models; the survey card); else
-the acceptance drivers' answer (``server_drive.answer_wp17`` for the grouping, the exposure and
-its effect, the adjustment set, the time-varying exposure and the form, each from the fixture's
-declared truth). A reading the server asks about is answered from the fixture's declared truth
-(``truths.Truth``, BLUEPRINT §14.3); where the fixture declares none, the app's own best guess
-from the ask card is confirmed, and the capture lists each such reading so the packet can say so.
-A refusal that asks for something other than readings takes its first exit with a decision, as a
-person pressing it would; the capture records the refusal and the exit taken.
+and the energy model; the seal plan for the split; the shelf for the models; the survey card; the
+estimand card's first-ranked measure; the form card's proposal for each column); else the
+acceptance drivers' answer (``server_drive.answer_wp17``) for the grouping, the time-varying
+exposure and the adjustment set, each covariate from the journey's readings. Each decision's
+capture says which of these gave it, kind by kind (:data:`WP17_SOURCES`).
+
+**The readings.** A reading the server asks about, and each covariate's causal place, is answered
+from the journey's readings: the fixture's declared truth (``truths.FIXTURE_TRUTHS``, BLUEPRINT
+§14.3) with the journey's own readings beside or in place of it (the causal assumptions of its
+research question, and the units and nesting a fixture without a declared truth needs). The capture
+lists both apart (``readings``), so a packet shows the reviewer every assumption the journey
+injected. Where neither declares a reading, the app's own best guess from the ask card is
+confirmed, and the capture lists each such reading (``guessed``). Where neither declares an
+effect measure or a form, the app's first-ranked one is taken, and the capture lists it too
+(``app_ranked``). A refusal that asks for something other than readings takes its first exit with a
+decision, as a person pressing it would; the capture records the refusal and the exit taken.
 
     python -m turbotab.core.reference.journeys --list
     python -m turbotab.core.reference.journeys dietary-inference [more names]
@@ -61,13 +69,30 @@ def _truth_class() -> Any:
     from turbotab.core.tests.truths import Truth
 
     class GuessingTruth(Truth):
-        """A fixture's declared truth; a reading it declares nothing for takes the app's own best
-        guess (the ask card's, or the adjustment card's), recorded in ``guessed``."""
+        """A journey's readings; a reading they declare nothing for takes the app's own best guess
+        (the ask card's, or the adjustment card's), recorded in ``guessed``; an effect measure or a
+        form they declare nothing for (``measure:<exposure>``, ``form:<column>``, which the drivers
+        read with ``get``) takes the app's first-ranked one, recorded in ``app_ranked``."""
 
         def __init__(self, readings: dict[str, Any] | None = None, *, fixture: str = "") -> None:
             super().__init__(readings, fixture=fixture)
             self.guess: Callable[[str, str], str | None] | None = None
             self.guessed: list[dict[str, str]] = []
+            self.ranked: Callable[[str, str], str | None] | None = None
+            self.app_ranked: list[dict[str, str]] = []
+
+        def get(self, key: Any, default: Any = None) -> Any:
+            if key in self or self.ranked is None or not isinstance(key, str):
+                return super().get(key, default)
+            what, _, column = key.partition(":")
+            if what not in RANKED:
+                return super().get(key, default)
+            value = self.ranked(what, column)
+            if value is None:
+                return default
+            self[key] = value
+            self.app_ranked.append({"reading": what, "column": column, "value": value})
+            return value
 
         def answer(self, reading: str, column: str) -> str:
             key = f"{reading}:{column}"
@@ -85,6 +110,32 @@ def _truth_class() -> Any:
 
 def truth(readings: dict[str, Any] | None = None, *, fixture: str) -> Any:
     return _truth_class()(readings, fixture=fixture)
+
+
+# What the app ranks for the drivers when the journey's readings say nothing: the estimand card's
+# first-ranked measure, and the form card's proposal (its form; k is completed by the same rule).
+RANKED = ("measure", "form")
+
+
+def _server_ranked(client: Any, pid: str) -> Callable[[str, str], str | None]:
+    """The app's first-ranked answer for ``measure:<exposure>`` (the estimand card's first fitted
+    measure, marginal ones included: ESTIMAND ranks them first for a common event) and
+    ``form:<column>`` (the form card's proposal for the column)."""
+
+    def artifact(stage: str) -> dict[str, Any]:
+        return (client.get(f"/api/projects/{pid}/stages/{stage}").json() or {}).get("artifact") or {}
+
+    def ranked(what: str, column: str) -> str | None:
+        if what == "measure":
+            card = artifact("proposals").get("estimand") or {}
+            first = next((m for m in card.get("measures") or [] if m.get("fitted")), None)
+            return str(first["measure"]) if first else None
+        need = next((n for n in artifact("forms").get("needs") or [] if n.get("column") == column),
+                    None)
+        form = ((need or {}).get("proposal") or {}).get("form")
+        return str(form) if form else None
+
+    return ranked
 
 
 def _server_guess(client: Any, pid: str) -> Callable[[str, str], str | None]:
@@ -157,6 +208,7 @@ class Journey:
     before: dict[str, Callable[["Run", dict[str, Any]], None]] = field(default_factory=dict)
     needs: tuple[str, ...] = ()  # what must exist for it to run (an untracked file)
     timeout: float = 5400.0
+    fixture_key: str = ""  # the fixture's entry in ``truths.FIXTURE_TRUTHS`` (its declared truth)
 
 
 @dataclass
@@ -169,6 +221,7 @@ class Run:
     log: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     started: float = field(default_factory=time.monotonic)
+    beside: dict[str, Any] = field(default_factory=dict)  # what a stage holds that the bundle does not
 
     def note(self, text: str) -> None:
         self.notes.append(text)
@@ -200,9 +253,41 @@ class Run:
         self.log.append(entry)
 
     def source_of(self, kind: str | None) -> str:
-        if kind in ("confirm_readings", "confirm_reading", "confirm_role", "set_column_unit"):
-            return "a reading the server asked about, answered from the fixture's truth"
+        if kind in READING_KINDS:
+            return READINGS_SOURCE
+        # The drivers answer the plan's questions on the way to another (``answer_wp17_before``),
+        # whatever answer was being posted: each such kind says where its own answer came from.
+        if kind in WP17_SOURCES and not self.source.startswith(OWN_EXITS):
+            return WP17_SOURCES[kind]
         return self.source or "the journey"
+
+
+READING_KINDS = ("confirm_readings", "confirm_reading", "confirm_role", "set_column_unit")
+READINGS_SOURCE = ("a reading the server asked about, answered from the journey's readings (the "
+                   "fixture's declared truth and the journey's own, listed below), else the app's "
+                   "guess (listed below)")
+WP17_SOURCE = "the acceptance drivers (server_drive.answer_wp17)"
+# Where each answer the drivers post came from (``server_drive.answer_wp17``, with the journey's
+# truth and its app-ranked hooks: ``GuessingTruth.get``).
+WP17_SOURCES: dict[str, str] = {
+    "set_estimand": "the journey's exposure, else the fixture's declared one, else the estimand "
+                    "card's first column; the estimand card's first-ranked measure unless the "
+                    "readings declare one (listed below); an energy-bearing exposure's contrast "
+                    "from the readings, else the substitution",
+    "set_adjustment": "each covariate's causal place from the journey's readings (listed below), "
+                      "grouped as the adjustment card groups them",
+    "set_forms": "the form card's proposal for each column it asks about (a spline, k by the "
+                 "card's rule; non-consumers apart for an exposure with a mass at zero), unless "
+                 "the readings declare a form (listed below)",
+    "set_clusters": "the acceptance drivers: the roles' named grouping, its intervals only under "
+                    "inference; none, acknowledged, when nothing reads as one",
+    "set_time_varying": "the acceptance drivers: standard regression, the exposure declared to "
+                        "precede the outcome (its attestation exit where the question blocks it)",
+    "set_censoring": "the same follow-up for everyone: the yes/no outcome counted over one "
+                     "period (the journey's answer and the drivers' alike)",
+}
+# A source the journey set itself while taking a refusal's way forward is kept as it is.
+OWN_EXITS = ("the refusal's way forward", "the result's own refusal", "the export's first exit")
 
 
 def summarize(decision: Any, limit: int = 260) -> str:
@@ -351,7 +436,7 @@ def answer_for(run: Run, key: str, step: dict[str, Any],
         task = state.get("task") or _artifact(run, "target_info").get("task")
         if task == "time_to_event":
             raise RuntimeError("a time-to-event journey names its follow-up in its spec")
-        return {"kind": "set_censoring", "column": target}, "the same follow-up for everyone"
+        return {"kind": "set_censoring", "column": target}, WP17_SOURCES["set_censoring"]
     if key == "purpose":
         return {"kind": "set_purpose", "purpose": spec.purpose}, "the journey"
     if key == "grain":
@@ -380,8 +465,7 @@ def answer_for(run: Run, key: str, step: dict[str, Any],
         d.decide_roles(dict(roles))
         return None, ""
     if key in WP17_QUESTIONS:
-        run.source = ("the acceptance drivers' answer_wp17: the fixture's declared truth, else "
-                      "the card's first option")
+        run.source = WP17_SOURCE  # each kind it posts says where its answer came from
         answer_wp17(d, key, exposure=spec.exposure)
         return None, ""
     if key == "survey":
@@ -622,10 +706,14 @@ def capture_of(run: Run, response: Any, home: Path, bundles: Path | None) -> dic
                      "seconds": round(time.monotonic() - run.started),
                      "workers": 2},
         "answers": run.log,
+        "readings": journey_readings(spec),
         "guessed": list(getattr(run.drive.truth, "guessed", []) if run.drive else []),
+        "app_ranked": list(getattr(run.drive.truth, "app_ranked", []) if run.drive else []),
         "notes": run.notes,
         "export": {"status": getattr(response, "status_code", None)},
     }
+    if run.beside:
+        out["beside_the_bundle"] = run.beside
     if response is None:
         return out
     if response.status_code != 200:
@@ -646,9 +734,66 @@ def capture_of(run: Run, response: Any, home: Path, bundles: Path | None) -> dic
     return out
 
 
+def journey_readings(spec: Journey) -> dict[str, Any]:
+    """The readings a journey answers from, apart: those of the fixture's declared truth it uses
+    (``truths.FIXTURE_TRUTHS``), the journey's own (beside or in place of them: the causal
+    assumptions of its research question, units and nesting), and the declared ones it sets aside."""
+    from turbotab.core.tests.truths import FIXTURE_TRUTHS
+
+    declared = {k: str(v) for k, v in FIXTURE_TRUTHS.get(spec.fixture_key, {}).items()}
+    used = {k: str(v) for k, v in dict(spec.truth()).items()}
+    return {"fixture": spec.fixture_key,
+            "from_fixture": {k: v for k, v in used.items() if declared.get(k) == v},
+            "journey_own": {k: v for k, v in used.items() if declared.get(k) != v},
+            "set_aside": sorted(k for k in declared if k not in used)}
+
+
+def beside_the_bundle(run: Run) -> dict[str, Any]:
+    """What a stage reports that the export bundle does not hold, kept so the packet can show it:
+    the scales stage's reliability and corrected coefficient of each declared scale."""
+    out: dict[str, Any] = {}
+    if not (run.drive.view()["state"].get("scales") or []):
+        return out
+    served = run.drive.c.get(f"/api/projects/{run.pid}/stages/scales").json() or {}
+    art = served.get("artifact") or {}
+    if not art:
+        return out
+    keep_r = ("coefficient", "label", "value", "alpha", "alpha_label", "n", "reason")
+    keep_c = ("feature", "scale", "naive", "naive_ci_low", "naive_ci_high", "estimate", "ci_low",
+              "ci_high", "naive_ratio", "ratio", "ratio_low", "ratio_high", "attenuation", "n",
+              "n_boot", "copies")
+    out["scales"] = {
+        "methods": art.get("methods"),
+        "scales": [{"name": sc.get("name"), "role": sc.get("role"),
+                    "reliability": {k: (sc.get("reliability") or {}).get(k) for k in keep_r},
+                    "correction": ({k: sc["correction"].get(k) for k in keep_c}
+                                   if sc.get("correction") else None),
+                    "not_corrected": sc.get("not_corrected"), "methods": sc.get("methods")}
+                   for sc in art.get("scales") or []]}
+    return out
+
+
+def _table2_rows(files: dict[str, bytes]) -> list[dict[str, Any]]:
+    """Each declared model of Table 2: the model, what it is adjusted for, and its terms (the
+    exposure's rows: one, a spline's basis, or each member of an exposure family), in order."""
+    import csv
+
+    raw = files.get("results/table2.csv")
+    if raw is None:
+        return []
+    out: dict[tuple[str, str], list[str]] = {}
+    for r in csv.DictReader(io.StringIO(raw.decode("utf-8"))):
+        terms = out.setdefault((r.get("model", ""), r.get("adjusted_for", "")), [])
+        if r.get("term", "") not in terms:
+            terms.append(r.get("term", ""))
+    return [{"model": m, "adjusted_for": a, "terms": t} for (m, a), t in out.items()]
+
+
 def bundle_parts(data: bytes, home: Path) -> dict[str, Any]:
     """What a capture keeps of an export bundle: the engine, the file list, the methods section
-    verbatim and the checklist item by item (its quoted item texts left to the bundle)."""
+    verbatim, the checklist item by item (its quoted item texts left to the bundle), the model
+    matrix's columns and each declared model's row of Table 2 (what the packet checks the methods'
+    adjustment set against)."""
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         files = {n.split("/", 1)[1]: z.read(n) for n in z.namelist() if not n.endswith("/")}
     provenance = json.loads(files["provenance.json"])
@@ -657,6 +802,8 @@ def bundle_parts(data: bytes, home: Path) -> dict[str, Any]:
     return {
         "engine": (provenance.get("engine") or {}).get("turbotab"),
         "files": sorted(files),
+        "model_matrix": list((provenance.get("model_matrix") or {}).get("columns") or []),
+        "table2": _table2_rows(files),
         "methods_md": _scrub(files["methods.md"].decode("utf-8"), home),
         "checklist": {
             "checklist": report["checklist"], "title": report.get("title"),
@@ -694,12 +841,15 @@ def run_journey(spec: Journey, bundles: Path | None = None,
                     run.pid = r.json()["id"]
                     t = spec.truth()
                     t.guess = _server_guess(client, run.pid)
+                    t.ranked = _server_ranked(client, run.pid)
                     run.drive = Drive(run.client, run.pid, t)
                     run.drive.exposure = spec.exposure
                     run.drive.artifact("ingest", timeout=900)
                     if follow(run) and wait_results(run):
                         run.source = "the export"
                         response = export(run)
+                        if getattr(response, "status_code", None) == 200:
+                            run.beside = beside_the_bundle(run)
                     else:
                         response = run.client.get(f"/api/projects/{run.pid}/export")
             except Exception as exc:  # noqa: BLE001 - a journey that stops is kept with its reason
@@ -722,6 +872,7 @@ def load_capture(name: str, folder: Path = CAPTURES) -> dict[str, Any] | None:
 # ── the journeys ─────────────────────────────────────────────────────────────
 
 NUTRIENTS = ["protein", "carb", "fat_total", "fat_sat", "fat_mon", "fat_poly"]
+NHANES_KEY = "_tt_tmp_nhanes.csv"  # the NHANES export's entry in ``truths.FIXTURE_TRUTHS``
 NHANES_FLAGS = ["imputed_weight", "imputed_height", "imputed_bmi", "imputed_waist",
                 "imputed_bp_sys", "imputed_bp_di"]
 
@@ -886,9 +1037,12 @@ GENOMICS_REPAIRS = r"^omics_scale$"
 SURVEY_ITEMS = [f"item_{i:02d}" for i in range(1, 11)]
 SURVEY_SCALE = {"name": "support_scale", "items": SURVEY_ITEMS, "reverse": ["item_05"],
                 "low": 1, "high": 5, "kind": "reflective"}
+# The plan's exposure is the estimand card's first column, age (the survey inference journey): no
+# respondent's characteristic and no item of the scale can cause it, and none comes after it in
+# time; each is read as a cause of the outcome (the instrument measures a trait that moves who
+# seeks support), so the disjunctive cause criterion adjusts for it.
 SURVEY_READINGS = {"code_or_count:education": "code",
-                   **{f"adjust:{c}": "yes,yes,no" for c in ("age", "sex", "education",
-                                                           *SURVEY_ITEMS)}}
+                   **{f"adjust:{c}": "no,yes,no" for c in ("sex", "education", *SURVEY_ITEMS)}}
 # Under inference the instrument's first ten items are the scale's, every other item is left out,
 # and the respondents' characteristics are covariates (MODELING_SEQUENCE §6 chain 4, as its
 # acceptance test drives it: test_ms8_scales.chain4).
@@ -907,14 +1061,14 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
         nhanes_path, nhanes_dietary_truth, target="glucose", lenses=("dietary",),
         exposure="sugar", roles=NHANES_DIETARY_ROLES,
         before={"target": apply_first_repair(r"^sas_zeros"), "models": declare_model_sequence},
-        needs=(str(nhanes_path()),)),
+        needs=(str(nhanes_path()),), fixture_key=NHANES_KEY),
     Journey(
         "dietary-prediction", "dietary", "prediction",
         "How well do diet and body measures predict fasting glucose?",
         "_tt_tmp_nhanes.csv (the NHANES export, untracked)", NHANES_WHY,
         nhanes_path, nhanes_dietary_truth, target="glucose", lenses=("dietary",),
         before={"target": apply_first_repair(r"^sas_zeros")},
-        needs=(str(nhanes_path()),)),
+        needs=(str(nhanes_path()),), fixture_key=NHANES_KEY),
     Journey(
         "clinical-inference", "clinical", "inference",
         "Is a larger waist circumference associated with fasting glucose?",
@@ -922,7 +1076,7 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
         nhanes_path, nhanes_clinical_truth, target="glucose", lenses=("clinical",),
         exposure="waist", roles=NHANES_CLINICAL_ROLES,
         before={"target": apply_first_repair(r"^sas_zeros"), "models": declare_model_sequence},
-        needs=(str(nhanes_path()),)),
+        needs=(str(nhanes_path()),), fixture_key=NHANES_KEY),
     Journey(
         "clinical-prediction", "clinical", "prediction",
         "Which patients' disease will have progressed at a visit, from their visits so far?",
@@ -936,7 +1090,7 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
                  "unit": {"kind": "set_unit", "unit": "row"},
                  "temporal": {"kind": "set_temporal", "temporal": True,
                               "time_column": "visit_date"}},
-        before={"target": apply_first_repair(r".")}),
+        before={"target": apply_first_repair(r".")}, fixture_key="clinical_longitudinal.csv"),
     Journey(
         "metabolomics-prediction", "metabolomics", "prediction",
         "How well does an untargeted metabolite panel predict who responds?",
@@ -947,7 +1101,7 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
         lambda: truth(METABOLOMICS_READINGS, fixture="metabolomics_untargeted.csv"),
         target="responder", lenses=("metabolomics",), event="1",
         before={"target": apply_first_repair(METABOLOMICS_REPAIRS),
-                "models": declare_batch("batch")}),
+                "models": declare_batch("batch")}, fixture_key="metabolomics_untargeted.csv"),
     Journey(
         "metabolomics-inference", "metabolomics", "inference",
         "Which metabolites differ between responders and non-responders?",
@@ -958,7 +1112,7 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
         lambda: truth(METABOLOMICS_READINGS, fixture="metabolomics_untargeted.csv"),
         target="responder", lenses=("metabolomics",), event="1", exposure="family",
         before={"target": apply_first_repair(METABOLOMICS_REPAIRS),
-                "models": declare_batch("batch")}),
+                "models": declare_batch("batch")}, fixture_key="metabolomics_untargeted.csv"),
     Journey(
         "genomics-prediction", "genomics", "prediction",
         "How well does an expression count matrix predict case status?",
@@ -969,7 +1123,7 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
         lambda: truth(GENOMICS_READINGS, fixture="genomics_expression.csv"),
         target="condition", lenses=("genomics",), event="case",
         before={"target": apply_first_repair(GENOMICS_REPAIRS),
-                "models": declare_batch("batch")}),
+                "models": declare_batch("batch")}, fixture_key="genomics_expression.csv"),
     Journey(
         "genomics-inference", "genomics", "inference",
         "Which genes are differentially expressed between cases and controls?",
@@ -980,7 +1134,7 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
         lambda: truth(GENOMICS_READINGS, fixture="genomics_expression.csv"),
         target="condition", lenses=("genomics",), event="case", exposure="family",
         before={"target": apply_first_repair(GENOMICS_REPAIRS),
-                "models": declare_batch("batch")}),
+                "models": declare_batch("batch")}, fixture_key="genomics_expression.csv"),
     Journey(
         "survey-prediction", "survey", "prediction",
         "How well do a support scale and its respondents' characteristics predict who sought "
@@ -992,22 +1146,28 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
         sample("survey_instrument.csv"), sample_truth("survey_instrument.csv", SURVEY_READINGS),
         target="sought_support", lenses=("survey",), event="1",
         before={"models": declare({"kind": "set_scales",
-                                   "scales": [{**SURVEY_SCALE, "role": "covariate"}]})}),
+                                   "scales": [{**SURVEY_SCALE, "role": "covariate"}]})},
+        fixture_key="survey_instrument.csv"),
     Journey(
         "survey-inference", "survey", "inference",
-        "Is a higher support-scale score associated with having sought support?",
+        "Is age associated with having sought support, with the support scale scored from its "
+        "items in the model beside it?",
         "turbotab/sample_data/survey_instrument.csv",
-        "MODELING_SEQUENCE §6 chain 4 under inference: the scale scored from its items and "
-        "declared an exposure, its reliability, and its coefficient corrected for measurement "
-        "error beside the uncorrected one. The estimand card names columns, so the plan's "
-        "exposure is the card's first; the scale's own coefficients are the scales stage's, as "
-        "chain 4's acceptance test drives it.",
+        "MODELING_SEQUENCE §6 chain 4 under inference, as its acceptance test drives it "
+        "(test_ms8_scales.chain4): the scale scored from its ten items (the instrument's key "
+        "reverse-codes item_05) and declared an exposure, its reliability stated, and its "
+        "coefficient corrected for measurement error by the scales stage. The app cannot make a "
+        "declared scale the estimand's exposure (§1.5, `scale_as_exposure`): the estimand card "
+        "offers the table's columns, so the plan's exposure is its first, `age`, and the scale "
+        "enters the model beside it. The scales stage's corrected coefficient is not in the "
+        "export bundle; this packet shows it beside the bundle.",
         sample("survey_instrument.csv"), sample_truth("survey_instrument.csv", SURVEY_READINGS),
         target="sought_support", lenses=("survey",), event="1",
         roles=SURVEY_INFERENCE_ROLES,
         before={"estimand": declare({"kind": "set_scales", "scales": [{
             **SURVEY_SCALE, "role": "exposure", "correction": "regression_calibration",
-            "n_boot": 100}]})}),
+            "n_boot": 100}]})},
+        fixture_key="survey_instrument.csv"),
 )}
 
 

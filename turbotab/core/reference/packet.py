@@ -8,19 +8,24 @@ sentences the app writes").
 
 writes ``docs/turbotab-next/review-packets/<lens>.md``:
 
-1. **the methods the lens offers**, from the registry: its own method contracts in full, its own
-   model families, then every shared method in one table, and the methods it relies on that have
-   no contract yet (``catalog.GAPS``), with the labels kept outside the registry
-   (``custom_sound``) where they exist;
+1. **the methods the lens offers**, from the registry, never shortened: its own method contracts
+   and model families in full, every other family on the shelf, every shared method, every method
+   another lens reviews in full, and the methods it relies on that have no contract yet
+   (``catalog.GAPS``), with the labels kept outside the registry (``custom_sound``) where they
+   exist;
 2. **how they chain**: a Mermaid diagram of every relation the lens's own methods take part in
    (from them, or toward them from any contract), and the relations in a table with the sentence
    the app states when each fires;
 3. **the defaults by purpose**, each with its reason: the option each method offers first for
-   prediction and for inference, its rung, and the sound label that justifies it;
+   prediction and for inference, its rung, and the sound label that justifies it; where the app
+   ranks by the data, the first option under each condition, computed by the app's own ranking
+   code (``defaults``);
 4. **the exact methods sections the app writes** on the lens's reference journeys
    (``journeys``), quoted verbatim from the export's ``methods.md``, with the reporting
-   checklist's answers item by item; where a journey did not reach the export, what stopped it,
-   and where the lens has no reference fixture, what one would need;
+   checklist's answers item by item, every reading the journey injected, where the bundle
+   contradicts itself, and what a stage reports that the bundle does not hold; where a journey
+   did not reach the export, what stopped it, and where the lens has no reference fixture, what
+   one would need;
 5. **the questions the reviewer is asked to answer.**
 
 Everything but the journeys is regenerated in a second from the code, so the reference test can
@@ -35,7 +40,7 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-from turbotab.core.reference import catalog, journeys
+from turbotab.core.reference import catalog, defaults, journeys
 from turbotab.core.reference import methods as ref
 
 OUT = ref.REPO / "docs" / "turbotab-next" / "review-packets"
@@ -44,9 +49,9 @@ PURPOSES = ("prediction", "inference")
 RELATION_ORDER = ("implies", "enables", "disables", "invalidates", "conflicts", "precedes")
 # The questions labeled outside the registry each lens relies on (``custom_sound``).
 LABELED_FOR: dict[str, tuple[str, ...]] = {
-    "dietary": ("energy_adjustment", "exclusions", "missing", "split"),
+    "dietary": ("energy_adjustment", "exclusions", "missing", "split", "causal"),
 }
-LABELED_DEFAULT = ("missing", "split")
+LABELED_DEFAULT = ("missing", "split", "causal")
 QUESTION_TITLES = dict(ref.labeled_questions())
 
 # What a reference fixture for each lens must hold, said where a journey could not run.
@@ -93,25 +98,47 @@ def lens_contracts(lens: str) -> tuple[list[Any], list[Any]]:
     return own, shared
 
 
+def other_lenses_contracts(lens: str) -> list[Any]:
+    """Every contract another lens reviews in full (neither this lens's own nor shared), in run
+    order: the app offers each wherever the data hold what it needs, so the packet lists it."""
+    return [c for c in ref.ordered_contracts()
+            if not catalog.serves(catalog.lenses_of_contract(c.key), lens)]
+
+
 def lens_families(lens: str) -> tuple[list[Any], list[Any]]:
-    own, shared = [], []
+    """(the families this lens reviews in full, every other family on the shelf)."""
+    own, others = [], []
     for f in ref.families():
-        lenses = catalog.lenses_of_family(f.key)
-        if catalog.own(lenses, lens):
-            own.append(f)
-        elif catalog.SHARED in lenses:
-            shared.append(f)
-    return own, shared
+        (own if catalog.own(catalog.lenses_of_family(f.key), lens) else others).append(f)
+    return own, others
+
+
+def reviewed_in(lenses: Sequence[str]) -> str:
+    if catalog.SHARED in lenses:
+        return "every lens (shared): the methods reference"
+    names = [catalog.LENS_TITLES[x].lower() for x in lenses]
+    joined = names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+    return f"the {joined} packet{'s' if len(names) > 1 else ''}"
 
 
 def default_of(c: Any, purpose: str) -> dict[str, Any]:
-    """The option ``c`` offers first for ``purpose``: its key, label, rung and reason."""
-    first = c.options_for(purpose)[0]
-    return first
+    """The option ``c`` ranks first for ``purpose`` in the registry: its key, label, rung and
+    reason (where the app ranks by the data, ``defaults.cases`` says what it offers first)."""
+    return c.options_for(purpose)[0]
+
+
+BY_DATA = "ranked by the data: §3.4"
 
 
 def default_cell(c: Any, purpose: str) -> str:
+    through = defaults.THROUGH.get(c.key)
+    if defaults.cases(c.key, purpose) is not None:
+        return BY_DATA + (f" ({QUESTION_TITLES[through]}, `{through}`)" if through else "")
     d = default_of(c, purpose)
+    if c.key in catalog.NOT_ASKED and d["rung"] not in ("not_offered", "refused"):
+        return (f"never asked, so never applied from the app (§1); posted to the API, the "
+                f"registry ranks `{d['key']}` first ({ref.RUNG_WORDS[d['rung']]}): "
+                f"{ref.cell(d['sound'])}")
     if d["rung"] == "not_offered":
         return f"not offered under {purpose}: {ref.cell(d['sound'])}"
     if d["rung"] == "refused":  # every option refused for this purpose: there is no default
@@ -241,11 +268,134 @@ def answers_rows(capture: dict[str, Any]) -> list[str]:
                       f"{ref.cell(a['refusal'].get('message'))}")
         else:
             server = f"recorded as #{a.get('seq')}" if a.get("seq") else str(a.get("status"))
-        # (captures written before the driver counted one reading in the singular say "1 readings")
-        summary = re.sub(r"^1 readings \(", "1 reading (", str(a.get("summary") or ""))
-        lines.append(f"| {i} | `{a.get('kind')}` | {ref.cell(summary)} | "
+        lines.append(f"| {i} | `{a.get('kind')}` | {ref.cell(a.get('summary'))} | "
                      f"{ref.cell(a.get('source'))} | {server} |")
     return lines
+
+
+def _reading_rows(readings: dict[str, str]) -> list[str]:
+    lines = ["| Reading | Column | Value |", "|---|---|---|"]
+    for key, value in readings.items():
+        what, _, column = key.partition(":")
+        lines.append(f"| `{what}` | `{column}` | {ref.cell(value)} |")
+    return lines
+
+
+def readings_section(capture: dict[str, Any], h: str) -> list[str]:
+    """Every reading the journey answered from, its own apart from the fixture's declared truth,
+    and every answer it took as the app ranked or guessed it."""
+    readings = capture.get("readings")
+    lines = ["", f"{h}# The readings the journey answered from", ""]
+    if readings is None:
+        return lines + ["This capture predates the readings record: rerun the journey to list them.",
+                        ""]
+    own = readings.get("journey_own") or {}
+    fixture = readings.get("fixture") or ""
+    if own:
+        lines += ["**The journey's own readings**, beside or in place of the fixture's declared "
+                  "truth: the causal assumptions of its research question and the units and "
+                  "nesting it states (the server asks only some of them; a prediction asks no "
+                  "covariate's causal place). They are the journey author's, not the fixture's; "
+                  "please check each:", ""]
+        lines += _reading_rows(own)
+        lines.append("")
+    else:
+        lines += ["The journey declares no reading of its own.", ""]
+    found = readings.get("from_fixture") or {}
+    if found:
+        lines.append(f"From the fixture's declared truth (`truths.FIXTURE_TRUTHS[\"{fixture}\"]`), "
+                     f"{len(found):,}: " + "; ".join(f"`{k}` = {ref.cell(v)}"
+                                                      for k, v in found.items()) + ".")
+    elif fixture:
+        lines.append(f"The fixture's declared truth (`truths.FIXTURE_TRUTHS[\"{fixture}\"]`) holds "
+                     "none of the readings it answered.")
+    aside = readings.get("set_aside") or []
+    if aside:
+        lines.append("Set aside from the fixture's declared truth (another research question's): "
+                     + ", ".join(f"`{k}`" for k in aside) + ".")
+    ranked = capture.get("app_ranked") or []
+    if ranked:
+        lines += ["", "Taken as the app ranked them, no reading declaring one: "
+                  + "; ".join(f"the {r['reading']} of `{r['column']}`: `{r['value']}`"
+                              for r in ranked) + "."]
+    guessed = capture.get("guessed") or []
+    if guessed:
+        lines += ["", "Readings neither declares, confirmed as the app guessed them (a reviewer "
+                      "should check these are what the fixture's author would say):", ""]
+        lines += [f"- `{g['reading']}` of `{g['column']}`: {g['value']}" for g in guessed]
+    return lines
+
+
+def _holds(name: str, column: str) -> bool:
+    """Whether the model-matrix column ``name`` is ``column`` or made from it (an indicator, a
+    spline basis term: ``education_Graduate``, ``age'``)."""
+    return name == column or (name.startswith(column) and not name[len(column)].isalnum())
+
+
+def matrix_flags(export: dict[str, Any]) -> list[str]:
+    """Where the bundle contradicts itself: a column the primary model is said to be adjusted for
+    (Table 2, and the methods that state the same set) that the model matrix does not hold, and a
+    model-matrix column that is neither the exposure's nor one of those."""
+    columns = list(export.get("model_matrix") or [])
+    rows = export.get("table2") or []
+    primary = [r for r in rows if "(primary)" in str(r.get("model"))]
+    if not columns or not primary:
+        return []
+    adjusted: list[str] = []
+    for r in primary:
+        for c in str(r.get("adjusted_for") or "").split(", "):
+            if c and c != "nothing" and c not in adjusted:
+                adjusted.append(c)
+    # (a row per declared model with its ``terms``; a capture's row per term holds one ``term``)
+    terms = {str(t) for r in primary for t in r.get("terms") or [r.get("term")] if t}
+    absent = [c for c in adjusted if not any(_holds(m, c) for m in columns)]
+    unexplained = [m for m in columns
+                   if m not in terms and not any(_holds(m, c) for c in adjusted)
+                   and not any(_holds(m, t) for t in terms)]
+    flags = []
+    if absent:
+        flags.append("Table 2 and the methods say the primary model is adjusted for "
+                     + ", ".join(f"`{c}`" for c in absent) + ", but the model matrix holds no "
+                     "column made from " + ("it" if len(absent) == 1 else "them") + ".")
+    if unexplained:
+        flags.append("The model matrix holds " + ", ".join(f"`{c}`" for c in unexplained)
+                     + ", which is neither the exposure's term nor a column the primary model is "
+                     "said to be adjusted for; its coefficient is listed in the appendix as an "
+                     "adjustment term.")
+    return flags
+
+
+def beside_section(capture: dict[str, Any], h: str) -> list[str]:
+    """What a stage reports that the export bundle does not hold (the scales stage's)."""
+    scales = (capture.get("beside_the_bundle") or {}).get("scales")
+    if not scales:
+        return []
+    lines = ["", f"{h}# Beside the bundle: what the scales stage reports", "",
+             "The export bundle holds neither this text nor these estimates; they are the scales "
+             "stage's own, served beside the results. Its methods text, verbatim:", ""]
+    lines += quoted(str(scales.get("methods") or ""))
+    rows = ["", "| Scale | Its role | Reliability | Uncorrected | Corrected | Attenuation |",
+            "|---|---|---|---|---|---|"]
+    for sc in scales.get("scales") or []:
+        r, c = sc.get("reliability") or {}, sc.get("correction")
+        rel = (f"{r.get('label') or r.get('coefficient')} = {r['value']:.3f}"
+               if r.get("value") is not None else ref.cell(r.get("reason")) or "–")
+        if r.get("alpha") is not None:
+            rel += f" (α = {r['alpha']:.3f})"
+        if c:
+            ratio = c.get("scale") == "odds_ratio" and c.get("ratio") is not None
+            naive = (f"OR {c['naive_ratio']:.3f}" if ratio and c.get("naive_ratio") is not None
+                     else f"{c['naive']:.4g}")
+            fixed = (f"OR {c['ratio']:.3f} ({c['ratio_low']:.3f} to {c['ratio_high']:.3f})"
+                     if ratio and c.get("ratio_low") is not None else
+                     f"{c['estimate']:.4g}" + (f" ({c['ci_low']:.4g} to {c['ci_high']:.4g})"
+                                               if c.get("ci_low") is not None else ""))
+            att = f"{c['attenuation']:.3f}"
+        else:
+            naive = fixed = att = "–"
+            fixed = ref.cell(sc.get("not_corrected")) or "not corrected"
+        rows.append(f"| `{sc.get('name')}` | {sc.get('role')} | {rel} | {naive} | {fixed} | {att} |")
+    return lines + rows + [""]
 
 
 def journey_section(spec: journeys.Journey, capture: dict[str, Any] | None,
@@ -261,20 +411,17 @@ def journey_section(spec: journeys.Journey, capture: dict[str, Any] | None,
         return lines
     cap = capture["captured"]
     export = capture.get("export") or {}
-    lines.append(f"- **Run:** at commit `{cap.get('commit')}` on {cap.get('date')}, "
+    # (the bundle's own reproducibility sentence says whether the tree had local changes)
+    dirty = ", with local changes" if "with local changes" in str(export.get("methods_md")) else ""
+    lines.append(f"- **Run:** at commit `{cap.get('commit')}`{dirty} on {cap.get('date')}, "
                  f"{cap.get('seconds'):,} s on {cap.get('workers')} workers"
                  + (f"; engine {export.get('engine')}" if export.get("engine") else "") + ".")
     lines += ["", f"{h}# How the journey answered", "",
               "Every decision posted, in order, with where its answer came from (the journey's "
-              "own research question, the app's first-ranked option, the fixture's declared "
-              "truth, or a refusal's way forward).", ""]
+              "own research question, the app's first-ranked option, the journey's readings, or "
+              "a refusal's way forward).", ""]
     lines += answers_rows(capture)
-    guessed = capture.get("guessed") or []
-    if guessed:
-        lines += ["", "Readings the fixture declares no truth for, confirmed as the app guessed "
-                      "them (a reviewer should check these are what the fixture's author would "
-                      "say):", ""]
-        lines += [f"- `{g['reading']}` of `{g['column']}`: {g['value']}" for g in guessed]
+    lines += readings_section(capture, h)
     if capture.get("notes"):
         lines += ["", "Notes from the run:", ""]
         lines += [f"- {ref.cell(n)}" for n in capture["notes"]]
@@ -289,6 +436,12 @@ def journey_section(spec: journeys.Journey, capture: dict[str, Any] | None,
         lines += [f"- {n}" for n in FIXTURE_NEEDS.get(spec.lens, ())]
         lines.append("")
         return lines
+    flags = matrix_flags(export)
+    if flags:
+        lines += ["", f"{h}# Flagged for the reviewer: the bundle contradicts itself", "",
+                  "Found by comparing the bundle's own files (Table 2's `adjusted_for` and the "
+                  "provenance record's model-matrix columns), not by reading the methods:", ""]
+        lines += [f"- {f}" for f in flags]
     lines += ["", f"{h}# The methods section, verbatim", "",
               "Quoted from the export bundle's `methods.md`, unchanged:", ""]
     lines += quoted(export["methods_md"])
@@ -298,6 +451,7 @@ def journey_section(spec: journeys.Journey, capture: dict[str, Any] | None,
               f"{checklist.get('citation') or ''}. {c['items']} items: {c['answered']} answered, "
               f"{c['partly_answered']} partly answered, {c['unanswered']} unanswered.", ""]
     lines += checklist_rows(checklist)
+    lines += beside_section(capture, h)
     lines.append("")
     return lines
 
@@ -309,7 +463,8 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
     """The packet for ``lens`` from the registry and ``captures`` (journey name → capture)."""
     title = catalog.LENS_TITLES[lens]
     own, shared = lens_contracts(lens)
-    own_families, shared_families = lens_families(lens)
+    others = other_lenses_contracts(lens)
+    own_families, other_families = lens_families(lens)
     gaps = catalog.gaps_for(lens)
     specs = journeys.for_lens(lens)
     labeled = LABELED_FOR.get(lens, LABELED_DEFAULT)
@@ -344,34 +499,50 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
             lines += ref.contract_section(c, level=4)
     else:
         lines += ["None: every method this lens offers is shared with the other lenses.", ""]
-    lines += [f"### 1.2 · Model families", ""]
+    lines += [f"### 1.2 · Model families", "",
+              "The shelf ranks every family that can model the outcome by its own assessment of "
+              "the data and never shortens the list: no family is withheld from a lens, so every "
+              "family is offered here.", ""]
     if own_families:
-        lines += ["Its own:", ""]
+        lines += ["Reviewed in full in this packet:", ""]
         for f in own_families:
             lines += ref.family_section(f, level=4)
-    lines += ["Shared with every lens (the shelf ranks every family that can model the outcome "
-              "by its own assessment of the data, and never shortens the list):", "",
-              "| Family | Outcomes | Purposes | Inductive bias |", "|---|---|---|---|"]
-    for f in shared_families:
+    lines += ["Every other family on the shelf, each in full in the methods reference:", "",
+              "| Family | Outcomes | Purposes | Inductive bias | Reviewed in full in |",
+              "|---|---|---|---|---|"]
+    for f in other_families:
         lines.append(f"| {f.label} (`{f.key}`) | {', '.join(f.tasks)} | "
                      f"{', '.join(getattr(f, 'purposes', PURPOSES))} | "
-                     f"{ref.cell(f.inductive_bias)} |")
+                     f"{ref.cell(f.inductive_bias)} | "
+                     f"{reviewed_in(catalog.lenses_of_family(f.key))} |")
     lines += ["", f"### 1.3 · Shared methods ({len(shared)})", "",
               "Every lens offers these; their full contracts are in the methods reference.", "",
               "| Method | Key | Slot | Scope | Recorded by |", "|---|---|---|---|---|"]
     for c in shared:
         lines.append(f"| {ref.cell(c.label)} | `{c.key}` | {c.slot} | {c.scope} | "
-                     f"{ref.code(c.decision) or 'not declared'} |")
-    lines += ["", f"### 1.4 · Methods with no contract yet ({len(gaps)})", "",
-              "These are offered (V2_DEFINITION_OF_DONE §2) and implemented in the code named, "
-              "but no method contract declares their slot, scope, labeled options, leash, "
-              "storyboard, sentence and relations. They are gaps in the registry, listed so the "
-              "review covers them too.", ""]
+                     f"{ref.code(catalog.recorded_by(c)) or 'not declared'} |")
+    lines += ["", f"### 1.4 · Methods another lens reviews in full ({len(others)})", "",
+              "No method contract is declared for one lens: the app reaches each of these through "
+              "the data it needs, not through the lens, though some are reached through findings "
+              "or stages their own lens raises. Each is offered here whenever this lens's data "
+              "hold what it needs, and is reviewed in full in the packet named.", "",
+              "| Method | Key | Reviewed in full in | Slot | What it needs |",
+              "|---|---|---|---|---|"]
+    for c in others:
+        lines.append(f"| {ref.cell(c.label)} | `{c.key}` | "
+                     f"{reviewed_in(catalog.lenses_of_contract(c.key))} | {c.slot} | "
+                     f"{'; '.join(ref.cell(n) for n in c.needs) or 'nothing declared'} |")
+    lines += ["", f"### 1.5 · Methods with no contract yet ({len(gaps)})", "",
+              "These are offered (V2_DEFINITION_OF_DONE §2, or by a question the Router asks) and "
+              "implemented in the code named, but no method contract declares their slot, scope, "
+              "labeled options, leash, storyboard, sentence and relations. They are gaps in the "
+              "registry, listed so the review covers them too; one is a limit of the app as well "
+              "(its note says so).", ""]
     lines += ref.gap_rows(gaps)
     lines += ["", "Their options are labeled customary and sound outside the registry where "
                   "shown here:", ""]
     for q in labeled:
-        lines += ref.custom_sound_section(q, QUESTION_TITLES[q], level=4)
+        lines += ref.question_section(q, QUESTION_TITLES[q], level=4)
     lines += ["## 2 · How they chain", "",
               "Every relation this lens's own methods take part in: declared by them, or declared "
               "by another method toward them (BLUEPRINT §13). Blue: this lens's methods; grey: "
@@ -384,10 +555,15 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
     lines += ["", "The relations, with the sentence the app states when each fires:", ""]
     lines += chain_table(lens) if diagram else ["None."]
     lines += ["", "## 3 · The defaults, by purpose", "",
-              "The option each method offers first for each purpose (its rank 1), its rung, and "
-              "the reason its *sound* label gives. A default is never applied silently: the "
-              "option is asked, or stated in the Record with its phrase changeable "
-              "(BLUEPRINT §11.4).", "",
+              "The option each method offers first for each purpose, its rung, and the reason its "
+              "*sound* label gives. Where the app ranks a method's options by the data in front of "
+              "it (the outcome's event share, the number of units, time order, the data's kind, "
+              "what can run on the table, a failed check), the cell says so and §3.4 gives the "
+              "first option under each condition, computed by the app's own ranking code; "
+              "elsewhere it is the method's rank 1 in the registry. A default is never applied "
+              "silently: the option is asked, or stated in the Record with its phrase changeable "
+              "(BLUEPRINT §11.4). A method no question asks says “never asked”: from the app it is "
+              "not applied at all, whatever its rank.", "",
               "### 3.1 · This lens's own methods", ""]
     if own:
         lines += ["| Method | Prediction | Inference |", "|---|---|---|"]
@@ -397,22 +573,34 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
         lines.append("None of its own.")
     lines += ["", "### 3.2 · Questions labeled outside the registry", "",
               "| Question | Prediction | Inference |", "|---|---|---|"]
-    from turbotab.core import custom_sound
-
     for q in labeled:
         cells = []
         for p in PURPOSES:
-            first = custom_sound.labels_for(q, p).options[0]
-            cells.append(f"`{first.key}` ({first.sound.verdict}): {ref.cell(first.sound.reason)}")
+            if defaults.cases(q, p) is not None:
+                cells.append(BY_DATA)
+                continue
+            first = ref.question_first(q, p)
+            cells.append(f"`{first[0]}` ({first[1]}): {ref.cell(first[2])}" if first
+                         else f"not asked under {p}")
         lines.append(f"| {QUESTION_TITLES[q]} (`{q}`) | {cells[0]} | {cells[1]} |")
-    if "energy_adjustment" in labeled:
-        lines += ["", "The energy model's first option is the first that can run on the table's "
-                      "columns: all components needs every energy source, so on a table without "
-                      "them the next ranked leads, and the coach says so."]
     lines += ["", "### 3.3 · Shared methods", "",
               "| Method | Prediction | Inference |", "|---|---|---|"]
     lines += [f"| {ref.cell(c.label)} (`{c.key}`) | {default_cell(c, 'prediction')} | "
               f"{default_cell(c, 'inference')} |" for c in shared]
+    lines += ["", "### 3.4 · Where the app ranks by the data", "",
+              "Each condition the app ranks by, and what it offers first under it, computed by "
+              "calling the function the app ranks with (`turbotab/core/reference/defaults.py` "
+              "names each).", "",
+              "| Method | Purpose | When | What the app offers first |", "|---|---|---|---|"]
+    # (a contract reached only through a question, the causal lane's estimators, shows as that
+    # question's rows)
+    shown = [(ref.cell(c.label), c.key) for c in (*own, *shared) if c.key not in defaults.THROUGH]
+    shown += [(QUESTION_TITLES[q][:1].upper() + QUESTION_TITLES[q][1:], q) for q in labeled]
+    for label, key in shown:
+        for p in PURPOSES:
+            for case in defaults.cases(key, p) or []:
+                lines.append(f"| {label} (`{key}`) | {p} | {ref.cell(case.when)} | "
+                             f"{ref.cell(case.first)} |")
     lines += ["", "The model families have no static default: the shelf ranks them on the data "
                   "(each family's own assessment) and the journeys below show what it ranked "
                   "first.", "",
@@ -459,7 +647,7 @@ def render(lens: str, captures: dict[str, dict[str, Any] | None]) -> str:
         "4. **Is any source misread?** Some sources were read as abstracts or page summaries "
         "(MODELING_SEQUENCE §7); please check the ones this lens's labels cite against the full "
         "texts.",
-        "5. **Is a method missing, or a gap in §1.4 more than a gap?** A method the field expects "
+        "5. **Is a method missing, or a gap in §1.5 more than a gap?** A method the field expects "
         "that the app does not offer, or an uncontracted method whose behavior you would not "
         "sign off on.", "",
     ]
