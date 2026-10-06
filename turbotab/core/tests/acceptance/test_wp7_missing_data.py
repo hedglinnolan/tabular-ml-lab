@@ -561,9 +561,12 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
     structure is held exactly (the same coefficients by name, metrics and folds), and each
     cross-validated estimate must fall inside the reference's own 95% interval. That bound is the
     score's sampling uncertainty, so a penalty that moves a score by less leaves every reading of it
-    standing. A Linux reference recorded at 514336c was not chosen. No such record exists, and the
-    runner's processor varies (this one an AMD EPYC on OpenBLAS's SkylakeX kernels), which can move
-    the penalty again."""
+    standing. On Linux CI the estimates moved by up to 0.011 in R² and 0.073 in RMSE, against
+    interval half-widths of 0.067 and 0.63. A Linux reference recorded at 514336c was not chosen.
+    No such record exists, and Linux CI's runners vary between runs (an AMD EPYC 9V45 on
+    OpenBLAS's SkylakeX kernels, then an EPYC 7763 on its Haswell kernels), and each kernel sums in
+    its own order, which can move the penalty again (the plain fill's: 0.356 on macOS, 0.274 on the
+    EPYC 7763)."""
     reference = json.loads(REFERENCE.read_text())["configs"]
     _, _, _, now = prediction_run
     assert set(now) == set(reference)
