@@ -12,6 +12,7 @@ The commands are read from ``ci.yml`` rather than restated, so a tier CI adds is
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import shlex
@@ -39,6 +40,12 @@ def ci_pytest_runs(text: str) -> list[list[str]]:
 
 RUNS = ci_pytest_runs(CI.read_text("utf-8"))
 
+# Classic's tests import these at module level, and only Classic's requirements.txt installs them.
+# The v2 workflow (.github/workflows/v2.yml) installs turbotab/server/requirements.txt alone, so
+# there every Classic tier would fail to collect for a reason that says nothing about this tree.
+CLASSIC_ONLY = ("streamlit", "torch")
+MISSING = [name for name in CLASSIC_ONLY if importlib.util.find_spec(name) is None]
+
 
 def collect(args: list[str]) -> subprocess.CompletedProcess:
     env = {**os.environ, "OMP_NUM_THREADS": "1"}
@@ -55,6 +62,9 @@ def test_the_workflow_is_read():
 
 @pytest.mark.parametrize("args", RUNS, ids=[" ".join(r)[:60] for r in RUNS])
 def test_each_ci_tier_collects_without_an_error(args):
+    if MISSING:
+        pytest.skip(f"Classic's requirements.txt is not installed here ({', '.join(MISSING)} missing); "
+                    "its tiers collect only where Classic's CI installs it, as the venv does")
     out = collect(args)
     tail = "\n".join((out.stdout + out.stderr).strip().splitlines()[-25:])
     assert out.returncode == 0, f"pytest {' '.join(args)} does not collect:\n{tail}"
