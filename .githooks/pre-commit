@@ -8,7 +8,7 @@
 #
 # Two gates since the legacy TurboTab app was retired (BLUEPRINT §9.1). The
 # ledger, register, copy-deck and evidence-badge gates checked the legacy app's
-# own records (docs/turbotab/archive/tools/) and were retired with it, as was the
+# own records (docs/turbotab/tools/) and were retired with it, as was the
 # pre-push routing value check, which measured the legacy door's routing. The
 # v2 checks — pytest over turbotab/core and turbotab/server, `npm run check` in
 # turbotab/frontend — run with the work (BLUEPRINT §8), not in a hook.

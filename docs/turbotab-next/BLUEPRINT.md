@@ -88,6 +88,7 @@ turbotab/*.py             legacy domain modules Classic or turbotab/core imports
 docs/turbotab-next/       BLUEPRINT.md (this), INBOX.md, milestone notes
 docs/turbotab-next/reference/   the binding material carried from the legacy app (§9.1; README there)
 docs/turbotab/archive/    the legacy app's record: history, not instructions
+docs/turbotab/data/, tools/, DOMAIN_SCIENCE.md   the part of that record Classic's tests read on import (§9.1)
 ```
 
 Python: `venv/bin/python` (3.13; pandas 2.3, sklearn 1.9, duckdb, pyarrow, fastapi, lightgbm,
@@ -252,16 +253,22 @@ curated into `docs/turbotab-next/reference/`. The rest of `docs/turbotab/` becom
 `main` is untouched.
 
 **Done 2026-10-05.** Gone: `api.py`, `web/`, `pageharness.py`, the 18 modules only they used
-(figures, manuscript, jobs, rankings and the rest), the 156 legacy tests coupled to them or to the
-gates, the ledger, register, copy-deck and evidence gates, the pre-push routing check, and the
-legacy launcher (`scripts/serve_turbotab.py`, `make turbotab`). Kept: the 32 legacy modules that
-Classic or `turbotab/core` imports, computed from the import graph, with their 20 tests. The
+(figures, manuscript, jobs, rankings and the rest), the legacy tests that reach them, the page or
+the gates (79 files whole, and those tests alone from 77 more), the ledger, register, copy-deck and
+evidence gates, the pre-push routing check, and the legacy launcher (`scripts/serve_turbotab.py`,
+`make turbotab`). Kept: the 32 legacy modules that Classic or `turbotab/core` imports, computed
+from the import graph, with their tests (97 files; every kept module is imported by a test,
+`turbotab/core/tests/test_kept_legacy_modules_keep_their_tests.py`). The
 pre-commit hook runs two gates, `python parses` (`.githooks/parsecheck.py`) and American spelling.
 The binding documents are in `docs/turbotab-next/reference/` (its README lists them, and
 `turbotab/core/tests/test_docs_paths.py` keeps every cited path and section resolvable). The lockbox
 constitution is extracted there from the archived roadmap. Classic's `tests/` and README were not
 edited. Their legacy meta-tests of the retired machinery, and the README's "Running TurboTab"
-section, are listed in INBOX.md.
+section, are listed in INBOX.md. Classic's tests read `docs/turbotab/data/`, `docs/turbotab/tools/`
+and `docs/turbotab/DOMAIN_SCIENCE.md` when pytest imports them, and a collection error stops a CI
+tier before any test runs, so those three stay at their old paths until Nolan rules on those tests;
+`turbotab/core/tests/test_classic_ci_collects.py` collects each tier of `ci.yml`. The legacy tests
+read the packs from the reference folder.
 
 ## 10 · Source control — so v2 ships as one clean merge
 

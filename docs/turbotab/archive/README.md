@@ -12,6 +12,13 @@ product vision's rulings, the domain-pack doctrine and the five research packs. 
 `PRODUCT_VISION.md`, `DOMAIN_PACKS.md`, `research/` or `prototypes/design-language.html` resolve
 there, not here.
 
+Three parts of the record stay one level up, in `docs/turbotab/`: `DOMAIN_SCIENCE.md`, `data/` (the
+findings ledger, the register and the routing baselines) and `tools/` (the retired gates). Classic's
+`tests/` read them when pytest imports those test files. If they were missing, collection would fail
+and Classic's CI would run no test at all. They stay there until Nolan rules on those tests
+(`docs/turbotab-next/INBOX.md`). They are history all the same. Links below to `DOMAIN_SCIENCE.md`,
+`data/` or `tools/` resolve there.
+
 The legacy README follows unchanged.
 
 ---

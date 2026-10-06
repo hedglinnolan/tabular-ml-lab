@@ -8,7 +8,7 @@ Extracted verbatim from the legacy roadmap (`docs/turbotab/archive/ROADMAP.md`, 
 constitution", and the routing constitution in its Decision B) when the legacy app was retired
 (BLUEPRINT §9.1). Code and docs cite it as "the lockbox constitution §NN"; the section numbers
 are the roadmap's. Documents it names that are not in this folder are in
-`docs/turbotab/archive/`.
+`docs/turbotab/archive/`, except `DOMAIN_SCIENCE.md`, which stays in `docs/turbotab/`.
 
 ---
 

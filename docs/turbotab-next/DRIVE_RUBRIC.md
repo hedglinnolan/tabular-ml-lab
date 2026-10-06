@@ -5,7 +5,7 @@ eyes when he is not available to drive. The orchestrator runs §5 on every miles
 
 **Provenance.** **[N]** = words the source attributes to Nolan (the product owner, "his words", a
 quoted user). **[obs]** = an agent's or tester's observation, not his words. `F:ID` = a row in
-`docs/turbotab/archive/data/findings.json`; bare `GUIDED-1xx` ids are narrated in
+`docs/turbotab/data/findings.json`; bare `GUIDED-1xx` ids are narrated in
 `docs/turbotab/archive/DRIVE_LOG_NHANES.md`. Most of his own at-the-screen reactions come from his real-NHANES
 drive of 2026-08-04 and the product-owner rows `F:DRIVE-001…010`. He calls himself *"the product
 design guy"* and does not read code (`docs/turbotab/archive/prompts/PM_TRANSITION.md` §02): he judges only what is on

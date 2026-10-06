@@ -24,7 +24,9 @@ claim is faithful to the source; the claims ledger (`../audit/claims-ledger.md`)
 
 **These documents also describe history.** They mention the Guided door, `turbotab/api.py`,
 `web/index.html`, the loops, the findings ledger and the pre-commit gates. All of that was retired.
-Documents they name that are not in this folder are in `docs/turbotab/archive/`. Git keeps the code.
+Documents they name that are not in this folder are in `docs/turbotab/archive/`, except
+`DOMAIN_SCIENCE.md`, `data/` and `tools/`, which stay in `docs/turbotab/` because Classic's tests read
+them. Git keeps the code.
 
 Reference material that v2 produces itself, such as a methods reference generated from the method
 contracts, goes in this folder too.
