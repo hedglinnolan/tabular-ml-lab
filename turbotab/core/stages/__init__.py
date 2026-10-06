@@ -763,8 +763,8 @@ def build_graph() -> Graph:
             # ── Wave 2, FORM (MODELING_SEQUENCE §1 rows 5 and 7) ──
             # forms: the functional-form question's card, read on the analyzed rows: the declared
             # exposure and each adjusted continuous confounder on its final scale, k by Harrell's
-            # rule on the effective sample size, a mass at zero, the options for each role. It reads
-            # no form answer, so answering it never recomputes it.
+            # rule on the effective sample size, a mass at zero, the options for each role. Of the
+            # form answers it reads only the consumers-only domain (the rows it is read on).
             Stage("forms", 1, ("working", "cohort", "target_info"), FORMS_READS, forms_stage,
                   heavy=True, requires=("purpose",),
                   label="Reading which continuous terms take a declared form"),

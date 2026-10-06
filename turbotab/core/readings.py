@@ -3243,6 +3243,13 @@ CONSUMERS: tuple[Consumer, ...] = (
              kinds=("code_or_count", "role")),
     Consumer(_C + "stages.rows:cohort_inputs", ("roles", "missing_not_asked"), True,
              SETTLED_ONLY, kinds=("role",)),
+    # FORM (repair round): a column's declared form is a consumer of whether its numbers are codes
+    # (indicators, no form) or amounts (a form): the form question's card waits for the reading
+    # and asks it, and a declaration on an unsettled or coded column is refused.
+    Consumer(_C + "methods.exposure_form:form_plan", ("predictor_codes",), True, ASK,
+             kinds=("code_or_count",)),
+    Consumer(_C + "methods.exposure_form:_form_reads_a_settled_reading", ("predictor_codes",),
+             True, ASK, kinds=("code_or_count",)),
     Consumer(_C + "stages.modeling:shelf_stage", ("roles",), True, SETTLED_ONLY),
     Consumer(_C + "methods.missing:energy_fill", ("energy_fill",), True, SETTLED_ONLY,
              via=_C + "models.pipeline:design_spec"),

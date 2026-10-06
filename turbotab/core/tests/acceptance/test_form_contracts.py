@@ -21,6 +21,7 @@ FOUR = HERE + "test_form_4_confounders::"
 SIX = HERE + "test_form_6_mass_at_zero::"
 SEVEN = HERE + "test_form_7_modification::"
 EIGHT = HERE + "test_form_8_energy_labels::"
+REPAIR = HERE + "test_form_repair_1::"
 RELATION_TESTS = {
     ("exposure_transform", "transform-invalidates-form"):
         ONE + "test_1_a_transform_of_the_exposure_leaves_its_form_stale_and_reasks_it",
@@ -67,6 +68,24 @@ RELATION_TESTS = {
         SEVEN + "test_7_the_sentence_and_the_family_are_written_as_declared",
     ("interaction", "interaction-reasks-adjustment"):
         SEVEN + "test_7_an_interaction_asks_the_adjustment_set_again_for_the_second_exposure",
+    # the repair round (``test_form_repair_1``)
+    ("functional_form", "rows-rederive-k"):
+        REPAIR + "test_r1_through_the_server_k_and_its_n_follow_the_rows_the_fit_sees",
+    ("functional_form", "codes-take-no-form"):
+        REPAIR + "test_r3_through_the_server_the_reading_is_asked_first_and_codes_enter_as_"
+                 "indicators",
+    ("functional_form", "separation-plr"):
+        REPAIR + "test_r5_under_separation_the_test_of_association_is_a_penalized_likelihood_"
+                 "ratio_test",
+    **{(key, "stratum-estimable"):
+       REPAIR + "test_r4_such_a_modifier_is_refused_at_declaration_with_its_way_forward"
+       for key in ("effect_modification", "interaction")},
+    **{(key, "withdrawn-still-counted"):
+       REPAIR + "test_r6_a_withdrawal_after_the_estimates_keeps_the_test_in_the_family"
+       for key in ("effect_modification", "interaction")},
+    **{(key, "separation-profile"):
+       REPAIR + "test_r5_under_separation_the_modification_reports_profile_intervals_and_a_lr_"
+                "test" for key in ("effect_modification", "interaction")},
 }
 KEYS = ("exposure_transform", "functional_form", "effect_modification", "interaction")
 

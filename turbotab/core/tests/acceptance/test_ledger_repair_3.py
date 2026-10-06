@@ -181,9 +181,14 @@ def test_a1_a_text_bmi_is_asked_and_fit_as_one_slope_through_the_server(tmp_path
     """Gate items 1 and 2 (q3b: CRP and vitamin D left out; through the server, inference). Before:
     `bmi` was proposed a covariate, nothing was asked, and the fit entered 175 indicators (177
     features); NumPy's one slope on the 490 rows whose BMI is a number is 0.3302, age 0.4459, and
-    the app's age read 0.4359. Expected: the fit asks the code-or-amount reading of `bmi`, guessing
-    an amount ("numbers with missing marks"), computes nothing until answered, and with the
-    fixture's truth (an amount) fits one slope, the NumPy fit on those 490 rows."""
+    the app's age read 0.4359. Expected: the code-or-amount reading of `bmi` is asked, guessing an
+    amount ("numbers with missing marks"), and nothing is computed until it is answered; with the
+    fixture's truth (an amount) the fit has one slope, the NumPy fit on those 490 rows.
+
+    Under inference the first consumer of the reading is the functional-form question (the FORM
+    repair: `bmi`, a confounder with many values, takes a declared form if it holds amounts and
+    none if it holds codes), so the question asks it there, before the fit; the drive records the
+    ask and answers it from the fixture's truth (``server_drive.answer_forms``)."""
     table = g6.text_numbers_table()
     numbers = _numbers(table["bmi"])
     keep = numbers.notna()
@@ -198,12 +203,16 @@ def test_a1_a_text_bmi_is_asked_and_fit_as_one_slope_through_the_server(tmp_path
         drive_unsettled(drive, plan, roles={"crp": "excluded", "vitd": "excluded",
                                             "bmi": "covariate", "age": "covariate",
                                             "participant_id": "identifier"})
-        error = fit_refused_without_a_number(drive, plan["models"])
-        assert ("code_or_count", "bmi") in asked(error["exits"]), error
-        offered = {(e["decision"]["column"], e["decision"]["value"]) for e in error["exits"]
+        asks = [a for a in drive.form_asks if ("code_or_count", "bmi") in asked(a["ask"]["exits"])]
+        assert asks, drive.form_asks
+        ask = asks[0]
+        assert not ask["fit_artifact"], "a fit computed a number on an unsettled reading"
+        offered = {(e["decision"]["column"], e["decision"]["value"]) for e in ask["ask"]["exits"]
                    if (e.get("decision") or {}).get("kind") == "confirm_reading"}
         assert {("bmi", "amount"), ("bmi", "code")} <= offered, offered
-        assert "numbers with missing marks" in error["message"] and "`.`" in error["message"]
+        assert "numbers with missing marks" in ask["ask"]["text"] and "`.`" in ask["ask"]["text"]
+        guess = next(g for g in ask["ask"]["groups"] if "bmi" in g["columns"])
+        assert guess["guess"] == "amount", guess
         drive.decide(plan["models"])
         coef = coefficients(drive.artifact("fit", timeout=600))
     assert set(coef) == {"(intercept)", "age", "bmi"}, set(coef)

@@ -1323,7 +1323,9 @@ class ModificationSpec(_Value):
     contrast, stated); ``levels`` a numeric modifier's stated values (None: its 25th and 75th
     percentiles). ``answers`` are the disjunctive cause criterion's answers for the second exposure
     of an interaction. ``post_hoc``: suggested by data inspection (declared after the estimates
-    were seen, or so marked); it counts in the family either way."""
+    were seen, or so marked); it counts in the family either way. ``withdrawn``: withdrawn after
+    the estimates were seen: no longer estimated, its heterogeneity test still counted in the
+    family the record states (the analyst saw it)."""
 
     kind: ModificationKind
     exposure: str | None = None
@@ -1332,10 +1334,13 @@ class ModificationSpec(_Value):
     levels: list[float] | None = None
     answers: dict[str, CovariateAnswers] = Field(default_factory=dict)
     post_hoc: bool = False
+    withdrawn: bool = False
 
 
 class SetModification(_DecisionModel):
-    """Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure."""
+    """Declare (or, with ``withdraw``, take back) an effect modifier or a second exposure. A
+    withdrawal after the estimates were seen (``post_hoc``, set by the server from the plan lock)
+    leaves the modifier unestimated but counted in the family of tests."""
 
     kind: Literal["set_modification"] = "set_modification"
     modifier: str = Field(min_length=1)
@@ -1350,7 +1355,10 @@ class SetModification(_DecisionModel):
 
     def spec(self) -> ModificationSpec | None:
         if self.withdraw:
-            return None
+            if not self.post_hoc:
+                return None
+            return ModificationSpec(kind=self.modification, exposure=self.exposure, post_hoc=True,
+                                    withdrawn=True)
         return ModificationSpec(kind=self.modification, exposure=self.exposure, low=self.low,
                                 high=self.high, levels=self.levels, answers=dict(self.answers),
                                 post_hoc=self.post_hoc)

@@ -174,8 +174,24 @@ def answer_forms(drive: Any) -> None:
     (``form:<column>``: a ``set_exposure_form`` body without its kind and column), else the form
     the drive declared for it earlier (on the present scale), else a straight line, the form every
     model had before the question was asked."""
-    from turbotab.core.tests.truths import forms_answer
+    from turbotab.core.tests.truths import answers, asked, forms_answer
 
+    # BLUEPRINT §14.2 (the FORM repair): a column whose code-or-amount reading is unsettled is
+    # asked first, in the question's ask card; the drive answers it from the fixture's truth, as a
+    # user who knows the table does, then the card is read again for the answers.
+    for _ in range(4):
+        step = drive.reach("form", timeout=300)
+        ask = step.get("ask") or {}
+        if step["status"] != "open" or not asked(ask.get("exits") or []):
+            break
+        if hasattr(drive, "form_asks"):
+            fit = drive.c.get(f"/api/projects/{drive.pid}/stages/fit").json()
+            drive.form_asks.append({"ask": ask, "fit_artifact": bool(fit.get("artifact"))})
+        for decision in answers({"exits": ask["exits"]}, drive.truth):
+            r = drive.c.post(f"/api/projects/{drive.pid}/decisions", json=decision)
+            assert r.status_code == 200, r.text[:600]
+    if drive.reach("form", timeout=300)["status"] not in ("open", "waiting"):
+        return
     card = drive.artifact("forms")
     declared = drive.view()["state"].get("exposure_forms") or {}
     body = forms_answer(card, declared, drive.truth)
@@ -265,6 +281,9 @@ class Drive:
         # answered on the way (``answer_wp17``): the exposure named here (the card's first when
         # None), the adjustment set from the fixture's declared causal truth.
         self.exposure: str | None = None
+        # FORM: each ask the form question made before the drive answered it (its ask card and
+        # whether a fit had been computed then), so a test can check what was asked, and when.
+        self.form_asks: list[dict[str, Any]] = []
 
     def view(self) -> dict[str, Any]:
         return self.c.get(f"/api/projects/{self.pid}").json()

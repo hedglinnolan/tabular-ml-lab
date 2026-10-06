@@ -86,14 +86,24 @@ def bound_exposure(state: Any) -> str | None:
     return exposure_of(state)
 
 
-def declared(state: Any) -> dict[str, Any]:
-    """Each declared modifier or second exposure that holds: declared for the present exposure
-    (a new exposure asks them again, as it asks the adjustment answers)."""
+def _held(state: Any) -> dict[str, Any]:
     exposure = bound_exposure(state)
     if exposure is None or getattr(state, "purpose", None) != "inference":
         return {}
     return {str(m): s for m, s in (getattr(state, "modifications", None) or {}).items()
             if s is not None and _get(s, "exposure") in (None, exposure)}
+
+
+def declared(state: Any) -> dict[str, Any]:
+    """Each declared modifier or second exposure that holds: declared for the present exposure
+    (a new exposure asks them again, as it asks the adjustment answers), and not withdrawn."""
+    return {m: s for m, s in _held(state).items() if not _get(s, "withdrawn")}
+
+
+def withdrawn_after_estimates(state: Any) -> list[str]:
+    """The modifiers withdrawn after the estimates were seen: no longer estimated, still counted in
+    the family of tests (the analyst saw their tests)."""
+    return sorted(m for m, s in _held(state).items() if _get(s, "withdrawn"))
 
 
 def second_covariates(state: Any, modifier: str) -> list[str]:
@@ -164,24 +174,100 @@ def modification_followup(state: Any) -> str | None:
     return "adjustment" if found and len(complete_modifications(state)) < len(found) else None
 
 
-def family_count(state: Any) -> dict[str, Any]:
+def family_count(state: Any, not_computed: Sequence[str] = ()) -> dict[str, Any]:
     """The family of tests the record states: the exposure's own test and one heterogeneity test
-    per declared modifier, those suggested by data inspection counted and named."""
+    per declared modifier, those suggested by data inspection counted and named, and those
+    withdrawn after the estimates were seen still counted (the analyst saw them). ``not_computed``:
+    the declared modifiers whose test the stage could not compute, named as such (a count never
+    claims a test that was not run)."""
     found = declared(state)
+    gone = withdrawn_after_estimates(state)
     post = sorted(m for m, s in found.items() if _get(s, "post_hoc"))
     before = sorted(m for m in found if m not in post)
-    n = 1 + len(found)
+    n = 1 + len(found) + len(gone)
     parts = [f"the exposure's effect"]
     if before:
         parts.append(f"{len(before)} declared heterogeneity test{'s' if len(before) > 1 else ''} "
                      f"({_listing(before)})")
     if post:
         parts.append(f"{len(post)} {POST_HOC} ({_listing(post)})")
+    if gone:
+        parts.append(f"{len(gone)} withdrawn after the estimates were seen ({_listing(gone)})")
     from turbotab.core.voice import listing
 
-    statement = (f"{n} tests in the family: {listing(parts, limit=4, ticked=False)}; the p-values "
+    statement = (f"{n} tests in the family: {listing(parts, limit=5, ticked=False)}; the p-values "
                  f"are reported unadjusted with the number of tests stated")
-    return {"n_tests": n, "declared": before, "post_hoc": post, "statement": statement}
+    missing = [m for m in not_computed if m in found]
+    if missing:
+        statement += (f"; the heterogeneity test of {_listing(missing)} could not be computed on "
+                      f"these rows (said with {'it' if len(missing) == 1 else 'each'}) and is "
+                      f"counted as declared")
+    return {"n_tests": n, "declared": before, "post_hoc": post, "withdrawn": gone,
+            "not_computed": missing, "statement": statement}
+
+
+# ── whether each stratum can carry an effect ─────────────────────────────────
+
+
+class NotEstimable(ValueError):
+    """A modification the rows cannot estimate, said in plain words (any other failure is said
+    without the raw exception text)."""
+
+
+def strata_problems(modifier: str, exposure: str, m_values: Any, a_values: Any, events: Any,
+                    task: str | None, *, categorical: bool,
+                    levels: Sequence[float] | None = None) -> list[str]:
+    """Why the exposure's effect cannot be estimated within some stratum of the modifier, one
+    plain line per stratum: fewer than two rows, or one value of the exposure among them (no
+    contrast within it); for a yes/no outcome no event or no non-event, for a time to event no
+    event, for an ordered outcome one level (the stratum's effect is then not identifiable, and a
+    fit returns an overflow or a bracketing failure instead of a number). A numeric modifier with
+    more than two values has no strata of rows (its effect is read at stated values), so nothing
+    is checked. ``events``: the event indicator (yes/no, time to event) or the outcome's codes
+    (ordered); None for a numeric outcome."""
+    m = pd.Series(np.asarray(m_values, dtype=object))
+    a = pd.to_numeric(pd.Series(np.asarray(a_values, dtype=object)), errors="coerce").to_numpy(float)
+    keep = (m.notna().to_numpy() & np.isfinite(a))
+    ev = None if events is None else np.asarray(events)
+    if ev is not None and ev.dtype.kind == "f":
+        keep &= np.isfinite(ev)
+    m, a = m[keep].reset_index(drop=True), a[keep]
+    ev = ev[keep] if ev is not None else None
+    if not categorical:
+        numbers = pd.to_numeric(m, errors="coerce")
+        distinct = np.unique(numbers.dropna().to_numpy(float))
+        if len(distinct) != 2 or levels:
+            return []
+        m = numbers
+        strata = [float(v) for v in distinct]
+    else:
+        strata = sorted(pd.unique(m), key=str)
+    out = []
+    for s in strata:
+        rows = (m == s).to_numpy()
+        n = int(rows.sum())
+        label = f"`{modifier}` = `{_number(s) if isinstance(s, float) else s}`"
+        if n < 2 or len(np.unique(a[rows])) < 2:
+            out.append(f"{label} has {n:,} row{'s' if n != 1 else ''}"
+                       + (f", all at one value of `{exposure}`" if n >= 2 else "")
+                       + f", so `{exposure}`'s effect within it cannot be estimated")
+            continue
+        if ev is None:
+            continue
+        here = ev[rows]
+        if task == "binary":
+            k = int((here.astype(float) > 0).sum())
+            if k == 0 or k == n:
+                out.append(f"{label} has {'no event' if k == 0 else 'only events'} among its "
+                           f"{n:,} rows, so the odds ratio within it cannot be estimated")
+        elif task == "time_to_event":
+            if int((here.astype(float) > 0).sum()) == 0:
+                out.append(f"{label} has no event among its {n:,} rows, so the hazard ratio "
+                           f"within it cannot be estimated")
+        elif task == "ordinal" and len(np.unique(here)) < 2:
+            out.append(f"{label} has one level of the outcome among its {n:,} rows, so the "
+                       f"cumulative odds ratio within it cannot be estimated")
+    return out
 
 
 # ── the arithmetic (pure: tested against a hand computation) ──────────────────
@@ -341,6 +427,9 @@ class ModificationFit(_Model):
     additive: list[Quantity] = []  # difference scale: the difference of differences
     heterogeneity: Heterogeneity | None = None
     pooled: str | None = None  # how the copies were pooled
+    # a logistic model the data separate: Firth's penalized likelihood, profile intervals and a
+    # penalized likelihood-ratio heterogeneity test, the RERI without an interval
+    penalized: bool = False
     concerns: list[str] = []
 
 
@@ -536,6 +625,10 @@ def modification_stage(ctx: Any) -> Any:
     for i, (modifier, spec) in enumerate(found.items()):
         ctx.progress(0.05 + 0.9 * i / max(len(found), 1), f"Effect modification by {modifier}")
         results.append(_one(ctx, state, exposure, modifier, spec))
+    # The family states every declared test, and names those the rows could not compute.
+    count = family_count(state, not_computed=[
+        r.modifier for r in results
+        if not r.waiting and not any(f.heterogeneity is not None for f in r.families)])
     artifact = ModificationArtifact(purpose="inference", exposure=exposure, family_count=count,
                                     modifications=results,
                                     methods=" ".join(r.sentence for r in results))
@@ -622,9 +715,25 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
                                                          state.event))
     clusters = resolve_clusters(state, frame[list(unit_columns)]) if unit_columns else None
     survey, _ = _survey(ctx, clusters)
+    # The FORM repair: a stratum that cannot carry the exposure's effect (one row, no event) is
+    # said in plain words before any fit, never as an overflow or a bracketing failure.
+    if task == "time_to_event":
+        events = np.asarray(y["event"], dtype=float) if getattr(y, "dtype", None) is not None \
+            and y.dtype.names else None
+    elif task == "binary":
+        observed = pd.Series(y).dropna()
+        top = sorted(pd.unique(observed), key=str)[-1] if observed.nunique() == 2 else None
+        events = (pd.Series(y) == top).astype(float).to_numpy() if top is not None else None
+    elif task == "ordinal":
+        events = np.asarray(y)
+    else:
+        events = None
+    problems = strata_problems(modifier, exposure, frame[modifier], frame[exposure], events, task,
+                               categorical=_categorical(spec_m, frame, modifier),
+                               levels=_get(spec, "levels"))
     fits = []
     lay = None
-    for family in families:
+    for family in ([] if problems else families):
         try:
             fit, lay_f = _family(ctx, state, family, spec_m, frame, y, task=task, levels=levels,
                                  outcome=outcome, clusters=clusters, survey=survey,
@@ -636,9 +745,14 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
                 from turbotab.core.jobs import Cancelled
 
                 raise Cancelled() from exc
-            fits.append(ModificationFit(family=family.key, label=family.label, measure="",
-                                        scale="difference", n_rows=len(frame),
-                                        concerns=[f"It could not be fit: {exc}"]))
+            measure, ratio = _measure(task, family.key, target)
+            fits.append(ModificationFit(
+                family=family.key, label=family.label, measure=measure,
+                scale="ratio" if ratio else "difference", n_rows=len(frame),
+                concerns=[_failure_words(family, exc)]))
+    if problems:
+        concerns = [*concerns, f"Not estimated: {'; '.join(problems)}. Choose another modifier, "
+                               f"or one whose every stratum holds rows of both kinds."]
     if not families:
         concerns = [*concerns, "Effect modification is refit for least squares, logistic, "
                                "proportional-odds and Cox models; none of them is chosen."]
@@ -647,8 +761,26 @@ def _one(ctx: Any, state: Any, exposure: str, modifier: str, spec: Any) -> Modif
         low=lay.low if lay else 0.0, high=lay.high if lay else 0.0,
         strata=list(lay.m_values) if lay else [], reference=lay.reference if lay else "",
         families=fits, sentence="")
-    result.sentence = sentence(state, result)
+    result.sentence = sentence(state, result, task=task,
+                               not_estimated=problems or [c for f in fits for c in f.concerns
+                                                          if not f.effects])
     return result
+
+
+def _categorical(spec_m: Any, frame: pd.DataFrame, modifier: str) -> bool:
+    """Whether the modifier enters as indicators: a category the design reads as codes, or text."""
+    return modifier in set(getattr(spec_m, "categorical", None) or []) or \
+        not pd.api.types.is_numeric_dtype(frame[modifier])
+
+
+def _failure_words(family: Any, exc: BaseException) -> str:
+    """A family that could not be refit with the product terms, in plain words: the reason when
+    the code says it (:class:`NotEstimable`), else what failed, never the raw exception text."""
+    if isinstance(exc, NotEstimable):
+        return f"{family.label} was not refit with the product terms: {exc}"
+    return (f"{family.label} could not be refit with the product terms on these rows: its "
+            f"estimation did not reach finite estimates (a stratum with too few rows or events "
+            f"for the terms it adds, or nearly collinear terms).")
 
 
 def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame, y: np.ndarray, *,
@@ -704,9 +836,22 @@ def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame,
         table = matrix_table(family, M, y, task=task, classes=classes, clusters=clusters,
                              outcome=outcome, survey=design, levels=levels, event=state.event,
                              features=[])
+        if table is not None and not table.info.get("refused") and table.cov is None and \
+                table.info.get("covariance") == "profile":
+            # A logistic model the data separate (a Firth-penalized table): every quantity with
+            # its profile penalized-likelihood interval, the heterogeneity test by the penalized
+            # likelihood-ratio test (the FORM repair: under separation the declared tests run).
+            if len(copies) > 1:
+                raise NotEstimable(
+                    "the data separate the outcome, and a Firth-penalized fit gives profile "
+                    "intervals, not the covariance Rubin's rules and D1 pool across imputed "
+                    "copies; complete cases, or a modifier the data do not separate, are "
+                    "estimable")
+            return _firth_family(family, M, y, classes, lay, measure, ratio, task, len(frame),
+                                 concerns, table), lay
         if table is None or table.info.get("refused") or table.cov is None:
-            raise ValueError((table.info.get("refused") if table is not None else None)
-                             or "the model gave no covariance to test the product terms on")
+            raise NotEstimable((table.info.get("refused") if table is not None else None)
+                               or "the model gave no covariance to test the product terms on")
         names = [str(r["feature"]) for r in table.rows]
         beta = np.array([np.nan if r["estimate"] is None else r["estimate"] for r in table.rows],
                         dtype=float)
@@ -752,6 +897,95 @@ def _family(ctx: Any, state: Any, family: Any, spec_m: Any, frame: pd.DataFrame,
                           additive=additive, heterogeneity=het, pooled=pooled_words,
                           concerns=concerns)
     return fit, lay
+
+
+def firth_contrast(X: np.ndarray, y: np.ndarray, c: np.ndarray, full: Any
+                   ) -> dict[str, float | None]:
+    """c'β of a Firth-penalized logistic fit with its profile penalized-likelihood interval and
+    likelihood-ratio p-value: the design reparametrized so that c'β is one coefficient
+    (θ = Tβ, T the identity with c in the row of c's largest entry; the penalty
+    ½ log |I| moves by the constant log |det T|, so the profile is unchanged), then profiled as
+    each coefficient of the table is (``models.inference.firth_profile``)."""
+    from turbotab.core.models.inference import firth_fit, firth_profile
+
+    c = np.asarray(c, dtype=float)
+    j = int(np.argmax(np.abs(c)))
+    T = np.eye(len(c))
+    T[j, :] = c
+    Xr = np.asarray(X, dtype=float) @ np.linalg.inv(T)
+    fit = firth_fit(Xr, y, start=T @ np.asarray(full.beta, dtype=float))
+    low, high, p = firth_profile(Xr, y, fit, j)
+    return {"estimate": float(fit.beta[j]), "variance": None, "se": None, "ci_low": low,
+            "ci_high": high, "p": p}
+
+
+def _firth_family(family: Any, M: pd.DataFrame, y: Any, classes: Any, lay: _Layout, measure: str,
+                  ratio: bool, task: str, n_rows: int, concerns: list[str], table: Any
+                  ) -> ModificationFit:
+    """Every quantity of a separated logistic model (Firth's penalized likelihood): each effect,
+    combination and ratio of odds ratios with its profile interval; the heterogeneity test by the
+    penalized likelihood-ratio test; the RERI's point estimate, its delta-method interval needing
+    a Wald covariance a penalized fit does not give."""
+    from turbotab.core.methods.exposure_form import FIRTH_PLR, firth_design, firth_lr_test
+    from turbotab.core.models.inference import firth_fit, format_p
+
+    found = firth_design(M, y, classes)
+    if found is None:
+        raise NotEstimable("the separated outcome's model could not be laid out again")
+    names, X, event = found
+    fit = firth_fit(X, event)
+    x = contrast_vectors(names, lay.a_values, lay.m_values, lay.products)
+    ref0 = x[f"a0|{lay.reference}"]
+    strata = list(lay.m_values)
+    others = [s for s in strata if s != lay.reference]
+    f = (lambda t: None if t is None or not math.isfinite(t) else
+         (math.exp(t) if ratio else float(t)))
+
+    def q(c: np.ndarray, stratum: str, a: str | None = None) -> Quantity:
+        got = firth_contrast(X, event, c, fit)
+        return Quantity(stratum=stratum, a=a, estimate=f(got["estimate"]), ci_low=f(got["ci_low"]),
+                        ci_high=f(got["ci_high"]), p=got["p"])
+
+    effects = [q(x[f"a1|{s}"] - x[f"a0|{s}"], s) for s in strata]
+    joint = ([q(x[f"a1|{lay.reference}"] - ref0, lay.reference, "a1")]
+             + [q(x[f"{a}|{s}"] - ref0, s, a) for s in others for a in ("a0", "a1")])
+    c10 = x[f"a1|{lay.reference}"] - ref0
+    mult, reri_rows = [], []
+    beta = np.asarray(fit.beta, dtype=float)
+    for s in others:
+        c01, c11 = x[f"a0|{s}"] - ref0, x[f"a1|{s}"] - ref0
+        mult.append(q(c11 - c10 - c01, s))
+        point = math.exp(float(c11 @ beta)) - math.exp(float(c10 @ beta)) \
+            - math.exp(float(c01 @ beta)) + 1.0
+        reri_rows.append(Quantity(stratum=s, estimate=point if math.isfinite(point) else None,
+                                  ci_low=None, ci_high=None, p=None))
+    where = {n: i for i, n in enumerate(names)}
+    idx = [where[p[2]] for p in lay.products if p[2] in where]
+    het = firth_lr_test(X, event, idx, fit)
+    k = len(idx)
+    heterogeneity = None if het is None else Heterogeneity(
+        statistic=het["statistic"], df_num=het["df_num"], df_den=None, distribution="chi2",
+        p=het["p"], caption=(f"Penalized likelihood-ratio test that the {k} product term"
+                             f"{'s are' if k > 1 else ' is'} zero ({FIRTH_PLR}): "
+                             f"χ²({het['df_num']}) = {het['statistic']:.2f}, p = "
+                             f"{format_p(het['p'])}."))
+    words = list(concerns)
+    words += [c for c in table.concerns if c not in words]
+    words.append("The data separate the outcome, so the model is Firth's penalized logistic "
+                 "regression: each odds ratio and ratio of odds ratios carries a profile "
+                 "penalized-likelihood interval and the heterogeneity test is a penalized "
+                 "likelihood-ratio test; the RERI is reported without an interval, its delta-method "
+                 "interval needing a Wald covariance the penalized fit does not give.")
+    if not fit.converged:
+        words.append("Firth's penalized fit stopped before converging; treat these numbers with "
+                      "care.")
+    if task == "binary":
+        words.append(f"The RERI is computed from odds ratios: {RARE}.")
+    return ModificationFit(family=family.key, label=family.label, measure=measure,
+                           scale="ratio" if ratio else "difference", n_rows=n_rows,
+                           effects=effects, joint=joint, multiplicative=mult, reri=reri_rows,
+                           heterogeneity=heterogeneity, pooled=None, concerns=words,
+                           penalized=True)
 
 
 def combination_df(info: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]) -> float | None:
@@ -883,16 +1117,30 @@ def impute_with_products(ctx: Any, spec: Any, X: pd.DataFrame, y: Any, task: str
 # ── the record ───────────────────────────────────────────────────────────────
 
 
-def sentence(state: Any, r: ModificationResult) -> str:
+def sentence(state: Any, r: ModificationResult, *, task: str | None = None,
+             not_estimated: Sequence[str] = ()) -> str:
     """The methods sentence one declared modifier writes (verbatim in the record and the
-    artifact)."""
+    artifact). One that no family could estimate says so and why, in place of a contrast, a
+    reference and scales it does not have (the FORM repair: never "`region` at " nor a difference
+    of differences for an odds ratio)."""
     target = _tick(getattr(state, "target", None))
     a, m = _tick(r.exposure), _tick(r.modifier)
     when = ("declared before the estimates were seen" if r.status == "declared"
             else f"{POST_HOC} (declared after the estimates were seen)")
-    fit = next((f for f in r.families if f.measure), None)
-    measure = fit.measure if fit is not None else "estimate"
-    ratio = fit is not None and fit.scale == "ratio"
+    estimated = next((f for f in r.families if f.effects), None)
+    if estimated is None:
+        task = task or getattr(state, "task", None)
+        measure, _ = _measure(str(task), r.families[0].family if r.families else "",
+                              str(getattr(state, "target", None)))
+        what = (f"The interaction of {a} and {m} on {target}" if r.kind == "interaction" else
+                f"Effect modification of {a}'s effect on {target} by {m}")
+        why = "; ".join(dict.fromkeys(str(w).rstrip(".") for w in not_estimated if w)) or \
+            "no chosen family refits it"
+        return (f"{what} was {when}; the {measure} within each level of {m} was not estimated: "
+                f"{_after_colon(why)}.")
+    fit = estimated
+    measure = fit.measure
+    ratio = fit.scale == "ratio"
     if r.kind == "interaction":
         head = (f"The interaction of {a} and {m} on {target} was {when}: the joint effects of "
                 f"{r.contrast} and of {m} against a single reference ({a} at {_number(r.low)}, "
@@ -901,7 +1149,15 @@ def sentence(state: Any, r: ModificationResult) -> str:
         head = (f"Effect modification of {a}'s effect on {target} by {m} was {when}: the "
                 f"{measure} for {r.contrast} within each level of {m}, and each combination "
                 f"against a single reference ({a} at {_number(r.low)}, {m} at {r.reference})")
-    if ratio:
+    if ratio and fit.penalized:
+        scales = (f"; the data separate the outcome, so the model is Firth's penalized logistic "
+                  f"regression (Heinze & Schemper 2002), each {measure} with its profile "
+                  f"penalized-likelihood interval; interaction on the additive scale as the "
+                  f"relative excess risk due to interaction (RERI), its point estimate only (its "
+                  f"delta-method interval needs a Wald covariance the penalized fit does not "
+                  f"give), and on the multiplicative scale as the ratio of {measure}s with its "
+                  f"profile interval ({KNOL})")
+    elif ratio:
         scales = (f"; interaction on the additive scale as the relative excess risk due to "
                   f"interaction (RERI) with a delta-method interval ({HOSMER}) and on the "
                   f"multiplicative scale as the ratio of {measure}s ({KNOL})")
@@ -916,10 +1172,24 @@ def sentence(state: Any, r: ModificationResult) -> str:
                     f"({_listing(r.second_adjusted_for) or 'none beyond them'})")
     n_products = (fit.heterogeneity.df_num
                   if fit is not None and fit.heterogeneity is not None else None)
-    het = (f"; the heterogeneity test is the Wald test that the {n_products} product term"
+    test = "penalized likelihood-ratio test" if fit.penalized else "Wald test"
+    het = (f"; the heterogeneity test is the {test} that the {n_products} product term"
            f"{'s are' if (n_products or 0) > 1 else ' is'} zero" if n_products else "")
     pooled = f"; {fit.pooled[0].lower()}{fit.pooled[1:]}" if fit is not None and fit.pooled else ""
     return f"{head}{scales}, {adjusted}{het}{pooled}."
+
+
+# Words that keep their capital inside a sentence (a family named for a person).
+PROPER = ("Cox",)
+
+
+def _after_colon(text: str) -> str:
+    """``text`` continuing a sentence after a colon: its first word lowercased, unless it is a
+    column (backticked) or a proper name (``Cox proportional hazards``)."""
+    first = text.split(" ", 1)[0]
+    if not text[:1].isupper() or first in PROPER:
+        return text
+    return text[0].lower() + text[1:]
 
 
 def _record_sentence(d: Any, state: Any, ctx: Any) -> str:
@@ -927,6 +1197,10 @@ def _record_sentence(d: Any, state: Any, ctx: Any) -> str:
     a = _tick(d.exposure or bound_exposure(state))
     m = _tick(d.modifier)
     if d.withdraw:
+        if d.post_hoc:
+            return (f"The declared modifier {m} was withdrawn; it was declared when the estimates "
+                    f"were seen, so its heterogeneity test still counts in the family of tests "
+                    f"stated")
         return f"The declared modifier {m} was withdrawn"
     when = POST_HOC if d.post_hoc else "declared"
     if d.modification == "interaction":
@@ -995,12 +1269,73 @@ def _modifier_is_declarable(decision: Any, ctx: Any) -> None:
                                       if c in allowed}})}])
 
 
+def _strata_hold_the_effect(decision: Any, ctx: Any) -> None:
+    """A modifier whose strata cannot each carry the exposure's effect on the analyzed rows (one
+    row, one exposure value, no event) is refused with the reason and its way forward, rather than
+    recorded and then fit to an overflow (:func:`strata_problems`). Checked where the context
+    reads the rows (the server's); the stage says the same if the rows change later."""
+    from turbotab.core.decisions import Refusal, _ctx, _store_of
+    from turbotab.core.readings import confirmed_codes
+    from turbotab.core.stages.rows import _level_key
+
+    if decision.withdraw:
+        return
+    state = _state(ctx)
+    exposure = bound_exposure(state) if state is not None else None
+    target = getattr(state, "target", None) if state is not None else None
+    store = _store_of(ctx)
+    analyzed = _ctx(ctx, "analyzed")
+    if exposure is None or target is None or store is None or not callable(analyzed):
+        return
+    try:
+        rows = analyzed()
+        if rows is None or any(c not in store.columns for c in (decision.modifier, exposure,
+                                                                 target)):
+            return
+        frame = store.materialize([decision.modifier, exposure, target], rows)
+    except Exception:  # noqa: BLE001 - rows that cannot be read are checked by the stage
+        return
+    task = getattr(state, "task", None) or _ctx(ctx, "task")
+    y = frame[target]
+    frame = frame[y.notna()]
+    y = y[y.notna()]
+    events = None
+    # (a time to event's indicator is not the target column: the stage checks its events)
+    if task == "binary" and getattr(state, "event", None) is not None:
+        key = _level_key(state.event)
+        events = y.map(_level_key).eq(key).astype(float).to_numpy()
+    elif task == "binary" and y.nunique() == 2:
+        events = y.eq(sorted(pd.unique(y), key=str)[-1]).astype(float).to_numpy()
+    elif task == "ordinal":
+        events = y.to_numpy()
+    categorical = (not pd.api.types.is_numeric_dtype(frame[decision.modifier])
+                   or decision.modifier in set(confirmed_codes(state)))
+    problems = strata_problems(decision.modifier, exposure, frame[decision.modifier],
+                               frame[exposure], events, task, categorical=categorical,
+                               levels=decision.levels)
+    if problems:
+        raise Refusal(
+            "modifier_stratum_not_estimable",
+            f"{'; '.join(problems)[0].upper()}{'; '.join(problems)[1:]}. A modifier needs every "
+            f"stratum to carry the exposure's effect.",
+            exits=[{"label": "Choose another modifier (one whose every stratum holds the "
+                             "exposure's contrast and the outcome's both kinds)", "decision": None}])
+
+
 def _modifier_records_when(decision: Any, ctx: Any) -> Any:
     """The exposure it is about, and whether it was declared after the estimates were seen: then
-    it is suggested by data inspection, whatever the client said."""
-    if decision.withdraw:
-        return decision
+    it is suggested by data inspection, whatever the client said. A withdrawal records the same:
+    one after the estimates were seen leaves the modifier counted in the family of tests (its test
+    was seen), one before them takes it out, whatever the client said."""
     state = _state(ctx)
+    if decision.withdraw:
+        if state is None:
+            return decision.model_copy(update={"post_hoc": False})
+        held = (getattr(state, "modifications", None) or {}).get(decision.modifier)
+        update = {"post_hoc": bool(getattr(state, "plan_locked", None)) and held is not None,
+                  "modification": _get(held, "kind") or decision.modification,
+                  "exposure": decision.exposure or _get(held, "exposure") or bound_exposure(state)}
+        return decision.model_copy(update=update)
     if state is None:
         return decision
     update: dict[str, Any] = {}
@@ -1052,6 +1387,21 @@ def _register_contracts() -> None:
         relation("modification-in-plan", "implies", "the analysis-plan lock", "a declared "
                  "modifier", "it is part of the plan; one declared after the estimates were seen "
                  "is marked so", by="turbotab.core.plan_lock:plan_of"),
+        relation("stratum-estimable", "conflicts", "a stratum that cannot carry the effect",
+                 "a modifier stratum with one row, one exposure value, or no event (or only "
+                 "events)", "refused with the reason, never fit to an overflow; if the rows "
+                 "change later, the stage says it in plain words and the family names it",
+                 rung="refused", exits=("another modifier",), by=f"{me}:_strata_hold_the_effect"),
+        relation("withdrawn-still-counted", "implies", "the family of tests",
+                 "a modifier withdrawn after the estimates were seen",
+                 "it is no longer estimated and still counted in the family the record states",
+                 by=f"{me}:family_count"),
+        relation("separation-profile", "implies", "profile intervals and a penalized "
+                 "likelihood-ratio heterogeneity test", "a logistic model the data separate",
+                 "each effect, combination and ratio of odds ratios carries its profile "
+                 "penalized-likelihood interval, the heterogeneity test is the penalized "
+                 "likelihood-ratio test, the RERI is given without an interval",
+                 by=f"{me}:firth_contrast"),
     )
     register_contract(MethodContract(
         key="effect_modification", package=PACKAGE,
@@ -1106,6 +1456,7 @@ def _register() -> None:
     from turbotab.core.voice import register_sentence
 
     register_validator("set_modification", _modifier_is_declarable)
+    register_validator("set_modification", _strata_hold_the_effect)
     register_completion("set_modification", _modifier_records_when)
     register_sentence("set_modification")(_record_sentence)
     _register_contracts()
@@ -1115,9 +1466,10 @@ _register()
 
 __all__ = [
     "HOSMER", "KNOL", "MODIFICATION_READS", "ModificationArtifact", "ModificationFit",
-    "ModificationResult", "POST_HOC", "adjusted_sets", "bound_exposure", "complete_modifications",
-    "contrast_vectors", "declared", "family_count", "impute_with_products", "layout",
-    "linear_combination", "measures", "missing_answers", "modification_answer",
-    "modification_followup", "modification_gate", "modification_stage", "pool_measures", "reri",
-    "second_covariates", "sentence", "with_products",
+    "ModificationResult", "NotEstimable", "POST_HOC", "adjusted_sets", "bound_exposure",
+    "complete_modifications", "contrast_vectors", "declared", "family_count", "firth_contrast",
+    "impute_with_products", "layout", "linear_combination", "measures", "missing_answers",
+    "modification_answer", "modification_followup", "modification_gate", "modification_stage",
+    "pool_measures", "reri", "second_covariates", "sentence", "strata_problems", "with_products",
+    "withdrawn_after_estimates",
 ]
