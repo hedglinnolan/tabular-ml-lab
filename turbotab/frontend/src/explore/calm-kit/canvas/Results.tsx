@@ -6,7 +6,7 @@
  */
 import { scaleLinear } from "d3-scale";
 import { fmtCI, fmtEst, fmtInt, fmtTick, plain } from "../text";
-import { matteredAttrs, t2Attrs, type MatteredRow, type Results } from "../walk";
+import { matteredAttrs, t2Attrs, type MatteredRow, type Results, type T2Row } from "../walk";
 import k from "../kit.module.css";
 
 const GW = 160;
@@ -29,13 +29,34 @@ function span(rows: { lo: number | null; hi: number | null; estimate: number }[]
   return [lo - pad, hi + pad] as const;
 }
 
+/** The main estimate in one plain line (the card's register), from the fit: its sign and size, the
+ *  feature the model reads (its unit is the column's own: the engine states none), and the swap the
+ *  estimand names. The methods caption follows the table, in the paper's register. */
+export function plainLine(results: Results): string | null {
+  const r = results.table2.find((x) => x.primary);
+  if (!r) return null;
+  const caption = plain(results.fit.caption);
+  const outcome = caption.match(/ on (\S+?) \(/)?.[1] ?? caption.match(/ on (\S+?),/)?.[1];
+  if (!outcome || results.fit.measure_label !== "difference in the mean outcome") return null;
+  const base = r.feature.replace(/_adj$|_per_kcal$/, "");
+  const unit = r.feature === base ? "in its recorded units" : r.feature.endsWith("_adj") ? `${base} adjusted for calories, in ${base}'s units` : `${base} per kcal`;
+  const swap = caption.includes("(in place of other energy sources at fixed total energy)") ? `, with ${base} replacing other calories at fixed total calories` : "";
+  const dir = r.estimate < 0 ? "lower" : "higher";
+  return `${r.label.replace(" (primary)", ", the main model")}: mean ${outcome} is ${fmtEst(Math.abs(r.estimate))} ${dir} per unit of ${r.feature} (${unit})${swap}.`;
+}
+
 export function Table2({ results }: { results: Results }) {
-  const rows = results.table2;
+  const rows: T2Row[] = results.table2;
   const [min, max] = span(rows);
   const exposure = rows[0]?.feature ?? "";
+  const line = plainLine(results);
   return (
     <div className={k.panels}>
-      <p className={k.lead}>{plain(results.fit.caption).split(". Declared beside it")[0]}.</p>
+      {line ? (
+        <p className={k.lead} data-testid="t2-plain">
+          {line}
+        </p>
+      ) : null}
       <div className={k.tableWrap}>
         <table className={k.t2} data-testid="table2">
           <thead>
@@ -67,6 +88,7 @@ export function Table2({ results }: { results: Results }) {
           </tbody>
         </table>
       </div>
+      <p className={k.footnote}>{plain(results.fit.caption).split(". Declared beside it")[0]}.</p>
       <p className={k.footnote} data-testid="t2-inference">
         {plain(results.footnote)} The axis spans {fmtTick(min)} to {fmtTick(max)}; the line marks zero.
       </p>
@@ -113,8 +135,11 @@ export function Mattered({ results }: { results: Results }) {
             {rows.map((r) => (
               <tr key={r.key} data-primary={r.varies === "primary"} {...matteredAttrs(r)}>
                 <th scope="row">
-                  {r.label}
-                  <small>{VARIES[r.varies]}</small>
+                  {plain(r.label)}
+                  <small>
+                    {VARIES[r.varies]}
+                    {r.term ? ` · known as ${plain(r.term)}` : ""}
+                  </small>
                 </th>
                 <td className="num">
                   {fmtEst(r.estimate)} <span style={{ color: "var(--canvas-muted)" }}>({fmtCI(r.lo, r.hi)})</span>

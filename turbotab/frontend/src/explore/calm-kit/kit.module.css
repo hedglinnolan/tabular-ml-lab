@@ -298,20 +298,19 @@
   white-space: nowrap;
 }
 /* the second register: the option's technical name, on its top edge while it is pointed at or
-   focused; it never moves the options (FOUNDATION §2, two registers) */
+   focused; it never moves the options (FOUNDATION §2, two registers). A long name with its
+   acronyms spelled out wraps upward into the gap above, never over the option's own words. */
 .optTerm {
   position: absolute;
   left: 46px;
-  top: -9px;
+  bottom: calc(100% - 8px);
   max-width: calc(100% - 62px);
   padding: 0 6px;
   font-size: 13px;
-  line-height: 17px;
+  line-height: 16px;
   color: var(--muted);
   background: var(--ground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  border-radius: 4px;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.15s;
@@ -325,7 +324,9 @@
   cursor: default;
   background: transparent;
 }
-.opt[data-off="true"]:hover {
+.opt[data-off="true"]:hover,
+.opt[data-off="true"][data-pointed="true"] {
+  background: transparent;
   border-color: var(--line);
 }
 .opt[data-off="true"] .optName,

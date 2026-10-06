@@ -26,8 +26,9 @@ export interface Readout {
 const matrixSize = (l: { nodes: { lane: string; count?: number | null }[] }) =>
   l.nodes.filter((n) => n.lane === "matrix").reduce((c, n) => c + (n.count || 1), 0);
 
-/** The headline numbers pinned beside the views (BLUEPRINT §11.1): people, r, the model's inputs. */
-export function readoutOfViews(views: ConsequenceView[], restOnly = false): Readout[] {
+/** The headline numbers pinned beside the views (BLUEPRINT §11.1): people, r, the model's inputs.
+ *  With a storyboard frame shown, the "after" side is that frame's (the readout follows the picture). */
+export function readoutOfViews(views: ConsequenceView[], restOnly = false, frame: number | null = null): Readout[] {
   const out: Readout[] = [];
   const flow = views.find((v) => v.kind === "row_flow");
   if (flow && flow.kind === "row_flow") {
@@ -37,21 +38,27 @@ export function readoutOfViews(views: ConsequenceView[], restOnly = false): Read
   }
   const rel = views.find((v) => v.kind === "relationship");
   if (rel && rel.kind === "relationship" && rel.r_before !== null && rel.r_after !== null) {
-    const changed = fmtR(rel.r_after) !== fmtR(rel.r_before);
-    out.push({ label: `Correlation with ${plain(rel.x_label)}`, now: fmtR(rel.r_before), after: !restOnly && changed ? fmtR(rel.r_after) : null });
+    const shown = frame !== null ? (rel.story?.[frame]?.r ?? rel.r_after) : rel.r_after;
+    const changed = fmtR(shown) !== fmtR(rel.r_before);
+    out.push({
+      label: `Correlation of ${plain(rel.y_label_before)} with ${plain(rel.x_label)}`,
+      now: fmtR(rel.r_before),
+      after: !restOnly && changed ? fmtR(shown) : null,
+    });
   }
   const lin = views.find((v) => v.kind === "lineage");
   if (lin && lin.kind === "lineage" && out.length < 2) {
     const a = matrixSize(lin.before ?? lin.after);
-    const b = matrixSize(lin.after);
+    const at = frame !== null ? lin.story?.[frame]?.lineage : undefined;
+    const b = matrixSize(at ?? lin.after);
     if (restOnly) out.push({ label: "Model inputs", now: fmtInt(a), after: null });
     else if (lin.before && a !== b) out.push({ label: "Model inputs", now: fmtInt(a), after: fmtInt(b) });
   }
   return out.slice(0, 2);
 }
 
-export function readoutOf(o: Option | null): Readout[] {
-  return o ? readoutOfViews(o.preview.views as ConsequenceView[]) : [];
+export function readoutOf(o: Option | null, frame: number | null = null): Readout[] {
+  return o ? readoutOfViews(o.preview.views as ConsequenceView[], false, frame) : [];
 }
 
 /** Your data now for a question: its own, or the one an earlier answer leaves (the lock's). */
@@ -66,7 +73,9 @@ export function restOf(step: Step | null, answers?: Record<string, string>): Now
 function captionOf(o: Option | null, layout: Layout, after: boolean, primary: ConsequenceView | undefined, rest: Now | null): ReactNode {
   if (!o) return rest ? plain(rest.caption) : "";
   if (layout === "refused") {
-    // one calm line: the refusal when it is short, else the option's own line, which says it
+    // one calm line: what it would do and why not when the fixture says so plainly; else the
+    // refusal when it is short; else the option's own line, which says why
+    if (o.preview.caption) return plain(o.preview.caption);
     const full = plain(o.refusal ?? o.preview.refusal?.message);
     return full.split(/\s+/).length <= 30 ? full : plain(o.what);
   }
@@ -144,7 +153,7 @@ export function CanvasFrame({ step, option, flip, setFlip, frame, setFrame, answ
     : layout === "angles"
       ? []
       : after
-        ? readoutOf(option)
+        ? readoutOf(option, frame)
         : readoutOf(option).map((r) => ({ ...r, after: null }));
   const p = { after, frame, linked };
   const cut = !quiet && (primary?.kind === "row_flow" || (primary?.kind === "distribution" && primary.before_label === "Every measured value"));

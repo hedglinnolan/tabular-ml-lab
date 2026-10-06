@@ -52,9 +52,10 @@ export interface OptionListProps {
  *  to "Your data now" in between (Nolan, 2026-10-05: "it will glitch out back and forth"). */
 export const POINT_GRACE_MS = 160;
 
-/** The options: hover tints, choosing fills, disabled ones say why in their one line; arrow keys
- *  move through them (a native radio group). Each speaks plainly; its technical name (`term`, the
- *  second register) sits on its top edge while it is pointed at or focused (FOUNDATION §2). */
+/** The options: hover tints, choosing fills, disabled ones say why in their one line (pointing at
+ *  one shows, on the canvas, what it would do and why it cannot); arrow keys move through them (a
+ *  native radio group). Each speaks plainly; its technical name (`term`, the second register) sits
+ *  on its top edge while it is pointed at or focused (FOUNDATION §2). */
 export function OptionList({ step, chosen, pointed, onPoint, onChoose }: OptionListProps) {
   const name = useId();
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,7 +87,7 @@ export function OptionList({ step, chosen, pointed, onPoint, onChoose }: OptionL
           data-off={o.disabled || undefined}
           data-pointed={pointed === o.id || undefined}
           data-testid={`opt-${o.id}`}
-          onPointerEnter={() => (o.disabled ? clearSoon() : pointAt(o.id))}
+          onPointerEnter={() => pointAt(o.id)}
           onPointerLeave={clearSoon}
         >
           <input
@@ -158,7 +159,7 @@ function Blocked({ walk }: { walk: WalkApi }) {
   if (!walk.blocked.length) return null;
   return (
     <p className={k.note} data-testid="blocked">
-      This walk holds the engine's answers for{" "}
+      This walk holds computed answers only for{" "}
       {walk.blocked.map((b, i) => {
         const s = STEP_BY_ID[b.step]!;
         const want = s.options.find((o) => o.id === (s.scenario ?? ""))!;
@@ -170,8 +171,8 @@ function Blocked({ walk }: { walk: WalkApi }) {
             </button>
           </span>
         );
-      })}{" "}
-      only. Change that answer to go on.
+      })}
+      . Change that answer to go on.
     </p>
   );
 }
@@ -183,7 +184,7 @@ function LockNote({ walk }: { walk: WalkApi }) {
     <p className={k.note} data-testid="lock-blocked">
       {p.missing.length
         ? `Answer the open questions first (${p.missing.length} left).`
-        : "No fit was captured for this plan. It differs from the scenario in: "}
+        : "This walk has no computed fit for this plan. It differs from the example in: "}
       {!p.missing.length
         ? p.differs.map((d, i) => (
             <span key={d.step}>
@@ -258,7 +259,9 @@ function ResultCard({ walk, kicker }: { walk: WalkApi; kicker?: ReactNode }) {
           <Continue walk={walk} label="Which decisions mattered?" />
         </div>
       ) : (
-        <p className={k.note}>Change any answer from the chain or the manuscript; the record marks it as made after the estimates were seen.</p>
+        <p className={k.note}>
+          Change any answer from the stage bar at the top or from the manuscript; the record marks it as made after the estimates were seen.
+        </p>
       )}
     </section>
   );
@@ -268,7 +271,7 @@ function ResultCard({ walk, kicker }: { walk: WalkApi; kicker?: ReactNode }) {
 
 /** The live readout and Continue, fixed at the bottom on narrow screens (≤ 900 px). */
 export function Footer({ walk, inline = false }: { walk: WalkApi; inline?: boolean }) {
-  const readout = readoutOf(walk.active);
+  const readout = readoutOf(walk.active, walk.flip === "after" ? walk.frame : null);
   return (
     <div className={k.footer} data-testid="footer" style={inline ? { position: "static", display: "block", borderRadius: 10, border: "1px solid var(--line)" } : undefined}>
       <div className={k.actRow}>

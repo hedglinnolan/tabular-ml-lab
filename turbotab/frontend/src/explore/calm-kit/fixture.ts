@@ -18,7 +18,7 @@ import raw from "./fixture.json";
 
 export type { ConsequenceView, DistributionView, HistogramData, LineageView, RelationshipView, RowFlowView, TableFocusView };
 
-export type StageId = "data" | "participants" | "exposure" | "confounders" | "energy" | "model" | "results";
+export type StageId = "data" | "participants" | "columns" | "exposure" | "confounders" | "energy" | "model" | "results";
 export type SectionId = "participants" | "variables" | "measurement" | "statistics" | "results";
 export type QuietLabel = "Recommended" | "Common practice" | "Not available yet" | "Not available";
 
@@ -26,6 +26,8 @@ export type QuietLabel = "Recommended" | "Common practice" | "Not available yet"
 export interface StripColumn {
   column: string;
   output: string;
+  /** What the engine's recognizer reads the name as ("monounsaturated fat"), shown on hover. */
+  desc?: string;
   /** The engine's change score (consequences._shifts): the standardized Wasserstein distance. */
   shift: number;
   r_before: number | null;
@@ -56,7 +58,8 @@ export interface Angle {
 export interface Preview {
   source: string;
   basis: string;
-  /** The canvas caption in the card's plain register, restating the primary view's (absent: the view's own). */
+  /** The canvas caption in the card's plain register, restating the primary view's (absent: the view's own);
+   *  for an option not available, what it would do and why not. */
   caption?: string;
   /** The engine's note when nothing can be drawn (rule 7: one line, no empty chart). */
   note: string | null;
@@ -71,7 +74,7 @@ export interface Option {
   id: string;
   /** Its plain name (the card's register, FOUNDATION §2). */
   name: string;
-  /** Its one-line consequence (≤ 16 words). */
+  /** Its one-line consequence (≤ 16 words); for an option not available, why not. */
   what: string;
   label?: QuietLabel;
   /** Its technical name, the quiet second register: shown when the option is pointed at. */

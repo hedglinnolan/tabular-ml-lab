@@ -192,7 +192,10 @@ export interface T2Row {
 
 export interface MatteredRow {
   key: string;
+  /** Its plain name: a model's, or the exclusion rule's as the card offered it. */
   label: string;
+  /** The rule's technical name (the quiet second register), for a check on other rows. */
+  term?: string;
   /** What it varies from the primary: the adjustment (the model sequence) or the rows (a screen). */
   varies: "primary" | "adjustment" | "rows";
   n: number;
@@ -213,6 +216,19 @@ const SCREEN_LABEL: Record<string, string> = {
   willett_2013_by_sex: "Willett 2013, by sex",
   nhs_hpfs_by_sex: "NHS/HPFS, by sex",
 };
+
+/** The engine's label for a check's rows ("Willett 2013, by sex", "Every row") → the exclusion
+ *  option the card offered for the same rule, so the results use the names the user chose from. */
+const SCREEN_OPTION: Record<string, string> = {
+  "Willett 2013, by sex": "willett_2013_by_sex",
+  "NHS/HPFS, by sex": "nhs_hpfs_by_sex",
+  "Every row": "none",
+};
+
+export function screenName(label: string): { name: string; term?: string } {
+  const o = optionOf(STEP_BY_ID.exclusions!, SCREEN_OPTION[label]);
+  return o ? { name: o.name, term: o.term } : { name: label };
+}
 
 /** Table 2 and the declared alternatives: null until the plan is locked (the leash). */
 export function results(s: WalkState): Results | null {
@@ -249,7 +265,8 @@ export function results(s: WalkState): Results | null {
     if (a.primary || a.refused || !(a.added || declared.includes(a.label))) continue;
     const e = a.effects[0];
     if (!e) continue;
-    mattered.push({ key: `screen:${a.label}`, label: a.label, varies: "rows", n: a.n_rows, estimate: e.estimate, lo: e.ci_low, hi: e.ci_high });
+    const { name, term } = screenName(a.label);
+    mattered.push({ key: `screen:${a.label}`, label: name, term, varies: "rows", n: a.n_rows, estimate: e.estimate, lo: e.ci_low, hi: e.ci_high });
   }
   const primary = fit.sequence.find((r) => r.key === "model_2")!;
   return { fit, table2, mattered, footnote: primary.inference };

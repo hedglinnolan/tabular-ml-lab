@@ -127,6 +127,7 @@ export function Strip({ cols, after, linked, rest, title, focusColumn }: StripPr
               <button
                 type="button"
                 className={k.stripRow}
+                title={c.desc}
                 data-focus={c === f}
                 onPointerEnter={() => {
                   setFocus(i);

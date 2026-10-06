@@ -35,7 +35,8 @@ describe("the scenario walk", () => {
     const sections = manuscript(s);
     expect(sections.flatMap((x) => x.entries).filter((e) => e.kind === "recorded")).toEqual([]);
     expect(sentenceCount(s)).toBe(FX.stated.length);
-    expect(chain(s).map((c) => c.status)).toEqual(["current", "waiting", "waiting", "waiting", "waiting", "waiting", "waiting"]);
+    expect(chain(s).map((c) => c.label)).toEqual(["Data", "Participants", "Columns", "Exposure", "Confounders", "Energy", "Model", "Results"]);
+    expect(chain(s).map((c) => c.status)).toEqual(["current", "waiting", "waiting", "waiting", "waiting", "waiting", "waiting", "waiting"]);
   });
 
   it("walks the scenario's moments in order: readings singly, then the block, to the lock", () => {
@@ -61,6 +62,11 @@ describe("the scenario walk", () => {
     expect([fmtEst(m2.estimate), fmtCI(m2.lo, m2.hi)]).toEqual(["−0.0199", "−0.0327 to −0.00718"]);
     expect(r.footnote).toContain("t(21,830)");
     expect(r.mattered.map((x) => x.key)).toEqual(["crude", "model_1", "model_2", "model_3", "screen:Willett 2013, by sex", "screen:NHS/HPFS, by sex"]);
+    // the checks carry the names the card offered them under, the technical name beside
+    expect(r.mattered.slice(-2).map((x) => [x.label, x.term])).toEqual([
+      ["Ranges by sex, men up to 4,000", "Willett's cut-offs (Willett 2013)"],
+      ["Ranges by sex, men up to 4,200", "NHS/HPFS cut-offs (Nurses' Health and Health Professionals studies)"],
+    ]);
     const lock = manuscript(s).flatMap((x) => x.entries).find((e) => e.id === "lock")!;
     expect(lock.sentence).toContain("c9efee9fb0b2");
   });
@@ -178,6 +184,17 @@ describe("the kit's data", () => {
           expect(words(a.cell ?? ""), a.cell).toBeLessThanOrEqual(4);
         }
       }
+  });
+
+  it("speaks plainly on the card and the canvas: no internal reference, and an option not available says why", () => {
+    const internal = /NUTRITION_PACK|the engine|engine's|predictor|estimand|the lock\b|range check|\bscreen\b/i;
+    for (const s of STEPS) {
+      for (const t of [s.question, s.lede, s.now.caption, s.now.basis]) expect(t, s.id).not.toMatch(internal);
+      for (const o of s.options) {
+        for (const t of [o.name, o.what, o.preview.caption ?? "", o.preview.basis]) expect(t, `${s.id}/${o.id}`).not.toMatch(internal);
+        if (o.disabled) expect(o.what, `${s.id}/${o.id}`).toMatch(/^(Not possible|Needs)/);
+      }
+    }
   });
 
   it("keeps every card within the calm budget's word limits", () => {

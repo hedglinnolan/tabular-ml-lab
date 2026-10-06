@@ -49,7 +49,7 @@ Per screen:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ CHAIN   Data · Participants · Exposure · Confounders · Energy · Model · Results │
+│ CHAIN Data · Participants · Columns · Exposure · Confounders · Energy · Model … │
 ├────────┬──────────────────────┬──────────────────────────────────────────────┤
 │ M      │ CARD                 │ CANVAS                                         │
 │ a      │ Participants · step 2│ (the dynamic window: everything the open       │
@@ -63,7 +63,10 @@ Per screen:
 - **Chain (top, one line).** The analysis as a sequence of stages, by the purpose's reporting
   guideline (STROBE-nut under inference, TRIPOD+AI under prediction). Done stages are marked,
   the current one is named, later ones wait. Clicking a done stage revisits it. This is the map:
-  the provenance figure in its calmest form.
+  the provenance figure in its calmest form. A stage is named for what its questions ask: the
+  questions about what a column is (a characteristic, a marker of filled-in values) are
+  "Columns", not "Exposure" (an outside reader, 2026-10-05: an outsider "looks for the exposure
+  and does not find it"). The copy calls it the stage bar.
 - **Card (left, 380–440 px).** Atop the card, the stage and its step ("Participants · step 2 of
   3"). Then the question, its options, the disclosure, and Continue.
 - **Canvas (right, all remaining width; at least 60% of a 1440 px screen).** The dynamic window.

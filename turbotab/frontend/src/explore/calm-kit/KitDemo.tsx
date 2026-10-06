@@ -43,11 +43,11 @@ const LAYOUTS: { title: string; step: string; option: string }[] = [
   { title: "Focus: one column's values", step: "unit", option: "kj_1" },
   { title: "Strip: several columns change", step: "energy", option: "residual" },
   { title: "Flow: rows leave", step: "exclusions", option: "willett_2013_by_sex" },
-  { title: "Routing: what feeds where", step: "model1", option: "guess" },
-  { title: "Angles: the declared tradeoffs", step: "contrast", option: "addition" },
-  { title: "Angles: total or direct", step: "effect", option: "direct" },
+  { title: "Routing: what the models read", step: "model1", option: "guess" },
+  { title: "Angles: what each option trades off", step: "contrast", option: "addition" },
+  { title: "Angles: all of the effect or only the direct part", step: "effect", option: "direct" },
   { title: "Nothing changes: one line over your data now", step: "missing", option: "complete_case" },
-  { title: "Not available: why, over your data now", step: "exclusions", option: "goldberg_schofield" },
+  { title: "Not available: what it would do and why not, over your data now", step: "energy", option: "all_components" },
 ];
 
 function Demo({ title, children, note }: { title: string; children: ReactNode; note?: ReactNode }) {
@@ -65,7 +65,7 @@ const RESTS: { title: string; step: string }[] = [
   { title: "At rest, flow: who is in the analysis", step: "exclusions" },
   { title: "At rest, strip: the nutrients as recorded", step: "energy" },
   { title: "At rest, routing: what the models read", step: "adjust:body" },
-  { title: "At rest, angles: the plan as it stands", step: "effect" },
+  { title: "At rest, angles: this example's plan", step: "effect" },
 ];
 
 function RestDemo({ title, step }: { title: string; step: string }) {
@@ -103,7 +103,7 @@ function OptionStates() {
   return (
     <Demo
       title="Options"
-      note="Pointed (hover tint), chosen (filled), a quiet label each at most, and a disabled option that says why. Each speaks plainly; pointing at one shows its technical name on its top edge. Arrow keys move through them."
+      note="Pointed (hover tint), chosen (filled), a quiet label each at most, and an option not available that says why in its line. Each speaks plainly; pointing at one shows its technical name on its top edge. Arrow keys move through them."
     >
       <div style={{ maxWidth: 440 }}>
         <OptionList step={s} chosen={chosen} pointed={pointed} onPoint={setPointed} onChoose={setChosen} />
@@ -127,7 +127,7 @@ function CardDemo() {
 function ChainDemo() {
   const walk = useWalk(MID);
   return (
-    <Demo title="Chain" note="Done stages are marked and can be revisited; the current one is named; later ones wait.">
+    <Demo title="Stage bar" note="Done stages are marked and can be revisited; the current one is named; later ones wait.">
       <Chain walk={walk} />
     </Demo>
   );
@@ -139,7 +139,7 @@ function ManuscriptDemo() {
   return (
     <Demo
       title="Manuscript"
-      note="Sentences by STROBE-nut section: stated ones written in, recorded ones clickable to change, asked ones as blanks. As a rail whose overlay lies over the card column, and as a column."
+      note="Sentences grouped by STROBE-nut section: settled ones written in, your choices clickable to change, open questions as blanks. As a rail whose overlay lies over the card column, and as a column."
     >
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 28, alignItems: "start" }}>
         <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
@@ -218,7 +218,10 @@ export function KitDemo() {
             ))}
           </div>
         </Demo>
-        <Demo title="The canvas grammar" note="The router picks each layout from the option's footprint, measured from the engine's own views.">
+        <Demo
+          title="The canvas grammar"
+          note="Each option's canvas layout follows from what it changes: one column, several columns, who is included, or what the model reads."
+        >
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 520px), 1fr))", gap: 28, alignItems: "start" }}>
             {LAYOUTS.map((l) => (
               <LayoutDemo key={`${l.step}-${l.option}`} {...l} />

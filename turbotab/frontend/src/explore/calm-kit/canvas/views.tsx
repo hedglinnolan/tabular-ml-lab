@@ -397,6 +397,13 @@ export function Lineage({
 
 // ── cells ────────────────────────────────────────────────────────────────────
 
+/** A recorded value as recorded: whole numbers without a thousands separator (a year or a code is
+ *  not an amount: 2001, not 2,001), other numbers at drawing precision. */
+function cell(v: unknown): string {
+  if (typeof v !== "number") return String(v ?? "—");
+  return Number.isInteger(v) ? String(v) : fmtTick(v);
+}
+
 export function Cells({ view, after_on, bare = false }: { view: TableFocusView; after_on: boolean; bare?: boolean }) {
   const cols = after_on ? view.columns_after : view.columns_before;
   const hit = new Set(view.changed.map(([r, c]) => `${r}|${c}`));
@@ -426,7 +433,7 @@ export function Cells({ view, after_on, bare = false }: { view: TableFocusView; 
                   const changed = after_on && hit.has(`${r.row_id}|${c}`);
                   return (
                     <td key={c} data-hit={changed || undefined}>
-                      {typeof v === "number" ? fmtTick(v) : String(v ?? "—")}
+                      {cell(v)}
                     </td>
                   );
                 })}
