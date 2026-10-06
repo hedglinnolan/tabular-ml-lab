@@ -11,7 +11,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description The build, the mode, and in server mode who is signed in and how (a sign-out control only
+         *     where signing out means something: under ``password``, not behind the institution's proxy).
+         */
         get: operations["health_api_health_get"];
         put?: never;
         post?: never;
@@ -699,7 +703,7 @@ export interface components {
         /**
          * ApplyRepair
          * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
-         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         *     statistical ones are recorded and executed in-fold (lockbox constitution §06).
          */
         "ApplyRepair-Input": {
             /**
@@ -719,7 +723,7 @@ export interface components {
         /**
          * ApplyRepair
          * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
-         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         *     statistical ones are recorded and executed in-fold (lockbox constitution §06).
          */
         "ApplyRepair-Output": {
             /**
@@ -2111,6 +2115,18 @@ export interface components {
             mode: "local" | "server";
             /** Workers */
             workers: number;
+            /**
+             * User
+             * @description Server mode: the signed-in user; null in local mode
+             */
+            user: string | null;
+            /**
+             * Auth
+             * @description How users sign in: none (local mode), password, or proxy (the institution's single sign-on)
+             * @default none
+             * @enum {string}
+             */
+            auth: "none" | "password" | "proxy";
         };
         /** Histogram */
         Histogram: {
@@ -6598,7 +6614,7 @@ export interface components {
         /**
          * ApplyRepair
          * @description Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
-         *     statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06).
+         *     statistical ones are recorded and executed in-fold (lockbox constitution §06).
          */
         ApplyRepair: {
             /**

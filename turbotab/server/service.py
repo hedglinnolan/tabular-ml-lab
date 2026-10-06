@@ -411,11 +411,15 @@ def preview_basis(ctx: consequences.PreviewContext, result: consequences.Preview
 
 
 class ProjectService:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, runner: JobRunner | None = None):
+        """One workspace (``settings.home``) and its engine. ``runner``: job workers shared with
+        other services (server mode's per-user workspaces, ``turbotab.server.tenancy``), which the
+        caller shuts down; by default the service starts and stops its own."""
         self.settings = settings
         self.workspace = Workspace(settings)
         self.bus = ServerBus()
-        self.runner = JobRunner(settings.workers, preload=WORKER_PRELOAD)
+        self._owns_runner = runner is None
+        self.runner = runner if runner is not None else JobRunner(settings.workers, preload=WORKER_PRELOAD)
         try:
             self.engine = Engine(
                 graph_factory=GRAPH_FACTORY,
@@ -424,7 +428,8 @@ class ProjectService:
                 project_ctx=self._project_ctx,
             )
         except BaseException:
-            self.runner.shutdown()
+            if self._owns_runner:
+                self.runner.shutdown()
             raise
         self._lock = threading.Lock()
         self._logs: dict[str, DecisionLog] = {}
@@ -437,7 +442,8 @@ class ProjectService:
 
     def close(self) -> None:
         self.engine.shutdown()
-        self.runner.shutdown()
+        if self._owns_runner:
+            self.runner.shutdown()
         with self._lock:
             stores = [store for _, store in self._stores.values()]
             self._stores.clear()

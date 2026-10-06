@@ -55,6 +55,8 @@ readers need to be driven at all.
 
 **The shape not covered is said out loud at the bottom of this file.**
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import ast
@@ -64,13 +66,10 @@ import sys
 
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api                                          # noqa: E402
 from turbotab import missingness as _miss                         # noqa: E402
-from turbotab import purpose as _purpose                          # noqa: E402
 from turbotab.project import AnalysisProject                      # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -101,26 +100,6 @@ FALSE_CLAUSES = (
 #: Production trees. Test files are excluded: a fixture calling `advice()` is
 #: not the workflow reaching it, and counting one would be §07 trap 3 exactly.
 _PRODUCTION = ("pages", "ml", "utils", "turbotab")
-
-
-@pytest.fixture(scope="module")
-def client():
-    return TestClient(api.app)
-
-
-def _card(client, shape):
-    """The served question 2.5, through the route the interface calls."""
-    fixture, target, _ = SHAPES[shape]
-    with open(DATA / fixture, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": (fixture, fh, "text/csv")}).json()["id"]
-    r = client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_target", "payload": {"column": target}})
-    assert r.status_code == 200, r.text[:300]
-    plan = client.get(f"/project/{pid}/interview").json()
-    cards = [q for q in (plan.get("questions") or [])
-             if q.get("key") == "state_purpose"]
-    return pid, cards
 
 
 def _project(shape, answer=None):
@@ -241,54 +220,6 @@ def test_nothing_on_this_door_hands_the_answer_to_the_other_two():
 
 # ═══════════ 3 · the sentence the user reads, after the facts in it ═══════════
 
-@pytest.mark.parametrize("shape", sorted(SHAPES))
-def test_the_card_says_two_read_it_and_names_the_two_that_do_not(client, shape):
-    """The corrected claim, on the route the interface calls.
-
-    See this file's docstring on why reading a served string is admissible
-    here: everything it asserts has been driven above.
-    """
-    _, cards = _card(client, shape)
-
-    # POSITIVE CONTROL — question 2.5 is served at all on this shape.
-    assert len(cards) == 1, (
-        f"{shape}: expected exactly one `state_purpose` card, got "
-        f"{len(cards)}; the sentence under test never reaches a user")
-    consumer = cards[0].get("consumer") or ""
-    assert consumer.strip(), f"{shape}: the purpose card carries no consumer line"
-
-    for clause in FALSE_CLAUSES:
-        assert clause not in consumer, (
-            f"{shape}: question 2.5 still tells the user {clause!r}. Two of "
-            f"the four named decisions read the answer: "
-            f"`clinical.blocks_substitution` has no production caller and "
-            f"`ml.imbalance_advice.advice` is reached only from "
-            f"`pages/06_Train_and_Compare.py`, which passes a session key "
-            f"nothing writes. AUDIT-011. The card read: {consumer!r}")
-
-    # The shelf is not shortened — the corrected sentence still says what the
-    # answer decides, and now also says where it stops.
-    assert "Those three are the whole list today" in consumer, (
-        f"{shape}: the card no longer states how many decisions read the "
-        f"answer. AUDIT-028's model is a claim corrected, not deleted. The "
-        f"card read: {consumer!r}")
-    # `L55-B`'s reader, named on the card because it now exists. This is the
-    # detector for the class the whole file is about, pointed at the new one:
-    # a decision that reads the answer and is not on the list is the same
-    # defect as a decision on the list that reads nothing, with the sign
-    # flipped — and the flipped version is the one nobody notices, because the
-    # card understates rather than overstates.
-    assert "model shelf" in consumer, (
-        f"{shape}: `turbotab.models.shelf` reads the recorded purpose and "
-        f"reorders on it (L55-B), and the card does not say so. The card read: "
-        f"{consumer!r}")
-    assert "limit of detection" in consumer and "nothing calls it" in consumer, (
-        f"{shape}: the card dropped the limit-of-detection fork instead of "
-        f"saying nothing calls it yet. The card read: {consumer!r}")
-    assert "class-weighting advisory" in consumer, (
-        f"{shape}: the card dropped the class-weighting fork instead of "
-        f"saying this door does not reach it. The card read: {consumer!r}")
-
 
 def test_the_streamlit_schema_declares_the_purpose_is_not_one_of_its_answers():
     """The other door's half of the same claim, in the file that declares it.
@@ -344,17 +275,6 @@ def test_the_streamlit_schema_declares_the_purpose_is_not_one_of_its_answers():
         f"the Streamlit schema does not say where the purpose IS recorded, so "
         f"its absence here reads as an oversight rather than as the stated "
         f"divergence. AUDIT-011. The docstring read: {doc[:200]!r}")
-
-
-def test_the_module_constant_and_the_served_card_are_one_string(client):
-    """`ml/router.py` builds the card from `purpose.question()`. If it ever
-    composed its own copy, the correction above would be true of the constant
-    and false on the screen — §07 trap 6, one layer up."""
-    _, cards = _card(client, "binary_numeric")
-    assert cards, "no purpose card served"
-    assert cards[0].get("consumer") == _purpose.CONSUMER, (
-        "the served card's consumer line is not `purpose.CONSUMER`; a "
-        "correction to the constant would not reach the screen")
 
 
 #: NOT COVERED, said out loud — `GUIDED-097`'s second clause.

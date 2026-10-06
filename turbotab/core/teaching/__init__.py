@@ -11,7 +11,7 @@ Four opt-in layers, and nothing past the second is needed to answer:
 enforced by ``turbotab/core/tests/test_word_budgets.py``; drawer bodies may be longer.
 
 The content is in :mod:`turbotab.core.teaching.content`; every claim there cites
-``docs/turbotab/research/*`` with the pack's status (SETTLED · CONVENTION · DISPUTED).
+``docs/turbotab-next/reference/research/*`` with the pack's status (SETTLED · CONVENTION · DISPUTED).
 """
 from __future__ import annotations
 

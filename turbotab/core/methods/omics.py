@@ -2100,34 +2100,80 @@ def fit_methods(state: Any, family: str, steps: Sequence[str], split: Mapping[st
                              missing=info.get("missing"), inference=info, figure=figure)
 
 
-def unpooled_refusal(label: str, state: Any) -> tuple[str, list[dict[str, Any]]]:
+def unpooled_refusal(label: str, state: Any,
+                     frame: pd.DataFrame | None = None) -> tuple[str, list[dict[str, Any]]]:
     """(reason, exits) of a table that pools no multiple imputations (feature-wise tests), its
-    reason naming exactly the ways forward its exits take (:func:`featurewise_missing_exits`)."""
-    exits = featurewise_missing_exits(state)
-    fill = (", or fill the values below detection once, censoring-aware, recorded as a limitation"
-            if len(exits) > 1 else "")
-    return (f"{label} is not pooled over multiple imputations here: its tests run feature by "
-            f"feature over more columns than an imputation model holds. Choose complete "
-            f"cases{fill}.", exits)
+    reason naming exactly the ways forward its exits take (:func:`featurewise_missing_exits`;
+    ``frame``: the rows and columns the table is estimated from)."""
+    from turbotab.core.methods.exposure_form import SPLINE_MIN_VALUES
+
+    exits = featurewise_missing_exits(state, frame)
+    ways = [EXIT_WORDS[e["way"]] for e in exits]
+    reason = (f"{label} is not pooled over multiple imputations here: its tests run feature by "
+              f"feature over more columns than an imputation model holds.")
+    complete = complete_rows(frame)
+    if complete is not None and not any(e["way"] == "complete_case" for e in exits):
+        reason += (f" Complete cases are not offered: {complete:,} of the {len(frame):,} rows "
+                   f"hold every value, fewer than the {SPLINE_MIN_VALUES} the design needs.")
+    said = _or(ways)
+    reason += f" {said[:1].upper()}{said[1:]}."
+    return reason, [{k: v for k, v in e.items() if k != "way"} for e in exits]
 
 
-def featurewise_missing_exits(state: Any) -> list[dict[str, Any]]:
+# The ways forward a feature-wise table offers, as its refusal names them (each a request).
+EXIT_WORDS = {
+    "complete_case": "choose complete cases",
+    "censoring_aware": "fill the values below detection once, censoring-aware, recorded as a "
+                       "limitation",
+    "single_fill": "fill the missing values once, recorded as a limitation",
+}
+
+
+def _or(ways: Sequence[str]) -> str:
+    return ways[0] if len(ways) == 1 else ", ".join(ways[:-1]) + f", or {ways[-1]}"
+
+
+def complete_rows(frame: pd.DataFrame | None) -> int | None:
+    """How many of ``frame``'s rows hold every value (None without a frame)."""
+    if frame is None:
+        return None
+    return int(frame.notna().all(axis=1).sum()) if frame.shape[1] else int(len(frame))
+
+
+def featurewise_missing_exits(state: Any, frame: pd.DataFrame | None = None
+                              ) -> list[dict[str, Any]]:
     """Where a feature-wise table goes when its missing-values answer is multiple imputation, which
-    it cannot pool (more columns than an imputation model holds): complete cases, and, when values
-    below detection are named, one censoring-aware fill recorded as a limitation (a single fill
-    under inference is block-and-record: its intervals are too narrow)."""
+    it cannot pool (more columns than an imputation model holds): complete cases, offered only when
+    they keep rows enough for the design (:data:`SPLINE_MIN_VALUES`, the fewest a spline's knots
+    can be placed on; ``frame``: the table's rows and columns, so a way forward that leaves nothing
+    to fit is never offered, DoD §1); when values below detection are named, one censoring-aware
+    fill recorded as a limitation; and when neither is open, one fill recorded as a limitation (a
+    single fill under inference is block-and-record: its intervals are too narrow). Each exit
+    carries ``way``, its key in :data:`EXIT_WORDS`."""
+    from turbotab.core.methods.exposure_form import SPLINE_MIN_VALUES
+
     spec = getattr(state, "missing", None)
     keep = {"drop_columns": list(getattr(spec, "drop_columns", None) or [])}
-    exits: list[dict[str, Any]] = [
-        {"label": "Complete cases", "decision": {"kind": "set_missing", "strategy": "complete_case",
-                                                 **keep}}]
+    exits: list[dict[str, Any]] = []
+    complete = complete_rows(frame)
+    if complete is None or complete >= SPLINE_MIN_VALUES:
+        label = ("Complete cases" if complete is None
+                 else f"Complete cases ({complete:,} of the {len(frame):,} rows)")
+        exits.append({"label": label, "way": "complete_case",
+                      "decision": {"kind": "set_missing", "strategy": "complete_case", **keep}})
     censored = list(getattr(spec, "censored_columns", None) or [])
     if censored:
         exits.append({
             "label": "Fill values below detection once, censoring-aware, recorded as a limitation",
+            "way": "censoring_aware",
             "decision": {"kind": "set_missing", "strategy": "impute",
                          "below_detection": "censoring_aware", "censored_columns": censored,
                          "acknowledged": True, **keep}})
+    if not exits:
+        exits.append({"label": "Fill the missing values once, recorded as a limitation",
+                      "way": "single_fill",
+                      "decision": {"kind": "set_missing", "strategy": "impute",
+                                   "acknowledged": True, **keep}})
     return exits
 
 

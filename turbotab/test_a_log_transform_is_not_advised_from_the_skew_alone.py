@@ -75,6 +75,8 @@ The rendered instance of this row's defect lives in **`ml/eda_actions.py:417`
 and `:426`** (reached from `pages/02_EDA.py:1817`), which this chunk does not
 own. That half is reported blocked, not closed.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import pathlib
@@ -203,32 +205,6 @@ def test_the_card_does_not_promise_a_conclusion_it_cannot_reach():
     assert "unavailable" in learn, learn
 
 
-# ── where the sentence gets to, and where it does not ───────────────────────
-
-@pytest.mark.parametrize("fixture,target", [NEGATIVE, LOGGED, RAW_WIDE])
-def test_the_reading_survives_the_router_into_the_interview_payload(fixture, target):
-    """Driven over HTTP, not grepped. `ml/router.py:397` joins the card's `why`
-    into the pull chip; this asserts the reading is in that payload. It does
-    NOT assert a person sees it — the test below is what says that."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with open(DATA / fixture, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": (fixture, fh, "text/csv")}).json()["id"]
-    body = client.post(f"/project/{pid}/decision",
-                       json={"kind": "set_target",
-                             "payload": {"column": target}}).json()
-    assert body.get("task_type") == "regression", body.get("task_type")
-    plan = client.get(f"/project/{pid}/interview?step=explore").json()
-    chip = next((q for q in plan["questions"]
-                 if q["key"] == "look::r5_target_regression"), None)
-    assert chip is not None, [q["key"] for q in plan["questions"]]
-    assert "Log transform:" in (chip.get("why") or ""), chip.get("why")
-
-
 # ── the same row's other instance, and this one IS rendered ─────────────────
 #
 # `ml/model_coach.py`'s `preprocess_skewness_transform` insight said "apply
@@ -311,28 +287,3 @@ def test_the_classic_page_source_still_calls_the_preprocessing_coach():
     page = (ROOT / "pages" / "05_Preprocess.py").read_text(encoding="utf-8")
     assert "generate_preprocessing_insights(_selected_for_coaching, profile)" in page, (
         "the Preprocess page no longer calls the preprocessing coach")
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    "AUDIT-003's correction is composed and not rendered. "
-    "turbotab/api.py's capability table has no look::r5_target_regression "
-    "entry, so the chip is built=False and turbotab/web/index.html:6529 "
-    "shows not_built_reason instead of why. Wiring the chip is another "
-    "chunk's file; when it lands this xfail turns green and the sentence "
-    "should be re-read on the page before this marker is removed."))
-def test_the_guided_chip_that_would_show_the_reading_is_wired():
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    fixture, target = RAW_WIDE
-    with open(DATA / fixture, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": (fixture, fh, "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": target}})
-    plan = client.get(f"/project/{pid}/interview?step=explore").json()
-    chip = next(q for q in plan["questions"]
-                if q["key"] == "look::r5_target_regression")
-    assert chip.get("built") is True, chip.get("not_built_reason")

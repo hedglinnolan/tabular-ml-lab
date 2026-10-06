@@ -1,7 +1,7 @@
 """The ``proposals`` stage: what the field usually does, offered for the exclusions and
 energy-adjustment questions — never pre-selected (M1_CONTRACT §3).
 
-Two readings, both from ``docs/turbotab/research/NUTRITION_PACK.md``:
+Two readings, both from ``docs/turbotab-next/reference/research/NUTRITION_PACK.md``:
 
 * **Exclusions** (§02, Diagnostic 1). The fixed kcal screens in circulation — Willett 2013's
   sex-specific 500–3,500 kcal/d for women and 800–4,000 for men, the Nurses' Health Study and

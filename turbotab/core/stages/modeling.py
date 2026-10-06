@@ -1079,7 +1079,8 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
             # is held with its ways forward, the censoring-aware single fill among them.
             from turbotab.core.methods.omics import unpooled_refusal
 
-            reason, exits = unpooled_refusal(get_family(pools[0]).label, state)
+            reason, exits = unpooled_refusal(get_family(pools[0]).label, state,
+                                             X[[c for c in spec.inputs if c in X.columns]])
             return TableMissing(refusal=reason, exits=exits)
         seed = int(getattr(state.split, "seed", 0) or 0) if state.split is not None else 0
         last = [0.0]
@@ -2250,7 +2251,7 @@ def _tests_only(family: Any, final: Any, X: Any, y: Any, task: str, state: Any, 
             from turbotab.core.methods.omics import unpooled_refusal
 
             reason, exits = ((missing.refusal, missing.exits) if missing.refusal
-                             else unpooled_refusal(family.label, state))
+                             else unpooled_refusal(family.label, state, X))
             table = blocked(reason, exits, estimator="not fitted: the missing-values answer decides it")
         else:
             table = family.inference(final, X, y, task=task,

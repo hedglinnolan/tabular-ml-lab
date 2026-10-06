@@ -1,0 +1,65 @@
+# DRAFT citation file for TurboTab v2.0.0 (V2_DEFINITION_OF_DONE §4, "Docs: … a CITATION file").
+#
+# Not the repository's citation file yet. The root CITATION.cff is Classic's (Tabular ML Lab
+# v1.0.0, the Streamlit app) and stays untouched on `main` (BLUEPRINT §0, §10). At the v2.0.0
+# release the owner fills in every "FILL IN" below, removes the lines that stay unknown, and
+# moves this file over the root CITATION.cff in the release PR.
+#
+# What it says: cite the paper first (preferred-citation); cite the software version you ran as
+# well, because a TurboTab export's provenance record names that version (turbotab/core/export).
+# Classic v1.0.0 stays citable under `references`.
+#
+# Format: Citation File Format 1.2.0 (https://citation-file-format.github.io/). The placeholders
+# are strings, so the file stays valid YAML; a DOI is left commented out because the schema
+# checks its pattern.
+cff-version: 1.2.0
+message: "If you use TurboTab in your research, please cite the paper below, and the software version you used."
+type: software
+title: "TurboTab"
+abstract: "TurboTab, version 2 of Tabular ML Lab, takes a nutrition-research table (dietary, clinical, metabolomics, genomics or survey-instrument data) from upload to a defensible prediction or inference result. Every choice is previewed on the user's own data and recorded as a publishable sentence, and every analysis ends in an export bundle: the methods section ordered by STROBE-nut or TRIPOD+AI, the filled checklist, the participant-flow and lineage figures, and a provenance record that `python -m turbotab.replay` reproduces."
+authors:
+  - family-names: Hedglin
+    given-names: Nolan
+version: 2.0.0
+# date-released: FILL IN (the date the v2.0.0 tag is pushed, YYYY-MM-DD)
+# identifiers:
+#   - type: doi
+#     value: FILL IN (the software's archived DOI, e.g. a Zenodo release DOI)
+#     description: "TurboTab v2.0.0"
+license: MIT
+repository-code: "https://github.com/hedglinnolan/tabular-ml-lab"
+url: "https://github.com/hedglinnolan/tabular-ml-lab"
+keywords:
+  - nutrition research
+  - nutritional epidemiology
+  - metabolomics
+  - genomics
+  - clinical prediction models
+  - causal inference
+  - reproducible research
+  - modeling decision provenance
+  - STROBE-nut
+  - TRIPOD+AI
+preferred-citation:
+  type: article
+  title: "FILL IN: the paper's title"
+  authors:
+    - family-names: Hedglin
+      given-names: Nolan
+    # FILL IN: the coauthors, in the paper's order
+  journal: "FILL IN: the journal (docs/audit/PR_TURBOTAB_TO_MAIN.md names an AJCN submission)"
+  # year: FILL IN
+  # volume: FILL IN
+  # start: FILL IN
+  # doi: FILL IN (the paper's DOI)
+references:
+  - type: software
+    title: "Tabular ML Lab"
+    abstract: "Classic: the released Streamlit app (Tabular ML Lab v1.0.0)."
+    authors:
+      - family-names: Hedglin
+        given-names: Nolan
+    version: 1.0.0
+    date-released: 2026-09-19
+    license: MIT
+    repository-code: "https://github.com/hedglinnolan/tabular-ml-lab"

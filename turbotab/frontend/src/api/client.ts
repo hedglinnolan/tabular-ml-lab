@@ -114,6 +114,17 @@ function errorMessage(status: number, body: unknown): string {
   return `The server answered ${status}.`;
 }
 
+/** The sign-in page's address, returning to `here` (a path on this server) afterward. */
+export function signInUrl(here: string): string {
+  return `/login?next=${encodeURIComponent(here)}`;
+}
+
+/**
+ * Server mode: a 401 means the session ended (signed out elsewhere, expired, a new password).
+ * The client announces it on `window`; main.tsx sends the page to sign in and back.
+ */
+export const UNAUTHENTICATED_EVENT = "turbotab:unauthenticated";
+
 interface RequestOptions {
   method?: "GET" | "POST";
   query?: Query;
@@ -135,6 +146,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const res = await fetch(withQuery(`${API_BASE}${path}`, opts.query), init);
   if (res.ok) return (await readBody(res)) as T;
   const body = await readBody(res);
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHENTICATED_EVENT));
   if (res.status === 409) {
     const refusal = parseRefusal(body);
     if (refusal) throw new RefusalError(refusal);

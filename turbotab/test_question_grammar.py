@@ -13,9 +13,10 @@ exclusivity rules that hold the whole grammar together.
 
 `DESIGN_LANGUAGE.md` §09.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -23,8 +24,6 @@ import pytest
 from ml import router
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PAGE = (REPO_ROOT / "turbotab" / "web" / "index.html").read_text(encoding="utf-8")
-BODY = PAGE[PAGE.index("</style>"):]
 
 
 def data_plan(**kw):
@@ -87,31 +86,6 @@ def test_a_skipped_fact_needs_no_consumer_because_it_is_not_asked():
     router.audit(plan)
 
 
-def test_the_page_shows_the_disclosure_and_never_invents_the_text():
-    assert 'class="whyask"' in BODY and "Why we ask" in BODY
-    assert "consumerFor" in BODY and "LAST_DATA_PLAN" in BODY, (
-        "the page composes its own consumer text instead of quoting the Router")
-    # An empty disclosure is hidden, not shown blank: a "Why we ask" that
-    # answers nothing is worse than no disclosure at all.
-    assert 'box.style.display = "none"' in BODY
-
-
-def test_the_fact_is_the_lightest_object_on_screen():
-    rules = BODY[BODY.index(".fact-mark{"):BODY.index(".skips{")]
-    for heavy in ("box-shadow", "border-radius:1", "background:var(--warn",
-                  "background:var(--stop"):
-        assert heavy not in rules, (
-            f"the FACT treatment carries {heavy!r}; a question of fact has no "
-            "border, no icon and no background tint of its own")
-
-
-def test_the_teal_marker_sits_on_one_question_only():
-    assert 'id="targetMark"' in BODY
-    assert 'mark.style.display = P && P.target ? "none" : ""' in BODY, (
-        "the current-question marker is not cleared once the question is "
-        "answered, so more than one thing reads as 'now'")
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # The three types stay distinguishable
 # ═══════════════════════════════════════════════════════════════════════════
@@ -123,68 +97,3 @@ def test_the_three_kinds_are_named_in_the_router_not_only_in_the_page():
     assert not (router.FACT_KINDS & router.CONSEQUENCE_KINDS)
 
 
-def test_only_the_consequence_is_pushed_as_a_band():
-    """Silhouette, not color, is the primary channel.
-
-    A flat inline row (FACT), a bordered before/after card (CHOICE) and a
-    full-width band (CONSEQUENCE). The band's rule is the one worth asserting:
-    exactly one component breaks the page rhythm.
-    """
-    bands = re.findall(r"^\s*\.(\w[\w-]*)\{[^}]*margin:4px -30px", BODY,
-                       re.MULTILINE)
-    assert bands == ["blocker"], (
-        f"{bands} break the page rhythm; the interruption silhouette is the "
-        "blocker's alone")
-
-
-def test_the_choice_card_stays_below_the_interruption_hierarchy():
-    """CHOICE cards recur; their frequency must never erode the blocker."""
-    choice_rules = BODY[BODY.index(".choice-acts{"):BODY.index(".ev{")]
-    assert "var(--stop" not in choice_rules
-    assert "small-caps" not in choice_rules
-    assert "-30px" not in choice_rules, (
-        "a CHOICE card breaks the page rhythm; it is deliberately inline")
-
-
-def test_the_signal_word_appears_nowhere_else():
-    """"a signal word that appears nowhere else in the product"."""
-    rendered = re.findall(r">\s*Blocker\s*<", BODY)
-    assert len(rendered) == 1, (
-        f"the signal word is rendered {len(rendered)} times; a word used twice "
-        "is not a signal word")
-
-
-def test_the_grammar_survives_color_removal():
-    """Silhouette plus signal word must carry the tier with color gone.
-
-    Clause: `assembly-04`
-    """
-    assert "blocker-word" in BODY and "blocker-glyph" in BODY
-    band = BODY[BODY.index(".blocker{"):BODY.index(".blocker-head{")]
-    assert "border-top:4px" in band, (
-        "with color removed the band has no heavier rule than anything else")
-
-
-def test_the_grammar_survives_typography_removal():
-    """Silhouette plus grammar. The verbs differ per type.
-
-    The two CONSEQUENCE verbs moved to the server at `GUIDED-076` — the page
-    composed them for the one blocker that existed, so a second consequence
-    would have rendered with the wrong words. The grammar rule is unchanged and
-    the place it is asserted is: the exits the router serves.
-    """
-    from ml import router
-
-    assert "Keep as is" in BODY                      # CHOICE: decide
-    assert "Ask me anyway" in BODY                   # FACT: answer
-
-    class _Signals:
-        leakage_candidate_cols = ["glucose"]
-        leakage_flags = []
-
-    exits = router.blockers(_Signals(), step="explore")[0].to_dict()["exits"]
-    labels = [x["label"] for x in exits]
-    assert any(l.startswith("Drop ") for l in labels), (
-        "CONSEQUENCE/resolve lost its verb")
-    assert "Keep it and record why" in labels, (
-        "CONSEQUENCE/attest lost its verb")

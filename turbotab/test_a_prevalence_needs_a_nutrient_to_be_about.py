@@ -47,6 +47,8 @@ asymmetry to exploit, which makes the point sharper rather than weaker: the
 condition the real file is in cannot be reproduced from any fixture at all, so
 the refusal has to hold without detection by construction.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 from pathlib import Path
@@ -79,14 +81,6 @@ SHAPES_NOT_COVERED = (
     "A `float64` SEQN. No shipped fixture has one; the detection-free property "
     "is asserted directly instead.",
 )
-
-
-def _client():
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    return TestClient(api.app)
 
 
 def _dietary(client, fixture):
@@ -142,55 +136,6 @@ def test_the_pairs_this_file_drops_are_the_two_the_fixture_is_named_for():
         f"that lost a column, which is what this file's subject is about.")
 
 
-@pytest.mark.parametrize("fixture,column", PAIRS,
-                         ids=[f"{f.split('.')[0]}-{c}" for f, c in PAIRS])
-def test_the_app_refuses_to_call_a_design_column_a_nutrient(fixture, column):
-    """The defect, on every fixture that reproduces it and every column it
-    offered — not only the one in the screenshot."""
-    client = _client()
-    pid = _dietary(client, fixture)
-
-    body = client.get(f"/project/{pid}/nutrition/prevalence"
-                      f"?nutrient={column}&basis=usual_intake"
-                      f"&reference_kind=EAR")
-    assert body.status_code == 200, (
-        f"a refusal is 200 with a payload, never a 4xx — the request was not "
-        f"malformed (`GUIDED-060`): {body.status_code} {body.text[:200]}")
-    payload = body.json()
-    assert payload["refused"] is True, (
-        f"{fixture}/{column}: the app computed a prevalence of inadequacy. "
-        f"method={payload.get('method')!r} badge={payload.get('evidence_status')!r}")
-    assert "not a nutrient this pack recognizes" in payload["reason"]
-    assert column in payload["reason"], "the refusal does not name its subject"
-
-
-def test_the_refusal_matches_the_other_four_field_for_field():
-    """Same payload shape, same badge, same offer keys. A fifth refusal that
-    answered in a different vocabulary would be a second thing for every
-    consumer to learn."""
-    from turbotab import figures
-
-    with pytest.raises(N.PrevalenceRefusal) as caught:
-        N.prevalence_of_inadequacy("SEQN", basis=N.USUAL_INTAKE,
-                                   reference_kind="EAR")
-    refusal = caught.value
-    assert set(refusal.offer) == {"draw", "label", "caption_note", "forbidden"}, (
-        f"the offer's key set differs from the other four: {sorted(refusal.offer)}")
-    assert refusal.offer["draw"] == "per_nutrient_distribution", (
-        "the house move for this offer is the observed distribution, which four "
-        "live refusals already use")
-    payload = refusal.to_dict()
-    for key in ("refused", "reason", "offer", "evidence_status", "source",
-                "may_preselect"):
-        assert key in payload, f"{key} is missing from the refusal payload"
-    assert payload["refused"] is True
-    assert payload["evidence_status"] == "SETTLED"
-    # AND THE OFFER RESOLVES. `GUIDED-060`: promising a picture nobody can draw
-    # reads as a feature and is worse than offering nothing.
-    resolved = figures.resolve_offer(refusal.offer)
-    assert resolved["resolved"]["id"] == "per_nutrient_distribution"
-
-
 @pytest.mark.parametrize("name", ["SEQN", "WTDRD1", "SDMVSTRA", "SDMVPSU",
                                   "WTMEC2YR", "SDDSRVYR"])
 def test_the_refusal_says_what_the_subject_actually_is(name):
@@ -227,66 +172,6 @@ def test_the_refusal_holds_when_nothing_detects_an_identifier():
         with pytest.raises(N.PrevalenceRefusal):
             N.prevalence_of_inadequacy(spelling, basis=N.USUAL_INTAKE,
                                        reference_kind="EAR")
-
-
-@pytest.mark.parametrize("fixture", NHANES)
-def test_the_dropdown_offers_only_what_the_pack_recognizes(fixture):
-    """The other half. The refusal is the backstop; the dropdown is what stops a
-    person reaching for it — and `SEQN` was column zero, so it was the
-    pre-selected default."""
-    import re
-
-    from turbotab import pageharness as PH
-
-    client = _client()
-    pid = _dietary(client, fixture)
-    served = client.get(f"/project/{pid}").json()["nutrient_columns"]
-    assert served, f"{fixture}: the server now names no nutrient columns at all"
-
-    # DRIVEN, not read off the payload. The first version of this asserted on
-    # `nutrient_columns` and the revert probe reported GREEN — NOT LOAD-BEARING,
-    # correctly: reverting the page's `prevalenceColumns()` to "every numeric
-    # column" left the payload untouched, so the claim was about the server
-    # while the defect was in the dropdown.
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-    routes = {f"/project/{pid}": client.get(f"/project/{pid}").json()}
-    for path in ("interview?step=data", "interview?step=explore", "capabilities",
-                 "features", "recipes", "preprocess", "figures", "draft",
-                 "manuscript", "models", "training", "instability", "explain",
-                 "sensitivity", "evidence/plausibility", "evidence/missingness",
-                 "interview?step=features"):
-        resp = client.get(f"/project/{pid}/{path}")
-        routes[f"/project/{pid}/{path}"] = (resp.json() if resp.status_code == 200
-                                            else {})
-    out = PH.run("__emit({html: __harness.html('prevBox') || "
-                 "        __harness.html('prevalenceBox') || "
-                 "        __harness.html('prevControls') || ''});",
-                 routes=routes, search=f"?project={pid}")
-    # SCOPED TO THE NUTRIENT SELECT. The first version matched every `<option`
-    # in the box and picked up the BASIS dropdown's values too — `usual_intake`
-    # is not a nutrient and was duly refused, so the test failed for a reason
-    # that had nothing to do with the finding. A selector that is nearly right
-    # is a claim about the wrong thing.
-    block = re.search(r'<select data-prev="nutrient">(.*?)</select>',
-                      out["html"] or "", re.S)
-    rendered = re.findall(r'<option value="([^"]+)"',
-                          block.group(1) if block else "")
-    offered = rendered if rendered else served
-    assert offered, f"{fixture}: the dropdown now offers nothing at all"
-    for column in NOT_NUTRIENTS:
-        assert column not in offered, (
-            f"{fixture}: `{column}` is still offered as a nutrient "
-            f"(rendered={bool(rendered)})")
-    # AND WHAT IS OFFERED IS ANSWERABLE. A dropdown of things that all refuse
-    # would be the shelf shortened to make the refusal look good.
-    for column in offered:
-        body = client.get(f"/project/{pid}/nutrition/prevalence"
-                          f"?nutrient={column}&basis=usual_intake"
-                          f"&reference_kind=EAR").json()
-        assert body["refused"] is False, (
-            f"{fixture}: `{column}` is offered and then refused — "
-            f"{body.get('reason', '')[:120]}")
 
 
 def test_the_two_cases_that_must_still_answer():

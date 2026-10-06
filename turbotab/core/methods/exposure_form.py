@@ -122,6 +122,10 @@ def _quantile(values: np.ndarray, p: Sequence[float]) -> np.ndarray:
     return np.quantile(values, np.asarray(p, dtype=float), method="linear")
 
 
+# ``Hmisc::rcspline.eval`` stops below this many values: the fewest a spline's knots can be placed on.
+SPLINE_MIN_VALUES = 6
+
+
 def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIED
               ) -> tuple[np.ndarray, list[str]]:
     """Knot locations as ``Hmisc::rcspline.eval`` places them when only their number is given.
@@ -134,9 +138,9 @@ def rcs_knots(x: Any, n_knots: int = DEFAULT_KNOTS, *, fractied: float = FRACTIE
     xx = xx[np.isfinite(xx)]
     n = len(xx)
     nk = int(n_knots)
-    if n < 6:
-        raise ValueError(f"A spline needs at least 6 recorded values to place its knots; there "
-                         f"are {n}.")
+    if n < SPLINE_MIN_VALUES:
+        raise ValueError(f"A spline needs at least {SPLINE_MIN_VALUES} recorded values to place "
+                         f"its knots; there are {n}.")
     if nk < 3:
         raise ValueError("A restricted cubic spline needs at least 3 knots.")
     notes: list[str] = []
@@ -2668,7 +2672,8 @@ __all__ = [
     "FORMS", "code_reading", "firth_design", "firth_lr_test", "form_candidates", "form_plan",
     "joint_test_name", "rule_stale", "standing_forms",
     "FORMS_READS", "FRACTIED", "Form", "HARRELL_LARGE", "HARRELL_SMALL", "KNOT_CHOICES",
-    "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "TREND_LABEL",
+    "KNOT_PERCENTILES", "MASS_AT_ZERO", "QUINTILES", "SHARE_REALLOCATION", "SPLINE_MIN_VALUES",
+    "TREND_LABEL",
     "adjusted_forms", "boundaries_words", "category_names", "complete_spec", "current_forms",
     "describe", "design_forms", "domain_columns", "effective_n", "estimand_unit",
     "exposure_tests", "form_answer", "form_columns", "form_gate", "form_needs", "form_sentence",

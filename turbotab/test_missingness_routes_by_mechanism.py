@@ -21,6 +21,8 @@ Assertions here follow the L17 rule: **structure, not prose substrings.** Where
 prose IS the deliverable — the blocker, the assumption — the assertion is on the
 distinctive claim rather than on a word inside it.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -386,92 +388,6 @@ def test_the_trim_says_it_is_not_a_population_restriction():
 
 
 # ── over HTTP ────────────────────────────────────────────────────────────────
-
-@pytest.fixture(scope="module")
-def client():
-    from fastapi.testclient import TestClient
-    from turbotab.api import app
-    return TestClient(app)
-
-
-def _drive_to_preprocess(client) -> str:
-    df = study()
-    pid = client.post("/project", files={
-        "file": ("study.csv", df.to_csv(index=False).encode(), "text/csv")}).json()["id"]
-    for body in (
-        {"kind": "set_target", "payload": {"column": "outcome"}},
-        {"kind": "set_grain", "payload": {"answer": G.ONE_ROW_PER_PERSON}},
-        {"kind": "set_eligibility", "payload": {"answer": E.EVERYONE}},
-        {"kind": "seal"},
-    ):
-        r = client.post(f"/project/{pid}/decision", json=body)
-        assert r.status_code == 200, r.text
-    return pid
-
-
-def test_a_driver_routes_missingness_and_meets_the_blocker(client):
-    """The whole step over HTTP: the mechanism question is asked per column, the
-    blocker arrives as a 409 with both exits, and the attested path completes.
-
-    Clause: `lockbox-07`
-    """
-    pid = _drive_to_preprocess(client)
-
-    iv = client.get(f"/project/{pid}/interview?step=preprocess").json()
-    keys = {q["key"] for q in iv["questions"]}
-    assert {"missingness::glucose", "missingness::biopsy_grade"} <= keys
-    q = next(q for q in iv["questions"] if q["key"] == "missingness::biopsy_grade")
-    assert q["consumer"], "a FACT must name what reads its answer"
-    assert q["clause"] == "lockbox-07"
-
-    pre = client.get(f"/project/{pid}/preprocess").json()
-    assert {c["column"] for c in pre["columns"]} == {"glucose", "biopsy_grade"}
-    assert all("because" in s for s in pre["strategies"]["numeric"])
-
-    blocked = client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness",
-        "payload": {"column": "biopsy_grade", "mechanism": M.INFORMATIVE,
-                    "strategy": M.IMPUTE_MODE}})
-    assert blocked.status_code == 409, blocked.text
-    detail = blocked.json()["detail"]
-    assert {e["kind"] for e in detail["exits"]} == {"resolve", "attest"}
-    assert detail["acknowledgment_kind"] == "typed"
-
-    ok = client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness",
-        "payload": {"column": "biopsy_grade", "mechanism": M.INFORMATIVE,
-                    "strategy": M.EXPLICIT_CATEGORY}})
-    assert ok.status_code == 200, ok.text
-    assert ok.json()["missingness"][0]["acknowledged_signal_loss"] is False
-
-    # The answered question retires from the interview.
-    iv = client.get(f"/project/{pid}/interview?step=preprocess").json()
-    assert "missingness::biopsy_grade" not in {q["key"] for q in iv["questions"]}
-
-
-def test_a_driver_reads_a_receipt_that_explains_the_zero(client):
-    """What a driver sees at the end of a step in which nothing visibly changed.
-
-    Clause: `lockbox-07`
-    """
-    pid = _drive_to_preprocess(client)
-    client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness",
-        "payload": {"column": "glucose", "mechanism": M.NOT_INFORMATIVE,
-                    "strategy": M.IMPUTE_MEDIAN}})
-    client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness",
-        "payload": {"column": "biopsy_grade", "mechanism": M.NOT_SURE,
-                    "strategy": M.IMPUTE_MODE}})
-    body = client.post(f"/project/{pid}/decision",
-                       json={"kind": "settle_preprocess"}).json()
-
-    assert body["preprocess_settled"] is True
-    d = body["disclosures"]["preprocess"]
-    assert d["n_applied_now"] == 0 and d["n_deferred"] == 2
-    assert d["n_unanswered"] == 0
-    assert "over the held-out rows too" in d["why_nothing_changed"]
-    assert body["n_rows"] == 200, "the table changed after a deferred-only step"
 
 
 def test_the_declarations_survive_the_save_file():

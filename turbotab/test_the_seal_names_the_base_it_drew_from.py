@@ -34,11 +34,11 @@ the outcome, 945 were sealed … and 5,352 were available for fitting"* the whol
 time. The engine was right and one composed string was wrong — trap 6 with the
 error in the sentence rather than in the render.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import io
-import json
-import re
 from pathlib import Path
 
 import numpy as np
@@ -46,13 +46,6 @@ import pandas as pd
 import pytest
 
 DATA = Path(__file__).resolve().parent / "sample_data"
-
-
-def _client():
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    return TestClient(api.app)
 
 
 def _decide(client, pid, kind, payload):
@@ -92,110 +85,6 @@ def _sealed_project(client, payload: bytes, target: str):
     after = _decide(client, pid, "set_eligibility", {"answer": "everyone"})
     sealed = _decide(client, pid, "seal", {})
     return pid, after, sealed
-
-
-def test_the_seal_states_the_base_its_percentage_is_a_percentage_of(capsys):
-    """The load-bearing claim, asserted against the DRAWN split.
-
-    Not against wording: the sentence is required to contain the lockbox's own
-    `n_total`, so a rewrite that read well and named a different number would
-    still fail.
-    """
-    client = _client()
-    pid, after_elig, sealed = _sealed_project(client, _nhanes_shaped(), "meds_hbp")
-
-    lockbox = sealed["lockbox"]
-    n_total, n_test = lockbox["n_total"], lockbox["n_test"]
-    # The state under test, established from the record.
-    assert n_total < N_ROWS, (
-        "this fixture no longer drops rows for a missing outcome, so it is not "
-        "the state this claim is about")
-    assert lockbox["n_rows_before_outcome_drop"] == N_ROWS
-
-    seal = sealed["disclosures"]["seal"]
-    assert f"{n_total:,}" in seal, (
-        f"the seal states a percentage and never the base it is of:\n  {seal}")
-    assert f"{N_ROWS - n_total:,}" in seal, (
-        f"the seal does not say how many rows were dropped:\n  {seal}")
-    # AND THE ARITHMETIC A READER WOULD DO NOW LANDS ON THE APP'S OWN NUMBER.
-    assert abs(n_test / n_total - lockbox["fraction"]) < 0.001
-
-    with capsys.disabled():
-        print(f"\n  {seal}")
-
-
-def test_the_eligibility_receipt_no_longer_describes_a_draw_it_does_not_make(capsys):
-    """The false clause, named specifically.
-
-    `everyone()` reports an operation that excluded nobody — true, and it stays.
-    What it must not do is say where the held-out set is drawn from, because
-    `draw_holdout` drops every row with a missing outcome before drawing and
-    `eligibility` is not told.
-    """
-    client = _client()
-    _, after_elig, sealed = _sealed_project(client, _nhanes_shaped(), "meds_hbp")
-
-    said = after_elig["disclosures"]["eligibility"]
-    record = after_elig["eligibility"]
-    # The module is still right about its own operation.
-    assert record["n_before"] == record["n_after"] == N_ROWS
-    assert record["n_excluded"] == 0
-    assert str(N_ROWS) in said
-
-    assert "drawn from all of them" not in said, (
-        f"the eligibility receipt still claims the held-out set comes from "
-        f"every row, and it comes from {sealed['lockbox']['n_total']}:\n  {said}")
-    with capsys.disabled():
-        print(f"\n  {said}")
-
-
-def test_the_seal_and_the_manuscript_agree_on_the_base(capsys):
-    """By test rather than by review.
-
-    The draft has always printed the true accounting. The defect was that the
-    receipt a user reads and the paragraph they can expand disagreed, so this
-    asserts the two carry the SAME number rather than that each is plausible.
-    """
-    client = _client()
-    pid, _, sealed = _sealed_project(client, _nhanes_shaped(), "meds_hbp")
-    n_total = sealed["lockbox"]["n_total"]
-
-    draft = client.get(f"/project/{pid}/draft")
-    assert draft.status_code == 200, draft.text[:200]
-    body = json.dumps(draft.json())
-    m = re.search(r"Of ([\d,]+) rows with a value for the outcome", body)
-    assert m, "the draft no longer states the modeled base; this claim needs it"
-    assert int(m.group(1).replace(",", "")) == n_total, (
-        f"the draft says {m.group(1)} and the lockbox drew from {n_total:,}")
-    assert f"{n_total:,}" in sealed["disclosures"]["seal"], (
-        "the seal and the draft do not carry the same base")
-    with capsys.disabled():
-        print(f"\n  draft and seal agree on {n_total:,}")
-
-
-def test_a_table_with_no_missing_outcome_says_nothing_extra(capsys):
-    """SILENT WHERE IT WOULD ADD NOTHING.
-
-    On a table where every row has the outcome, the base and the row count are
-    the same number. Printing it would make a reader look for a distinction that
-    is not there — §09's rule that a mark appearing is a claim the user may rely
-    on, read the other way round. Driven on a shipped fixture rather than a
-    constructed one, so the two fixture shapes differ in the property under test
-    (`GUIDED-097`).
-    """
-    client = _client()
-    with (DATA / "clinical_risk.csv").open("rb") as handle:
-        payload = handle.read()
-    pid, _, sealed = _sealed_project(client, payload, "age")
-
-    lockbox = sealed["lockbox"]
-    assert lockbox["n_total"] == lockbox["n_rows_before_outcome_drop"], (
-        "this fixture drops rows, so it is not the no-drop case")
-    seal = sealed["disclosures"]["seal"]
-    assert "with a value for the outcome" not in seal, (
-        f"the seal explains a drop that did not happen:\n  {seal}")
-    with capsys.disabled():
-        print(f"\n  {seal}")
 
 
 @pytest.mark.parametrize("basis,extra", [

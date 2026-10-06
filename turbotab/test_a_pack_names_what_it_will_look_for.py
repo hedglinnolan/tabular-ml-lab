@@ -36,6 +36,8 @@ was built for**, not by reading a list. A list is the thing that goes stale,
 which is `test_the_page_renders_every_question_the_router_can_serve`'s own
 argument reused.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -254,40 +256,3 @@ def test_the_notes_reach_the_question_the_router_serves():
     assert lens["option_notes"] == [P.option_note(k) for k in P.LENS_KEYS]
 
 
-def test_the_page_shows_the_note_on_the_option_it_belongs_to():
-    """Read back off the render, not off a grep.
-
-    The tailored sentence has to land on the button the user hovers, and
-    `option_notes` is positional — an off-by-one here would put the
-    metabolomics sentence on the genomics option, which is worse than the shared
-    string it replaced.
-    """
-    from turbotab import pageharness as H
-    if not H.available():
-        pytest.skip("no JS engine on this machine")
-
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    client = TestClient(api.app)
-    with open(DATA / "metabolomics_untargeted.csv", "rb") as fh:
-        project = client.post("/project", files={
-            "file": ("m.csv", fh, "text/csv")}).json()
-    pid = project["id"]
-    html = H.run("__emit(__harness.html('askedQuestions'));", routes={
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore": {"questions": []},
-        f"/project/{pid}/evidence/missingness": {"cards": []},
-    }, search=f"?project={pid}")
-
-    shown = {b["data-answer-value"]: b.get("data-tip", "")
-             for b in H.elements(html)
-             if b.get("data-answer-key") == "state_lens"}
-    assert shown, "the lens card rendered no options"
-    for key in P.LENS_KEYS:
-        assert shown[key] == P.option_note(key), (
-            f"the {key} option carries the wrong sentence:\n"
-            f"  shown:    {shown[key][:90]!r}\n"
-            f"  expected: {P.option_note(key)[:90]!r}")

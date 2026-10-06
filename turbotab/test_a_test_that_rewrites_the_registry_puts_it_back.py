@@ -80,12 +80,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: tests that cannot produce the residue, is a cap worth stating rather than
 #: paying. The first entry is the whole file because it costs 0.83s and every
 #: test in it takes the mutating `table` fixture.
+# `test_a_pack_does_not_fire_on_the_wrong_data.py` was the other file named here; it drove the
+# legacy app's API and was retired with it (BLUEPRINT §9.1).
 MUTATING_TARGETS: Tuple[str, ...] = (
     "turbotab/test_the_recipe_table_is_a_table.py",
-    "turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py"
-    "::test_a_pack_variant_preference_lives_in_the_recipe_table",
-    "turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py"
-    "::test_loading_a_pack_twice_registers_it_once",
 )
 
 READER = (__file__.replace(ROOT + os.sep, "").replace(os.sep, "/")

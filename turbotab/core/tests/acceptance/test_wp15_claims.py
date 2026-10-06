@@ -53,7 +53,7 @@ from turbotab.core.stages.proposals import build_proposals, rule_excludes
 
 REPO = Path(__file__).resolve().parents[4]
 LEDGER = REPO / "docs/turbotab-next/audit/claims-ledger.md"
-PACKS = REPO / "docs/turbotab/research"
+PACKS = REPO / "docs/turbotab-next/reference/research"
 SAMPLES = REPO / "turbotab/sample_data"
 
 

@@ -23,6 +23,8 @@ because the finer status was in the prose. **The defect is that the badge a
 machine reads was coarser than the sentence a human reads**, which inverts what
 the badge is for.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -31,19 +33,13 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from turbotab import api, exits, figures, grain, missingness      # noqa: E402
-from turbotab import figure_specs, packs as P, purpose            # noqa: E402
+from turbotab import exits, grain, missingness                          # noqa: E402
+from turbotab import packs as P, purpose                                # noqa: E402
 
 FIXTURES = Path(__file__).parent / "sample_data"
-
-
-@pytest.fixture(scope="module")
-def client():
-    return TestClient(api.app)
 
 
 # ── GUIDED-072 · the exit carries the way through ──────────────────────────
@@ -72,55 +68,6 @@ def test_an_exit_cannot_be_built_around_a_key_nothing_reads():
     perfectly, describes a real way through, and unlocks nothing."""
     with pytest.raises(exits.ExitError, match="not a key any decision handler"):
         exits.attest("label", "detail", "acknowledge_the_contradiction")
-
-
-def test_a_client_with_only_the_409_can_construct_the_retry(client):
-    """**The gate, end to end.** Refuse, read the exit, merge its payload into
-    the request that was refused, post it again. Nothing out of band."""
-    with open(FIXTURES / "metabolomics_untargeted.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("m.csv", fh, "text/csv")}).json()["id"]
-
-    # A stated CLINICAL lens over a 396-column assay panel. The contradiction
-    # detector fires in both directions, and this is the direction the
-    # adjudicator hit.
-    request = {"kind": "set_lens", "payload": {"lens": ["clinical"]}}
-    refused = client.post(f"/project/{pid}/decision", json=request)
-    assert refused.status_code == 409, refused.text
-
-    detail = refused.json()["detail"]
-    attest = next(e for e in detail["exits"] if e["kind"] == exits.ATTEST)
-    # A CLIENT DOES THIS, holding nothing but the response body.
-    request["payload"].update(attest["retry"]["payload"])
-    accepted = client.post(f"/project/{pid}/decision", json=request)
-    assert accepted.status_code == 200, accepted.text
-
-
-def test_the_grain_contradiction_opens_the_same_way(client):
-    with open(FIXTURES / "dietary_recalls.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("d.csv", fh, "text/csv")}).json()["id"]
-
-    request = {"kind": "set_grain",
-               "payload": {"answer": "one_row_per_person",
-                           "group_col": None}}
-    refused = client.post(f"/project/{pid}/decision", json=request)
-    # `AUDIT-039`, `L56-B2`. This stood down when the answer was ACCEPTED —
-    # which is the regression, not a reason to stop looking. `dietary_recalls.csv`
-    # carries repeated recalls per person, so `one_row_per_person` contradicts
-    # the data, and that is a deterministic property of a shipped fixture rather
-    # than something this test may decline over. If the app stops refusing, the
-    # test that checks the refusal opens the same way must go RED.
-    assert refused.status_code == 409, (
-        f"`one_row_per_person` was answered {refused.status_code} on "
-        f"dietary_recalls.csv, which carries more than one recall per person. "
-        f"Either the grain check stopped contradicting it or the fixture "
-        f"changed; both are findings, and neither is a skip. AUDIT-039.")
-    attest = next(e for e in refused.json()["detail"]["exits"]
-                  if e["kind"] == exits.ATTEST)
-    request["payload"].update(attest["retry"]["payload"])
-    assert client.post(f"/project/{pid}/decision",
-                       json=request).status_code == 200
 
 
 def test_a_resolve_exit_needs_nothing_and_says_nothing():
@@ -186,30 +133,6 @@ def test_a_single_claim_statement_is_unchanged():
     assert badge["may_preselect"] is True
 
 
-@pytest.mark.parametrize("figure_id,weakest", [
-    ("volcano", P.CONVENTION_STATUS),
-    ("diverging_stacked_bar", P.DISPUTED),
-])
-def test_the_two_figures_carry_their_claims_to_the_bundle(figure_id, weakest):
-    """The figure layer's half. `to_dict` and the bundle row both carry the
-    claims, so a consumer reading either sees the same granularity the caption
-    has always had."""
-    spec = figures.REGISTRY[figure_id]
-    served = spec.to_dict()
-    assert served["weakest_status"] == weakest
-    assert len(served["claims"]) == 2
-    for claim in served["claims"]:
-        assert claim["source"].startswith("research/")
-
-
-def test_the_disputed_figure_claim_states_both_sides():
-    served = figures.REGISTRY["diverging_stacked_bar"].to_dict()
-    disputed = next(c for c in served["claims"]
-                    if c["evidence_status"] == P.DISPUTED)
-    assert len(disputed["both_sides"]) > 80
-    assert served["may_preselect"] is False
-
-
 def test_a_claim_cannot_be_badged_with_a_dict_or_left_unstated():
     with pytest.raises(P.EvidenceError, match="must be an `Evidence`"):
         P.Claim("k", "a statement long enough to be about something",
@@ -220,10 +143,3 @@ def test_a_claim_cannot_be_badged_with_a_dict_or_left_unstated():
                            source="research/GENOMICS_PACK.md#08 · Modeling at p >> n"))
 
 
-def test_every_claim_source_resolves_through_the_gate():
-    """The gate walks them now, so a claim citing nothing fails the commit."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]
-                           / "docs" / "turbotab" / "tools"))
-    import importlib
-    tool = importlib.import_module("evidence")
-    assert tool.check() == 0

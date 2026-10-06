@@ -40,6 +40,8 @@ is the half that OFFERS. **One composer writes the sentence.**
 `missingness.sentence_for` is asked by the card and by `declare`. **The card
 asks the mechanism**, with the same copy and the same order Preprocess uses.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -48,14 +50,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml import missingness_plan as MP                                 # noqa: E402
-from turbotab import api                                              # noqa: E402
 from turbotab import missingness as M                                 # noqa: E402
-from turbotab import pageharness as H                                 # noqa: E402
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 
@@ -64,20 +63,6 @@ DATA = Path(__file__).resolve().parent / "sample_data"
 #: and a text one.
 FIXTURES = ("clinic_visits.csv", "survey_instrument.csv",
             "metabolomics_untargeted.csv")
-
-
-@pytest.fixture(scope="module")
-def client():
-    return TestClient(api.app)
-
-
-def _project(client, name="clinic_visits.csv"):
-    with open(DATA / name, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": (name, fh, "text/csv")}).json()["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": "hba1c"}})
-    return pid
 
 
 # ── one table decides what both doors offer ──────────────────────────────────
@@ -200,200 +185,3 @@ def test_the_card_and_the_record_write_the_same_sentence(fixture, scope):
                 f"scope {scope!r} — the card says "
                 f"{option['decision_sentence']!r} and the record says "
                 f"{recorded['sentence']!r}")
-
-
-def test_the_compound_strategy_says_it_fills_and_then_fills(client):
-    """`indicator_and_impute` is genuinely both halves of clause §06, and
-    modeling it as one is what produced the contradiction: the indicator lands
-    now, the fill is fitted in the fold."""
-    from turbotab import pipeline_plan, training
-
-    pid = _project(client, "clinic_visits.csv")
-    for kind, payload in [("set_purpose", {"answer": "prediction"}),
-                          ("set_grain", {"answer": "one_row_per_person"}),
-                          ("set_eligibility", {"answer": "everyone"}),
-                          ("seal", {"fraction": 0.25})]:
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": kind, "payload": payload})
-    project = api.STORE.get(pid)
-    column = next(c["column"] for c in project.missingness_survey()
-                  if c["branch"] == "categorical")
-    n_blank = int(project.df[column].isna().sum())
-
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness",
-        "payload": {"column": column, "mechanism": "informative",
-                    "strategy": "indicator_and_impute"}})
-    assert r.status_code == 200, r.text[:250]
-
-    record = [d for d in project.missingness if d["column"] == column][0]
-    assert "indicator is added" in record["sentence"]
-    assert "filled with" in record["sentence"], (
-        "the compound strategy's sentence promises no fill, which is the "
-        "sentence that used to contradict the card")
-
-    # THE ROW-LOCAL HALF LANDED.
-    assert M.indicator_column(column) in project.df.columns
-    assert int(project.df[column].isna().sum()) == n_blank, (
-        "the fill was materialized on the working table, which is the leak "
-        "clause §06 defers to avoid")
-
-    # AND THE STATEFUL HALF IS IN THE FITTED PIPELINE.
-    features = training._feature_frame(project.working_table, "hba1c", None)
-    plan = pipeline_plan.compose(project, "histgb_reg", features)
-    step = plan.step_for(column)
-    assert step.sentence is record["sentence"]
-    filled = [name for name, _, cols in plan._blocks[0].transformers
-              if column in list(cols)]
-    assert filled == ["fill_impute_mode"], (
-        f"the compound strategy's fill did not reach the pipeline: {filled}")
-
-
-# ── the card asks the mechanism ──────────────────────────────────────────────
-
-def test_the_card_carries_the_mechanism_question_and_no_answer(client):
-    """`GUIDED-091`. `mechanism` is `None` — *not yet asked* — and the question
-    travels with the card so the door can put it."""
-    pid = _project(client)
-    cards = client.get(f"/project/{pid}/evidence/missingness").json()["cards"]
-    assert cards, "no card to check"
-    for card in cards:
-        assert card["mechanism"] is None, (
-            "the card ships an answer to a question the user was never asked")
-        question = card["mechanism_question"]
-        assert card["column"] in question["question"]
-        assert question["values"] == list(M.MECHANISMS)
-        assert question["why"] == M.MECHANISM_WHY, (
-            "the Explore door asks §07's question in its own words, so the two "
-            "doors can drift about what the question means")
-
-
-@pytest.mark.skipif(not H.available(), reason="no JS engine on this machine")
-def test_no_strategy_is_on_screen_until_the_mechanism_is_answered(client):
-    """**§07's fork asserted as a property of the surface**, which is how the
-    Preprocess panel already carries it. A list of fills beside an unanswered
-    question is an invitation to pick one without answering it — and here it
-    was worse: the page supplied `not_sure` on the user's behalf.
-    """
-    pid = _project(client)
-    project = client.get(f"/project/{pid}").json()
-    routes = {
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore": {"questions": []},
-        f"/project/{pid}/evidence/missingness":
-            client.get(f"/project/{pid}/evidence/missingness").json(),
-        f"/project/{pid}/evidence/plausibility": {"columns": []},
-    }
-    out = H.run(
-        """
-        var before = __harness.html('missBox');
-        var mech = /data-miss-mech-for="([^"]+)"/.exec(before);
-        if (!mech) throw new Error('no mechanism question rendered');
-        __harness.dispatch('click', __harness.target(
-          {'data-miss-mech-for': mech[1], 'data-miss-mech-value': 'informative'},
-          ['pill']));
-        __emit({before: before, after: __harness.html('missBox'),
-                column: mech[1]});
-        """, routes=routes, search=f"?project={pid}")
-
-    assert "data-miss-choose" not in out["before"], (
-        "the strategies are on screen before the mechanism is answered, so a "
-        "user can pick a fill without saying what a blank means")
-    assert "data-miss-choose" in out["after"], (
-        "answering the mechanism did not bring the strategies out, so the "
-        "card is now a dead end")
-    assert 'data-miss-mech="informative"' in out["after"], (
-        "the strategy button carries a mechanism other than the one the user "
-        "chose, which is the unconditional `not_sure` all over again")
-    assert 'data-miss-mech="not_sure"' not in out["after"]
-
-
-@pytest.mark.skipif(not H.available(), reason="no JS engine on this machine")
-def test_clause_07s_blocker_is_reachable_from_the_explore_door(client):
-    """**The consequence, and it is not cosmetic.**
-
-    `blocks()` fires only when the mechanism is `informative` — deliberately,
-    and the reasoning in its docstring is right: turning an admission of
-    uncertainty into a wall teaches people to stop admitting it. But that
-    reasoning assumes `not_sure` was ANSWERED. Here it was supplied, so the
-    interruption §07 exists to raise, with its typed acknowledgment and its
-    recorded stability assumption, could not be reached from this door by any
-    user on any column.
-    """
-    pid = _project(client)
-    project = api.STORE.get(pid)
-    column = next(c["column"] for c in project.missingness_survey()
-                  if c["branch"] == "numeric")
-
-    # The page composes the body; the record is what answers it.
-    served = client.get(f"/project/{pid}").json()
-    out = H.run(
-        """
-        function settle(n){
-          var p = Promise.resolve();
-          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
-          return p;
-        }
-        settle(10).then(function(){
-          __harness.dispatch('click', __harness.target(
-            {'data-miss-mech-for': COLUMN, 'data-miss-mech-value': 'informative'},
-            ['pill']));
-          return settle(6);
-        }).then(function(){
-          // THE BUTTON THE PAGE RENDERED, attributes and all. `target()` builds
-          // an element from what it is handed, so composing the mechanism here
-          // would be this test supplying the very thing GUIDED-091 is about.
-          // It is read off the render instead.
-          //
-          // PARSED, NOT PATTERN-MATCHED ON ADJACENCY. This read a single regex
-          // requiring `data-miss-choose`, `data-miss-opt` and `data-miss-mech`
-          // to be adjacent in that order, and L48-A1 inserting a `data-ac`
-          // between the first two turned it red — a true claim broken by an
-          // unrelated attribute. The whole button is parsed now and every
-          // attribute travels, which is also more faithful to a press.
-          var html = __harness.html('missBox') || '';
-          var re = /<button\\b([^>]*)>/g, hit = null, mm;
-          while ((mm = re.exec(html))){
-            var attrs = {}, a = /([a-zA-Z-]+)="([^"]*)"/g, kv;
-            while ((kv = a.exec(mm[1]))) attrs[kv[1]] = kv[2];
-            if (attrs['data-miss-choose'] === COLUMN &&
-                attrs['data-miss-opt'] === 'impute_median'){ hit = attrs; break; }
-          }
-          if (!hit) throw new Error('no impute_median control rendered');
-          __harness.dispatch('click', __harness.target(hit, ['cbtn']));
-          return settle(10);
-        }).then(function(){
-          var posts = __harness.posts();
-          __emit(posts.length ? posts[posts.length - 1] : null);
-        });
-        """.replace("COLUMN", f'"{column}"'),
-        routes={
-            f"/project/{pid}": served,
-            f"/project/{pid}/interview?step=data":
-                client.get(f"/project/{pid}/interview?step=data").json(),
-            f"/project/{pid}/interview?step=explore": {"questions": []},
-            f"/project/{pid}/evidence/missingness":
-                client.get(f"/project/{pid}/evidence/missingness").json(),
-            f"/project/{pid}/evidence/plausibility": {"columns": []},
-            f"POST /project/{pid}/decision": served,
-        }, search=f"?project={pid}")
-
-    assert out, "the press produced no request at all"
-    body = out["body"] if isinstance(out["body"], dict) else None
-    if body is None:
-        import json as _json
-        body = _json.loads(out["body"])
-    assert body["payload"]["mechanism"] == "informative", (
-        f"the page posted {body['payload']['mechanism']!r}, which is the "
-        "unconditional fallback GUIDED-091 is about")
-
-    # AND THE RECORD RAISES THE BLOCKER against exactly that body.
-    refused = client.post(f"/project/{pid}/decision", json=body)
-    assert refused.status_code == 409, (
-        "filling an informatively-missing column from the Explore door was "
-        "accepted, so §07's blocker is still unreachable from this door")
-    detail = refused.json()["detail"]
-    assert detail["acknowledgment_kind"] == "typed"
-    assert detail["exits"], "the blocker offers no way through"

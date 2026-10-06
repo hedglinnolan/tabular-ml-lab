@@ -44,6 +44,8 @@ negative than `genomics_expression.csv` because its identifiers *are* a
 vocabulary — a detector that fired on anything it recognized would pass against
 `gene_0001` and fail here.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 from pathlib import Path
@@ -345,96 +347,3 @@ def test_a_repeated_column_name_is_not_read_as_a_version():
                    for members in reading.vocabularies.values())
     # The blind spot, asserted so it is a recorded limit rather than a surprise.
     assert reading.duplicate_bases == {}
-
-
-# ═══════════ 4 · AND IT REACHES A PERSON ═══════════
-
-def test_the_four_diagnostics_reach_a_person_and_carry_their_badges():
-    """**Trap #1, checked the only way it can be.** A capability is gratifying
-    to build and fully verifiable in isolation; the four assertions above prove
-    the detectors and prove nothing about the app.
-
-    Driven through the real API and then through the page's real controller in
-    node: a file, a lens answer, a target, the findings the project serves, and
-    the titles read back off the rendered DOM. `GUIDED-142` is the reason the
-    page half is here rather than only the API half — five packs and eighteen
-    detectors were correct on the wire and rendered nowhere for two loops.
-    """
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    client = TestClient(api.app)
-    with open(DATA / "genomics_gene_ids.csv", "rb") as handle:
-        pid = client.post("/project", files={
-            "file": ("genomics_gene_ids.csv", handle, "text/csv")}).json()["id"]
-    for kind, payload in (("set_lens", {"lens": [P.GENOMICS]}),
-                          ("set_target", {"column": "condition"})):
-        ok = client.post(f"/project/{pid}/decision",
-                         json={"kind": kind, "payload": payload})
-        assert ok.status_code == 200, (kind, ok.text[:300])
-
-    project = client.get(f"/project/{pid}").json()
-    served = [f for f in project["findings"] if f["source"] == "pack"]
-    reached = {f["id"] for f in served}
-    # THE FOUR ARE PRESENT — not "the pack serves exactly these five".
-    #
-    # This was an equality against a closed set, and it went red the hour the
-    # gene-ID work was merged with the data-type work built in a sibling
-    # worktree: `pack::genomics::data_type` is a legitimate fifth reading and
-    # the assertion called it a failure. A closed-set assertion on a pack that
-    # is being filled out asserts that no further detector may ever exist,
-    # which is the opposite of what this file is checking — and it would have
-    # broken every future genomics detector, one loop at a time.
-    #
-    # The subset assertion says what the test means. The count is asserted as a
-    # FLOOR beside it so an emptied pack still fails.
-    assert reached >= {
-        "pack::genomics::gene_id_excel_corruption",
-        "pack::genomics::gene_id_versions",
-        "pack::genomics::gene_id_duplicates",
-        "pack::genomics::gene_id_mixed_vocabulary"}, sorted(reached)
-    assert len(reached) >= 4, sorted(reached)
-
-    for finding in served:
-        badge = finding["evidence"]
-        assert badge["source"].startswith("research/GENOMICS_PACK.md#")
-        assert badge["evidence_status"] in ("SETTLED", "CONVENTION", "DISPUTED")
-
-    routes = {
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore":
-            client.get(f"/project/{pid}/interview?step=explore").json(),
-        f"/project/{pid}/evidence/missingness": {"cards": []},
-        f"/project/{pid}/capabilities":
-            client.get(f"/project/{pid}/capabilities").json(),
-    }
-    out = PH.run(
-        "var shut = (__harness.html('profList') || '');\n"
-        "__harness.dispatch('click', __harness.target("
-        "{'data-stack-more':'1','aria-expanded':'false'}));\n"
-        "__emit({shut: shut.slice(0, 90000),"
-        " open: ((__harness.html('profList') || '') +"
-        "        (__harness.html('profRest') || '')).slice(0, 200000)});",
-        routes=routes, search=f"?project={pid}")
-    html = out["open"]
-    assert out["shut"], "the Explore findings list rendered nothing at all"
-
-    missing = [f["id"] for f in served if f["title"][:28] not in html]
-    assert not missing, (
-        f"the genomics pack computes {missing} and the page never shows them, "
-        f"pushed or collapsed")
-
-    # AND THE CORRUPTED IDENTIFIERS THEMSELVES REACH THE PAGE. The count is the
-    # finding's headline and the names are what a person acts on — a card that
-    # said "14 identifiers" and showed none of them would leave the user with
-    # a number and no file to open.
-    assert "8-Mar" in html or "3-Mar" in html, (
-        "the corrupted identifiers are in `affected_columns` and none of them "
-        "is on the page")

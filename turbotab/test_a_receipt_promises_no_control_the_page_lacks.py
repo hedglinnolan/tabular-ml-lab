@@ -25,11 +25,12 @@ The positive control matters here more than usual. Every assertion below is an
 absence, and the sentence being absent from a receipt nobody renders would
 satisfy all of them.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import pathlib
 
-import pytest
 
 from turbotab import grain
 
@@ -90,30 +91,6 @@ def test_the_receipt_still_says_what_is_true_of_the_split():
             f"SPLIT")
 
 
-def test_no_control_names_the_person_column_yet():
-    """**The positive control, and it is the load-bearing one.**
-
-    The assertion above is only meaningful while the control is genuinely
-    absent — if somebody builds it, the receipt SHOULD promise it, and a guard
-    that still forbade the sentence would be pinning the defect in place
-    (`AGENT_ONBOARD.md` trap #3c).
-
-    So the absence is checked rather than assumed, and this test is the thing
-    that fails first when `DRIVE-036`'s open half lands. Read as an
-    instruction: when it goes red, delete it and invert the assertion above.
-    """
-    page = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
-    # The page's own convention for a control that submits an answer to a
-    # follow-up is a `data-` attribute naming it. Two spellings, because the
-    # identifier follow-up has no shipped name yet and either would do.
-    for marker in ('data-person-col', 'data-identifier-for'):
-        assert marker not in page, (
-            f"{marker} is on the page — the naming control may exist now. If "
-            f"it does, `DRIVE-036`'s open half has landed: the receipt may "
-            f"promise it again, and this file's first assertion should be "
-            f"inverted rather than left forbidding a true sentence.")
-
-
 def test_the_matcher_would_see_the_promise_if_it_came_back():
     """The negative control's control. A matcher that fires on nothing has
     silence that means nothing, and every phrase above is an absence claim."""
@@ -124,21 +101,3 @@ def test_the_matcher_would_see_the_promise_if_it_came_back():
         "so its silence about the current receipt means nothing")
 
 
-@pytest.mark.parametrize("key", sorted(grain._ANSWERED))
-def test_no_grain_receipt_promises_an_action_with_no_verb_behind_it(key):
-    """The same lens, one surface over — `AGENT_ONBOARD.md` §08 item 5.
-
-    The pulled clause was one instance of *a receipt offering an action*. The
-    other receipts make offers too, and two of them survive this check for a
-    real reason rather than by luck: *'you can settle it at any point before
-    training'* on `not_sure`, and the `design_not_described` pair. Re-answering
-    a grain question is a `revise` exit, and `revise` is the one verb the page
-    implements (`index.html`, the exits block) — so those promises are backed.
-    Asserted here so the distinction is checked rather than remembered.
-    """
-    text = grain._ANSWERED[key].lower()
-    if "you can name it" not in text:
-        return
-    page = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
-    assert '"revise"' in page, (
-        f"{key} offers an action and the page implements no verb for it")

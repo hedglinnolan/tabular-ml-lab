@@ -64,18 +64,18 @@ NDNS_WEIGHT = "wti_Y911 Weight for non-response by individuals to the individual
 NDNS_STRATA = "There are 5 strata altogether (called astrata1h to astrata5 in the archived dataset)"
 NDNS_PSU = ("the addresses were clustered into Primary Sampling Units (PSUs), small geographical "
             "areas, based on postcode sectors")
-# NUTRITION_PACK §01 (docs/turbotab/research/NUTRITION_PACK.md:41), the one-day prior the day-count
+# NUTRITION_PACK §01 (docs/turbotab-next/reference/research/NUTRITION_PACK.md:41), the one-day prior the day-count
 # reading consults:
 NUTRITION_PRIOR = "Median-magnitude plausibility priors** (adults/day) as a second signal: energy 1,600–2,600 kcal"
-# CLINICAL_SURVEY_PACK §A1.1 (docs/turbotab/research/CLINICAL_SURVEY_PACK.md:42-43):
+# CLINICAL_SURVEY_PACK §A1.1 (docs/turbotab-next/reference/research/CLINICAL_SURVEY_PACK.md:42-43):
 CLINICAL_UNITS = "Please confirm units per analyte against the source data dictionary — TurboTab"
 
 
 def test_the_quoted_sources_are_the_repositorys_own_where_they_live_there():
     """The packs' sentences these tests rest on are quoted as the repository holds them."""
-    pack = (ROOT / "docs/turbotab/research/NUTRITION_PACK.md").read_text("utf-8")
+    pack = (ROOT / "docs/turbotab-next/reference/research/NUTRITION_PACK.md").read_text("utf-8")
     assert NUTRITION_PRIOR in pack
-    clinical = (ROOT / "docs/turbotab/research/CLINICAL_SURVEY_PACK.md").read_text("utf-8")
+    clinical = (ROOT / "docs/turbotab-next/reference/research/CLINICAL_SURVEY_PACK.md").read_text("utf-8")
     assert CLINICAL_UNITS in " ".join(clinical.replace(">", " ").split())
     blueprint = (ROOT / "docs/turbotab-next/BLUEPRINT.md").read_text("utf-8")
     assert BLUEPRINT_14_1 in " ".join(blueprint.split())

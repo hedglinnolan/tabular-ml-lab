@@ -604,7 +604,7 @@ class _Run:
                 if k == 0 and table is not None:
                     features = sorted({f for e in self.exposures for f in est.primary_features(
                         [r["feature"] for r in table.rows], e, predictors)})
-                    adjusted_for["model_2"] = [c for c in self.spec.predictors
+                    adjusted_for["model_2"] = [c for c in self._scored(self.spec.predictors)
                                                if c not in self.exposures]
                 continue
             M = model_matrix(fitted, X)
@@ -833,15 +833,34 @@ class _Run:
 
     def _raw(self, columns: Sequence[str], feats: Sequence[str],
              sources: Mapping[str, tuple[set[str], set[str]]]) -> list[str]:
-        """The raw columns a model's matrix columns come from, the exposure's aside."""
+        """The columns a model's matrix columns come from, the exposure's aside: each raw column,
+        and a declared scale by its own name, never its items (MS8: the score is in the model and
+        the items are not, so Table 2 and the methods say the model is adjusted for the scale)."""
         found: set[str] = set()
         exposures = set(self.exposures)
+        scales = self._scales()
         for c in columns:
             if c in feats:
                 continue
-            found |= sources.get(str(c), ({str(c)}, set()))[0] - exposures
+            raw, adjusted = sources.get(str(c), ({str(c)}, set()))
+            scored = {a for a in adjusted if a in scales}
+            items = {i for a in scored for i in scales[a]}
+            found |= (scored | (set(raw) - items)) - exposures
         order = [*self.spec.inputs, *sorted(found)]
         return [c for c in dict.fromkeys(order) if c in found]
+
+    def _scales(self) -> dict[str, list[str]]:
+        """Each declared scale's name and its items (MS8)."""
+        return {str(sc["name"]): [str(i) for i in sc.get("items") or []]
+                for sc in getattr(self.spec, "scales", None) or []}
+
+    def _scored(self, columns: Sequence[str]) -> list[str]:
+        """``columns`` with each declared scale's items replaced by the scale's name, in order."""
+        out: list[str] = []
+        for c in columns:
+            scale = next((name for name, items in self._scales().items() if c in items), None)
+            out.append(scale or c)
+        return list(dict.fromkeys(out))
 
     def _note(self, name: str) -> str | None:
         from turbotab.core.voice import listing

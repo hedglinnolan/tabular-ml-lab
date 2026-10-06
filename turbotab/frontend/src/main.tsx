@@ -3,6 +3,12 @@ import { createRoot } from "react-dom/client";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import { App } from "./App";
+import { UNAUTHENTICATED_EVENT, signInUrl } from "./api/client";
+
+// Server mode: when a request finds no session, sign in and come back to this page.
+window.addEventListener(UNAUTHENTICATED_EVENT, () => {
+  window.location.assign(signInUrl(window.location.pathname + window.location.search));
+});
 
 async function boot() {
   if (import.meta.env.VITE_MOCK === "1") {

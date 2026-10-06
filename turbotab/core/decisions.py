@@ -688,7 +688,7 @@ class SetMissing(_DecisionModel):
     kind: Literal["set_missing"] = "set_missing"
     strategy: MissingStrategy
     drop_columns: list[str] = Field(default_factory=list)
-    # M2 — routed by dtype and mechanism (ROADMAP lockbox constitution §07): binary/categorical
+    # M2 — routed by dtype and mechanism (lockbox constitution §07): binary/categorical
     # blanks may become their own "Missing" level, which keeps the signal when a blank means
     # "not asked"; numeric columns may carry a missing indicator beside the in-fold imputation.
     categorical: Literal["missing_category", "impute"] = "impute"
@@ -1725,7 +1725,7 @@ class LockPlan(_DecisionModel):
 
 class ApplyRepair(_DecisionModel):
     """Apply one of a finding's repair options. Row-local repairs rewrite the working table now;
-    statistical ones are recorded and executed in-fold (ROADMAP lockbox constitution §06)."""
+    statistical ones are recorded and executed in-fold (lockbox constitution §06)."""
 
     kind: Literal["apply_repair"] = "apply_repair"
     finding_id: str = Field(min_length=1)

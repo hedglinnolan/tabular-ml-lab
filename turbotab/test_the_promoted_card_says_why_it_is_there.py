@@ -35,13 +35,14 @@ without recomputing which ids were cleared. Asserted at every size below.
 
 Clinical and metabolomics. `SHAPES_NOT_COVERED` names what neither drives.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import re
 from pathlib import Path
 from typing import Any, Dict, List
 
-import pytest
 
 from turbotab import attention as A
 
@@ -87,29 +88,6 @@ SHAPES_NOT_COVERED = (
 )
 
 
-def _driven(fixture: str, lens, target, bound=None):
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with (DATA / fixture).open("rb") as handle:
-        pid = client.post("/project", files={
-            "file": (fixture, handle, "text/csv")}).json()["id"]
-    if lens:
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_lens", "payload": {"lens": [lens]}})
-    if target:
-        client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_target", "payload": {"column": target}})
-    return client, pid
-
-
-@pytest.fixture(scope="module")
-def projects():
-    return {label: _driven(*spec) for label, spec in LENSES.items()}
-
-
 def _ledger(st: Dict[str, Any]) -> None:
     """The disjoint form, asserted the same way at every call site."""
     assert len(st["pushed"]) + len(st["collapsed"]) == st["served"], st
@@ -120,117 +98,6 @@ def _ledger(st: Dict[str, Any]) -> None:
 
 
 # ── the partition, driven against the real record ───────────────────────────
-
-@pytest.mark.parametrize("label", sorted(LENSES))
-def test_clearing_a_card_frees_its_slot_and_the_ledger_still_balances(
-        projects, label):
-    """Dismiss down the pushed list one card at a time, to exhaustion.
-
-    Driven against the real record for the shipping bound and against
-    `attention.stack` for the other, because the API has no way to pass one — the
-    findings are the same real driven findings either way.
-    """
-    fixture, lens, target, bound = LENSES[label]
-    client, pid = _driven(fixture, lens, target)
-    project = client.get(f"/project/{pid}").json()
-    findings = project["findings"]
-    spent: Dict[str, str] = {}
-
-    def current():
-        if bound is None:
-            return client.get(f"/project/{pid}").json()["explore_stack"]
-        return A.stack(findings, bound=bound, spent=spent)
-
-    def clear(fid: str):
-        if bound is None:
-            client.post(f"/project/{pid}/decision",
-                        json={"kind": "dismiss", "subject": fid})
-        else:
-            spent[fid] = "dismiss"
-
-    st = current()
-    _ledger(st)
-    live_at_start = len(st["live"])
-    dismissals = 0
-
-    while st["collapsed"]:
-        # Always the first LIVE, non-gating card — a gating finding is never
-        # collapsed so clearing one frees a slot that was never bounded.
-        victim = next((i for i in st["live"]
-                       if not A.gates_a_decision(
-                           next(f for f in findings if f["id"] == i))), None)
-        if victim is None:
-            break
-        before = list(st["collapsed"])
-        clear(victim)
-        st = current()
-        dismissals += 1
-        _ledger(st)
-
-        # THE PROMOTED SET IS A PREFIX OF WHAT WAS BEHIND THE AFFORDANCE, in
-        # rank order. A prefix rather than "the single next one" because
-        # `MIN_COLLAPSE` means a remainder that would drop to one is shown
-        # instead — so one dismissal can promote two, and that is the two
-        # rulings interacting rather than a bug.
-        fresh = [i for i in st["pushed"] if i in before]
-        assert fresh == before[:len(fresh)], (
-            f"{label}: promoted {fresh}, which is not a prefix of {before}")
-        assert set(st["promoted"]) >= set(fresh), (
-            f"{label}: {sorted(set(fresh) - set(st['promoted']))} arrived and "
-            f"is not marked as promoted")
-        # THE LIVE BUDGET IS KEPT WHILE THERE IS ANYTHING TO KEEP IT WITH. Once
-        # the remainder empties the count can exceed the budget, because
-        # `MIN_COLLAPSE` shows the last card rather than hiding it alone — so
-        # the invariant is *never shrinks*, and *stays put* only while something
-        # is still behind the affordance.
-        assert len(st["live"]) >= live_at_start, (
-            f"{label}: live SHRANK {live_at_start} → {len(st['live'])} after "
-            f"{dismissals} dismissals")
-        if st["collapsed"]:
-            assert len(st["live"]) == live_at_start, (
-                f"{label}: live went {live_at_start} → {len(st['live'])} after "
-                f"{dismissals} dismissals with {len(st['collapsed'])} still "
-                f"behind the affordance")
-
-    assert dismissals, (
-        f"{label}: nothing was ever collapsed at bound "
-        f"{bound if bound is not None else A.BOUND}, so nothing was driven")
-    # AND THE END STATE. Nothing behind the affordance, so the slot says so.
-    assert st["complete"], st
-    assert not st["promoted_because"] or st["promoted"], (
-        "a promotion sentence with nothing promoted")
-
-
-@pytest.mark.parametrize("label", sorted(LENSES))
-def test_the_affordance_disappears_rather_than_saying_zero(projects, label):
-    """The case that would actually break it.
-
-    An affordance reading *"0 more"* is a control promising something it does not
-    have, and `complete` is what stops it: the slot switches to the
-    recorded-absence sentence instead of counting to nothing.
-    """
-    fixture, lens, target, bound = LENSES[label]
-    client, pid = _driven(fixture, lens, target)
-    findings = client.get(f"/project/{pid}").json()["findings"]
-    spent = {}
-    st = A.stack(findings, bound=bound, spent=spent)
-    while st["collapsed"]:
-        victim = next((i for i in st["live"]
-                       if not A.gates_a_decision(
-                           next(f for f in findings if f["id"] == i))), None)
-        if victim is None:
-            break
-        spent[victim] = "dismiss"
-        st = A.stack(findings, bound=bound, spent=spent)
-        assert "0 more" not in st["affordance"], (
-            f"{label}: the affordance is counting to nothing: "
-            f"{st['affordance']!r}")
-        if st["complete"]:
-            assert st["affordance"].startswith("All "), st["affordance"]
-            assert not st["affordance_open"], (
-                f"{label}: a complete stack still offers an expand")
-            assert not st["affordance_detail"], st["affordance_detail"]
-    assert st["complete"], f"{label}: the remainder never emptied"
 
 
 def test_nothing_that_gates_a_decision_is_ever_promoted_late():
@@ -327,93 +194,6 @@ PAGE_LENSES = {
     "clinical": ("clinical_labs.csv", "clinical", "readmitted"),
     "metabolomics": ("metabolomics_merged_modes.csv", "metabolomics", "responder"),
 }
-
-
-@pytest.mark.parametrize("label", sorted(PAGE_LENSES))
-@pytest.mark.parametrize("n_dismissals", [1, 2])
-def test_the_promoted_card_says_why_it_is_there(label, n_dismissals):
-    """The marker is on the promoted card and on nothing else.
-
-    Two dismissals as well as one, because the second is where a marker that was
-    never cleared would show: a card marked *"moved up"* on a render where it did
-    not move is the interface asserting something false about its own history.
-
-    **`AUDIT-039`. Both skips are gone and the precondition is asserted from the
-    data instead.** The second one was the dangerous one: it stood down exactly
-    when `explore_stack["collapsed"]` was empty — which is the state a stack
-    regression produces. A change to `BOUND`, to `MIN_COLLAPSE`, to
-    `gates_a_decision` or to a fixture's finding count would have turned the
-    test that carries this file's name **quiet** rather than red, and pytest
-    counts a skip as not-a-failure.
-    """
-    from turbotab import pageharness as PH
-
-    if not PH.available():
-        pytest.skip("no JS engine on this machine")
-
-    fixture, lens, target = PAGE_LENSES[label]
-    client, pid = _driven(fixture, lens, target)
-    project = client.get(f"/project/{pid}").json()
-
-    # THE PRECONDITION, ESTABLISHED FROM THE DATA AND ASSERTED. Both fixtures
-    # are shipped and their stack shape at the shipping bound is a deterministic
-    # fact about them, so "there is a remainder to promote from" is something
-    # this test may require rather than something it may decline over.
-    assert project["explore_stack"]["collapsed"], (
-        f"{label}: {fixture} has no collapsed remainder at the shipping bound "
-        f"A.BOUND={A.BOUND}, so nothing can be promoted and this test's subject "
-        f"does not exist. That is a change in the stack, not a reason to stand "
-        f"down — AUDIT-039.")
-
-    for i in range(n_dismissals):
-        st = project["explore_stack"]
-        victim = next((i for i in st["live"]
-                       if not A.gates_a_decision(
-                           next(f for f in project["findings"] if f["id"] == i))),
-                      None)
-        assert victim is not None, (
-            f"{label}: every live card gates a decision after {i} dismissal(s), "
-            f"so there is nothing this test is allowed to clear")
-        assert st["collapsed"], (
-            f"{label}: the remainder emptied after {i} dismissal(s), so the "
-            f"{i + 1}th promotion has nothing to promote FROM. This is the "
-            f"state a stack regression produces and it used to be a skip.")
-        project = client.post(f"/project/{pid}/decision",
-                              json={"kind": "dismiss", "subject": victim}).json()
-
-    st = project["explore_stack"]
-    out = PH.run("__emit({list: __harness.html('profList'),"
-                 "        more: __harness.html('profMore')});",
-                 routes=_routes(client, pid, project), search=f"?project={pid}")
-    html = out["list"] or ""
-
-    rendered = _CARD.findall(html)
-    assert rendered == st["pushed"], (
-        f"{label}: the page pushed {rendered}, the server said {st['pushed']}")
-
-    marked = []
-    for fid in rendered:
-        block = html.split(f'id="find-{fid}"', 1)[1].split("</article>")[0]
-        if _MARK.search(block):
-            marked.append(fid)
-    assert marked == st["promoted"], (
-        f"{label}: the page marks {marked} and the server promoted "
-        f"{st['promoted']}")
-    if st["promoted"]:
-        assert st["promoted_because"] in html, (
-            f"{label}: the marker does not carry the server's sentence")
-    assert len(_MARK.findall(html)) == len(st["promoted"]), (
-        f"{label}: {len(_MARK.findall(html))} markers rendered for "
-        f"{len(st['promoted'])} promotions")
-
-    # AND THE PAGE'S OWN READING OF THE RECORD AGREES WITH THE SERVER'S.
-    # `statusOf` and `attention.spent_ids` are two readers of one record — a
-    # card the page draws as dismissed must not still be costing budget, or the
-    # two have drifted and the bound would be silently wrong.
-    gone = re.findall(r'<article class="([^"]*gone[^"]*)" id="find-([^"]+)"', html)
-    assert sorted(g[1] for g in gone) == sorted(st["cleared"]), (
-        f"{label}: the page draws {sorted(g[1] for g in gone)} as cleared and "
-        f"the partition freed {sorted(st['cleared'])}")
 
 
 def test_the_probe_reports_its_own_coverage(capsys):

@@ -45,6 +45,8 @@ impossible tier is empty — the second is exercised synthetically below because
 no shipped fixture has a numeric physiologic column with a clean impossible tier
 and something else to compare against.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 from pathlib import Path
@@ -62,14 +64,6 @@ FIXTURES = {
 }
 
 
-def _client():
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    return TestClient(api.app)
-
-
 def _project(client, fixture, target):
     with (DATA / fixture).open("rb") as handle:
         pid = client.post("/project", files={
@@ -77,107 +71,6 @@ def _project(client, fixture, target):
     client.post(f"/project/{pid}/decision",
                 json={"kind": "set_target", "payload": {"column": target}})
     return pid
-
-
-@pytest.mark.parametrize("label", sorted(FIXTURES))
-def test_the_flagged_entries_are_gone_from_the_table_afterwards(label):
-    """The adjudicator's own check: drive the endpoint before and after.
-
-    **125 before and 125 after is the failure, whatever the record says.**
-    Asserted on the endpoint the card is drawn from rather than on the frame,
-    because the endpoint is what the user sees re-render.
-    """
-    fixture, target, column = FIXTURES[label]
-    client = _client()
-    pid = _project(client, fixture, target)
-
-    before = client.get(f"/project/{pid}/evidence/plausibility").json()
-    block = next((b for b in before["impossible"]
-                  if b["column"] == column and not b["whole_column_suspect"]), None)
-    assert block, f"{label}: {column} has no repairable impossible tier any more"
-    n = int(block["n_flagged"])
-    assert n, f"{label}: nothing is flagged, so this proves nothing"
-
-    posted = client.post(f"/project/{pid}/decision", json={
-        "kind": "set_impossible_missing", "subject": column,
-        "payload": {"column": column}})
-    assert posted.status_code == 200, posted.text[:300]
-
-    after = client.get(f"/project/{pid}/evidence/plausibility").json()
-    still = [b for b in after["impossible"] if b["column"] == column]
-    assert not still, (
-        f"{label}: {column} is still flagged after the repair — "
-        f"{still[0]['n_flagged']} entries. The record would say they were set "
-        f"to missing.")
-    assert after["n_impossible"] == before["n_impossible"] - n, (
-        f"{label}: {before['n_impossible']} → {after['n_impossible']} for a "
-        f"repair of {n}")
-
-
-@pytest.mark.parametrize("label", sorted(FIXTURES))
-def test_the_record_says_what_happened_and_carries_its_own_count(label):
-    """The sentence, and the two devchecks it has to clear.
-
-    The column is backticked because `devchecks.numbers_in` strips backticked
-    spans before counting, so an unbackticked name carrying a digit — `bp_1`,
-    `hba1c` — reads as an unsupported number. And the count is in the payload
-    because a number in the sentence with no number in the payload trips the
-    same check from the other side.
-    """
-    fixture, target, column = FIXTURES[label]
-    client = _client()
-    pid = _project(client, fixture, target)
-    before = client.get(f"/project/{pid}/evidence/plausibility").json()
-    n = next(b["n_flagged"] for b in before["impossible"] if b["column"] == column)
-
-    body = client.post(f"/project/{pid}/decision", json={
-        "kind": "set_impossible_missing", "subject": column,
-        "payload": {"column": column}}).json()
-    said = [d for d in body["decisions"] if d["kind"] == "set_impossible_missing"]
-    assert len(said) == 1, said
-    record = said[0]
-
-    assert f"`{column}`" in record["text"], (
-        f"{label}: the object is not backticked, so a digit in the column name "
-        f"reads as an unsupported number: {record['text']!r}")
-    assert record["payload"]["n_set"] == n, (
-        f"{label}: the record claims {record['payload']['n_set']} and the card "
-        f"flagged {n}")
-    assert str(n) in record["text"], (
-        f"{label}: the sentence states no count: {record['text']!r}")
-    from turbotab import devchecks as D
-
-    unsupported = [x for x in D.numbers_in(record["text"])
-                   if x not in D.supported_numbers({"payload": record["payload"]})]
-    assert not unsupported, (
-        f"{label}: the sentence carries {unsupported}, which its payload does "
-        f"not support")
-
-
-@pytest.mark.parametrize("label", sorted(FIXTURES))
-def test_keeping_them_is_a_different_kind_and_touches_nothing(label):
-    """The other half.
-
-    Both buttons used to post `kind="note"` with the same `subject`, so nothing
-    machine-readable distinguished a repair from a refusal to repair and a
-    consumer had to string-match prose. Now the kind carries it.
-    """
-    fixture, target, column = FIXTURES[label]
-    client = _client()
-    pid = _project(client, fixture, target)
-    before = client.get(f"/project/{pid}/evidence/plausibility").json()
-
-    posted = client.post(f"/project/{pid}/decision", json={
-        "kind": "keep_impossible", "subject": column,
-        "payload": {"column": column}})
-    assert posted.status_code == 200, (
-        f"{label}: the server rejected `keep_impossible` — {posted.text[:200]}")
-    body = posted.json()
-    after = client.get(f"/project/{pid}/evidence/plausibility").json()
-    assert after["n_impossible"] == before["n_impossible"], (
-        f"{label}: 'keep as is' changed the table")
-    kinds = {d["kind"] for d in body["decisions"]}
-    assert "keep_impossible" in kinds and "set_impossible_missing" not in kinds
 
 
 def test_the_band_is_the_impossibility_band():
@@ -252,30 +145,3 @@ def test_a_repair_with_nothing_to_repair_refuses_rather_than_reporting_success()
         project.set_impossible_missing("no_such_column")
 
 
-def test_the_manuscript_carries_the_true_sentence_rather_than_the_promised_one():
-    """The layer the defect actually mattered at.
-
-    `GUIDED-165`'s escalation was that `draft.py` lifts the decision's text into
-    the methods section, so the false sentence left the building. This asserts
-    the draft carries the count and the object — i.e. that what reaches the
-    manuscript is what happened.
-    """
-    client = _client()
-    pid = _project(client, "clinical_longitudinal.csv", "progressed")
-    before = client.get(f"/project/{pid}/evidence/plausibility").json()
-    n = next(b["n_flagged"] for b in before["impossible"] if b["column"] == "dbp")
-    client.post(f"/project/{pid}/decision", json={
-        "kind": "set_impossible_missing", "subject": "dbp",
-        "payload": {"column": "dbp"}})
-
-    draft = client.get(f"/project/{pid}/draft").json()
-    said = [s["text"] for section in draft["sections"]
-            for s in (section.get("sentences") or [])]
-    hit = [s for s in said if "impossibility band" in s]
-    assert hit, (
-        "the repair does not reach the draft at all, so the manuscript is "
-        f"silent about a change to the table: {said[:6]}")
-    assert any(f"`dbp`" in s and str(n) in s for s in hit), (
-        f"the draft sentence does not name the column and the count: {hit}")
-    assert not any("were set to missing" in s and str(n) not in s for s in hit), (
-        f"the draft carries an uncounted claim that entries were removed: {hit}")

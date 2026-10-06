@@ -46,6 +46,8 @@ carries blank rows **and** present rows with a few neighboring columns, because
 what the user needs is what distinguishes the two — a list of only the blanks
 answers "how many" a second time.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import os
@@ -63,13 +65,6 @@ from turbotab import missingness as M                                 # noqa: E4
 DATA = Path(__file__).resolve().parent / "sample_data"
 
 
-def _client():
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-    return TestClient(api.app)
-
-
 def _project(client, name="clinic_visits", target="outcome"):
     with open(DATA / f"{name}.csv", "rb") as fh:
         pid = client.post("/project", files={
@@ -79,60 +74,8 @@ def _project(client, name="clinic_visits", target="outcome"):
     return pid
 
 
-def _frame(pid):
-    from turbotab.api import STORE
-    return STORE.get(pid).df
-
-
 def _cards(client, pid):
     return client.get(f"/project/{pid}/evidence/missingness").json()["cards"]
-
-
-# ── the snippet ──────────────────────────────────────────────────────────────
-
-def test_the_card_carries_real_rows_from_this_table():
-    """The data, not a second statement of the count."""
-    client = _client()
-    pid = _project(client)
-    cards = _cards(client, pid)
-    assert cards, "no missingness cards on this fixture"
-    df = _frame(pid)
-
-    for card in cards:
-        snip = card["snippet"]
-        assert snip["rows"], f"{card['column']} carries no rows"
-        assert snip["n_blank_shown"] >= 1, (
-            f"{card['column']}: a missingness card showing no blank rows is a "
-            f"count with extra steps")
-        for row in snip["rows"]:
-            # THE ROWS ARE REAL. Checked against the frame the project holds,
-            # not against the card's own description of them.
-            assert row["row"] in df.index, (
-                f"{card['column']}: row {row['row']!r} is not in the table")
-            actual = df.at[row["row"], card["column"]]
-            assert bool(pd.isna(actual)) == row["missing"], (
-                f"{card['column']} row {row['row']}: the snippet says "
-                f"missing={row['missing']} and the frame disagrees")
-
-
-def test_the_snippet_shows_what_a_value_looks_like_beside_what_a_blank_does():
-    """Both sides, because the question is what distinguishes them.
-
-    A snippet of only the blanks would answer "how many" a second time, and the
-    user is being asked what the absence MEANS.
-    """
-    client = _client()
-    pid = _project(client)
-    both = [c for c in _cards(client, pid)
-            if c["snippet"]["n_present_shown"] > 0]
-    assert both, (
-        "no card shows a present row; on a column that is not entirely blank "
-        "that is the half the question needs")
-    card = both[0]
-    assert card["snippet"]["neighbors"], (
-        "the snippet shows the column alone, which is a list of the word "
-        "'missing'")
-    assert len(card["snippet"]["neighbors"]) <= MP.SNIPPET_COLUMNS
 
 
 # ── the timing the card states ───────────────────────────────────────────────
@@ -193,190 +136,3 @@ def test_every_card_option_maps_to_a_declaration_or_is_refused_with_a_reason():
 def test_an_unknown_option_is_refused_rather_than_defaulted():
     with pytest.raises(M.MissingnessRefusal, match="not an option this record"):
         M.strategy_for_card_option("impute_with_vibes")
-
-
-# ── the apply path ───────────────────────────────────────────────────────────
-
-def test_a_row_local_choice_changes_the_working_table_now():
-    """**The read-back.** Not *a decision was recorded* — *the column changed.*
-
-    The whole defect was a button that wrote a sentence and did nothing, so a
-    test that read the transcript would have passed on the broken version.
-    """
-    client = _client()
-    pid = _project(client)
-    card = next(c for c in _cards(client, pid)
-                if any(o["key"] == "explicit_category" for o in c["options"]))
-    column = card["column"]
-
-    before = _frame(pid)
-    n_blank = int(before[column].isna().sum())
-    assert n_blank, f"{column} has no blanks; this test proves nothing"
-
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness", "subject": column,
-        "payload": {"column": column, "card_option": "explicit_missing",
-                    "mechanism": "informative"}})
-    assert r.status_code == 200, r.text
-
-    after = _frame(pid)
-    assert int(after[column].isna().sum()) == 0, (
-        f"{column} still has blanks, so the panel recorded a decision and "
-        f"changed nothing — which is the finding")
-    assert int((after[column] == M.MISSING_LEVEL).sum()) == n_blank, (
-        f"the blanks did not become the level {M.MISSING_LEVEL!r}")
-    assert after.index.equals(before.index), (
-        "a row-local strategy renumbered the rows")
-
-
-def test_a_stateful_choice_is_recorded_and_the_table_is_untouched():
-    """Clause §06's other half, and the more important one.
-
-    Materializing an imputation on the working table before the split is the
-    canonical preprocessing leak. The decision lands; the frame does not move.
-    """
-    client = _client()
-    pid = _project(client)
-    card = next(c for c in _cards(client, pid)
-                if any(o["key"] == "impute_median" for o in c["options"]))
-    column = card["column"]
-    before = _frame(pid).copy()
-
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness", "subject": column,
-        "payload": {"column": column, "card_option": "impute_median",
-                    "mechanism": "not_informative"}})
-    assert r.status_code == 200, r.text
-
-    pd.testing.assert_frame_equal(_frame(pid), before)
-    said = next(d for d in client.get(f"/project/{pid}").json()["decisions"]
-                if d["kind"] == "route_missingness")
-    assert "will be filled" in said["text"], (
-        f"the sentence does not carry the timing: {said['text']!r}")
-    # `AUDIT-028`. THIS DOOR HAS NO FOLDS. `turbotab/training.py:416`:
-    # nothing under `turbotab/` imports `KFold`, `cross_val_score` or
-    # `cross_validate`. This assertion read "training folds only" for a
-    # dozen loops, which made it a GREEN TEST PINNING THE DEFECT — the
-    # shape filed this same loop as `TEST-060`.
-    assert said["payload"]["fit_on"] == "training rows only"
-
-
-def test_the_panel_no_longer_records_a_note_that_routes_nothing():
-    """The specific defect, watched on the wire.
-
-    A `note` carrying the column and the option is a sentence about work that
-    did not happen, and in the transcript it is indistinguishable from work that
-    did. The first version of this test POSTed to the API directly and asserted
-    the record — which a revert probe showed proved nothing about the button,
-    because the page was never run. So this one dispatches at the real control
-    and reads the body its real `decide()` composes.
-    """
-    from turbotab import pageharness as H
-    if not H.available():
-        pytest.skip("no JS engine on this machine")
-
-    client = _client()
-    pid = _project(client)
-    project = client.get(f"/project/{pid}").json()
-    cards = client.get(f"/project/{pid}/evidence/missingness").json()
-
-    body = H.run(
-        """
-        // §07's ORDER, and it now binds on this door too (`GUIDED-091`): the
-        // strategies are not on screen until the mechanism is answered, so the
-        // drive answers it exactly as a user would before it can press one.
-        var mech = /data-miss-mech-for="([^"]+)"/.exec(__harness.html('missBox'));
-        if (!mech) throw new Error('no mechanism question rendered');
-        __harness.dispatch('click', __harness.target(
-          {'data-miss-mech-for': mech[1], 'data-miss-mech-value': 'not_sure'},
-          ['pill']));
-        var html = __harness.html('missBox');
-        var m = /data-miss-choose="([^"]+)"[^>]*data-miss-opt="([^"]+)"/.exec(html);
-        if (!m) throw new Error('no missingness control rendered');
-        __harness.dispatch('click', __harness.target(
-          {'data-miss-choose': m[1], 'data-miss-opt': m[2],
-           'data-miss-mech': 'not_sure'}, ['cbtn']));
-        var posts = __harness.posts();
-        __emit(posts.length ? posts[posts.length - 1] : null);
-        """,
-        routes={
-            f"/project/{pid}": project,
-            f"/project/{pid}/interview?step=data":
-                client.get(f"/project/{pid}/interview?step=data").json(),
-            f"/project/{pid}/interview?step=explore": {"questions": []},
-            f"/project/{pid}/evidence/missingness": cards,
-            f"/project/{pid}/evidence/plausibility": {"columns": []},
-        }, search=f"?project={pid}")
-
-    assert body, "pressing the control sent nothing at all"
-    assert body["body"]["kind"] == "route_missingness", (
-        f"the panel still records a {body['body']['kind']!r} — a sentence with "
-        f"no routing behind it")
-    assert body["body"]["payload"]["card_option"], (
-        "the request carries no option, so the server cannot know which "
-        "strategy was chosen")
-
-    # And the server accepts exactly that body.
-    replay = client.post(f"/project/{pid}/decision", json=body["body"])
-    assert replay.status_code in (200, 409), replay.text
-
-
-def test_dropping_the_rows_is_refused_as_a_missingness_strategy():
-    """Clause §04. A complete-case analysis changes who the study is about, so
-    it is an eligibility criterion reported in participant flow — not a way of
-    handling a blank. Refused with that reason rather than quietly filed as
-    preprocessing."""
-    client = _client()
-    pid = _project(client)
-    card = next(c for c in _cards(client, pid)
-                if any(o["key"] == "drop_rows" for o in c["options"]))
-    r = client.post(f"/project/{pid}/decision", json={
-        "kind": "route_missingness", "subject": card["column"],
-        "payload": {"column": card["column"], "card_option": "drop_rows",
-                    "mechanism": "not_sure"}})
-    assert r.status_code == 400
-    assert "participant flow" in r.text
-
-
-# ── what the driver presses ──────────────────────────────────────────────────
-
-def test_the_button_says_which_of_the_two_things_it_will_do():
-    """Clause §06 read back off the control.
-
-    *"Record this"* and *"Apply this now"* describe different events, and a
-    single label for both is the panel being vague about the one distinction
-    the clause exists to draw.
-    """
-    from turbotab import pageharness as H
-    if not H.available():
-        pytest.skip("no JS engine on this machine")
-
-    client = _client()
-    pid = _project(client)
-    project = client.get(f"/project/{pid}").json()
-    html = H.run(
-        """
-        // The mechanism first, because §07's fork now binds on this door too
-        // (`GUIDED-091`) — no strategy is on screen until it is answered.
-        var mech = /data-miss-mech-for="([^"]+)"/.exec(__harness.html('missBox'));
-        if (!mech) throw new Error('no mechanism question rendered');
-        __harness.dispatch('click', __harness.target(
-          {'data-miss-mech-for': mech[1], 'data-miss-mech-value': 'not_sure'},
-          ['pill']));
-        __emit(__harness.html('missBox'));
-        """, routes={
-        f"/project/{pid}": project,
-        f"/project/{pid}/interview?step=data":
-            client.get(f"/project/{pid}/interview?step=data").json(),
-        f"/project/{pid}/interview?step=explore": {"questions": []},
-        f"/project/{pid}/evidence/missingness":
-            client.get(f"/project/{pid}/evidence/missingness").json(),
-        f"/project/{pid}/evidence/plausibility": {"columns": []},
-    }, search=f"?project={pid}")
-
-    assert "data-miss-choose" in html, "the missingness panel did not render"
-    assert "Apply this now" in html, (
-        "no option offers to apply now, and `explicit_category` is row-local")
-    assert "Record this" in html, (
-        "no option is recorded for the fold, and every imputation is")
-    assert "Show me these rows" in html, "the data snippet did not render"

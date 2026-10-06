@@ -143,7 +143,7 @@ TeachingEntry { key, title, question, one_liner, why, consumer,
 
 Word budgets (a test enforces them): title ≤ 8 · question ≤ 14 · one_liner ≤ 22 · why ≤ 60 ·
 consumer ≤ 16 · option label ≤ 4 · option consequence ≤ 16 · term definition ≤ 25. Drawer content
-is sourced from `docs/turbotab/research/*` with section references, and may be longer.
+is sourced from `docs/turbotab-next/reference/research/*` with section references, and may be longer.
 
 ## 6 · Findings
 

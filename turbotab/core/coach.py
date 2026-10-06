@@ -24,7 +24,7 @@ read. The card lines are made with the proposals, which are pre-seal answers abo
 loaded (their basis says so); the energy question's card gets no line, because it is a modeling
 choice made after the seal and the proposals read every row.
 
-The eligibility question withholds the outcome's distribution (ROADMAP lockbox constitution §04),
+The eligibility question withholds the outcome's distribution (lockbox constitution §04),
 so no exclusions note ever describes the outcome's values.
 
 Annotators never fail a preview: one that raises is logged and skipped.

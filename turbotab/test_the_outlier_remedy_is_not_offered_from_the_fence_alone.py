@@ -110,6 +110,8 @@ read 0.0% and 1.9%.
   only that — `test_the_reading_reaches_the_interview_payload` drives the
   payload and claims nothing about a rendering.
 """
+# The tests here that drove the retired legacy app (turbotab/api.py, the page, the
+# figure and manuscript modules, the gates) were removed with it, BLUEPRINT §9.1; git keeps them.
 from __future__ import annotations
 
 import pathlib
@@ -232,32 +234,6 @@ def test_the_fence_is_still_named_as_a_fence_and_the_count_is_still_reported():
         warning.short_message)
 
 
-# ── the warning: driven to the surface that renders it ──────────────────────
-
-def test_the_corrected_sentence_reaches_the_guided_finding_card():
-    """Driven over HTTP, not grepped (trap 5). `turbotab/api.py:291` is the one
-    producer of the finding list and `turbotab/web/index.html:2422` writes
-    `f.detail` into the card, so this is the rendered instance of the row."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    fixture = ALL_THREE[0]
-    with open(DATA / fixture, "rb") as fh:
-        pid = client.post("/project", files={
-            "file": (fixture, fh, "text/csv")}).json()["id"]
-    body = client.get(f"/project/{pid}").json()
-    cards = [f for f in body.get("findings", [])
-             if (f.get("params") or {}).get("category") == "outliers"]
-    assert cards, [(f.get("params") or {}).get("category")
-                   for f in body.get("findings", [])]
-    detail = cards[0].get("detail") or ""
-    assert BLIND_WARNING not in detail, detail
-    assert "40–300 mmHg" in detail, detail
-    assert "cannot tell an impossible entry" in detail, detail
-
-
 # ── the R5 / R9 cards ───────────────────────────────────────────────────────
 
 def _cards(frame: pd.DataFrame, target: str):
@@ -334,32 +310,6 @@ def test_an_integer_target_takes_the_same_reading_through_r9():
     assert BLIND_R9_REMOVE not in said, said
     assert "40–300 mmHg" in said, said
     assert "suspected entry errors" in said, said
-
-
-def test_the_reading_reaches_the_interview_payload():
-    """Driven through the router, not grepped. This asserts the reading is on
-    the pull chip's `why` — it does NOT assert anybody sees it, and the module
-    docstring says which two doors drop it."""
-    from fastapi.testclient import TestClient
-
-    from turbotab import api
-
-    client = TestClient(api.app)
-    with open(DATA / "clinical_labs.csv", "rb") as fh:
-        pid = client.post("/project", files={
-            "file": ("clinical_labs.csv", fh, "text/csv")}).json()["id"]
-    body = client.post(f"/project/{pid}/decision",
-                       json={"kind": "set_target",
-                             "payload": {"column": "sbp"}}).json()
-    assert body.get("task_type") == "regression", body.get("task_type")
-    plan = client.get(f"/project/{pid}/interview?step=explore").json()
-    keys = [q["key"] for q in plan["questions"]]
-    chip = next((q for q in plan["questions"]
-                 if q["key"] == "look::r5_target_regression"), None)
-    assert chip is not None, keys
-    why = chip.get("why") or ""
-    assert "Outlier rate:" in why, why
-    assert "40–300 mmHg" in why, why
 
 
 # ── the positive control ────────────────────────────────────────────────────
