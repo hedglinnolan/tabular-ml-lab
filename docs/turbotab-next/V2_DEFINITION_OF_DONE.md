@@ -23,19 +23,63 @@ conflict inside rows already in v2.
 - **Classic's audit and exploration views**, returned as First look views and threads: missingness patterns, the skew and outlier table, a pre-fit VIF table, residual Q-Q, a cross-model importance table, and the split and seed control.
 - **Classic's practice datasets,** folded into the demo.
 
-LightGBM, ExtraTrees, kNN, SVM, naive Bayes, LDA and neural networks stay v2.x. Per-model preprocessing overrides and hyperparameter optimization are being specified.
+LightGBM, ExtraTrees, kNN, SVM, naive Bayes, LDA and neural networks stay v2.x. Per-model preprocessing overrides and hyperparameter optimization are specified in `RECIPES_AND_TUNING.md`.
+
+**Amended 2026-10-07 (Nolan, after the recipes-and-tuning rulings and a UI and scope discussion; `HANDOFF.md` has the record).** These are additions at his direction; nothing was displaced. He expects no further major changes, "but I cannot make promises since the act of design revealed this conversation in the first place."
+- **Recipes and tuning,** as ruled:
+  - the trees "try both" for blanks by default, chosen in each training fold;
+  - fits expected to take over about 2 minutes wait for the Fit action;
+  - three groups the spec had cut stay in v2: faster search for big tables (successive halving, Hyperband, TPE, BOHB, a Thorough budget and the tuning curve), more preprocessing options (native categories, per-family Pareto and robust scaling, a per-model log1p), and the inference extensions (Huber under inference as a weighted M-estimator with a design-based or cluster sandwich; DML and TMLE nuisance learners from the model registry, tuned inside cross-fitting);
+  - the kept-comparisons group moves to v2.x (§5).
+- **Goals.** Describe, Estimate an effect and Predict, each with question shapes filtered by domain and outcome. Several goals in one paper run as **sequential tracks**: the shared stages run once, each track has its own Models and Results, and Write-up merges them.
+- **Describe** becomes a full goal:
+  - survey-weighted means and prevalence by group;
+  - the usual-intake distribution and the share below a requirement;
+  - trends across stacked cycles;
+  - Table 1.
+- **New methods:**
+  - dietary patterns (PCA, factor analysis, cluster analysis, reduced-rank regression);
+  - subgroups of similar people (clustering);
+  - Bland–Altman agreement, between two methods and between models' predictions.
+- **Designed experiments,** one named milestone after the core slices:
+  - parallel and cluster-randomized trials;
+  - the design declared and routed: precision adjustment for the randomization factors and prespecified baseline covariates, and no confounder selection;
+  - no exclusion after randomization in the primary analysis;
+  - intention-to-treat and per-protocol analysis sets;
+  - the CONSORT checklist and flow diagram;
+  - wording that may state a causal effect;
+  - missing-outcome sensitivity analyses.
+
+  Case-control sampling (odds ratios only, no prevalence, prediction recalibrated) and individually matched sets (conditional logistic regression) come with it.
+- **The presentation:** the quest log (BLUEPRINT §11 and `calm/FOUNDATION.md` to be amended to match):
+  - **Seven fixed stages,** with dynamic questions inside: Your data, Your question, First look, Who's in, Models, Results, Write-up.
+  - **A seven-segment progress bar.**
+  - **Decide · Confirm · For the record,** with one Confirm sweep of defaults at the end of each stage.
+  - **Open noticings** must be decided or dismissed before the lock or the seal. Clean checks go in the supplement, and "noticings" are named in two places.
+  - **Full-tapestry flowcharts,** each savable as a figure: participant flow (samples and features for omics) and the analysis flowchart before training.
+  - **Results as exhibits:** drafted wordings or your own; placement in Results, Discussion or the Supplement; every analysis that was run stays listed.
+  - **Plain words on every card.** "Exposure", "confounder" and "estimand" are quiet terms only.
+- **Export:** an Overleaf-ready LaTeX project and a Word document, rendered from one manuscript model:
+  - `\label`/`\ref` for every exhibit;
+  - `refs.bib` with every DOI checked against Crossref;
+  - `\todo` where only the author can write.
+- **A rare design or analysis outside v2** may appear as a "Not available yet" option, with its reason and an exit that keeps the work. Every option need not be supported.
 
 **The one-sentence test.** v2 is done when a nutrition researcher in any of the five lenses can take
-their own table from upload to a defensible prediction *or* inference result and a methods section a
-reviewer accepts, and every number, label and sentence on the way is verified against an
-independent reference.
+their own table from upload to a defensible description, effect estimate or prediction (from
+observational data or a designed experiment), with a methods section and a manuscript draft a reviewer
+accepts, and every number, label and sentence on the way is verified against an independent reference.
 
 ---
 
 ## 1 · The journeys that must work end to end (the product)
 
 Ten reference journeys: one **prediction** and one **inference** analysis per lens, each on a
-reference fixture. The NHANES export runs the dietary and clinical ones. Each journey goes:
+reference fixture. The NHANES export runs the dietary and clinical ones. **Added 2026-10-07:**
+- a **Describe** journey (dietary, NHANES: the usual-intake distribution and survey-weighted prevalence by group), run as a second track beside the dietary inference journey, so one paper merges both;
+- a **randomized-trial** journey on a trial fixture.
+
+Each journey goes:
 
 upload (CSV, TSV, Parquet, Excel, **SAS XPT**) → opening sequence → seal → modeling sequence →
 results → export.
@@ -89,15 +133,22 @@ independent reference.
 5. **Fast enough.** Previews take < 1 s at the 95th percentile. The opening sequence takes < 30 s on
    500 × 20,000 and on 1,000,000 × 30. Any fit expected to take > 30 s shows its estimate first.
 6. **Reproducible.** The export carries the methods section, the participant-flow and lineage
-   figures, a replayable provenance record, and auto-filled **TRIPOD+AI** (prediction) or
-   **STROBE-nut** (inference) checklists that list their unanswered items. Replaying the record
+   figures, a replayable provenance record, and auto-filled **TRIPOD+AI** (prediction),
+   **STROBE-nut** (observational inference) or **CONSORT** (trials) checklists that list their unanswered items. Replaying the record
    reproduces the model matrix and the estimates.
+7. **The manuscript is checked** (added 2026-10-07). It is checked like replay, as a function of the record:
+   - every number in the LaTeX and Word output traces to a value in the record;
+   - every `\ref` resolves;
+   - every citation's DOI is verified.
+
+   CI runs the real-data tests on the committed NHANES fixture (gzipped) and the browser tests against the mock server.
 
 ## 4 · Release requirements
 
 - **Human expert review**, one domain methodologist per lens, from a per-domain review packet: the
   methods offered, how they chain, the defaults, and the exact sentences the app writes. Findings are
-  addressed, or Nolan waives a lens explicitly.
+  addressed, or Nolan waives a lens explicitly. A trial methodologist reviews the designed-experiments
+  milestone from its own packet.
 - **Runs where researchers are:** a one-command local launcher on macOS and Windows, and the
   university-server mode (Docker, auth), both smoke-tested.
 - **Docs:** a short user guide, a methods reference generated from the contracts, and a CITATION
@@ -110,13 +161,26 @@ independent reference.
 - deep multi-file assembly (fuzzy keys, conflict resolution);
 - an in-app AI assistant;
 - multi-user collaboration;
-- the All of Us adapter.
+- the All of Us adapter;
+- **added 2026-10-07:**
+  - mediation analysis (mediators are still recognized and kept out of the adjustment set);
+  - crossover trials, repeated-measures trial models and complier effects;
+  - the kept comparisons ("Compare with standard settings" as a kept version, shared-step changes after scores kept as versions, re-tuned substitution bands);
+  - running goals as parallel tracks (v2 runs them in sequence);
+  - the research forum (publishing analyses as structured objects), an aspiration with no scope yet.
 
 ## 6 · The road from here to done
 
-methods verification (running) → intelligence (WP13–15) → routing (WP16–18) → completeness pass
-(QC drift, scale reliability, batch, XPT, codebook import and minimal joins, and the engine defects MS1–MS8 from
-the modeling-sequence review) → the modeling-sequence spec,
-reviewed and built → the extended methods (causal ML, time-varying exposures, NCI, ComBat,
-multiclass substitution) on the modeling sequence's exposure and estimand machinery → presentation resumed for Explore, the modeling sequence, the inductive-bias
-curves and export → re-audit → Nolan's drives → expert review → packaging → `v2.0.0`.
+**Done (through 2026-10-06):** methods verification; intelligence; routing; the completeness pass; the
+modeling sequence; the extended methods; the release track. CI is green on every platform.
+
+**From here (2026-10-07):**
+1. The NHANES fixture is committed, and CI runs it and the mock browser tests.
+2. **The crosswalk:** what the engine must surface for the user to decide, and when, before and after training.
+3. **`RECIPES_AND_TUNING.md` draft 3.**
+4. **The quest-log redesign** on the crosswalk.
+5. **Core vertical slices:** each is an engine thread, its screen and a drive. They start with the understanding layer's phase 0, the shelf and tuning.
+6. **Describe and the new methods.**
+7. **The designed-experiments milestone.**
+8. **The LaTeX and Word export,** with the manuscript gate.
+9. **Re-audit** → Nolan's drives → expert review → packaging → `v2.0.0`.

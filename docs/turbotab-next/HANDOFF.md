@@ -104,7 +104,8 @@ The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 
 
   Deferred to v2.x: crossover trials, repeated-measures trial models, and per-protocol and complier effects.
 - **Mediation is out of v2.** Mediators are still recognized, so they stay out of the adjustment set.
-- **Still open:** whether every option on a design question must be supported, or may carry a "Not available yet" label with an exit that keeps the work. Building the milestone above shrinks this to the long tail.
+- **Ruled (2026-10-07):** not every option on a design question must be supported. A rare design may carry "Not available yet", with its reason and an exit that keeps the work.
+- **The definition of done was amended on 2026-10-07** with all of the above. See `V2_DEFINITION_OF_DONE.md`.
 - **Plain words:** "exposure", "confounder" and "estimand" stay quiet terms only. The card asks "What do you think affects glucose?"
 - **Validation of `319a513f`** (2026-10-06):
   - Python 2,848 passed;
