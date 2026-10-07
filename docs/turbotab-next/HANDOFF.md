@@ -66,6 +66,54 @@ The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 
    - clean checks go in the supplement;
    - "noticings" are named in two places.
 
+**UI and scope discussion with Nolan (2026-10-06/07).** The full notes are in the orchestrator's memory, `turbotab-quest-log-tapestry`.
+- **Seven fixed stages:**
+  1. Your data (the file, the domain, what each column is)
+  2. Your question (the outcome, then the goal, worded around it)
+  3. First look (shaped by the goal)
+  4. Who's in
+  5. Models
+  6. Results
+  7. Write-up
+
+  The questions inside each stage are dynamic. The progress bar has seven segments: an unreached stage shows empty, and a reopened stage drops back and says why.
+- **Labels:** Decide · Confirm · For the record. The engine's terms asked/stated/silent never reach the UI.
+  - Each stage ends with one Confirm sweep of its defaults.
+  - Hovering a line elaborates slightly. Clicking it expands the card to its options, with a way back.
+- **Results** are exhibits: a figure or table with its caption, the finding, and the interpretation. For each:
+  - choose among drafted wordings, or write your own;
+  - choose a placement: Results, Discussion, Supplement, or leave the exhibit out. Every analysis stays listed.
+- **Full-tapestry flowcharts,** each savable as a figure:
+  - the participant flow, or samples and features for omics;
+  - the analysis flowchart before training, where the Fit button lives.
+- **Export:** an Overleaf-ready LaTeX zip and Word from one manuscript model. Every citation is checked against Crossref. Classic's `ml/latex_report.py` and `ml/manuscript_validator.py` are references.
+- **Goals:** Describe / Estimate an effect / Predict. A second question picks the shape, filtered by domain. Several goals in one paper run as sequential tracks over the shared stages, with Write-up merging them.
+- **Added to v2:**
+  - dietary patterns;
+  - clustering into subgroups;
+  - Bland–Altman, both between methods and between models.
+- **Designed experiments added to v2** (2026-10-07) as one named milestone after the core slices:
+  - parallel and cluster-randomized trials;
+  - design declaration and routing (no confounder hunt; precision adjustment);
+  - no exclusions after randomization; intention-to-treat and per-protocol analysis sets;
+  - the CONSORT checklist and flow diagram;
+  - causal wording;
+  - missing-outcome sensitivity analyses.
+
+  Case-control, with restrictions, and matched sets, with conditional logistic regression, ride with the milestone.
+
+  Deferred to v2.x: crossover trials, repeated-measures trial models, and per-protocol and complier effects.
+- **Mediation is out of v2.** Mediators are still recognized, so they stay out of the adjustment set.
+- **Still open:** whether every option on a design question must be supported, or may carry a "Not available yet" label with an exit that keeps the work. Building the milestone above shrinks this to the long tail.
+- **Plain words:** "exposure", "confounder" and "estimand" stay quiet terms only. The card asks "What do you think affects glucose?"
+- **Validation of `319a513f`** (2026-10-06):
+  - Python 2,848 passed;
+  - frontend 201 and the calm kit 242 passed;
+  - mock browser tests: 1 failure in the setup (`m2-journeys` crashes on the mock server's health check before it can skip);
+  - Classic: 49 failed and 3,245 passed. Most look like repository self-checks that the release track broke. Triage is pending; the run hangs under xdist without `--timeout`.
+
+  CI does not run the browser tests.
+
 **Engine follow-ups found (not started):**
 - the energy preview that quotes a coefficient before the lock;
 - the exposure and estimand previews that draw nothing;
