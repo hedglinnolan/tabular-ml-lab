@@ -84,11 +84,20 @@ EXEMPT: dict = {}
 #: parser then reads. A buffer is not a path, so the resolver cannot see that
 #: nothing on disk is touched; it is counted here rather than special-cased.
 #:
+#: Ratcheted 35 → 7 on 2026-10-08, when the ruling on Classic's tests scoped the
+#: sweep to `tests/` (TurboTab v2 keeps its own gates; `turbotab/` held 281 of
+#: the 290 unresolved sites by then) and retired two files that held one each:
+#: `test_a_specification_is_a_claim.py`'s spawn of the register tool and
+#: `test_the_launch_command_refuses_a_stack_it_cannot_import.py`'s
+#: `sitecustomize` write. The seven left are the four memory-probe sites above,
+#: the `.to_excel()` buffer, and `test_engine_is_headless.py`'s `.mkdir()` and
+#: `.write_text()` of a stub `streamlit` module in `tmp_path`.
+#:
 #: A note for whoever ratchets this next: the sweep reads `git ls-files`, so an
 #: uncommitted test file contributes NOTHING to this count. A green run on a
 #: dirty tree is not evidence — stage the new files first, or this constant goes
 #: stale in the one direction that fails CI after the commit lands.
-UNRESOLVED_CEILING = 35
+UNRESOLVED_CEILING = 7
 
 
 def _relative(sites):
@@ -107,7 +116,9 @@ def test_no_tracked_test_writes_a_path_git_tracks(capsys):
     # THE INSTRUMENT'S OWN CONTROL, before its silence is quoted. A sweep that
     # enumerated nothing reports "no writers" in exactly the same words as a
     # clean corpus.
-    assert n_files >= 250, (
+    # 181 when the sweep was scoped to `tests/` (2026-10-08); it read 434 over
+    # `tests/` and `turbotab/` before that.
+    assert n_files >= 150, (
         f"only {n_files} tracked test modules found; the enumeration is "
         f"looking in the wrong place and its silence means nothing")
 
@@ -149,11 +160,22 @@ def test_a_spawn_into_an_in_repo_script_is_followed():
     **zero** hits across twenty write-shaped patterns, because it does not
     write — it spawns a script that rewrites twelve tracked files. If following
     stops working, the guard keeps passing and loses its most expensive case.
+
+    **Driven by the plant, not by the corpus.** This asserted that some tracked
+    test spawns an in-repo script. The last two that did tested the legacy
+    app's retired tools, and went with them on 2026-10-08, so the corpus no
+    longer exercises the follow-through. The planted spawn below does, at a
+    real path and into a real generator.
     """
-    _, _, spawns, _ = guard.sweep()
+    repo, _, spawns = guard.analyze(
+        _HOST, source=PLANTS["subprocess into an in-repo writer"])
     assert spawns, (
-        "no tracked test spawns an in-repo script any more, so the follow-"
-        "through is exercised by nothing and its correctness is untested")
+        "the planted spawn of an in-repo script was not recognized as one, so "
+        "the follow-through is exercised by nothing and its correctness is "
+        "untested")
+    assert any(s.via for s in repo), (
+        f"the spawn was recognized and not followed: no write was reported "
+        f"through the script it runs: {[repr(s) for s in repo]}")
 
 
 # ── the positive control: the four shapes, planted ──────────────────────────

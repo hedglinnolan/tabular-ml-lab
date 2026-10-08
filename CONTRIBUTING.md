@@ -72,7 +72,6 @@ environment's Python:
 # torch's OpenMP runtimes share the process and can segfault it otherwise.
 OMP_NUM_THREADS=1 python -m pytest tests/ --ignore=tests/integration \
   --ignore=tests/test_suite_is_order_independent.py \
-  --ignore=tests/test_a_fixed_row_names_a_test_that_actually_runs.py \
   --ignore=tests/test_nn_modernization.py \
   -q --timeout=120
 
@@ -83,8 +82,8 @@ OMP_NUM_THREADS=1 python -m pytest tests/test_nn_modernization.py -q --timeout=1
 python -m pytest tests/integration -q --timeout=120
 ```
 
-The two excluded meta-tests re-run the whole suite in subprocesses; they are a
-local or nightly gate, not something to run on every change. On a multi-core
+The excluded meta-test re-runs the whole suite in subprocesses; it is a local
+or nightly gate, not something to run on every change. On a multi-core
 machine, `-n 4 --dist loadfile` (pytest-xdist, in `requirements-dev.txt`)
 makes Tier 1 several times faster; use `--dist loadfile`, because one workflow
 test file shares state across its class. The PDF round-trip in Tier 2 needs a

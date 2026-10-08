@@ -412,35 +412,31 @@ without notice, and it is not yet covered by the guarantees this README makes
 about Classic.
 
 <details>
-<summary><b>Running TurboTab</b> (terminal required)</summary>
+<summary><b>Running TurboTab</b></summary>
 
-TurboTab has no entry in the desktop starter yet — you start it from a terminal.
-Nothing below applies to the Classic app; skip this if you are here to run an
-analysis. From a clone of this repository:
+TurboTab has its own launcher, separate from Classic's starters; nothing below
+applies to the Classic app. From a clone of this repository, double-click
+`turbotab/deploy/Start TurboTab.command` (macOS) or
+`turbotab\deploy\Start TurboTab.bat` (Windows), or run one command:
 
 ```bash
 # macOS / Linux
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
-make turbotab
-# or, equivalently:
-venv/bin/python scripts/serve_turbotab.py --port 8777
+bash turbotab/deploy/turbotab.sh
+# or, with Python 3.12 or newer, on any system:
+python3 turbotab/deploy/launch.py
 ```
 
 ```powershell
-# Windows (PowerShell) — there is no `make` here, so call the script directly
-python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
-.\venv\Scripts\python scripts/serve_turbotab.py --port 8777
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File turbotab\deploy\turbotab.ps1
 ```
 
-Then open http://127.0.0.1:8777. `make turbotab` runs `./venv/bin/python`, so it
-needs the `venv/` above; if you already have the double-click starter's `.venv/`,
-that interpreter works too — it is built from the same `requirements.txt` — so
-point the last command at it instead. The launcher checks its own interpreter
-before serving and refuses with an explanation rather than starting a server that
-would fail mid-workflow — if it refuses, it tells you exactly which package and
-which interpreter to fix. `make turbotab-check` runs that environment check on
-its own.
+The first start sets up its own Python environment in `~/.turbotab/env`, which
+takes a few minutes; later starts take seconds. TurboTab then opens in the
+browser at http://localhost:8787/, and Ctrl+C stops it. To run it for a group on
+a university server, in Docker, read
+[docs/turbotab-next/DEPLOY.md](docs/turbotab-next/DEPLOY.md), which also lists
+the launcher's options.
 
 </details>
 

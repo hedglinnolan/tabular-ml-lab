@@ -22,10 +22,15 @@ still exits 1. It changes the message, not the blocking, which is the whole
 point of it. A test keyed on the exit status cannot tell the repaired hook from
 the broken one.
 
-**Do not assert six ticks.** The `python parses` gate is interpreter-*version*
-dependent: under `/usr/bin/python3` (3.9.6) it reports a false failure on an
-f-string this repository legitimately contains. A cross there is a real answer
-about a real interpreter and is not this row's subject.
+**Do not assert a tick per gate.** The `python parses` gate is
+interpreter-*version* dependent: under `/usr/bin/python3` (3.9.6) it reports a
+false failure on an f-string this repository legitimately contains. A cross
+there is a real answer about a real interpreter and is not this row's subject.
+
+**Two gates, not six.** The hook ran six gates until the legacy TurboTab app
+retired (42c6d9f6): the ledger, register, copy-deck and evidence-badge gates
+checked that app's own records and went with it. It runs `python parses` and
+`American spelling`, and this file reads that list out of the hook.
 
 **Assert what the row actually claims: no cross attributable to a missing
 module.** That is true of a healthy hook and true of the `GATES CANNOT RUN`
@@ -209,9 +214,11 @@ def test_the_hook_finds_an_interpreter_from_inside_a_linked_worktree(tmp_path,
     # filtered population is not a check until something proves the population
     # is non-empty).
     labels = _gate_labels()
-    assert len(labels) == 6, (
-        f"parsed {labels} out of {HOOK.name}; the hook's own gate list is not "
-        f"being read, so the reconciliation below means nothing")
+    assert labels == list(GATE_COMMANDS), (
+        f"parsed {labels} out of {HOOK.name}, against the gates this file "
+        f"measures, {list(GATE_COMMANDS)}; either the hook's own gate list is "
+        f"not being read, or a gate was added without its command in "
+        f"GATE_COMMANDS, and the reconciliation below means nothing")
     reached = [name for name in labels
                if f"{_TICK}{name}" in out or f"{_CROSS}{name}" in out]
     cannot_run = "GATES CANNOT RUN" in out
@@ -360,21 +367,22 @@ def _probed_names() -> list:
     return re.findall(r'"([^"]+)"', match.group(1))
 
 
+#: Each gate the hook runs, as the argv after the interpreter, keyed by the
+#: label the hook prints. The worktree test above asserts these keys ARE the
+#: hook's labels, so a gate added to the hook without a command here fails
+#: there rather than going unmeasured.
+GATE_COMMANDS = {
+    "python parses": [".githooks/parsecheck.py"],
+    "American spelling": ["-m", "pytest", "tests/test_american_spelling.py",
+                          "-q", "--no-header"],
+}
+
+
 def _measure_direct_imports(tmp_path) -> dict:
     """`{gate label: {top-level package}}`, measured by running each gate."""
     python = _provisioned_python()
-    commands = {
-        "python parses": ["docs/turbotab/tools/parsecheck.py"],
-        "ledger schema": ["docs/turbotab/tools/ledger.py", "check"],
-        "register schema": ["docs/turbotab/tools/register.py", "check"],
-        "American spelling": ["-m", "pytest",
-                              "tests/test_american_spelling.py", "-q",
-                              "--no-header"],
-        "copy deck": ["docs/turbotab/tools/copydeck.py", "check"],
-        "evidence badges": ["docs/turbotab/tools/evidence.py", "check"],
-    }
     measured = {}
-    for label, argv in commands.items():
+    for label, argv in GATE_COMMANDS.items():
         out = tmp_path / f"{label.replace(' ', '_')}.json"
         env = dict(os.environ)
         env["PYTHONPATH"] = os.pathsep.join(
@@ -394,11 +402,12 @@ def test_the_probe_covers_every_package_the_gates_import_directly(tmp_path,
                                                                   capsys):
     """**`TEST-110`, and it is measured rather than read.**
 
-    A static walk cannot answer this: `evidence.py:302` reaches `turbotab.api`
-    — and `fastapi` through it — with
+    A static walk could not answer this when it was written: the retired
+    evidence gate reached `turbotab.api` — and `fastapi` through it — with
     `importlib.import_module(f"turbotab.{path.stem}")`, which no literal search
     sees. So each gate is run under an import recorder that logs only
-    first-party -> third-party edges.
+    first-party -> third-party edges, and a gate added later is measured the
+    same way.
     """
     provisioned = _provisioned_python()
     if not provisioned.exists():                           # pragma: no cover
@@ -410,14 +419,15 @@ def test_the_probe_covers_every_package_the_gates_import_directly(tmp_path,
     # The recorder's own control. An empty measurement would report a probe
     # that covers everything, in the same words as a probe that does.
     assert "pandas" in everything, (
-        f"the import recorder observed {sorted(everything)} across the six "
-        f"gates and did not see pandas, which two of them import at module "
-        f"level. The recorder is not running; its silence means nothing.")
+        f"the import recorder observed {sorted(everything)} across the gates "
+        f"and did not see pandas, which the spelling gate imports through "
+        f"tests/conftest.py. The recorder is not running; its silence means "
+        f"nothing.")
 
     probed = _probed_names()
     uncovered = sorted(everything - set(probed) - set(GUARANTEED_BY))
     assert not uncovered, (
-        f"the six gates import {uncovered} directly from first-party code and "
+        f"the gates import {uncovered} directly from first-party code and "
         f"`gates_can_run` does not probe for it. An interpreter carrying "
         f"{probed} and missing {uncovered} passes the probe and then produces "
         f"the exact `✗ … No module named …` the cannot-run state exists "
@@ -431,27 +441,25 @@ def test_the_probe_covers_every_package_the_gates_import_directly(tmp_path,
               f"directly · {len(GUARANTEED_BY)} declared transitive")
 
 
-def test_the_coverage_check_fails_on_the_list_that_filed_the_row(tmp_path):
-    """**The positive control, and it re-derives `TEST-110`'s own instance.**
+def test_the_coverage_check_fails_on_a_probe_that_leaves_out_pandas(tmp_path):
+    """**The positive control.** The assertion above is `not uncovered`, which
+    is empty both when the probe is complete and when the measurement
+    collapsed. This replays it against a probe of `pytest` alone and requires
+    it to come back short by `pandas`, which the spelling gate imports.
 
-    The assertion above is `not uncovered`, which is empty both when the probe
-    is complete and when the measurement collapsed. This replays it against
-    `("pandas", "pytest")` — the list `lib.sh` carried when the row was filed —
-    and requires it to come back short.
+    It replaced the replay of `TEST-110`'s own list, `("pandas", "pytest")`,
+    which came back short by `sklearn` through the evidence gate. That gate
+    retired with the legacy app (42c6d9f6); the two gates left import nothing
+    that list misses, so the old replay could no longer fail.
     """
     provisioned = _provisioned_python()
     if not provisioned.exists():                           # pragma: no cover
         pytest.skip(f"{provisioned} does not exist, so no gate can be run")
 
     everything = set().union(*_measure_direct_imports(tmp_path).values())
-    missed = sorted(everything - {"pandas", "pytest"} - set(GUARANTEED_BY))
-    assert missed, (
-        "the historical two-name probe now covers everything the gates import, "
-        "so the check above can no longer distinguish a complete probe from a "
-        "broken measurement")
-    assert "sklearn" in missed, (
-        f"scikit-learn is what made TEST-110 live rather than hypothetical — "
-        f"`turbotab/.venv`, named in lib.sh's own header as a gate "
-        f"interpreter, carries pandas and pytest and not sklearn, and the hook "
-        f"printed five ticks and `✗ evidence badges … No module named "
-        f"'sklearn'` under it. The recorder no longer sees that edge: {missed}")
+    missed = sorted(everything - {"pytest"} - set(GUARANTEED_BY))
+    assert "pandas" in missed, (
+        f"a probe of `pytest` alone was not found short by pandas: {missed}. "
+        f"The measurement no longer sees the spelling gate's imports, so the "
+        f"check above cannot distinguish a complete probe from a broken "
+        f"measurement")

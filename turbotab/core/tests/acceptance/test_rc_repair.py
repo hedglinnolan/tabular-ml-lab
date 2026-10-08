@@ -159,13 +159,13 @@ def test_r1_the_uncorrected_estimate_beside_the_calibration_is_the_primarys_on_e
     assert swap["naive"] == pytest.approx(
         100 * (rows["kcal_from_carbohydrate_g"]["naive"] - rows["kcal_from_fat_g"]["naive"]),
         rel=1e-12)
-    assert ("30 of the 400 participants the primary analyzes have no recall day with every "
+    assert ("30 of the 400 participants in the primary analysis have no recall day with every "
             "calibrated intake recorded (the primary fills their intakes in each imputed copy), so "
             "they are not in the calibration: the calibrated estimate describes the other 370, "
             "while the uncorrected estimate beside it, with its interval and test, is the "
             "primary's on all 400. Refit on the same 370, the uncorrected coefficient is given "
             "beside it.") in cal["concerns"]
-    assert (" Of the 400 participants the primary analyzes, 30 had no recall day with every "
+    assert (" Of the 400 participants in the primary analysis, 30 had no recall day with every "
             "calibrated intake recorded and were left out of the calibration; the uncorrected "
             "estimate beside it is the primary's, on all 400.") in cal["methods"]
     assert cal["test"].startswith("The test of no association is the uncorrected model's")

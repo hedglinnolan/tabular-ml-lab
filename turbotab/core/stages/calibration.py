@@ -35,7 +35,7 @@ no association stays the uncorrected model's (Freedman et al. 2011), and it is l
 corrects and what it assumes (:data:`~turbotab.core.methods.calibration.LABEL`).
 
 **The uncorrected estimate beside it is the primary's**: its estimate, interval and test of no
-association are those of the outcome model on every participant the primary analyzes (the fit
+association are those of the outcome model on every participant in the primary analysis (the fit
 stage's table). A participant with no recall day on which every calibrated intake is recorded has
 no replicate and is left out of the calibration (Carroll et al. 2006, §4.4); the artifact then says
 how many, and gives the uncorrected coefficient refit on the calibrated participants beside it
@@ -219,7 +219,7 @@ class CalibrationArtifact(_Model):
     attenuation: list[list[float]] | None = None  # Γ at the most common k, in ``calibrated`` order
     within_covariance: list[list[float]] | None = None  # Σ_uu, in ``calibrated`` order
     n_persons: int = 0  # the participants calibrated
-    n_primary: int = 0  # the participants the primary analyzes (the uncorrected estimate's)
+    n_primary: int = 0  # the participants in the primary analysis (the uncorrected estimate's)
     n_boot: int = 0
     n_boot_ok: int = 0
     recalls: dict[str, int] = {}  # number of recalls -> people (energy recorded on each)
@@ -511,7 +511,7 @@ def methods_sentence(method: str, exposures: Sequence[Mapping[str, Any]], recall
     per_day = (f" Energy was adjusted on each recall day{by_copy} before calibration."
                if run.get("per_day") else "")
     n_primary = int(run.get("n_primary") or 0)
-    left = (f" Of the {n_primary:,} participants the primary analyzes, {n_primary - n_persons:,} "
+    left = (f" Of the {n_primary:,} participants in the primary analysis, {n_primary - n_persons:,} "
             f"had no recall day with every calibrated intake recorded and were left out of the "
             f"calibration; the uncorrected estimate beside it is the primary's, on all "
             f"{n_primary:,}." if n_primary > n_persons else "")
@@ -888,7 +888,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
     point = quantities(results)
     cal0 = results[0][2].calibration
     p = len(J)
-    n_ok = len(persons)  # the participants the primary analyzes
+    n_ok = len(persons)  # the participants in the primary analysis
     n_cal = int(cal0.n)  # those with a recall day of every calibrated intake: the calibration's
 
     # ── the whole-chain bootstrap ──
@@ -1042,7 +1042,7 @@ def calibration_stage(ctx: StageContext) -> Bundle:
                         "moderate.")
     if n_cal < n_ok:
         filled = " (the primary fills their intakes in each imputed copy)" if imputed else ""
-        concerns.append(f"{n_ok - n_cal:,} of the {n_ok:,} participants the primary analyzes have "
+        concerns.append(f"{n_ok - n_cal:,} of the {n_ok:,} participants in the primary analysis have "
                         f"no recall day with every calibrated intake recorded{filled}, so they are "
                         f"not in the calibration: the calibrated estimate describes the other "
                         f"{n_cal:,}, while the uncorrected estimate beside it, with its interval "

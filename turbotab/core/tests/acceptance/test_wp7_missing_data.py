@@ -916,8 +916,8 @@ def test_6_zeros_become_non_detections_only_when_the_user_says_so(tmp_path):
     from turbotab.core.repairs import OfferContext, column_expressions, evaluate, offer
     from turbotab.core.stages.findings import speak_for
 
-    path = SAMPLES / "metabolomics_mzmine_zeros.csv"
-    frame = pd.read_csv(path)
+    mzmine = SAMPLES / "metabolomics_mzmine_zeros.csv"
+    frame = pd.read_csv(mzmine)
     raw = [f for f in packs.findings(frame, ["metabolomics"])
            if f["id"] == "pack::metabolomics::zeros_or_missing"]
     assert raw, "the zeros finding fires on the MZmine export"
@@ -935,7 +935,7 @@ def test_6_zeros_become_non_detections_only_when_the_user_says_so(tmp_path):
         action="applied", option="nondetect", params=option.decision.params)}})
     assert sorted(censored_columns(None, applied)) == zeros
     parquet = tmp_path / "raw.parquet"
-    ingest(path, parquet)
+    ingest(mzmine, parquet)
     values = evaluate(parquet, zeros, column_expressions(None, applied))
     assert not (values[zeros] == 0).any().any()
     assert int(values[zeros].isna().sum().sum()) == int((frame[zeros] == 0).sum().sum() + frame[zeros].isna().sum().sum())
