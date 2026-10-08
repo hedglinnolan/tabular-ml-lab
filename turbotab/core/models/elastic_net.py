@@ -78,7 +78,7 @@ class PooledElasticNetCV(ElasticNetCV):
         folds = list(check_cv(given).split(X, y, **params))
         self.cv = folds
         try:
-            super().fit(X, y, sample_weight, **params)
+            super().fit(X, y, sample_weight=sample_weight, **params)
         finally:
             self.cv = given
         mixes = np.atleast_1d(np.asarray(self.l1_ratio, dtype=float))
