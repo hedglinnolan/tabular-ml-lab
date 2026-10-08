@@ -472,9 +472,9 @@ def test_the_store_answers_from_many_threads_at_once(tmp_path):
 
 
 def test_progress_rises_to_one_and_a_raising_callback_cancels_cleanly(tmp_path):
-    src = REPO_ROOT / "turbotab" / "sample_data" / "clinical_labs.csv"
+    labs = REPO_ROOT / "turbotab" / "sample_data" / "clinical_labs.csv"
     seen: list[float] = []
-    ingest(src, tmp_path / "ok" / "raw.parquet", progress=lambda f, m: seen.append(f))
+    ingest(labs, tmp_path / "ok" / "raw.parquet", progress=lambda f, m: seen.append(f))
     assert seen[-1] == 1.0 and seen == sorted(seen)
 
     class Cancelled(Exception):
@@ -486,7 +486,7 @@ def test_progress_rises_to_one_and_a_raising_callback_cancels_cleanly(tmp_path):
 
     dest = tmp_path / "cancelled" / "raw.parquet"
     with pytest.raises(Cancelled):
-        ingest(src, dest, progress=cancel)
+        ingest(labs, dest, progress=cancel)
     assert not dest.exists()
     assert [p.name for p in dest.parent.iterdir()] == []
 

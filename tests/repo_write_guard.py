@@ -429,6 +429,12 @@ def _inside_repo(dest: Path) -> bool:
                        ".cache", ".worktrees", ".claude"}
 
 
+#: Classic's tests. `turbotab` was swept too until the ruling of 2026-10-08
+#: scoped Classic's repo-wide gates to Classic's paths: TurboTab v2 (`turbotab/`,
+#: `docs/turbotab-next/`) keeps its own gates.
+SWEPT = ("tests",)
+
+
 def tracked_test_files() -> List[str]:
     """Tracked test modules, from git rather than from a walk.
 
@@ -437,7 +443,7 @@ def tracked_test_files() -> List[str]:
     about what git tracks should ask git what it tracks.
     """
     out = subprocess.run(
-        ["git", "ls-files", "-z", "--", "turbotab", "tests"],
+        ["git", "ls-files", "-z", "--", *SWEPT],
         cwd=PROJECT_ROOT, capture_output=True, text=True, check=True)
     names = []
     for line in out.stdout.split("\0"):

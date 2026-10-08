@@ -30,13 +30,18 @@ NOUN_CONTEXT = re.compile(
     re.IGNORECASE,
 )
 
-SCANNED_PREFIXES = ("ml/", "utils/", "pages/", "app.py", "turbotab/")
+#: Classic's own source and tests. `turbotab/` was scanned too until the ruling
+#: of 2026-10-08 scoped Classic's repo-wide gates to Classic's paths: TurboTab
+#: v2 (`turbotab/`, `docs/turbotab-next/`) keeps its own gates.
+SCANNED_PREFIXES = ("ml/", "utils/", "pages/", "models/", "app.py", "tests/")
 
 
 def _source_files():
     out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", *SCANNED_PREFIXES],
                          capture_output=True, text=True, check=True)
-    return [ROOT / p for p in out.stdout.split("\0") if p.endswith(".py")]
+    # This file is skipped: it quotes the noun misuse as its own controls.
+    return [ROOT / p for p in out.stdout.split("\0")
+            if p.endswith(".py") and pathlib.Path(p).name != pathlib.Path(__file__).name]
 
 
 def test_the_matcher_fires_on_the_sentence_that_shipped_and_not_on_the_verb():

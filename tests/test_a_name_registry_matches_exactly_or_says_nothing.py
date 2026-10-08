@@ -176,35 +176,15 @@ def test_a_declared_identifier_spelling_still_resolves():
 # refused the entries the moment `detect_cohort_structure` stopped matching by
 # substring. That is the list being checked in both directions, and it is why a
 # repair cannot leave a permanent excuse behind it.
+#
+# Classic's own source only. Until the ruling of 2026-10-08 the scan reached
+# `turbotab/` as well, and seven entries here were for its modules:
+# `turbotab/clinical.py`'s three censoring-token lists, `packs.py`'s
+# `_ASSAY_PACKS`, `engine.py`'s `display_cols` and `pipeline_plan.py`'s
+# `columns` and `ordered`. That ruling scoped Classic's repo-wide gates to
+# Classic's paths; TurboTab v2 (`turbotab/`, `docs/turbotab-next/`) keeps its
+# own gates, and git keeps those entries' reasons.
 DECLARED = {
-    # ── L41-B · the clinical pack's §A1.3 censoring tokens ───────────────────
-    #
-    # **Not a name registry, and the difference is the axis.** Every other site
-    # in this table matches against a COLUMN NAME, where a substring hit is the
-    # defect this guard exists to prevent — `bp` inside `bmi_pct`. These match
-    # against a CELL VALUE, and `research/CLINICAL_SURVEY_PACK.md` §A1.3
-    # specifies the tokens as things that appear *inside* a result string:
-    # `<LOD`, `see comment`, `QNS — insufficient sample`, `not detected`. An
-    # exact-match rule would find none of them, which is the opposite failure.
-    #
-    # The residual risk is real and small, and it is stated rather than waved
-    # at: a lab result cell reading `retrace` would match `trace`. The tokens
-    # are the research's own list and the alternative — a word-boundary regex
-    # per token — breaks on `<LOD` and `>ULOQ`, which begin with punctuation
-    # and are the two that matter most.
-    ("turbotab/clinical.py", "_LEFT_TOKENS"):
-        "Not a name registry. Substring match against a CELL VALUE rather than "
-        "a column name: research/CLINICAL_SURVEY_PACK.md section A1.3 "
-        "specifies these as qualifiers embedded in a lab result, so an exact "
-        "match would find none of them. See the block comment above this "
-        "entry for the residual risk.",
-    ("turbotab/clinical.py", "_RIGHT_TOKENS"):
-        "Not a name registry. The same, for the above-range qualifiers.",
-    ("turbotab/clinical.py", "_FAILURE_TOKENS"):
-        "Not a name registry. The same, for the measurement-failure tokens "
-        "section A1.3 is explicit are NOT censoring - TNTC, QNS, hemolyzed, "
-        "see comment - which routinely arrive as part of a longer free-text "
-        "comment rather than as the whole cell.",
     ("ml/narrative_engine.py", "_ASSUMPTION_CHOICE_KEYS"):
         "Not a name registry. `any(key in test for key in ...)` asks whether "
         "a RESULT DICT carries any of three exact field names the hypothesis "
@@ -216,12 +196,6 @@ DECLARED = {
     ("ml/splits.py", "kept_labels"):
         "Not a name registry. `kept_labels` holds ROW LABELS and the test is "
         "membership in an index, not a substring of a name.",
-    ("turbotab/packs.py", "_ASSAY_PACKS"):
-        "Not a name registry. Membership of a lens key in a two-element tuple "
-        "of lens keys, both of which this module defines.",
-    ("turbotab/engine.py", "display_cols"):
-        "Not a name registry. A local list of the frame's own column labels, "
-        "tested for membership in another list of the frame's own labels.",
     ("pages/06_Train_and_Compare.py", "models_to_train"):
         "Not a name registry. Model keys the user selected, tested against "
         "keys the registry defines.",
@@ -233,19 +207,10 @@ DECLARED = {
         "Not a name registry. The frame's own columns. FROZEN PATH "
         "(TRANSITION_PLAN section 05) — engine-move-only, and there is nothing "
         "here to repair.",
-    ("turbotab/pipeline_plan.py", "columns"):
-        "Not a name registry. The columns a recorded deferred transform names, "
-        "tested for exact membership in this frame's own numeric column list "
-        "to decide which branch's fill the block needs.",
-    ("turbotab/pipeline_plan.py", "ordered"):
-        "Not a name registry. The selector's own input column order, tested "
-        "for exact membership in the set of columns it kept — both sides are "
-        "the same frame's labels, and the whole point of resolving the "
-        "candidate pool by equality rather than by prefix is that `bp_1` and "
-        "`bp_10` are different columns.",
 }
 
-SCAN_DIRS = ("ml", "utils", "turbotab", "models", "pages")
+#: Classic's own source: directories, and the one top-level module.
+SCANNED = ("ml", "utils", "models", "pages", "app.py")
 
 
 def _substring_sites():
@@ -256,8 +221,10 @@ def _substring_sites():
     module-level constants could have found it.
     """
     found = set()
-    for directory in SCAN_DIRS:
-        for path in sorted((ROOT / directory).rglob("*.py")):
+    for entry in SCANNED:
+        target = ROOT / entry
+        paths = [target] if target.is_file() else sorted(target.rglob("*.py"))
+        for path in paths:
             rel = str(path.relative_to(ROOT)).replace(os.sep, "/")
             if ".venv" in rel or path.name.startswith("test_"):
                 continue

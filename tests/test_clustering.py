@@ -8,6 +8,8 @@ structure. Anything that weakens the permutation baseline, the recommendation
 threshold, or the dominance check should fail here rather than reach a user
 who is about to name a patient phenotype.
 """
+import itertools
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,6 +18,29 @@ from ml import clustering as clus
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _fresh_cache():
+    """Each test starts with an empty `st.cache_data`.
+
+    The cached functions are keyed on `data_id` and the hashable arguments, not
+    on the frame (`_df` is unhashed by design), so a cached result from one
+    test's frame can be returned for another's when the keys agree.
+    """
+    try:
+        import streamlit as st
+    except ImportError:                                    # pragma: no cover
+        yield
+        return
+    st.cache_data.clear()
+    yield
+
+
+#: A fresh `data_id` per prepared frame. `id(df)` is not one: CPython reuses
+#: the id of a frame that has been freed, so a later frame could be handed the
+#: stale cached matrix of an earlier one, which made this file flaky.
+_DATA_IDS = itertools.count()
+
 
 def _blobs(n=600, seed=0):
     """Three well-separated groups plus one pure-noise column."""
@@ -34,7 +59,8 @@ def _noise(n=600, seed=0):
 
 
 def _prep(df, features=None, **kw):
-    return clus.prepare_cluster_matrix(df, features or list(df.columns), data_id=id(df), **kw)
+    return clus.prepare_cluster_matrix(df, features or list(df.columns),
+                                       data_id=f"test-{next(_DATA_IDS)}", **kw)
 
 
 def _sweep(prep, k_max=5):

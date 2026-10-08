@@ -226,8 +226,11 @@ def test_the_caution_threshold_is_named_as_the_app_s_own_and_not_the_field_s():
     assert "legacy heuristic" in SS.SUPERSEDED
     assert SS.EVIDENCE["evidence_status"] == "SETTLED"
     assert SS.EVIDENCE["source"].endswith("#A5.4 Sample size")
-    assert (ROOT / "docs" / "turbotab" / "research"
-            / "CLINICAL_SURVEY_PACK.md").exists()
+    # The citation is relative to the research packs' root, which moved from
+    # docs/turbotab/ to docs/turbotab-next/reference/ when the legacy app was
+    # retired (42c6d9f6).
+    cited = SS.EVIDENCE["source"].split("#", 1)[0]
+    assert (ROOT / "docs" / "turbotab-next" / "reference" / cited).exists(), cited
 
 
 def test_the_theory_reference_does_not_teach_the_retired_rule_as_current():
@@ -252,13 +255,12 @@ def test_the_theory_reference_does_not_teach_the_retired_rule_as_current():
 # is the other direction: a claim about BEHAVIOR must be driven, and the two
 # above that are about behavior are.
 
-def test_the_narrative_is_the_string_both_doors_publish():
+def test_the_narrative_is_the_string_the_report_publishes():
+    # It also checked that the Guided door (`turbotab/api.py`) serialized the
+    # same string, until that door retired with the legacy app (42c6d9f6).
     export = (ROOT / "pages" / "10_Report_Export.py").read_text(encoding="utf-8")
     assert "profile.sufficiency_narrative" in export, (
         "the report no longer exports the sufficiency narrative; this file's "
         "claim that the corrected sentence reaches the manuscript is stale")
-    api = (ROOT / "turbotab" / "api.py").read_text(encoding="utf-8")
-    assert '"sufficiency_narrative": prof.get("sufficiency_narrative")' in api, (
-        "the Guided door no longer serializes the sufficiency narrative")
     preprocess = (ROOT / "pages" / "05_Preprocess.py").read_text(encoding="utf-8")
     assert "_coach_headline" in preprocess

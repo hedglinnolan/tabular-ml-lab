@@ -51,6 +51,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
+#: Directories under the checkout that hold no source of its own: virtual
+#: environments, nested checkouts, git's store and the frontend's packages.
+_NOT_SOURCE = {"venv", ".venv", ".worktrees", ".claude", ".git", "node_modules"}
+
 
 def _source(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
@@ -67,7 +71,10 @@ def test_the_module_has_a_consumer_outside_its_own_tests(module, page):
     leaf = module.split(".")[-1]
     importers = []
     for path in sorted(ROOT.rglob("*.py")):
-        if ".worktrees" in str(path) or "venv" in str(path):
+        # On the path BELOW the checkout, not the absolute one: a checkout that
+        # itself sits in a `.worktrees/` directory had every file skipped, and
+        # the assertion below failed with no importers found.
+        if _NOT_SOURCE.intersection(path.relative_to(ROOT).parts):
             continue
         if path.name.startswith("test_") or path.name == f"{leaf}.py":
             continue

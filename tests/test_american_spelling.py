@@ -117,10 +117,12 @@ def test_the_enumeration_covers_the_source_and_nothing_ignored():
         f"replaced. A gate that quietly got smaller reports the same green")
 
     # The prose that matters most is in it. Named files rather than a count,
-    # because a count is satisfied by any 400 files.
-    for must in (os.path.join("docs", "turbotab", "LOOP.md"),
-                 os.path.join("docs", "turbotab", "prompts",
-                              "AGENT_ONBOARD.md"),
+    # because a count is satisfied by any 400 files. The legacy TurboTab loop's
+    # documents were pinned here until they were archived (42c6d9f6); the
+    # archive is still scanned, and one of them is pinned at its new path.
+    for must in ("README.md",
+                 os.path.join("docs", "turbotab-next", "BLUEPRINT.md"),
+                 os.path.join("docs", "turbotab", "archive", "LOOP.md"),
                  os.path.join("turbotab", "project.py")):
         assert must in files, f"{must} is not being checked"
 

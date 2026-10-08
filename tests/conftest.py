@@ -1,10 +1,18 @@
 """
 Shared test fixtures for Tabular ML Lab integration tests.
 """
-import sys
 import os
-import numpy as np
-import pandas as pd
+
+# Before any import that can load an OpenMP runtime. LightGBM, XGBoost, sklearn
+# and torch each bring one, and unpinned they can segfault the process when they
+# share it (macOS above all). Classic's CI sets OMP_NUM_THREADS=1 on the command
+# line; this makes a plain local `pytest tests/` as robust. `setdefault`, so a
+# value set in the environment still wins.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+import sys  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 # Ensure project root is on path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
