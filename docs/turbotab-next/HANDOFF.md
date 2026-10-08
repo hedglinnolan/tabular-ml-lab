@@ -115,6 +115,17 @@ The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 
 
   CI does not run the browser tests.
 
+**The crosswalk (2026-10-08)** is in `crosswalk/`: 708 items placed across the seven stages, with 20 order conflicts and their fixes, and the gaps.
+- **`SIZING.md`:** about 23% done by effort, 734 units remaining, 10 to 16 weeks.
+- **Nolan ruled its six questions:**
+  1. the outcome beside a column is hidden until the lock under Estimate;
+  2. Your data is a ledger plus Confirm;
+  3. Describe can have no single outcome;
+  4. ALL 367 noticings ship in 2.0;
+  5. blanks are split at the stage line;
+  6. a shared-step change keeps a read-only earlier row.
+- **UI rulings, also 2026-10-08:** the rail and Write-up are one document in two views; a long fit runs as a server job with notification; a change after results is a kept version (Predict) or a secondary (Estimate), and the label "revised after first results" appears only in the comparison and the methods text.
+
 **Engine follow-ups found (not started):**
 - the energy preview that quotes a coefficient before the lock;
 - the exposure and estimand previews that draw nothing;
