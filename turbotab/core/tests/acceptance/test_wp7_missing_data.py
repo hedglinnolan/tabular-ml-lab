@@ -426,27 +426,6 @@ def test_1_complete_cases_stay_available_with_their_assumption_stated(inference_
 
 
 REFERENCE = Path(__file__).with_name("wp7_prediction_reference.json")
-# The families whose numbers are their platform's own. The elastic net's penalty is the minimum of
-# its inner cross-validation's curve, which coordinate descent computes only to scikit-learn's
-# tolerance (a duality gap of 1e-4) and in the BLAS's summation order. The curve is flat at its
-# minimum, so another BLAS picks a neighboring penalty, and every number of the fit moves with it.
-# Linear least squares and boosted trees have no such argmin, and they reproduce across platforms.
-PLATFORM_TUNED = {"elastic_net"}
-
-
-def _where_recorded() -> bool:
-    """Whether this is the platform the reference was recorded on: macOS on Apple silicon, with
-    NumPy and SciPy on Apple's Accelerate."""
-    import platform
-
-    import scipy
-
-    def blas(config: dict) -> str:
-        return str(config["Build Dependencies"]["blas"]["name"]).lower()
-
-    return ((platform.system(), platform.machine()) == ("Darwin", "arm64")
-            and blas(np.show_config(mode="dicts")) == blas(scipy.show_config(mode="dicts"))
-            == "accelerate")
 
 
 def prediction_fixture() -> pd.DataFrame:
@@ -550,23 +529,16 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
     """Every cross-validated score (estimate, fold values, standard error, interval), every
     training-fit coefficient and every sealed held-out score of linear, elastic net and boosted
     trees, under a plain fill, indicators with blanks as a level, and the residual energy method,
-    equal the fit stage's output at commit 514336c to 10⁻⁹.
+    equal the fit stage's output at commit 514336c to 10⁻⁹, on every platform.
 
-    Linear and boosted trees are held to 10⁻⁹ everywhere: on Linux CI (ubuntu-latest, OpenBLAS)
-    their worst difference was 4.7e-11. They share the elastic net's in-fold fill, folds,
-    encoding and scoring, so they carry "unchanged" onto every platform. The elastic net is held
-    to 10⁻⁹ where the reference was recorded (``_where_recorded``). Elsewhere its penalty is
-    chosen afresh (``PLATFORM_TUNED``): on Linux CI the inner cross-validation chose a neighboring
-    penalty, the intercept moved by up to 6.4 and the fold RMSEs by up to 0.24. So there its
-    structure is held exactly (the same coefficients by name, metrics and folds), and each
-    cross-validated estimate must fall inside the reference's own 95% interval. That bound is the
-    score's sampling uncertainty, so a penalty that moves a score by less leaves every reading of it
-    standing. On Linux CI the estimates moved by up to 0.011 in R² and 0.073 in RMSE, against
-    interval half-widths of 0.067 and 0.63. A Linux reference recorded at 514336c was not chosen.
-    No such record exists, and Linux CI's runners vary between runs (an AMD EPYC 9V45 on
-    OpenBLAS's SkylakeX kernels, then an EPYC 7763 on its Haswell kernels), and each kernel sums in
-    its own order, which can move the penalty again (the plain fill's: 0.356 on macOS, 0.274 on the
-    EPYC 7763)."""
+    The elastic net's entries were captured again at 514336c with the changes that make its
+    penalty the same on every platform (the reference's provenance). Before them it chose another
+    penalty on Linux CI than on macOS (the plain fill's: 0.356 on macOS, 0.274 on Linux) and its
+    intercept moved by up to 6.4: its inner folds were drawn from row keys hashed from the values'
+    exact bits, and the fixture's simulated values differ in their last bit between the platforms
+    (``test_elastic_net_penalty``). The keys are now hashed in single precision, the paths
+    converge to 10⁻¹², and the penalty is the pooled inner loss's lowest, rounded to 10⁻⁹. Linear
+    and boosted trees draw no inner folds; their entries are 514336c's, unchanged."""
     reference = json.loads(REFERENCE.read_text())["configs"]
     _, _, _, now = prediction_run
     assert set(now) == set(reference)
@@ -585,18 +557,7 @@ def test_2_prediction_results_reproduce_todays_to_1e_9(prediction_run):
                                                    if k not in added}}
     diffs = [d for name in reference
              for d in _numbers(_by_family(reference[name]), _by_family(trimmed[name]), (name,))]
-    here = _where_recorded()
-    exact = [d for d in diffs if here or d[1][1] not in PLATFORM_TUNED]
-    assert max(d[0] for d in exact) <= 1e-9, _worst_first(exact, 1e-9)
-    if here:
-        return
-    outside = [(name, family, metric, trimmed[name][family]["cv"][metric]["estimate"],
-                (ref["ci_low"], ref["ci_high"]))
-               for name in reference for family in PLATFORM_TUNED & set(reference[name])
-               for metric, ref in reference[name][family]["cv"].items()
-               if not ref["ci_low"] <= trimmed[name][family]["cv"][metric]["estimate"]
-               <= ref["ci_high"]]
-    assert not outside, outside
+    assert max(d[0] for d in diffs) <= 1e-9, _worst_first(diffs, 1e-9)
 
 
 def test_2_the_linear_scores_match_scikit_learn_alone(prediction_run):
