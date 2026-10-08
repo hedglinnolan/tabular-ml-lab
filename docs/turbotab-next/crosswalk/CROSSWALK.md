@@ -2,7 +2,7 @@
 
 What TurboTab v2's engine needs you to decide, when it asks, and what the canvas shows; then, after the fit, what each result is and where it can go. This is the input to the quest-log redesign (`HANDOFF.md`, "The structure (Nolan, 2026-10-06)").
 
-Written 2026-10-08 against `turbotab-next` at `2627066d`. Every item is in [`crosswalk.json`](crosswalk.json), with `engine_source` naming the file and symbol behind each claim. [`SIZING.md`](SIZING.md) turns the gaps into work packages.
+Written 2026-10-08 against `turbotab-next` at `2627066d`, and patched the same day after the completeness critic's review (the critic's notes not taken are listed at the end). Every item is in [`crosswalk.json`](crosswalk.json), with `engine_source` naming the file and symbol behind each claim. [`SIZING.md`](SIZING.md) turns the gaps into work packages.
 
 ## How to read this
 
@@ -20,54 +20,56 @@ Written 2026-10-08 against `turbotab-next` at `2627066d`. Every item is in [`cro
 
   When a line applies only to some goals or lenses, they follow the status.
 - **Goals.** Goals use your words: Describe, Estimate (an effect; the engine's `inference`) and Predict (`prediction`).
+- **Plain words.** Card titles avoid "exposure", "confounder" and "estimand" (DoD, 2026-10-07): *what you study* stands for the exposure, *what you adjust for* for the confounders. Square brackets mark words filled from your data, as in "[sugar]" (`crosswalk.json` writes them in angle brackets).
 - **Ids.** Every line ends with its id in `crosswalk.json`. The few claims made here outside an item cite `file:symbol` inline.
 
 ## At a glance
 
-- **Merged.** The seven stage maps listed 891 entries. They fold into **680 items**, and 177 of those absorbed an entry from another stage. Each item lives in one stage: the stage where you decide it.
+- **Merged.** The seven stage maps listed 891 entries. They fold into **708 items**, and 177 of those absorbed an entry from another stage. Each item lives in one stage: the stage where you decide it.
 - **Every noticing has a home.** All 367 noticings in the understanding catalogs are placed:
   - 266 are items of their own;
   - the other 101 are carried by the engine question or noticing that already does their job. For example, `shared-unit-repeats` is the grain question.
-- **The engine is far ahead of the screens.** Of the 428 Decide and Confirm objectives:
-  - 37 can be answered on today's screens (9%);
-  - 75 exist only in the engine;
-  - 177 are partly built;
-  - 111 are missing;
+
+  Each one carries its family (S1 to E3), and the 17 family checks that run under every lens are items too (`sentinel:S1` to `sentinel:E3`).
+- **The engine is far ahead of the screens.** Of the 462 Decide and Confirm objectives:
+  - 40 can be answered on today's screens (9%);
+  - 79 exist only in the engine;
+  - 188 are partly built;
+  - 127 are missing;
   - 28 are new scope.
 - **The gap differs by half:**
   - before the fit, it is mostly wiring and noticings;
-  - after the fit, the engine already computes nearly every result, and almost none is drawn. Of the 145 items in Results and Write-up, 72 are engine only and 4 are on screen.
+  - after the fit, the engine already computes nearly every result, and almost none is drawn. Of the 147 items in Results and Write-up, 70 are engine only and 4 are on screen.
 - **First look decides almost nothing itself.** It shows 230 noticings and decides none of them:
   - Who's in decides 81;
   - Models decides 134;
   - Your data and Your question decide 15.
 
   First look's own objectives are opening the highlights, and the few blockers that stop everything.
-- **Models is the heaviest stage:** 215 items, with 122 Decide and 59 Confirm. Most are noticings that land on fourteen cards. Its Confirm sweep is the one that most needs designing.
-- **Order conflicts.** In 19 places, the engine's order and the ruled stage order disagree (below). Each has a proposed fix. Questions 1 to 4 of the five below come from them.
+- **Models is the heaviest stage:** 231 items, with 132 Decide and 63 Confirm. Most are noticings that land on 14 cards. A journey sees far fewer: the reference journeys answered 2 to 8 engine cards in Models (below, "The reference journeys against the load caps").
+- **Order conflicts.** In 20 places, the engine's order and the ruled stage order disagree (below). Each has a proposed fix. Several of the questions and rulings below come from them.
 
-## Five questions for you
+## Six questions for you
 
 Only questions the crosswalk cannot settle. Each has a recommendation.
 
-**1. Under Predict, which seal gates the open noticings: drawing the held-out rows (the end of Who's in), or opening them (Results)?**
+**1. Under Estimate, may First look show the outcome beside another column before the plan locks?**
 
-The rulings point two ways:
-- the ruling says open noticings are decided "before the lock or the seal";
-- `UNDERSTANDING_LAYER.md` §7 ruling 1 reads it as before the seal *opens*;
-- the engine guards only the columns the draw reads (`seal.py:_the_draw_reads_settled_values`).
+`FIRST_LOOK_BRIEF.md` §9 Q1 left this open, and `HANDOFF.md` records no ruling. The brief offered two answers:
+- **A counted door** (the brief's recommendation): every view of the outcome beside a column is recorded (`decision:view_outcome`) and disclosed as a forking path, and is never pointed at or ranked.
+- **Hidden until the lock** (the brief's strict alternative, STROBE's initial-data-analysis line read literally, Heinze et al. 2024): before the lock, only the outcome alone opens (its distribution, blanks and event count; O1 in the brief's §6.1). The outcome beside a column (O3) opens after the lock, labeled exploratory.
 
-*Recommendation:* gate at opening, just before `open_seal` (`gate:open-noticings-before-seal`), and keep the engine's draw-column guard at drawing. Who's in stays short, and every noticing is still cleared before the honest score is seen.
+**Why it matters.** First look comes before Models, where the form of what you study and the adjustment set are chosen. A view of the outcome beside a predictor informs "nothing by eye" there (`WHAT_EXPLORATION_MAY_DECIDE.md` §2, the predictor–outcome row). Yet the engine lists the door's curves in plan order, what you study first (`noticing:explore::relationship`). The engine also computes the outcome views only after Who's in: the explore stage requires `split` and reads the cohort (`stages/__init__.py`, `Stage("explore", …)`).
 
-**2. Under Estimate, when does First look's outcome door open?**
+*Recommendation:* hidden until the lock, under Estimate.
+- The outcome alone opens after Who's in, on the rows analyzed, recorded: it informs data quality and the effective sample size (`WHAT_EXPLORATION_MAY_DECIDE.md`, the outcome-alone row).
+- The outcome beside a column waits for the lock.
+- Under Predict, both open after the seal on the training rows, recorded, as today.
+- Several goals follow the strictest rule, so a paper with an Estimate track hides the outcome beside a column until that track's lock.
 
-The brief and the engine disagree:
-- `FIRST_LOOK_BRIEF.md` §1.1 opens it from the start under inference. Its own §9 Q1 left this open, and `HANDOFF.md` records no ruling.
-- The engine computes outcome views only after Who's in. The explore stage requires `split` and reads the cohort (`stages/__init__.py`, `Stage("explore", …)`).
+It removes a door the calm design would have to explain, and the IDA paragraph can say "no association with the outcome was examined before the plan was fixed" (`FIRST_LOOK_BRIEF.md` §6.5). If you prefer the door, its list follows the table's column order and never singles out what you study.
 
-*Recommendation:* use one rule for every goal. The door opens after Who's in, on the rows analyzed, and each view is recorded (`decision:view_outcome`). This is also the strictest-goal rule for several tracks, so no track needs its own First look. The first visit stays outcome-free.
-
-**3. How much of "what each column is" does Your data ask?**
+**2. How much of "what each column is" does Your data ask?**
 
 Two rulings conflict:
 - The ruled scope puts units, codes and kinds in Your data.
@@ -80,7 +82,7 @@ Two rulings conflict:
 - **Completion:** the engine records the roles answer itself once the readings are settled, so the roles question never shows.
 - **Later columns:** the ask card returns at a later card only for a column that enters the model later.
 
-**4. Can Describe start without an outcome?**
+**3. Can Describe start without an outcome?**
 
 Dietary patterns, clustering, Bland–Altman between two methods and usual intake have no single outcome. The ruled order is "the outcome, then the goal", and the engine requires an outcome: `cohort`, `seal_plan` and `explore` declare `requires=("target", …)` (`stages/__init__.py`).
 
@@ -89,27 +91,80 @@ Dietary patterns, clustering, Bland–Altman between two methods and usual intak
 - skip the event, kind and follow-up;
 - drop the participant flow's "outcome recorded" step.
 
-**5. How many of the 367 noticings must ship in v2.0.0?**
+**4. How many of the 367 noticings must ship in v2.0.0?**
 
 The definition of done requires that open noticings be decided before the lock or the seal, and that the road start with the understanding layer's phase 0. It does not say that all 367 ship. Today:
 - 111 noticing items are missing;
 - 175 are partial;
 - none is wired end to end.
 
-The full rollout is the largest single package in `SIZING.md`.
+The full rollout (T2 and T2+ in `SIZING.md`) is about 216 units, the largest part of the road.
 
 *Recommendation:* v2.0.0 ships:
 - the thread machinery;
-- the T1 blockers and the sentinels;
+- the T1 blockers and the 17 family checks (`sentinel:*`, placed in the table "Thread families and where they land");
 - every noticing that fires on the twelve reference journeys.
 
-Each remaining noticing is either stated as one methods sentence, or listed in INBOX for v2.x, and the coverage test (U13) enforces that. This roughly halves the rollout.
+Each remaining noticing is either stated as one methods sentence, or listed in INBOX for v2.x, and the coverage test (U13) enforces that. This removes T2+ (about 108 units) for about 14 units of sentences and INBOX lines.
 
-**Settled here, not asked.** The order of several goals is settled by the engine:
-- an estimate seen under Predict locks a later Estimate plan at once (`server/service.py:_lock_after_prediction`);
-- the lock is one per project (`decisions.py:ProjectState`).
+**5. When a paper has several goals, where are blanks filled?**
 
-So in v2, tracks run in a fixed order: Estimate, then Describe, then Predict (`default:track_order`). Per-track locks wait for parallel tracks in v2.x.
+The shared stages run once (HANDOFF, 2026-10-07). But the goals' rules on blanks differ, so one shared Who's in answer cannot fit them all:
+- multiple imputation is refused under Predict, and a single fill is blocked under Estimate (`decisions.py:_missing_fits_the_purpose`);
+- multiple imputation compatible with the analysis model reads Models answers, the forms and the energy model (disagreement 7).
+
+*Recommendation:* split the question at the stage line.
+- **Who's in, once for every track:** who is kept and what each blank means. That is complete cases on named columns, or keep every row; the columns left out; the blanks that mean "not asked" or "below detection". Complete cases is valid for every goal.
+- **Each track's Models:** how the kept blanks are filled. Estimate uses multiple imputation compatible with its own model. Predict uses a fill in each training fold (its recipe, `RECIPES_AND_TUNING.md` §2.3). Describe estimates each quantity on the rows that hold its values, with the share of blanks stated.
+
+This also resolves disagreement 7 for the fill: it is chosen where the model it must match is known. *The alternative* asks the fill once per track inside Who's in, which breaks "the shared stages run once". SIZING D2 is sized for the recommendation.
+
+**6. Under Predict, what does "keeps the earlier version" mean for a change to a shared step (the trunk)?**
+
+Two rulings meet here:
+- **2026-10-07:** after results, prediction keeps the earlier version, labeled "revised after first results" in the comparison only.
+- **2026-10-06 (DoD §5):** "shared-step changes after scores kept as versions" moved to v2.x. The shared steps are the missing-values answer, the levers, the energy model and the forms (`crosswalk.json`, `stages[results].boundary_issues`).
+
+So in v2 a recipe or tuning change keeps a version (RECIPES RT-7), but a shared-step change can only be disclosed (`decisions.py:disclose`).
+
+*Recommendation:* for a shared-step change after first results, the comparison keeps the earlier fit's scores as a read-only row labeled "revised after first results". The row is read from the earlier fit artifact, which the engine never deletes (BLUEPRINT §4: a stale artifact is "served with `fresh: false`, never deleted"). It cannot be declared final, scored on the held-out rows or exported as a model. That meets "never overwrite silently" without bringing the v2.x versions back. *The alternatives:* disclosure only, so the earlier scores leave the table; or shared-step versions in v2 (about an L on top of RT-7).
+
+## Settled here, not asked
+
+Rulings already made, and the methods calls the crosswalk owns. Each cites its source.
+
+- **Under Predict, the open-noticings gate is at the opening of the held-out rows.** This was question 1 of the first draft, and it was already ruled. UNDERSTANDING_LAYER §7 ruling 1 (2026-10-06): every open thread that feeds the plan "must be decided or dismissed before estimates appear, and under prediction before the seal opens". §2.6 places the card "before the held-out rows are scored (`open_seal`)".
+  - So the Predict gate is `gate:open-noticings-before-seal`, just before `q:open_seal`.
+  - The engine's guard on the columns the draw reads stays at drawing (`seal.py:_the_draw_reads_settled_values`).
+  - `gate:open-noticings-before-lock` serves Estimate and Describe only; under Predict it was a duplicate.
+- **Fit, and when estimates appear** (disagreement 12).
+  - **Under Estimate and Describe,** the server serves no estimate stage (`estimand.ESTIMATE_STAGES`) before the track's plan is locked. You lock it by pressing Fit on the analysis flowchart, after the open-noticings gate and the Confirm sweep. The lock is the existing system record (`lock_plan`, recorded today by `server/service.py:_lock_when_shown`), so no new decision kind is needed.
+  - **Under Predict,** nothing locks. Results opens when you press Fit.
+  - **The fits themselves** compute as today. A short fit may already be done when you press Fit; a fit expected to take over about 2 minutes waits for the press, in the scheduler.
+  - **Why this keeps both rulings.** `RECIPES_AND_TUNING.md` §4.4 says pressing the button "is a job command, not a decision" and "the hold is in the scheduler, not a stage requirement". Nolan's ruling 2 says "BLUEPRINT §4's 'live' rule changes for long fits only". Computing stays live. What changes is when estimates are served, which `estimand.served_gate` already does while a question an estimate rests on is open.
+  - This replaces the first draft's fix ("a Fit record, a system kind beside `lock_plan`, holding every estimate stage"), which contradicted §4.4. `RECIPES_AND_TUNING.md` draft 3 states it (SIZING P0.2).
+- **Describe has a gate and a lock.** Describe reports estimates too: weighted means and prevalence by group, the usual-intake distribution, trends. A domain, a weight or a screen chosen after seeing them is the same forking path (Gelman & Loken 2013). So a Describe track follows Estimate's rule:
+  - its open noticings are decided or dismissed before its first estimate (`gate:open-noticings-before-lock` now lists Describe);
+  - its first estimate locks the track's plan;
+  - a later change runs as a labeled secondary beside the first result (`decision:post_lock_secondary`).
+
+  SIZING D1 builds it.
+- **Several goals: the order, the locks and the rows.**
+  - **Order:** Estimate, then Describe, then Predict (`default:track_order`). An estimate shown under Predict locks a later Estimate plan at once (`server/service.py:_lock_after_prediction`). Describe's estimates by group can pair the outcome with what you study, which would be an outcome view before an Estimate lock (`FIRST_LOOK_BRIEF.md` §6.1, O3).
+  - **Locks are per track, in v2.** The first draft said per-track locks wait for v2.x, which cannot hold. With one project-wide lock (`decisions.py:ProjectState.plan_locked`), every Describe or Predict decision after the Estimate lock would be marked "after the estimates were seen" (`decisions.disclose`). So the lock, the after-estimates mark and the record of estimates shown under prediction (`SHOWN_UNDER_PREDICTION`) are scoped to the track. Running tracks in parallel stays v2.x (DoD §5).
+  - **Rows.** Estimate and Describe read every analyzed row, because the seal is purpose-scoped (BLUEPRINT §12 ruling 3). A later Predict track on the same outcome therefore cannot claim that its held-out rows were never read (`FIRST_LOOK_BRIEF.md` §6.3). So when an earlier track has read the Predict track's outcome:
+    - the Predict track validates by resampling the whole procedure (repeated cross-validation with its correction, or the bootstrap; `result:bbc_cv`) and draws no held-out rows;
+    - its methods state that its choices followed the earlier track's results, as hand-set levers are stated: outside the corrected score (`result:hand_levers`).
+
+    A Predict track whose outcome no earlier track reads draws its held-out rows in the shared Who's in, as usual.
+  - SIZING D2 builds the track id, the scoped lock and mark, and this row rule.
+- **A direct effect is "Not available yet".** Mediation is out of v2 (HANDOFF; DoD §5). A direct effect is a mediation estimand: it needs the mediator–outcome confounders and the interaction (`estimand.direct_questions`). So the effect card offers the whole effect, and "only the direct part" reads "Not available yet", with its reason and an exit to the whole effect (`q:estimand`). Mediators are still recognized and kept out of the adjustment set.
+- **Methods text changes only through its decisions** (methods editing). Each methods sentence is the record's own, and every number in it must trace to the record (DoD gate 7).
+  - A sentence changes when its decision changes: its "change" link opens the card that asks it (disagreement 19).
+  - The author adds text in author-only paragraphs. They export as `\todo` until written, and pass the manuscript gate once written.
+  - Results wordings stay as ruled: a draft, or your own.
+- **The rail is a view, not a stage.** The rail shows the manuscript in every stage, but only Write-up's own objectives fill Write-up's segment: what the export still waits for, the merge of tracks, the placement review, the Discussion drafts and the export. Author-only text never counts and never blocks.
+- **Multivariate regression calibration is stated, not asked.** The contract implies it whenever the model holds two or more error-prone intakes, and refuses calibrating one at a time (`methods/calibration.py`, relation `multivariate`; DoD amendment of 2026-10-03). The measurement-error card says which form runs (`decision:set_measurement_error`).
 
 ## The stages
 
@@ -125,7 +180,7 @@ The order follows the engine's own dependencies:
 5. **The value repairs,** in the order their SQL composes (`repairs.py`, family priority).
 6. **The column readings.** The roles question among them is disagreement 1 below.
 
-**Decide, in order** (44).
+**Decide, in order** (46).
 
 1. Which table do you want to analyze? `q:upload` (on screen)
 2. Does another file belong with this one? Join it on an ID both files share `decision:join_files` (engine only)
@@ -137,7 +192,7 @@ The order follows the engine's own dependencies:
 8. Which column names the features, and which columns describe them (m/z, retention time, gene IDs)? `decision:set_feature_table` (engine only; metabolomics, genomics)
 9. Do you have a data dictionary for this table? `decision:import_codebook` (engine only)
 10. Your codebook says one thing and the values say another (for example, height in meters with a median of 166) `noticing:codebook-contradicted` (engine only)
-11. For each noticing about a column: repair it, keep the values as they are, or hold it for the question it belongs to `decision:finding-disposition` (on screen)
+11. For each problem found in a column: repair it, keep the values as they are, or hold it for the question it belongs to `decision:finding-disposition` (on screen)
 12. `crp` writes '<0.20' for values below the detection limit; they are your lowest values, not blanks `noticing:below-detection` (on screen; metabolomics, clinical)
 13. `bmi` arrived as text but is mostly numbers ('5,4' may be a decimal comma) `noticing:text-numbers` (on screen)
 14. Zeros arrived as 5.4e-79 from the SAS transport file `noticing:sas-transport-zeros` (on screen)
@@ -170,7 +225,7 @@ The order follows the engine's own dependencies:
 41. A column is free text, an ordered category the alphabet would scramble, or two units in one column `noticing:column-meaning-gaps` (partial)
 42. Which instrument measured the diet (24-hour recall, FFQ, record), what the nutrient columns are, and whether energy is intake `noticing:dietary-column-meaning` (partial; dietary)
 
-Noticings decided here (2), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
+Noticings decided here (4), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
 
 <details><summary>What each column is · 2</summary>
 
@@ -179,14 +234,22 @@ Noticings decided here (2), each on the card or question it changes. Each is an 
 
 </details>
 
+<details><summary>Family checks (every lens) · 2</summary>
 
-**Confirm sweep, last** (8): defaults set for you, each with an alternative that would change a number.
+- Done before upload check, under every lens: what was done to these values before you got them? `sentinel:S6` (missing)
+- What a value means check, under every lens: what does this value say, in what unit, about whom? `sentinel:K1` (partial)
+
+</details>
+
+
+**Confirm sweep, last** (9): defaults set for you, each with an alternative that would change a number.
 
 - Read from your data: these columns were settled by their values, each with its evidence and a way to change it `default:read-from-data` (partial)
-- Saturated fat is part of total fat (stated) `reading:nested-parts` (partial; dietary)
+- Saturated fat is counted inside total fat `reading:nested-parts` (partial; dietary)
 - `SEQN` names each row; `household_id` groups rows `noticing:identifier-columns` (on screen)
 - `imputed_bmi` marks values filled in earlier, not a fact about the person `noticing:flag-columns` (on screen)
 - Two columns have no name (a saved row index); three columns hold the same value on every row `noticing:unnamed-or-constant-columns` (on screen)
+- Confirm what was set for you in Your data (only defaults whose alternative would change a number) `other:confirm-sweep:data` (missing)
 <details><summary>Noticings stated with a default (3)</summary>
 
 - The matrix was quantile-normalized, RMA-processed or z-scored across all samples before upload, test samples included `thread:genomics-normalized-across-all-samples` (missing; Estimate, Predict; genomics) · on What each column is
@@ -203,7 +266,7 @@ Noticings decided here (2), each on the card or question it changes. Each is an 
 - Only the first sheet (or the first SAS data set) was read; the text was read as Latin-1; some rows were short; column types were guessed from the first rows `noticing:ingest-warnings` (engine only)
 - Every column summarized; the lens hints read every row, or a fixed sample of 5,000 rows when the table is too big `record:profile` (partial)
 - What your codebook settled, the units it documents, and the answers of yours that stand `record:codebook-settled` (engine only)
-- Not asked: no assay lens is on, and other tables are not exported turned around `record:orientation-not-asked` (on screen; dietary, clinical, survey, other)
+- Each row is a person: no assay lens is on, and other tables do not arrive turned around `record:orientation-not-asked` (on screen; dietary, clinical, survey, other)
 - The data section of the methods: files joined, the codebook used, the lens, the orientation, each repair, and the readings settled from the values `export:data-methods` (engine only)
 - Joining paired each person with several rows, so a row is no longer a person `noticing:join-changes-the-row` (partial)
 - `arm` looks like what a study compares: was it assigned at random? `noticing:design-hint-arm` (new scope; Estimate, Predict)
@@ -245,7 +308,7 @@ The outcome, its card, the design, the goal and its shape, and whether the paper
 
 **The Confirm sweep can add a Decide.** Answering "follow-up varies" turns a yes/no outcome into a time to event, which then needs its time column. So the sweep reopens the list.
 
-**Decide, in order** (32).
+**Decide, in order** (33).
 
 1. What is your outcome: the column you want to describe, explain or predict? `q:target` (on screen)
 2. Which value of the outcome is the event you are counting? `q:event` (on screen)
@@ -263,9 +326,9 @@ The outcome, its card, the design, the goal and its shape, and whether the paper
 14. Will a decision rest on a threshold of this risk, or is it a risk estimate only? `q:intended_use` (engine only; Predict)
 15. When, where and on whom will the model be used? `q:moment_of_use` (missing; Predict)
 16. Add another goal to this paper? `decision:add_goal` (new scope)
-17. A design noticed here that v2 does not run yet (a randomized or cluster trial, case-control, matched sets, crossover) reads 'Not available yet', with its reason and an exit that keeps the work `refusal:not-available-yet` (new scope)
+17. A design or analysis v2 does not run (a crossover trial, a repeated-measures trial model, a complier or per-protocol effect, a direct effect) reads "Not available yet", with its reason and an exit that keeps the work `refusal:not-available-yet` (new scope)
 
-Noticings decided here (15), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
+Noticings decided here (16), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
 
 <details><summary>The outcome card · 15</summary>
 
@@ -280,30 +343,37 @@ Noticings decided here (15), each on the card or question it changes. Each is an
 - Many people have exactly zero: are they non-users, or just not on the recall day? `thread:shared-zero-mass-outcome` (missing)
 - A count over observation times that differ: should it be a rate? `thread:shared-count-outcome-exposure-time` (missing)
 - The outcome piles up at a limit (0 or 100): is the limit real, or the instrument's ceiling? `thread:shared-bounded-outcome` (missing)
-- Is the metabolome the exposure, the outcome of a diet, or the path between them? `thread:metab-metabolome-role` (partial; Estimate, Predict; metabolomics)
+- Are the metabolites what you study, the result of the diet, or the path between them? `thread:metab-metabolome-role` (partial; Estimate, Predict; metabolomics)
 - Who are the results, or the model, meant for: these participants, or a population they differ from? `thread:shared-target-population-shift` (missing)
-- In a diet or intervention study the genes are the outcomes and the diet is the exposure, not the other way round `thread:genomics-genes-are-the-outcomes` (partial; Estimate, Predict; genomics)
+- In a diet or intervention study the genes are the outcomes and the diet is what you study, not the other way round `thread:genomics-genes-are-the-outcomes` (partial; Estimate, Predict; genomics)
 - The uploaded genes were already chosen using these samples' outcome `thread:genomics-features-preselected-on-outcome` (partial; Predict, Estimate; genomics)
 
 </details>
 
+<details><summary>Family checks (every lens) · 1</summary>
 
-**Confirm sweep, last** (3): defaults set for you, each with an alternative that would change a number.
+- Outcome and clock check, under every lens: what is the outcome, and when does its clock start and stop? `sentinel:K6` (missing)
+
+</details>
+
+
+**Confirm sweep, last** (5): defaults set for you, each with an alternative that would change a number.
 
 - These data are read as an observational study `default:design_observational` (new scope)
-- Not asked: the yes/no outcome is counted over one period for everyone, since no column reads as a follow-up time `default:follow_up_one_period` (on screen; metabolomics, genomics, survey)
+- The yes/no outcome is counted over one period for everyone, since no column reads as a follow-up time `default:follow_up_one_period` (on screen; metabolomics, genomics, survey)
 - Predicted risks are scored at the median follow-up time `default:prediction_horizon` (engine only; Predict)
-
-**For the record**, collapsed and not counted toward progress (10):
-
-<details><summary>10 lines</summary>
-
-- Not asked: the outcome has two values, so it is yes/no (or its decimals fill a grid, so it is a number) `default:task_settled` (on screen)
-- Not asked: a number has no event level, and only a yes/no outcome or a time to event has a follow-up `default:outcome_steps_not_applicable` (on screen)
 - The outcome is analyzed on its own scale (a difference in means) `default:outcome_scale_original` (partial)
+- Confirm what was set for you in Your question (only defaults whose alternative would change a number) `other:confirm-sweep:question` (missing)
+
+**For the record**, collapsed and not counted toward progress (9):
+
+<details><summary>9 lines</summary>
+
+- The outcome has two values, so it is yes/no (or its decimals fill a grid, so it is a number) `default:task_settled` (on screen)
+- No event level or follow-up to set: a number has no event level, and only a yes/no outcome or a time to event has a follow-up `default:outcome_steps_not_applicable` (on screen)
 - Numeric levels are ordered by their values `default:order_by_value` (engine only)
 - With no follow-up in the data, the model detects the outcome now rather than forecasting it `default:diagnostic_or_prognostic` (missing; Predict, Estimate)
-- Tracks run in order: estimating an effect first, then describing and predicting `default:track_order` (new scope)
+- Tracks run in order: estimating an effect first, then describing, then predicting `default:track_order` (new scope)
 - The methods sentences for the outcome, its event, kind, scale, order, unit, follow-up and goal `export:methods_sentences:question` (partial)
 - Reporting checklist items answered here `export:checklist_anchors` (engine only; Estimate, Predict)
 - The outcome and goal in the analysis plan and its hash `export:plan_slots` (engine only; Estimate)
@@ -438,21 +508,21 @@ The source is `interview.py:QUESTION_KEYS`, and any answer the Router has not re
 
 **The participant flowchart closes the stage.** For omics it is the samples-and-features flow. It is provisional until the analysis flowchart, because Models answers still change the counts (disagreement 7).
 
-**Decide, in order** (73).
+**Decide, in order** (76).
 
 1. Can one person appear in more than one row? `q:grain` (on screen)
 2. Are these repeats of one measurement, or different time points? `q:repeat_kind` (partial)
 3. When you analyze this, what is one row? `q:unit` (on screen)
 4. How should each person's rows be combined? `q:aggregation` (partial)
 5. Are you predicting something later from measurements taken earlier? `q:temporal` (on screen; Predict)
-6. Are participants grouped in sites, centers, households or batches? `q:clusters` (partial; Estimate, Predict)
+6. Are participants grouped in sites, centers, households or batches? `q:clusters` (partial; Estimate, Predict, Describe)
 7. Should the estimates (or the scores) describe the surveyed population, or these participants? `q:survey` (partial; Estimate, Describe, Predict)
-8. Who's in for a description: survey-weighted groups, domains, no seal `new:describe_whos_in` (new scope; Describe)
+8. Who's in for a description: survey-weighted groups, exclusions as domains, who is kept when values are blank, no seal `new:describe_whos_in` (new scope; Describe)
 9. Which analysis set: everyone as randomized (intention to treat), with per protocol as a secondary? `decision:analysis-sets` (new scope; Estimate)
 10. Rows are matched sets: keep each set together `new:matched_sets_grain` (new scope; Estimate, Predict)
 11. Is your study restricted to part of this data? `q:exclusions` (partial)
 12. A check found something that belongs to this question `noticing:findings_routed_here` (on screen)
-13. How should rows with missing predictor values be handled? `q:missing` (partial; Estimate, Predict)
+13. How should rows with missing predictor values be handled? `q:missing` (partial; Estimate, Predict, Describe)
 14. Who is missing: complete cases drop rows, and the people dropped differ from those kept `noticing:complete_case_loss` (engine only; Estimate, Predict)
 15. This missing-values answer does not fit the goal `refusal:missing_by_purpose` (on screen; Estimate, Predict)
 16. The imputation does not match the analysis model or the clustering `refusal:missing_compatibility` (partial; Estimate)
@@ -466,7 +536,7 @@ The source is `interview.py:QUESTION_KEYS`, and any answer the Router has not re
 24. Withdraw the held-out rows, change this, then draw them again `decision:withdraw_seal` (on screen; Predict)
 25. Rows held out after scores were seen: labeled, the earlier version kept `new:split_after_scores` (missing; Predict)
 
-Noticings decided here (48), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
+Noticings decided here (51), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
 
 <details><summary>Who is eligible · 25</summary>
 
@@ -476,7 +546,7 @@ Noticings decided here (48), each on the card or question it changes. Each is an
 - Rows were removed before upload by an unstated rule `thread:shared-rows-filtered-before-upload` (missing)
 - Some rows had the outcome when the clock started `thread:clin-prevalent-cases-at-baseline` (partial; clinical)
 - The reference test was done only for some people `thread:clin-partial-verification` (missing; Predict; clinical)
-- Everyone was selected for something the exposure or outcome causes `thread:shared-selection-on-a-consequence` (missing; Estimate)
+- Everyone was selected for something that what you study, or the outcome, causes `thread:shared-selection-on-a-consequence` (missing; Estimate)
 - Some changed their diet because of a diagnosis `thread:diet-changed-because-of-disease` (partial; Estimate; dietary)
 - People told they have a disease changed what they eat `thread:clin-diagnosis-changes-exposure` (missing; Estimate; clinical)
 - Participants already knew they had the outcome `thread:shared-prevalent-disease-reverse-causation` (missing; Estimate)
@@ -492,7 +562,7 @@ Noticings decided here (48), each on the card or question it changes. Each is an
 - Answers stop partway and never resume `thread:survey-breakoff` (missing; survey)
 - A trajectory no body follows `thread:clin-implausible-trajectory` (partial; clinical)
 - Eligibility required a high reading `thread:shared-entry-on-a-high-reading` (missing; Estimate)
-- Exposure is defined after follow-up starts (immortal time) `thread:clin-time-zero` (partial; Estimate)
+- What you study is defined after follow-up starts, so early follow-up cannot hold an event (immortal time) `thread:clin-time-zero` (partial; Estimate)
 - A zero is a day without the food, not a never-eater `thread:diet-zero-is-a-day` (partial; Estimate, Describe; dietary)
 - Fasting state, time of draw, storage time, freeze-thaw, hemolysis or RNA integrity shift measurements, and differ by group `thread:shared-preanalytical-handling` (partial)
 
@@ -526,9 +596,17 @@ Noticings decided here (48), each on the card or question it changes. Each is an
 
 </details>
 
+<details><summary>Family checks (every lens) · 3</summary>
+
+- Not independent check, under every lens: what is one unit, and which rows belong together? `sentinel:S4` (partial)
+- Who is in check, under every lens: who is in these rows, and how did they get here? `sentinel:S5` (missing)
+- What a zero or blank means check, under every lens: is this blank or zero a fact, a skip, a non-detection or a gap? `sentinel:K2` (missing)
+
+</details>
+
 <details><summary>Groups above the person · 2</summary>
 
-- The exposure varies mostly between groups `thread:shared-exposure-varies-between-groups` (missing; Estimate)
+- What you study varies mostly between groups, not within them `thread:shared-exposure-varies-between-groups` (missing; Estimate)
 - Neighboring places resemble each other `thread:shared-spatial-dependence` (missing)
 
 </details>
@@ -552,7 +630,7 @@ Noticings decided here (48), each on the card or question it changes. Each is an
 </details>
 
 
-**Confirm sweep, last** (12): defaults set for you, each with an alternative that would change a number.
+**Confirm sweep, last** (18): defaults set for you, each with an alternative that would change a number.
 
 - These rows are read as [repeats/time points] from [evidence] `default:repeat_kind_stated` (on screen)
 - A row whose screening value is not recorded cannot be confirmed eligible, so it leaves `default:unrecorded_rows_excluded` (partial)
@@ -562,25 +640,28 @@ Noticings decided here (48), each on the card or question it changes. Each is an
 - Repeated rows are imputed by person (values that never change, once per person) `default:imputation_levels_clustered` (engine only; Estimate)
 - Values below a detection limit are filled as censored, never by the median `default:below_detection_fill` (engine only; Estimate, Predict; metabolomics, clinical)
 - The weight comes from the smallest subsample your variables were measured on `default:survey_weight_choice` (partial; Estimate, Describe; dietary, clinical, survey)
+- The held-out rows and the folds are drawn with seed 0; another seed draws other rows `default:split-seed` (partial; Predict)
+- Each row is a different person (a unique identifier) `default:grain_stated` (on screen)
+- The latest rows by [time column] are held out `default:temporal_time_column` (on screen; Predict)
+- How the held-out rows were drawn: grouped by [id], or one row per person `default:seal_basis` (on screen; Predict)
+- The data's own imputed copies are analyzed one by one and pooled by Rubin's rules `default:imputed_copies_pooled` (partial; Estimate, Predict; dietary, clinical)
+- Confirm what was set for you in Who's in (only defaults whose alternative would change a number) `other:confirm-sweep:whos_in` (missing)
 <details><summary>Noticings stated with a default (4)</summary>
 
 - Features present in the process blanks at levels near the samples' (contamination, not biology) `thread:metab-blank-contamination` (partial; metabolomics) · on Samples and features
 - Children's BMI and height mean different things at different ages and need age- and sex-specific z-scores `thread:clin-pediatric-growth-scale` (partial; clinical) · on Who is eligible
 - Some values are impossible (decimal slips, wrong unit), while others are extreme but real `thread:shared-impossible-vs-extreme` (partial) · on Who is eligible
-- The exposure changed because the disease had already begun: weight or cholesterol falls before death, cancer or dementia `thread:clin-preclinical-disease-before-event` (partial; clinical) · on Who is eligible
+- What you study changed because the disease had already begun: weight or cholesterol falls before death, cancer or dementia `thread:clin-preclinical-disease-before-event` (partial; clinical) · on Who is eligible
 
 </details>
 
-**For the record**, collapsed and not counted toward progress (36):
+**For the record**, collapsed and not counted toward progress (32):
 
-<details><summary>36 lines</summary>
+<details><summary>32 lines</summary>
 
-- Each row is a different person (a unique identifier) `default:grain_stated` (on screen)
 - Rows with no value for the outcome leave `default:outcome_measured` (on screen)
 - The every-row analysis is reported beside the screen `default:every_row_analysis` (engine only; Estimate)
 - No rows are held out: every row estimates the coefficients `default:split_under_inference` (partial; Estimate)
-- The latest rows by [time column] are held out `default:temporal_time_column` (on screen; Predict)
-- How the held-out rows were drawn: grouped by [id], or one row per person `default:seal_basis` (on screen; Predict)
 - Rows whose follow-up ended before the landmark leave `default:landmark_rows` (on screen)
 - Complete cases are judged on settled predictors only `default:complete_case_predictors` (engine only; Estimate, Predict)
 - Participant flow, savable as a figure `exhibit:participant_flowchart` (partial)
@@ -589,7 +670,6 @@ Noticings decided here (48), each on the card or question it changes. Each is an
 - Data quality differs by sex, age or income `noticing:explore::quality_by_group` (partial)
 - Under the survey design, excluded rows stay in the design as a domain `default:survey_domain` (partial; Estimate, Describe; dietary, clinical, survey)
 - After exclusions a stratum keeps one PSU `noticing:lonely_psu` (partial; Estimate, Describe; dietary, survey, clinical)
-- The data's own imputed copies are analyzed one by one and pooled by Rubin's rules `default:imputed_copies_pooled` (partial; Estimate, Predict; dietary, clinical)
 - Participants are related `thread:genomics-relatedness` (missing; genomics)
 - Answers cluster by interviewer `thread:survey-interviewer-clustering` (partial; survey)
 - Blanks fall in a column that will be logged or splined `thread:shared-missing-in-a-derived-term` (partial; Estimate)
@@ -650,7 +730,7 @@ Noticings decided here (48), each on the card or question it changes. Each is an
 ### 5 · Models
 
 **Estimate, in the Router's order:**
-1. the exposure and its effect;
+1. what you study and its effect;
 2. the adjustment set;
 3. the time-varying lane;
 4. the energy model;
@@ -658,7 +738,9 @@ Noticings decided here (48), each on the card or question it changes. Each is an
 6. modifiers and the causal lane (both stated by default, so they sit in Confirm);
 7. the model families.
 
-Then the declarations with no Router key: Model 1, sensitivity analyses, regression calibration, scales, batch and multiplicity.
+Then the declarations with no Router key: Model 1, sensitivity analyses, regression calibration, scales, batch, the omics normalization and multiplicity, and the substitution pair (disagreement 13).
+
+**Under an assay lens, either goal:** how raw counts or intensities are normalized (`decision:omics-normalization`; it moved here from Your data's repair, which keeps only the reading), then the in-fold steps in the Confirm sweep.
 
 **Predict:**
 1. the validation scheme;
@@ -669,42 +751,43 @@ Then the declarations with no Router key: Model 1, sensitivity analyses, regress
 **Describe:** usual intake, weighted means and prevalence, patterns, clustering, agreement.
 
 **End of every track:**
-1. the open-noticings gate;
+1. the open-noticings gate (Estimate and Describe; under Predict it waits for the opening, in Results);
 2. the Confirm sweep;
 3. the analysis flowchart with Fit.
 
-Under Estimate, Fit shows the first estimate and so locks the plan.
+Under Estimate and Describe, nothing is served before you press Fit, and pressing it locks the track's plan and shows the first estimates (Settled here). Under Predict, pressing Fit opens Results.
 
-**Decide, in order** (122).
+**Decide, in order** (132).
 
-1. What do you think affects [outcome]? Count all of its effect or only the direct part; per what unit; as a difference or a ratio `q:estimand` (partial; Estimate)
-2. How do [age, sex and the others] relate to [exposure] and [outcome]? (one tap per block that shares a guess) `q:adjustment` (partial; Estimate)
-3. Does [exposure] change over time for each person, and how should its history be followed? `q:time_varying` (partial; Estimate)
+1. What do you think affects [glucose]? Its whole effect, per what unit, as a difference or a ratio ("only the direct part" reads Not available yet) `q:estimand` (partial; Estimate)
+2. How do [age, sex and the others] relate to [sugar] and [glucose]? (one tap per block that shares a guess) `q:adjustment` (partial; Estimate)
+3. Does [sugar] change over time for each person, and how should its history be followed? `q:time_varying` (partial; Estimate)
 4. How should the analysis account for how much people eat overall? `q:energy_adjustment` (partial; Estimate, Predict; dietary)
-5. Should [exposure] and each continuous confounder enter as a straight line or a curve? `q:form` (partial; Estimate)
+5. Should [sugar] and each number you adjust for enter as a straight line or a curve? `q:form` (partial; Estimate)
 6. Which models should be fit? (inference: which model fits this question) `q:models` (partial; Estimate, Predict)
 7. Which columns should Model 1 adjust for? (this field's Model 1: age, sex and total energy) `decision:set_model_sequence` (engine only; Estimate)
 8. Which removal rules should be reported beside the main analysis, as checks? `decision:set_sensitivity` (engine only; Estimate, Predict)
-9. Correct [nutrient] for day-to-day swings in the recalls, as a secondary analysis? `decision:set_measurement_error` (engine only; Estimate; dietary)
+9. Correct the intakes in the model for day-to-day swings in the recalls, all of them together, as a secondary analysis? `decision:set_measurement_error` (engine only; Estimate; dietary)
 10. Which questionnaire items make up each scale, and should its score be corrected for unreliability? `decision:set_scales` (engine only; Estimate, Predict; survey)
 11. How should the batch column be handled? `decision:set_batch` (engine only; Estimate, Predict; metabolomics, genomics)
-12. Which calories should replace which (for example, 100 kcal of sugar swapped for protein)? `decision:substitution-pair` (on screen; Estimate, Predict; dietary)
-13. How sensitive is the result to the outcomes that are missing? `decision:trial-missing-outcome-sensitivity` (new scope; Estimate)
-14. Cases were sampled by outcome: report odds ratios only; recalibrate predictions to the population's prevalence `decision:case-control` (new scope; Estimate, Predict)
-15. A finding held for this question: raw intensities need normalizing; batch is uneven over the outcome; more predictors than rows `noticing:findings-routed-to-models` (partial)
-16. More candidate predictors than rows: selection or a filter comes first `noticing:explore::wide` (engine only; Estimate, Predict)
-17. Pairs of predictors move almost together `noticing:explore::collinear` (engine only; Estimate, Predict)
-18. Should predictors be selected inside each fold? Were any chosen beforehand using these people's outcomes? `decision:set_selection` (engine only; Predict)
-19. More models on the shelf: ridge, robust linear (Huber), random forest, XGBoost `decision:new-families` (missing; Predict, Estimate)
-20. Describe: the usual-intake distribution of a nutrient, and the share below its requirement `decision:set_usual_intake` (engine only; Describe; dietary)
-21. Describe: survey-weighted means and prevalence by group, and trends across stacked survey cycles `decision:describe-estimates` (new scope; Describe; dietary, clinical, survey)
-22. Build dietary patterns (principal components, factors, clusters, reduced-rank regression) as the exposure `decision:dietary-patterns` (new scope; Estimate, Describe, Predict; dietary)
-23. Find subgroups of similar people `decision:clustering-subgroups` (new scope; Describe)
-24. How well do two measurements (or two models' predictions) agree? `decision:bland-altman` (new scope; Describe, Predict)
-25. Before you see estimates: these noticings still shape the plan. Decide or dismiss each `gate:open-noticings-before-lock` (missing; Estimate, Predict)
-26. Fit · about N min `other:fit` (partial)
+12. These columns are raw counts or intensities: how are they normalized? `decision:omics-normalization` (partial; Estimate, Predict; metabolomics, genomics)
+13. Which calories should replace which (for example, 100 kcal of sugar swapped for protein)? `decision:substitution-pair` (on screen; Estimate, Predict; dietary)
+14. How sensitive is the result to the outcomes that are missing? `decision:trial-missing-outcome-sensitivity` (new scope; Estimate)
+15. Cases were sampled by outcome: report odds ratios only; recalibrate predictions to the population's prevalence `decision:case-control` (new scope; Estimate, Predict)
+16. A finding held for this question: raw intensities need normalizing; batch is uneven over the outcome; more predictors than rows `noticing:findings-routed-to-models` (partial)
+17. More candidate predictors than rows: selection or a filter comes first `noticing:explore::wide` (engine only; Estimate, Predict)
+18. Pairs of predictors move almost together `noticing:explore::collinear` (engine only; Estimate, Predict)
+19. Should predictors be selected inside each fold? Were any chosen beforehand using these people's outcomes? `decision:set_selection` (engine only; Predict)
+20. More models on the shelf: ridge, robust linear (Huber), random forest, XGBoost `decision:new-families` (missing; Predict, Estimate)
+21. Describe: the usual-intake distribution of a nutrient, and the share below its requirement `decision:set_usual_intake` (engine only; Describe; dietary)
+22. Describe: survey-weighted means and prevalence by group, and trends across stacked survey cycles `decision:describe-estimates` (new scope; Describe; dietary, clinical, survey)
+23. Build dietary patterns (principal components, factors, clusters, reduced-rank regression) as what you study `decision:dietary-patterns` (new scope; Estimate, Describe, Predict; dietary)
+24. Find subgroups of similar people `decision:clustering-subgroups` (new scope; Describe)
+25. How well do two measurements (or two models' predictions) agree? `decision:bland-altman` (new scope; Describe, Predict)
+26. Before you see estimates: these noticings still shape the plan. Decide or dismiss each `gate:open-noticings-before-lock` (missing; Estimate, Describe)
+27. Fit · about N min `other:fit` (partial)
 
-Noticings decided here (96), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
+Noticings decided here (105), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
 
 <details><summary>The adjustment set · 26</summary>
 
@@ -713,26 +796,26 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 - Treatment lowers the very measurement it was given for: antihypertensives on BP, statins on LDL, glucose-lowering drugs on glucose and HbA1c `thread:clin-treated-measurements` (partial; clinical)
 - Under-reporting rises with body size, so reported energy falls where physiology says it should rise `thread:diet-misreporting-tracks-body-size` (partial; Estimate, Predict; dietary)
 - Sodium or potassium 'intake' is estimated from spot urine by an equation built on age, weight and creatinine `thread:diet-spot-urine-estimated-excretion` (missing; Estimate, Predict; dietary)
-- The profile records exposures the sheet does not (smoking), or contradicts the self-report `thread:genomics-exposure-written-in-the-profile` (missing; Estimate, Predict; genomics)
+- The expression profile records habits the sample sheet does not (smoking), or contradicts the self-report `thread:genomics-exposure-written-in-the-profile` (missing; Estimate, Predict; genomics)
 - Some participants' values are lowered by treatment (antihypertensives on blood pressure, statins on LDL) `thread:shared-treated-values` (partial)
 - Some respondents agree with everything, opposite statements included: a response style masquerading as the trait `thread:survey-acquiescence` (missing; survey)
 - Answers given by phone, online, in another language or by a proxy are not the same measurement `thread:survey-mode-proxy-nonequivalence` (missing; Estimate, Predict; survey)
 - Fat-soluble vitamins and carotenoids travel on lipoproteins, so their concentration tracks cholesterol and triglycerides `thread:clin-lipid-carried-micronutrients` (missing; Estimate, Predict; clinical)
 - Nutrients are computed from the foods in the model, so adjusting a food for its own nutrients removes its effect `thread:diet-food-and-its-nutrients` (missing; Estimate, Predict; dietary)
-- Genetic ancestry structures the samples and lines up with case status or with the diet exposure `thread:genomics-ancestry-structure` (missing; Estimate, Predict; genomics)
+- Genetic ancestry structures the samples and lines up with case status or with the diet you study `thread:genomics-ancestry-structure` (missing; Estimate, Predict; genomics)
 - Differences in the mix of cell types, not regulation within cells, drive the signal `thread:genomics-cell-mix-drives-signal` (missing; Estimate, Predict; genomics)
 - When and how the sample was drawn (time of day, fasting or fed, season) shapes expression and may differ between groups `thread:genomics-draw-conditions` (missing; genomics)
 - Samples split on a leading component by something no column names (a lane, an extraction day, a tissue) `thread:genomics-unrecorded-structure` (missing; genomics)
 - An assay, instrument, food-composition database or questionnaire version changed at a date or between sites `thread:shared-method-change` (missing)
 - Intake or a biomarker varies by season, and season is unevenly spread across groups `thread:shared-season` (partial)
 - Pooled cycles or waves asked a question differently, under the same name or a renamed one `thread:survey-instrument-changed-across-cycles` (missing; survey)
-- The exposure is a treatment given to the sicker people; in a prediction model, the treatment marks the indication `thread:clin-confounding-by-indication` (partial; Estimate, Predict; clinical)
+- The treatment you study is given to the sicker people, so it marks how ill they were; in a prediction model it marks the indication `thread:clin-confounding-by-indication` (partial; Estimate, Predict; clinical)
 - A clinical measurement taken alongside the diet lies on the path from diet to disease (LDL, BP, HbA1c, BMI) `thread:clin-biomarker-on-the-path` (partial; Estimate, Predict; clinical)
 - A column is a score, component or cluster label fitted on these same rows, possibly using the outcome `thread:shared-score-fitted-on-these-rows` (missing; Estimate, Predict)
-- A key confounder is measured so poorly that adjusting for it leaves most of its confounding `thread:shared-mismeasured-confounder` (partial; Estimate)
-- Race/ethnicity, sex/gender or SES columns: a confounder proxy, a fairness group, or a predictor? `thread:shared-sensitive-attribute-role` (partial; Estimate, Predict)
-- The normalizer itself moves with the outcome or exposure: creatinine in kidney disease, a global shift that breaks PQN, TIC closure `thread:metab-normalizer-carries-biology` (partial; Estimate, Predict; metabolomics)
-- A covariate measured at the same visit as the exposure may be a confounder or a mediator `thread:shared-mediator-or-confounder` (engine only; Estimate)
+- Something you adjust for is measured so poorly that adjusting for it removes little of the bias it causes `thread:shared-mismeasured-confounder` (partial; Estimate)
+- Race/ethnicity, sex/gender or SES columns: something to adjust for, a group to check fairness in, or a predictor? `thread:shared-sensitive-attribute-role` (partial; Estimate, Predict)
+- The normalizer itself moves with the outcome or with what you study: creatinine in kidney disease, a global shift that breaks PQN, TIC closure `thread:metab-normalizer-carries-biology` (partial; Estimate, Predict; metabolomics)
+- A column measured at the same visit as what you study may cause it, or may be a step on its path to the outcome `thread:shared-mediator-or-confounder` (engine only; Estimate)
 - Treatment started during follow-up because of high risk, so high-risk features look protective `thread:shared-treatment-paradox` (missing; Estimate, Predict)
 
 </details>
@@ -740,14 +823,14 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 <details><summary>The exposure and its effect · 11</summary>
 
 - In a trial, rescue medication, stopping the diet or dropping out after randomization changes what the treatment effect means `thread:clin-intercurrent-events` (missing; Estimate, Describe; clinical)
-- Exposure and outcome were reported at the same sitting, and people change what they eat after a diagnosis `thread:survey-same-sitting-reverse-causation` (missing; survey)
+- What you study and the outcome were reported at the same sitting, and people change what they eat after a diagnosis `thread:survey-same-sitting-reverse-causation` (missing; survey)
 - The zero group mixes never-consumers with people who stopped, often because they got sick `thread:diet-former-consumers-in-reference` (partial; dietary)
 - Nutrient totals include or omit dietary supplements, and supplement users form a separate population `thread:diet-supplements-in-totals` (partial; dietary)
 - The 'non-drinkers' include people who quit because they got sick `thread:survey-former-users-in-the-reference` (missing; Estimate, Predict; survey)
 - A column is a binned copy of another (bmi_cat beside bmi, age_group beside age), or the outcome is a cut of a recorded measure `thread:shared-coarsened-copy` (missing; Estimate, Predict)
 - Several columns are parts of a whole: time-use summing to 24 hours, macronutrients summing to 100% of energy, cell or microbial proportions `thread:shared-compositional-parts` (missing; Estimate, Predict)
 - Some samples were drawn after diagnosis or treatment began: the metabolome may be the disease, not its risk `thread:metab-sample-timing-vs-diagnosis` (missing; metabolomics)
-- The table holds the exposure several ways, inviting a choice after the results are seen `thread:shared-many-versions-of-the-exposure` (partial; Estimate, Predict)
+- The table holds what you study several ways, inviting a choice after the results are seen `thread:shared-many-versions-of-the-exposure` (partial; Estimate, Predict)
 - A polygenic score column whose weights may have been learned on these participants, or in another ancestry `thread:genomics-polygenic-score-provenance` (missing; Estimate, Predict; genomics)
 - A recognized instrument brings its published scoring, missing-item rule, cut-points and clinically important difference, but only if it was used unmodified `thread:survey-instrument-published-scoring` (partial; Estimate, Predict; survey)
 
@@ -762,7 +845,7 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 - Samples split by processing batch on the leading components, and batch lines up with case status `thread:genomics-batch-aligned-with-case` (engine only; genomics)
 - Cases were sequenced deeper than controls, so depth alone can predict case status `thread:genomics-depth-tracks-case` (engine only; genomics)
 - The batches were already corrected before export, possibly with the outcome in the model `thread:metab-pre-corrected-batches` (partial; metabolomics)
-- Cases and controls (or exposure groups) were run in different parts of the sequence, batches or plates, so drift can impersonate the outcome `thread:metab-run-order-aligned-with-outcome` (partial; metabolomics)
+- Cases and controls (or the groups you compare) were run in different parts of the sequence, batches or plates, so drift can impersonate the outcome `thread:metab-run-order-aligned-with-outcome` (partial; metabolomics)
 - Library size (or urine dilution) differs between cases and controls `thread:shared-omics-sample-total-tracks-outcome` (engine only; Estimate, Predict)
 - A processing variable (batch, plate, run, sequencing date, assay lot, interviewer) shifts the measurements and may line up with the outcome `thread:shared-process-aligned-with-outcome` (engine only; Estimate, Predict)
 - External effect sizes or polygenic weights must use the same effect allele and strand as these genotypes `thread:genomics-allele-harmonization` (missing; Estimate, Predict; genomics)
@@ -776,11 +859,25 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 - An FFQ intake for everyone, and 24-hour recalls or a second instrument for the same nutrient in a subsample `thread:diet-ffq-recall-substudy` (partial; dietary)
 - A recovery biomarker (doubly labeled water, urinary N, K, Na) can check self-report `thread:diet-recovery-biomarker` (missing; dietary)
 - A nutrient whose two recalls barely rank people, so no correction can rescue it `thread:diet-too-noisy-to-correct` (partial; dietary)
-- The exposure is assigned from a group or predicted by a model (Berkson-type error), not measured with noise `thread:shared-exposure-assigned-or-predicted` (missing)
+- What you study is assigned from a group or predicted by a model (Berkson-type error), not measured with noise `thread:shared-exposure-assigned-or-predicted` (missing)
 - Some answers came from a proxy (a parent, a spouse), not the participant `thread:shared-proxy-respondent` (missing)
 - Replicate readings (bp_1, bp_2, bp_3; duplicate assays) reveal regression dilution `thread:shared-replicate-reliability` (partial)
-- A better measure of the exposure exists for a subset (a biomarker, a weighed record, doubly labeled water) `thread:shared-validation-subsample` (partial)
+- A better measure of what you study exists for some people (a biomarker, a weighed record, doubly labeled water) `thread:shared-validation-subsample` (partial)
 - The first 24-hour recall covers the day before the blood or urine draw, so the biomarker reads yesterday's meal `thread:diet-recall-day-before-the-draw` (missing; dietary)
+
+</details>
+
+<details><summary>Family checks (every lens) · 9</summary>
+
+- Shortcut check, under every lens: does a process (batch, site, date, plate, run order) line up with the outcome? `sentinel:S1` (partial)
+- Leak in time check, under every lens: was this known at the moment of use, or only after the outcome? `sentinel:S2` (missing)
+- Leak in meaning check, under every lens: is the outcome written inside a predictor? `sentinel:S3` (missing)
+- Drift and transport check, under every lens: will the place, time or instrument of use look like this? `sentinel:S7` (missing; Predict)
+- How well it measures check, under every lens: how much of this value is the person, and how much the instrument? `sentinel:K3` (missing)
+- Causal place check, under every lens: where does this column sit between what you study and the outcome? `sentinel:K4` (missing; Estimate, Describe)
+- Structure among variables check, under every lens: which columns are built from others? `sentinel:K5` (partial)
+- Reference and context check, under every lens: compared with whom, on what scale, under what physiology? `sentinel:K7` (missing)
+- Support check, under every lens: can these data support this claim where it is made? `sentinel:E1` (partial)
 
 </details>
 
@@ -827,7 +924,7 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 - Many short questionnaires per person (diaries, EMA): a scale has a within-person meaning and a between-person meaning `thread:shared-ema-within-between` (missing)
 - Participants lost to follow-up differ at baseline from those who stayed `thread:shared-informative-dropout` (partial)
 - Respondents leave a panel between waves, and who leaves depends on what they said before `thread:shared-panel-attrition` (missing)
-- The table already holds the established risk factors or an existing score, so the question is what the new markers add `thread:clin-incremental-value` (missing; Estimate, Predict; clinical)
+- The table already holds the established risk factors or an existing score, so the question is what the new markers add `thread:clin-incremental-value` (missing; Predict; clinical)
 
 </details>
 
@@ -835,7 +932,7 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 
 - Sixty nutrient columns are a scan, not a hypothesis, and they behave like far fewer independent tests `thread:diet-nutrient-wide-scan` (partial; Estimate, Predict; dietary)
 - Hundreds of features are a few dozen compounds (adducts, isotopes, in-source fragments, both ion modes) `thread:metab-one-compound-many-features` (partial; Estimate, Predict; metabolomics)
-- Hundreds of questionnaire variables screened as exposures: multiplicity, correlated exposures, and replication across cycles `thread:survey-question-wide-scan` (missing; Estimate, Predict; survey)
+- Hundreds of questionnaire items screened one by one: many tests, related items, and replication across cycles `thread:survey-question-wide-scan` (missing; Estimate, Predict; survey)
 - With 392 features and 72 people, noise alone reaches a high score: the bar any finding must clear `thread:metab-wide-noise-ceiling` (partial; Estimate, Predict; metabolomics)
 
 </details>
@@ -844,7 +941,7 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 
 - Repeated FFQs over follow-up: average up to each event, and stop updating at an intermediate diagnosis `thread:diet-repeated-ffq-cumulative` (partial; dietary)
 - Treatment started during follow-up changes who has the outcome, so the prognosis being predicted is 'under current care' `thread:clin-treatment-during-follow-up` (partial; Predict, Estimate; clinical)
-- Exposure is defined by something that happens after follow-up starts (immortal time) `thread:shared-time-zero` (partial; Estimate, Predict)
+- What you study is defined by something that happens after follow-up starts (immortal time) `thread:shared-time-zero` (partial; Estimate, Predict)
 
 </details>
 
@@ -857,7 +954,7 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 
 <details><summary>Modifiers · 1</summary>
 
-- A genotype predicts the dietary exposure (lactase persistence and milk, ALDH2 and alcohol), so gene-diet questions carry gene-environment correlation and sparse cells `thread:genomics-genotype-shapes-the-diet` (partial; Estimate, Predict; genomics)
+- A genotype predicts what people eat (lactase persistence and milk, ALDH2 and alcohol), so gene–diet questions carry gene–diet correlation and sparse cells `thread:genomics-genotype-shapes-the-diet` (partial; Estimate, Predict; genomics)
 
 </details>
 
@@ -868,11 +965,11 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 </details>
 
 
-**Confirm sweep, last** (59): defaults set for you, each with an alternative that would change a number.
+**Confirm sweep, last** (63): defaults set for you, each with an alternative that would change a number.
 
-- Could [exposure]'s effect differ by another characteristic, or combine with a second exposure? `q:modification` (partial; Estimate)
+- Could [sugar]'s effect differ by another characteristic, or combine with a second factor? `q:modification` (partial; Estimate)
 - Also estimate the effect with a method that learns the adjustment flexibly (double ML or TMLE)? `q:causal` (partial; Estimate)
-- How should the many tests across the exposure family be adjusted? `decision:set_multiplicity` (partial; Estimate; metabolomics, genomics, dietary, survey)
+- You are testing many related factors at once (every nutrient, every metabolite): how should the many tests be accounted for? `decision:set_multiplicity` (partial; Estimate; metabolomics, genomics, dietary, survey)
 - Models are compared by repeated cross-validation, corrected for picking the best `default:validation-scheme` (partial; Predict)
 - Rules repeated inside each fold: curves for every number, a variance filter, a class-imbalance correction `decision:set_levers` (engine only; Predict, Estimate)
 - What each model is given: keep blanks as blanks or fill them, put columns on one scale, reshape or cap `decision:set_recipe` (missing; Predict)
@@ -881,12 +978,16 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 - Each predictor enters as each model takes it; a spline benchmark is on the shelf `default:form-under-prediction` (on screen; Predict)
 - Causal lane settings: learner chosen for the table's size, 5 folds repeated 5 times `default:causal-settings` (engine only; Estimate)
 - Summarize thousands of features into components inside each fold `decision:in-fold-pca-omics` (missing; Predict; metabolomics, genomics)
-- Adjust for the randomization factors and the baseline covariates you named beforehand (no confounder search) `decision:trial-precision-adjustment` (new scope; Estimate)
+- Log2 after the normalization, the D-ratio filter (with pooled QCs) and autoscaling, each fitted in each training fold `default:omics-in-fold-steps` (engine only; Estimate, Predict; metabolomics, genomics)
+- Adjust for the factors the randomization balanced and the baseline measures you named beforehand (no search for other adjustments) `decision:trial-precision-adjustment` (new scope; Estimate)
+- For the surveyed population, each model uses its survey-weighted form (linear, logistic, multinomial, ordinal, Cox); unweighted is blocked and recorded `default:survey-estimators` (engine only; Estimate, Describe; dietary, clinical, survey)
 - Groups were randomized: analyze at the group level with intervals for few clusters `decision:cluster-randomized` (new scope; Estimate)
 - People were matched: compare within each matched set (conditional logistic regression) `decision:matched-sets` (new scope; Estimate)
+- Steps of 100 kcal; a band from refits when you ask (Taylor band under the survey design) `default:substitution_step_and_band` (partial; Estimate, Predict; dietary)
 - Each lever is offered first as an in-fold rule; a lever pulled by hand after an outcome view is disclosed as outside the corrected score (prediction) or as made after the view (inference) `default:explore:levers-in-fold-first` (engine only; Predict, Estimate)
-- Confirm what was set for you in Models (only defaults whose alternative would change a number) `other:confirm-sweep` (missing)
 - Some predictors barely vary `noticing:explore::low_variance` (engine only; Estimate, Predict)
+- Intervals: robust (HC3), clustered by person (CR2), or by the survey design; Firth's fit if a column separates the outcome `default:interval-method` (engine only; Estimate)
+- Confirm what was set for you in Models (only defaults whose alternative would change a number) `other:confirm-sweep` (missing)
 <details><summary>Noticings stated with a default (42)</summary>
 
 - Whether a test was ordered carries information: a clinician suspected something `thread:clin-informative-test-ordering` (partial; clinical) · on How numbers enter the model
@@ -904,16 +1005,16 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 - Day-to-day error grows with intake, so correction must work on the scale where the error is additive, which is the scale the model uses `thread:diet-error-grows-with-intake` (partial; dietary) · on Measurement error
 - One blood draw captures little of a person's usual level of a metabolite `thread:metab-low-biological-icc` (partial; metabolomics) · on Measurement error
 - Day 2 can read lower than day 1 and weekends can differ: these are the instrument's effects, not diet change `thread:diet-recall-nuisance-effects` (partial; dietary) · on Measurement error
-- A null or a low importance may be an exposure the instrument cannot see `thread:diet-invisible-exposure` (missing; Estimate, Predict; dietary) · on Measurement error
-- A planned modifier's levels do not share the exposure's range `thread:shared-interaction-support` (partial; Estimate, Predict) · on Modifiers
+- A null or a low importance may be an intake the instrument cannot see `thread:diet-invisible-exposure` (missing; Estimate, Predict; dietary) · on Measurement error
+- A planned modifier's groups do not share the same range of what you study `thread:shared-interaction-support` (partial; Estimate, Predict) · on Modifiers
 - The score is an index defined by its components (a diet-quality score), not a reflective scale `thread:survey-formative-or-reflective` (engine only; survey) · on Questionnaire scales
 - Whether a higher score means worse or better decides what every coefficient's sign says `thread:survey-score-direction` (missing; survey) · on Questionnaire scales
 - Forty collinear items are one construct: the score for inference, score against items compared by resampling for prediction, and explained as a group `thread:survey-items-or-score` (partial; Estimate, Predict; survey) · on Questionnaire scales
-- The exposure scale and the outcome share items or content `thread:survey-item-overlap-with-outcome` (partial; Estimate, Predict; survey) · on Questionnaire scales
+- The scale you study and the outcome share items or content `thread:survey-item-overlap-with-outcome` (partial; Estimate, Predict; survey) · on Questionnaire scales
 - A change in coding system (ICD-9-CM to ICD-10-CM on 1 Oct 2015) shows up as a jump in recorded prevalence `thread:clin-coding-system-transition` (missing; clinical) · on The adjustment set
 - A biomarker swings with the season of collection, and in NHANES season is tied to latitude `thread:clin-season-of-draw` (missing; clinical) · on The adjustment set
 - Recalls were collected across (or within) particular seasons, and seasonal foods and nutrients move with the calendar `thread:diet-season-of-assessment` (missing; dietary) · on The adjustment set
-- A canonical confounder for this exposure and outcome is not in the file `thread:shared-missing-confounder` (partial; Estimate, Predict) · on The adjustment set
+- Something usually adjusted for in this question is not in the file `thread:shared-missing-confounder` (partial; Estimate, Predict) · on The adjustment set
 - A diet-quality index is already an energy density and a formative score, and its population mean needs a ratio `thread:diet-quality-index-is-a-density` (partial; dietary) · on The energy model
 - A swap of k kcal moves some people off any diet that was observed `thread:diet-substitution-support` (engine only; Estimate, Predict; dietary) · on The energy model
 - An effect per one SD of an energy residual means nothing to a reader; per a serving or 5% of energy does `thread:diet-meaningful-increment` (partial; Estimate, Predict; dietary) · on The energy model
@@ -934,13 +1035,12 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 
 </details>
 
-**For the record**, collapsed and not counted toward progress (21):
+**For the record**, collapsed and not counted toward progress (20):
 
-<details><summary>21 lines</summary>
+<details><summary>20 lines</summary>
 
 - A second model further adjusted for [BMI] runs beside the main one, because its timing is unknown `default:secondary-further-adjusted` (engine only; Estimate)
 - A quintile table is produced beside the curve, with the trend test labeled customary `default:quintiles-beside-spline` (engine only; Estimate)
-- Intervals: robust (HC3), clustered by person (CR2), or by the survey design; Firth's fit if a column separates the outcome `default:interval-method` (engine only; Estimate)
 - Scores are design-based: whole PSUs within strata, every loss weighted `default:design_based_cv` (engine only; Predict; dietary, clinical, survey)
 - The plan is fixed the first time estimates appear; later changes are marked `other:plan-lock` (partial; Estimate)
 - A category has almost no rows or no events, so its estimate runs to infinity `thread:clin-sparse-levels-separation` (engine only; Estimate, Predict)
@@ -962,18 +1062,21 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 
 </details>
 
-**Shown on the canvas or as a refusal**, not an objective (13):
+**Shown on the canvas or as a refusal**, not an objective (16):
 
-<details><summary>13 previews, views and refusals</summary>
+<details><summary>16 previews, views and refusals</summary>
 
 - Explore's levers previewed: which predictors bend or leave in each training fold, the terms kept by selection, the risks against the threshold, shrinkage `preview:explore-levers` (engine only; Predict)
 - Concerns stated beside the choices: below the minimum sample size; totals track the outcome; energy explains most of a nutrient `noticing:shelf-and-design-concerns` (partial)
 - Blocked until recorded or refused, each with a way forward `refusal:leash-in-models` (partial)
+- This swap can't be drawn as asked (energy sources left out, nested parts, unsettled units) `refusal:substitution_blocked` (partial; Estimate, Predict; dietary)
+- This model has no estimator for the surveyed population `refusal:population_blocked` (engine only; Estimate; dietary, clinical, survey)
 - Rows in each sensitivity analysis `preview:sensitivity_views` (engine only; Estimate, Predict)
+- Each person's donor and recipient, before and after one step `preview:substitution_views` (engine only; Estimate, Predict; dietary)
 - The analysis flowchart: what will be fit, on which rows, in what order (savable as a figure) `flowchart:analysis` (missing)
 - The plan is already fixed and the lock can't be undone `refusal:plan_already_locked` (engine only; Estimate)
 - The outcome bends against a continuous predictor, and choosing a form by eye moves optimism outside the score `thread:shared-curvature-seen-in-explore` (engine only; Estimate, Predict)
-- The exposure's relationship looks different in one subgroup `thread:shared-subgroup-seen-in-explore` (partial; Estimate, Predict)
+- The relationship with what you study looks different in one subgroup `thread:shared-subgroup-seen-in-explore` (partial; Estimate, Predict)
 - Your outcome (weight, BMI, diabetes) is energy-related, so energy may lie on the path `thread:diet-energy-related-outcome` (engine only; Estimate, Predict; dietary)
 - Age, sex, BMI, kidney function and fasting move much of the metabolome, and may differ by outcome `thread:metab-clinical-factors` (partial; Estimate, Predict; metabolomics)
 - A predictor nearly is the outcome: another measure of it, its definition, a function of it, or its consequence `thread:shared-outcome-proxy` (partial; Estimate, Predict)
@@ -984,33 +1087,33 @@ Noticings decided here (96), each on the card or question it changes. Each is an
 
 ### 6 · Results
 
-Each result is an exhibit. The section "After training" below lists each one with its wordings, placement and pre-included flag. Under Predict, the final model, the threshold and the recalibration are fixed here, and then the held-out rows open once.
+Each result is an exhibit, and each appears only after Fit (`other:fit`). The section "After training" below lists each one with its wordings, placement and pre-included flag. Under Predict, the final model, the threshold and the recalibration are fixed here; the open-noticings gate is cleared; and then the held-out rows open once.
 
-**Decide, in order** (56).
+**Decide, in order** (59).
 
 1. How should this finding read? Pick a drafted wording or write your own `decision:exhibit_wording` (new scope)
 2. Where does it go: Results, Discussion, Supplement, or left out? `decision:exhibit_placement` (new scope)
-3. The effect of [exposure] on [outcome] in each model you declared: unadjusted, Model 1, the primary, Model 3 `exhibit:table2` (engine only; Estimate)
+3. The effect of [what you study] on [the outcome] in each model you declared: unadjusted, Model 1, the primary, Model 3 `exhibit:table2` (engine only; Estimate)
 4. The risk difference and risk ratio, averaged over your participants `exhibit:marginal_contrasts` (engine only; Estimate)
-5. The effect of always versus never [exposure] over follow-up `exhibit:time_varying_estimate` (engine only; Estimate)
+5. The effect of always versus never [what you study] over follow-up `exhibit:time_varying_estimate` (engine only; Estimate)
 6. The effect estimated by [double ML / TMLE], with its assumptions and overlap `exhibit:causal_estimate` (engine only; Estimate)
 7. A check failed: show the effect before and after the midpoint, refit without the influential rows, or keep the estimate labeled? `decision:respond_diagnostic` (engine only; Estimate)
 8. The primary beside the model further adjusted for [BMI] `exhibit:secondary_further_adjusted` (engine only; Estimate)
 9. Your estimate corrected for day-to-day variation in the recalls, beside the uncorrected one `exhibit:regression_calibration` (engine only; Estimate; dietary)
 10. How reliably each scale measures, and its coefficient corrected for that `exhibit:scales_reliability` (engine only; Estimate, Predict; survey)
 11. Does the effect differ across [modifier]? On both scales, against one reference `exhibit:effect_modification` (engine only; Estimate)
-12. Every exposure in the family, each with its estimate and q-value `exhibit:exposure_family` (partial; Estimate; metabolomics, genomics, dietary, survey)
+12. Every factor in the family you tested (every nutrient, every metabolite), each with its estimate and q-value `exhibit:exposure_family` (partial; Estimate; metabolomics, genomics, dietary, survey)
 13. The same model on other rows: every row, and each screen you declared `exhibit:declared_sensitivity` (engine only; Estimate, Predict)
-14. How strong would a hidden confounder have to be to explain this away? `exhibit:unmeasured_confounding` (engine only; Estimate)
+14. How strong would something unmeasured, affecting both, have to be to explain this away? `exhibit:unmeasured_confounding` (engine only; Estimate)
 15. Which of your decisions mattered? The estimate across every alternative you declared `exhibit:which_decisions_mattered` (partial; Estimate)
 16. Backward elimination as a labeled sensitivity analysis `result:selection_sensitivity_inference` (engine only; Estimate)
 17. The other coefficients: adjustment terms, not effect estimates `exhibit:table2_appendix` (engine only; Estimate)
-18. You changed the plan after seeing estimates: this runs as a secondary analysis beside the primary `decision:post_lock_secondary` (partial; Estimate, Predict)
+18. You changed the plan after seeing estimates: this runs as a secondary analysis beside the primary `decision:post_lock_secondary` (partial; Estimate, Predict, Describe)
 19. How well each model predicts new people, and the one result you report `exhibit:performance_table` (partial; Predict)
 20. How far apart the models are, pair by pair `exhibit:family_comparisons` (engine only; Predict)
 21. Shrink the coefficients by the calibration slope before the model is used? `decision:set_updating` (engine only; Predict)
 22. Predictors outnumber rows: run the nested cross-validation interval? (about N minutes) `decision:nested_cv_offer` (partial; Predict)
-23. Before you open the held-out rows: these noticings still change the honest score. Decide or dismiss each `gate:open-noticings-before-seal` (missing; Predict, Estimate)
+23. Before you open the held-out rows: these noticings still change the honest score. Decide or dismiss each `gate:open-noticings-before-seal` (missing; Predict)
 24. Choose your final model on cross-validation, then open the held-out rows once `q:open_seal` (on screen; Predict)
 25. The held-out score of the model you declared final `exhibit:held_out_result` (on screen; Predict)
 26. Are the predicted risks right? Observed against predicted `exhibit:calibration_curves` (engine only; Predict)
@@ -1034,12 +1137,13 @@ Each result is an exhibit. The section "After training" below lists each one wit
 44. The effect of the assigned treatment (intention to treat), with per-protocol beside it `exhibit:trial_results` (new scope; Estimate)
 45. Describe how each fitted model uses its inputs? `decision:set_explain` (engine only; Predict, Estimate)
 46. Which inputs each model leans on, and how stable that is across refits `exhibit:shap_importance` (engine only; Predict, Estimate)
-47. Each top exposure's curve in every model, on shared axes `exhibit:inductive_bias_curves` (engine only; Predict, Estimate)
-48. Each person's prediction split into its inputs `exhibit:shap_beeswarm_observations` (engine only; Predict, Estimate)
-49. Pairs of inputs the model combines `exhibit:interactions_h` (engine only; Predict, Estimate)
-50. What each model is: its equation, its trees, its shrinkage path `exhibit:architecture_lane` (engine only; Predict, Estimate)
+47. Which inputs each model leaned on, side by side (one table across models) `exhibit:cross-model-importance` (partial; Predict, Estimate)
+48. Each top input's curve in every model, on shared axes `exhibit:inductive_bias_curves` (engine only; Predict, Estimate)
+49. Each person's prediction split into its inputs `exhibit:shap_beeswarm_observations` (engine only; Predict, Estimate)
+50. Pairs of inputs the model combines `exhibit:interactions_h` (engine only; Predict, Estimate)
+51. What each model is: its equation, its trees, its shrinkage path `exhibit:architecture_lane` (engine only; Predict, Estimate)
 
-Noticings decided here (6), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
+Noticings decided here (8), each on the card or question it changes. Each is an open noticing until it is decided or dismissed:
 
 <details><summary>After the fit · 6</summary>
 
@@ -1052,29 +1156,37 @@ Noticings decided here (6), each on the card or question it changes. Each is an 
 
 </details>
 
+<details><summary>Family checks (every lens) · 2</summary>
 
-**Confirm sweep, last** (4): defaults set for you, each with an alternative that would change a number.
+- Noise and multiplicity check, under every lens: does the signal beat noise and the number of looks taken? `sentinel:E2` (partial; Estimate, Predict, Describe)
+- Reading the result check, under every lens: what can this explanation or null claim, and for whom? `sentinel:E3` (missing; Estimate, Predict)
+
+</details>
+
+
+**Confirm sweep, last** (5): defaults set for you, each with an alternative that would change a number.
 
 - Threshold range 5% to 50%, and a threshold chosen inside each fold `default:decision_threshold` (engine only; Predict)
 - Curves by accumulated local effects (partial dependence ranked lower) `default:explain_curve_method` (engine only; Predict, Estimate)
 - Calibration read at the median follow-up time (no horizon was declared) `default:horizon_calibration` (engine only; Predict)
-- Steps of 100 kcal; a band from refits when you ask (Taylor band under the survey design) `default:substitution_step_and_band` (partial; Estimate, Predict; dietary)
+- Robustness value first for a linear outcome; the E-value on the spread of the population your result describes `default:unmeasured_order_and_sd` (engine only; Estimate)
+- Confirm what was set for you in Results (only defaults whose alternative would change a number) `other:confirm-sweep:results` (missing)
 
 **For the record**, collapsed and not counted toward progress (19):
 
 <details><summary>19 lines</summary>
 
 - Did the primary model's assumptions hold? `exhibit:diagnostics` (engine only; Estimate)
+- Do the residuals of the primary model follow the shape it assumes? (residual Q-Q) `exhibit:residual-qq` (missing; Estimate, Predict)
 - A no-predictor baseline and a regression with curves are always fitted beside the chosen models `exhibit:spline_benchmark` (engine only; Predict)
 - Every analysis that was run, listed `other:results_inventory` (missing)
-- Unadjusted always shown; only the exposure's rows as effects; Model 3 labeled `default:model_sequence_display` (engine only; Estimate)
-- Robustness value first for a linear outcome; E-value on the SD your estimand speaks of `default:unmeasured_order_and_sd` (engine only; Estimate)
+- Unadjusted always shown; only the rows of what you study read as effects; Model 3 labeled `default:model_sequence_display` (engine only; Estimate)
 - No cross-validated R² under inference `default:fit_statistics_withheld` (engine only; Estimate)
 - Compared on a strictly proper score over at least 10 x K folds; AUC reported beside it `default:proper_primary_and_substrate` (partial; Predict)
 - Optimism-corrected by refitting the whole pipeline on 500 or more resamples `default:bootstrap_optimism` (engine only; Predict)
 - Corrected for picking the best of several models `result:bbc_cv` (partial; Predict)
 - Choices made by hand after looking at the outcome, which the score does not cover `result:hand_levers` (engine only; Predict, Estimate)
-- Exposure and outcome come from the same questionnaire at one sitting `thread:survey-common-method` (missing; Estimate; survey)
+- What you study and the outcome come from the same questionnaire at one sitting `thread:survey-common-method` (missing; Estimate; survey)
 - [family] predicts no better than the mean, so there is nothing to explain `thread:shared-model-no-better-than-baseline` (engine only; Predict)
 - Two models score the same but rank the predictors differently `thread:shared-rashomon-disagreement` (partial; Predict)
 - The average curve is flat, but it rises steeply in one group `thread:shared-learned-interaction` (partial; Predict)
@@ -1086,19 +1198,16 @@ Noticings decided here (6), each on the card or question it changes. Each is an 
 
 </details>
 
-**Shown on the canvas or as a refusal**, not an objective (13):
+**Shown on the canvas or as a refusal**, not an objective (10):
 
-<details><summary>13 previews, views and refusals</summary>
+<details><summary>10 previews, views and refusals</summary>
 
 - The best model's own score can't be the result after you compared several on the same rows `refusal:winner_own_score` (engine only; Predict)
 - An explanation describes the model's predictions, not what changing an intake would do `refusal:explain_as_effect` (engine only; Predict, Estimate)
 - Estimates wait until the questions they rest on are answered `refusal:served-gate` (engine only; Estimate, Predict)
 - The held-out rows can't be opened yet (no final model, stale fit, already opened) `refusal:open_seal_refusals` (partial; Predict)
-- The primary result cannot be dropped from Results, and exposures cannot be trimmed by their p-values `refusal:report_by_significance` (partial; Estimate)
-- This swap can't be drawn as asked (energy sources left out, nested parts, unsettled units) `refusal:substitution_blocked` (partial; Estimate, Predict; dietary)
-- This model has no estimator for the surveyed population `refusal:population_blocked` (engine only; Estimate; dietary, clinical, survey)
+- The primary result cannot be dropped from Results, and factors in a tested family cannot be trimmed by their p-values `refusal:report_by_significance` (partial; Estimate)
 - What opening does: the held-out rows are scored once, then stand `preview:open_seal_views` (engine only; Predict)
-- Each person's donor and recipient, before and after one step `preview:substitution_views` (engine only; Estimate, Predict; dietary)
 - What the recorded response would show beside the estimate `preview:diagnostic_views` (engine only; Estimate)
 - Where each curve method evaluates the model `preview:explain_views` (engine only; Predict, Estimate)
 - Shrinkage's effect on calibration; the decision curve over a threshold range `preview:updating_and_intended_use` (engine only; Predict)
@@ -1118,7 +1227,7 @@ One manuscript in two views: the rail, present in every stage, and full width he
 5. **Author-only text.** It never blocks the export; it becomes `\todo`.
 6. **The export.**
 
-Write-up's only number-changing default is the small-cell threshold, so its Confirm sweep is usually absent.
+Write-up's only number-changing default is the small-cell threshold, so its Confirm sweep is usually absent. The rail is a view of the manuscript, not a stage: only the objectives above fill Write-up's segment (Settled here).
 
 **Decide, in order** (10).
 
@@ -1129,19 +1238,20 @@ Write-up's only number-changing default is the small-cell threshold, so its Conf
 5. Things found only after the fit: no better than the baseline, unstable, reversed direction, p-value pile-up `noticing:late-born-threads` (missing; Estimate, Predict)
 6. The export would show identifiers or cells small enough to identify someone `noticing:identifiable-values` (missing)
 7. What only you can write: title, objectives, setting, dates, ethics, funding, sources `decision:author-owed-items` (partial)
-8. Export the analysis for the manuscript `export:bundle` (engine only; Estimate, Predict)
+8. Export the analysis for the manuscript `export:bundle` (engine only; Estimate, Predict, Describe)
 9. Overleaf-ready LaTeX project (zip) `export:latex-overleaf` (new scope)
 10. Word document `export:word` (new scope)
 
-**Confirm sweep, last** (1): defaults set for you, each with an alternative that would change a number.
+**Confirm sweep, last** (2): defaults set for you, each with an alternative that would change a number.
 
 - Cells under 11 participants are suppressed (change the threshold to your data-use agreement's) `default:small-cell-threshold` (missing; clinical, survey, dietary)
+- Confirm what was set for you in Write-up (only defaults whose alternative would change a number) `other:confirm-sweep:writeup` (missing)
 
 **For the record**, collapsed and not counted toward progress (32):
 
 <details><summary>32 lines</summary>
 
-- Sections follow STROBE-nut (estimating an effect) or TRIPOD+AI (prediction) `default:methods-guideline-order` (engine only; Estimate, Predict)
+- Sections follow STROBE-nut (estimating an effect, or describing) or TRIPOD+AI (prediction) `default:methods-guideline-order` (engine only; Estimate, Predict, Describe)
 - Answers you changed before seeing any result are left out; changes after are kept and marked `default:superseded-folded-out` (engine only; Estimate, Predict)
 - Decisions made after the estimates were seen (or the held-out rows opened) `result:after-estimates-section` (partial; Estimate, Predict)
 - Counts in the methods match the participant flow as it stands now `default:restated-counts` (engine only)
@@ -1149,24 +1259,24 @@ Write-up's only number-changing default is the small-cell threshold, so its Conf
 - Paragraphs the analysis wrote: model sequence, imputation, cross-validation, calibration `result:analysis-paragraphs` (engine only; Estimate, Predict)
 - One sentence says where the provenance record is and what a replay checks `default:reproducibility-sentence` (engine only)
 - The plan is described as declared in TurboTab before any estimate was shown, never as 'preregistered' `default:plan-wording` (engine only; Estimate)
-- Each noticing's sentence in the methods, its evidence written inside `noticing:thread-sentences` (missing; shared, dietary, clinical, metabolomics, genomics, survey)
+- Each methods sentence a check wrote, with its evidence inside `noticing:thread-sentences` (missing; shared, dietary, clinical, metabolomics, genomics, survey)
 - Supplement table S1: what the data showed, what you said it meant, what it changed `exhibit:supplement-s1` (missing)
 - Checked, nothing beyond its reference (in the supplement) `exhibit:clean-checks` (missing)
 - What was screened before the plan, and whether the outcome's associations were looked at `result:ida-paragraph` (missing)
 - Checklist items answered by what was noticed `noticing:checklist-thread-anchors` (partial; Estimate, Predict)
-- For each bias domain, the noticings that bear on it (never a rating) `exhibit:bias-evidence-table` (missing; Estimate, Predict)
-- How many exposures were tested, and how that was corrected `noticing:number-of-tests` (engine only; Estimate)
+- For each bias domain, what was found that bears on it (never a rating) `exhibit:bias-evidence-table` (missing; Estimate, Predict)
+- How many factors were tested, and how that was accounted for `noticing:number-of-tests` (engine only; Estimate)
 - Who these results apply to `noticing:applicability` (partial)
 - A supplementary table of what was read from your data, cited by one sentence `noticing:settled-readings-table` (partial)
 - Figures and tables are numbered by where you place them `default:figure-and-table-numbering` (partial)
 - Figures are drawn as published: serif, grayscale, dash patterns, numbered caption `default:journal-figure-style` (engine only)
 - Scores on survey data are labeled unweighted, describing these participants, not the population `default:unweighted-caption` (engine only; Predict; survey, dietary)
 - Defaults that changed nothing on this table, listed only in the export `default:silent-defaults-in-export` (missing)
-- STROBE-nut checklist: where each item is answered, and what only you can supply `exhibit:strobe-nut-checklist` (engine only; Estimate)
+- STROBE-nut checklist: where each item is answered, and what only you can supply `exhibit:strobe-nut-checklist` (engine only; Estimate, Describe)
 - TRIPOD+AI checklist: where each item is answered, and what only you can supply `exhibit:tripod-ai-checklist` (engine only; Predict)
-- The checklist as it stands now, with what the export still waits for `exhibit:live-checklist` (engine only; Estimate, Predict)
+- The checklist as it stands now, with what the export still waits for `exhibit:live-checklist` (engine only; Estimate, Predict, Describe)
 - CONSORT checklist (trials) `exhibit:consort-checklist` (new scope; Estimate; clinical, dietary)
-- Other reporting items the noticings anchor: RECORD, STROBE-ME, MIAME/MINSEQE, STARD, RoB 2 `exhibit:other-guidelines` (missing; clinical, metabolomics, genomics, shared)
+- Other reporting items the checks answer: RECORD, STROBE-ME, MIAME/MINSEQE, STARD, RoB 2 `exhibit:other-guidelines` (missing; clinical, metabolomics, genomics, shared)
 - The analysis plan as declared, with its time and SHA-256, for registration `export:analysis-plan` (engine only; Estimate)
 - The provenance record: decisions, input hashes, engine and package versions, matrix hashes, every reported number `export:provenance-record` (engine only)
 - Anyone can replay this analysis and check every number `export:replay` (engine only)
@@ -1199,23 +1309,24 @@ Write-up's only number-changing default is the small-cell threshold, so its Conf
 
 | Stage | Every goal | Estimate only or also | Predict only or also | Describe | Lens-specific |
 |---|---|---|---|---|---|
-| 1 · Your data | 56 | 7 | 6 | 0 | 27 |
-| 2 · Your question | 32 | 10 | 12 | 0 | 7 |
+| 1 · Your data | 59 | 7 | 6 | 0 | 27 |
+| 2 · Your question | 34 | 10 | 12 | 0 | 7 |
 | 3 · First look | 6 | 3 | 3 | 0 | 0 |
-| 4 · Who's in | 68 | 39 | 23 | 7 | 62 |
-| 5 · Models | 77 | 111 | 100 | 8 | 130 |
-| 6 · Results | 4 | 43 | 48 | 7 | 18 |
-| 7 · Write-up | 25 | 16 | 12 | 0 | 7 |
+| 4 · Who's in | 72 | 39 | 24 | 9 | 62 |
+| 5 · Models | 84 | 115 | 103 | 11 | 134 |
+| 6 · Results | 5 | 45 | 51 | 9 | 17 |
+| 7 · Write-up | 26 | 16 | 12 | 4 | 7 |
 
 **Describe** today:
-- **Who's in:** the survey population question, which the engine asks only under inference (`interview.py:_survey_gate`). Exclusions become domains.
-- **Models:** usual intake, weighted means and prevalence by group, trends across stacked cycles, patterns, clustering and agreement.
+- **Who's in:** the survey population question, which the engine asks only under inference (`interview.py:_survey_gate`); exclusions become domains; who is kept when values are blank; grouping, for the variance (`new:describe_whos_in`, `q:missing`, `q:clusters`).
+- **Models:** usual intake, weighted means and prevalence by group, trends across stacked cycles, patterns, clustering and agreement, then the open-noticings gate and Fit.
 - **Results:** Table 1 and those exhibits.
+- **Write-up:** the STROBE-nut checklist with its analytic items marked not applicable, STROBE-nut's order for the methods, and the bundle (`exhibit:strobe-nut-checklist`, `default:methods-guideline-order`, `export:bundle`).
 
-There is no seal and no lock. Every Describe item is new scope or gated to inference, because `decisions.py:Purpose` has only two values. About 159 two-valued purpose branches would route a third value as prediction (`contracts.py:ContractOption.for_purpose`, `custom_sound.py`, `methods/missing.py` fall back to it).
+There is no seal. A Describe track locks at its first estimate, behind its own open-noticings gate, and a later change runs as a labeled secondary (Settled here). Every Describe item is new scope or gated to inference, because `decisions.py:Purpose` has only two values. About 159 two-valued purpose branches would route a third value as prediction (`contracts.py:ContractOption.for_purpose`, `custom_sound.py`, `methods/missing.py` fall back to it).
 
 **Estimate** carries the deepest Models stage:
-- the exposure, adjustment, time-varying, energy, form, modifier and causal cards;
+- the cards for what you study, the adjustment set, the time-varying lane, energy, forms, modifiers and the causal lane;
 - the open-noticings gate and Fit, which locks the plan;
 - Table 2 and its companions.
 
@@ -1230,24 +1341,21 @@ Under Estimate the split question changes no reported number, so it becomes For 
 **Several goals** run as tracks:
 - **Shared stages:** Your data, Your question, First look and Who's in run once, and the shared First look follows the strictest goal's rule.
 - **Own stages:** each track has its own Models and Results.
+- **Order, locks and rows:** Estimate, then Describe, then Predict, each with its own lock; a Predict track after a track that read its outcome validates by resampling (Settled here).
 
-A shared Who's in cannot hold one answer for every goal:
-- multiple imputation is refused under prediction;
-- a single fill is blocked under inference (`decisions.py:_missing_fits_the_purpose`).
-
-So Who's in needs per-track answers where the purpose rules differ (Gaps, engine).
+A shared Who's in cannot hold one fill for every goal: multiple imputation is refused under prediction, and a single fill is blocked under inference (`decisions.py:_missing_fits_the_purpose`). Question 5 recommends deciding who is kept once, in Who's in, and the fill in each track's Models.
 
 **By domain.** Counts of lens-specific objectives per stage:
 
-| Stage | dietary | clinical | metabolomics | genomics | survey |
-|---|---|---|---|---|---|
-| 1 · Your data | 11 | 8 | 10 | 8 | 5 |
-| 2 · Your question | 0 | 3 | 2 | 3 | 2 |
-| 3 · First look | 0 | 0 | 0 | 0 | 0 |
-| 4 · Who's in | 19 | 24 | 12 | 12 | 10 |
-| 5 · Models | 40 | 27 | 21 | 21 | 30 |
-| 6 · Results | 10 | 4 | 5 | 4 | 8 |
-| 7 · Write-up | 6 | 6 | 3 | 2 | 5 |
+| Stage | dietary | clinical | metabolomics | genomics | survey | something else |
+|---|---|---|---|---|---|---|
+| 1 · Your data | 11 | 8 | 10 | 8 | 5 | 1 |
+| 2 · Your question | 0 | 3 | 2 | 3 | 2 | 0 |
+| 3 · First look | 0 | 0 | 0 | 0 | 0 | 0 |
+| 4 · Who's in | 19 | 24 | 12 | 12 | 10 | 0 |
+| 5 · Models | 42 | 28 | 23 | 23 | 31 | 0 |
+| 6 · Results | 9 | 4 | 5 | 4 | 8 | 0 |
+| 7 · Write-up | 6 | 6 | 3 | 2 | 5 | 0 |
 
 - **Dietary:**
   - Your data: the energy unit and days (Atwater), body-measure units and sex coding, NHANES joins, stacking cycles, and the survey design columns.
@@ -1264,7 +1372,7 @@ So Who's in needs per-track answers where the purpose rules differ (Gaps, engine
   - orientation and the feature table;
   - reference rows and QC drift correction, before the seal;
   - limit-of-detection handling;
-  - PQN, log and scaling inside the folds;
+  - the normalization asked in Models, then log and scaling inside the folds;
   - batch and feature-wise FDR;
   - the samples-and-features flow.
 - **Genomics:**
@@ -1273,6 +1381,7 @@ So Who's in needs per-track answers where the purpose rules differ (Gaps, engine
   - screening when there are more features than samples;
   - batch as a covariate, or ComBat inside the folds;
   - FDR.
+- **Something else, or not sure:** no pack runs. The shared items and the 17 family checks (`sentinel:S1` to `sentinel:E3`) are what fire; `record:orientation-not-asked` is the one item that names this lens.
 - **Survey instruments:**
   - sentinel codes and skip patterns;
   - reverse keying;
@@ -1286,13 +1395,13 @@ How many items per stage draw each canvas mode of `calm/FOUNDATION.md` §5. An i
 
 | Stage | Focus | Strip | Flow | Routing | Angles | No view |
 |---|---|---|---|---|---|---|
-| 1 · Your data | 19 | 14 | 13 | 18 | 4 | 15 |
-| 2 · Your question | 29 | 4 | 10 | 9 | 9 | 20 |
+| 1 · Your data | 20 | 17 | 13 | 18 | 4 | 15 |
+| 2 · Your question | 32 | 5 | 10 | 9 | 10 | 18 |
 | 3 · First look | 8 | 8 | 1 | 0 | 2 | 21 |
-| 4 · Who's in | 34 | 12 | 61 | 8 | 22 | 41 |
-| 5 · Models | 61 | 28 | 21 | 32 | 68 | 25 |
-| 6 · Results | 10 | 16 | 6 | 2 | 20 | 43 |
-| 7 · Write-up | 2 | 13 | 2 | 4 | 2 | 34 |
+| 4 · Who's in | 38 | 19 | 79 | 12 | 22 | 20 |
+| 5 · Models | 70 | 36 | 26 | 43 | 74 | 12 |
+| 6 · Results | 13 | 17 | 6 | 2 | 21 | 38 |
+| 7 · Write-up | 2 | 14 | 2 | 4 | 2 | 34 |
 
 - **Your data.** At rest, the canvas is a Strip of every column in gray (FOUNDATION §5, rule 8).
   - A join or stacking draws a Flow of rows.
@@ -1313,26 +1422,26 @@ How many items per stage draw each canvas mode of `calm/FOUNDATION.md` §5. An i
 
 | Stage | Items | On screen | Engine only | Partial | Missing | New scope | Decide | Confirm | For the record | Shown |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 1 · Your data | 74 | 25 | 9 | 33 | 4 | 3 | 44 | 8 | 11 | 11 |
-| 2 · Your question | 64 | 18 | 10 | 21 | 10 | 5 | 32 | 3 | 10 | 19 |
+| 1 · Your data | 77 | 25 | 9 | 34 | 6 | 3 | 46 | 9 | 11 | 11 |
+| 2 · Your question | 66 | 18 | 10 | 21 | 12 | 5 | 33 | 5 | 9 | 19 |
 | 3 · First look | 35 | 3 | 7 | 16 | 8 | 1 | 4 | 0 | 5 | 26 |
-| 4 · Who's in | 147 | 35 | 7 | 67 | 32 | 6 | 73 | 12 | 36 | 26 |
-| 5 · Models | 215 | 2 | 41 | 94 | 68 | 10 | 122 | 59 | 21 | 13 |
-| 6 · Results | 92 | 3 | 51 | 17 | 13 | 8 | 56 | 4 | 19 | 13 |
-| 7 · Write-up | 53 | 1 | 21 | 11 | 15 | 5 | 10 | 1 | 32 | 10 |
-| **All** | **680** | **87** | **146** | **259** | **150** | **38** | **341** | **87** | **134** | **118** |
+| 4 · Who's in | 152 | 35 | 7 | 69 | 35 | 6 | 76 | 18 | 32 | 26 |
+| 5 · Models | 231 | 2 | 45 | 100 | 74 | 10 | 132 | 63 | 20 | 16 |
+| 6 · Results | 93 | 3 | 49 | 17 | 16 | 8 | 59 | 5 | 19 | 10 |
+| 7 · Write-up | 54 | 1 | 21 | 11 | 16 | 5 | 10 | 2 | 32 | 10 |
+| **All** | **708** | **87** | **148** | **268** | **167** | **38** | **360** | **102** | **128** | **118** |
 
-Over all items: 13% on screen, 21% engine only, 38% partial, 22% missing, 6% new scope.
+Over all items: 12% on screen, 21% engine only, 38% partial, 24% missing, 5% new scope.
 
 **Noticings and engine items differ:**
 - **Noticings** (334 items carry a catalog thread): 10 on screen, 32 engine only, 175 partial, 111 missing.
-- **Engine questions, decisions, defaults and exhibits** (346 items): 77 on screen, 114 engine only, 84 partial, 39 missing, 32 new scope.
+- **Engine questions, decisions, defaults and exhibits** (374 items): 77 on screen, 116 engine only, 93 partial, 56 missing, 32 new scope.
 
 ## After training: every result is an exhibit
 
 **The pivot.** Before Fit, the canvas shows the consequence of a choice. After Fit, it shows the evidence behind a result.
 
-**Under Estimate,** pressing Fit shows the first estimate, and the first estimate locks the plan (`plan_lock.py:shows_estimates`; `server/service.py:_lock_when_shown`). Results opens with one line: the lock time and the plan's SHA-256 (`plan_lock.py:digest`).
+**Under Estimate and Describe,** nothing is served before you press Fit; pressing it locks the track's plan (the system's `lock_plan` record; `server/service.py:_lock_when_shown` does this today on the first estimate served) and shows the first estimates. Results opens with one line: the lock time and the plan's SHA-256 (`plan_lock.py:digest`).
 
 **Under Predict,** Results opens on the cross-validated comparison with its declared basis (`models/selection.py:declared_result`). The held-out rows open once, after the final model, the threshold and the recalibration are fixed (MODELING_SEQUENCE §1 row 12a; `seal.py:_open_seal_once_on_a_fresh_fit`).
 
@@ -1358,11 +1467,12 @@ Over all items: 13% on screen, 21% engine only, 38% partial, 22% missing, 6% new
 
 The engine writes none of these drafts today. `estimand.py:caption` says "The total effect of …" for every inference estimate, whatever the design. That is a claim-strength rule to build (Gaps).
 
-**Pre-included:** 19 of 42 exhibits.
+**Pre-included:** 23 of 48 exhibits.
 
 **Never overwrite silently:**
 - **Under Estimate,** a change after the lock runs as a secondary analysis beside the locked primary. Today the engine instead marks the change and recomputes every estimate on the new answers (`decisions.py:disclose`). Only post-hoc modifiers (`methods/interaction.py:POST_HOC`) and regression calibration already behave as ruled.
-- **Under Predict,** the earlier version is kept and labeled "revised after first results", in the comparison only. That is RECIPES RT-6 and RT-7, not built.
+- **Under Describe,** the same: the first result stays, and a change runs as a labeled secondary (Settled here).
+- **Under Predict,** the earlier version is kept and labeled "revised after first results", in the comparison only. That is RECIPES RT-6 and RT-7, not built. For a change to a shared step, see question 6.
 - **After the held-out rows open,** drawing them again is a reseal, and the first opening stays the reported result (`seal.py:reported_result`).
 
 ### Decisions after the fit
@@ -1380,7 +1490,8 @@ The engine writes none of these drafts today. `estimand.py:caption` says "The to
 - Threshold range 5% to 50%, and a threshold chosen inside each fold `default:decision_threshold` (Confirm; engine only)
 - Curves by accumulated local effects (partial dependence ranked lower) `default:explain_curve_method` (Confirm; engine only)
 - Calibration read at the median follow-up time (no horizon was declared) `default:horizon_calibration` (Confirm; engine only)
-- Steps of 100 kcal; a band from refits when you ask (Taylor band under the survey design) `default:substitution_step_and_band` (Confirm; partial)
+- Robustness value first for a linear outcome; the E-value on the spread of the population your result describes `default:unmeasured_order_and_sd` (Confirm; engine only)
+- Confirm what was set for you in Results (only defaults whose alternative would change a number) `other:confirm-sweep:results` (Confirm; missing)
 
 ### The exhibits
 
@@ -1388,32 +1499,33 @@ The engine writes none of these drafts today. `estimand.py:caption` says "The to
 
 | Exhibit | Pre-included | Default place | May move to | Status | Why |
 |---|---|---|---|---|---|
-| The effect of [exposure] on [outcome] in each model you declared: unadjusted, Model 1, the primary, Model 3 `exhibit:table2` | yes | Results | fixed | engine only | The locked primary under inference (methods floor; STROBE 16a: crude and adjusted). |
+| The effect of [what you study] on [the outcome] in each model you declared: unadjusted, Model 1, the primary, Model 3 `exhibit:table2` | yes | Results | fixed | engine only | The locked primary under inference (methods floor; STROBE 16a: crude and adjusted). |
 | The risk difference and risk ratio, averaged over your participants `exhibit:marginal_contrasts` | yes | Results | Supplement | engine only | Pre-included when the declared effect measure is marginal (ranked first for a common binary outcome). |
-| The effect of always versus never [exposure] over follow-up `exhibit:time_varying_estimate` | yes | Results | fixed | engine only | The primary when the exposure changes over time. |
+| The effect of always versus never [what you study] over follow-up `exhibit:time_varying_estimate` | yes | Results | fixed | engine only | The primary when the exposure changes over time. |
 | The effect estimated by [double ML / TMLE], with its assumptions and overlap `exhibit:causal_estimate` | yes | Results | Supplement | engine only | Declared in the plan with the model families. |
 | The primary beside the model further adjusted for [BMI] `exhibit:secondary_further_adjusted` | yes | Results | Supplement | engine only | Declared by the adjustment answers (unknown timing). |
 | Your estimate corrected for day-to-day variation in the recalls, beside the uncorrected one `exhibit:regression_calibration` | yes | Results | Supplement | engine only | A declared secondary analysis. |
 | How reliably each scale measures, and its coefficient corrected for that `exhibit:scales_reliability` | no | Supplement | Results, Left out (still listed, kept in the record) | engine only | Reliability belongs in Methods or Results; the correction is a declared secondary. |
 | Does the effect differ across [modifier]? On both scales, against one reference `exhibit:effect_modification` | yes | Results | Supplement | engine only | Pre-included when declared before the lock; declared after, it is labeled and goes to the Supplement by default. |
-| Every exposure in the family, each with its estimate and q-value `exhibit:exposure_family` | yes | Results | Supplement | partial | Every member stays in the record: a summary in Results, the full table in the Supplement. |
+| Every factor in the family you tested (every nutrient, every metabolite), each with its estimate and q-value `exhibit:exposure_family` | yes | Results | Supplement | partial | Every member stays in the record: a summary in Results, the full table in the Supplement. |
 | The same model on other rows: every row, and each screen you declared `exhibit:declared_sensitivity` | yes | Supplement | Results | engine only | Declared in the plan: a Supplement table plus one Results sentence (STROBE 12e, 17). |
-| How strong would a hidden confounder have to be to explain this away? `exhibit:unmeasured_confounding` | no | Supplement | Results, Discussion, Left out (still listed, kept in the record) | engine only | Offered for every inference estimate; one sentence in Results or Discussion, the benchmark table in the Supplement. Never a pass or fail. |
+| How strong would something unmeasured, affecting both, have to be to explain this away? `exhibit:unmeasured_confounding` | no | Supplement | Results, Discussion, Left out (still listed, kept in the record) | engine only | Offered for every inference estimate; one sentence in Results or Discussion, the benchmark table in the Supplement. Never a pass or fail. |
 | Which of your decisions mattered? The estimate across every alternative you declared `exhibit:which_decisions_mattered` | no | Supplement | Discussion, Left out (still listed, kept in the record) | partial | A sensitivity view only, never a way to choose. |
 | Backward elimination as a labeled sensitivity analysis `result:selection_sensitivity_inference` | no | Supplement | Left out (still listed, kept in the record) | engine only | A labeled sensitivity analysis. |
 | The other coefficients: adjustment terms, not effect estimates `exhibit:table2_appendix` | no | Supplement | Left out (still listed, kept in the record) | engine only | Adjustment terms are never shown as effects (Westreich and Greenland 2013). |
 | Did the primary model's assumptions hold? `exhibit:diagnostics` | no | Supplement | Left out (still listed, kept in the record) | engine only | Checks that pass are clean checks (Supplement, ruling of 2026-10-06). |
+| Do the residuals of the primary model follow the shape it assumes? (residual Q-Q) `exhibit:residual-qq` | no | Supplement | Left out (still listed, kept in the record) | missing | A model check; checks that pass are clean checks (Supplement, ruling of 2026-10-06). |
 
 Drafted wordings (bracketed words are filled from the record; "your own" is always offered):
 
-- **The effect of [exposure] on [outcome] in each model you declared: unadjusted, Model 1, the primary, Model 3**
+- **The effect of [what you study] on [the outcome] in each model you declared: unadjusted, Model 1, the primary, Model 3**
   - *association*: "Each [increment] higher [exposure] was associated with a [estimate] [unit] difference in [outcome] (95% CI [lower] to [upper]), adjusted for [Model 2 covariates]."
   - *estimated effect, assumptions named*: "If there is no unmeasured confounding and the declared model form holds, [increment] more [exposure] would change [outcome] by [estimate] (95% CI [lower] to [upper])."
   - *inconclusive null*: "The data did not provide evidence of an association between [exposure] and [outcome] ([estimate]; 95% CI [lower] to [upper]); effects larger than [bound] are unlikely."
 - **The risk difference and risk ratio, averaged over your participants**
   - *association*: "Standardized to these participants, the risk of [outcome] was [r1] at [exposure level] and [r0] at [reference] (risk difference [RD], 95% CI; risk ratio [RR])."
   - *estimated effect, assumptions named*: "Under the stated assumptions, setting everyone to [exposure level] rather than [reference] would change the risk of [outcome] by [RD] (95% CI)."
-- **The effect of always versus never [exposure] over follow-up**
+- **The effect of always versus never [what you study] over follow-up**
   - *estimated effect, assumptions named*: "Had everyone [always] rather than [never] [exposure], the [t]-year risk of [outcome] would have been [r1] versus [r0] (difference [d], 95% CI), under the stated assumptions (g-formula)."
   - *association*: "Sustained [exposure] was associated with a [d] difference in the [t]-year risk of [outcome] (marginal structural model, weights truncated at [q])."
 - **The effect estimated by [double ML / TMLE], with its assumptions and overlap**
@@ -1429,13 +1541,13 @@ Drafted wordings (bracketed words are filled from the record; "your own" is alwa
 - **Does the effect differ across [modifier]? On both scales, against one reference**
   - *declared before the lock*: "The effect of [exposure] was [e1] among [level 1] and [e2] among [level 2] (ratio of ratios [r]; relative excess risk due to interaction [x])."
   - *suggested by data inspection*: "In an analysis suggested by data inspection, the effect of [exposure] appeared to differ by [modifier] ([e1] versus [e2]); this was not planned."
-- **Every exposure in the family, each with its estimate and q-value**
+- **Every factor in the family you tested (every nutrient, every metabolite), each with its estimate and q-value**
   - *association*: "Of [k] [exposures] tested, [m] were associated with [outcome] at a false discovery rate of 5% (Table S[n])."
   - *inconclusive null*: "None of the [k] [exposures] was associated with [outcome] at a false discovery rate of 5%."
 - **The same model on other rows: every row, and each screen you declared**
   - *robust*: "Estimates were similar under [screen] and with every row kept ([lowest] to [highest]; Table S[n])."
   - *sensitive*: "Applying [screen] moved the estimate from [a] to [b]; the primary rule is [rule]."
-- **How strong would a hidden confounder have to be to explain this away?**
+- **How strong would something unmeasured, affecting both, have to be to explain this away?**
   - *robustness value*: "An unmeasured confounder would have to explain [RV]% of the remaining variance of both [exposure] and [outcome] to move the estimate to zero; [benchmark], the strongest measured covariate, explains [x]%."
   - *E-value*: "An unmeasured confounder associated with both [exposure] and [outcome] by a risk ratio of [E] each could explain away the estimate; weaker confounding could not."
 - **Which of your decisions mattered? The estimate across every alternative you declared**
@@ -1446,6 +1558,8 @@ Drafted wordings (bracketed words are filled from the record; "your own" is alwa
   - *fixed*: "Coefficients for the adjustment terms are listed in Table S[n]; they are not effect estimates."
 - **Did the primary model's assumptions hold?**
   - *fixed*: "Model checks (proportional hazards, influence) are shown in Figure S[n]."
+- **Do the residuals of the primary model follow the shape it assumes? (residual Q-Q)**
+  - *fixed*: "Residuals of the primary model are shown against a normal distribution in Figure S[n]."
 
 #### Predict
 
@@ -1538,7 +1652,8 @@ Drafted wordings (bracketed words are filled from the record; "your own" is alwa
 | Exhibit | Pre-included | Default place | May move to | Status | Why |
 |---|---|---|---|---|---|
 | Which inputs each model leans on, and how stable that is across refits `exhibit:shap_importance` | no | Results | Supplement, Left out (still listed, kept in the record) | engine only | Results under prediction; Supplement under inference, covariates labeled as adjustment terms. |
-| Each top exposure's curve in every model, on shared axes `exhibit:inductive_bias_curves` | no | Results | Supplement, Left out (still listed, kept in the record) | engine only | Results under prediction, Supplement under inference. |
+| Which inputs each model leaned on, side by side (one table across models) `exhibit:cross-model-importance` | no | Supplement | Results, Left out (still listed, kept in the record) | partial | An explanation describes each model (models/explain.py:DESCRIBES); never worded as an effect. |
+| Each top input's curve in every model, on shared axes `exhibit:inductive_bias_curves` | no | Results | Supplement, Left out (still listed, kept in the record) | engine only | Results under prediction, Supplement under inference. |
 | Each person's prediction split into its inputs `exhibit:shap_beeswarm_observations` | no | Supplement | Left out (still listed, kept in the record) | engine only | Per-person attributions. |
 | Pairs of inputs the model combines `exhibit:interactions_h` | no | Supplement | Left out (still listed, kept in the record) | engine only | Pairs the model combines. |
 | What each model is: its equation, its trees, its shrinkage path `exhibit:architecture_lane` | no | Supplement | Left out (still listed, kept in the record) | engine only | What each model is. |
@@ -1547,7 +1662,9 @@ Drafted wordings (bracketed words are filled from the record; "your own" is alwa
 
 - **Which inputs each model leans on, and how stable that is across refits**
   - *describes the model*: "The model relied most on [x], [y] and [z]. These describe its predictions, not what changing them would do."
-- **Each top exposure's curve in every model, on shared axes**
+- **Which inputs each model leaned on, side by side (one table across models)**
+  - *describes the model*: "Across the [k] models, [input] ranked highest in mean absolute SHAP value in [m] of them (Table S[n]); these rankings describe the models, not effects."
+- **Each top input's curve in every model, on shared axes**
   - *describes the model*: "Each model's learned curve for [x] is drawn on shared axes (Figure [n]); the models agree where the data are dense."
 - **Each person's prediction split into its inputs**
   - *describes the model*: "Per-person contributions to each prediction are shown in Figure S[n]."
@@ -1556,12 +1673,28 @@ Drafted wordings (bracketed words are filled from the record; "your own" is alwa
 - **What each model is: its equation, its trees, its shrinkage path**
   - *fixed*: "The fitted equation, tree structure or shrinkage path of each model is in Supplement S[n]."
 
+#### Made before training, placed the same way
 
-**Made before training, placed the same way:**
-- the participant flowchart (`exhibit:participant_flowchart`, Who's in, pre-included as Figure 1);
-- the samples-and-features flow for omics;
-- the CONSORT flow for trials;
-- the analysis flowchart (`flowchart:analysis`, Models, Supplement by default).
+| Exhibit | Pre-included | Default place | May move to | Status | Why |
+|---|---|---|---|---|---|
+| Participant flow, savable as a figure `exhibit:participant_flowchart` | yes | Results | Supplement | partial | STROBE item 13c recommends a flow diagram; under Estimate its counts are final at the analysis flowchart (disagreement 7). |
+| Samples and features: how many samples and features remain at each step `exhibit:samples_and_features_flow` | yes | Results | Supplement | partial | Omics readers expect the samples and the features kept at each step; the in-fold feature steps are stated as varying by fold. |
+| CONSORT flow: enrolled, allocated, followed up, analyzed, by arm `flowchart:consort` | yes | Results | fixed | new scope | CONSORT requires the flow diagram for a trial (DoD 2026-10-07); placement fixed. |
+| The analysis flowchart: what will be fit, on which rows, in what order (savable as a figure) `flowchart:analysis` | yes | Supplement | Results, Left out (still listed, kept in the record) | missing | It documents what was fitted, on which rows and in what order; the plan export carries the same content. |
+
+Drafted wordings (bracketed words are filled from the record; "your own" is always offered):
+
+- **Participant flow, savable as a figure**
+  - *descriptive*: "Of [N0] participants in the file, [N1] were excluded ([reasons with counts]) and [N] were analyzed (Figure [n])."
+- **Samples and features: how many samples and features remain at each step**
+  - *descriptive*: "[S] of [S0] samples and [F] of [F0] features passed quality control (Figure [n]); feature filters fitted in each training fold are described in the Methods."
+- **CONSORT flow: enrolled, allocated, followed up, analyzed, by arm**
+  - *descriptive*: "[N] participants were randomized ([n1] to [arm 1], [n2] to [arm 2]); [m1] and [m2] were analyzed as randomized (Figure [n])."
+- **The analysis flowchart: what will be fit, on which rows, in what order (savable as a figure)**
+  - *descriptive*: "The analysis plan, fixed before any estimate was seen, is shown in Figure S[n]."
+  - *descriptive (Predict)*: "The analysis, as declared before the held-out rows were opened, is shown in Figure S[n]."
+
+Figure and table numbers follow placement (`default:figure-and-table-numbering`), so the flowcharts are placed like any exhibit (the last table above).
 
 ### Noticings born after the fit
 
@@ -1578,7 +1711,7 @@ These need a fit, so First look never shows them. They label an exhibit, or add 
 - Only a fraction of features have names, so any pathway reading runs over what the assay could name `thread:metab-enrichment-background` (missing; Estimate, Predict; metabolomics)
 - Corrected for picking the best of several models `result:bbc_cv` (partial; Predict)
 - Choices made by hand after looking at the outcome, which the score does not cover `result:hand_levers` (engine only; Predict, Estimate)
-- Exposure and outcome come from the same questionnaire at one sitting `thread:survey-common-method` (missing; Estimate; survey)
+- What you study and the outcome come from the same questionnaire at one sitting `thread:survey-common-method` (missing; Estimate; survey)
 - [family] predicts no better than the mean, so there is nothing to explain `thread:shared-model-no-better-than-baseline` (engine only; Predict)
 - Two models score the same but rank the predictors differently `thread:shared-rashomon-disagreement` (partial; Predict)
 - The average curve is flat, but it rises steeply in one group `thread:shared-learned-interaction` (partial; Predict)
@@ -1595,16 +1728,16 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
 1. **The roles answer is refused in Your data.**
    - *Evidence:* `roles` is the thirteenth key of `interview.py:QUESTION_KEYS`, after the outcome, the goal and the row block, and `sequence.py:_answers_in_order` refuses it with `not_yet`. The roles stage also reads the target, purpose, grain, follow-up, outcome scale and task (`stages/__init__.py`, `Stage("roles", …)`).
    - *Fix (engine):* record `set_roles` as a completion once every predictor's role is settled through `confirm_role` and `confirm_readings`. Neither is a Router slot, so neither is refused for order. A proposal that changes after Your question or Who's in returns as "changed since you confirmed", with the reason.
-   - *Fix (interface):* Your data shows the column ledger, and no roles question (question 3).
+   - *Fix (interface):* Your data shows the column ledger, and no roles question (question 2).
 2. **Readings are asked where they are used, not at upload.**
    - *Evidence:* `ask.py:CONSUMERS` puts the ask card on combining, survey, exclusions, estimand, adjustment, energy and models.
-   - *Fix:* as in question 3. The engine needs a per-column ledger endpoint: every reading kind, its state, and the consumer that needs it (Gaps).
+   - *Fix:* as in question 2. The engine needs a per-column ledger endpoint: every reading kind, its state, and the consumer that needs it (Gaps).
 3. **The outcome's reading depends on Who's in.**
    - *Evidence:* `target_info` reads the working table that grain, unit and combining reshape (`stages/__init__.py`), and the combining question needs the outcome (`sequence.py:_aggregation_knows_the_outcome`). A combining answer can change the outcome's kind.
    - *Fix:* when the structure stage reads repeated rows, ask "which value of the outcome counts" on the outcome card. A Who's in answer that changes the outcome's kind reopens Your question with the reason.
 4. **First look comes before the seal, but the engine explores after it.**
    - *Evidence:* the explore stage requires `target` and `split`, and depends on `cohort` (`stages/__init__.py`, `Stage("explore", …)`). MODELING_SEQUENCE §1 row 1 places Explore after the seal.
-   - *Fix:* the pre-seal notices stage (UNDERSTANDING_LAYER U4) computes First look's outcome-free looks from the oriented table. Explore's outcome-free findings move into it: low variance, more predictors than rows, collinear pairs, and quality by group. The outcome door opens after Who's in (question 2).
+   - *Fix:* the pre-seal notices stage (UNDERSTANDING_LAYER U4) computes First look's outcome-free looks from the oriented table. Explore's outcome-free findings move into it: low variance, more predictors than rows, collinear pairs, and quality by group. The outcome's views open after Who's in, as question 1 decides.
 5. **The split is two decisions in one kind, placed twice.**
    - *Evidence:* `decisions.py:SetSplit` and `SplitSpec` hold both the holdout and the validation scheme. The Router asks the split after missing values, before the estimand.
    - *Fix (engine):* separate the draw (Who's in) from the validation scheme (a Models Confirm), as two kinds, or by re-recording the split with the same draw. Under Estimate the split question becomes For the record (`seal.py:INFERENCE_SPLIT_REASON`).
@@ -1628,10 +1761,11 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
     - *Fix:* the stage registry gates each by its applicability, as the Router does, and lists it among its stage's objectives. The Router itself needs no change.
 12. **Estimates are served, and the plan locks, before Fit is pressed.**
     - *Evidence:* `server/service.py:_lock_when_shown` locks on the first served artifact of `estimand.py:ESTIMATE_STAGES`, and the fit stage requires only `models`.
-    - *Fix (engine):* hold every estimate stage until a Fit record, a system kind beside `lock_plan`. Fit then locks the plan under Estimate.
+    - *Fix (engine):* under Estimate and Describe, `stage_result` withholds every estimate stage until the track's plan is locked, as `estimand.served_gate` withholds one whose question is open. Pressing Fit records the lock, the existing system `lock_plan`, after the open-noticings gate. Pressing Fit stays a job command and computing stays live for short fits (`RECIPES_AND_TUNING.md` §4.4; ruling 2). Under Predict, pressing Fit opens Results and locks nothing.
+    - *Corrected:* the first draft held every estimate stage until a new "Fit" decision kind. That contradicted §4.4 ("nothing enters the Record"; "the hold is in the scheduler, not a stage requirement") and is withdrawn (Settled here).
 13. **Substitution is always asked after the lock.**
     - *Evidence:* `interview.py:MUST_BE_FRESH["substitution"]` is `"fit"`, and its slots are in `plan_lock.py:plan_slots`.
-    - *Fix:* declare the pair in Models, before Fit, with its preview (`data_previews.py:substitution_views`). Results draws the curve.
+    - *Fix:* declare the pair in Models, before Fit, with its preview (`data_previews.py:substitution_views`). Results draws the curve. The pair's preview, its refusal and its step and band now live in Models (`preview:substitution_views`, `refusal:substitution_blocked`, `default:substitution_step_and_band`).
 14. **Sanctioned after-fit displays count as plan changes.**
     - *Evidence:* `explain` is in `ESTIMATE_STAGES`, and the diagnostic responses and model updating are plan slots.
     - *Fix:* exempt `set_explain`, `respond_diagnostic` and `set_updating` from the after-estimates mark, and label them as companion displays.
@@ -1654,6 +1788,37 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
 19. **The methods section is ordered by guideline, not by stage.**
     - *Evidence:* `export/methods.py:SECTION_OF`.
     - *Fix:* the stage registry maps every decision kind to its stage, so a sentence's "change" link opens the right card.
+20. **The Router answers in order; the quest log lets you look ahead.**
+    - *Evidence:* `sequence.py:_answers_in_order` refuses an answer to a question still waiting behind an earlier one (`refusal:not-yet`).
+    - *Fix (interface):* every stage can be opened and read. A question whose earlier answers are missing shows "Waiting for: [the question]", with a link to it, and is not answerable. The one exception is "Decide now" from First look (disagreement 9's Router exception, P0.6).
+
+### Engine stages and quest stages
+
+The engine computes 30 stages (`stages/__init__.py:build_graph`). A stage goes stale when an answer it reads changes, and the quest stage that shows it drops back with that answer as its reason (`interview.py` module docstring: later answers "stay answered and its stages go stale"). Every stage except `target_info`, `proposals` and `seal_plan` is heavy (it runs as a job).
+
+| Engine stage | Reads (examples) | Answered in | Shown in |
+|---|---|---|---|
+| `ingest` | joins | Your data | Your data (`record:ingest-facts`) |
+| `oriented` | orientation, feature table | Your data | Your data |
+| `profile` | the oriented table | — | Your data (For the record); First look's index |
+| `findings` | lens, outcome, units, sex codings, categories, combining | Your data; goes stale on Your question and Who's in | Your data's noticings; First look's groups |
+| `structure` | the oriented table, the date reading | Who's in (grain, repeats) | Who's in |
+| `working` | repairs, grain, unit, combining | Your data, Who's in | every later stage reads it |
+| `target_info` | outcome, kind, unit, scale | Your question | Your question |
+| `roles` | roles and readings; also the outcome, goal, grain, follow-up | Your data (disagreement 1) | Your data |
+| `proposals` | roles, outcome, goal, units, repeats, Model 1 | Your data, Models | the adjustment card's guesses |
+| `cohort` | outcome, roles, exclusions, missing values, the adjustment set, forms, landmark | Who's in; goes stale on Models (disagreement 7) | the participant flow |
+| `seal_plan` | roles, kind, event, goal, clusters | Who's in | the split question's options |
+| `split` | the split | Who's in (the draw), Models (the validation scheme) | the seal |
+| `explore` | outcome, split | First look | the outcome door (computed after the seal; disagreement 4) |
+| `shelf` | roles, cohort, split | Models | which models fit |
+| `forms` | goal, cohort | Models | the form card |
+| `design` | models, roles | Models | the analysis flowchart |
+| `causal_design` | what you study and its effect | Models | overlap, before any estimate |
+| `usual_intake` | lens, goal | Models (Describe) | Results |
+| `fit`, `substitution`, `sensitivity`, `calibration`, `secondary`, `scales`, `effects`, `causal`, `time_varying`, `modification`, `explain`, `evaluation` | the plan's slots | Models (declared) | Results, after Fit (`estimand.ESTIMATE_STAGES`) |
+
+P0.4's stage registry maps these as well as the questions, so a drop-back can name both the answer that changed and the result that went stale.
 
 ## Gaps
 
@@ -1670,13 +1835,15 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
    - U2, the ledger extension;
    - U3, the census;
    - U4, the pre-seal notices stage;
-   - U5, card families in the Router;
+   - U5, card families in the Router, with the gate that reports asked rows per journey;
    - U6, context lines;
    - U7, thread sentences, supplement S1 and the IDA paragraph;
    - U8, the open-noticings gate at the lock and at the opening;
    - U9, the honest-score ladder;
-   - U10, the sentinels;
-   - U13, the coverage registry.
+   - U10, the 17 family checks (now items, `sentinel:S1` to `sentinel:E3`);
+   - U12, the fixtures: one where each noticing fires and one where it stays silent;
+   - U13, the coverage registry;
+   - U14, the calm interface for noticings: card-family rows, the context line, the manuscript mark, the open-noticings card, the supplement view.
 
    Some consumers the catalogs need have no code (U11):
    - competing risks;
@@ -1687,8 +1854,8 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
    - parallel analysis;
    - re-scoring at deployment noise.
 4. **Describe, tracks and designs.** `decisions.py:Purpose` has two values, and `ProjectState` holds one outcome, goal, seal and plan. Needed:
-   - a Describe goal, routed through every purpose branch, contract label, checklist and sentence (`voice.py:_PURPOSE_CLAUSE` has two purposes);
-   - per-track state and a merge;
+   - a Describe goal, routed through every purpose branch, contract label, checklist and sentence (`voice.py:_PURPOSE_CLAUSE` has two purposes), with its own open-noticings gate and lock;
+   - per-track state and a merge: a track id on every record; the lock, the after-estimates mark (`decisions.disclose`) and the estimates shown under prediction (`SHOWN_UNDER_PREDICTION`) scoped to the track; the rows rule for a Predict track that follows a track that read its outcome; the fill of blanks in each track's Models (question 5);
    - a design slot, with "Not available yet" exits;
    - the trial analyses;
    - the case-control restrictions and conditional logistic regression.
@@ -1704,7 +1871,7 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
    - The trees' native handling of blanks is dead code (RECIPES F1), and only the elastic net tunes (F2).
    - Ridge, Huber, random forest and XGBoost are absent (RECIPES §9, RT-1 to RT-14).
    - The groups kept in v2 are not built: faster search, more preprocessing options and the inference extensions. Neither is in-fold PCA for omics.
-7. **Fit and the lock.** There is no Fit command. The fit stage requires only `models`, and the server locks the plan on the first estimate it serves (`server/service.py:_lock_when_shown`). The 2-minute hold (RECIPES §4.4, RT-8) is not built.
+7. **Fit and the lock.** There is no Fit command. The fit stage requires only `models`, and the server locks the plan on the first estimate it serves (`server/service.py:_lock_when_shown`). Needed, as settled above: under Estimate and Describe, a serving gate that withholds every estimate stage until the track's lock, and a Fit job command that records the existing system `lock_plan` after the open-noticings gate. The 2-minute hold (RECIPES §4.4, RT-8) is not built. No new decision kind is needed.
 8. **Exhibits.**
    - No decision kind records a wording or a placement, so the manuscript is not a function of the record.
    - There are no drafted wordings and no claim-strength rule.
@@ -1744,6 +1911,14 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
     - the metabolomics zero-row crash;
     - the elastic net's platform-dependent penalty.
 14. **View kinds.** The closed vocabulary in `consequences.py` (row flow, lineage, table focus, distribution, relationship) has no table, forest, curve, calibration, decision curve, specification curve, overlap, embedding, matrix or page. Each is a recorded design decision. The footprint layouts (Focus, Strip, Flow, Routing, Angles) have no engine field (`PreviewResult`; `contracts.py:MethodContract`).
+15. **Plain words.** The engine writes the card text: `teaching/content.py` and `estimand.py` use "exposure", "confounder" or "estimand" about 396 times, many in strings a card shows. The DoD (2026-10-07) asks for plain words on every card, so the engine's card text is rewritten, with a word-list check.
+16. **The omics chain in Models.** The normalization is chosen today as a repair option of the `omics_scale` finding in Your data (`methods/omics.py:normalization_of`). MODELING_SEQUENCE §1 step 4 places the method in Models. Your data keeps only the reading.
+17. **Smaller engine items the patch found:**
+    - the log scale is valid for any positive outcome (`_outcome_scale_fits`) but offered only when the scale question fires (`default:outcome_scale_original`);
+    - a direct effect becomes "Not available yet" with an exit to the whole effect (`q:estimand`);
+    - the residual Q-Q plot has no engine code (`exhibit:residual-qq`);
+    - the cross-model importance table has no engine code, though each family's importance exists (`exhibit:cross-model-importance`);
+    - the split's seed has no control (`default:split-seed`).
 
 ### Interface
 
@@ -1788,6 +1963,77 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
    - There is no full-width manuscript and no export screen. `GET /export` and `/checklist` have no client function; `/methods` and `/plan` have client functions that no component calls.
    - There is no live checklist, no place to write author-only text, and no merge of tracks.
 9. **Purposes and pedagogy.** Every new element needs a purpose entry (BLUEPRINT §11.2) and a pass of the pedagogy reviewer. None exists yet for Write-up, the exhibits or First look's looks. `purposes.py:VIEW_PURPOSES` answers "change" and "matters", not "is the data what it says".
+10. **Classic's six views.** All six approved on 2026-10-05 now have an item: missingness patterns, the skew and outlier table and the pre-fit VIF table in First look (`exhibit:classic-exploration-views`), residual Q-Q and the cross-model importance table in Results, and the split and seed control in Who's in.
+
+## Thread families and where they land
+
+Each catalog noticing belongs to one of the 17 families of `UNDERSTANDING_LAYER.md` §3.1 (Appendix A lists 333). The 34 the completeness review added after Appendix A carry the family their own entry names (`catalogs/completeness_review.json`, "failure_prevented"); one, the identifiable values in the export, is outside the families by design. A thread lands where the item that carries it lives. Each family's check that runs under every lens (`sentinel:*`, U10) lands where most of its threads do.
+
+| Family | Threads | Your data | Your question | Who's in | Models | Results | Write-up | Its sentinel lands in |
+|---|---|---|---|---|---|---|---|---|
+| S1 Shortcut | 16 | 0 | 0 | 4 | 12 | 0 | 0 | Models |
+| S2 Leak in time | 8 (1 from the review) | 0 | 1 | 3 | 3 | 1 | 0 | Models |
+| S3 Leak in meaning | 9 (1 from the review) | 0 | 4 | 0 | 5 | 0 | 0 | Models |
+| S4 Not independent | 25 (3 from the review) | 4 | 0 | 20 | 1 | 0 | 0 | Who's in |
+| S5 Who is in | 25 (1 from the review) | 5 | 0 | 16 | 4 | 0 | 0 | Who's in |
+| S6 Done before upload | 6 | 4 | 0 | 0 | 2 | 0 | 0 | Your data |
+| S7 Drift and transport | 10 (1 from the review) | 0 | 1 | 1 | 8 | 0 | 0 | Models |
+| K1 What a value means | 55 (6 from the review) | 39 | 0 | 5 | 11 | 0 | 0 | Your data |
+| K2 What a zero or blank means | 23 (1 from the review) | 0 | 0 | 14 | 9 | 0 | 0 | Who's in |
+| K3 How well it measures | 46 (5 from the review) | 4 | 1 | 8 | 32 | 1 | 0 | Models |
+| K4 Causal place | 26 (1 from the review) | 0 | 2 | 3 | 21 | 0 | 0 | Models |
+| K5 Structure among variables | 26 (3 from the review) | 2 | 0 | 2 | 22 | 0 | 0 | Models |
+| K6 Outcome and clock | 29 (2 from the review) | 2 | 18 | 3 | 6 | 0 | 0 | Your question |
+| K7 Reference and context | 12 | 0 | 0 | 5 | 7 | 0 | 0 | Models |
+| E1 Support | 19 (1 from the review) | 0 | 0 | 3 | 15 | 1 | 0 | Models |
+| E2 Noise and multiplicity | 20 (4 from the review) | 0 | 0 | 0 | 9 | 11 | 0 | Results |
+| E3 Reading the result | 11 (3 from the review) | 0 | 0 | 1 | 3 | 7 | 0 | Results |
+| None (an obligation, not a validity family) | 1 | 0 | 0 | 0 | 0 | 0 | 1 | — |
+| **All** | **367** | **60** | **27** | **88** | **170** | **21** | **1** | |
+
+## The reference journeys against the load caps
+
+The caps (`UNDERSTANDING_LAYER.md` §2.8): at most 3 highlights in First look, at most 1 context line per card, at most 3 surfaced noticings per stage, and each reference journey within its catalog's target of asked rows. The gate that reports asked rows per journey (U5) does not exist yet, so two measures stand in.
+
+**What each journey answers today.** Engine cards answered in the review-packet captures (`review-packets/captures/*.json`, commit `2ba3c5727a`), mapped to the quest stage that asks them. Repeated answers on one card count once; each repaired finding counts once. Roles are left out (a completion in the quest log, disagreement 1), and so is the split under Estimate (For the record). The last column is what the catalogs allow on top, in noticing rows.
+
+| Journey | Your data | Your question | Who's in | Models | Results | All | Noticing rows the catalogs target |
+|---|---|---|---|---|---|---|---|
+| dietary-inference | 4 | 2 | 3 | 8 | 0 | 17 | about 5 new cards; 4 surfaced (§2.8) |
+| dietary-prediction | 3 | 2 | 3 | 4 | 1 | 13 | none given (shared: 8–12 asks with batching) |
+| clinical-inference | 3 | 2 | 2 | 6 | 0 | 13 | 4–5 rows on 3 cards; 7–9 stated (clinical.json, NHANES) |
+| clinical-prediction | 5 | 4 | 7 | 2 | 0 | 18 | 8–9 rows on 5 cards; 4–6 surfaced (§2.8) |
+| metabolomics-inference | 8 | 3 | 3 | 6 | 0 | 20 | 2–4 cards; 5–7 surfaced (§2.8) |
+| metabolomics-prediction | 8 | 3 | 4 | 3 | 0 | 18 | 3–5 cards; 5–7 surfaced (§2.8) |
+| genomics-inference | 4 | 3 | 3 | 6 | 0 | 16 | 2–3 asks; 0–1 surfaced (§2.8, shipped fixture) |
+| genomics-prediction | 4 | 3 | 4 | 3 | 0 | 14 | 2–3 asks; 0–1 surfaced (§2.8, shipped fixture) |
+| survey-inference | 2 | 3 | 2 | 6 | 0 | 13 | about 4 asks; 0 surfaced (survey.json, single instrument) |
+| survey-prediction | 2 | 3 | 3 | 3 | 0 | 11 | about 4 asks; 0 surfaced (survey.json, single instrument) |
+| dietary-describe | — | — | — | — | — | not captured | none yet (new journey, 2026-10-07) |
+| randomized-trial | — | — | — | — | — | not captured | none yet (new journey, 2026-10-07) |
+
+**What the crosswalk could put before each journey.** Decide / Confirm items whose goal and lens fit the journey, before any condition in `fires_when` is read. This is an upper bound: Models lists 132 Decide items, but a journey answers at most 8 engine cards there today.
+
+| Journey | Your data | Your question | First look | Who's in | Models | Results | Write-up |
+|---|---|---|---|---|---|---|---|
+| dietary-inference | 33 / 7 | 26 / 3 | 4 / 0 | 44 / 11 | 71 / 31 | 32 / 3 | 10 / 2 |
+| dietary-prediction | 33 / 7 | 28 / 4 | 4 / 0 | 41 / 10 | 64 / 27 | 34 / 4 | 10 / 2 |
+| clinical-inference | 30 / 6 | 28 / 3 | 4 / 0 | 44 / 13 | 63 / 28 | 30 / 3 | 10 / 2 |
+| clinical-prediction | 30 / 6 | 30 / 4 | 4 / 0 | 40 / 12 | 56 / 25 | 35 / 4 | 10 / 2 |
+| metabolomics-inference | 33 / 6 | 27 / 4 | 4 / 0 | 40 / 10 | 60 / 23 | 33 / 3 | 10 / 1 |
+| metabolomics-prediction | 33 / 6 | 29 / 5 | 4 / 0 | 39 / 10 | 53 / 21 | 35 / 4 | 10 / 1 |
+| genomics-inference | 30 / 7 | 28 / 4 | 4 / 0 | 43 / 8 | 63 / 21 | 31 / 3 | 9 / 1 |
+| genomics-prediction | 30 / 7 | 30 / 5 | 4 / 0 | 42 / 8 | 56 / 19 | 33 / 4 | 9 / 1 |
+| survey-inference | 27 / 7 | 27 / 4 | 4 / 0 | 38 / 9 | 68 / 24 | 31 / 3 | 10 / 2 |
+| survey-prediction | 27 / 7 | 29 / 5 | 4 / 0 | 36 / 8 | 61 / 20 | 35 / 4 | 10 / 2 |
+| dietary-describe | 33 / 6 | 23 / 3 | 3 / 0 | 31 / 6 | 41 / 7 | 11 / 1 | 9 / 2 |
+| randomized-trial | 30 / 6 | 28 / 3 | 4 / 0 | 44 / 13 | 63 / 28 | 30 / 3 | 10 / 2 |
+
+**Reading the two tables.**
+- Today's journeys are within reach of calm: 11 to 20 engine cards each.
+- The noticings are what would break the caps: the catalogs allow 2 to 9 asked rows per journey on top, and Models alone has 14 cards that noticings land on.
+- So the U5 gate is a release requirement, not a report: a noticing that would push a journey past its target joins an existing row or is stated (§2.8). P0.9 builds the gate, and T1 and T2 must pass it.
+- The Describe and trial journeys have no capture yet; they get one with D7 and E5.
 
 ## How this was built
 
@@ -1805,3 +2051,39 @@ Each item gives the disagreement, its evidence, and the fix. The fixes are folde
 4. **Engine items carry noticings.** A noticing the engine already handles under another name is carried by that item (`threads`), not duplicated. Containers are listed in `groups`, not as items: Models' noticing cards, Results' context-line groups and First look's "Settled" lines.
 5. **Ordering.** Within a stage, items follow the recommended order of the Decide objectives, then Confirm, For the record and Shown. Noticings are grouped by the card they are decided on.
 6. **What is carried over, and what is new.** Status, goals, lenses and `engine_source` come from the stage maps and the catalogs. The exhibit wordings, placements and pre-included flags are new in this crosswalk, and are proposals for review.
+7. **The patch.** The completeness critic found 29 gaps. Each was checked against its source before it was applied. The patch:
+   - moved results behind Fit and split six Models noticings at the lock;
+   - placed the substitution, omics and survey-estimator items in Models, and added a Confirm sweep to each stage;
+   - added thread families and the 17 family checks, and Classic's last three views;
+   - placed the flowcharts as exhibits, and covered Describe in Who's in and Write-up;
+   - fixed 57 references to ids that did not exist;
+   - rewrote 52 titles and 21 group titles in plain words.
+
+## Critic notes not taken
+
+The critic found 29 gaps. Each was checked against its source. All were applied except the parts below.
+
+- **`default:complete_case_predictors` stays For the record.** The critic named eight defaults to relabel Confirm; seven are now Confirm.
+  - This one counts complete cases on the predictors the model keeps (`stages/rows.py:cohort_inputs`; `decisions.py:left_out`).
+  - No alternative is offered or sound: counting blanks in columns the model never reads would drop rows for nothing.
+  - Its count changes only when the adjustment set changes, which is decided on that card.
+- **Univariate or multivariate regression calibration is not added as a choice.** The contract implies the form:
+  - multivariate whenever the model holds two or more error-prone intakes, univariate with one;
+  - calibrating one intake at a time is refused (`methods/calibration.py`: options `multivariate`, `univariate`, `one_at_a_time`; relation `multivariate`).
+
+  So the form is stated, not asked. The card's title now says "all of them together", and its canvas says which form runs (Settled here).
+- **`metab-treatment-marker` keeps its outcome-blind part before the lock.**
+  - Its "top feature" form needs a fit, so its `noticed_at` is cleared, as the critic asked.
+  - But the catalog's first route is "outcome-blind, always allowed": a drug-class annotation, a medication column, or presence–absence bimodality (`catalogs/metabolomics.json`). Under inference, medication is "decided by meaning before the lock".
+  - That part stays on the adjustment card, recorded in the item's notes.
+- **The Fit rule is settled, not put to Nolan as a question.** The critic was right that the first fix contradicted RECIPES §4.4 and ruling 2. The corrected fix keeps both rulings, so no product choice is left (Settled here). It is folded into P0.2 and P0.8, as the critic asked.
+- **The family landing counts are not the critic's.**
+  - The critic's examples were S4: Who's in 34, and K6: Your question 26.
+  - Counting each catalog thread once, at the stage of the item that carries it, gives S4: Who's in 20, and K6: Your question 18. The table above states that basis.
+  - The rest of that gap was applied: a family on each thread, the table, the 17 family checks, and the full rollout order in SIZING T2.
+- **The track order stays a methods ruling.** The critic allowed a ruling or a question, so the order stays in Settled here. The parts it found wrong are corrected there:
+  - per-track locks are now in v2;
+  - the rows the Estimate track reads now set how a later Predict track validates.
+
+  The blanks across tracks, which the critic also raised, became question 5.
+- **RECIPES §9 adds up to about 64 units, not about 61,** with M–L read as 5.5 and S–M as 2. C6a and C6b carry those sizes; RT-8 is counted once, in P0.8.
