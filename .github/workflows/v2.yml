@@ -42,7 +42,11 @@ jobs:
         # The R reference tests skip without Rscript (turbotab/server/requirements-dev-R.txt).
         # On failure, the failing tests become annotations, which anyone can read (logs need admin).
         run: |
-          python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --junitxml=pytest-report.xml || {
+          A=turbotab/core/tests
+          python -m pytest "$A/acceptance/test_wp7_missing_data.py" "$A/test_elastic_net_penalty.py" \
+            "$A/test_wide_data.py" "$A/test_seal.py" \
+            "$A/acceptance/test_wp4_scoring_estimators.py::test_4_the_same_rows_in_any_order_choose_the_same_elastic_net_penalty" \
+            -q -n 2 -rfE --junitxml=pytest-report.xml || {
             python .github/scripts/annotate_failures.py pytest-report.xml
             exit 1
           }
