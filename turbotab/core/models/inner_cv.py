@@ -47,6 +47,17 @@ def unit_labels(groups: Any) -> np.ndarray:
                        for i, g in enumerate(np.asarray(groups, dtype=object))], dtype=object)
 
 
+def _single_precision(column: Any) -> Any:
+    """A floating-point column in single precision; any other column as it is."""
+    import pandas as pd
+
+    if not pd.api.types.is_float_dtype(column.dtype):
+        return column
+    with np.errstate(over="ignore"):  # beyond single precision's range: ±inf, one key
+        return column.astype("Float32" if isinstance(column.dtype, pd.api.extensions.ExtensionDtype)
+                             else np.float32)
+
+
 def row_keys(X: Any, y: Any = None) -> np.ndarray:
     """A key per row from its contents (up to :data:`HASH_COLUMNS` columns and the outcome).
 
@@ -54,17 +65,28 @@ def row_keys(X: Any, y: Any = None) -> np.ndarray:
     of a split. Rows that differ in those columns or the outcome get different keys (barring a
     64-bit hash collision); rows that differ only beyond them share one and stay in one fold, which
     costs nothing. The key never depends on the order the rows arrive in.
+
+    **Numbers are hashed in single precision**, so the key, and every split drawn from it, is the
+    same on every platform. A value computed on two platforms can differ in its last bit (another
+    summation order, another libm, a fused multiply-add): the WP7 prediction fixture's simulated
+    values do between macOS and Linux, and hashed exactly, every key and every inner fold differed,
+    so the elastic net tuned its penalty on other rows. In single precision such a value keeps its
+    key unless it sits within a bit of a rounding boundary (about one value in 500 million). Rows
+    equal to single precision, about seven significant digits, share a key and stay in one fold.
     """
     import pandas as pd
 
     frame = X if isinstance(X, pd.DataFrame) else pd.DataFrame(np.asarray(X))
     frame = frame.iloc[:, :HASH_COLUMNS].reset_index(drop=True)
+    frame = frame.apply(_single_precision)
     keys = pd.util.hash_pandas_object(frame, index=False).to_numpy(dtype=np.uint64)
     if y is not None:
-        target = pd.Series(np.asarray(y, dtype=object)).astype(str).reset_index(drop=True)
+        values = np.asarray(y)
+        target = (_single_precision(pd.Series(values)) if values.dtype.kind == "f"
+                  else pd.Series(np.asarray(y, dtype=object)).astype(str))
         with np.errstate(over="ignore"):  # unsigned arithmetic wraps, as a hash should
             keys = keys * np.uint64(1_000_003) ^ pd.util.hash_pandas_object(
-                target, index=False).to_numpy(dtype=np.uint64)
+                target.reset_index(drop=True), index=False).to_numpy(dtype=np.uint64)
     return keys
 
 

@@ -340,11 +340,11 @@ def test_the_wide_elastic_net_chooses_what_the_default_chooses():
     from sklearn.preprocessing import StandardScaler
 
     from turbotab.core.bench.synth import wide_table
-    from turbotab.core.models.elastic_net import ELASTIC_NET, L1_RATIOS
+    from turbotab.core.models.elastic_net import ELASTIC_NET, L1_RATIOS, SOLVER_TOL, PooledElasticNetCV
     from turbotab.core.models.wide import Float32ElasticNetCV
 
     narrow = ELASTIC_NET.build("regression", "prediction", 1_000, 50)
-    assert type(narrow) is ElasticNetCV                               # p <= n: untouched
+    assert type(narrow) is PooledElasticNetCV and narrow.tol == SOLVER_TOL  # p <= n: untouched
     for seed in (4, 5):
         table = wide_table(n=150, genes=800, seed=seed)
         genes = [c for c in table.column_names if c.startswith("gene_")]
