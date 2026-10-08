@@ -340,12 +340,10 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core.consequences import after_state
     from turbotab.core.plan_previews import asks_first
 
-    # BLUEPRINT §14: where the fit asks for a reading first, the preview offers that ask; the
-    # method's own picture still stands unless the reading is about the columns it draws, but the
+    # BLUEPRINT §14: where the fit asks for a reading first, the preview offers that ask. The
+    # method's own picture (the recorded values of the nutrient and energy) still stands, but the
     # model matrix, which rests on every predictor's reading, is not drawn on a guess.
     asked = asks_first(ctx, after_state(decision, ctx))
-    if asked is not None and {r.column for r in asked.readings} & {E, *nutrients}:
-        return []
     after_adj = EnergyAdjustment(**decision.model_dump(exclude={"kind"}))
     before_adj = state.energy_adjustment
     predictors = model_predictors(state)

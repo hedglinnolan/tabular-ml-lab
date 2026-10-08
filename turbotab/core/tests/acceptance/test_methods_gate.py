@@ -35,6 +35,7 @@ the model, with total energy; carbohydrate is the reference each coefficient is 
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 from pathlib import Path
@@ -233,11 +234,11 @@ def test_b_the_design_beside_an_every_row_table_reads_every_analyzed_row(tmp_pat
     """The verifier's s14 repro through the real split, design and fit stages, 20% held out.
 
     Under inference: the log residual's printed elasticity is numpy's slope on all 3,000 rows (the
-    training rows' slope rounds differently); the energy-dropped residual's warning reads "on 3,000
-    analyzed rows" with numpy/statsmodels' all-row coefficients (+0.0226 against +0.0216, the
-    verifier's 0.022624 and 0.021624), and the table beside it is estimated from those same rows.
-    Under prediction the same design reads the 2,400 training rows and says so, with the training
-    rows' own references."""
+    training rows' slope rounds differently); the energy-dropped residual's warning quotes no
+    coefficient (the previews leash: no outcome-model estimate before the plan's lock, which the
+    design cannot see), and the table beside it is estimated from all 3,000 rows (numpy/statsmodels'
+    0.022624, the verifier's). Under prediction the same design reads the 2,400 training rows and
+    says so, with the training rows' own gap."""
     frame = _residual_fixture()
     paths = mf.ingest_frame(frame, tmp_path)
     frame = pd.read_csv(Path(paths["source"]))
@@ -265,8 +266,9 @@ def test_b_the_design_beside_an_every_row_table_reads_every_analyzed_row(tmp_pat
     assert (round(dropped, 6), round(standard, 6)) == (0.022624, 0.021624)  # the verifier's
     design, model = run("residual_energy_dropped", False, "inference")
     gap = next(w for w in design["warnings"] if w.startswith("energy_kcal left the outcome model"))
-    assert (f"on 3,000 analyzed rows fat_g_adj's coefficient is {_sig3(dropped)}, against "
-            f"{_sig3(standard)} with energy_kcal kept") in gap, gap
+    assert gap == ("energy_kcal left the outcome model: each nutrient's coefficient is the standard "
+                   "model's (with energy_kcal kept) only when no covariate correlates with "
+                   "energy_kcal.")
     table = next(r for r in model["coefficients"] if r["feature"] == "fat_g_adj")
     assert table["estimate"] == pytest.approx(dropped, rel=1e-6)  # the table beside it agrees
 
@@ -317,13 +319,14 @@ def test_b_the_shelf_ranks_for_the_rows_the_table_reads(tmp_path):
 def test_b_previews_under_inference_read_every_analyzed_row(tmp_path):
     """A decision preview (the energy-dropped residual's card) through the real server, 20% held
     out. Under inference the card samples every analyzed row, its basis says so and no row is
-    sealed from it; its gap is then the all-row gap computed above with numpy and statsmodels.
-    Under prediction the same card reads the training rows and keeps the held-out rows sealed."""
+    sealed from it; before the plan's lock it quotes no coefficient of the outcome model (the
+    previews leash), only that energy leaves it. Under prediction the same card reads the training
+    rows, keeps the held-out rows sealed, and its gap is the training rows' gap computed with numpy
+    and statsmodels."""
     frame = _residual_fixture()
     path = tmp_path / "resid.csv"
     frame.to_csv(path, index=False)
     frame = pd.read_csv(path)
-    dropped, standard = _gap(frame)
     preview = {"kind": "set_energy_adjustment", "method": "residual_energy_dropped",
                "energy_column": "energy_kcal", "nutrients": ["fat_g"]}
     with local_server(tmp_path / "home") as client:
@@ -361,8 +364,8 @@ def test_b_previews_under_inference_read_every_analyzed_row(tmp_path):
             if purpose == "inference":
                 assert result["basis"].startswith("Values on all 3,000 analyzed rows"), result["basis"]
                 assert "sealed" not in result["basis"]
-                assert (f"coefficient {_sig3(dropped)}, against {_sig3(standard)} with "
-                        f"`energy_kcal` kept") in caption, caption
+                assert "coefficient" not in json.dumps(result), caption
+                assert "`energy_kcal` leaves the outcome model" in caption, caption
             else:
                 kept = frame.drop(index=sorted(sealed))
                 t_dropped, t_standard = _gap(kept)
