@@ -20,7 +20,7 @@ jobs:
   tests:
     name: core and server tests, frontend check
     runs-on: ubuntu-latest
-    timeout-minutes: 90   # the acceptance suite fits many models
+    timeout-minutes: 120   # the acceptance suite fits many models; with the NHANES tests, 79 min
     env:
       TURBOTAB_WORKERS: "2"
       OMP_NUM_THREADS: "2"
