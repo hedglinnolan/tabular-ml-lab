@@ -362,6 +362,24 @@ def matrix_table(family: Any, matrix: pd.DataFrame, y: Any, *, task: str, classe
 # ── the stage ────────────────────────────────────────────────────────────────
 
 
+MARGINAL_POPULATION = ("The marginal risks are standardized over these participants; no "
+                       "design-based standardization over the surveyed population is built here.")
+
+
+def marginal_population_block(state: Any, spec: Any) -> tuple[str, list[dict[str, Any]]]:
+    """A marginal measure under the surveyed population (MODELING_SEQUENCE §4, "population
+    estimand without a design-based estimator": block and record): why, and the exits, the
+    sample-only answer and the conditional odds ratio. Its preview says the same
+    (``plan_previews.population_block``)."""
+    return MARGINAL_POPULATION, [
+        {"label": "Describe these participants (the sample-only answer)",
+         "decision": {**state.survey.model_dump(mode="json"), "kind": "set_survey",
+                      "estimand": "sample"}},
+        {"label": "Report the conditional odds ratio",
+         "decision": {**spec.model_dump(mode="json"), "kind": "set_estimand",
+                      "measure": "odds_ratio"}}]
+
+
 def _not_applicable(state: Any, exposure: str, why: str) -> Bundle:
     from turbotab.core.models.effects import APPENDIX_TITLE
 
@@ -929,15 +947,7 @@ class _Run:
         out = Marginal(declared=measure, method=method)  # type: ignore[arg-type]
         survey = self.survey
         if survey is not None and survey.design is not None:
-            out.refused = ("The marginal risks are standardized over these participants; no "
-                           "design-based standardization over the surveyed population is built "
-                           "here.")
-            exits = [{"label": "Describe these participants (the sample-only answer)",
-                      "decision": {**self.state.survey.model_dump(mode="json"),
-                                   "kind": "set_survey", "estimand": "sample"}},
-                     {"label": "Report the conditional odds ratio",
-                      "decision": {**self.spec_e.model_dump(mode="json"), "kind": "set_estimand",
-                                   "measure": "odds_ratio"}}]
+            out.refused, exits = marginal_population_block(self.state, self.spec_e)
             out.exits = [InferenceExit(**e) for e in exits]
             return out
         if getattr(self.missing, "imputations", None) is not None:

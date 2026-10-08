@@ -2109,6 +2109,12 @@ def _models_fit_the_family(decision: Any, ctx: Any) -> None:
 
 # set_model_sequence and respond_diagnostic (MODELING_SEQUENCE §1 row 11)
 
+# The diagnostics are the fitted primary model's, shown beside its estimates, so under inference
+# nothing about them is seen before the plan is locked (the response's refusal; its preview says
+# the same, ``plan_previews.diagnostic_views``).
+CHECKS_UNSEEN = ("The checks are reported with the estimates, which are not shown yet; respond "
+                 "once they are.")
+
 
 def _sequence_follows_the_plan(decision: Any, ctx: Any) -> None:
     from turbotab.core.voice import question_name
@@ -2169,6 +2175,12 @@ def _response_fits_the_check(decision: Any, ctx: Any) -> None:
                        f"The checks are of the primary model for {_tick(exposure_key(spec))}.",
                        [{"label": f"Respond for {_tick(exposure_key(spec))}",
                          "decision": decision.model_copy(update={"exposure": exposure_key(spec)})}])
+    if _get(state, "purpose") == "inference" and not _get(state, "plan_locked"):
+        # The checks are the fitted outcome model's, shown with its estimates: before the plan is
+        # locked nothing about them has been seen, and saying whether one failed would be the
+        # first sight of the fit (calm/FOUNDATION §5 rule 6).
+        raise _refusal("check_not_shown", CHECKS_UNSEEN,
+                       [{"label": "Respond once the estimates are shown", "decision": None}])
     # The record says the check failed, so it must have: read as the effects stage reported it.
     from turbotab.core.decisions import _ctx
 

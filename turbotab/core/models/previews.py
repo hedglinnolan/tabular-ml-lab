@@ -39,6 +39,7 @@ from turbotab.core.consequences import (
     PreviewContext,
     RelationshipFrame,
     RelationshipView,
+    estimates_unseen,
     register_consequence,
 )
 
@@ -220,7 +221,9 @@ def _residual_gap(ctx: PreviewContext, state: Any, frame: Any, predictors: Seque
     model's, on the preview's training rows: what leaving energy out costs (audit ME-03).
 
     The outcome is read for the same training rows the picture uses (never a held-out row). None
-    when the outcome or task cannot carry it (multiclass, no outcome yet) or a fit fails.
+    when the outcome or task cannot carry it (multiclass, no outcome yet) or a fit fails. The
+    caller never asks for it under inference before the analysis plan is locked: both numbers are
+    the outcome model's estimates (``consequences.estimates_unseen``).
     """
     from turbotab.core.methods.energy import coefficient_gap
     from turbotab.core.models.pipeline import design_spec, shared_steps, transformer
@@ -326,10 +329,22 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core.models.steps import energy_step
 
     if ctx.training_row_ids is None:
+        from turbotab.core.plan_previews import rows_not_ready
+
+        ctx.read.setdefault("note", rows_not_ready(ctx))
         return []
     state = ctx.state
     E, nutrients = _energy_reading(decision, ctx)
     if not E or not nutrients:
+        return []
+    from turbotab.core.consequences import after_state
+    from turbotab.core.plan_previews import asks_first
+
+    # BLUEPRINT §14: where the fit asks for a reading first, the preview offers that ask; the
+    # method's own picture still stands unless the reading is about the columns it draws, but the
+    # model matrix, which rests on every predictor's reading, is not drawn on a guess.
+    asked = asks_first(ctx, after_state(decision, ctx))
+    if asked is not None and {r.column for r in asked.readings} & {E, *nutrients}:
         return []
     after_adj = EnergyAdjustment(**decision.model_dump(exclude={"kind"}))
     before_adj = state.energy_adjustment
@@ -383,15 +398,19 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     keep = np.zeros(len(e), dtype=bool)
     keep[np.random.default_rng(0).permutation(len(e))[:POINTS]] = True
     method = after_adj.method
+    dropped = method == "residual_energy_dropped"
+    # The gap is the outcome model's own coefficients: under inference it waits for the lock, as
+    # every estimate does (calm/FOUNDATION §5 rule 6); the option still says energy leaves.
     gap = (_residual_gap(ctx, state, frame, predictors, after_adj, out_name)
-           if method == "residual_energy_dropped" and not problem else None)
+           if dropped and not problem and not estimates_unseen(state) else None)
     if problem:
         caption = fit_words(problem, CAPTION_WORDS)
     elif gap is not None:  # the gap is this option's own consequence, whatever is on record now
         caption = _relationship_caption(method, n, E, out_name, r0, r1, after_adj.strata, gap)
     elif reopened:
+        leaves = f"; `{E}` leaves the outcome model" if dropped else ""
         caption = fit_words(f"Recorded now: `{now_name}` correlates {_r(r0)} with `{E}`; with this "
-                            f"choice, `{out_name}` correlates {_r(r1)}.", CAPTION_WORDS)
+                            f"choice, `{out_name}` correlates {_r(r1)}{leaves}.", CAPTION_WORDS)
     else:
         caption = _relationship_caption(method, n, E, out_name, r0, r1, after_adj.strata)
     scatter_story: list[Any] = []
@@ -419,8 +438,9 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
 
     lineage_before = lineage_after = None
     try:
-        lineage_after = _lineage(state, frame, predictors, after_adj)
-        lineage_before = _lineage(state, frame, predictors, before_adj)
+        if asked is None:
+            lineage_after = _lineage(state, frame, predictors, after_adj)
+            lineage_before = _lineage(state, frame, predictors, before_adj)
     except (ValueError, TypeError):
         pass  # the recorded method may not run on these rows; the option's own lineage still shows
     if lineage_after is not None:
@@ -471,10 +491,20 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     )
 
     if ctx.training_row_ids is None:
+        from turbotab.core.plan_previews import rows_not_ready
+
+        ctx.read.setdefault("note", rows_not_ready(ctx))
         return []
     state = ctx.state
     predictors = model_predictors(state)
     if not predictors:
+        return []
+    from turbotab.core.consequences import after_state
+    from turbotab.core.plan_previews import asks_first
+
+    # BLUEPRINT §14: the fit asks for a reading its predictors rest on before it builds any matrix,
+    # so the preview offers that ask rather than a matrix built on a guess.
+    if asks_first(ctx, after_state(decision, ctx)) is not None:
         return []
     frame = _read(ctx, input_columns(predictors, state.energy_adjustment))
     spec = design_spec(state, frame, predictors)
@@ -518,6 +548,11 @@ def models_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
         if len(views) >= MAX_VIEWS:
             break
     _say_the_cost(decision, ctx, int(len(ctx.training_row_ids)), len(predictors))
+    from turbotab.core.plan_previews import population_block
+
+    # Under the surveyed population a family with no design-based estimator is blocked and
+    # recorded (MODELING_SEQUENCE §4): the preview says so with the fit's own words and exits.
+    population_block(ctx, after_state(decision, ctx), decision)
     return views
 
 
