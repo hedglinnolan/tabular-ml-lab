@@ -468,6 +468,11 @@ def design_stage(ctx: StageContext) -> Bundle:
     inference = state.purpose == "inference"
     design_ids = assignment.index.to_numpy() if inference else train_ids
     rows_word = "analyzed rows" if inference else "training rows"
+    if not len(design_ids):
+        # The cohort refuses too few rows with what removed them (``core.row_floor``); never
+        # scikit-learn's "Found array with 0 sample(s)" from a design handed none.
+        raise ValueError(f"There are no {rows_word} to build the models on; the row flow says "
+                         f"which answers removed them.")
     adj = state.energy_adjustment
     ctx.progress(0.05, f"Reading the {rows_word}")
     y_rows = None

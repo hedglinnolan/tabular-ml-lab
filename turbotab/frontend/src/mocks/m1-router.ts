@@ -325,7 +325,16 @@ export function route(
     }
     const own = NEEDS[key].filter((s) => pending.has(s));
     const fresh = MUST_BE_FRESH[key];
-    if (fresh && stages[fresh]?.status !== "fresh" && !own.includes(fresh)) own.push(fresh);
+    const held = fresh ? stages[fresh] : undefined;
+    // A fit that failed or was stopped holds nothing back: the step opens and says why.
+    if (
+      fresh &&
+      held?.status !== "fresh" &&
+      held?.status !== "error" &&
+      !held?.cancelled &&
+      !own.includes(fresh)
+    )
+      own.push(fresh);
     if (first === null) {
       first = key;
       steps.push({

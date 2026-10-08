@@ -447,6 +447,33 @@ def test_the_seal_opens_once_on_a_fresh_fit_and_is_never_reverted():
     assert undo.value.code == "seal_stays_open"
 
 
+def test_opening_on_a_failed_fit_says_why_rather_than_to_wait():
+    """The zero-row crash: no step waits on a failed fit, so opening the seal is asked of a fit that
+    will not finish. It is refused with the first failure on the fit's way, in plain words, never
+    "wait for the fit"; a fit still computing is waited for, as before."""
+    from turbotab.core.graph import StageStatus
+
+    state = d.fold(sealed_log())
+    statuses = {
+        "fit": StageStatus(stage="fit", status="error", error="Needs 'design', which failed."),
+        "design": StageStatus(stage="design", status="error", error="Needs 'split', which failed."),
+        "split": StageStatus(stage="split", status="error", error="Needs 'cohort', which failed."),
+        "cohort": StageStatus(stage="cohort", status="error",
+                              error="ValueError: The answers recorded leave none of the 80 rows."),
+    }
+    ctx = {"state": state, "artifact": lambda s: None, "stage": statuses.get}
+    with pytest.raises(Refusal) as failed:
+        seal._open_seal_once_on_a_fresh_fit(d.OpenSeal(), ctx)
+    assert failed.value.code == "fit_failed"
+    assert failed.value.message == (
+        "The models were not fitted for the current answers. The answers recorded leave none of the "
+        "80 rows. The held-out rows open only on a finished, current fit.")
+    running = {"fit": StageStatus(stage="fit", status="running")}
+    with pytest.raises(Refusal) as waiting:
+        seal._open_seal_once_on_a_fresh_fit(d.OpenSeal(), {**ctx, "stage": running.get})
+    assert waiting.value.code == "fit_not_fresh"
+
+
 # ── post-seal marking ────────────────────────────────────────────────────────
 
 

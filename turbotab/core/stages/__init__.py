@@ -446,7 +446,9 @@ def build_graph() -> Graph:
             # follow-up ended by it, on a line of its own.
             # cohort 8 (FORM): the consumers-only domain of a food with many non-consumers leaves
             # the non-consumers on a line of their own (an estimand change, STROBE-nut nut-14).
-            Stage("cohort", 8, ("working", "target_info"),
+            # cohort 9 (the zero-row crash): fewer rows than the design needs fail here, with what
+            # removed them, so no stage downstream is handed an empty frame (``core.row_floor``).
+            Stage("cohort", 9, ("working", "target_info"),
                   ("target", *ROLE_READS, "exclusions", "missing", "findings", "purpose",
                    *WP17_READS, "follow_up", "task", "form_domains"), cohort_stage,
                   heavy=True, requires=("target",), label="Counting who is in the analysis"),

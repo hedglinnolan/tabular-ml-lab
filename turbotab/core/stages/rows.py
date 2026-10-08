@@ -1545,6 +1545,39 @@ def compute_cohort(
     return steps, kept, preds
 
 
+def cohort_flows(store: Any, states: Sequence[Any], ingest: Mapping[str, Any],
+                 row_ids: Any | None = None) -> tuple[Any, Any, list[tuple[list[dict[str, Any]], Any]]]:
+    """Each state's cohort flow over the same rows (``row_ids``; None: every row), reading once
+    what every flow reads: ``(frame, mask, [(steps, kept), …])``, ``mask`` the gappy predictors'
+    blanks (NaN where blank), or None when no state judges complete cases. A preview compares the
+    flows before and after an answer (``row_previews``), and so does the check that an answer
+    leaves rows to analyze (``turbotab.core.row_floor``)."""
+    from turbotab.core.decisions import missing_strategy
+
+    needed: list[str] = []
+    gappy: list[str] = []
+    for st in states:
+        n, _, g = cohort_inputs(st, ingest)
+        needed += n
+        gappy += g
+    needed, gappy = list(dict.fromkeys(needed)), list(dict.fromkeys(gappy))
+    frame = store.materialize(needed, row_ids)
+    mask = _missing_mask(store, gappy, frame.index) if gappy else None
+    results = []
+    for st in states:
+        _, _, g = cohort_inputs(st, ingest)
+        # The cohort's own flow (``compute_cohort``), the landmark's line included: a time-to-event
+        # outcome's follow-up counted from a landmark drops the rows not at risk then; and (wave
+        # 2b, FORM) the declared exposure's consumers-only domain, an estimand change.
+        steps, kept = cohort_flow(frame, target=st.target, rules=st.exclusions,
+                                  missing=missing_strategy(st), predictor_columns=g,
+                                  missing_frame=mask, repairs=repair_rules(st),
+                                  reference=ingest.get("reference_rows"),
+                                  landmark=landmark_of(st), domain=domain_of(st))
+        results.append((steps, kept))
+    return frame, mask, results
+
+
 def _missing_mask(store: Any, columns: Sequence[str], index: Any) -> Any:
     """A frame of the gappy predictors on these rows, read a block of columns at a time."""
     import pandas as pd
@@ -1599,6 +1632,14 @@ def cohort_stage(ctx: StageContext) -> Bundle:
     loss = None
     with open_store(ctx) as store:
         steps, kept, preds = compute_cohort(store, ctx.state, ingest, measured=measured)
+        # Too few rows to analyze is said here, with what removed them, before any stage is
+        # handed an empty frame (``turbotab.core.row_floor``; recorded answers are refused first,
+        # but a table that changed under them can still leave too few).
+        from turbotab.core.row_floor import cohort_refusal
+
+        refused = cohort_refusal(store, ctx.state, ingest, steps, kept)
+        if refused:
+            raise ValueError(refused)
         cc = next((st for st in steps if st["key"] == "complete_cases"), None)
         if missing_strategy(ctx.state) == "complete_case" and cc is not None and cc["dropped"]:
             ctx.progress(0.7, "Comparing the rows complete cases drop with the rows they keep")
