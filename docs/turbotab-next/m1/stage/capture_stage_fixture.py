@@ -36,9 +36,9 @@ sys.path.insert(0, str(ROOT))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from turbotab.core.config import Settings  # noqa: E402
+from turbotab.core.tests.stage_harness import NHANES  # noqa: E402  (the tracked fixture)
 from turbotab.server.app import create_app  # noqa: E402
 
-NHANES = Path("/Users/nhedglin/tabular-ml-lab/_tt_tmp_nhanes.csv")
 OUT = ROOT / "turbotab/frontend/src/mocks/m1-stage-fixture.json"
 NUTRIENTS = ["protein", "carb", "sugar", "fat_total", "fat_sat", "fat_mon", "fat_poly"]
 BOOT = 40

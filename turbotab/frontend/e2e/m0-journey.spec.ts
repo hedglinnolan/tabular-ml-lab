@@ -13,6 +13,7 @@ import { mkdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
+import { onMock } from "./backend";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../../..");
@@ -23,11 +24,7 @@ let prefix = process.env.E2E_SCREEN_PREFIX ?? "mock";
 
 /** Ask the backend what it is, and pick the screenshot prefix to match. */
 async function backend(page: Page) {
-  const health = await page.evaluate(async () => {
-    const res = await fetch("/api/health");
-    return (await res.json()) as { version: string };
-  });
-  prefix = process.env.E2E_SCREEN_PREFIX ?? (health.version.endsWith("-mock") ? "mock" : "real");
+  prefix = process.env.E2E_SCREEN_PREFIX ?? ((await onMock(page)) ? "mock" : "real");
 }
 
 async function shoot(page: Page, name: string) {

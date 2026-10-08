@@ -15,6 +15,7 @@ import { mkdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { onMock } from "./backend";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCREENS = resolve(HERE, "../../../docs/turbotab-next/m1/screens");
@@ -54,13 +55,7 @@ const park = (page: Page) => page.mouse.move(1430, 890);
 async function openNhanes(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();
-  const health = await page.evaluate(
-    async () => (await (await fetch("/api/health")).json()) as { version: string },
-  );
-  test.skip(
-    !health.version.endsWith("-mock"),
-    "this journey runs on the mock's NHANES-shaped table",
-  );
+  test.skip(!(await onMock(page)), "this journey runs on the mock's NHANES-shaped table");
   await page
     .getByRole("link", { name: /nhanes diet glucose/ })
     .first()
@@ -297,10 +292,7 @@ test("a wide table keeps the outcome picker and the roles question responsive", 
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Open a table to begin." })).toBeVisible();
-  const health = await page.evaluate(
-    async () => (await (await fetch("/api/health")).json()) as { version: string },
-  );
-  test.skip(!health.version.endsWith("-mock"), "the wide mock table");
+  test.skip(!(await onMock(page)), "the wide mock table");
   await page
     .getByRole("link", { name: /genomics counts wide/ })
     .first()

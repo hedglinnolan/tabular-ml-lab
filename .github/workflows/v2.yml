@@ -40,6 +40,7 @@ jobs:
 
       - name: Core and server tests
         # The R reference tests skip without Rscript (turbotab/server/requirements-dev-R.txt).
+        # The NHANES tests run: they read the tracked turbotab/core/tests/fixtures/nhanes.csv.gz.
         # On failure, the failing tests become annotations, which anyone can read (logs need admin).
         run: |
           python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --junitxml=pytest-report.xml || {
@@ -58,6 +59,39 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run check
+
+  e2e:
+    name: mock browser tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: turbotab/frontend/package-lock.json
+
+      - name: Install the frontend and Chromium
+        working-directory: turbotab/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Mock browser tests
+        # Playwright starts the mock dev server (npm run dev:mock); the real-server journeys skip.
+        # The github reporter turns each failure into an annotation, which anyone can read.
+        working-directory: turbotab/frontend
+        run: npx playwright test --reporter=line,github
+
+      - name: Keep the failing tests' traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: turbotab/frontend/test-results
+          retention-days: 7
 
   docker:
     name: server image (build, accounts, sign-in, upload)

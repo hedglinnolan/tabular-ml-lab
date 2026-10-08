@@ -516,7 +516,7 @@ def test_4f_hba1c_in_ifcc_units_is_a_unit_question_not_an_impossible_value():
     assert f["params"]["columns"] == [] and "NGSP master equation" in f["detail"]
 
 
-@pytest.mark.skipif(not NHANES.is_file(), reason="the real NHANES export is untracked")
+@pytest.mark.skipif(not NHANES.is_file(), reason="the real NHANES export is not on this machine")
 def test_4e_the_nhanes_export_gets_sourced_bands_and_no_energy_band(tmp_path):
     table = Ingested(NHANES, tmp_path / "nhanes")
     found = table.run(findings_stage, ProjectState(lens=["dietary", "clinical"], target=None))["findings"]

@@ -29,7 +29,6 @@ export with ``D-skeptic/s7_nest.py`` (test 7), each regenerated here from its se
 """
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -70,19 +69,12 @@ from turbotab.core.teaching import entry
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance import references as ref
 
-REPO = Path(__file__).resolve().parents[4]
-
 
 def _nhanes_export() -> Path | None:
-    """The real NHANES export: untracked, beside the main checkout (a worktree looks up), or
-    named by ``TURBOTAB_NHANES``. The same lookup as ``tests/test_rows.py``."""
-    candidates = [os.environ.get("TURBOTAB_NHANES", ""), REPO / "_tt_tmp_nhanes.csv"]
-    if REPO.parent.name == "worktrees":
-        candidates.append(REPO.parents[2] / "_tt_tmp_nhanes.csv")
-    for c in candidates:
-        if c and Path(c).is_file():
-            return Path(c)
-    return None
+    """The real NHANES export: the tracked fixture, decompressed (``stage_harness.NHANES``)."""
+    from turbotab.core.tests.stage_harness import NHANES
+
+    return NHANES if NHANES.is_file() else None
 
 
 NHANES = _nhanes_export()
@@ -899,7 +891,7 @@ def test_7b_the_nhanes_reference_with_and_without_the_parts(tmp_path):
 
     The audit's rows (``D-skeptic/s7_nest.py``): kcal within 500–5,000 and every model column
     present. Reference: statsmodels OLS on those rows, 0.3127 and 0.0734. Skipped where the
-    untracked export is absent, as every test of the real export is (``tests/test_rows.py``);
+    export is absent, as every test of the real export is (``stage_harness.NHANES``);
     ``test_7`` holds the labels everywhere.
     """
     d = pd.read_csv(NHANES)

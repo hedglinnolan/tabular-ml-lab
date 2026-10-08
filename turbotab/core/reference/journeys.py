@@ -206,7 +206,7 @@ class Journey:
     roles: dict[str, str] | None = None
     answers: dict[str, Any] = field(default_factory=dict)
     before: dict[str, Callable[["Run", dict[str, Any]], None]] = field(default_factory=dict)
-    needs: tuple[str, ...] = ()  # what must exist for it to run (an untracked file)
+    needs: tuple[str, ...] = ()  # what must exist for it to run (a data file)
     timeout: float = 5400.0
     fixture_key: str = ""  # the fixture's entry in ``truths.FIXTURE_TRUTHS`` (its declared truth)
 
@@ -878,6 +878,7 @@ NHANES_FLAGS = ["imputed_weight", "imputed_height", "imputed_bmi", "imputed_wais
 
 
 def nhanes_path() -> Path:
+    """The NHANES export: the tracked fixture, decompressed (``stage_harness.NHANES``)."""
     from turbotab.core.tests.stage_harness import NHANES
 
     return NHANES
@@ -1050,6 +1051,8 @@ SURVEY_INFERENCE_ROLES = {"respondent_id": "identifier",
                           **{c: "covariate" for c in ("age", "sex", "education", *SURVEY_ITEMS)},
                           **{f"item_{i:02d}": "excluded" for i in range(11, 41)}}
 
+NHANES_FILE = ("_tt_tmp_nhanes.csv (the NHANES export, tracked gzipped as "
+               "turbotab/core/tests/fixtures/nhanes.csv.gz)")
 NHANES_WHY = ("V2_DEFINITION_OF_DONE §1: the NHANES export runs the dietary and clinical reference "
               "journeys.")
 
@@ -1057,7 +1060,7 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
     Journey(
         "dietary-inference", "dietary", "inference",
         "Is a higher sugar intake, at the same total energy, associated with fasting glucose?",
-        "_tt_tmp_nhanes.csv (the NHANES export, untracked)", NHANES_WHY,
+        NHANES_FILE, NHANES_WHY,
         nhanes_path, nhanes_dietary_truth, target="glucose", lenses=("dietary",),
         exposure="sugar", roles=NHANES_DIETARY_ROLES,
         before={"target": apply_first_repair(r"^sas_zeros"), "models": declare_model_sequence},
@@ -1065,14 +1068,14 @@ JOURNEYS: dict[str, Journey] = {j.name: j for j in (
     Journey(
         "dietary-prediction", "dietary", "prediction",
         "How well do diet and body measures predict fasting glucose?",
-        "_tt_tmp_nhanes.csv (the NHANES export, untracked)", NHANES_WHY,
+        NHANES_FILE, NHANES_WHY,
         nhanes_path, nhanes_dietary_truth, target="glucose", lenses=("dietary",),
         before={"target": apply_first_repair(r"^sas_zeros")},
         needs=(str(nhanes_path()),), fixture_key=NHANES_KEY),
     Journey(
         "clinical-inference", "clinical", "inference",
         "Is a larger waist circumference associated with fasting glucose?",
-        "_tt_tmp_nhanes.csv (the NHANES export, untracked)", NHANES_WHY,
+        NHANES_FILE, NHANES_WHY,
         nhanes_path, nhanes_clinical_truth, target="glucose", lenses=("clinical",),
         exposure="waist", roles=NHANES_CLINICAL_ROLES,
         before={"target": apply_first_repair(r"^sas_zeros"), "models": declare_model_sequence},

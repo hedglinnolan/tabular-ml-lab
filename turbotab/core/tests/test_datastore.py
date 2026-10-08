@@ -12,8 +12,6 @@ import datetime as dt
 import decimal
 import json
 import math
-import os
-import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -521,19 +519,10 @@ def test_a_wide_table_ingests_and_summarizes(tmp_path):
 
 
 def _nhanes_path() -> Path | None:
-    candidates = [os.environ.get("TURBOTAB_NHANES_CSV"), REPO_ROOT / "_tt_tmp_nhanes.csv"]
-    try:  # a linked worktree: the export lives in the main checkout
-        out = subprocess.run(["git", "-C", str(REPO_ROOT), "worktree", "list", "--porcelain"],
-                             capture_output=True, text=True, timeout=10).stdout
-        main = out.splitlines()[0].split(" ", 1)[1] if out else None
-        if main:
-            candidates.append(Path(main) / "_tt_tmp_nhanes.csv")
-    except (OSError, subprocess.SubprocessError, IndexError):
-        pass
-    for candidate in candidates:
-        if candidate and Path(candidate).is_file() and os.access(candidate, os.R_OK):
-            return Path(candidate)
-    return None
+    """The NHANES export: the tracked fixture, decompressed (``stage_harness.NHANES``)."""
+    from turbotab.core.tests.stage_harness import NHANES
+
+    return NHANES if NHANES.is_file() else None
 
 
 def test_the_real_nhanes_export_ingests(tmp_path):

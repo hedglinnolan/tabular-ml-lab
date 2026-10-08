@@ -5,7 +5,6 @@ wrong count cannot hide behind the code that produced it.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
@@ -24,14 +23,10 @@ DIETARY = SAMPLES / "dietary_recalls.csv"
 
 
 def _nhanes() -> Path | None:
-    """The real NHANES export: untracked, beside the main checkout (a worktree looks up)."""
-    candidates = [os.environ.get("TURBOTAB_NHANES", ""), REPO / "_tt_tmp_nhanes.csv"]
-    if REPO.parent.name == "worktrees":
-        candidates.append(REPO.parents[2] / "_tt_tmp_nhanes.csv")
-    for c in candidates:
-        if c and Path(c).is_file():
-            return Path(c)
-    return None
+    """The real NHANES export: the tracked fixture, decompressed (``stage_harness.NHANES``)."""
+    from turbotab.core.tests.stage_harness import NHANES
+
+    return NHANES if NHANES.is_file() else None
 
 
 NHANES = _nhanes()
