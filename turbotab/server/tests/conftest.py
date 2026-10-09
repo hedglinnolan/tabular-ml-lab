@@ -14,8 +14,9 @@ from turbotab.server.app import create_app
 def pytest_configure(config) -> None:
     config.addinivalue_line(
         "markers",
-        "slow: over 35 s on a developer machine; the nightly tier of CI (.github/workflows/v2.yml) "
-        "runs it and the fast tier does not (-m 'not slow'). The core tests register it too.")
+        "slow: over 35 s on a developer machine; the full tier of CI "
+        "(.github/workflows/v2-full.yml) runs it and the fast tier does not (-m 'not slow'). "
+        "The core tests register it too.")
 
 
 REPO = Path(__file__).resolve().parents[3]

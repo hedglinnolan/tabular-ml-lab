@@ -135,7 +135,6 @@ class _AppClassifier(_AppFitted):
         return type("C", (ClassifierMixin, BaseEstimator), {})().__sklearn_tags__()
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("task,target", [("regression", "glucose"), ("binary", "glucose_high"),
                                          ("multiclass", "glucose_band")])
 def test_cv_metrics_equal_an_independent_cross_validate(table, task, target):
@@ -252,7 +251,6 @@ def test_binary_holdout_uses_the_second_class_as_positive(table):
 # ── leakage ──────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("purpose", ["prediction", "inference"])
 def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, purpose):
     """Every step of every pipeline is fit on one training fold or on all training rows, never on a

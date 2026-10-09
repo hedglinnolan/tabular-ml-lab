@@ -3,15 +3,14 @@ name: TurboTab v2
 # TurboTab v2 (turbotab/core, turbotab/server, turbotab/frontend, turbotab/deploy). Classic's
 # workflows are ci.yml, deploy.yml and release.yml; this one does not replace them.
 #
-# Two tiers (audit of 2026-10-09, recommendation 7):
-#   FAST     on every push and pull request, about 10 minutes: the frontend's type checks, lint and
-#            vitest; the fast pytest subset (all but turbotab/core/tests/acceptance, which the
-#            nightly runs); the server image; the launchers, with the numerics check on Windows.
-#   NIGHTLY  on a schedule and by "Run workflow" (workflow_dispatch); a push to a branch named
-#            ci/full* runs it too: the whole core and server suite (about 40 minutes) and the
-#            browser tests.
-# GitHub runs a schedule only from the default branch, so the cron starts once this file is on
-# main. Until then, "Run workflow" or a ci/full* branch starts the nightly.
+# Two tiers (audit of 2026-10-09, recommendation 7); turbotab/core/tests/test_ci_tiers.py checks
+# the split:
+#   FAST  this file, on every push and pull request, under ten minutes: the frontend's type
+#         checks, lint and vitest; every core and server test but the acceptance suite and the
+#         few marked slow, guarantee tests included, in parallel shards; the server image; the
+#         launchers, with the numerics check on Windows (the audit's section 3.4).
+#   FULL  v2-full.yml, on every push to turbotab-next or ci/full*, every pull request to main and
+#         nightly: the whole core and server suite (50 minutes) and the browser tests.
 # Every pip install uses turbotab/server/constraints.txt (its header says how to update it).
 
 on:
@@ -19,21 +18,36 @@ on:
     branches: [turbotab-next, "ci/**"]   # ci/** lets a fix iterate on Linux and Windows runners
   pull_request:
     branches: [main]
-  schedule:
-    - cron: "23 6 * * *"   # 06:23 UTC, 02:23 US Eastern
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  # A nightly run is never cancelled by a push, and a push cancels only the push before it.
+  # A push cancels only the push before it.
   group: v2-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
 jobs:
   fast-tests:
-    name: fast tests (all but the acceptance suite)
+    name: fast tests (${{ matrix.shard }})
+    # Every test but the acceptance suite and the few marked slow, in parallel shards so that each
+    # stays under ten minutes. A new test file lands in the shard whose paths hold it, and the
+    # shards together run each test once (turbotab/core/tests/test_ci_tiers.py).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Test time on a developer machine (CI takes about 2.5 times as long): about 260 s
+          # each, but the last at 100 s; test_modeling.py alone took 360 s, so it is split.
+          - shard: server
+            paths: turbotab/server
+          - shard: core
+            paths: turbotab/core --ignore=turbotab/core/tests/acceptance --ignore=turbotab/core/tests/test_modeling.py
+          - shard: models, the leakage and cross-validation guarantees
+            paths: turbotab/core/tests/test_modeling.py -k "fitted_step_sees_only or independent_cross_validate"
+          - shard: models, the rest
+            paths: turbotab/core/tests/test_modeling.py -k "not (fitted_step_sees_only or independent_cross_validate)"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -57,13 +71,11 @@ jobs:
             -r turbotab/server/requirements.txt -r turbotab/server/requirements-dev.txt
 
       - name: Fast core and server tests
-        # Everything under turbotab/core and turbotab/server except the acceptance suite, whose
-        # journeys fit many models, and the ten tests marked slow; the
-        # nightly runs those. On failure, the failing tests become annotations, which anyone can
-        # read (logs need admin).
+        # The acceptance suite, whose journeys fit many models, and the tests marked slow run in
+        # the full tier (v2-full.yml). On failure, the failing tests become annotations, which
+        # anyone can read (logs need admin).
         run: |
-          python -m pytest turbotab/core turbotab/server --ignore=turbotab/core/tests/acceptance \
-            -m "not slow" -q -n 2 -rfE --junitxml=pytest-report.xml || {
+          python -m pytest ${{ matrix.paths }} -m "not slow" -q -n 2 -rfE --junitxml=pytest-report.xml || {
             python .github/scripts/annotate_failures.py pytest-report.xml
             exit 1
           }
@@ -269,74 +281,3 @@ jobs:
             python .github/scripts/annotate_failures.py pytest-report.xml
             exit 1
           }
-
-  # ── NIGHTLY: a schedule, "Run workflow", or a push to ci/full* ────────────────
-
-  full-tests:
-    name: full core and server suite
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/ci/full')
-    runs-on: ubuntu-latest
-    timeout-minutes: 120   # the acceptance suite fits many models; with the NHANES tests, 79 min
-    env:
-      TURBOTAB_WORKERS: "2"
-      OMP_NUM_THREADS: "2"
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: |
-            turbotab/server/requirements.txt
-            turbotab/server/requirements-dev.txt
-            turbotab/server/constraints.txt
-
-      - name: Install the Python dependencies
-        run: |
-          python -m pip install -c turbotab/server/constraints.txt \
-            -r turbotab/server/requirements.txt -r turbotab/server/requirements-dev.txt
-
-      - name: Core and server tests
-        # The R reference tests skip without Rscript (turbotab/server/requirements-dev-R.txt).
-        # The NHANES tests run: they read the tracked turbotab/core/tests/fixtures/nhanes.csv.gz.
-        # On failure, the failing tests become annotations, which anyone can read (logs need admin).
-        run: |
-          python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --junitxml=pytest-report.xml || {
-            python .github/scripts/annotate_failures.py pytest-report.xml
-            exit 1
-          }
-
-  e2e:
-    name: mock browser tests (Playwright)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/ci/full')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: turbotab/frontend/package-lock.json
-
-      - name: Install the frontend and Chromium
-        working-directory: turbotab/frontend
-        run: |
-          npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
-
-      - name: Mock browser tests
-        # Playwright starts the mock dev server (npm run dev:mock); the real-server journeys skip.
-        # The github reporter turns each failure into an annotation, which anyone can read.
-        working-directory: turbotab/frontend
-        run: npx playwright test --reporter=line,github
-
-      - name: Keep the failing tests' traces
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-traces
-          path: turbotab/frontend/test-results
-          retention-days: 7

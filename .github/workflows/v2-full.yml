@@ -1,0 +1,108 @@
+name: TurboTab v2 full
+
+# TurboTab v2's full tier (audit of 2026-10-09, recommendation 7; the fast tier is v2.yml): the
+# whole core and server suite, acceptance tests included (50 minutes on 650126ca), and the mock
+# browser tests. The acceptance suite holds the binding rules: no estimate before the plan lock,
+# nothing served before Fit, an independent reference for every number. So it runs wherever the
+# work lands and before every release, not only at night:
+#   - every push to turbotab-next (the integration branch) and to a branch named ci/full*;
+#   - every pull request to main;
+#   - nightly at 06:23 UTC, on turbotab-next. GitHub reads a schedule, and offers "Run workflow"
+#     in the Actions tab, only from the default branch (main), so both start once this file is on
+#     main; until then the pushes above are what run it.
+# Every pip install uses turbotab/server/constraints.txt (its header says how to update it).
+
+on:
+  push:
+    branches: [turbotab-next, "ci/full*"]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 6 * * *"   # 06:23 UTC, 02:23 US Eastern
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A nightly run is never cancelled by a push, and a push cancels only the push before it.
+  group: v2-full-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+
+jobs:
+  full-tests:
+    name: full core and server suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 120   # the acceptance suite fits many models: 50 minutes on 650126ca
+    env:
+      TURBOTAB_WORKERS: "2"
+      OMP_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The nightly tests the integration branch; the default branch (main) only
+          # changes through pull requests, which run this tier already. Otherwise ('') the commit
+          # that started the run.
+          ref: ${{ github.event_name == 'schedule' && 'turbotab-next' || '' }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            turbotab/server/requirements.txt
+            turbotab/server/requirements-dev.txt
+            turbotab/server/constraints.txt
+
+      - name: Install the Python dependencies
+        run: |
+          python -m pip install -c turbotab/server/constraints.txt \
+            -r turbotab/server/requirements.txt -r turbotab/server/requirements-dev.txt
+
+      - name: Core and server tests
+        # The R reference tests skip without Rscript (turbotab/server/requirements-dev-R.txt).
+        # The NHANES tests run: they read the tracked turbotab/core/tests/fixtures/nhanes.csv.gz.
+        # On failure, the failing tests become annotations, which anyone can read (logs need admin).
+        run: |
+          python -m pytest turbotab/core turbotab/server -q -n 2 -rfE --junitxml=pytest-report.xml || {
+            python .github/scripts/annotate_failures.py pytest-report.xml
+            exit 1
+          }
+
+  e2e:
+    name: mock browser tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The nightly tests the integration branch; the default branch (main) only
+          # changes through pull requests, which run this tier already. Otherwise ('') the commit
+          # that started the run.
+          ref: ${{ github.event_name == 'schedule' && 'turbotab-next' || '' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: turbotab/frontend/package-lock.json
+
+      - name: Install the frontend and Chromium
+        working-directory: turbotab/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Mock browser tests
+        # Playwright starts the mock dev server (npm run dev:mock); the real-server journeys skip.
+        # The github reporter turns each failure into an annotation, which anyone can read.
+        working-directory: turbotab/frontend
+        run: npx playwright test --reporter=line,github
+
+      - name: Keep the failing tests' traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: turbotab/frontend/test-results
+          retention-days: 7

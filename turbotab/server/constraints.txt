@@ -7,9 +7,9 @@
 #   python -m pip install -c turbotab/server/constraints.txt -r turbotab/server/requirements.txt
 #
 # One file serves Linux, macOS and Windows on Python 3.12 and newer (the lines with a `;` apply to
-# one platform). To update it, resolve afresh, run the nightly tier of .github/workflows/v2.yml
-# (the full suite and the browser tests; start it with "Run workflow") on the result, and commit
-# the file with whatever the new versions required:
+# one platform). To update it, resolve afresh, run the full tier of CI on the result (the whole
+# suite and the browser tests, .github/workflows/v2-full.yml: push the change to a branch named
+# ci/full-something), and commit the file with whatever the new versions required:
 #
 #   uv pip compile turbotab/server/requirements.txt turbotab/server/requirements-dev.txt \
 #       --universal --python-version 3.12 --no-header --no-annotate -o /tmp/constraints.body
