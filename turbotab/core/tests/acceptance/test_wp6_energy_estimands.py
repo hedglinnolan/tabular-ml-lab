@@ -375,6 +375,11 @@ def test_2b_the_energy_dropped_form_says_so_and_the_card_shows_the_gap(tmp_path)
     the rows the preview card
     reads (its sample of training rows). Measured: the option's label, the design's estimand, the
     fitted row's meaning, the methods sentence, the design warning and the preview card's caption.
+
+    Both numbers are the outcome model's estimates, so under inference they wait for the plan's
+    lock (the previews leash, calm/FOUNDATION §5 rule 6): the design's warning says what the form
+    does without them (the design cannot see the lock) and gives them under prediction, and the
+    card gives them once the plan is locked.
     """
     frame = _sign_flip_fixture()
     dropped, standard = _gap_reference(frame)
@@ -392,23 +397,34 @@ def test_2b_the_energy_dropped_form_says_so_and_the_card_shows_the_gap(tmp_path)
     said = voice.sentence_for(SetEnergyAdjustment(**adjustment.model_dump()), out["state"])
     assert "total energy left out of the outcome model" in said and "`kcal` then left" in said
 
-    gap = next(w for w in out["design"]["warnings"] if w.startswith("kcal left the outcome model"))
+    unseen = next(w for w in out["design"]["warnings"]
+                  if w.startswith("kcal left the outcome model"))
+    assert unseen == ("kcal left the outcome model: each nutrient's coefficient is the standard "
+                      "model's (with kcal kept) only when no covariate correlates with kcal.")
+    predicted = _stages(frame, tmp_path / "prediction", SIGN_ROLES, adjustment, purpose="prediction")
+    gap = next(w for w in predicted["design"]["warnings"]
+               if w.startswith("kcal left the outcome model"))
     assert f"is {_shown(dropped)}, against {_shown(standard)} with kcal kept" in gap
 
-    # The card, on the preview's own sample of the training rows.
+    # The card, on the preview's own sample of the training rows: before the lock without the
+    # coefficients, once it is locked with them.
     store = DataStore(Path(out["paths"]["data"]), 1 << 30)
     try:
         state = out["state"].model_copy(update={"energy_adjustment": None})
-        ctx = PreviewContext(project_id="t", state=state, datastore=store,
-                             artifact=lambda name: None, training_row_ids=np.arange(len(frame)),
-                             cohort_row_ids=None)
-        result = plan(SetEnergyAdjustment(**adjustment.model_dump()), ctx, basis="test")
-        caption = result.views[0].caption
+        captions = []
+        for locked in (None, True):
+            ctx = PreviewContext(project_id="t",
+                                 state=state.model_copy(update={"plan_locked": locked}),
+                                 datastore=store, artifact=lambda name: None,
+                                 training_row_ids=np.arange(len(frame)), cohort_row_ids=None)
+            result = plan(SetEnergyAdjustment(**adjustment.model_dump()), ctx, basis="test")
+            captions.append(result.views[0].caption)
         rows = frame.loc[ctx.sample_row_ids(ctx.training_row_ids)]
         card_dropped, card_standard = _gap_reference(rows)
         assert card_dropped < 0 < card_standard  # the sign flip, on the card's own rows
+        assert "coefficient" not in captions[0] and "`kcal` leaves the outcome model" in captions[0]
         assert (f"coefficient {_shown(card_dropped)}, against {_shown(card_standard)} with `kcal` "
-                f"kept") in caption, caption
+                f"kept") in captions[1], captions[1]
     finally:
         store.close()
 

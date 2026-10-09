@@ -479,8 +479,12 @@ def design_stage(ctx: StageContext) -> Bundle:
         X = modeling_frame(store, list(dict.fromkeys([*input_columns(predictors, adj),
                                                       *batch_inputs(state)])), design_ids)
         info = {c.name: c for c in store.info().columns}  # every row's summary: as the cohort reads it
-        if adj is not None and adj.method == "residual_energy_dropped" and state.target in store.columns:
-            # The gap the energy-dropped residual opens on these rows (audit ME-03).
+        if (adj is not None and adj.method == "residual_energy_dropped" and not inference
+                and state.target in store.columns):
+            # The gap the energy-dropped residual opens on these rows (audit ME-03). Under
+            # inference both numbers are the outcome model's estimates, which wait for the plan's
+            # lock (calm/FOUNDATION §5 rule 6) where this stage cannot see it: the warning then
+            # says what the form does without them (:data:`DROPPED_ENERGY`).
             y_rows = store.materialize([state.target], design_ids)[state.target]
         # MS7: a batch perfectly confounded with the outcome is refused under both purposes.
         confounded = batch_refusal(state, store, design_ids, task)
@@ -543,6 +547,8 @@ def design_stage(ctx: StageContext) -> Bundle:
                 f"model, or leave it out for the unadjusted one.")
     if y_rows is not None:
         warnings_list.extend(_residual_gap(state, task, spec, X, matrix, y_rows, info, rows_word))
+    elif inference and adj is not None and adj.method == "residual_energy_dropped":
+        warnings_list.append(DROPPED_ENERGY.format(E=adj.energy_column))
 
     ctx.progress(0.8, "Building each model's pipeline")
     n_rows, n_cols = int(matrix.shape[0]), int(matrix.shape[1])
@@ -602,6 +608,12 @@ def _matrix_file(ctx: StageContext, matrix: pd.DataFrame) -> dict[str, Any]:
 def _coef(value: float) -> str:
     """A coefficient as the gap states it: three significant digits, signed, a true minus."""
     return f"{value:+.3g}".replace("-", "−")
+
+
+# The energy-dropped residual under inference, said without the outcome model's coefficients (the
+# design stage cannot see the plan's lock, and under inference no estimate appears before it).
+DROPPED_ENERGY = ("{E} left the outcome model: each nutrient's coefficient is the standard model's "
+                  "(with {E} kept) only when no covariate correlates with {E}.")
 
 
 def _residual_gap(state: Any, task: str, spec: Any, X: pd.DataFrame, matrix: pd.DataFrame,

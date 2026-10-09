@@ -44,8 +44,8 @@ from turbotab.core.consequences import (
     TableFrame, TableRow, after_state, fmt_count, fmt_value, register_consequence, stage_context,
 )
 from turbotab.core.plan_previews import (
-    caption, fit_design, frame_label, histogram, lineage_change, names, num, points, pool,
-    shared_edges, tick, title, whole,
+    ask, block_and_record, caption, fit_design, frame_label, histogram, lineage_change, names, num,
+    points, pool, shared_edges, tick, title, whole,
 )
 
 TABLE_ROWS = 6
@@ -247,6 +247,14 @@ def scales_views(decision: Any, ctx: PreviewContext) -> list[Any]:
             before=now.lineage if now is not None else None,
             after=then.lineage,
         ))
+    survey = getattr(after, "survey", None)
+    if (spec.correction != "none" and getattr(after, "purpose", None) == "inference"
+            and getattr(survey, "estimand", None) == "population"):
+        # MODELING_SEQUENCE §4: the correction has no design-based estimator, so the scales stage
+        # blocks and records it (``stages.scales.population_block``); the score still enters.
+        from turbotab.core.stages.scales import population_block
+
+        block_and_record(ctx, *population_block(), decision)
     return views[:MAX_VIEWS]
 
 
@@ -364,7 +372,7 @@ def causal_numbers(sctx: Any, spec: Any, *, budget: bool = True) -> dict[str, An
         prep = prepare(sctx)
         design, _, _ = _design(sctx, prep, sample_only=spec.sample_only)
     except Withheld as exc:
-        return {"withheld": exc.reason}
+        return {"withheld": exc.reason, "asked": exc}
     n = len(prep.y)
     learner = None if spec.method == "pds_lasso" else (spec.learner or default_learner(n))
     exact = spec.method == "pds_lasso" or (spec.method == "tmle" and learner == "linear")
@@ -429,7 +437,12 @@ def causal_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if found is None:
         return []
     if "withheld" in found:
-        ctx.read["note"] = found["withheld"]
+        # The lane's own reason; where it is an ask (a reading the propensity rests on), the
+        # preview offers each confirmation as the lane's card does (BLUEPRINT §14).
+        if any(e.get("decision") for e in found["asked"].exits):
+            ask(ctx, found["asked"])
+        else:
+            ctx.read["note"] = found["withheld"]
         return []
     ctx.read["basis"] = _causal_basis(found)
     if found["kind"] != "binary":
@@ -578,6 +591,14 @@ def time_varying_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     setting = found["setting"]
     ctx.read["basis"] = (f"The exposure models fitted on all {setting.rows:,} analyzed rows of "
                          f"{setting.units:,} units; no outcome read.")
+    # MODELING_SEQUENCE §4: the g-methods have no design-based estimator, so under the surveyed
+    # population the lane blocks and records its estimates (``stages.time_varying.
+    # population_block``); its diagnostics, drawn here, describe these rows as they are.
+    from turbotab.core.stages.time_varying import population_block
+
+    blocked = population_block(after)
+    if blocked is not None:
+        block_and_record(ctx, *blocked, decision)
     if decision.method == "gformula":
         p, modeled, a = found["p_event"], found["modeled"], found["a"]
         edges = [float(x) for x in np.linspace(0.0, 1.0, 26)]

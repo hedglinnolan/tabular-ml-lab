@@ -44,7 +44,14 @@ after the answer is recorded.
 **Outcome-blind where the leash says so.** Under inference nothing here reads the outcome's relation
 to anything: the functional form is drawn as the terms the model sees, never as a curve fitted to
 the outcome, and the multiplicity threshold is drawn without a p-value (choosing the method after
-seeing what survives it is a forking path; Gelman & Loken 2013).
+seeing what survives it is a forking path; Gelman & Loken 2013); the diagnostic response reads the
+fitted model's checks only once the plan is locked (``consequences.estimates_unseen``).
+
+**The leash, previewed.** A preview that cannot draw says what is missing and the question that
+settles it (:func:`cannot_draw`, the server's own refusal where it has one; :func:`rows_not_ready`),
+or offers the fit's ask on an unsettled reading (:func:`asks_first`). Under the surveyed population
+what the stages block and record (MODELING_SEQUENCE §4) is the preview's caution with their exits
+(:func:`population_block`, :func:`block_and_record`).
 
 Importing this module registers the builders.
 """
@@ -60,7 +67,8 @@ from turbotab.core.consequences import (
     CAPTION_WORDS, FRAME_WORDS, MAX_VIEWS, TITLE_WORDS, Caution, CautionExit, DistributionView,
     FitLine, HistogramData, Lineage, LineageFrame, LineageLink, LineageNode, LineageView, Mark,
     PreviewContext, RelationshipFrame, RelationshipView, RowFlowView, RowStep, TableFocusView,
-    TableRow, after_state, clip_words, fmt_count, fmt_value, register_consequence,
+    TableRow, after_state, clip_words, estimates_unseen, fmt_count, fmt_value,
+    register_consequence,
 )
 
 POINTS = 800
@@ -188,26 +196,76 @@ def ask(ctx: PreviewContext, asked: Any) -> None:
     ctx.caution = Caution(text=str(asked), exits=exits)
 
 
+def asks_first(ctx: PreviewContext, state: Any, *, offer: bool = True) -> Any:
+    """BLUEPRINT §14: the fit's ask under ``state`` (``readings.Unsettled``) when a reading its
+    predictors rest on is not settled, else None; ``offer`` puts the ask on the preview
+    (:func:`ask`), as the design stage asks before it computes anything."""
+    from turbotab.core.decisions import left_out
+    from turbotab.core.readings import Unsettled, predictors_or_ask
+
+    store = ctx.datastore
+    try:
+        predictors_or_ask(state, {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
+                                  for c in store.info().columns}, drop=left_out(state), store=store)
+    except Unsettled as asked:
+        if offer:
+            ask(ctx, asked)
+        return asked
+    return None
+
+
+def cannot_draw(decision: Any, ctx: PreviewContext, fallback: str) -> list[Any]:
+    """calm/FOUNDATION §5 rules 7–8: a preview that cannot draw says so in one line, naming what is
+    missing and the question that settles it, never an empty canvas. Where the server would refuse
+    the answer as the project stands (the kind's own validators on the recorded state), the line is
+    that refusal, and an exit that records a decision is the caution's control; else ``fallback``.
+    Returns no views."""
+    from turbotab.core import decisions
+
+    try:
+        decisions.validate(decision, {"state": ctx.state})
+    except decisions.Refusal as refused:
+        exits = [CautionExit(label=str(e["label"]), decision=dict(e["decision"]))
+                 for e in refused.exits if e.get("decision")]
+        if exits and ctx.caution is None:
+            ctx.caution = Caution(text=refused.message, exits=exits)
+        elif not exits:
+            ctx.read.setdefault("note", refused.message)
+        return []
+    except Exception:  # noqa: BLE001 - a validator that needs the server's context checks nothing
+        pass
+    ctx.read.setdefault("note", fallback)
+    return []
+
+
+def rows_not_ready(ctx: PreviewContext) -> str:
+    """What a modeling preview waits for when it has no rows to draw on: the held-out rows answer
+    (the pool is the split's rows: the training rows, every analyzed row under inference), or the
+    rows being read again after the last answer."""
+    from turbotab.core.voice import question_name
+
+    rows = "analyzed" if getattr(ctx.state, "purpose", None) == "inference" else "training"
+    if getattr(ctx.state, "split", None) is None:
+        return (f"This choice is drawn on the {rows} rows, which {question_name('split')} "
+                f"settles: answer it first.")
+    return (f"The {rows} rows are being read again after the last answer; this choice is drawn "
+            f"once they are.")
+
+
 def fit_design(ctx: PreviewContext, state: Any, ids: Any, extra: Sequence[str] = ()) -> Design | None:
     """The design stage's shared steps (``stages.modeling.design_stage``: the same spec, the same
     column summaries, the same energy factors) fitted on ``ids``; None when the state names no
     predictor yet, or a reading the fit needs is unsettled (the fit asks for it first, and so does
     the preview of the answer: :func:`ask`, for the answer's state, never the recorded one)."""
-    from turbotab.core.decisions import left_out
     from turbotab.core.methods.batch import batch_inputs
     from turbotab.core.models.lineage import missing_counts, trace
     from turbotab.core.models.pipeline import (design_spec, input_columns, model_predictors,
                                                modeling_frame, shared_steps, transformer)
-    from turbotab.core.readings import Unsettled, predictors_or_ask
 
     store = ctx.datastore
     info_cols = store.info().columns
-    try:
-        predictors_or_ask(state, {c.name: {"dtype": c.dtype, "n_unique": c.n_unique}
-                                  for c in info_cols}, drop=left_out(state), store=store)
-    except Unsettled as asked:
-        if state is not ctx.state:  # the answer's state: what recording it would meet
-            ask(ctx, asked)
+    # The answer's state: what recording it would meet (never the recorded one's own ask).
+    if asks_first(ctx, state, offer=state is not ctx.state) is not None:
         return None
     predictors = model_predictors(state)
     if not predictors:
@@ -325,15 +383,24 @@ def estimand_line(state: Any) -> str | None:
     return f"{effect} effect of {tick(spec.exposure)}{contrast} on {target}: {measure}."
 
 
+def inference_first(what: str) -> str:
+    from turbotab.core.voice import question_name
+
+    return f"{what} under inference: answer {question_name('purpose')} with inference first."
+
+
 def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core import estimand as est
 
+    if getattr(ctx.state, "purpose", None) != "inference":
+        return cannot_draw(decision, ctx, inference_first("The exposure and its effect are declared"))
     ids = pool(ctx)
-    if ids is None or getattr(ctx.state, "purpose", None) != "inference":
-        return []
+    if ids is None:
+        return cannot_draw(decision, ctx, rows_not_ready(ctx))
     after = after_state(decision, ctx)
     if est.current_estimand(after) is None:
-        return []
+        return cannot_draw(decision, ctx, "The exposure named is not among the model's predictors "
+                                          "as the roles stand.")
     then = fit_design(ctx, after, ids)
     if then is None:
         return []
@@ -358,6 +425,7 @@ def estimand_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         ctx.read["note"] = (f"The adjustment answers were given for another exposure, so they are "
                             f"asked again; until then {names(reopened)} "
                             f"{'is' if len(reopened) == 1 else 'are'} back in the model.")
+    population_block(ctx, after, decision)  # a measure the surveyed population cannot carry (§4)
     return views
 
 
@@ -409,13 +477,15 @@ def adjustment_lineage(exposures: Sequence[str], covariates: Sequence[str],
 
 def adjustment_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core import estimand as est
+    from turbotab.core.voice import question_name
 
     if getattr(ctx.state, "purpose", None) != "inference":
-        return []
+        return cannot_draw(decision, ctx, inference_first("An adjustment set is asked"))
     after = after_state(decision, ctx)
     spec = est.current_estimand(after)
     if spec is None:
-        return []
+        return cannot_draw(decision, ctx, f"Each covariate is asked about against the exposure: "
+                                          f"answer {question_name('estimand')} first.")
     exposures = est.exposures_of(after, spec)
     covariates = est.asked_covariates(after)
     roles = dict(est.predictor_roles(after))
@@ -517,14 +587,19 @@ def _sequence_lineage(exposure_cols: Sequence[str], adjusted: Sequence[str],
 
 def model_sequence_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core import estimand as est
+    from turbotab.core.voice import question_name
 
-    ids = pool(ctx)
-    if ids is None or getattr(ctx.state, "purpose", None) != "inference":
-        return []
+    if getattr(ctx.state, "purpose", None) != "inference":
+        return cannot_draw(decision, ctx, inference_first("A model sequence is declared"))
     after = after_state(decision, ctx)
     spec = est.current_estimand(after)
     if spec is None:
-        return []
+        return cannot_draw(decision, ctx, f"Model 1 is a part of the primary model's adjustment "
+                                          f"set: answer {question_name('estimand')} and "
+                                          f"{question_name('adjustment')} first.")
+    ids = pool(ctx)
+    if ids is None:
+        return cannot_draw(decision, ctx, rows_not_ready(ctx))
     design = fit_design(ctx, after, ids)
     if design is None:
         return []
@@ -553,6 +628,9 @@ def model_sequence_views(decision: Any, ctx: PreviewContext) -> list[Any]:
                  else f"Model 2 adjusts for {fmt_count(len(two))} columns")
     if "model_3" in models:
         parts.append(f"Model 3 adds {names([c for c in models['model_3'] if c not in two], 2)}")
+    # The declared models, and beside them what the surveyed population blocks: where the design
+    # refuses every coefficient, none of them is fitted (§4, block and record).
+    population_block(ctx, after, decision)
     return [LineageView(
         title=title("The declared models, one by one"),
         caption=caption("; ".join(parts) + "."),
@@ -978,6 +1056,79 @@ def population_blocked(ctx: PreviewContext, refusal: str, decision: Any, unit: s
         CautionExit(label=record, decision=decision.model_dump(mode="json"))])
 
 
+RECORD_BLOCKED = "Record it as it is: what has no design-based estimator is blocked and recorded"
+
+
+def task_of(ctx: PreviewContext, state: Any) -> str | None:
+    """The outcome's task as the fit reads it: answered, else as the target stage detected it."""
+    task = getattr(state, "task", None)
+    if task is None:
+        info = ctx.artifact("target_info")
+        info = getattr(info, "data", info)
+        task = info.get("task") if isinstance(info, Mapping) else None
+    return task
+
+
+def population_block(ctx: PreviewContext, state: Any, decision: Any) -> bool:
+    """MODELING_SEQUENCE §4, "population estimand without a design-based estimator: block and
+    record", as the stages apply it under ``state``'s surveyed-population answer, each with its
+    own check and words: the design itself (``methods.survey.for_fit``: a grouping whose rows
+    span PSUs refuses every coefficient), then each chosen family with no design-based estimator
+    (the fit's ``models.survey.no_design_estimator``), then a marginal measure (the effects
+    stage's ``marginal_population_block``). The first found is the preview's caution, with the
+    stage's exits and recording the answer as it is; True when one was found."""
+    from turbotab.core import estimand as est
+    from turbotab.core.models import get_family
+    from turbotab.core.models.survey import has_design_estimator, no_design_estimator
+    from turbotab.core.stages.effects import marginal_population_block
+
+    if getattr(state, "purpose", None) != "inference" or ctx.caution is not None:
+        return False
+    if getattr(getattr(state, "survey", None), "estimand", None) != "population":
+        return False
+    unit = fit_unit(ctx, state)
+    found = fit_survey(ctx, state, unit)
+    if found is None or found.answer != "population":
+        return False
+    if found.refusal:
+        population_blocked(ctx, found.refusal, decision, unit,
+                           "Record it as it is: no coefficient until the design or grouping "
+                           "changes")
+        return True
+    task = task_of(ctx, state)
+    models = list(getattr(state, "models", None) or [])
+    reason, exits = None, []
+    for key in models:
+        try:
+            family = get_family(key)
+        except KeyError:
+            continue
+        if not has_design_estimator(family, task):
+            info = no_design_estimator(family, task, models).info
+            reason, exits = info["refused"], info["exits"]
+            break
+    spec = est.current_estimand(state)
+    if (reason is None and spec is not None and str(spec.measure) in est.MARGINAL
+            and task in est.MARGINAL_TASKS and "linear" in models):
+        reason, exits = marginal_population_block(state, spec)
+    if reason is None:
+        return False
+    block_and_record(ctx, reason, exits, decision)
+    return True
+
+
+def block_and_record(ctx: PreviewContext, reason: str, exits: Sequence[Mapping[str, Any]],
+                     decision: Any) -> None:
+    """A stage's block under the surveyed population as the preview's caution (§4, block and
+    record): its reason, its exits that record a decision, and recording the answer as it is."""
+    if ctx.caution is not None:
+        return
+    ctx.caution = Caution(text=reason, exits=[
+        *(CautionExit(label=str(e["label"]), decision=dict(e["decision"]))
+          for e in exits if e.get("decision")),
+        CautionExit(label=RECORD_BLOCKED, decision=decision.model_dump(mode="json"))])
+
+
 def clusters_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     """What the grouping does, as the fit does it. Under inference, the intervals: clustered by the
     unit the fit resolves (``models.inference.resolve_clusters`` under the answer's state), or,
@@ -1292,6 +1443,9 @@ def survey_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     ctx.read["survey"] = {"df": df, "n_psu": design.n_psu, "n_strata": design.n_strata,
                           "domain": held, "mean_unweighted": mean_u, "mean_weighted": mean_w,
                           "unit": unit}
+    # The design stands; what the chosen families and the declared measure cannot estimate over
+    # it is blocked and recorded (§4), and the preview says so beside the design.
+    population_block(ctx, after, decision)
     sampled = ctx.read.get("sample")
     values = (f"a sample of {sampled[2]:,} of the {sampled[1]:,} {rows_word(ctx)} rows"
               if sampled is not None and sampled[2] < sampled[1] else
@@ -1555,7 +1709,12 @@ def sensitivity_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 def diagnostic_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     """What the recorded response shows beside the estimate, read from the effects stage's own
-    diagnostics (shown with the estimates, so nothing here is seen for the first time)."""
+    diagnostics (shown with the estimates, so nothing here is seen for the first time). Under
+    inference before the plan is locked they have not been shown, so nothing is read from them."""
+    if estimates_unseen(ctx.state):
+        ctx.read["note"] = ("The checks are read with the estimates, which are not shown yet; "
+                            "nothing about them is drawn before.")
+        return []
     effects = ctx.artifact("effects")
     data = getattr(effects, "data", effects)
     if not isinstance(data, dict):

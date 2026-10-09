@@ -532,7 +532,10 @@ def build_graph() -> Graph:
             # artifact (canonical Parquet, read by no stage downstream), so the export hashes it
             # and a replay compares it byte for byte (V2 definition of done §3.6).
             # design 24 (wave 2b integration): design 23 of EXPLORE and of EXPORT on one engine.
-            Stage("design", 24, ("working", "split", "target_info"),
+            # design 25 (previews leash): under inference the energy-dropped residual's warning
+            # quotes no coefficient (no outcome-model estimate before the plan's lock); the gap
+            # stays under prediction, on the training rows.
+            Stage("design", 25, ("working", "split", "target_info"),
                   (*ROLE_READS, "energy_adjustment", "missing", "models", "purpose", "categorical",
                    "event", "lens", "findings", "exposure_forms", "follow_up", "batch", "scales",
                    "column_units", *WP17_READS, "levers", "selection"),
