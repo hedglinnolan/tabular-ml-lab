@@ -34,15 +34,18 @@ and dark), `system.json` (the same values as data).
 
 Rewritten on 2026-10-08 for the quest log, from Nolan's rulings of 2026-10-06 to 2026-10-08
 (`HANDOFF.md`, "UI and scope discussion"; `V2_DEFINITION_OF_DONE.md`, the amendments of 2026-10-07
-and 2026-10-08) and the crosswalk (`crosswalk/CROSSWALK.md`). What the rewrite replaced is listed
-at the end, under "Superseded".
+and 2026-10-08) and the crosswalk (`crosswalk/CROSSWALK.md`), and revised the same day after
+review. At the end: what the rewrite replaced ("Superseded"), the one question still open for
+Nolan, and the review's notes not taken.
 
 ## 1 · The test
 
 **Within five seconds, a first-time user knows what to click.** Every screen and every review is
 judged by this first. One primary action per screen, always in the same place: the foot of the card
-column. Continue, "Confirm all 6", Fit and Export all sit there. The choice color is reserved for
-the choice.
+column. Continue, "Confirm all 6" and Export all sit there. The one exception is Fit, which Nolan
+placed on the analysis flowchart (2026-10-06 and 2026-10-08): on that screen it is the screen's one
+primary action, at the flowchart's end, and the card's foot holds no button (§7). The choice color
+is reserved for the choice.
 
 ## 2 · The calm budget
 
@@ -100,9 +103,10 @@ no overlapping text. But no layout is designed for phones, and audits do not tes
 └────┴───────────────────────────┴───────────────────────────────────────────────────────────────┘
 ```
 
-- **The quest line (top, one line).** The seven stages by name, and nothing else. The open stage is
-  in the text color, the others quieter. Clicking a stage opens it on the card; pointing at it
-  shows its questions (below).
+- **The quest line (top, one line).** The seven stages by name, and nothing else, except while a
+  long fit runs: then Results reads "Results · fitting, about N min" (§7). The open stage is in the
+  text color, the others quieter. Clicking a stage opens it on the card; pointing at it shows its
+  questions (below).
 - **The progress bar (top right).** Seven segments, one per stage (below).
 - **Card (left, 380–440 px).** The open stage: its name, then its lines under their labels, the open
   line expanded, and the primary action at the foot.
@@ -115,14 +119,18 @@ no overlapping text. But no layout is designed for phones, and audits do not tes
    table is, and what each column is. One ledger of every column with its proposed reading: Decide
    asks only the readings that change a number, and the rest sit in the Confirm sweep (ruled
    2026-10-08).
-2. **Your question:** the outcome, then the goal (Describe, Estimate an effect, Predict) worded
-   around it, and its shape, filtered by domain. "No single outcome" starts Describe (ruled
+2. **Your question:** the outcome; then how the people were chosen and whether anything was
+   assigned (observed as they were, by default), because that changes which goals and wordings are
+   valid (disagreement 10); then the goal (Describe, Estimate an effect, Predict) worded around the
+   outcome, and its shape, filtered by domain. "No single outcome" starts Describe (ruled
    2026-10-08). A second goal adds a track.
 3. **First look:** shaped by the goal, a guide plus a gallery walked on the first visit. It shows
    what it notices and decides almost nothing itself: each noticing is decided in the stage whose
    answer it changes, and returns there as a line.
 4. **Who's in:** who is kept, and what each blank means; under Predict, the drawing of the held-out
-   rows. It closes on the participant flowchart (§7).
+   rows. A Predict track whose outcome an earlier track has already read draws none: it validates
+   by resampling the whole procedure instead (crosswalk, "Settled here"). It closes on the
+   participant flowchart (§7).
 5. **Models:** what is fit and how, including how the kept blanks are filled, in each track (ruled
    2026-10-08). Classic's feature engineering, feature selection and preprocessing fold in here,
    because they are per-model choices. It closes on the analysis flowchart, where Fit is pressed
@@ -144,28 +152,33 @@ with its answer. Leaving closes it after the kit's 160 ms grace (`POINT_GRACE_MS
 the line does not flicker. Clicking opens the stage on the card.
 - **Any stage can be opened and read, ahead too.** A line whose earlier answers are missing reads
   "Waiting for: [the question]", with a link to that question, and cannot be answered yet
-  (crosswalk disagreement 20).
-- **A stage not reached yet** lists the questions it expects so far, without a count, since its
-  lines depend on answers still to come.
+  (crosswalk disagreement 20). Pointing at it or clicking it shows only that line and its link: it
+  lights nothing on the tapestry and previews nothing, since what it would show depends on the
+  missing answer. The one exception is First look's "Decide now", which opens a later stage's
+  question early when every answer it needs is in.
+- **A stage not reached yet** lists the questions it expects so far, without a count, under one
+  quiet line: "May change as you answer".
 
 **The progress bar.** Seven segments at the top right, one per stage, so that a long analysis never
 feels endless (Nolan: "so users don't get discouraged").
-- A segment fills with its stage's Decide and Confirm lines. For the record never counts.
+- **A segment fills with its stage's objectives** (Nolan, 2026-10-06): each Decide line counts one,
+  open noticings included, and the stage's Confirm sweep counts one, however many defaults it
+  holds. For the record never counts.
 - **A stage not reached yet shows empty,** never "0 of N".
 - **A stage reopened by an earlier change drops back and says why,** in one plain line beside the
   bar and atop the stage's card, naming the answer that changed: "Your data reopened: the join
-  added 12 columns, so their roles are read again."
-- While a long fit runs, the Results segment reads "fitting, about N min" (§7).
+  added 12 columns, so what each new column is gets read again."
 - The bar is drawn in the app's own ink, never in the choice color (§4). Pointing at a segment opens
   the same panel as pointing at its stage.
 
 **Decide · Confirm · For the record.** Every line carries one of three labels (Nolan, 2026-10-06).
 They are the card's section heads, in plain type, never chips or colors.
-- **Decide:** a question the user answers, or an open noticing they decide or dismiss. It counts
-  toward progress.
+- **Decide:** a question the user answers, or an open noticing they decide or dismiss. Each counts
+  as one objective.
 - **Confirm:** a default set for the user, listed only when another choice would change a number on
-  this table. It counts toward progress. Nolan: *"They ultimately need to own their results, but we
-  can make their lives easier."*
+  this table. A stage's Confirm lines sit together in its one sweep (below), and the sweep counts
+  as one objective. Nolan: *"They ultimately need to own their results, but we can make their lives
+  easier."*
 - **For the record:** what was read or done with no choice that matters here. It sits collapsed in
   one quiet disclosure at the foot of the stage and never counts.
 
@@ -178,17 +191,28 @@ For the record, or appears only in the export.
 Decides, because the Decides change which defaults apply. It appears only when the stage holds a
 default whose alternative would change a number. One line heads it ("Here are the 6 other choices
 set for you"), each choice sits beneath with its reason and can be changed, and one primary action
-clears it: "Confirm all 6". One departure, within the display-order rule (§10): under Predict, Who's
-in runs its sweep just before the held-out rows are drawn, so the drawing is the stage's last Decide
-(disagreement 6). Write-up's sweep is usually absent, since its one number-changing default is the
-small-cell threshold.
+clears it: "Confirm all 6".
+
+Two departures, both under a Predict track that holds rows out and both within the display-order
+rule (§10), because what the held-out rows read must be fixed before they are drawn or scored:
+- **Who's in** runs its sweep just before the held-out rows are drawn, so the drawing is the
+  stage's last Decide (disagreement 6).
+- **Results** runs its sweep just before the open-noticings gate and the opening of the held-out
+  rows, since the threshold range and the calibration horizon in it are read by the held-out score
+  (disagreement 16). The opening is then the last Decide the held-out score reads; what follows it
+  is reading and placing exhibits. The sweep's one other default, the explanations' curve method,
+  does not depend on the opening and rides in the same sweep, so the stage still has one.
+
+Write-up's sweep holds one default, the small-cell threshold, and appears only under the lenses
+that report participant-level cells (dietary, clinical and survey).
 
 **Three levels of disclosure.** Every line opens in three steps (Nolan, 2026-10-06, for the Confirm
 sweep; the quest log uses them for every line):
 1. **The line:** plain words, with its answer or default and, for a Confirm, a short reason.
 2. **Pointing or keyboard focus:** the line elaborates "ever so slightly", by one clause on what it
    does to this table, and the tapestry lights what it touches in the choice color, as pointing at
-   an option does. The technical name rides on the line's top edge here and only here.
+   an option does. The technical name rides on the line's top edge here and only here. A "Waiting
+   for" line elaborates and lights nothing (above).
 3. **A click:** the card expands to that line's options, each previewed on the tapestry, with "Why
    does this matter?" and a way back ("Back to Who's in", or Escape) to the list as it was. A
    choice holds in the card, marked "changed by you", until the primary action records it
@@ -272,9 +296,28 @@ Rules:
    estimate.
    - Under Estimate and Describe, no estimate is served before the track's plan is locked, and
      pressing Fit locks it (§7). Under Predict, no score appears before Fit opens Results.
-   - The outcome's own views open at their gates (ruled 2026-10-08). Under Estimate, the outcome
-     alone opens after Who's in, and the outcome beside another column waits for the lock. Under
-     Predict, both open after the seal, on the training rows. Every such view is recorded.
+   - **The outcome's own views open at their gates** (ruled 2026-10-08, crosswalk question 1). Every
+     such view is recorded.
+     - Under Estimate, the outcome alone opens after Who's in, on the rows analyzed, and the outcome
+       beside another column waits for the lock.
+     - Under Describe, the same as Estimate, with the track's own lock.
+     - Under Predict, both open after the held-out rows are drawn, on the training rows.
+     - Under several goals, every shared view follows the strictest gate among the tracks: with an
+       Estimate or Describe track, the outcome beside a column waits for that track's lock, whatever
+       a Predict track would allow.
+   - **Before its gate, the outcome shows its reading only:** its kind, unit, codes and level names,
+     with the event lit. Its values, their spread and its counts stay out of every view: Your
+     question's cards, First look's index and Your data's ledger alike. Two things read it
+     earlier, because a stage cannot do its work without them. The participant flow counts the rows
+     without an outcome, since Who's in decides who is kept by it. A structural check that reads it,
+     such as a batch that matches the outcome exactly, is said as a one-line verdict and never
+     drawn (`FIRST_LOOK_BRIEF.md` §6.1, O2). This narrows the crosswalk's Focus on the outcome in
+     Your question, "its distribution or its levels", to its levels.
+   - **Before the outcome is named,** Your data draws every column as a column, because its readings
+     are settled on their values and no column is the outcome yet. Naming the outcome takes its
+     values out of every view until its gate, and For the record says that its column was drawn in
+     Your data before it was named. This is the one exception to the gates, and it is open for
+     Nolan (below, "Open for Nolan").
    - The models' live ranking is outcome-blind: it reads what each model would be given, never a
      relationship with the outcome or a score; only the outcome's own counts, such as events, may
      enter (`MODEL_FAMILY_CONTRACT.md`, ruling 1).
@@ -286,11 +329,15 @@ Rules:
    now" for the open line: the column or columns it is about, drawn in gray, in the layout its
    options use (the people in the analysis as a flow, the nutrients as a strip, what the models read
    as a lineage, the plan as it stands as angles), with one line saying what it is. Nolan wants most
-   of the screen for the tapestry, and empty space wastes it.
-9. **After Fit, exhibits need view kinds the closed vocabulary lacks:** table, forest, curve,
-   calibration, decision curve, specification curve, overlap, embedding, matrix and page. Each is
-   designed once, as a recorded design decision with its purpose entry (SIZING P0.3b), and joins
-   the vocabulary before any exhibit draws it. No exhibit invents its own.
+   of the screen for the tapestry, and empty space wastes it. A view at rest obeys rule 6: an
+   outcome whose gate is closed is drawn by its reading, with one line saying when its values open
+   ("The outcome's values open after Who's in").
+9. **New view kinds the closed vocabulary lacks:** table, forest, curve, calibration, decision
+   curve, specification curve, overlap, embedding, matrix and page. They serve the exhibits after
+   Fit, and some serve views before it too: overlap and weights in Models, before any estimate, and
+   embeddings in First look. Each is designed once, as a recorded design decision with its purpose
+   entry (SIZING P0.3b), and joins the vocabulary before any view draws it. No exhibit or view
+   invents its own.
 
 ## 6 · One kit, and fairness
 
@@ -302,7 +349,8 @@ this file now describes it.
 The rule that made the comparison fair still holds. Every screen of the quest log, and any
 alternative tried later, is built from the same kit: the same tokens, card, options, tapestry,
 layouts, manuscript, copy and data. A new part enters the kit, never a single screen, so that
-comparing two structures compares structures only. The four prototypes stay in the dev app as lab
+comparing two structures compares structures only. Any alternative tried later passes the same
+synchronization audit before Nolan sees it. The four prototypes stay in the dev app as lab
 routes (`/lab/calm`, and the static `calm.html`) for reference, beside the three earlier
 living-methods prototypes (`/lab/methods`); a production build drops them all.
 
@@ -323,11 +371,15 @@ screen, after the Confirm sweep.
   plan is decided or dismissed first (Nolan, 2026-10-06). Under Predict that gate stands before the
   held-out rows open, in Results.
 
-**Fit is pressed on the analysis flowchart.** The flowchart fills the tapestry, and Fit sits where
-every primary action sits, at the foot of the card column, with its estimate: "Fit · about 30
-min". Pressing it is a job command, not a decision (`RECIPES_AND_TUNING.md` §4.4).
+**Fit is pressed on the analysis flowchart** (Nolan, 2026-10-06: it "is where the Fit button
+lives"; 2026-10-08: "Fit is pressed on the analysis flowchart, which shows progress and Cancel").
+The flowchart fills the tapestry, and Fit sits at its end, where the rows and the columns meet the
+models, with its estimate: "Fit · about 30 min". It is the screen's one primary action, and the
+card's foot holds no button on this screen: the one exception to §1's fixed place. Pressing it is a
+job command, not a decision (`RECIPES_AND_TUNING.md` §4.4).
 - Under Estimate and Describe, pressing Fit locks the track's plan (the system's `lock_plan`
-  record). Results opens with one line: the lock's time and the plan's SHA-256.
+  record). Results opens with one line, "Plan fixed at 14:02", and the plan's SHA-256 fingerprint
+  as its quiet label.
 - Under Predict nothing locks. Results opens on the cross-validated comparison.
 - A short fit may already be computed when Fit is pressed, and Results simply opens. Computing
   stays live; what waits is what is shown.
@@ -337,9 +389,16 @@ min". Pressing it is a job command, not a decision (`RECIPES_AND_TUNING.md` §4.
   2026-10-06).
 - It runs on the server as a job that survives closing the tab, and notifies the user when it is
   done.
-- The analysis flowchart shows its progress and a Cancel. The quest line reads "Results · fitting,
-  about N min".
+- The analysis flowchart shows its progress and a Cancel where Fit was. The quest line reads
+  "Results · fitting, about N min" (§3).
 - The user can keep working on anything that does not depend on the fit.
+- **Cancel before any estimate is served withdraws the lock.** The lock says the plan was declared
+  before any estimate was shown, and none was. The record keeps the withdrawn lock with its time
+  and fingerprint, so the history stays visible, and the next press of Fit records a new lock.
+  This needs one engine change: `plan_lock.py` records the lock "once and never undone". Once any
+  estimate has been served, the lock stands, and Cancel stops only the remaining work.
+- **A change to the plan while the fit runs** cancels the job, after a consequence line, and asks
+  for Fit again. Made before any estimate is served, it is an ordinary change, never a secondary.
 
 ## 8 · Results as exhibits
 
@@ -355,26 +414,40 @@ exhibits.
   assumptions named (Estimate only, with the declared effect and the unmeasured-confounding exhibit
   beside it); causal (trials only); prediction performance; "describes the model" (explanations);
   labeled secondary; or inconclusive null.
+- **Write my own** passes the same manuscript gate as a draft: every number in it traces to the
+  record. Wording stronger than the exhibit's claim strength, such as an association worded as an
+  effect or an explanation worded as what changing an intake would do, raises a noticing on the
+  exhibit: the user rewords it, or keeps it and the keeping is recorded. It is never allowed
+  silently. This is how the floor's wording rules (below) reach text the app checks but does not
+  write.
 - **Placement:** Results, Discussion or the Supplement, or left out. Each exhibit arrives with a
-  default place (crosswalk, "The exhibits"). An exhibit left out is still listed, and every
-  analysis that was run stays in the record.
+  default place (crosswalk, "The exhibits"). An exhibit left out keeps its analysis listed (the
+  floor, below).
 - **The floor** (the orchestrator's methods floor of 2026-10-06, as the crosswalk extends it), so
   that curating never becomes selective reporting:
   - under Estimate, the locked primary always stays in Results; under Predict, so does the
     held-out score, or the declared cross-validated result. Their placement is fixed;
+  - every analysis that was run is listed in the exported supplement, whatever its exhibit's
+    placement, with those left out of the paper under "Analyses left out"
+    (`other:results_inventory`, `export:supplement-document`). The list cannot be turned off;
   - a declared family of exposures is never trimmed by p-value;
   - explanations are never worded as effects;
   - causal wording is offered only for trials.
-- **Under Predict,** the final model, the threshold and the recalibration are fixed, and the
-  open-noticings gate is cleared, before the held-out rows open, once.
+- **Under Predict,** the final model, the threshold and the recalibration are fixed, Results'
+  Confirm sweep is cleared (§3) and the open-noticings gate is cleared, before the held-out rows
+  open, once.
 - **Noticings born after the fit** label the exhibit they concern, or add a disclosure or a
   sensitivity analysis. A new analysis they ask for after the lock is a secondary.
 
 **After results, never overwrite silently** (ruled 2026-10-08). Going back to an earlier stage after
 results is allowed, and a consequence card comes first, in `RECIPES_AND_TUNING.md` §6.3's words.
 Then:
-- under Predict, a change to a model's recipe or tuning keeps the earlier version in the
-  comparison, and a change to a shared step keeps the earlier scores as a read-only row;
+- under Predict, before the held-out rows open, a change to a model's recipe or tuning keeps the
+  earlier version in the comparison, and a change to a shared step keeps the earlier scores as a
+  read-only row;
+- under Predict, once the held-out rows are open, a change runs as a secondary analysis
+  (`RECIPES_AND_TUNING.md` §6.3, "opened"). Drawing them again is a reseal, recorded as after their
+  scores were seen, and the first opening stays the reported result;
 - under Estimate and Describe, a change after the lock runs as a secondary analysis beside the
   locked primary, which stays.
 
@@ -402,7 +475,7 @@ width, across the card column and the tapestry, with the finishing tools, in thi
    sits under For the record.
 
 Only these fill Write-up's segment; author-only text never counts. Export sits at the foot of the
-left column, where every primary action sits.
+left column, the fixed place of §1.
 
 ## 10 · The display-order rule
 
@@ -414,17 +487,30 @@ engine order only if** (the orchestrator, 2026-10-08):
 2. any answer the engine fills in is recorded and visible, in a Confirm sweep or For the record;
 3. no view touches rows or the outcome before its gate opens.
 
-Never "quietly". How the crosswalk's fixes meet it, for example:
-- Your data shows no roles question: the engine records the roles answer itself once the readings
-  settle, and the ledger and its Confirm sweep show it (rule 2; disagreement 1).
-- A line that waits on an earlier answer reads "Waiting for: [the question]" (rule 1; disagreement
-  20).
-- The participant flowchart is labeled provisional until the analysis flowchart (rule 1;
-  disagreement 7).
-- First look's outcome-free looks are computed from the oriented table, before the seal, and the
-  outcome's views wait for their gates (rule 3; disagreement 4, question 1).
-- Under Predict, Who's in's Confirm sweep comes before the drawing, which reads its answers (rules
-  2 and 3; disagreement 6).
+Never "quietly". How each of the crosswalk's 20 fixes meets it, in the crosswalk's numbering:
+
+| # | Where the orders disagree | What the quest log does | Rule |
+|---|---|---|---|
+| 1 | The roles answer waits behind Who's in | Your data asks no roles question: the engine records the answer once the readings settle, and the ledger's Confirm sweep shows it | 2 |
+| 2 | Readings are asked where they are used | Your data's ledger asks only the readings that change a number and sweeps the rest; a column that enters later is asked where it enters | 1, 2 |
+| 3 | The outcome's reading depends on Who's in | Which value counts is asked on the outcome card when rows repeat; a Who's in answer that changes the outcome's kind reopens Your question with the reason | 1 |
+| 4 | First look comes before the draw, the engine explores after it | Outcome-free looks are computed from the oriented table; the outcome's views wait for their gates (§5, rule 6) | 3 |
+| 5 | The split is two decisions in one | The draw in Who's in, the validation scheme in Models' Confirm sweep; under Estimate the split is For the record | 2 |
+| 6 | "Confirm last" collides with the draw | Under Predict, Who's in's sweep runs before the draw (§3) | 2, 3 |
+| 7 | Who's in depends on Models answers | The participant flowchart is provisional until the analysis flowchart; a Models answer that changes who is kept reopens Who's in with the reason | 1 |
+| 8 | The clusters question decides a model term | Who's in asks only whether people are grouped, and by what; how the model handles it is a Models Confirm | 2 |
+| 9 | Survey has no question under Predict | The survey question is asked under every goal; under Predict it asks whose performance the scores describe | 1 |
+| 10 | The design has no slot | Your question asks it before the goal, set to "observed as they were" until the user says otherwise | 2 |
+| 11 | Ten Models decisions have no Router key | The stage registry lists each in Models where it applies; one that waits on an earlier answer says so | 1 |
+| 12 | Estimates are served, and the plan locks, before Fit | No estimate is served before the lock, and pressing Fit locks (§7) | 3 |
+| 13 | Substitution is asked after the lock | The pair is declared in Models before Fit, with an outcome-free preview; Results draws the curve | 3 |
+| 14 | Displays sanctioned after the fit count as plan changes | Explanations, a diagnostic's response and updating are recorded as companion displays, not as changes to the plan | 2 |
+| 15 | A change after the lock overwrites the primary | The primary stays on the locked plan, and the change runs as a labeled secondary (§8) | never quietly |
+| 16 | Intended use straddles three stages | Intended use is Predict's shape in Your question; under Predict, Results fixes the recalibration and runs its sweep (the threshold range, the calibration horizon) before the opening (§3) | 2, 3 |
+| 17 | Reference rows and drift correction sit in two stages | Decided in Your data, before the outcome's kind is read, and drawn as the participant flow's first step | 1 |
+| 18 | The Router's order inside Models | The quest log adopts the Router's order | none at stake: the orders agree |
+| 19 | The methods text follows the guideline | The manuscript keeps the guideline's order; each sentence's "change" link opens its card through the stage registry | none at stake: the rail is a view |
+| 20 | The Router answers in order | "Waiting for" on a line whose earlier answers are missing; First look's "Decide now" is the one exception (§3) | 1 |
 
 Every stage's design checks its order against these three rules first.
 
@@ -451,3 +537,28 @@ Replaced by the rewrite of 2026-10-08:
   ranking, and tied to Fit.
 - **"Canvas" in this file's prose,** now "the tapestry" (Nolan's word, 2026-10-06). The code keeps
   `Canvas`.
+- **§2's "the record, the map and provenance",** now "the record, the flowcharts and provenance".
+  The map was the chain, the provenance figure in its calmest form; the two flowcharts now show the
+  analysis at a glance.
+
+## Open for Nolan
+
+- **The outcome's column in Your data, before it is named** (§5, rule 6). Your data settles every
+  column's reading on its values, so it draws the eventual outcome as a column before anyone names
+  it, on every row, including the rows a Predict track will later hold out. The design records that,
+  and hides the outcome's values from every view once it is named. The stricter answer is that Your
+  data draws no column's spread at all, only its reading, which makes units harder to confirm.
+  Recommended: the design as written. A look at one column shows no association and no score, so
+  it cannot steer a choice toward a result, and the record says it happened.
+
+## Review notes not taken
+
+From the review of 2026-10-08 (the merge `d9908297` and the first rewrite `d9747d1a`):
+- **Splitting Results' sweep under Predict,** with the explanation defaults left last. Its one
+  explanation default does not depend on the opening, so one sweep before the opening keeps one
+  Confirm objective per stage (§3).
+- **Updating the documents that still cite the old FOUNDATION** (`HANDOFF.md`'s note that §3 and
+  §6 must be amended, two notes in `crosswalk/crosswalk.json`, SIZING P0.3a, and BLUEPRINT §11 and
+  §11.4's objective list by guideline section), and the crosswalk's Focus on the outcome's
+  distribution in Your question (narrowed in §5, rule 6). The review leaves them to the
+  orchestrator at merge.
