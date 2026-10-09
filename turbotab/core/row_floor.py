@@ -26,10 +26,17 @@ says why before it is pressed.
 An answer that rewrites the working table's values (a repair that blanks codes, a text column read
 as numbers) is counted on the values it would leave (:func:`_rewritten`): the columns it rewrites
 are read as the working stage will compute them, the same SQL on the same source rows. One that
-changes the working table's rows (combining a unit's records, leaving reference rows out) cannot be
-counted before that table is built, so the cohort stage refuses the same way
+changes the working table's rows (combining a unit's records, leaving reference rows out) is
+counted on the table the working stage itself builds for it, in a folder of its own
+(:func:`_rebuilt`), every row on both sides; analyzing each record as its own row is the way back
+from a combination. Behind the record the cohort stage still refuses the same way
 (:func:`cohort_refusal`), the design stage refuses one outcome value on the rows it is handed, and
 no stage downstream is handed an empty frame.
+
+Every exit another validator offers is held to the same count: a complete-case answer is offered
+as a way out only where the record accepts it (:func:`accepted_exit`, read by
+``decisions._accepted_ways``), and a sensitivity analysis is never offered an exit that leaves it
+the primary analysis.
 """
 from __future__ import annotations
 
@@ -179,6 +186,8 @@ def _ways(causes: Sequence[Mapping[str, Any]], question: str = "the eligibility 
         ways.append("fill the blanks instead of complete cases (the missing-values question)")
     if "exclusion" in keys:
         ways.append(f"drop or widen the rule that removes them ({question})")
+    if "reference" in keys:
+        ways.append("keep the reference rows in the table")
     if not ways:
         ways.append("change the answer that removes them")
     said = ways[0] if len(ways) == 1 else f"{ways[0]}, or {ways[1]}"
@@ -375,6 +384,85 @@ def _rewritten(now: Any, after: Any, ctx: Any, store: Any, ingest: Mapping[str, 
     return _Rewritten(store, values), {**ingest, "columns": columns}
 
 
+class _Rebuilt:
+    """The working table as an answer that changes its rows would leave it (rows combined per
+    unit, reference rows that leave or return, pooled QCs corrected and then left out, a combined
+    table's values rewritten), built by the working stage itself in a folder of its own: the store
+    over it, its description (the cohort's ``ingest``), and what changes (``"units"``,
+    ``"reference"`` or ``"values"``)."""
+
+    def __init__(self, folder: Path, store: Any, info: dict[str, Any], how: str):
+        self.folder, self.store, self.info, self.how = folder, store, info, how
+
+    def close(self) -> None:
+        import shutil
+
+        try:
+            self.store.close()
+        finally:
+            shutil.rmtree(self.folder, ignore_errors=True)
+
+
+def _rebuilt(now: Any, after: Any, ctx: Any, store: Any) -> _Rebuilt | None:
+    """The working table ``after`` would build, when its rows are not the rows of the table now:
+    the units its records combine into, or the reference rows that leave (WP18, RO-13); or, on a
+    table whose rows are combined, the values a repair rewrites (each unit's row recombined). None
+    when the rows stay as they are (a value rewrite is :func:`_rewritten`'s), or when the stage
+    could not build it (it says why itself)."""
+    import tempfile
+
+    from turbotab.core.datastore import DataStore
+    from turbotab.core.graph import StageContext
+    from turbotab.core.methods.qc_drift import reference_plan
+    from turbotab.core.stages.working import (
+        TABLE, StructureError, aggregation_plan, repair_expressions, row_local_additions,
+        text_amounts, working_stage,
+    )
+
+    if all(getattr(now, s, None) == getattr(after, s, None) for s in _graph_reads()[1]):
+        return None
+    bundle = _ctx(ctx, "bundle")
+    if not callable(bundle):
+        return None
+    oriented = bundle("oriented")
+    files = getattr(oriented, "files", None) or {}
+    if TABLE not in files:
+        return None
+    findings, structure = bundle("findings"), bundle("structure")
+    source = Path(files[TABLE])
+    names = [str(c["name"]) for c in getattr(oriented, "data", {}).get("columns", [])]
+    shape = getattr(structure, "data", structure)
+
+    def rows_of(state: Any) -> tuple[Any, ...]:
+        exprs = repair_expressions(findings, getattr(state, "findings", None))
+        exprs.update(text_amounts(state, source, names, exprs))
+        _, derived, rules = row_local_additions(state, findings, names, exprs)
+        plan = aggregation_plan(state, set(names) | set(derived), shape)
+        return plan, rules, reference_plan(state), (exprs, derived) if plan is not None else None
+
+    try:
+        before, later = rows_of(now), rows_of(after)
+    except StructureError:
+        return None  # the working stage refuses it in its own words
+    if before == later:
+        return None
+    how = ("units" if before[0] != later[0] and later[0] is not None
+           else "reference" if before[1:3] != later[1:3] else "values")
+    folder = Path(tempfile.mkdtemp(prefix="tt-row-floor-"))
+    try:
+        built = working_stage(StageContext(
+            project_id="row-floor", state=after,
+            inputs={"oriented": oriented, "findings": findings, "structure": structure},
+            paths={"data": str(folder / "raw.parquet")}, settings={}))
+        table = DataStore(Path(built.files[TABLE]), int(getattr(store, "memory_budget_bytes", 1 << 30)))
+        return _Rebuilt(folder, table, dict(built.data), how)
+    except BaseException:
+        import shutil
+
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+
+
 # ── the check, at recording time ─────────────────────────────────────────────
 
 
@@ -428,8 +516,6 @@ def _answers_leave_rows_to_analyze(decision: Any, ctx: Any) -> None:
     """Refuse an answer that would leave an analysis fewer rows than its fit needs
     (:data:`FEWEST_ROWS`) and fewer than now, or one value of the outcome where it had two,
     naming what removes the rows, with the ways back."""
-    from turbotab.core.stages.rows import cohort_flows, cohort_inputs
-
     if decision.kind != "revert" and decision.kind not in SLOTS:
         return
     now = _state(ctx)
@@ -451,11 +537,35 @@ def _answers_leave_rows_to_analyze(decision: Any, ctx: Any) -> None:
         rewritten = _rewritten(now, after, ctx, store, ingest)
     except Exception:  # noqa: BLE001 - values that cannot be foreseen: counted as they stand
         rewritten = None
+    rebuilt = None
+    if rewritten is None:
+        try:
+            rebuilt = _rebuilt(now, after, ctx, store)
+        except Exception:  # noqa: BLE001 - a table the working stage cannot build: it says why
+            rebuilt = None
     try:
+        _count(decision, ctx, now, after, store, ingest, rewritten, rebuilt)
+    finally:
+        if rebuilt is not None:
+            rebuilt.close()
+
+
+def _count(decision: Any, ctx: Any, now: Any, after: Any, store: Any, ingest: Mapping[str, Any],
+           rewritten: Any, rebuilt: _Rebuilt | None) -> None:
+    """The count itself: each analysis's rows now and after the answer, refused as the caller
+    says. ``rebuilt``: the answer changes the working table's rows, so the rows after are counted
+    on the table it would build, and every row is counted on both sides (a held-out row of the
+    table now names no row of that one; the cohort stage counts them so too)."""
+    from turbotab.core.stages.rows import cohort_flows, cohort_inputs
+
+    if rebuilt is not None:
+        store_after, ingest_after = rebuilt.store, rebuilt.info
+    else:
         store_after, ingest_after = rewritten or (store, ingest)
+    try:
         checked = []
         for label, a_now, a_after in _analyses(now, after):
-            if a_now is not None and rewritten is None:
+            if a_now is not None and rewritten is None and rebuilt is None:
                 rules_now, gappy_now = _flow_inputs(a_now, ingest)
                 rules_after, gappy_after = _flow_inputs(a_after, ingest_after)
                 if rules_now == rules_after and set(gappy_after) <= set(gappy_now):
@@ -465,7 +575,7 @@ def _answers_leave_rows_to_analyze(decision: Any, ctx: Any) -> None:
         return
     if not checked:
         return
-    pool = _pool(ctx, now, store)
+    pool = None if rebuilt is not None else _pool(ctx, now, store)
     # One flow per state, read once per table: each analysis now, and after (with the rows that
     # reach complete cases, and a new analysis's rows before its rules).
     nows = [a for _, a, _ in checked if a is not None]
@@ -504,15 +614,31 @@ def _answers_leave_rows_to_analyze(decision: Any, ctx: Any) -> None:
         blanks: list[tuple[str, int]] = []
         if any(c["key"] == COMPLETE_CASES for c in causes):
             # The rows complete cases remove after this answer that the analysis has before it,
-            # and which predictors are blank in them.
+            # and which predictors are blank in them (on a rebuilt table its rows are new ones).
             gone = np.setdiff1d(np.asarray(reached, dtype=np.int64), np.asarray(kept, dtype=np.int64))
-            gone = np.intersect1d(gone, np.asarray(kept_now, dtype=np.int64))
+            if rebuilt is None:
+                gone = np.intersect1d(gone, np.asarray(kept_now, dtype=np.int64))
             _, _, gappy = cohort_inputs(a_after, ingest_after)
             blanks = blanks_in(mask, gappy, gone)
         said = causes_sentence(causes, blanks, would=True)
         where = "outside the held-out ones" if pool is not None else ""
         question = "the eligibility question" if label is None else "the sensitivity question"
-        if label is None and code == "too_few_rows":
+        ways = _ways(causes, question)
+        if rebuilt is not None and rebuilt.how != "values" and label is None:
+            built = (f"{_rows(n_after)}, one per unit," if rebuilt.how == "units"
+                     else f"{_rows(n_after)} once the reference rows have left the table,")
+            if code == "too_few_rows":
+                lead = (f"Recorded, this answer would leave {built} where {int(n_now or 0):,} "
+                        f"rows are analyzed now, and the design needs at least {FEWEST_ROWS}.")
+            else:
+                lead = (f"Recorded, this answer would leave {built} and `{target}` is "
+                        f"`{_say(values[0])}` in every one of them: the models need rows with "
+                        f"another value of the outcome to learn from.")
+            if not causes:
+                ways = ("Analyze each record as its own row (the unit question), or keep the "
+                        "answers as they are." if rebuilt.how == "units"
+                        else "Keep the reference rows in the table, or keep the answers as they are.")
+        elif label is None and code == "too_few_rows":
             word = "rows analyzed now" if pool is None else "rows outside the held-out ones"
             lead = (f"Recorded, this answer would leave {_leaves(n_after, int(n_now or 0), word)}, "
                     f"and the design needs at least {FEWEST_ROWS}.")
@@ -530,9 +656,10 @@ def _answers_leave_rows_to_analyze(decision: Any, ctx: Any) -> None:
                     f"{_rows(n_after)}{' ' + where if where else ''}, and `{target}` is "
                     f"`{_say(values[0])}` in every one of them: its fit needs rows with another "
                     f"value of the outcome to learn from.")
-        message = " ".join(p for p in (lead, said, _ways(causes, question)) if p)
+        message = " ".join(p for p in (lead, said, ways) if p)
         raise Refusal(code, message, exits=[KEEP] if _PROBING.get()
-                      else _exits(decision, causes, label, now, ctx))
+                      else _exits(decision, causes, label, now, ctx,
+                                  units=rebuilt is not None and rebuilt.how == "units"))
 
 
 def _accepted_exit(decision: Any, ctx: Any) -> dict[str, Any] | None:
@@ -547,11 +674,28 @@ def _accepted_exit(decision: Any, ctx: Any) -> dict[str, Any] | None:
         _PROBING.reset(probing)
 
 
+accepted_exit = _accepted_exit  # for the other validators' exits (``decisions._accepted_ways``)
+
+
+def _same_rules(a: Sequence[Any], b: Sequence[Any]) -> bool:
+    """Whether two lists of eligibility rules keep the same rows by the same rules (in any order)."""
+    def key(rules: Sequence[Any]) -> list[str]:
+        return sorted(json.dumps(_dump(as_rule(r)), sort_keys=True, default=str) for r in rules)
+
+    return key(a) == key(b)
+
+
 def _rule_exits(rules: Sequence[Any], causes: Sequence[Mapping[str, Any]], make: Any,
-                ctx: Any, where: str = "") -> list[dict[str, Any]]:
+                ctx: Any, where: str = "", primary: Sequence[Any] | None = None
+                ) -> list[dict[str, Any]]:
     """Dropping each rule that removes rows, named by its own line of the flow, when the record
-    accepts the answer without it; when no one rule is enough, the rules together."""
+    accepts the answer without it; when no one rule is enough, the rules together. ``primary``: a
+    sensitivity analysis's exits, never one whose rules are left the primary's (the analysis would
+    be the primary analysis again: leaving it out says that)."""
     from turbotab.core.stages.rows import rule_label
+
+    def offered(kept: list[Any]) -> bool:
+        return primary is None or not _same_rules(kept, primary)
 
     causing = list(dict.fromkeys(int(str(c["key"]).split(":")[1]) for c in causes
                                  if str(c["key"]).startswith("exclusion:")))
@@ -560,12 +704,13 @@ def _rule_exits(rules: Sequence[Any], causes: Sequence[Mapping[str, Any]], make:
         label = f"Drop the rule{where}: {rule_label(rules[i])}"
         if any(e["label"] == label for e in out):
             continue  # the same rule twice: dropping either does the same
-        accepted = _accepted_exit(make([r for j, r in enumerate(rules) if j != i]), ctx)
+        kept = [r for j, r in enumerate(rules) if j != i]
+        accepted = _accepted_exit(make(kept), ctx) if offered(kept) else None
         if accepted is not None:
             out.append({"label": label, "decision": accepted})
     if not out and len(causing) > 1:
         kept = [r for j, r in enumerate(rules) if j not in causing]
-        accepted = _accepted_exit(make(kept), ctx)
+        accepted = _accepted_exit(make(kept), ctx) if offered(kept) else None
         if accepted is not None:
             named = [rule_label(rules[i]) for i in causing]
             out.append({"label": f"Drop the rules{where}: {', '.join(named[:-1])} and {named[-1]}",
@@ -574,8 +719,17 @@ def _rule_exits(rules: Sequence[Any], causes: Sequence[Mapping[str, Any]], make:
 
 
 def _exits(decision: Any, causes: Sequence[Mapping[str, Any]], label: str | None, now: Any,
-           ctx: Any) -> list[dict[str, Any]]:
+           ctx: Any, units: bool = False) -> list[dict[str, Any]]:
+    """The ways back, each one the record accepts: a fill, a rule dropped, the analysis left out;
+    ``units``: the answer combines each unit's records into one row, and analyzing each record as
+    its own row keeps them."""
+    from turbotab.core.decisions import SetUnit
+
     exits: list[dict[str, Any]] = []
+    if units and label is None:
+        apart = _accepted_exit(SetUnit(unit="row"), ctx)
+        if apart is not None:
+            exits.append({"label": "Analyze each record as its own row", "decision": apart})
     if any(c["key"] == COMPLETE_CASES for c in causes):
         # The columns this answer leaves out stay left out (a missing-values answer's own).
         keep = list(decision.drop_columns) if isinstance(decision, SetMissing) else None
@@ -591,7 +745,8 @@ def _exits(decision: Any, causes: Sequence[Mapping[str, Any]], label: str | None
             analyses[i] = mine.model_copy(update={"rules": rules})
             return SetSensitivity(analyses=analyses)
 
-        exits += _rule_exits(mine.rules, causes, without, ctx, where=f" from “{label}”")
+        exits += _rule_exits(mine.rules, causes, without, ctx, where=f" from “{label}”",
+                             primary=list(getattr(now, "exclusions", None) or []))
         left = _accepted_exit(SetSensitivity(analyses=[a for k, a in enumerate(decision.analyses)
                                                        if k != i]), ctx)
         if left is not None:
@@ -675,5 +830,5 @@ def _register() -> None:
 
 _register()
 
-__all__ = ["FEWEST_ROWS", "blanks_in", "causes_sentence", "cohort_refusal", "fill_exits",
-           "one_value_refusal", "outcome_values"]
+__all__ = ["FEWEST_ROWS", "accepted_exit", "blanks_in", "causes_sentence", "cohort_refusal",
+           "fill_exits", "one_value_refusal", "outcome_values"]

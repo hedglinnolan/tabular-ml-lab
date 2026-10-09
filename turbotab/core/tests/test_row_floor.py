@@ -381,11 +381,11 @@ def test_a_sensitivity_analysis_that_keeps_too_few_rows_is_refused(tmp_path):
             f"“`age` within `90`–`99`” would remove 40 rows. Drop or widen the rule that removes "
             f"them (the sensitivity question).")
         labels = [e["label"] for e in refused.value.exits]
-        assert labels == ["Drop the rule from “the oldest”: `age` within `90`–`99`",
-                          "Leave out the analysis “the oldest”", "Keep the answers as they are"]
+        # Dropping its one rule would leave it the primary analysis (no rule): not offered.
+        assert labels == ["Leave out the analysis “the oldest”", "Keep the answers as they are"]
         for e in refused.value.exits[:-1]:
             validate(e["decision"], ctx)  # each way back is one the record accepts
-        left = SetSensitivity.model_validate(refused.value.exits[1]["decision"])
+        left = SetSensitivity.model_validate(refused.value.exits[0]["decision"])
         assert [a.label for a in left.analyses] == ["adults"]
 
 
@@ -495,3 +495,113 @@ def test_the_design_and_the_sensitivity_stage_say_one_value_and_too_few_rows_pla
         f"This analysis keeps no eligible rows outside the held-out set, and a fit needs at least "
         f"{FEWEST_ROWS}: widen its rules, or leave it out."]
     assert fits["Primary"]["coefficients"]
+
+
+# ── the residue: every exit row-checked, none that reproduces the primary ─────
+
+
+def _missing_refusals(purpose: str):
+    """The missing-values answers other validators refuse with a complete-case exit, and the
+    state each is refused in: multiple imputation under prediction; under inference a single
+    fill, passive imputation beside a spline, and single-level imputation on repeated rows."""
+    from turbotab.core.decisions import ExposureFormSpec, GrainSpec
+
+    labs = {f"lab_{c}": "exposure" for c in "abcdefghijkl"}
+    if purpose == "prediction":  # at the missing-values question: no answer yet
+        return [("imputation_with_the_outcome", renal_state(missing=None),
+                 {"kind": "set_missing", "strategy": "multiple_imputation"})]
+    inference = dict(purpose="inference", missing=None,
+                     roles={"age_years": "covariate", "sbp": "covariate", **labs})
+    return [
+        ("single_fill_under_inference", renal_state(**inference),
+         {"kind": "set_missing", "strategy": "impute"}),
+        ("passive_imputation_with_nonlinear_terms",
+         renal_state(**inference, exposure_forms={"lab_a": ExposureFormSpec(form="spline", knots=3)}),
+         {"kind": "set_missing", "strategy": "multiple_imputation", "imputation_model": "passive"}),
+        ("single_level_imputation_on_clustered_rows",
+         renal_state(**inference, grain=GrainSpec(grain="repeated", id_column="pt"), unit="row"),
+         {"kind": "set_missing", "strategy": "multiple_imputation",
+          "imputation_levels": "single_level"}),
+    ]
+
+
+@pytest.mark.parametrize("purpose", ["prediction", "inference"])
+def test_every_missing_values_refusal_offers_complete_cases_only_where_they_leave_rows(purpose,
+                                                                                       tmp_path):
+    """The integrator's residue: multiple imputation under prediction, and under inference the
+    single fill, passive imputation beside a nonlinear term and single-level imputation on repeated
+    rows, were refused with complete cases among their exits, never counted. On the renal table
+    complete cases keep 4 rows (pandas, below), so taking that exit was refused in turn. It is not
+    offered now, and every exit that is offered is accepted. With 40 complete rows it is offered,
+    and accepted."""
+    from turbotab.core.decisions import Refusal as Refused
+
+    for complete, offered in ((4, False), (40, True)):
+        frame = renal(complete=complete)
+        frame["pt"] = np.repeat(np.arange(len(frame) // 2), 2)  # two rows per participant
+        preds = [c for c in renal_state().roles]
+        assert int(frame[preds].notna().all(axis=1).sum()) == complete  # the reference
+        folder = tmp_path / f"{purpose}-{complete}"
+        folder.mkdir()
+        store, bundle = toy_store(frame, folder)
+        with store:
+            for code, now, answer in _missing_refusals(purpose):
+                ctx = {"state": now, "store": store, "columns": list(frame.columns),
+                       "target": "egfr_decline", "bundle": bundle}
+                with pytest.raises(Refused) as refused:
+                    validate(answer, ctx)
+                assert refused.value.code == code
+                ways = [e["decision"] for e in refused.value.exits if e["decision"] is not None]
+                ways = [w if isinstance(w, dict) else w.model_dump(mode="json") for w in ways]
+                complete_cases = [w for w in ways if w.get("strategy") == "complete_case"]
+                assert bool(complete_cases) is offered, (code, complete, refused.value.exits)
+                for way in ways:
+                    validate(way, ctx)  # every exit offered is one the record accepts
+
+
+def test_a_sensitivity_exit_never_leaves_the_analysis_the_primary(tmp_path):
+    """The integrator's residue: "Drop the rule from <label>" could leave a sensitivity analysis
+    with the primary's rules (no rule, under a primary with none), which is the primary analysis
+    again. Such an exit is not offered; leaving the analysis out is. Dropping a rule, or the rules
+    together, where that leaves a different analysis is still offered."""
+    from turbotab.core.decisions import SensitivityAnalysis, SetSensitivity
+
+    toy = pd.DataFrame({"y": np.linspace(0, 1, 40) ** 2, "x": np.linspace(-1, 1, 40),
+                        "age": 20 + 1.5 * np.arange(40), "sbp": np.linspace(100, 160, 40)})
+    store, bundle = toy_store(toy, tmp_path)
+    adults = ExclusionRule(column="age", low=30, high=79, reason="adults")
+    oldest = ExclusionRule(column="age", low=90, high=99, reason="the oldest")
+    older = ExclusionRule(column="age", low=60, reason="older")
+    low_sbp = ExclusionRule(column="sbp", low=0, high=90, reason="hypotension")
+    assert int((toy.age >= 60).sum()) == 13 and int((toy.sbp <= 90).sum()) == 0  # the reference
+    with store:
+        for primary, rules, labels in (
+                # without `the oldest` it is the primary; without both, every row
+                ([adults], [adults, oldest],
+                 ["Drop the rules from “a”: `age` within `30`–`79` and `age` within `90`–`99`",
+                  "Leave out the analysis “a”"]),
+                # without `hypotension` it is the older adults, not the primary (every row)
+                ([], [older, low_sbp], ["Drop the rule from “a”: `sbp` within `0`–`90`",
+                                        "Leave out the analysis “a”"]),
+                # without `hypotension` it is the primary
+                ([older], [older, low_sbp],
+                 ["Drop the rules from “a”: `age` at least `60` and `sbp` within `0`–`90`",
+                  "Leave out the analysis “a”"])):
+            now = ProjectState(target="y", task="regression", purpose="inference",
+                               roles={"x": "exposure", "age": "covariate", "sbp": "covariate"},
+                               missing=MissingSpec(strategy="complete_case"), exclusions=primary)
+            ctx = {"state": now, "store": store, "columns": list(toy.columns), "target": "y",
+                   "bundle": bundle}
+            answer = SetSensitivity(analyses=[SensitivityAnalysis(label="b", rules=[adults]),
+                                              SensitivityAnalysis(label="a", rules=rules)])
+            with pytest.raises(Refusal) as refused:
+                validate(answer, ctx)
+            assert refused.value.code == "too_few_rows"
+            assert [e["label"] for e in refused.value.exits] == [*labels,
+                                                                 "Keep the answers as they are"]
+            for e in refused.value.exits[:-1]:
+                taken = SetSensitivity.model_validate(validate(e["decision"], ctx).model_dump())
+                for a in taken.analyses:
+                    if a.label == "a":  # what the exit made of it is never the primary
+                        assert sorted(r.model_dump_json() for r in a.rules) != sorted(
+                            r.model_dump_json() for r in primary), e["label"]

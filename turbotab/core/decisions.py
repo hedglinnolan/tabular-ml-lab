@@ -4451,6 +4451,18 @@ def _missing_base(decision: SetMissing, **change: Any) -> SetMissing:
     return SetMissing(**{**decision.model_dump(exclude={"kind"}), **change})
 
 
+def _accepted_ways(exits: list[dict[str, Any]], ctx: Any) -> list[dict[str, Any]]:
+    """``exits`` with each complete-case answer among them kept only where the record accepts it
+    now, its rows counted (``row_floor``): complete cases that would leave too few rows, or one
+    value of the outcome, are refused when taken, so they are never offered as a way out."""
+    from turbotab.core.row_floor import accepted_exit
+
+    return [e for e in exits
+            if not (isinstance(e.get("decision"), SetMissing)
+                    and e["decision"].strategy == "complete_case"
+                    and accepted_exit(e["decision"], ctx) is None)]
+
+
 def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
     """Missing data by purpose (BLUEPRINT §12 ruling 4; AUDIT_REPORT §5 WP7, ME-01).
 
@@ -4473,10 +4485,11 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
                 "inference, but a prediction model must impute a new row without its outcome, so "
                 "under prediction the imputation is fit in each training fold without it (Sisk et "
                 "al. 2023).",
-                exits=[{"label": "Fill in each training fold, without the outcome",
-                        "decision": SetMissing(strategy="impute", **keep)},
-                       {"label": "Complete cases", "decision": SetMissing(strategy="complete_case", **keep)},
-                       {"label": "Change the purpose to inference", "decision": None}])
+                exits=_accepted_ways([
+                    {"label": "Fill in each training fold, without the outcome",
+                     "decision": SetMissing(strategy="impute", **keep)},
+                    {"label": "Complete cases", "decision": SetMissing(strategy="complete_case", **keep)},
+                    {"label": "Change the purpose to inference", "decision": None}], ctx))
         if decision.indicators:
             raise Refusal(
                 "indicators_with_imputation",
@@ -4490,14 +4503,14 @@ def _missing_fits_the_purpose(decision: SetMissing, ctx: Any) -> None:
     indicator = decision.indicators or decision.categorical == "missing_category"
     if not (single or indicator):
         return
-    exits: list[dict[str, Any]] = [
+    exits: list[dict[str, Any]] = _accepted_ways([
         {"label": MI_EXIT_LABEL,
          "decision": _missing_base(decision, strategy="multiple_imputation", indicators=False,
                                    categorical="impute", acknowledged=False)},
         {"label": "Complete cases, with their assumption stated",
          "decision": _missing_base(decision, strategy="complete_case", indicators=False,
                                    categorical="impute", acknowledged=False)},
-    ]
+    ], ctx)
     if indicator:
         what = ("blanks as their own level" if decision.categorical == "missing_category"
                 and not decision.indicators else "missing indicators")
@@ -4559,9 +4572,10 @@ def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
             raise Refusal(
                 "passive_imputation_with_nonlinear_terms",
                 f"The analysis model holds {said}. Under inference {PASSIVE_CAUTION}.",
-                exits=[{"label": "Multiple imputation compatible with the analysis model (SMC-FCS)",
-                        "decision": _missing_base(decision, imputation_model="compatible")},
-                       cc, keep])
+                exits=_accepted_ways([
+                    {"label": "Multiple imputation compatible with the analysis model (SMC-FCS)",
+                     "decision": _missing_base(decision, imputation_model="compatible")},
+                    cc, keep], ctx))
     if decision.imputation_levels == "single_level":
         grain = getattr(state, "grain", None)
         if getattr(grain, "grain", None) == "repeated" and getattr(state, "unit", None) != "unit":
@@ -4569,9 +4583,10 @@ def _imputation_fits_the_analysis(decision: SetMissing, ctx: Any) -> None:
                 "single_level_imputation_on_clustered_rows",
                 f"The rows repeat by `{getattr(grain, 'id_column', None) or 'unit'}`. Under "
                 f"inference {SINGLE_LEVEL_CAUTION}.",
-                exits=[{"label": "Clustered multiple imputation (time-invariant values once per unit)",
-                        "decision": _missing_base(decision, imputation_levels="clustered")},
-                       cc, keep])
+                exits=_accepted_ways([
+                    {"label": "Clustered multiple imputation (time-invariant values once per unit)",
+                     "decision": _missing_base(decision, imputation_levels="clustered")},
+                    cc, keep], ctx))
 
 
 def _censored_named(ctx: Any) -> list[str]:
