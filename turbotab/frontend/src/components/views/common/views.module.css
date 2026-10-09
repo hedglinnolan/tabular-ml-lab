@@ -1,0 +1,258 @@
+/* The parts every exhibit view shares (FOUNDATION §5 rule 9; ./parts.tsx): the frame with one
+   title, one line saying what it is, the legend, the drawing and its table alternative, the one
+   line instead of an empty frame, the tooltips, the axes and the crosshair. Every color is a token (tokens.css): canvas tokens for the
+   frame and its text, the categorical slots for entities, indigo only for what the choice touches. */
+.frame {
+  margin: 0;
+  min-width: 0;
+  color: var(--canvas-ink);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.caption {
+  margin: 2px 0 8px;
+  color: var(--canvas-muted);
+  font-size: 14px;
+}
+.empty {
+  margin: 4px 0;
+  color: var(--canvas-muted);
+  font-size: 15px;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  color: var(--canvas-muted);
+  font-size: 14px;
+}
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+.legend button[data-dim="true"] {
+  opacity: 0.45;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+}
+.swatch[data-mark="dot"] {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.swatch[data-mark="line"] {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+.swatch[data-mark="thin"] {
+  width: 14px;
+  height: 1px;
+  border-radius: 0;
+}
+.swatch[data-mark="band"] {
+  width: 14px;
+  height: 10px;
+}
+.svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.axis {
+  fill: var(--canvas-muted);
+  font-size: 11px;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.axisTitle {
+  fill: var(--canvas-muted);
+  font-size: 12px;
+  font-family: var(--font);
+}
+.direct {
+  fill: var(--canvas-ink);
+  font-size: 12px;
+  font-family: var(--font);
+}
+.cellText {
+  font-size: 11px;
+  font-family: var(--font);
+  pointer-events: none;
+}
+.note {
+  fill: var(--canvas-ink);
+  font-size: 12px;
+  font-family: var(--font);
+  font-weight: 600;
+}
+.scale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 0 6px;
+  color: var(--canvas-muted);
+  font-size: 13px;
+}
+.scale ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scale li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.scale li i {
+  width: 16px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  box-sizing: border-box;
+}
+.table {
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.table caption {
+  text-align: left;
+  color: var(--canvas-muted);
+  font-size: 13px;
+  padding-bottom: 4px;
+}
+.table tr[data-primary="true"] > * {
+  font-weight: 600;
+}
+.table th,
+.table td {
+  padding: 3px 14px 3px 0;
+  text-align: right;
+  border-top: 1px solid var(--canvas-line);
+  white-space: nowrap;
+}
+.table th:first-child,
+.table td:first-child {
+  text-align: left;
+}
+.table thead th {
+  border-top: 0;
+  color: var(--canvas-muted);
+  font-weight: 600;
+}
+.tableWrap {
+  overflow-x: auto;
+  min-width: 0;
+  max-height: 420px;
+  overflow-y: auto;
+}
+/* the tooltip: at the pointer (fixed), or inside the plot at a point in its own pixels */
+.tip {
+  position: fixed;
+  z-index: 9;
+  pointer-events: none;
+  background: var(--raised);
+  color: var(--raised-ink);
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 5px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transform: translate(-50%, -125%);
+}
+.tip b {
+  font-weight: 600;
+}
+.tip[data-anchor="plot"] {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+}
+.tip div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tip i {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  display: inline-block;
+  flex: none;
+}
+/* the table alternative: one quiet disclosure under the drawing */
+.alt {
+  margin-top: 6px;
+}
+.alt summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--canvas-muted);
+  font-size: 14px;
+}
+.alt[open] summary {
+  margin-bottom: 8px;
+}
+/* axes and the crosshair */
+.grid {
+  stroke: var(--canvas-line);
+  stroke-width: 1;
+}
+.overlay {
+  fill: transparent;
+  cursor: crosshair;
+  outline: none;
+}
+.focusRing {
+  fill: none;
+  stroke: var(--focus);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.svg:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.halo {
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}

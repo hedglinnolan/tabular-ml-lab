@@ -49,7 +49,10 @@ export const COACH_ANCHOR_KINDS: Exactly<typeof anchorKinds, CoachAnchorKind> = 
 /** The pictures the stage composes from the vocabulary's views (composed.ts). */
 export type ComposedKind = "reshape_table" | "turn_table" | "seal_fork";
 
-export const VIEW_PURPOSES: Record<ViewKind | ComposedKind, Purpose> = {
+/** The exhibit view kinds (FOUNDATION §5 rule 9), each designed once in src/components/views. */
+export type ExhibitKind = "curve" | "calibration" | "decision_curve" | "spec_curve";
+
+export const VIEW_PURPOSES: Record<ViewKind | ComposedKind | ExhibitKind, Purpose> = {
   row_flow: { question: "change", answer: "which rows stay in the analysis, step by step, and how many each step removes" },
   lineage: { question: "change", answer: "which columns enter the model, and what each one becomes on the way" },
   table_focus: { question: "change", answer: "what the choice writes into real rows, cell by cell" },
@@ -61,6 +64,10 @@ export const VIEW_PURPOSES: Record<ViewKind | ComposedKind, Purpose> = {
   },
   turn_table: { question: "what", answer: "which way round the table is: each sample column becomes one row" },
   seal_fork: { question: "matters", answer: "which rows are held out, and whether one unit sits on both sides of the seal" },
+  curve: { question: "matters", answer: "how the estimate changes across one input's values, and where the data supports it" },
+  calibration: { question: "matters", answer: "whether the predicted risks or values match what was observed, across their range" },
+  decision_curve: { question: "matters", answer: "at which thresholds acting on the model beats treating everyone or no one" },
+  spec_curve: { question: "matters", answer: "how far the declared alternative choices move the estimate, beside the primary" },
 };
 
 export const COACH_ANCHOR_PURPOSES: Record<CoachAnchorKind, Purpose> = {

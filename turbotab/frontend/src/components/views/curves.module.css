@@ -1,0 +1,61 @@
+/* The exhibit views (FOUNDATION §5 rule 9): drawn on the tapestry, so every color is a canvas or
+   data token. Text wears the ink tokens; marks wear gray (now), indigo (what the choice touches),
+   ink (the fit) or the comparison palette (an entity, in its fixed order). */
+
+.fig {
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  color: var(--canvas-ink);
+  font-family: var(--font);
+}
+.fig h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.plot {
+  position: relative;
+  min-width: 0;
+}
+.plot svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.label {
+  fill: var(--canvas-ink);
+  font-size: 12px;
+  font-family: var(--font);
+}
+.hit {
+  fill: transparent;
+  stroke: transparent;
+}
+.cross {
+  stroke: var(--canvas-muted);
+  stroke-width: 1;
+  pointer-events: none;
+}
+.ring {
+  /* the ring is painted under the fill, so it shows only outside it: the colored disc keeps its
+     full radius (MARK_R, 10 px across) and the 1 px of canvas around it parts it from lines */
+  stroke: var(--canvas);
+  stroke-width: 2;
+  paint-order: stroke;
+}
+
+.quiet {
+  margin: 0;
+  color: var(--canvas-muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .morph {
+    transition: d 0.3s ease, opacity 0.3s ease;
+  }
+}

@@ -9,6 +9,7 @@
     "build": "tsc --noEmit -p tsconfig.app.json && vite build",
     "build:protos": "tsc --noEmit -p tsconfig.app.json && vite build --config vite.protos.config.ts",
     "build:calm": "tsc --noEmit -p tsconfig.app.json && vite build --config vite.calm.config.ts",
+    "build:views": "tsc --noEmit -p tsconfig.app.json && vite build --config vite.views.config.ts",
     "preview": "vite preview",
     "check": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && eslint . && vitest run",
     "test": "vitest run",

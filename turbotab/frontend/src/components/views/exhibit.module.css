@@ -1,0 +1,296 @@
+/* The exhibit view kinds (table, forest, page) on the tapestry: the calm tokens only
+   (docs/turbotab-next/calm/tokens.css), one family with tabular numbers, recessive rules. */
+
+.view {
+  min-width: 0;
+  color: var(--canvas-ink);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  display: grid;
+  gap: 10px;
+}
+
+/* the one line a view says instead of an empty frame (no data, a closed gate) */
+.line {
+  margin: 0;
+  color: var(--canvas-muted);
+  font-size: 15px;
+}
+
+/* ── the exhibit table ─────────────────────────────────────────────────────── */
+.caption {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: left;
+  caption-side: top;
+  padding-bottom: 8px;
+}
+.caption b {
+  font-weight: 600;
+}
+.wrap {
+  overflow-x: auto;
+  min-width: 0;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14.5px;
+  line-height: 1.35;
+}
+.table th,
+.table td {
+  padding: 6px 12px 6px 0;
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+.table thead th {
+  color: var(--canvas-muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  border-top: 1px solid var(--canvas-ink);
+  border-bottom: 1px solid var(--canvas-line);
+  vertical-align: bottom;
+}
+.table thead small {
+  display: block;
+  font-weight: 400;
+}
+.table tbody tr:last-child th,
+.table tbody tr:last-child td {
+  border-bottom: 1px solid var(--canvas-ink);
+}
+.table td.num,
+.table th.num {
+  text-align: right;
+  white-space: nowrap;
+}
+.table td.est {
+  white-space: nowrap;
+}
+.table tr[data-primary="true"] th,
+.table tr[data-primary="true"] td {
+  font-weight: 600;
+}
+.table tbody th small {
+  display: block;
+  color: var(--canvas-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.table tr[data-group="true"] th {
+  padding-top: 10px;
+}
+.table th[data-indent="true"] {
+  padding-left: 16px;
+}
+.table tr[data-lit="true"] th,
+.table tr[data-lit="true"] td {
+  background: var(--canvas-line);
+}
+.mark {
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+  color: var(--canvas-muted);
+  font-weight: 400;
+  margin-left: 1px;
+}
+.notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  color: var(--canvas-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.notes sup {
+  margin-right: 3px;
+}
+
+/* ── the forest ────────────────────────────────────────────────────────────── */
+.forest {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) max-content minmax(160px, 1fr);
+  /* no column gap: each cell pads its own right, so a lit row lights end to end */
+  column-gap: 0;
+  align-items: stretch;
+  font-size: 14.5px;
+}
+.fhead {
+  color: var(--canvas-muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 0 16px 6px 0;
+  border-bottom: 1px solid var(--canvas-line);
+  align-self: end;
+}
+.fcell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding-right: 16px;
+  outline-offset: -2px;
+}
+.fcell[data-lit="true"] {
+  background: var(--canvas-line);
+}
+.fcell small {
+  color: var(--canvas-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fcell[data-primary="true"] {
+  font-weight: 600;
+}
+.fcell[data-primary="true"] small {
+  font-weight: 400;
+}
+.fest {
+  white-space: nowrap;
+}
+.plot {
+  min-width: 0;
+  grid-column: 3;
+}
+.plot svg {
+  display: block;
+  overflow: visible;
+}
+/* what each side of the reference means: one phrase at each end, wrapping, never dropped */
+.sides {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  color: var(--canvas-muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+  padding-top: 2px;
+}
+.sides span:last-child {
+  margin-left: auto;
+  text-align: right;
+}
+/* the forest as the table's last column: marks on the table's own rows */
+.table td.plotCell {
+  padding: 0;
+  position: relative;
+}
+.plotFill {
+  position: absolute;
+  inset: 0;
+}
+.plotFill svg {
+  display: block;
+  overflow: visible;
+}
+.table th.plotHead {
+  padding-right: 0;
+}
+.table td.plotFoot {
+  padding: 0;
+}
+.table tfoot td {
+  border: 0;
+}
+.axis {
+  fill: var(--canvas-muted);
+  font-size: 11.5px;
+  font-family: var(--font);
+}
+.axisTitle {
+  fill: var(--canvas-muted);
+  font-size: 12.5px;
+  font-family: var(--font);
+}
+.band {
+  fill: transparent;
+}
+.band[data-lit="true"] {
+  fill: var(--canvas-line);
+}
+
+/* ── the page ──────────────────────────────────────────────────────────────── */
+.pages {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: start;
+}
+.page {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 22px 24px 26px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.pageLabel {
+  margin: 0 0 4px;
+  color: var(--canvas-muted);
+  font-size: 13px;
+}
+.page h4 {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.page p {
+  margin: 0;
+}
+.page .quiet {
+  color: var(--faint);
+}
+.slot {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.slot[data-this="true"] {
+  border-color: var(--data-context);
+}
+.slot[data-other="true"] {
+  color: var(--faint);
+}
+.slotCaption {
+  margin: 0;
+  font-size: 12px;
+}
+.slotCaption b {
+  font-weight: 600;
+}
+/* the pointed placement: what the choice touches, in the choice's data color (FOUNDATION §4) */
+.slot[data-touched="true"] {
+  border-color: var(--data-affected);
+  box-shadow: inset 3px 0 0 var(--data-affected);
+}
+.slot[data-was="true"] {
+  border-color: var(--data-context);
+  color: var(--faint);
+}
+.left {
+  margin: 0;
+  color: var(--canvas-muted);
+  font-size: 13.5px;
+}
+.fixed {
+  color: var(--canvas-muted);
+  font-size: 13px;
+  margin: 0;
+}

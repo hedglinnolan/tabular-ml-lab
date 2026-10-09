@@ -1,0 +1,79 @@
+/* /lab/views: each sample in a light and a dark frame, side by side, on the tapestry's ground. */
+.lab {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 28px 24px 64px;
+  display: grid;
+  gap: 40px;
+}
+.head h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  font-weight: 600;
+}
+.head p {
+  margin: 0;
+  color: var(--muted);
+}
+.toc {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 15px;
+}
+.toc a {
+  color: var(--ink);
+}
+.kind {
+  display: grid;
+  gap: 18px;
+}
+.kind h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.purpose {
+  margin: -10px 0 0;
+  color: var(--muted);
+}
+.sample {
+  display: grid;
+  gap: 8px;
+}
+.sample h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.source {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.stack {
+  display: grid;
+  gap: 16px;
+}
+.frame {
+  background: var(--canvas);
+  color: var(--canvas-ink);
+  border-radius: 8px;
+  padding: 16px 18px 18px;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.theme {
+  color: var(--canvas-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
