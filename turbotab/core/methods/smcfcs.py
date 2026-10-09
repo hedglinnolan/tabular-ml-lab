@@ -550,8 +550,10 @@ class _Chain:
             rec = self.recorded[name]
             observed = v[rec]
             if not len(observed):
-                raise ImputationRefused(f"`{name}` has no recorded value to start its "
-                                        f"imputations from.")
+                refused = ImputationRefused(f"`{name}` has no recorded value to start its "
+                                            f"imputations from.")
+                refused.columns = [name]  # what leaving out would let the imputation run without
+                raise refused
             if var.unit_level and self.units is not None:
                 umiss = self.unit_miss[name]
                 per_unit = self._unit_values(name, v)
@@ -1054,8 +1056,10 @@ def impute(data: pd.DataFrame, variables: Sequence[Variable], *, mode: Mode = "f
             f"than the {MAX_MODEL_COLUMNS} chained equations are run with here.")
     for v in targets:
         if data[v.name].notna().sum() < 2 and v.kind != "categorical":
-            raise ImputationRefused(f"`{v.name}` has fewer than two observed values, so it cannot be "
-                                    f"imputed.")
+            refused = ImputationRefused(f"`{v.name}` has fewer than two observed values, so it "
+                                        f"cannot be imputed.")
+            refused.columns = [v.name]  # what leaving out would let the imputation run without
+            raise refused
     miss_any = energy_blank.copy()
     for v in variables:
         if not (identity is not None and v.name == identity.other):
