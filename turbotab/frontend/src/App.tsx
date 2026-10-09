@@ -53,6 +53,8 @@ const LAB_SCREENS: Partial<Record<LabRoute, LazyExoticComponent<ComponentType>>>
         "calm-quest": lazy(() => import("./explore/calm-quest/Screen").then((m) => ({ default: m.Screen }))),
         "calm-map": lazy(() => import("./explore/calm-map/Screen").then((m) => ({ default: m.Screen }))),
         "calm-kit": lazy(() => import("./explore/calm-kit/KitDemo").then((m) => ({ default: m.KitDemo }))),
+        // The exhibit view kinds, each with its fixture, in both themes (FOUNDATION §5 rule 9).
+        "views-lab": lazy(() => import("./components/views/lab/ViewsLab").then((m) => ({ default: m.ViewsLab }))),
       }
     : {};
 
