@@ -40,7 +40,15 @@ import pandas as pd
 from sklearn.base import BaseEstimator
 
 from turbotab.core.decisions import Purpose, Task
-from turbotab.core.models.base import Assessment, FamilyBase, Situation, coefficient_rows, register_family
+from turbotab.core.models.base import (
+    Assessment,
+    FamilyBase,
+    Identity,
+    InferenceDecl,
+    Situation,
+    coefficient_rows,
+    register_family,
+)
 
 OUTCOME_DTYPE = np.dtype([("event", bool), ("time", float), ("entry", float)])
 MAX_ITER = 60
@@ -610,6 +618,23 @@ class Cox(FamilyBase):
     )
     needs_scaling = False
     handles_missing = False
+    # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it). No attribution yet: the explain stage refuses
+    # a time-to-event outcome until MC-7 widens it.
+    identity = Identity(kind="estimator", library="turbotab", estimator="CoxRegressor")
+    purposes = ("prediction", "inference")
+    predicts = True
+    flexible = False
+    bootstrap_optimism = True
+    inference_decl = InferenceDecl(table="intervals", intervals=("model", "sandwich", "Taylor"),
+                                   design_based=True, product_terms=True, matrix_table=True)
+    invariances = ("linear_maps",)
+    curve_shape = "straight"
+    diagnostics = ("collinearity", "proportional_hazards")
+    raw_scale = {"time_to_event": "log_hazard"}
+    review_lenses = ("shared",)
+
+    def methods_label(self, task: Task | None) -> str:
+        return "Cox proportional hazards"
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         return CoxRegressor()

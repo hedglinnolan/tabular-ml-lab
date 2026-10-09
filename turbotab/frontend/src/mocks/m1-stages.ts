@@ -887,6 +887,7 @@ export function shelf(state: ProjectState, c: CohortArtifact, task: Task | null)
         rank: i + 1,
         fit: concerns.length === 0 ? "good" : concerns.length === 1 ? "fair" : "poor",
         concerns,
+        terms: concerns.map(() => null), // MC-1: no quiet names yet
         inductive_bias: FAMILY[key].bias,
         // §12.6: the measured cost before a fit (the mock's rough per-cell rates), worded as the
         // server's cost.say words it.

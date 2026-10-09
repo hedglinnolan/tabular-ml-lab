@@ -167,7 +167,7 @@ def fit_on_rows(state: Any, family: Any, pipeline: Any, frame: pd.DataFrame, inp
     # MS4: a family blocked under the population answer offers the family that has a design-based
     # estimator in its place, with every other chosen family kept (its exit changes only itself).
     chosen = getattr(state, "models", None)
-    if state.purpose == "inference" and hasattr(family, "inference"):
+    if state.purpose == "inference" and family.inference is not None:
         from turbotab.core.models.survey import blocked
 
         design = survey.design if survey is not None else None

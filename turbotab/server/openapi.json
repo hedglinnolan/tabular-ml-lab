@@ -676,6 +676,59 @@
         }
       }
     },
+    "/api/projects/{pid}/quest": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Quest",
+        "description": "The quest log's seven stages, in order (SIZING P0.4): each stage's lines under Decide,\nConfirm and For the record, with \"Waiting for\" on a line whose earlier answers are missing;\nprogress as answered over required, null for a stage not reached, with ``complete`` once every\nobjective is answered (a reached stage that asks nothing, 0 of 0, is complete: its segment is\nfull); and, when an answer decided in another stage asked its questions again or left its\nresults out of date, or another answer in the stage itself asked its questions again\n(``within``), why, in plain words. ``version`` changes when the shape or the meaning of this\nlog does.",
+        "operationId": "quest_api_projects__pid__quest_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestLog"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/methods": {
       "get": {
         "tags": [
@@ -5875,6 +5928,63 @@
             "type": "boolean",
             "title": "Predicts",
             "default": true
+          },
+          "flexible": {
+            "type": "boolean",
+            "title": "Flexible",
+            "default": false
+          },
+          "bootstrap_optimism": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootstrap Optimism",
+            "default": true
+          },
+          "invariances": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Invariances",
+            "default": []
+          },
+          "inference_table": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "intervals",
+                  "shrunk_no_intervals",
+                  "description_only"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inference Table"
+          },
+          "bias_terms": {
+            "items": {
+              "$ref": "#/components/schemas/Named"
+            },
+            "type": "array",
+            "title": "Bias Terms",
+            "default": []
+          },
+          "reads": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reads",
+            "default": []
           }
         },
         "type": "object",
@@ -5888,7 +5998,13 @@
           "needs_scaling",
           "handles_missing",
           "purposes",
-          "predicts"
+          "predicts",
+          "flexible",
+          "bootstrap_optimism",
+          "invariances",
+          "inference_table",
+          "bias_terms",
+          "reads"
         ],
         "title": "FamilyInfo",
         "description": "What ``GET /api/models`` says about one family."
@@ -8670,6 +8786,29 @@
         ],
         "title": "MultiplicitySpec"
       },
+      "Named": {
+        "properties": {
+          "plain": {
+            "type": "string",
+            "title": "Plain"
+          },
+          "known_as": {
+            "type": "string",
+            "title": "Known As"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plain",
+          "known_as",
+          "source"
+        ],
+        "title": "Named",
+        "description": "A term or phenomenon in two registers (C5): the card's plain sentence, and the quiet name\nwith its source, shown on point or focus, never as a second label."
+      },
       "OpenSeal-Input": {
         "properties": {
           "kind": {
@@ -9100,6 +9239,30 @@
           "caution"
         ],
         "title": "PreviewResult"
+      },
+      "Progress": {
+        "properties": {
+          "answered": {
+            "type": "integer",
+            "title": "Answered"
+          },
+          "required": {
+            "type": "integer",
+            "title": "Required"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answered",
+          "required",
+          "complete"
+        ],
+        "title": "Progress",
+        "description": "A reached stage's objectives: each counted Decide one, its Confirm sweep one. ``complete``\nonce every one is answered. A reached stage that asks nothing (0 of 0: First look until its\nnoticings are wired, Results under Estimate, Write-up) is complete, its segment full; a stage\nnot reached has no progress at all (empty, never \"0 of N\")."
       },
       "ProjectState": {
         "properties": {
@@ -10062,6 +10225,218 @@
         ],
         "title": "ProjectView"
       },
+      "QuestLine": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "question",
+              "declaration",
+              "finding"
+            ],
+            "title": "Source"
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "Decide",
+              "Confirm",
+              "For the record"
+            ],
+            "title": "Label"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "open",
+              "waiting",
+              "set_for_you"
+            ],
+            "title": "Status"
+          },
+          "counted": {
+            "type": "boolean",
+            "title": "Counted"
+          },
+          "order": {
+            "type": "number",
+            "title": "Order"
+          },
+          "decision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "waiting_for": {
+            "items": {
+              "$ref": "#/components/schemas/Waiting"
+            },
+            "type": "array",
+            "title": "Waiting For",
+            "default": []
+          },
+          "computing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Computing",
+            "default": []
+          },
+          "reopened_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReopenedBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "source",
+          "label",
+          "name",
+          "status",
+          "counted",
+          "order",
+          "decision_id",
+          "reason",
+          "waiting_for",
+          "computing",
+          "reopened_by"
+        ],
+        "title": "QuestLine",
+        "description": "One line of a stage: a Router question, a declaration or a finding.\n\n``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the\nearlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a\ndefault the engine stated, in the Confirm sweep or For the record)."
+      },
+      "QuestLog": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/QuestStage"
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "kinds": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Kinds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "stages",
+          "kinds"
+        ],
+        "title": "QuestLog",
+        "description": "The seven stages, each with its lines, progress and reopen reasons; ``kinds`` places every\ndecision kind (a methods sentence's \"change\" link opens its stage, disagreement 19; a revert\nsits with the record it undoes)."
+      },
+      "QuestStage": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "reached": {
+            "type": "boolean",
+            "title": "Reached"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Progress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sweep": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sweep"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/QuestLine"
+            },
+            "type": "array",
+            "title": "Lines",
+            "default": []
+          },
+          "reopened": {
+            "items": {
+              "$ref": "#/components/schemas/Reopened"
+            },
+            "type": "array",
+            "title": "Reopened",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "reached",
+          "progress",
+          "sweep",
+          "lines",
+          "reopened"
+        ],
+        "title": "QuestStage"
+      },
       "RangeByLevel": {
         "properties": {
           "column": {
@@ -10445,6 +10820,83 @@
         ],
         "title": "RelationshipView",
         "description": "A before/after scatter, e.g. a nutrient against energy before and after adjustment."
+      },
+      "Reopened": {
+        "properties": {
+          "changed_in": {
+            "type": "string",
+            "title": "Changed In"
+          },
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Questions",
+            "default": []
+          },
+          "results": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Results",
+            "default": []
+          },
+          "within": {
+            "type": "boolean",
+            "title": "Within",
+            "default": false
+          },
+          "sentence": {
+            "type": "string",
+            "title": "Sentence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "changed_in",
+          "decision_id",
+          "kind",
+          "questions",
+          "results",
+          "within",
+          "sentence"
+        ],
+        "title": "Reopened",
+        "description": "Why a stage dropped back: an answer decided in another stage asked its questions again or\nleft its results computed for other answers; or (``within``) another answer in the stage\nitself asked its questions again."
+      },
+      "ReopenedBy": {
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision_id",
+          "kind",
+          "stage"
+        ],
+        "title": "ReopenedBy",
+        "description": "The record whose change asked a line again, and the stage it was decided in."
       },
       "RepeatSpec": {
         "properties": {
@@ -16367,6 +16819,26 @@
         "title": "SetUsualIntake",
         "description": "One dietary component's usual-intake distribution by the NCI method, or ``model=\"none\"``\n(turbotab/core/usual_intake.py). ``nutrient`` names it: a long table's column, or the label of\na wide table's ``days``."
       },
+      "Source": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "where": {
+            "type": "string",
+            "title": "Where",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "where"
+        ],
+        "title": "Source",
+        "description": "A source a declaration cites: a key into ``models.sources.SOURCES`` (MODEL_FAMILY_CONTRACT\n§7's verified list, until SIZING X4's citation registry), and where in it."
+      },
       "SplitSpec": {
         "properties": {
           "holdout": {
@@ -16754,6 +17226,25 @@
         ],
         "title": "SurveySpec",
         "description": "The survey answer: the surveyed population (design-based, ``weight`` and the design named),\nor these participants (unweighted, recorded as such; ``turbotab/core/methods/survey.py``)."
+      },
+      "Sweep": {
+        "properties": {
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "answered": {
+            "type": "boolean",
+            "title": "Answered"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines",
+          "answered"
+        ],
+        "title": "Sweep",
+        "description": "The stage's one Confirm sweep: how many defaults it holds, and whether each is answered."
       },
       "TableFocusView": {
         "properties": {
@@ -17654,6 +18145,30 @@
           "levers"
         ],
         "title": "ViewOutcome"
+      },
+      "Waiting": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "stage",
+          "name"
+        ],
+        "title": "Waiting",
+        "description": "A question a line waits for: its key, its stage and how the app names it."
       },
       "Where": {
         "properties": {
@@ -36299,6 +36814,21 @@
             "title": "Concerns",
             "type": "array"
           },
+          "terms": {
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Named"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Terms",
+            "type": "array"
+          },
           "inductive_bias": {
             "title": "Inductive Bias",
             "type": "string"
@@ -36334,6 +36864,7 @@
           "rank",
           "fit",
           "concerns",
+          "terms",
           "inductive_bias",
           "estimate_seconds",
           "estimate"

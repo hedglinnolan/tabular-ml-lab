@@ -190,6 +190,10 @@ from turbotab.core.methods.exposure_form import FORMS_READS, forms_stage  # FORM
 from turbotab.core.methods.interaction import MODIFICATION_READS, modification_stage  # FORM
 
 GRAPH_FACTORY = "turbotab.core.stages:build_graph"
+# What an estimate stage serves (``Stage.serves``): withheld while a question it rests on is open,
+# and the first one served locks the plan. ``estimand.ESTIMATE_STAGES`` is read from these
+# declarations (V2X_SEAMS seam guard 7).
+ESTIMATE = "estimate"
 
 
 def build_graph() -> Graph:
@@ -477,7 +481,9 @@ def build_graph() -> Graph:
             # families rank first (``models.selection.shelf_order``).
             # shelf 15 (EXPLORE repair): a form rule set in Explore (``set_levers``) counts its
             # spline columns among the candidate predictor parameters Riley's minimum reads.
-            Stage("shelf", 15, ("working", "cohort", "target_info", "split"),
+            # shelf 16 (MC-1): each family carries ``terms`` beside its concerns, its concerns'
+            # quiet names (MODEL_FAMILY_CONTRACT C4), None until MC-5 writes them.
+            Stage("shelf", 16, ("working", "cohort", "target_info", "split"),
                   ("purpose", "task", *ROLE_READS, "missing", "categorical", "lens", "findings",
                    "event",
                    "outcome_order", "exposure_forms", "levers",
@@ -617,7 +623,7 @@ def build_graph() -> Graph:
                   ("models", "purpose", "task", "event", "survey", "outcome_order", "follow_up",
                    "multiplicity", *WP17_READS),
                   fit_stage, heavy=True, requires=("models",),
-                  label="Fitting the models"),
+                  label="Fitting the models", serves=ESTIMATE),
             # substitution 6: a swap can move a share of energy (WP12a); a random intercept's band
             # refits one intercept per resampled unit (WP12b); a curve says it is not pooled over
             # multiple imputations (WP7).
@@ -657,7 +663,7 @@ def build_graph() -> Graph:
                   ("substitution", "event", "outcome_order", "purpose", "outcome_unit",
                    "column_units", *ROLE_READS, *WP17_READS),
                   substitution_stage, heavy=True, requires=("substitution",),
-                  label="Drawing the substitution curves"),
+                  label="Drawing the substitution curves", serves=ESTIMATE),
             # ── M2: the seal (docs/turbotab-next/M2_CONTRACT.md §3) ──
             # seal_plan 3 (repair round): the declared purpose orders the split question (under
             # inference no holdout leads; BLUEPRINT §12 ruling 3), and the validation options.
@@ -700,7 +706,7 @@ def build_graph() -> Graph:
             Stage("sensitivity", 15, ("working", "design", "split", "target_info"),
                   (*SENSITIVITY_READS, *WP17_READS), sensitivity_stage, heavy=True,
                   requires=("sensitivity", "models"),
-                  label="Refitting the model on each analysis's rows"),
+                  label="Refitting the model on each analysis's rows", serves=ESTIMATE),
             # calibration 4 (methods gate): the outcome keeps its own values (a True/False event).
             # calibration 5, sensitivity 7 (the readings ledger): each reads the readings' own
             # confirmations; calibration applies only on an answered repeat kind.
@@ -723,13 +729,14 @@ def build_graph() -> Graph:
                   ("oriented", "findings", "structure", "working", "cohort", "design", "target_info"),
                   (*CALIBRATION_READS, *WP17_READS), calibration_stage, heavy=True,
                   requires=("measurement_error", "models"),
-                  label="Correcting intakes for day-to-day error in the recalls"),
+                  label="Correcting intakes for day-to-day error in the recalls", serves=ESTIMATE),
             # ── WP17 (AUDIT_REPORT §5): the declared "further adjusted for" model ──
             # secondary 2 (MS1–MS2): as fit 18; the design and the clustering in its imputation model.
             Stage("secondary", 5, ("working", "design", "split", "target_info"),
                   SECONDARY_READS, secondary_stage, heavy=True,
                   requires=("models", "adjustment"),
-                  label="Fitting the model further adjusted for the declared covariates"),
+                  label="Fitting the model further adjusted for the declared covariates",
+                  serves=ESTIMATE),
             # scales 1 (MS8): each declared scale's reliability (ω; α labeled customary) and, under
             # inference, its coefficient corrected by regression calibration given the covariates,
             # beside the uncorrected one; items imputed before scoring under multiple imputation.
@@ -743,7 +750,7 @@ def build_graph() -> Graph:
             # copy (REPAIR-MI's copy_pipeline: no median fill inside a copy).
             Stage("scales", 4, ("working", "design", "split", "target_info", "cohort"),
                   SCALES_READS, scales_stage, heavy=True, requires=("scales", "models"),
-                  label="Estimating each scale's reliability"),
+                  label="Estimating each scale's reliability", serves=ESTIMATE),
             # usual_intake 1 (the NCI method, V2 definition of done "Dietary, extended"): under the
             # dietary lens with repeated recalls the usual-intake distribution is offered as its own
             # estimand, and each recorded component's distribution is fit (amount-only or two-part).
@@ -769,7 +776,8 @@ def build_graph() -> Graph:
             Stage("effects", 6, ("working", "design", "split", "target_info"),
                   EFFECTS_READS, effects_stage, heavy=True,
                   requires=("models", "estimand"),
-                  label="Reporting the exposure's effect across the declared models"),
+                  label="Reporting the exposure's effect across the declared models",
+                  serves=ESTIMATE),
             # ── The causal lane (V2 definition of done §2; turbotab/core/causal.py) ──
             # causal_design is outcome-free: the options, the assumptions and positivity, shown
             # before any choice; causal runs the chosen estimator once the answer and the model
@@ -785,7 +793,7 @@ def build_graph() -> Graph:
             # standardized by and whose it is, and the methods text names the surveyed population's.
             Stage("causal", 3, ("working", "split", "target_info"), (*CAUSAL_READS, "causal"),
                   causal_stage, heavy=True, requires=("causal", "models"),
-                  label="Estimating the effect in the causal lane"),
+                  label="Estimating the effect in the causal lane", serves=ESTIMATE),
             # ── V2 causal row: a time-varying exposure by g-methods (turbotab/core/time_varying.py) ──
             # It requires the unit answer, which is set only when units repeat: a table of one row
             # per unit never runs it (nothing there changes over time).
@@ -794,7 +802,8 @@ def build_graph() -> Graph:
             # counted; the MSM's ratio read as a hazard ratio for its E-value.
             Stage("time_varying", 2, ("working", "split", "target_info", "structure"),
                   TIME_VARYING_READS, time_varying_stage, heavy=True,
-                  requires=("estimand", "unit"), label="Following the exposure through time"),
+                  requires=("estimand", "unit"), label="Following the exposure through time",
+                  serves=ESTIMATE),
             # ── Wave 2, EXPLAIN (V2 definition of done §2): the fitted families described ──
             # explain 2 (wave 1b, MS6): the floor quotes the fit's own primary score.
             # explain 3 (wave 2a repair): the explained rows are a seeded random permutation, never
@@ -804,7 +813,7 @@ def build_graph() -> Graph:
             Stage("explain", 4, ("working", "fit", "design", "target_info"),
                   (*EXPLAIN_READS, *ROLE_READS, *WP17_READS), explain_stage, heavy=True,
                   requires=("explain", "models"),
-                  label="Explaining each fitted model"),
+                  label="Explaining each fitted model", serves=ESTIMATE),
             # ── Wave 2, FORM (MODELING_SEQUENCE §1 rows 5 and 7) ──
             # forms: the functional-form question's card, read on the analyzed rows: the declared
             # exposure and each adjusted continuous confounder on its final scale, k by Harrell's
@@ -818,7 +827,7 @@ def build_graph() -> Graph:
             Stage("modification", 1, ("working", "design", "split", "target_info"),
                   MODIFICATION_READS, modification_stage, heavy=True,
                   requires=("modifications", "models"),
-                  label="Estimating the declared effect modification"),
+                  label="Estimating the declared effect modification", serves=ESTIMATE),
             # ── Wave 2, EXPLORE (MODELING_SEQUENCE §0 ruling 3; §1 rows 1, 9, 11) ──
             # explore reads the training rows under prediction and every analyzed row under
             # inference: each finding tied to its lever, outcome views recorded as looked at;
@@ -839,8 +848,8 @@ def build_graph() -> Graph:
             Stage("evaluation", 3, ("working", "fit", "design", "split", "target_info"),
                   (*EVALUATION_READS, *ROLE_READS, *WP17_READS), evaluation_stage, heavy=True,
                   requires=("models",),
-                  label="Fitting the benchmark and weighing the models"),
+                  label="Fitting the benchmark and weighing the models", serves=ESTIMATE),
         ]
     )
 
-__all__ = ["GRAPH_FACTORY", "build_graph"]
+__all__ = ["ESTIMATE", "GRAPH_FACTORY", "build_graph"]

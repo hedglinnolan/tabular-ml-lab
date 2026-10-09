@@ -38,6 +38,7 @@ from sklearn.linear_model import ElasticNetCV, LogisticRegressionCV
 
 from turbotab.core.decisions import Purpose, Task
 from turbotab.core.models.base import Assessment, FamilyBase, Situation, coefficient_rows, register_family
+from turbotab.core.models.base import CLASS_SCALES, Identity, InferenceDecl, Knob, Source
 
 L1_RATIOS = (0.1, 0.5, 0.7, 0.9, 0.95, 1.0)
 # saga was slow on the full default grid (≈ 150 s per multiclass fit on 17,000 NHANES rows); this
@@ -321,6 +322,36 @@ class ElasticNet(FamilyBase):
     needs_scaling = True
     handles_missing = False
     linear_in_values = True
+    # MODEL_FAMILY_CONTRACT §1 (§3.1's row for it).
+    identity = Identity(kind="estimator", library="scikit-learn",
+                        estimator="PooledElasticNetCV (Float32ElasticNetCV past the exact path's "
+                                  "columns when wide); PooledLogisticRegressionCV",
+                        seed_policy="random_state 0, fixed")
+    purposes = ("prediction", "inference")
+    predicts = True
+    flexible = False
+    bootstrap_optimism = True
+    inference_decl = InferenceDecl(table="shrunk_no_intervals")
+    invariances = ("column_scale",)
+    curve_shape = "straight"
+    # The penalty's strength; its lasso-ridge mix moves sparsity and grouping, not one direction of
+    # complexity, so it is not a knob here. Each knob is the estimator's grid (``alphas``, the
+    # logistic fit's inverse penalties ``Cs``), from which its inner cross-validation chooses the
+    # fitted ``alpha_`` or ``C_``; the formula, the ridge part's, takes ``alpha_`` and
+    # ``l1_ratio_`` (C7).
+    complexity = (
+        Knob(setting="alphas", more_means="simpler", formula="elastic_net_ridge_part",
+             source=Source("hastie2009", "§3.4.1, eqs. 3.47 and 3.50, for the ridge part")),
+        Knob(setting="Cs", more_means="more_flexible"),
+    )
+    output = "margin"
+    raw_scale = CLASS_SCALES
+    attribution = "linear"
+    architecture = ("equation", "shrinkage")
+    review_lenses = ("shared",)
+
+    def methods_label(self, task: Task | None) -> str:
+        return "elastic net"
 
     def build(self, task: Task, purpose: Purpose | None, n_rows: int, n_features: int) -> Any:
         cv = inner_folds(n_rows)

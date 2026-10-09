@@ -92,7 +92,7 @@ def secondary_stage(ctx: StageContext) -> Bundle:
     spec = DesignSpec.from_dict(design.objects["spec"])
     pipelines = design.objects["pipelines"]
     families = [get_family(k) for k in (state.models or []) if k in pipelines]
-    families = [f for f in families if reports_coefficients(f) and hasattr(f, "inference")]
+    families = [f for f in families if reports_coefficients(f) and f.inference is not None]
     if not families:
         raise ValueError("None of the chosen model families has a coefficient table, so there is "
                          "no estimate to set beside the primary's; choose the linear model.")

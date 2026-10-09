@@ -24,7 +24,10 @@ def test_models_lists_every_family_with_what_it_assumes(client):
     }
     for family in body:
         assert set(family) == {"key", "label", "tasks", "inductive_bias", "strengths", "cautions",
-                               "needs_scaling", "handles_missing", "purposes", "predicts"}
+                               "needs_scaling", "handles_missing", "purposes", "predicts",
+                               # MC-1: the model-family contract's user-facing declarations
+                               "flexible", "bootstrap_optimism", "invariances", "inference_table",
+                               "bias_terms", "reads"}
         assert set(family["tasks"]) == tasks[family["key"]]
         assert 0 < len(family["inductive_bias"].split()) <= 20
         assert family["strengths"] and family["cautions"]

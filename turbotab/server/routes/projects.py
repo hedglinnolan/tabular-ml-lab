@@ -6,6 +6,7 @@ from starlette.concurrency import run_in_threadpool
 
 from turbotab.core.plan_lock import PlanExport
 from turbotab.core.provenance import MethodsText
+from turbotab.core.quest import QuestLog
 from turbotab.server.routes import get_service, get_settings, refusal, require_local
 from turbotab.server.schemas import (
     CreateProject,
@@ -103,6 +104,23 @@ def readings_card(request: Request, pid: str) -> dict:
     """The readings the values settled with no question asked, each with its evidence and the
     answers that change it ("read from your data"; BLUEPRINT §14.3). Nothing waits on them."""
     return get_service(request).readings(pid)
+
+
+@router.get(
+    "/projects/{pid}/quest",
+    response_model=QuestLog,
+    responses={404: refusal("No such project")},
+)
+def quest(request: Request, pid: str) -> QuestLog:
+    """The quest log's seven stages, in order (SIZING P0.4): each stage's lines under Decide,
+    Confirm and For the record, with "Waiting for" on a line whose earlier answers are missing;
+    progress as answered over required, null for a stage not reached, with ``complete`` once every
+    objective is answered (a reached stage that asks nothing, 0 of 0, is complete: its segment is
+    full); and, when an answer decided in another stage asked its questions again or left its
+    results out of date, or another answer in the stage itself asked its questions again
+    (``within``), why, in plain words. ``version`` changes when the shape or the meaning of this
+    log does."""
+    return get_service(request).quest(pid)
 
 
 @router.get(

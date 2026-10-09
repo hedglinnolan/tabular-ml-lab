@@ -164,7 +164,8 @@ def test_a_family_registered_later_previews_and_traces_itself_with_no_new_code(p
 
     from turbotab.core.models import lineage as lineage_module
     from turbotab.core.models import previews
-    from turbotab.core.models.base import Assessment, FamilyBase, register_family, unregister_family
+    from turbotab.core.models.base import (Assessment, FamilyBase, Identity, register_family,
+                                           unregister_family)
     from turbotab.core.models.pipeline import DesignSpec, describe_steps
 
     class SplineLinear(FamilyBase):
@@ -174,6 +175,16 @@ def test_a_family_registered_later_previews_and_traces_itself_with_no_new_code(p
         inductive_bias = "Smooth curves for age; straight lines for everything else."
         strengths = ("Bends where the data bend.",)
         cautions = ("Knots are a choice.",)
+        # what every family declares (MODEL_FAMILY_CONTRACT §1)
+        identity = Identity(kind="estimator", library="scikit-learn", estimator="LinearRegression")
+        purposes = ("prediction",)
+        predicts = True
+        flexible = False
+        bootstrap_optimism = True
+        raw_scale = {"regression": "value"}
+
+        def methods_label(self, task):
+            return "a spline model"
 
         def preprocess(self, spec: DesignSpec):
             basis = SplineTransformer(n_knots=4, degree=3)

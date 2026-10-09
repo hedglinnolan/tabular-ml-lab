@@ -1223,31 +1223,19 @@ def _set_energy_adjustment(d: Any, state: Any, ctx: Any) -> str:
 
 # select_models
 
-_FAMILY_LABEL = {
-    "elastic_net": "elastic net",
-    "boosted_trees": "gradient-boosted trees",
-    # WP11: one least-squares test per exposure, q-values by Benjamini–Hochberg
-    "featurewise": "feature-wise least-squares tests with Benjamini–Hochberg false-discovery control",
-    "proportional_odds": "a proportional-odds (cumulative logit) model",
-    "mixed": "a random-intercept mixed model",
-    "gee": "generalized estimating equations",
-    "cox": "Cox proportional hazards",
-}
-_LINEAR_LABEL = {
-    "regression": "linear regression",
-    "binary": "logistic regression",
-    "multiclass": "multinomial logistic regression",
-    "ordinal": "multinomial logistic regression, which ignores the levels' order",
-}
-
-
 def _family_label(key: str, task: Any, ctx: Any) -> str:
+    """What the methods text calls a family: the context's label, else the family's own
+    (``methods_label``, MODEL_FAMILY_CONTRACT §3.3), else its key for one no longer registered."""
     given = (_get(ctx, "model_labels") or {}).get(key)
     if given:
         return str(given)
-    if key == "linear":
-        return _LINEAR_LABEL.get(task, "a linear model")
-    return _FAMILY_LABEL.get(key, tick(key))
+    import turbotab.core.models  # noqa: F401 - registers the families
+    from turbotab.core.models.base import get_family
+
+    try:
+        return get_family(key).methods_label(task)
+    except KeyError:
+        return tick(key)
 
 
 _NUMBER_WORD = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five"}

@@ -575,18 +575,20 @@ def test_a16_boosted_trees_stop_early_on_whole_units_the_latest_when_time_ordere
 def test_a20_least_squares_fit_time_scales_with_n_p_min_n_p():
     """Least squares and Newton-Cholesky factor the p × p cross-product, so their estimate scales
     as n·p·min(n, p); cell-pass families as n·p. Time-ordered folds fit k/2 + 1 whole tables.
+    Each family's growth is its declared cost model (MODEL_FAMILY_CONTRACT C6): the linear family
+    builds least squares and Newton-Cholesky logistic regression for every task.
     Reference: the arithmetic written out here."""
-    from sklearn.ensemble import HistGradientBoostingRegressor
-    from sklearn.linear_model import ElasticNetCV, LinearRegression, LogisticRegression
-
+    from turbotab.core.models import get_family
     from turbotab.core.models.cost import fit_cost, full_fits
 
     big, small = (20_000, 2_000), (200, 1_000)
-    ratio = fit_cost(LinearRegression(), *big) / fit_cost(LinearRegression(), *small)
+    linear = get_family("linear")
+    for task in linear.tasks:
+        built = linear.build(task, "prediction", 100, 2)
+        assert type(built).__name__ == "LinearRegression" or built.solver == "newton-cholesky"
+    ratio = fit_cost(linear, *big) / fit_cost(linear, *small)
     assert ratio == pytest.approx((20_000 * 2_000 * 2_000) / (200 * 1_000 * 200))
-    logit = LogisticRegression(solver="newton-cholesky")
-    assert fit_cost(logit, *big) / fit_cost(logit, *small) == pytest.approx(ratio)
-    for cells in (ElasticNetCV(), HistGradientBoostingRegressor()):
+    for cells in (get_family("elastic_net"), get_family("boosted_trees")):
         assert fit_cost(cells, *big) / fit_cost(cells, *small) == pytest.approx((20_000 * 2_000) / (200 * 1_000))
     assert full_fits(5) == 5
     assert full_fits(5, "time_ordered") == pytest.approx(sum(k / 6 for k in range(1, 6)) + 1)
