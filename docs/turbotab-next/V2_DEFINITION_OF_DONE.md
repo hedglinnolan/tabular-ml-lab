@@ -55,7 +55,7 @@ LightGBM, ExtraTrees, kNN, SVM, naive Bayes, LDA and neural networks stay v2.x. 
   - **Seven fixed stages,** with dynamic questions inside: Your data, Your question, First look, Who's in, Models, Results, Write-up.
   - **A seven-segment progress bar.**
   - **Decide · Confirm · For the record,** with one Confirm sweep of defaults at the end of each stage.
-  - **Open noticings** must be decided or dismissed before the lock or the seal. Clean checks go in the supplement, and "noticings" are named in two places.
+  - **Open noticings** go through the TRIAGE SWEEP (Nolan, 2026-10-09, replacing the ruling of 2026-10-06): before the lock, or under Predict before the held-out rows open, every open noticing arrives with the engine's recommended disposition pre-filled, shown with its reason: "doesn't change your numbers here" → a quiet supplement line; "could bias the estimate" → a limitation sentence; "act on it" → points to the decision. Blockers must be resolved. The user reviews, changes any line, and presses Confirm all; every disposition is recorded. A limitation sentence appears only where the issue could move the estimate and nothing was done about it (amended 2026-10-09). Clean checks go in the supplement, and "noticings" are named in two places.
   - **Full-tapestry flowcharts,** each savable as a figure: participant flow (samples and features for omics) and the analysis flowchart before training.
   - **Results as exhibits:** drafted wordings or your own; placement in Results, Discussion or the Supplement; every analysis that was run stays listed.
   - **Plain words on every card.** "Exposure", "confounder" and "estimand" are quiet terms only.

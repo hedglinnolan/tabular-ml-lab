@@ -916,6 +916,7 @@ Until a slot is agreed, use fewer permutations with a Monte Carlo interval.
    - **The alternative:** every thread that feeds the plan must be decided or dismissed before estimates appear.
    - **The trade-off:** a tighter leash and a cleaner paper, against a stall at the most exciting moment.
    - **Ruled: the alternative.** Every open thread that feeds the plan must be decided or dismissed before estimates appear, and under prediction before the seal opens. The lifecycle (§2) and the lock change to match. The open list before the lock becomes a list the user clears.
+   - **Re-ruled 2026-10-09 (Nolan, after the external audit): a triage sweep.** Every open thread arrives with the engine's recommended disposition pre-filled and its reason: "doesn't change your numbers here" → a supplement line; "could bias the estimate" → a limitation sentence; "act on it" → points to the decision. Blockers (T1) must be resolved. The user reviews, changes any line and presses Confirm all; every disposition is recorded. This keeps every thread explicitly disposed of, without a stall or a limitation sentence for every noticing.
 2. **Should clean checks appear in the paper?**
    - **My recommendation:** the supplement lists what was checked and found nothing beyond its reference. An example: "run order and responder were balanced, AUC 0.545." The methods text stays short.
    - **The alternatives:** list only noticings that fired, or put clean checks in the methods text too.

@@ -367,9 +367,13 @@ screen, after the Confirm sweep.
   become final on the analysis flowchart (disagreement 7).
 - **The analysis flowchart closes Models.** It is the user's own pipeline: what will be fit, on
   which rows, in what order, drawn as the flow of rows joined to the routing of columns. Under
-  Estimate and Describe it comes after the open-noticings gate: every open noticing that feeds the
-  plan is decided or dismissed first (Nolan, 2026-10-06). Under Predict that gate stands before the
-  held-out rows open, in Results.
+  Estimate and Describe it comes after the open-noticings gate, which is a triage sweep (Nolan,
+  2026-10-09, replacing "decide or dismiss each"). Every open noticing that feeds the plan arrives with
+  the engine's recommended disposition and its reason: "doesn't change your numbers here" (a quiet
+  supplement line), "could bias the estimate" (a limitation sentence) or "act on it" (points to the
+  decision). Blockers must be resolved; the user reviews, changes any line and presses Confirm all,
+  and every disposition is recorded. Under Predict the sweep stands before the held-out rows open, in
+  Results.
 
 **Fit is pressed on the analysis flowchart** (Nolan, 2026-10-06: it "is where the Fit button
 lives"; 2026-10-08: "Fit is pressed on the analysis flowchart, which shows progress and Cancel").

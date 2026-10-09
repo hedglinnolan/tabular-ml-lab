@@ -62,7 +62,7 @@ The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 
 2. **The NHANES export:** commit it **gzipped** as a test fixture. The harness reads the `.gz`, and CI then runs the 42 test files that read it.
 3. **The structure:** the quest log, redesigned (above).
 4. **`UNDERSTANDING_LAYER.md` §7:**
-   - every open noticing feeding the plan must be decided or dismissed before the lock or the seal;
+   - open noticings go through the TRIAGE SWEEP (Nolan, 2026-10-09, replacing the ruling of 2026-10-06): before the lock, or under Predict before the held-out rows open, every open noticing arrives with the engine's recommended disposition pre-filled, shown with its reason: "doesn't change your numbers here" → a quiet supplement line; "could bias the estimate" → a limitation sentence; "act on it" → points to the decision. Blockers must be resolved. The user reviews, changes any line, and presses Confirm all; every disposition is recorded. A limitation sentence appears only where the issue could move the estimate and nothing was done about it (this replaced "decide or dismiss each before the lock");
    - clean checks go in the supplement;
    - "noticings" are named in two places.
 
