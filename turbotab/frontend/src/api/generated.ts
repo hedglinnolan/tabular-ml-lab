@@ -1407,7 +1407,7 @@ export interface components {
              */
             sweep: "defaults" | "noticings";
             /** Lines */
-            lines?: components["schemas"]["SweptLine"][];
+            lines?: components["schemas"]["SweptLine-Input"][];
         };
         /** ConfirmSweep */
         "ConfirmSweep-Output": {
@@ -1428,7 +1428,7 @@ export interface components {
              */
             sweep: "defaults" | "noticings";
             /** Lines */
-            lines: components["schemas"]["SweptLine"][];
+            lines: components["schemas"]["SweptLine-Output"][];
         };
         /**
          * CovariateAnswers
@@ -6559,16 +6559,29 @@ export interface components {
              */
             sweep: "defaults" | "noticings";
             /** Lines */
-            lines: components["schemas"]["SweptLine"][];
+            lines: components["schemas"]["SweptLine-Output"][];
         };
         /** SweptLine */
-        SweptLine: {
+        "SweptLine-Input": {
             /** Id */
             id: string;
             /** Key */
             key: string;
             /** Value */
             value: string;
+            /** Basis */
+            basis?: string | null;
+        };
+        /** SweptLine */
+        "SweptLine-Output": {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /** Basis */
+            basis: string | null;
         };
         /**
          * TableFocusView
@@ -6737,9 +6750,12 @@ export interface components {
         };
         /**
          * Triage
-         * @description The triage at the gate: its stage and crosswalk card, each open noticing (blockers first),
-         *     how many block, whether it can be confirmed now (no blocker, something to triage), whether
-         *     every noticing has a recorded disposition, and the record that holds them.
+         * @description The triage at the gate: its stage and crosswalk card, each noticing (blockers first), how
+         *     many block, whether it can be confirmed now (the gate not passed, no blocker, something to
+         *     triage), whether every noticing has a recorded disposition, and the record that holds them.
+         *     ``changed``: the noticings whose recorded disposition no longer stands, the recommendation or
+         *     its reason having changed since. ``passed``: the gate has passed (the plan is fixed, or under
+         *     Predict the held-out rows are open), so the triage is read, no longer confirmed.
          */
         Triage: {
             /**
@@ -6773,13 +6789,24 @@ export interface components {
             answered: boolean;
             /** Confirmed By */
             confirmed_by: string | null;
+            /**
+             * Changed
+             * @default []
+             */
+            changed: string[];
+            /**
+             * Passed
+             * @default false
+             */
+            passed: boolean;
         };
         /**
          * TriageItem
-         * @description One open noticing at the gate: where it is decided (``line``, ``stage``, the ``question``
-         *     it routes to), the engine's recommended disposition with its plain label and reason, whether
-         *     it blocks (it must be resolved before the triage is confirmed), and the disposition recorded
-         *     by the last confirmation, if any.
+         * @description One open noticing at the gate, or one the last confirmation disposed of: where it is
+         *     decided (``line``, ``stage``, the ``question`` it routes to), the engine's recommended
+         *     disposition with its plain label and reason, whether it blocks (it must be resolved before the
+         *     triage is confirmed), and the disposition the last confirmation recorded while it still
+         *     stands (the recommendation and reason it was recorded on are the triage's now).
          */
         TriageItem: {
             /** Id */
@@ -15050,6 +15077,20 @@ export interface components {
              * @default null
              */
             weight: string | null;
+        };
+        /** SweptLine */
+        SweptLine: {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /**
+             * Basis
+             * @default null
+             */
+            basis: string | null;
         };
         /**
          * TargetInfo

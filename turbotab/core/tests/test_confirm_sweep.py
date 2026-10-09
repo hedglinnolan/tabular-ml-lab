@@ -145,7 +145,7 @@ def test_confirm_all_is_one_record_that_answers_the_sweep_and_replays():
     state = planned()
     before = log_of(state)
     lines = swept(before, "whos_in")
-    assert lines == [{"id": "q:grain", "key": "grain", "value": "stated"}]
+    assert lines == [{"id": "q:grain", "key": "grain", "value": "stated", "basis": None}]
     records = [record(1, {"kind": "set_lens", "lenses": ["dietary"]}), confirm(2, "whos_in", lines)]
     state = planned(sweeps=decisions.fold(records).sweeps)
     after = log_of(state, records)
@@ -279,6 +279,124 @@ def test_the_triage_records_every_disposition_and_the_disposed_noticings_are_ans
                             "lines": [{"id": "finding:x", "key": "x", "value": "no_change"}]},
                            Ctx(log, t))
     assert unsound.value.code == "not_an_open_noticing"
+
+
+# ── a triage confirmed again, or after the facts it stood on changed ─────────
+
+RESOLVED = {"findings": [f for f in FINDINGS["findings"] if f["severity"] != "critical"]}
+SEQN_ACTED_ON = [{"id": "finding:note__SEQN", "key": "note__SEQN", "value": "act_on_it"}]
+
+
+def with_finding(findings, **finding):
+    """``findings`` with one finding added, or one of the same id replaced."""
+    rest = [f for f in findings["findings"] if f["id"] != finding["id"]]
+    return {"findings": [*rest, {"routes_to": None, "repairs": [{"key": "x"}],
+                                 "answered_by": None, **finding}]}
+
+
+def triaged(state, records, findings):
+    """The quest log and the triage as the project stands, the confirmations folded in."""
+    state = state.model_copy(update={"sweeps": decisions.fold(records).sweeps})
+    log = log_of(state, records, findings=findings)
+    return state, log, sweep.triage(state, log, findings, records)
+
+
+def first_triage(state=None):
+    state = state or planned()
+    _s, log, t = triaged(state, [], RESOLVED)
+    d = decisions.validate({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings",
+                            "lines": SEQN_ACTED_ON}, Ctx(log, t))
+    return [record(1, d.model_dump(mode="json"))]
+
+
+def test_a_second_triage_keeps_every_disposition_recorded_by_the_first():
+    records = first_triage()
+    # A new noticing appears after the first triage, and the person confirms again, as shown.
+    findings = with_finding(RESOLVED, id="skew__age", severity="warning", summary="Age is skewed",
+                            affected_columns=["age"])
+    state, log, t = triaged(planned(), records, findings)
+    shown = {i.id: i.recorded for i in t.items}
+    # Every disposition the first triage holds is shown with it: nothing reads as unrecorded.
+    assert shown == {"binary_text__age": "could_bias", "outliers__bp_sys": "no_change",
+                     "note__SEQN": "act_on_it", "skew__age": None}
+    assert not t.answered and t.confirmable
+    d = decisions.validate({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings"},
+                           Ctx(log, t))
+    # The person's own choice stands; only the new noticing takes the engine's recommendation.
+    assert {l.key: l.value for l in d.lines} == {
+        "binary_text__age": "could_bias", "outliers__bp_sys": "no_change",
+        "note__SEQN": "act_on_it", "skew__age": "could_bias"}
+    records = [*records, record(2, d.model_dump(mode="json"))]
+    _s, after, t2 = triaged(planned(), records, findings)
+    assert t2.answered and t2.confirmed_by == "r2"
+    for key in ("binary_text__age", "outliers__bp_sys", "skew__age"):
+        assert (line(after, key).status, line(after, key).decision_id) == ("answered", "r2"), key
+    assert line(after, "note__SEQN").status == "open"  # still its own decision
+    # Undoing the second triage brings the first one's back, as it was.
+    undone = [*records, record(3, {"kind": "revert", "decision_id": "r2"})]
+    _s, back, t3 = triaged(planned(), undone, findings)
+    assert line(back, "outliers__bp_sys").decision_id == "r1"
+    assert line(back, "skew__age").status == "open"
+
+
+def test_a_disposition_whose_facts_changed_is_open_again_and_says_so():
+    records = first_triage()
+    # bp_sys was left out of every model when its outliers were found to change no number here.
+    assert line(triaged(planned(), records, RESOLVED)[1], "outliers__bp_sys").status == "answered"
+    # Now bp_sys is adjusted for: its outliers could bias the estimate.
+    roles = {**ROLES, "bp_sys": "covariate"}
+    state, log, t = triaged(planned(roles=roles), records, RESOLVED)
+    assert line(log, "outliers__bp_sys").status == "open"
+    item = next(i for i in t.items if i.id == "outliers__bp_sys")
+    assert (item.recommended, item.recorded) == ("could_bias", None)
+    assert t.changed == ["outliers__bp_sys"] and not t.answered
+    # The others still stand as recorded.
+    assert line(log, "binary_text__age").decision_id == "r1"
+    # Confirming again records the disposition on the facts as they stand.
+    d = decisions.validate({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings"},
+                           Ctx(log, t))
+    assert {l.key: l.value for l in d.lines}["outliers__bp_sys"] == "could_bias"
+
+
+def test_a_noticing_that_turns_critical_under_the_same_id_blocks_again():
+    records = first_triage()
+    _s, before, _t = triaged(planned(), records, RESOLVED)
+    where = next(s.key for s in before.stages if any(l.key == "binary_text__age" for l in s.lines))
+    critical = with_finding(RESOLVED, id="binary_text__age", severity="critical",
+                            summary="Age reads as text", affected_columns=["age"])
+    state, log, t = triaged(planned(), records, critical)
+    assert line(log, "binary_text__age").status == "open"
+    assert t.blockers == 1 and not t.answered and not t.confirmable
+    [blocking] = [i for i in t.items if i.blocker]
+    assert (blocking.id, blocking.recorded) == ("binary_text__age", None)
+    assert stage(log, where).progress.answered == stage(before, where).progress.answered - 1
+    assert not stage(log, where).progress.complete
+    with pytest.raises(Refusal) as blocked:
+        decisions.validate({"kind": "confirm_sweep", "stage": "models", "sweep": "noticings"},
+                           Ctx(log, t))
+    assert blocked.value.code == "blocker_open"
+
+
+def test_the_triage_is_confirmed_only_before_its_gate_passes():
+    # Under Estimate (and an unanswered purpose), before the plan is fixed.
+    for purpose in ("inference", None):
+        state, log, t = triaged(planned(purpose=purpose, plan_locked=True), [], RESOLVED)
+        assert not t.confirmable
+        with pytest.raises(Refusal) as late:
+            decisions.validate({"kind": "confirm_sweep", "stage": "models",
+                                "sweep": "noticings"}, Ctx(log, t))
+        assert late.value.code == "gate_passed", purpose
+    # Under Predict, before the held-out rows open; the plan's lock is not its gate.
+    state, log, t = triaged(planned(purpose="prediction", plan_locked=True), [], RESOLVED)
+    assert t.confirmable
+    decisions.validate({"kind": "confirm_sweep", "stage": "results", "sweep": "noticings"},
+                       Ctx(log, t))
+    state, log, t = triaged(planned(purpose="prediction", seal_opened=True), [], RESOLVED)
+    assert not t.confirmable
+    with pytest.raises(Refusal) as late:
+        decisions.validate({"kind": "confirm_sweep", "stage": "results", "sweep": "noticings"},
+                           Ctx(log, t))
+    assert late.value.code == "gate_passed"
 
 
 # ── For the record ───────────────────────────────────────────────────────────

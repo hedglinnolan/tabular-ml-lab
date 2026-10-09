@@ -28,9 +28,13 @@ recorded and visible, in a Confirm sweep or For the record, never quietly.
   change your numbers here" (a supplement line), "could bias the estimate" (a limitation sentence)
   or "act on it" (its decision). Blockers (a critical finding: it blocks or refuses part of the
   analysis) must be resolved before the triage is confirmed. The person may change any other line;
-  the one ``confirm_sweep`` record (``sweep="noticings"``) holds every disposition, and a noticing
-  disposed of there is answered by it in the quest log. The noticing detectors themselves are
-  P0.9's; the triage reads the findings the engine already produces.
+  the one ``confirm_sweep`` record (``sweep="noticings"``) holds every disposition, each with the
+  recommendation and reason it was recorded on (``SweptLine.basis``), and a noticing disposed of
+  there is answered by it in the quest log while the triage still states them so: one whose
+  facts changed (a column now read, a finding turned critical under its id) is open again, and
+  the triage says which (``Triage.changed``). Confirming again carries every disposition that
+  stands, the person's own included, and is refused once the gate has passed. The noticing
+  detectors themselves are P0.9's; the triage reads the findings the engine already produces.
 * **For the record** (:func:`for_the_record`, ``GET /projects/{pid}/record``): each reached stage's
   collapsed lines: what was read (the ingest's facts and warnings, the profile's basis), why a
   question was not asked, the defaults that change nothing here, what the engine filled in itself
@@ -38,7 +42,7 @@ recorded and visible, in a Confirm sweep or For the record, never quietly.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Literal, Mapping, Sequence
+from typing import Any, Callable, Iterable, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
@@ -340,10 +344,11 @@ DISPOSITION_WORDS = {
 
 
 class TriageItem(BaseModel):
-    """One open noticing at the gate: where it is decided (``line``, ``stage``, the ``question``
-    it routes to), the engine's recommended disposition with its plain label and reason, whether
-    it blocks (it must be resolved before the triage is confirmed), and the disposition recorded
-    by the last confirmation, if any."""
+    """One open noticing at the gate, or one the last confirmation disposed of: where it is
+    decided (``line``, ``stage``, the ``question`` it routes to), the engine's recommended
+    disposition with its plain label and reason, whether it blocks (it must be resolved before the
+    triage is confirmed), and the disposition the last confirmation recorded while it still
+    stands (the recommendation and reason it was recorded on are the triage's now)."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
@@ -362,9 +367,12 @@ class TriageItem(BaseModel):
 
 
 class Triage(BaseModel):
-    """The triage at the gate: its stage and crosswalk card, each open noticing (blockers first),
-    how many block, whether it can be confirmed now (no blocker, something to triage), whether
-    every noticing has a recorded disposition, and the record that holds them."""
+    """The triage at the gate: its stage and crosswalk card, each noticing (blockers first), how
+    many block, whether it can be confirmed now (the gate not passed, no blocker, something to
+    triage), whether every noticing has a recorded disposition, and the record that holds them.
+    ``changed``: the noticings whose recorded disposition no longer stands, the recommendation or
+    its reason having changed since. ``passed``: the gate has passed (the plan is fixed, or under
+    Predict the held-out rows are open), so the triage is read, no longer confirmed."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
@@ -376,12 +384,20 @@ class Triage(BaseModel):
     confirmable: bool = False
     answered: bool = False
     confirmed_by: str | None = None
+    changed: list[str] = []
+    passed: bool = False
 
 
 def gate_stage(state: Any) -> str:
     """Where the triage stands: before the held-out rows open under Predict (Results), else before
     the plan's lock (Models), an unanswered purpose included: the strictest case."""
     return "results" if _get(state, "purpose") == "prediction" else "models"
+
+
+def gate_passed(state: Any) -> bool:
+    """Whether the triage's gate has passed: the held-out rows opened under Predict, else the plan
+    fixed. A disposition recorded after it would be chosen with the numbers in view."""
+    return bool(_get(state, "seal_opened" if gate_stage(state) == "results" else "plan_locked"))
 
 
 def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
@@ -414,22 +430,49 @@ def recommend(state: Any, finding: Mapping[str, Any], open_questions: set[str]
     return "could_bias", False, f"{about}; left as it is, it could bias the {what}."
 
 
+def _open_questions(lines: Iterable[QuestLine]) -> set[str]:
+    return {l.key for l in lines if l.source == "question" and l.status in ("open", "waiting")}
+
+
+def basis(disposition: str, reason: str) -> str:
+    """What a disposition is recorded on: the engine's recommendation and its reason then."""
+    return f"{disposition}: {reason}"
+
+
+def _stands(held: SweptLine | None, recommended: tuple[Disposition, bool, str]) -> bool:
+    """A recorded disposition stands while the triage still recommends what, and why, it did
+    when it was recorded; never on a blocker, which is resolved by its own decision."""
+    disposition, blocker, reason = recommended
+    return held is not None and not blocker and held.basis == basis(disposition, reason)
+
+
+def _held_noticings(state: Any) -> dict[str, SweptLine]:
+    held = (_get(state, "sweeps") or {}).get(sweep_key(gate_stage(state), "noticings"))
+    return {l.key: l for l in held.lines} if held is not None else {}
+
+
 def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()) -> Triage:
-    """Every open noticing that feeds the plan (each finding still open where it is decided) with
-    the engine's recommended disposition. ``findings``: the findings artifact as served."""
+    """Every noticing that feeds the plan (each finding still open where it is decided, and each
+    the last confirmation disposed of) with the engine's recommended disposition and the one
+    recorded, while it stands. ``findings``: the findings artifact as served."""
     stage = gate_stage(state)
     by_id = {str(f.get("id")): f for f in _get(findings, "findings") or []}
     lines = {l.key: (s.key, l) for s in log.stages for l in s.lines if l.source == "finding"}
-    open_questions = {l.key for s in log.stages for l in s.lines
-                      if l.source == "question" and l.status in ("open", "waiting")}
-    held = (_get(state, "sweeps") or {}).get(sweep_key(stage, "noticings"))
-    recorded = {l.key: l.value for l in held.lines} if held is not None else {}
-    items = []
+    open_questions = _open_questions(l for s in log.stages for l in s.lines)
+    held = _held_noticings(state)
+    writer = _writer(_Log(list(records)), stage, "noticings") if held else None
+    items, changed = [], []
     for fid, (where, line) in lines.items():
-        if line.status != "open" or line.label != DECIDE or fid not in by_id:
+        covered = (line.status == "answered" and fid in held and writer is not None
+                   and line.decision_id == writer)
+        if not (line.status == "open" or covered) or line.label != DECIDE or fid not in by_id:
             continue
         finding = by_id[fid]
-        disposition, blocker, reason = recommend(state, finding, open_questions)
+        recommended = recommend(state, finding, open_questions)
+        disposition, blocker, reason = recommended
+        stands = _stands(held.get(fid), recommended)
+        if fid in held and not stands:
+            changed.append(fid)
         label = DISPOSITION_WORDS[disposition]
         if disposition == "could_bias" and _get(state, "purpose") == "prediction":
             label = "Could bias the score"
@@ -439,27 +482,35 @@ def triage(state: Any, log: QuestLog, findings: Any, records: Sequence[Any] = ()
             columns=[str(c) for c in finding.get("affected_columns") or []],
             question=finding.get("routes_to") if finding.get("routes_to") in QUESTIONS else None,
             recommended=disposition, label=label, reason=reason, blocker=blocker,
-            recorded=recorded.get(fid) if not blocker else None))
+            recorded=held[fid].value if stands else None))
     items.sort(key=lambda i: not i.blocker)
     blockers = sum(i.blocker for i in items)
-    writer = _writer(_Log(list(records)), stage, "noticings") if held is not None else None
+    passed = gate_passed(state)
     return Triage(stage=stage, gate=GATES[stage], items=items, blockers=blockers,
-                  confirmable=bool(items) and not blockers,
+                  confirmable=bool(items) and not blockers and not passed,
                   answered=not blockers and all(i.recorded is not None for i in items),
-                  confirmed_by=writer)
+                  confirmed_by=writer, changed=changed, passed=passed)
 
 
-def cover_noticings(placed: Sequence[tuple[str, QuestLine]], state: Any, log: _Log) -> None:
+def cover_noticings(placed: Sequence[tuple[str, QuestLine]], state: Any, log: _Log,
+                    findings: Any = None) -> None:
     """A noticing the triage disposed of (it changes no number here, or it is left as a
-    limitation) is answered by the triage's record; one to act on stays open for its decision."""
-    stage = gate_stage(state)
-    held = (_get(state, "sweeps") or {}).get(sweep_key(stage, "noticings"))
-    if held is None:
+    limitation) is answered by the triage's record while that disposition stands (the triage
+    still recommends what, and why, it did then); one to act on stays open for its decision.
+    A noticing that blocks, or is no longer among ``findings``, is never answered by it."""
+    held = _held_noticings(state)
+    if not held:
         return
-    disposed = {l.key for l in held.lines if l.value in ("no_change", "could_bias")}
-    writer = _writer(log, stage, "noticings")
+    by_id = {str(f.get("id")): f for f in _get(findings, "findings") or []}
+    open_questions = _open_questions(l for _s, l in placed)
+    writer = _writer(log, gate_stage(state), "noticings")
     for _stage, line in placed:
-        if line.source == "finding" and line.status == "open" and line.key in disposed:
+        if line.source != "finding" or line.status != "open" or line.key not in by_id:
+            continue
+        mine = held.get(line.key)
+        if mine is None or mine.value not in ("no_change", "could_bias"):
+            continue
+        if _stands(mine, recommend(state, by_id[line.key], open_questions)):
             line.status, line.decision_id = "answered", writer
 
 
@@ -506,6 +557,15 @@ def _confirm_the_defaults(d: ConfirmSweep, log: QuestLog) -> ConfirmSweep:
 
 def _confirm_the_triage(d: ConfirmSweep, t: Triage) -> ConfirmSweep:
     name = STAGE_NAMES[t.stage]
+    if t.passed:
+        raise Refusal(
+            "gate_passed",
+            "The open noticings are triaged before "
+            + ("the held-out rows open" if t.stage == "results" else "the plan is fixed")
+            + ", and that has happened: each is decided on its own now, as made after the "
+            + ("held-out scores were seen." if t.stage == "results" else "estimates were seen."),
+            exits=[{"label": f"Decide: {i.summary}", "decision": None}
+                   for i in t.items if i.recorded is None])
     if d.stage != t.stage:
         raise Refusal(
             "not_the_gate",
@@ -539,7 +599,10 @@ def _confirm_the_triage(d: ConfirmSweep, t: Triage) -> ConfirmSweep:
             "estimate, or act on it.",
             exits=[{"label": "Keep the recommended dispositions",
                     "decision": d.model_copy(update={"lines": []}).model_dump(mode="json")}])
-    lines = [SweptLine(id=i.line, key=i.id, value=given.get(i.id, i.recommended)) for i in t.items]
+    # Each noticing as the person set it now, else as recorded while that stands, else as
+    # recommended: a disposition the person chose is never replaced by the engine's.
+    lines = [SweptLine(id=i.line, key=i.id, value=given.get(i.id) or i.recorded or i.recommended,
+                       basis=basis(i.recommended, i.reason)) for i in t.items]
     return d.model_copy(update={"lines": lines})
 
 
@@ -696,6 +759,7 @@ def for_the_record(log: QuestLog, steps: Sequence[Any], records: Sequence[Any], 
 __all__ = [
     "DISPOSITIONS", "DISPOSITION_WORDS", "ForTheRecord", "GATES", "NOT_ANALYZED_ROLES",
     "RecordLine", "RecordStage", "Triage", "TriageItem", "WHAT_A_COLUMN_IS", "WOULD_CHANGE",
-    "analysis_reads", "cover_noticings", "default_value", "for_the_record", "gate_stage",
+    "analysis_reads", "basis", "cover_noticings", "default_value", "for_the_record", "gate_passed",
+    "gate_stage",
     "reading_changes", "reading_lines", "recommend", "sweep_lines", "sweep_of", "triage", "weigh",
 ]

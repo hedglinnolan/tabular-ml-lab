@@ -1753,6 +1753,9 @@ class SweptLine(_Value):
     id: str  # the line's crosswalk card (a finding's line: ``finding:<id>``)
     key: str
     value: str  # the default as stated, or the noticing's disposition
+    # A noticing's only: the engine's recommendation and its reason when it was triaged. The
+    # disposition answers the noticing while the triage still states them so (P0.5).
+    basis: str | None = None
 
 
 class SweepConfirmation(_Value):

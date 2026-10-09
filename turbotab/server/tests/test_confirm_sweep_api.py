@@ -87,7 +87,7 @@ def test_each_stage_sweeps_what_would_change_a_number_and_confirm_all_is_recorde
     record = r.json()["decisions"][-1]
     grain = next(l for l in stages["whos_in"]["lines"] if l["key"] == "grain")
     assert record["decision"]["lines"] == [{"id": "q:grain", "key": "grain",
-                                            "value": grain["reason"]}]
+                                            "value": grain["reason"], "basis": None}]
     assert "`SEQN`" in record["sentence"] and "Who's in" in record["sentence"]
     stages = quest(drive)
     sweep = stages["whos_in"]["sweep"]
@@ -143,3 +143,14 @@ def test_each_stage_sweeps_what_would_change_a_number_and_confirm_all_is_recorde
                 if l["key"] == "binary_text__gender")
     assert (line["status"], line["decision_id"]) == ("answered", triaged["id"])
     assert drive.c.get(f"/api/projects/{drive.pid}/triage").json()["answered"]
+    # Each disposition is recorded on the recommendation and reason the triage showed.
+    shown = {i["id"]: f"{i['recommended']}: {i['reason']}" for i in t["items"]}
+    assert {l["key"]: l["basis"] for l in triaged["decision"]["lines"]} == shown
+
+    # ── once the plan is fixed, the triage is read, no longer confirmed ──
+    drive.artifact("fit")  # the first estimate served locks the plan under inference
+    assert drive.view()["state"]["plan_locked"]
+    t = drive.c.get(f"/api/projects/{drive.pid}/triage").json()
+    assert t["passed"] and not t["confirmable"]
+    late = post(drive, {"kind": "confirm_sweep", "stage": "models", "sweep": "noticings"})
+    assert late.status_code == 409 and late.json()["error"]["code"] == "gate_passed"

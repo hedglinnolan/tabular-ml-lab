@@ -1174,7 +1174,7 @@ def quest_log(state: Any, records: Sequence[Any], steps: Sequence[Any],
               *_finding_lines(state, findings, by_key), *sweeps.reading_lines(state, readings)]
     _hold_the_families(placed)
     sweeps.weigh(placed, state, facts)
-    sweeps.cover_noticings(placed, state, log)
+    sweeps.cover_noticings(placed, state, log, findings)
     frontier = _frontier(steps, stages, shown_at)
     out = []
     for key, name in STAGES:

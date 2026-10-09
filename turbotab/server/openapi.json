@@ -4321,7 +4321,7 @@
           },
           "lines": {
             "items": {
-              "$ref": "#/components/schemas/SweptLine"
+              "$ref": "#/components/schemas/SweptLine-Input"
             },
             "type": "array",
             "title": "Lines"
@@ -4367,7 +4367,7 @@
           },
           "lines": {
             "items": {
-              "$ref": "#/components/schemas/SweptLine"
+              "$ref": "#/components/schemas/SweptLine-Output"
             },
             "type": "array",
             "title": "Lines"
@@ -17752,7 +17752,7 @@
           },
           "lines": {
             "items": {
-              "$ref": "#/components/schemas/SweptLine"
+              "$ref": "#/components/schemas/SweptLine-Output"
             },
             "type": "array",
             "title": "Lines"
@@ -17767,7 +17767,7 @@
         ],
         "title": "SweepConfirmation"
       },
-      "SweptLine": {
+      "SweptLine-Input": {
         "properties": {
           "id": {
             "type": "string",
@@ -17780,6 +17780,17 @@
           "value": {
             "type": "string",
             "title": "Value"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
           }
         },
         "additionalProperties": false,
@@ -17788,6 +17799,42 @@
           "id",
           "key",
           "value"
+        ],
+        "title": "SweptLine"
+      },
+      "SweptLine-Output": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "value",
+          "basis"
         ],
         "title": "SweptLine"
       },
@@ -18357,6 +18404,19 @@
               }
             ],
             "title": "Confirmed By"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed",
+            "default": []
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "default": false
           }
         },
         "type": "object",
@@ -18368,10 +18428,12 @@
           "blockers",
           "confirmable",
           "answered",
-          "confirmed_by"
+          "confirmed_by",
+          "changed",
+          "passed"
         ],
         "title": "Triage",
-        "description": "The triage at the gate: its stage and crosswalk card, each open noticing (blockers first),\nhow many block, whether it can be confirmed now (no blocker, something to triage), whether\nevery noticing has a recorded disposition, and the record that holds them."
+        "description": "The triage at the gate: its stage and crosswalk card, each noticing (blockers first), how\nmany block, whether it can be confirmed now (the gate not passed, no blocker, something to\ntriage), whether every noticing has a recorded disposition, and the record that holds them.\n``changed``: the noticings whose recorded disposition no longer stands, the recommendation or\nits reason having changed since. ``passed``: the gate has passed (the plan is fixed, or under\nPredict the held-out rows are open), so the triage is read, no longer confirmed."
       },
       "TriageItem": {
         "properties": {
@@ -18468,7 +18530,7 @@
           "recorded"
         ],
         "title": "TriageItem",
-        "description": "One open noticing at the gate: where it is decided (``line``, ``stage``, the ``question``\nit routes to), the engine's recommended disposition with its plain label and reason, whether\nit blocks (it must be resolved before the triage is confirmed), and the disposition recorded\nby the last confirmation, if any."
+        "description": "One open noticing at the gate, or one the last confirmation disposed of: where it is\ndecided (``line``, ``stage``, the ``question`` it routes to), the engine's recommended\ndisposition with its plain label and reason, whether it blocks (it must be resolved before the\ntriage is confirmed), and the disposition the last confirmation recorded while it still\nstands (the recommendation and reason it was recorded on are the triage's now)."
       },
       "UpdatingSpec": {
         "properties": {
@@ -39119,6 +39181,43 @@
           "weight"
         ],
         "title": "SurveyView",
+        "type": "object"
+      },
+      "SweptLine": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Basis"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "value",
+          "basis"
+        ],
+        "title": "SweptLine",
         "type": "object"
       },
       "TargetInfo": {
