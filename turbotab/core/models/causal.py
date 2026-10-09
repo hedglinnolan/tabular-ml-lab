@@ -431,6 +431,17 @@ def learner_factory(name: str) -> Factory:
     return lambda classifier, seed: make_learner(name, classifier, seed)
 
 
+def least_squares(learner: str | Factory) -> bool:
+    """Whether ``learner`` is the least-squares learner, however it is given: the name
+    ``"linear"``, or a factory whose regressor is least squares (:class:`_OLS`). That learner fits a
+    yes/no variable by least squares where the partially linear model asks for a regression
+    (DoubleML's ``regr.lm``, the linear-probability form); every other learner fits it as a
+    classifier's probability."""
+    if isinstance(learner, str):
+        return learner == "linear"
+    return isinstance(learner(False, 0), _OLS)
+
+
 def cross_fit(factory: Factory, classifier: bool, X: np.ndarray, y: np.ndarray,
               splits: Sequence[Split], w: np.ndarray | None = None, seed: int = 0,
               train_mask: np.ndarray | None = None,
@@ -579,17 +590,17 @@ def dml_plr(y: Any, d: Any, X: Any, *, learner: str | Factory = "linear",
     n = len(y)
     w = _weights(design, n)
     factory = learner_factory(learner) if isinstance(learner, str) else learner
-    # ℓ for a yes/no outcome: a flexible learner's probability; least squares stays DoubleML's
-    # ``regr.lm`` (the linear-probability form).
-    l_classifier = bool(outcome_binary and learner != "linear" and isinstance(learner, str))
+    # A yes/no outcome or exposure is learned as a flexible learner's probability, whether the
+    # learner is named or given as a factory; least squares stays DoubleML's ``regr.lm`` (the
+    # linear-probability form).
+    flexible = not least_squares(learner)
+    l_classifier = bool(outcome_binary and flexible)
     d_binary = is_binary(d)
     thetas, ses, r2, final = [], [], [], []
     for s, rep in enumerate(splits):
         [l_hat] = cross_fit(factory, l_classifier, X, y, rep, None if design is None else design.weight,
                             seed + 1000 * s)
-        # m for a yes/no exposure: a flexible learner's probability (least squares stays
-        # DoubleML's ``regr.lm``).
-        m_classifier = bool(d_binary and learner != "linear" and isinstance(learner, str))
+        m_classifier = bool(d_binary and flexible)
         [m_hat] = cross_fit(factory, m_classifier, X, d, rep,
                             None if design is None else design.weight, seed + 1000 * s + 500)
         v = d - m_hat
@@ -827,7 +838,7 @@ def tmle(y: Any, a: Any, W: Any, *, learner: str | Factory = "linear",
             return parts.ate, math.sqrt(total_variance(parts.ic_ate / n, design))
         return parts.ate, math.sqrt(parts.var_ate)
 
-    if learner == "linear" and splits is None:
+    if splits is None and least_squares(learner):
         parts = _tmle_once(y, a, W, family=family, gbound=bound, w=w, Q=None, g=None)
         theta, se = finish(parts)
         df = design.df if designed and design.psu is not None else None
@@ -1127,7 +1138,8 @@ __all__ = [
     "LEARNER_WORDS",
     "LassoSelection",
     "Overlap", "Variation", "aggregate", "cross_fit", "dml_irm", "dml_plr", "hc3_ols", "is_binary",
-    "kish_ess", "learner_factory", "logistic_fit", "make_learner", "overlap", "pds_lasso",
+    "kish_ess", "learner_factory", "least_squares", "logistic_fit", "make_learner", "overlap",
+    "pds_lasso",
     "plugin_lambda", "ratio_refusals", "rigorous_lasso", "sample_splits", "starting_residuals",
     "tmle", "tmle_gbound", "total_variance", "trim_rows", "variation",
 ]
