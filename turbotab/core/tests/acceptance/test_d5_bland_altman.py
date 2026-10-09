@@ -408,3 +408,101 @@ def test_the_contract_is_registered_with_its_labels_and_enforcing_code():
         module, name = r.enforced_by.split(":")
         assert callable(getattr(importlib.import_module(module), name)), r.id
     assert any("Bland & Altman 2007" in s for s in c.sources)
+
+
+# ── the verifiers' findings of wave E1p ──────────────────────────────────────
+
+
+def test_paired_series_are_matched_by_their_index_not_their_position():
+    frame = _classic()
+    shuffled = frame["b"].sample(frac=1.0, random_state=4)
+    assert not shuffled.index.equals(frame.index)
+    r = A.agreement(frame["a"], shuffled)
+    want = A.agreement(frame["a"], frame["b"])
+    assert r.bias == want.bias and r.sd == pytest.approx(want.sd, rel=1e-12)
+    rep = _repeated([3, 2, 4, 3])
+    units = rep["id"].sample(frac=1.0, random_state=2)
+    assert A.agreement(rep["a"], rep["b"], units=units).components == A.agreement(
+        rep["a"], rep["b"], units=rep["id"]).components
+    with pytest.raises(ValueError, match="labeled by different rows"):
+        A.agreement(frame["a"], frame["b"].set_axis(range(100, 100 + len(frame))))
+
+
+def test_rows_labeled_by_name_need_no_row_numbers_without_a_design():
+    frame = _classic()
+    named = frame.set_axis([f"p{i}" for i in range(len(frame))])
+    r = A.agreement(named["a"], named["b"])
+    assert r.bias == A.agreement(frame["a"], frame["b"]).bias
+    surveyed = _surveyed()
+    with pytest.raises(ValueError, match="pass row_ids"):
+        A.agreement(surveyed["a"].set_axis([f"p{i}" for i in range(len(surveyed))]),
+                    surveyed["b"].set_axis([f"p{i}" for i in range(len(surveyed))]),
+                    design=_design(surveyed))
+
+
+@needs_r
+def test_the_slope_tests_use_svyglms_residual_degrees_of_freedom(tmp_path):
+    _skip_without("survey")
+    frame = _surveyed()
+    rep = _repeated([4] * 9, seed=5)
+    ref = run_r("""
+library(survey)
+df <- read.csv(svy_csv)
+df$d <- df$a - df$b; df$m <- (df$a + df$b) / 2; df$ok <- !is.na(df$d)
+sub <- subset(svydesign(ids = ~psu, strata = ~stratum, weights = ~w, nest = TRUE, data = df), ok)
+f <- svyglm(d ~ m, sub)
+rp <- read.csv(rep_csv); rp$d <- rp$a - rp$b; rp$m <- (rp$a + rp$b) / 2
+g <- svyglm(d ~ m, svydesign(ids = ~id, data = rp))
+out(list(f = c(summary(f)$coefficients[2, 4], f$df.residual),
+         g = c(summary(g)$coefficients[2, 4], g$df.residual)))
+""", {"svy": frame, "rep": rep}, tmp_path)
+    r = A.agreement(frame["a"], frame["b"], design=_design(frame))
+    assert r.proportional.df == ref["f"][1] == r.df - 1
+    assert r.proportional.p == pytest.approx(ref["f"][0], rel=1e-7)
+    g = A.agreement(rep["a"], rep["b"], units=rep["id"])
+    assert g.proportional.df == ref["g"][1] == 9 - 2
+    assert g.proportional.p == pytest.approx(ref["g"][0], rel=1e-7)
+
+
+def test_a_truncated_between_person_variance_takes_zous_standard_error_for_the_bias():
+    rng = np.random.default_rng(8)
+    pattern = np.array([-3.0, 3.0, -2.5, 2.5])
+    rows = [{"id": i, "a": 50 + x + d, "b": 50 + x}
+            for i in range(6) for d, x in zip(pattern + rng.normal(0, 0.05, 4),
+                                              rng.normal(0, 5, 4))]
+    frame = pd.DataFrame(rows)
+    r = A.agreement(frame["a"], frame["b"], units=frame["id"])
+    assert r.components["between"] == 0.0
+    means = (frame["a"] - frame["b"]).groupby(frame["id"]).mean()
+    assert r.bias.se == pytest.approx(math.sqrt(means.var(ddof=1) / 6), rel=1e-12)
+    assert any("Zou 2013" in c for c in r.concerns)
+
+
+def test_the_contract_states_its_scope_and_keys_the_survey_rules_to_describe():
+    from turbotab.core import contracts as C
+
+    c = C.contracts()["bland_altman"]
+    assert c.scope == "descriptive"
+    for rid in ("design_based", "repeats_not_weighted", "design_df"):
+        assert c.relation(rid).purposes == (A.DESCRIBE,), rid
+    # under inference every option is not offered: only the refusal that says so applies there
+    assert [r.name for r in c.relations if "inference" in r.purposes] == ["estimate_refused"]
+    assert not C.fired({"bland_altman": "differences"}, "inference", ("population_design",))
+
+
+def test_the_refusals_speak_plainly_with_the_survey_terms_as_a_label():
+    frame = _surveyed().iloc[:40].copy()
+    frame["stratum"] = np.arange(40) % 4
+    frame["psu"] = 1  # one cluster in each layer: nothing left for an interval
+    with pytest.raises(A.AgreementRefused) as refused:
+        A.agreement(frame["a"], frame["b"], design=_design(frame))
+    words = str(refused.value)
+    plain = words.split("(Survey terms")[0]
+    assert "PSU" not in plain and "strat" not in plain and "degrees of freedom" not in plain
+    assert "(Survey terms:" in words
+    from turbotab.core.models.selection import OutOfFold
+
+    oof = OutOfFold("multiclass", np.zeros((6, 1)), np.zeros(6), [])
+    oof.predictions.update(one=np.zeros((6, 3)), two=np.zeros((6, 3)))
+    with pytest.raises(A.AgreementRefused, match="more than two categories"):
+        A.model_agreement(oof, "one", "two")

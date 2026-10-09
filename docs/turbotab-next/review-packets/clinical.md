@@ -425,7 +425,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Calibration by a horizon, and by level | `horizon_calibration` | evaluation | training_fold | `set_split` |
 | The nested cross-validation interval | `nested_cv_interval` | evaluation | training_fold | `set_split` |
 | Intended use, the decision curve and the threshold | `intended_use` | evaluation | training_fold | `set_intended_use` |
-| Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | training_fold | not declared |
+| Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | descriptive | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
 ### 1.4 · Methods another lens reviews in full (21)

@@ -6802,6 +6802,7 @@
    "verified_by": "crossref",
    "verified_on": "2026-10-09",
    "disagreements": [
+    "'Bland & Altman 1986 for a spread that grows with the size': author Bland is not among the record's authors (the registry keeps authors ['Bland, J. Martin', 'Altman, Douglas G.']: Crossref's deposit splits the first author as family name \"Martin Bland\", given \"J.\"; the article and PubMed (through Europe PMC: PMID 2868172, Bland JM, Altman DG) name J. Martin Bland and Douglas G. Altman.)",
     "'Bland & Altman 1986, 1999': author Bland is not among the record's authors (the registry keeps authors ['Bland, J. Martin', 'Altman, Douglas G.']: Crossref's deposit splits the first author as family name \"Martin Bland\", given \"J.\"; the article and PubMed (through Europe PMC: PMID 2868172, Bland JM, Altman DG) name J. Martin Bland and Douglas G. Altman.)",
     "'Bland & Altman 1986, Lancet i:307 (doi:10.1016/S0140-6736(86': author Bland is not among the record's authors (the registry keeps authors ['Bland, J. Martin', 'Altman, Douglas G.']: Crossref's deposit splits the first author as family name \"Martin Bland\", given \"J.\"; the article and PubMed (through Europe PMC: PMID 2868172, Bland JM, Altman DG) name J. Martin Bland and Douglas G. Altman.)"
    ],

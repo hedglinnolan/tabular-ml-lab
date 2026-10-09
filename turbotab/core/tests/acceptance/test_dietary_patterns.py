@@ -9,11 +9,13 @@ crosswalk/SIZING.md row D3).
    R ``psych::fa(fm = "pa")`` (communalities, varimax-rotated loadings, regression scores) to 1e-6,
    and ``psych::fa(rotate = "varimax")`` itself to 5e-3 (psych stops its rotation at
    ``stats::varimax``'s default tolerance; the varimax criterion here is never lower).
-3. **The retention rules:** parallel analysis keeps the number ``psych::fa.parallel(fa = "pc",
-   quant = .95)`` keeps, with reference eigenvalues within Monte Carlo error of R's own
-   simulation (the 95th percentile of 2,000 random correlation matrices); the
-   eigenvalue-above-1 count equals R's; the scree rule keeps the stated number and refuses without
-   one.
+3. **The retention rules:** parallel analysis keeps the number R keeps when it counts the
+   leading eigenvalues of ``cor(x)`` above the 95th percentile of 2,000 random correlation matrices
+   it simulates itself (Glorfeld's rule), with reference eigenvalues within Monte Carlo error of
+   R's. (``psych::fa.parallel`` is not the reference: its ``ncomp`` compares with the mean of the
+   simulated eigenvalues even with ``quant = .95``, a lower threshold, so on borderline data its
+   count can be larger.) The eigenvalue-above-1 count equals R's; the scree rule keeps the stated
+   number and refuses without one.
 4. **Cluster analysis:** k-means finds R ``stats::kmeans``'s partition and within-cluster sum of
    squares; the average silhouette width equals R ``cluster::silhouette``'s; the silhouette rule
    picks the planted number of groups.
@@ -180,25 +182,31 @@ def test_factor_analysis_equals_psych_principal_axis(weighted, tmp_path):
 # ── 3. how many to keep ───────────────────────────────────────────────────────
 
 _PARALLEL_R = R_FOODS + """
-suppressPackageStartupMessages(library(psych))
 set.seed(3)
 d <- read.csv(data_csv)
 x <- as.matrix(d[, foods])
-pa <- fa.parallel(x, fa = "pc", n.iter = 2000, quant = .95, plot = FALSE)
 sims <- replicate(2000, eigen(cor(matrix(rnorm(nrow(x) * ncol(x)), nrow(x))), symmetric = TRUE,
                                 only.values = TRUE)$values)
-out(list(ncomp = pa$ncomp, q95 = apply(sims, 1, quantile, .95),
-         kaiser = sum(eigen(cor(x))$values > 1)))
+q95 <- apply(sims, 1, quantile, .95)
+ev <- eigen(cor(x), symmetric = TRUE, only.values = TRUE)$values
+above <- ev > q95
+out(list(ncomp = if (all(above)) length(above) else which(!above)[1] - 1, q95 = q95, ev = ev,
+         kaiser = sum(ev > 1)))
 """
 
 
 @needs_r
-def test_parallel_analysis_keeps_what_psych_keeps(tmp_path):
+def test_parallel_analysis_keeps_what_glorfelds_rule_keeps_in_r(tmp_path):
     df = diet()
     r = run_r(_PARALLEL_R, {"data": df}, tmp_path)
     fit = D.fit_patterns(df, D.PatternSpec("pca", FOODS, iterations=2000, seed=4))
     assert fit.count == r["ncomp"] == 2
     np.testing.assert_allclose(fit.reference, r["q95"], rtol=0.02)
+    np.testing.assert_allclose(fit.eigenvalues, r["ev"], atol=1e-10)
+    # the count is not a coin toss at the threshold: the kept and the first dropped eigenvalue
+    # clear R's reference by more than the Monte Carlo difference between the two simulations
+    gap = np.abs(np.asarray(r["ev"]) - np.asarray(r["q95"]))[: fit.count + 1]
+    assert np.all(gap > np.abs(fit.reference - np.asarray(r["q95"]))[: fit.count + 1])
     kaiser = D.fit_patterns(df, D.PatternSpec("pca", FOODS, count_rule="eigenvalue_over_one"))
     assert kaiser.count == r["kaiser"]
     with pytest.raises(D.PatternRefused, match="scree rule needs"):
@@ -573,3 +581,63 @@ def test_the_methods_sentence_states_the_method_the_form_and_the_rule():
                                                       tuple(f"c{i}" for i in range(5))))
     assert "the number of clusters, 3, had the largest average silhouette width among 2 to 8" \
         in clusters.sentence()
+
+
+# ── the verifiers' findings of wave E1p ───────────────────────────────────────
+
+
+def test_a_rescaled_or_logged_copy_of_the_outcome_is_refused_as_a_response():
+    df = diet().assign(y=lambda d: d["y"] + 5)  # positive, so its log exists
+    rrr = dict(responses=("b1", "copy"))
+    for copy in (df["y"] * 1000, np.log(df["y"]), 3 - 2 * df["y"]):
+        frame = df.assign(copy=copy)
+        with pytest.raises(D.PatternRefused, match="holds the outcome"):
+            D.PatternTransformer(D.PatternSpec("reduced_rank_regression", FOODS, **rrr)).fit(
+                frame, frame["y"])
+        # with the outcome declared and no y passed, its own column is the reference
+        with pytest.raises(D.PatternRefused, match="holds the outcome"):
+            D.fit_patterns(frame, D.PatternSpec("reduced_rank_regression", FOODS, outcome="y",
+                                                **rrr))
+    # the outcome passed by name, with no outcome declared
+    with pytest.raises(D.PatternRefused, match="outcome being studied, y"):
+        D.fit_patterns(df, D.PatternSpec("reduced_rank_regression", FOODS,
+                                         responses=("b1", "y")), y=df["y"])
+    # a response on the pathway is kept
+    fit = D.fit_patterns(df, D.PatternSpec("reduced_rank_regression", FOODS,
+                                           responses=("b1", "b2"), outcome="y"), y=df["y"])
+    assert fit.count == 2
+
+
+def test_the_scree_rule_given_no_patterns_says_so_in_its_own_words():
+    df = diet()
+    with pytest.raises(D.PatternRefused) as refused:
+        D.fit_patterns(df, D.PatternSpec("pca", FOODS, count_rule="scree", n_patterns=0))
+    assert "scree rule" in str(refused.value) and "eigenvalue" not in str(refused.value)
+
+
+def test_factor_analysis_keeps_no_more_factors_than_the_food_groups_identify():
+    assert [D.max_factors(p) for p in (2, 3, 4, 5, 6, 9, 10)] == [0, 1, 1, 2, 3, 5, 6]
+    rng = np.random.default_rng(6)
+    nine = tuple(f"h{i}" for i in range(9))
+    df = pd.DataFrame(rng.standard_normal((400, 9)) + rng.standard_normal((400, 1)),
+                      columns=list(nine))
+    with pytest.raises(D.PatternRefused, match="at most 5 factors") as refused:
+        D.fit_patterns(df, D.PatternSpec("factor_analysis", nine, count_rule="scree",
+                                         n_patterns=6))
+    assert "use principal components instead" in refused.value.exits
+    assert D.fit_patterns(df, D.PatternSpec("factor_analysis", nine, count_rule="scree",
+                                            n_patterns=1)).count == 1
+    with pytest.raises(D.PatternRefused, match="at most 0 factors"):
+        D.fit_patterns(df, D.PatternSpec("factor_analysis", nine[:2], count_rule="scree",
+                                         n_patterns=1))
+
+
+def test_weights_passed_to_the_fit_must_be_the_declared_weights():
+    df = diet()
+    spec = D.PatternSpec("pca", FOODS, count_rule="scree", n_patterns=2, weights="w")
+    with pytest.raises(D.PatternRefused, match="not the declared survey weights") as refused:
+        D.fit_patterns(df, spec, sample_weight=df["wi"])
+    assert refused.value.exits
+    same_scaled = D.fit_patterns(df, spec, sample_weight=df["w"] * 7)
+    declared = D.fit_patterns(df, spec)
+    np.testing.assert_allclose(same_scaled.loadings, declared.loadings, atol=1e-10)

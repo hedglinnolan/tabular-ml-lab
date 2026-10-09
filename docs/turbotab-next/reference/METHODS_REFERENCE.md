@@ -87,7 +87,7 @@ It covers 72 method contracts, 9 model families, 5 questions whose options are l
 | [Calibration by a horizon, and by level](#calibration-by-a-horizon-and-by-level-horizon_calibration) | `horizon_calibration` | evaluation | training_fold | every lens (shared) | `set_split` |
 | [The nested cross-validation interval](#the-nested-cross-validation-interval-nested_cv_interval) | `nested_cv_interval` | evaluation | training_fold | every lens (shared) | `set_split` |
 | [Intended use, the decision curve and the threshold](#intended-use-the-decision-curve-and-the-threshold-intended_use) | `intended_use` | evaluation | training_fold | every lens (shared) | `set_intended_use` |
-| [Agreement between two measurements (Bland–Altman)](#agreement-between-two-measurements-blandaltman-bland_altman) | `bland_altman` | evaluation | training_fold | every lens (shared) | not declared |
+| [Agreement between two measurements (Bland–Altman)](#agreement-between-two-measurements-blandaltman-bland_altman) | `bland_altman` | evaluation | descriptive | every lens (shared) | not declared |
 | [Design-based cross-validation](#design-based-cross-validation-design_based_cv) | `design_based_cv` | evaluation | training_fold | Dietary assessment, Clinical, Survey instruments | `set_survey` |
 | [The manuscript bundle and its replay](#the-manuscript-bundle-and-its-replay-manuscript_export) | `manuscript_export` | evaluation | descriptive | every lens (shared) | not declared |
 
@@ -659,7 +659,6 @@ None declared.
 - Cattell 1966, Multivariate Behav Res 1:245
 - Kaiser 1960, Educ Psychol Meas 20:141
 - Zwick & Velicer 1986, Psychol Bull 99:432
-- R psych::fa.parallel
 
 ### D-ratio filter (`d_ratio_filter`)
 
@@ -3346,7 +3345,7 @@ None declared.
 ### Agreement between two measurements (Bland–Altman) (`bland_altman`)
 
 - **Slot:** evaluation (after the fit); place in it 8.
-- **Data scope:** training fold: learns from study rows, so it is fit in-fold. It reads every analyzed pair (under Describe, every eligible row, as an estimate does) and never the outcome model; under Predict it reads the two models' out-of-fold predictions only, and nothing it computes is applied to a row.
+- **Data scope:** descriptive: may read every row to say whether the data are corrupted, but informs no modeling choice. Nothing is fitted per fold. It reads every analyzed pair (under Describe, every eligible row, as an estimate does) and never the outcome model; under Predict it reads the two models' out-of-fold predictions only. It reports, and nothing it computes is applied to a row or informs a modeling choice.
 - **Needs:**
   - two numeric measurements of the same quantity on the same rows (two columns), or two fitted models' out-of-fold predictions of a numeric or yes/no outcome
   - at least three complete pairs
@@ -3359,8 +3358,8 @@ None declared.
 | Option | Customary | Sound for prediction | Rung, rank (prediction) | Sound for inference | Rung, rank (inference) |
 |---|---|---|---|---|---|
 | `differences`: Differences: bias and 95% limits of agreement | The standard method-comparison analysis (Bland & Altman 1986, 1999); BlandAltmanLeh and blandr in R | Sound for two models' out-of-fold predictions of a number; describes how far apart they are, not which is right | available, 1 | Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) | not offered, 1 |
-| `ratios`: Ratios: the analysis on the log scale, back-transformed | Bland & Altman 1999 §5.2 for a spread that grows with the size | Sound when both models' predictions are above zero and their gap grows with the size; refused with a value at or below zero | available, 2 | Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) | not offered, 2 |
-| `regression`: Regression-based limits of agreement | Bland & Altman 1999 §3.2; less common in published comparisons | Sound when the gap changes with the size; one pair per row only | available, 3 | Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) | not offered, 3 |
+| `ratios`: Ratios: the analysis on the log scale, back-transformed | Bland & Altman 1986 for a spread that grows with the size | Sound when both models' predictions are above zero and their gap grows with the size; refused with a value at or below zero | available, 2 | Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) | not offered, 2 |
+| `regression`: Regression-based limits of agreement | Bland & Altman 1999; less common in published comparisons | Sound when the gap changes with the size; one pair per row only | available, 3 | Not offered under Estimate an effect: agreement describes two measurements and is not an effect (offered under Describe; see DESCRIBE_LABELS) | not offered, 3 |
 
 **Storyboard** (the transform player's real steps):
 
@@ -3378,14 +3377,14 @@ None declared.
 
 | Kind | Toward | Fires for | Purposes | What the app says | Enforced by |
 |---|---|---|---|---|---|
-| conflicts | `ratios_need_positive_values` (id `ratios_need_positive`) | `ratios`; when a value at or below zero | prediction, inference | ratios are refused when a value is zero or below *(rung: refused, with an exit)* Exits: the differences; the regression-based limits. | `turbotab.core.methods.agreement:agreement` |
-| implies | `spread_noticed` (id `spread_grows`) | `differences`; when the absolute residual's slope on the mean above zero at p < 0.05 | prediction, inference | a spread that grows with the size is noticed, and the ratios form (all values above zero) or the regression-based limits are offered first | `turbotab.core.methods.agreement:agreement` |
-| implies | `proportional_bias_reported` (id `proportional_bias`) | any option; when always | prediction, inference | the slope of the difference on the pair's mean is reported with its interval | `turbotab.core.methods.agreement:agreement` |
-| implies | `repeated_pairs_components` (id `repeated_pairs`) | `differences`, `ratios`; when a person with more than one pair | prediction, inference | the SD of a difference combines the between- and within-person variance (Bland & Altman 2007), with MOVER intervals (Zou 2013), and the slopes are clustered by person | `turbotab.core.methods.agreement:agreement` |
-| conflicts | `regression_limits_need_one_pair` (id `regression_one_pair`) | `regression`; when a person with more than one pair | prediction, inference | regression-based limits are refused with repeated pairs per person *(rung: refused, with an exit)* Exits: the differences; the ratios; one pair per person. | `turbotab.core.methods.agreement:agreement` |
-| implies | `population_design` (id `design_based`) | any option; when a survey design answered as the surveyed population (Describe) | inference | the bias, the limits and the slopes are weighted, with design-based standard errors on t(PSUs − strata) | `turbotab.core.methods.agreement:agreement` |
-| conflicts | `repeated_pairs_under_design` (id `repeats_not_weighted`) | any option; when the surveyed population and a person with more than one pair | inference | repeated pairs per person under the population answer are refused: the variance-components form has no design-based version in common use *(rung: refused, with an exit)* Exits: one pair per person; the sample-only attestation. | `turbotab.core.methods.agreement:agreement` |
-| conflicts | `no_design_df` (id `design_df`) | any option; when the pairs lie in as many PSUs as strata | inference | no design degrees of freedom are left for an interval *(rung: refused, with an exit)* Exits: the sample-only attestation. | `turbotab.core.methods.agreement:agreement` |
+| conflicts | `ratios_need_positive_values` (id `ratios_need_positive`) | `ratios`; when a value at or below zero | describe, prediction | ratios are refused when a value is zero or below *(rung: refused, with an exit)* Exits: the differences; the regression-based limits. | `turbotab.core.methods.agreement:agreement` |
+| implies | `spread_noticed` (id `spread_grows`) | `differences`; when the absolute residual's slope on the mean above zero at p < 0.05 | describe, prediction | a spread that grows with the size is noticed, and the ratios form (all values above zero) or the regression-based limits are offered first | `turbotab.core.methods.agreement:agreement` |
+| implies | `proportional_bias_reported` (id `proportional_bias`) | any option; when always | describe, prediction | the slope of the difference on the pair's mean is reported with its interval | `turbotab.core.methods.agreement:agreement` |
+| implies | `repeated_pairs_components` (id `repeated_pairs`) | `differences`, `ratios`; when a person with more than one pair | describe, prediction | the SD of a difference combines the between- and within-person variance (Bland & Altman 2007), with MOVER intervals (Zou 2013), and the slopes are clustered by person | `turbotab.core.methods.agreement:agreement` |
+| conflicts | `regression_limits_need_one_pair` (id `regression_one_pair`) | `regression`; when a person with more than one pair | describe, prediction | regression-based limits are refused with repeated pairs per person *(rung: refused, with an exit)* Exits: the differences; the ratios; one pair per person. | `turbotab.core.methods.agreement:agreement` |
+| implies | `population_design` (id `design_based`) | any option; when a survey design answered as the surveyed population (Describe) | describe | the bias, the limits and the slopes are weighted, with design-based standard errors on t(PSUs − strata) | `turbotab.core.methods.agreement:agreement` |
+| conflicts | `repeated_pairs_under_design` (id `repeats_not_weighted`) | any option; when the surveyed population and a person with more than one pair | describe | repeated pairs per person under the population answer are refused: the variance-components form has no design-based version in common use *(rung: refused, with an exit)* Exits: one pair per person; the sample-only attestation. | `turbotab.core.methods.agreement:agreement` |
+| conflicts | `no_design_df` (id `design_df`) | any option; when the pairs lie in as many PSUs as strata | describe | no design degrees of freedom are left for an interval *(rung: refused, with an exit)* Exits: the sample-only attestation. | `turbotab.core.methods.agreement:agreement` |
 | implies | `out_of_fold_only` (id `out_of_fold`) | any option; when two fitted models | prediction | two models are compared on their out-of-fold predictions only; a row no fold scored is left out | `turbotab.core.methods.agreement:model_agreement` |
 | conflicts | `one_number_per_row` (id `one_number`) | any option; when a multiclass or time-to-event outcome | prediction | refused for a multiclass or time-to-event outcome: their predictions are not one number per row *(rung: refused, with an exit)* Exits: compare the models by their scores. | `turbotab.core.methods.agreement:model_agreement` |
 | conflicts | `not_an_effect` (id `estimate_refused`) | any option; when the Estimate an effect goal | inference | not offered under Estimate an effect: agreement is a description *(rung: refused, with an exit)* Exits: ask it under Describe. | `turbotab.core.methods.agreement:eligible` |

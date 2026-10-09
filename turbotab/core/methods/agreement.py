@@ -5,24 +5,33 @@ Describe), or two models' out-of-fold predictions (under Predict). Correlation a
 are related, not whether they agree; Bland & Altman (1986, *Lancet* i:307) describe agreement by the
 differences d = A − B against the pair's mean (A + B)/2.
 
-**Differences** (Bland & Altman 1986; 1999, *Stat Methods Med Res* 8:135, §2). The bias is the mean
-difference d̄, its interval d̄ ± t(n − 1)·s/√n; the 95% limits of agreement are d̄ ± 1.96 s, each with
-the interval of the 1986 paper, ± t(n − 1)·√(3 s²/n) ("the standard error of d̄ ± 1.96 s is
-approximately √(3 s²/n)"), as R's BlandAltmanLeh and blandr compute it.
+**Differences** (Bland & Altman 1986, "Measuring agreement" and "Precision of estimated limits of
+agreement"; 1999, *Stat Methods Med Res* 8:135). The bias is the mean difference d̄, its interval
+d̄ ± t(n − 1)·s/√n; the 95% limits of agreement are d̄ ± 1.96 s, each with the interval of the 1986
+paper, ± t(n − 1)·√(3 s²/n) ("the standard error of d̄ − 2s and d̄ + 2s is about √(3s²/n)"), as R's
+BlandAltmanLeh and blandr compute it.
 
-**Ratios** (Bland & Altman 1999, §5.2; 1986 §6). When the spread of the differences grows with the
-magnitude, the same computation on the natural logs, back-transformed: the bias becomes a ratio A/B
-and the limits say between which ratios 95% of the pairs lie. Every value must be positive.
+**Ratios** (Bland & Altman 1986, "Relation between difference and mean"). When the spread of the
+differences grows with the magnitude, the same computation on the natural logs, back-transformed:
+the bias becomes a ratio A/B and the limits say between which ratios 95% of the pairs lie (the
+paper's 0.80 to 1.27 "times the long axis VCF"). Every value must be positive.
 
-**Regression-based limits** (Bland & Altman 1999, §3.2). D = b₀ + b₁·M fitted by least squares, then
-the absolute residuals |R| = c₀ + c₁·M; the limits at a mean M are b₀ + b₁·M ± 1.96·√(π/2)·(c₀ + c₁·M),
-since E|R| = σ·√(2/π) for a normal residual (the paper's ± 2.46). The paper gives them no interval,
-and none is computed.
+**Regression-based limits** (Bland & Altman 1999, equations 3.1 to 3.3). D = b₀ + b₁·M fitted by least
+squares, then the absolute residuals |R| = c₀ + c₁·M; the limits at a mean M are
+b₀ + b₁·M ± 1.96·√(π/2)·(c₀ + c₁·M), since E|R| = σ·√(2/π) for a normal residual (the paper's ± 2.46).
+The paper gives them no interval, and none is computed.
 
 **Two checks, with every form.** Proportional bias: the slope of the difference on the mean, with its
-interval and p-value (Bland & Altman 1999, §3.1). A spread that grows: the slope of the absolute
-residuals on the mean (§3.2); a positive slope at p < 0.05 is noticed, and with every value positive
-the ratio form is offered first.
+interval and p-value (the first regression of the 1999 paper's regression approach). A spread that
+grows: the slope of the absolute residuals on the mean (its second regression); a positive slope at p < 0.05 is noticed, and with every
+value positive the ratio form is offered first. Their t has the residual degrees of freedom R's
+``svyglm`` gives a two-coefficient fit: the design's degrees of freedom less one under a design or
+repeated pairs (people − 2 for the latter), n − 2 otherwise.
+
+(Section numbers are not cited. The 1986 paper numbers none, and its sections are named above from
+its text. The 1999 paper's text could not be read; its regression approach is equations 3.1 to 3.3
+as MedCalc's manual cites them, and the "§5.2" once cited for the ratios is removed: the ratios are
+cited to the 1986 section that shows them.)
 
 **Repeated pairs per person** (Bland & Altman 2007, *J Biopharm Stat* 17:571, "true value varies").
 With k people and m_i pairs each (n = Σ m_i), a one-way analysis of variance of the differences on
@@ -33,7 +42,9 @@ n differences, its variance (σ²_b·Σ m_i² + σ²_w·n)/n² on t(k − 1); th
 Their intervals are Zou's MOVER (2013, *Stat Methods Med Res* 22:630): σ²_d = MS_b/λ + (1 − 1/λ)·MS_w
 is a sum of two independent mean squares, each with its chi-square interval, combined by MOVER and
 then combined again with the bias's interval. With equal m_i this is Zou's computation exactly
-(MS_b/m is the variance of the person means, λ = m the harmonic mean). The slope checks take each
+(MS_b/m is the variance of the person means, λ = m the harmonic mean). When MS_b < MS_w the
+between-person variance is taken as zero, and the bias's standard error is then Zou's: the variance
+of the person means over k, not MS_w/n. The slope checks take each
 person's pairs as one cluster (a sandwich over people, t(k − 1)), as R's ``svyglm`` with ``ids = ~
 person`` does.
 
@@ -66,12 +77,15 @@ import pandas as pd
 from scipy import stats
 
 Z = 1.96  # the 95% limits' multiplier, as Bland & Altman write it
-SPREAD_FACTOR = math.sqrt(math.pi / 2)  # E|R| = σ·√(2/π); Bland & Altman 1999 §3.2's 1.96·this = 2.46
+SPREAD_FACTOR = math.sqrt(math.pi / 2)  # E|R| = σ·√(2/π); Bland & Altman 1999's 2.46 is 1.96·this
 CONF = 0.95
 FORMS: tuple[str, ...] = ("differences", "ratios", "regression")
 COMPARISONS: tuple[str, ...] = ("methods", "models")
 GOALS: tuple[str, ...] = ("describe", "estimate", "predict")
 MIN_PAIRS = 3  # a slope's t needs n − 2 ≥ 1
+# Describe is not yet one of the engine's purposes (D1 adds it to contracts.PURPOSES): the relations
+# that apply only under Describe are keyed to it now, so they fire under neither offered purpose.
+DESCRIBE = "describe"
 
 SOURCES = {
     "ba1986": "Bland & Altman 1986, Lancet i:307 (doi:10.1016/S0140-6736(86)90837-8)",
@@ -198,11 +212,12 @@ def agreement(first: Any, second: Any, *, form: str = "differences", units: Any 
     Raises :class:`AgreementRefused` with its exits."""
     if form not in FORMS:
         raise ValueError(f"form {form!r} is not one of {FORMS}")
+    first, second, units = _paired(first, second, units)
     a = np.asarray(first, dtype=float)
     b = np.asarray(second, dtype=float)
     if a.shape != b.shape or a.ndim != 1:
         raise ValueError("the two measurements must be paired, one value each per row")
-    ids = _row_ids(first, row_ids, len(a))
+    ids = _row_ids(first, row_ids, len(a)) if design is not None else np.arange(len(a))
     keep = np.isfinite(a) & np.isfinite(b)
     unit = None if units is None else np.asarray(pd.Series(units).to_numpy())
     if unit is not None:
@@ -258,9 +273,9 @@ def agreement(first: Any, second: Any, *, form: str = "differences", units: Any 
         positive = bool(np.all(a > 0) and np.all(b > 0))
         noticing = ("The differences spread wider as the values grow" + (
             ", so a single pair of limits misdescribes both ends: the ratios form fits a spread "
-            "that grows in proportion (Bland & Altman 1999, §5.2)." if positive else
+            "that grows in proportion (Bland & Altman 1986)." if positive else
             ", so a single pair of limits misdescribes both ends: the regression-based limits "
-            "follow it (Bland & Altman 1999, §3.2)."))
+            "follow it (Bland & Altman 1999)."))
     return Agreement(form=form, scale="ratio" if form == "ratios" else "difference",
                      first=names[0], second=names[1], n_pairs=int(used),
                      n_units=int(k if repeated else used),
@@ -278,8 +293,11 @@ def model_agreement(oof: Any, first: str, second: str, *, form: str = "differenc
     task = getattr(oof, "task", None)
     if task not in ("regression", "binary"):
         raise AgreementRefused(
-            "Agreement compares two numbers per row; this outcome's predictions are "
-            + ("a risk over time" if task == "time_to_event" else "a probability for each class")
+            "Agreement compares two numbers per row; "
+            + ("for this outcome each model predicts a risk that changes over time (a "
+               "time-to-event outcome)" if task == "time_to_event" else
+               "this outcome has more than two categories, so each model gives a chance for every "
+               "category (a multiclass outcome)")
             + ", not one number.", ({"label": "Compare the models by their scores instead",
                                      "stage": "models"},))
     for key in (first, second):
@@ -293,10 +311,36 @@ def model_agreement(oof: Any, first: str, second: str, *, form: str = "differenc
     return agreement(pa, pb, form=form, units=getattr(oof, "units", None), names=(first, second))
 
 
+def _paired(first: Any, second: Any, units: Any) -> tuple[Any, Any, Any]:
+    """Two Series (and a Series of units) are paired by their index, never by position: a
+    reordered copy of a column pairs each row with itself. Indexes that do not hold the same rows
+    are refused."""
+    if not isinstance(first, pd.Series):
+        return first, second, units
+    rows = first.index
+
+    def lined_up(other: Any, what: str) -> Any:
+        if not isinstance(other, pd.Series) or other.index.equals(rows):
+            return other
+        if (rows.has_duplicates or other.index.has_duplicates or len(other) != len(rows)
+                or not other.index.isin(rows).all()):
+            raise ValueError(
+                f"The {what} and the first measurement are labeled by different rows, so they "
+                "cannot be paired row by row. Take both from one table, or pass plain lists in "
+                "the same order.")
+        return other.reindex(rows)
+
+    return first, lined_up(second, "second measurement"), lined_up(units, "people")
+
+
 def _row_ids(values: Any, row_ids: Any, n: int) -> np.ndarray:
+    """The pairs' row ids in the survey design (asked only when there is one)."""
     if row_ids is not None:
         return np.asarray(row_ids, dtype=np.int64)
     if isinstance(values, pd.Series):
+        if not pd.api.types.is_integer_dtype(values.index):
+            raise ValueError("Under a survey design each pair needs its row number in the design, "
+                             "and these rows are labeled by name: pass row_ids.")
         return np.asarray(values.index, dtype=np.int64)
     return np.arange(n, dtype=np.int64)
 
@@ -324,6 +368,8 @@ def _ols(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarr
 
 
 def _slope(beta: np.ndarray, se: float, df: int) -> Slope:
+    if df < 1:  # no degrees of freedom left for the slope's t: reported without a test
+        return Slope(float(beta[0]), float(beta[1]), float(se), math.nan, math.nan, math.nan, 0)
     t = _t(df)
     stat = beta[1] / se if se > 0 else math.inf
     return Slope(float(beta[0]), float(beta[1]), float(se), float(beta[1] - t * se),
@@ -339,7 +385,7 @@ def _lines(m: np.ndarray, line: np.ndarray, spread: np.ndarray) -> dict[str, lis
 
 
 def _simple(d: np.ndarray, m: np.ndarray) -> tuple:
-    """One pair per person, unweighted (Bland & Altman 1986; 1999 §2–3)."""
+    """One pair per person, unweighted (Bland & Altman 1986; 1999)."""
     n = len(d)
     mean, s = float(d.mean()), float(d.std(ddof=1))
     t = _t(n - 1)
@@ -381,7 +427,10 @@ def _repeated(d: np.ndarray, m: np.ndarray, codes: np.ndarray, k: int) -> tuple:
     var_b = max((ms_b - ms_w) / lam, 0.0)
     var_d = var_b + ms_w
     sd = math.sqrt(var_d)
-    se_bias = math.sqrt((var_b * float(np.sum(counts ** 2)) + ms_w * n) / (n * n))
+    if ms_b >= ms_w:
+        se_bias = math.sqrt((var_b * float(np.sum(counts ** 2)) + ms_w * n) / (n * n))
+    else:  # σ²_b truncated to zero: Zou 2013's standard error, from the person means' variance
+        se_bias = math.sqrt(float(np.var(means, ddof=1)) / k)
     t = _t(k - 1)
     bias = Interval(grand, grand - t * se_bias, grand + t * se_bias, se_bias)
     alpha = 1 - CONF
@@ -399,13 +448,17 @@ def _repeated(d: np.ndarray, m: np.ndarray, codes: np.ndarray, k: int) -> tuple:
     upper = Interval(hi_c, hi_c - math.hypot(below, Z * (sd - sd_lo)),
                      hi_c + math.hypot(above, Z * (sd_hi - sd)))
     beta, resid, se = _cluster_slope(m, d, codes, k)
-    prop = _slope(beta, se, k - 1)
+    prop = _slope(beta, se, k - 2)  # svyglm's residual df: k − 1 clusters, less one for the slope
     gamma, _, se2 = _cluster_slope(m, np.abs(resid), codes, k)
-    spread = _slope(gamma, se2, k - 1)
+    spread = _slope(gamma, se2, k - 2)
     concerns = []
     if ms_b < ms_w:
         concerns.append("The person-to-person part of the variance came out below zero and is "
-                        "taken as zero: the pairs vary as much within a person as between people.")
+                        "taken as zero: the pairs vary as much within a person as between people. "
+                        "The bias's interval then comes from how much the people's average "
+                        "differences vary (Zou 2013).")
+    if k - 2 < 1:
+        concerns.append(_NO_SLOPE_TEST)
     return (bias, lower, upper, sd, prop, spread, None, {"between": var_b, "within": ms_w},
             k - 1, "Bland–Altman limits of agreement for repeated pairs per person "
                    "(variance components; MOVER intervals)", concerns, n)
@@ -439,10 +492,14 @@ def _design_based(d: np.ndarray, m: np.ndarray, ids: np.ndarray, design: Any) ->
     full[domain.at] = U
     var = total_variance(full, design, domain.mask(design))
     if var.df < 1:
+        groups = f"{var.domain_psu} sampled cluster{'s' if var.domain_psu != 1 else ''}"
+        layers = f"{var.domain_strata} survey layer{'s' if var.domain_strata != 1 else ''}"
         raise AgreementRefused(
-            f"The pairs lie in {var.domain_psu} PSU{'s' if var.domain_psu != 1 else ''} of "
-            f"{var.domain_strata} strat{'a' if var.domain_strata != 1 else 'um'}: no design "
-            f"degrees of freedom are left for an interval.",
+            f"The pairs come from {groups} in {layers}, one cluster per layer, so nothing is left "
+            "to show how much the estimate would vary from one survey to the next: no interval "
+            f"can be given. (Survey terms: {var.domain_psu} PSU"
+            f"{'s' if var.domain_psu != 1 else ''}, {var.domain_strata} "
+            f"strat{'a' if var.domain_strata != 1 else 'um'}, no design degrees of freedom.)",
             ({"label": SAMPLE_EXIT, "decision": {"kind": "set_survey", "estimand": "sample"}},))
     se = np.sqrt(np.clip(np.diag(var.meat), 0, None))
     t = _t(var.df)
@@ -451,19 +508,27 @@ def _design_based(d: np.ndarray, m: np.ndarray, ids: np.ndarray, design: Any) ->
                           for cc, s in zip(centers, se[:3]))
     concerns = []
     if var.df < FEW_DESIGN_DF:
-        concerns.append(f"Only {var.df} design degrees of freedom: the intervals are wide and rest "
-                        f"on few PSUs.")
+        concerns.append(f"The pairs come from few sampled clusters, so the intervals are wide "
+                        f"(design degrees of freedom: {var.df}).")
     if var.lonely:
-        concerns.append("A stratum has a single PSU; its spread is centered by the stated rule "
-                        "(R survey's lonely.psu \"adjust\").")
+        concerns.append("One survey layer has a single sampled cluster; its spread is measured "
+                        "around the overall mean instead (a stratum with one PSU; R survey's "
+                        "lonely.psu \"adjust\").")
+    if var.df - 1 < 1:
+        concerns.append(_NO_SLOPE_TEST)
     left = domain.left.get("unplaced", 0) + domain.left.get("unweighted", 0)
     if left:
         concerns.append(f"{left} pair{'s' if left != 1 else ''} without a place in the design or a "
                         f"weight above zero {'are' if left != 1 else 'is'} left out.")
-    return (bias, lower, upper, sd, _slope(beta, float(se[3]), var.df),
-            _slope(gamma, float(se[4]), var.df), _lines(m, beta, gamma), None, var.df,
+    # svyglm's residual df for a two-coefficient fit: the design's df less one
+    return (bias, lower, upper, sd, _slope(beta, float(se[3]), var.df - 1),
+            _slope(gamma, float(se[4]), var.df - 1), _lines(m, beta, gamma), None, var.df,
             "Survey-weighted Bland–Altman limits of agreement (linearization over the design)",
             concerns, n)
+
+
+_NO_SLOPE_TEST = ("Too few people or sampled clusters are left to test whether the difference or its "
+                  "spread changes with the size: the slopes are shown without an interval.")
 
 
 def _wls(x: np.ndarray, y: np.ndarray, w: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -512,7 +577,7 @@ def agreement_sentence(result: Agreement | None = None, *, comparison: str = "me
                      "spread wider as the values grew")
     if form == "regression":
         sentence += (", with regression-based limits of agreement: the difference and its absolute "
-                     "residual were regressed on the pair's mean (Bland & Altman 1999, §3.2).")
+                     "residual were regressed on the pair's mean (Bland & Altman 1999).")
     else:
         sentence += (": the mean difference (bias) and the 95% limits of agreement (bias ± 1.96 SD "
                      "of the differences), each with a 95% confidence interval.")
@@ -549,6 +614,7 @@ def _register_contract() -> None:
     if "bland_altman" in CONTRACTS:
         return
     here = "turbotab.core.methods.agreement"
+    offered = (DESCRIBE, "prediction")  # the goals that offer it (inference refuses it)
     not_estimate = ("Not offered under Estimate an effect: agreement describes two measurements and "
                     "is not an effect (offered under Describe; see DESCRIBE_LABELS)")
 
@@ -561,10 +627,11 @@ def _register_contract() -> None:
 
     register_contract(MethodContract(
         key="bland_altman", label="Agreement between two measurements (Bland–Altman)",
-        slot="evaluation", scope="training_fold", package="AGREEMENT", run_order=8.0,
-        scope_note=("It reads every analyzed pair (under Describe, every eligible row, as an estimate "
-                    "does) and never the outcome model; under Predict it reads the two models' "
-                    "out-of-fold predictions only, and nothing it computes is applied to a row."),
+        slot="evaluation", scope="descriptive", package="AGREEMENT", run_order=8.0,
+        scope_note=("Nothing is fitted per fold. It reads every analyzed pair (under Describe, every "
+                    "eligible row, as an estimate does) and never the outcome model; under Predict "
+                    "it reads the two models' out-of-fold predictions only. It reports, and nothing "
+                    "it computes is applied to a row or informs a modeling choice."),
         needs=("two numeric measurements of the same quantity on the same rows (two columns), or "
                "two fitted models' out-of-fold predictions of a numeric or yes/no outcome",
                "at least three complete pairs",
@@ -577,11 +644,11 @@ def _register_contract() -> None:
                    "Sound for two models' out-of-fold predictions of a number; describes how far "
                    "apart they are, not which is right", "available", 0),
             option("ratios", "Ratios: the analysis on the log scale, back-transformed",
-                   "Bland & Altman 1999 §5.2 for a spread that grows with the size",
+                   "Bland & Altman 1986 for a spread that grows with the size",
                    "Sound when both models' predictions are above zero and their gap grows with the "
                    "size; refused with a value at or below zero", "available", 1),
             option("regression", "Regression-based limits of agreement",
-                   "Bland & Altman 1999 §3.2; less common in published comparisons",
+                   "Bland & Altman 1999; less common in published comparisons",
                    "Sound when the gap changes with the size; one pair per row only", "available", 2),
         ),
         storyboard=("pair each row's two values", "take the difference (or the log ratio) and the "
@@ -592,42 +659,44 @@ def _register_contract() -> None:
             Relation("conflicts", "ratios_need_positive_values",
                      "ratios are refused when a value is zero or below", when=("ratios",),
                      rung="refused", exits=("the differences", "the regression-based limits"),
-                     condition="a value at or below zero", enforced_by=f"{here}:agreement",
+                     condition="a value at or below zero", enforced_by=f"{here}:agreement", purposes=offered,
                      id="ratios_need_positive"),
             Relation("implies", "spread_noticed",
                      "a spread that grows with the size is noticed, and the ratios form (all values "
                      "above zero) or the regression-based limits are offered first",
                      when=("differences",), condition="the absolute residual's slope on the mean "
-                     "above zero at p < 0.05", enforced_by=f"{here}:agreement", id="spread_grows"),
+                     "above zero at p < 0.05", enforced_by=f"{here}:agreement", id="spread_grows",
+                     purposes=offered),
             Relation("implies", "proportional_bias_reported",
                      "the slope of the difference on the pair's mean is reported with its interval",
-                     condition="always", enforced_by=f"{here}:agreement", id="proportional_bias"),
+                     condition="always", enforced_by=f"{here}:agreement", id="proportional_bias",
+                     purposes=offered),
             Relation("implies", "repeated_pairs_components",
                      "the SD of a difference combines the between- and within-person variance "
                      "(Bland & Altman 2007), with MOVER intervals (Zou 2013), and the slopes are "
                      "clustered by person", when=("differences", "ratios"),
                      condition="a person with more than one pair", enforced_by=f"{here}:agreement",
-                     id="repeated_pairs"),
+                     id="repeated_pairs", purposes=offered),
             Relation("conflicts", "regression_limits_need_one_pair",
                      "regression-based limits are refused with repeated pairs per person",
                      when=("regression",), rung="refused",
                      exits=("the differences", "the ratios", "one pair per person"),
                      condition="a person with more than one pair", enforced_by=f"{here}:agreement",
-                     id="regression_one_pair"),
+                     id="regression_one_pair", purposes=offered),
             Relation("implies", "population_design",
                      "the bias, the limits and the slopes are weighted, with design-based standard "
-                     "errors on t(PSUs − strata)", purposes=("inference",),
+                     "errors on t(PSUs − strata)", purposes=(DESCRIBE,),
                      condition="a survey design answered as the surveyed population (Describe)",
                      enforced_by=f"{here}:agreement", id="design_based"),
             Relation("conflicts", "repeated_pairs_under_design",
                      "repeated pairs per person under the population answer are refused: the "
                      "variance-components form has no design-based version in common use",
-                     purposes=("inference",), rung="refused",
+                     purposes=(DESCRIBE,), rung="refused",
                      exits=("one pair per person", "the sample-only attestation"),
                      condition="the surveyed population and a person with more than one pair",
                      enforced_by=f"{here}:agreement", id="repeats_not_weighted"),
             Relation("conflicts", "no_design_df",
-                     "no design degrees of freedom are left for an interval", purposes=("inference",),
+                     "no design degrees of freedom are left for an interval", purposes=(DESCRIBE,),
                      rung="refused", exits=("the sample-only attestation",),
                      condition="the pairs lie in as many PSUs as strata",
                      enforced_by=f"{here}:agreement", id="design_df"),
@@ -659,5 +728,5 @@ def _register_contract() -> None:
 
 _register_contract()
 
-__all__ = ["AgreementRefused", "Agreement", "DESCRIBE_LABELS", "Eligibility", "FORMS", "Interval",
+__all__ = ["AgreementRefused", "Agreement", "DESCRIBE", "DESCRIBE_LABELS", "Eligibility", "FORMS", "Interval",
            "Slope", "agreement", "agreement_sentence", "eligible", "model_agreement"]

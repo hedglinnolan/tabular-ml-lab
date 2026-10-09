@@ -411,10 +411,26 @@ def silhouette_widths(Z: np.ndarray, labelings: Sequence[np.ndarray], w: np.ndar
     return [float(np.sum(w * row) / w.sum()) for row in s]
 
 
+# A response whose rank correlation with the outcome is this close to ±1 is the outcome in other
+# units or on another scale (y × 1000, log y): any monotone transform of it, not a pathway variable.
+SAME_AS_OUTCOME = 0.999
+
+
+def _rank_correlation(x: np.ndarray, y: np.ndarray) -> float:
+    ok = np.isfinite(x) & np.isfinite(y)
+    if ok.sum() < 3:
+        return 0.0
+    rx, ry = (pd.Series(v[ok]).rank().to_numpy() for v in (x, y))
+    if rx.std() == 0 or ry.std() == 0:
+        return 0.0
+    return float(np.corrcoef(rx, ry)[0, 1])
+
+
 def check_responses(spec: PatternSpec, y: Any = None, frame: pd.DataFrame | None = None) -> None:
     """Reduced rank regression's responses must be intermediate ones: never the outcome being
-    studied (by name, or a response column that equals the outcome passed to the fit), never a
-    food group, and at least one."""
+    studied (by name, or a response column that is the outcome rescaled, shifted or logged: a rank
+    correlation of ±0.999 or closer with the outcome passed to the fit, or with the declared
+    outcome's column when none is passed), never a food group, and at least one."""
     exits = ("choose intermediate responses on the pathway, such as biomarkers or nutrients",
              "derive the patterns by principal components or factor analysis instead")
     if not spec.responses:
@@ -429,15 +445,28 @@ def check_responses(spec: PatternSpec, y: Any = None, frame: pd.DataFrame | None
     if overlap:
         raise PatternRefused(f"{', '.join(overlap)} cannot be both a food group and a response.",
                              exits=("leave it out of one of the two lists",))
-    if y is not None and frame is not None:
-        target = pd.to_numeric(pd.Series(np.asarray(y).ravel()), errors="coerce").to_numpy(float)
-        for r in spec.responses:
-            if r in frame.columns and len(target) == len(frame):
-                col = pd.to_numeric(frame[r], errors="coerce").to_numpy(float)
-                if np.allclose(col, target, equal_nan=True):
-                    raise PatternRefused(
-                        f"The response {r} holds the outcome being studied, so it cannot be a "
-                        f"response.", exits=exits)
+    if isinstance(y, pd.Series) and y.name is not None and y.name in spec.responses:
+        raise PatternRefused(
+            f"The outcome being studied, {y.name}, cannot be a response: patterns chosen to "
+            f"explain the outcome would make the association with it circular (Hoffmann et al. "
+            f"2004 use intermediate responses).", exits=exits)
+    if frame is None:
+        return
+    if y is None and spec.outcome is not None and spec.outcome in frame.columns:
+        y = frame[spec.outcome]
+    if y is None:
+        return
+    target = pd.to_numeric(pd.Series(np.asarray(y).ravel()), errors="coerce").to_numpy(float)
+    if len(target) != len(frame):
+        return
+    for r in spec.responses:
+        if r in frame.columns:
+            col = pd.to_numeric(frame[r], errors="coerce").to_numpy(float)
+            if abs(_rank_correlation(col, target)) >= SAME_AS_OUTCOME:
+                raise PatternRefused(
+                    f"The response {r} holds the outcome being studied (the same values, or "
+                    f"the same values in other units or on another scale), so it cannot be a "
+                    f"response.", exits=exits)
 
 
 # ── the fitted patterns ───────────────────────────────────────────────────────
@@ -524,8 +553,21 @@ class Patterns:
 
 
 def _weights(frame: pd.DataFrame, spec: PatternSpec, sample_weight: Any = None) -> np.ndarray:
+    """The rows' weights: ``sample_weight`` (a fold's weights under Predict) or the declared
+    column. When both are given they must agree up to one common scale (every estimate here is
+    unchanged by multiplying all weights by a constant); weights that disagree are refused."""
     if sample_weight is not None:
         w = np.asarray(sample_weight, dtype=float).ravel()
+        if spec.weights and spec.weights in frame.columns and len(w) == len(frame):
+            declared = pd.to_numeric(frame[spec.weights], errors="coerce").to_numpy(float)
+            scale = (np.nansum(declared) / np.sum(w)) if np.sum(w) > 0 else np.nan
+            if not (np.isfinite(scale) and np.allclose(w * scale, declared, rtol=1e-9,
+                                                       atol=1e-12)):
+                raise PatternRefused(
+                    f"The weights passed to the fit are not the declared survey weights "
+                    f"({spec.weights}), so it is unclear which to use.",
+                    exits=(f"use the declared weights, {spec.weights}",
+                           "declare no weight column and pass the weights to the fit"))
     elif spec.weights:
         w = _numeric(frame, (spec.weights,), "survey weight")[:, 0]
     else:
@@ -567,6 +609,11 @@ def _count(spec: PatternSpec, values: np.ndarray, n_rows: int, w: np.ndarray, p:
                                       quantile=spec.quantile, seed=spec.seed)
     m = retained(values, spec.count_rule, reference=reference, declared=spec.n_patterns)
     if m < 1:
+        if spec.count_rule == "scree":
+            raise PatternRefused(
+                f"The scree rule was given {m} patterns; at least one must be kept.",
+                exits=("state the number of patterns read from the scree plot, 1 or more",
+                       "retain by parallel analysis instead"))
         raise PatternRefused(
             "No pattern stands out: no eigenvalue is above what random data of the same size "
             "give." if spec.count_rule == "parallel_analysis" else
@@ -574,9 +621,26 @@ def _count(spec: PatternSpec, values: np.ndarray, n_rows: int, w: np.ndarray, p:
             exits=("report that the food groups share no clear pattern",
                    "state the number of patterns from the scree plot"))
     if m > cap:
+        if spec.method == "factor_analysis":
+            raise PatternRefused(
+                f"{p} food groups can pin down at most {cap} factor{'s' if cap != 1 else ''}: with "
+                f"{m}, the factors have more unknowns than the food groups' correlations can fix, "
+                f"so no one solution exists (the degrees of freedom of the factor model, "
+                f"((p − m)² − (p + m))/2, fall below zero).",
+                exits=((f"retain {cap} or fewer",) if cap >= 1 else ()) + (
+                    "use principal components instead", "add food groups"))
         raise PatternRefused(f"{m} patterns cannot be drawn from {p} food groups (at most {cap}).",
                              exits=(f"retain {cap} or fewer",))
     return m, reference
+
+
+def max_factors(p: int) -> int:
+    """The most factors ``p`` variables identify (the Ledermann bound): the largest m with
+    ((p − m)² − (p + m))/2 ≥ 0, the factor model's degrees of freedom. Nine food groups give 5."""
+    m = 0
+    while m + 1 < p and (p - m - 1) ** 2 - (p + m + 1) >= 0:
+        m += 1
+    return m
 
 
 def _fit_components(frame: pd.DataFrame, spec: PatternSpec, inputs: Inputs, Z: np.ndarray,
@@ -601,7 +665,7 @@ def _fit_factors(frame: pd.DataFrame, spec: PatternSpec, inputs: Inputs, Z: np.n
     R = weighted_correlation(Z, w)
     values, _ = eigen(R)
     p = Z.shape[1]
-    m, reference = _count(spec, values, Z.shape[0], w, p, p - 1)
+    m, reference = _count(spec, values, Z.shape[0], w, p, max_factors(p))
     L, h, iterations = principal_axis(R, m)
     Lr, _ = varimax(L)
     A = np.linalg.solve(R, Lr)  # regression (Thurstone) scores
@@ -995,8 +1059,7 @@ def _register_contracts() -> None:
                      when=("parallel_analysis",), condition="a survey weight column",
                      enforced_by=f"{_HERE}:parallel_analysis", id="weighted_reference"),
         ),
-        sources=(HORN, GLORFELD, CATTELL, KAISER_1960, ZWICK_VELICER,
-                 "R psych::fa.parallel"),
+        sources=(HORN, GLORFELD, CATTELL, KAISER_1960, ZWICK_VELICER),
         place="Crosswalk D3: engine only; asked by the Describe goal and the stages in D1",
         sentence=f"{_HERE}:methods_sentence", package="PATTERNS"))
 
