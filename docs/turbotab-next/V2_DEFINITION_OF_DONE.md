@@ -94,6 +94,15 @@ LightGBM, ExtraTrees, kNN, SVM, naive Bayes, LDA and neural networks stay v2.x. 
   - A long fit runs as a server job with a notification.
   - A change after results is a kept version (Predict) or a secondary analysis (Estimate). The label "revised after first results" appears only in the comparison and the methods text.
 - **The research record (approved):** every fit records its outcome-blind input descriptors, and the comparison results are kept in a versioned format. Pooling across users is opt-in, descriptors only, and needs IRB review.
+- **Seam guards (the orchestrator's call, under the freeze's correctness rule).** Eight S-sized hooks keep the v2.x seams open, about 8 units inside packages already planned (`V2X_SEAMS.md`):
+  1. a format marker on the decision log, with migrations applied before validation;
+  2. both colliding causal learner keys renamed, with parse aliases and retired values never reused;
+  3. `TuningPlan.strategy`;
+  4. version keys computed over the fields that differ from their defaults;
+  5. the read-only "revised after first results" row's trunk key and log sequence persisted;
+  6. deferred designs and options kept as named, refused values, never deleted;
+  7. estimate stages declared on `Stage`, with `ESTIMATE_STAGES` derived from them;
+  8. D2's track machinery written for any order.
 - **Testing (the orchestrator's call):** a thin headless driver ("run this plan file on this data") and a path fuzzer check the routing's invariants over thousands of generated journeys. Under the fuzzer, the reference journeys remain the numerical check.
 
 **The one-sentence test.** v2 is done when a nutrition researcher in any of the five lenses can take
