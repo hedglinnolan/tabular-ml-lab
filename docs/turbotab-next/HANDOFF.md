@@ -115,7 +115,7 @@ The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 
 
   CI does not run the browser tests.
 
-**The crosswalk (2026-10-08)** is in `crosswalk/`: 708 items placed across the seven stages, with 20 order conflicts and their fixes, and the gaps.
+**The crosswalk (2026-10-08)** is in `crosswalk/`: 708 items placed across the seven stages, with 21 order conflicts and their fixes (audited against the display-order rule on 2026-10-08, then revised after review), and the gaps.
 - **`SIZING.md`:** about 23% done by effort, 734 units remaining, 10 to 16 weeks.
 - **Nolan ruled its six questions:**
   1. the outcome beside a column is hidden until the lock under Estimate;
