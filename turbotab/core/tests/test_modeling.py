@@ -661,6 +661,7 @@ def test_a_linear_model_on_kcal_scale_inputs_gives_the_analytic_substitution_del
     assert sub["basis"] == f"Averaged over {int((split.frames['assignment']['partition'] == 'train').sum())} training rows."
 
 
+@pytest.mark.slow
 def test_substitution_names_its_assumptions_and_skips_nothing_it_can_draw(table):
     frame, paths = table
     split = mf.split_bundle(np.arange(len(frame)))

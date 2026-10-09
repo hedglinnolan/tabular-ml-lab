@@ -49,6 +49,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 REQUIREMENTS = ROOT / "turbotab" / "server" / "requirements.txt"
+CONSTRAINTS = ROOT / "turbotab" / "server" / "constraints.txt"  # the tested versions, installed with -c
 FRONTEND = ROOT / "turbotab" / "frontend"
 DIST = FRONTEND / "dist"
 STAMP = ".turbotab-requirements.sha256"
@@ -127,7 +128,7 @@ def running(workspace: Path) -> str | None:
 
 
 def requirements_hash() -> str:
-    return hashlib.sha256(REQUIREMENTS.read_bytes()).hexdigest()
+    return hashlib.sha256(REQUIREMENTS.read_bytes() + CONSTRAINTS.read_bytes()).hexdigest()
 
 
 def healthy(python: Path) -> bool:
@@ -169,10 +170,11 @@ def ensure_environment(venv: Path) -> Path:
     say("installing TurboTab's Python libraries (once; a few hundred MB, a few minutes)...")
     uv = shutil.which("uv")
     if uv:
-        code = run([uv, "pip", "install", "--python", str(python), "-r", str(REQUIREMENTS)])
+        code = run([uv, "pip", "install", "--python", str(python), "-c", str(CONSTRAINTS),
+                    "-r", str(REQUIREMENTS)])
     else:
         code = run([str(python), "-m", "pip", "install", "--disable-pip-version-check",
-                    "-r", str(REQUIREMENTS)])
+                    "-c", str(CONSTRAINTS), "-r", str(REQUIREMENTS)])
     if code != 0:
         sys.exit("TurboTab: installing the libraries failed (see above). Check the internet "
                  "connection and start TurboTab again; what was installed is kept.")

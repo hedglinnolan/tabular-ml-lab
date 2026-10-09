@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import math
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +44,8 @@ from turbotab.core import decisions as d
 from turbotab.core import readings as R
 from turbotab.core.decisions import ColumnUnitSpec, GrainSpec, ProjectState
 from turbotab.core.tests.acceptance import gate6_fixtures as g6
-from turbotab.core.tests.acceptance.server_drive import Truth, local_server, open_project
+from turbotab.core.tests.acceptance.server_drive import (Truth, _post_when_reached, local_server,
+                                                         open_project)
 from turbotab.core.tests.stage_harness import Ingested
 from turbotab.core.tests.truths import ASKING, asked
 
@@ -373,11 +375,64 @@ def drive_unsettled(drive: Any, plan: dict[str, dict[str, Any]], *, roles: dict[
             given.update(roles)
             for column, role in given.items():
                 drive.truth.setdefault(f"role:{column}", role)
-            r = drive.post({"kind": "set_roles", "roles": given})
+            # Like every post of the harness, it waits while the Router holds the roles behind an
+            # earlier question that is being read again (the outcome's, after a decision), which
+            # the view shown a moment earlier may not yet have said.
+            r = _post_when_reached(drive.c, f"/api/projects/{drive.pid}/decisions",
+                                   {"kind": "set_roles", "roles": given})
             assert r.status_code == 200, r.text[:600]
             continue
         drive.decide(plan[key])
     return proposals
+
+
+def test_the_roles_answer_waits_out_the_outcome_being_read_again(tmp_path, monkeypatch):
+    """The flaky CI failure of ``test_a5`` (turbotab-next 90d7a9cb): the roles answer was refused
+    once, "The task question comes before this one and is not answered yet". A decision re-reads
+    the outcome (``target_info``), and while it computes, a regression task whose scale is
+    unanswered waits for it (``interview`` marks it undecided) and the Router holds every later
+    answer behind it (``sequence``: not_yet). The view the drive read a moment earlier had shown
+    the roles open. Here the real server is made to be re-reading the outcome when the first roles
+    answer arrives, as on CI: the server refuses it not_yet, and the drive waits and answers again,
+    as every other post of the harness does (``_post_when_reached``)."""
+    from turbotab.core import interview
+
+    real = interview.pending_stages
+    reading_again = threading.Event()
+
+    def pending_stages(stages, deps=None):
+        found = real(stages, deps)
+        return found | {"target_info"} if reading_again.is_set() else found
+
+    monkeypatch.setattr(interview, "pending_stages", pending_stages)
+    plan = answers("next_day_kcal", ["clinical"],
+                   grain={"kind": "set_grain", "grain": "repeated", "id_column": "participant_id"},
+                   repeat_kind={"kind": "set_repeat_kind", "repeat_kind": "time_points",
+                                "time_column": "night"},
+                   unit={"kind": "set_unit", "unit": "row"})
+    truth = Truth({"code_or_count:caffeine_mg": "amount", **HOURS_CAUSAL}, fixture="p10")
+    with local_server(tmp_path / "home") as client:
+        drive = open_project(client, write(hours_table(), tmp_path, "hours.csv"), truth)
+        post, answered = client.post, []
+
+        def post_roles_while_the_outcome_is_read_again(url, **kwargs):
+            if (kwargs.get("json") or {}).get("kind") != "set_roles" or answered:
+                return post(url, **kwargs)
+            reading_again.set()
+            try:
+                response = post(url, **kwargs)
+            finally:
+                reading_again.clear()
+            answered.append(response)
+            return response
+
+        monkeypatch.setattr(client, "post", post_roles_while_the_outcome_is_read_again)
+        drive_unsettled(drive, plan, roles={"hours": "exposure", "night": "time"})
+        roles = drive.view()["state"]["roles"]
+    held = answered[0]
+    assert held.status_code == 409 and held.json()["error"]["code"] == "not_yet", held.text[:600]
+    assert "task question comes before this one" in held.json()["error"]["message"], held.text[:600]
+    assert (roles["hours"], roles["night"]) == ("exposure", "time"), roles
 
 
 def fit_refused_without_a_number(drive: Any, body: dict[str, Any]) -> dict[str, Any]:
