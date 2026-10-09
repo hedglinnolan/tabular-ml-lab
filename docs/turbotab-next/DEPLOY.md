@@ -188,6 +188,6 @@ references to 1e-9, and the elastic net chooses the same penalty as on Linux.
 
 **Full**, on every push to `turbotab-next` or to a branch named `ci/full*`, on every pull request
 to `main`, and nightly at 06:23 UTC on `turbotab-next`: the whole core and server suite,
-acceptance tests included (50 minutes on CI), and the mock browser tests (Playwright). GitHub
+acceptance tests included (50 to 58 minutes on CI), and the mock browser tests (Playwright). GitHub
 reads a schedule, and shows "Run workflow" in the Actions tab, only for workflows on the default
 branch (`main`), so the nightly and "Run workflow" start once `v2-full.yml` is on `main`.

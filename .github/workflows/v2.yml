@@ -10,7 +10,7 @@ name: TurboTab v2
 #         few marked slow, guarantee tests included, in parallel shards; the server image; the
 #         launchers, with the numerics check on Windows (the audit's section 3.4).
 #   FULL  v2-full.yml, on every push to turbotab-next or ci/full*, every pull request to main and
-#         nightly: the whole core and server suite (50 minutes) and the browser tests.
+#         nightly: the whole core and server suite (50 to 58 minutes) and the browser tests.
 # Every pip install uses turbotab/server/constraints.txt (its header says how to update it).
 
 on:

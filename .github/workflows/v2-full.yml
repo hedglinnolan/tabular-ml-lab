@@ -1,7 +1,7 @@
 name: TurboTab v2 full
 
 # TurboTab v2's full tier (audit of 2026-10-09, recommendation 7; the fast tier is v2.yml): the
-# whole core and server suite, acceptance tests included (50 minutes on 650126ca), and the mock
+# whole core and server suite, acceptance tests included (50 to 58 minutes), and the mock
 # browser tests. The acceptance suite holds the binding rules: no estimate before the plan lock,
 # nothing served before Fit, an independent reference for every number. So it runs wherever the
 # work lands and before every release, not only at night:
@@ -33,7 +33,7 @@ jobs:
   full-tests:
     name: full core and server suite
     runs-on: ubuntu-latest
-    timeout-minutes: 120   # the acceptance suite fits many models: 50 minutes on 650126ca
+    timeout-minutes: 120   # the acceptance suite fits many models: 50 and 58 minutes on 650126ca and 7eea27c7
     env:
       TURBOTAB_WORKERS: "2"
       OMP_NUM_THREADS: "2"
