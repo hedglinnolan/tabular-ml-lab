@@ -43,7 +43,8 @@ from turbotab.core import decisions as d
 from turbotab.core import readings as R
 from turbotab.core.decisions import ColumnUnitSpec, GrainSpec, ProjectState
 from turbotab.core.tests.acceptance import gate6_fixtures as g6
-from turbotab.core.tests.acceptance.server_drive import Truth, local_server, open_project
+from turbotab.core.tests.acceptance.server_drive import (Truth, _post_when_reached, local_server,
+                                                         open_project)
 from turbotab.core.tests.stage_harness import Ingested
 from turbotab.core.tests.truths import ASKING, asked
 
@@ -373,11 +374,64 @@ def drive_unsettled(drive: Any, plan: dict[str, dict[str, Any]], *, roles: dict[
             given.update(roles)
             for column, role in given.items():
                 drive.truth.setdefault(f"role:{column}", role)
-            r = drive.post({"kind": "set_roles", "roles": given})
+            # Like every post of the harness, it waits while the Router holds the roles behind an
+            # earlier question that is being read again (the outcome's, after a decision), which
+            # the view shown a moment earlier may not yet have said.
+            r = _post_when_reached(drive.c, f"/api/projects/{drive.pid}/decisions",
+                                   {"kind": "set_roles", "roles": given})
             assert r.status_code == 200, r.text[:600]
             continue
         drive.decide(plan[key])
     return proposals
+
+
+class _RouterThatHoldsRolesOnce:
+    """A drive whose server holds the roles answer behind the task question once, as the CI run of
+    turbotab-next 90d7a9cb recorded (the outcome's reading recomputing after the Router had shown
+    the roles open), then takes it. Only the calls ``drive_unsettled`` makes."""
+
+    class _Client:
+        def __init__(self) -> None:
+            self.posted: list[int] = []
+
+        def post(self, url: str, json: dict[str, Any]) -> Any:
+            held = not self.posted
+            self.posted.append(409 if held else 200)
+
+            class Response:
+                status_code = 409 if held else 200
+                text = "{}"
+
+                @staticmethod
+                def json() -> dict[str, Any]:
+                    return {"error": {"code": "not_yet"}} if held else {}
+
+            return Response()
+
+    def __init__(self) -> None:
+        self.c, self.pid, self.truth = self._Client(), "p0", {}
+
+    def view(self) -> dict[str, Any]:
+        return {"state": {}}
+
+    def reach(self, key: str, timeout: float = 0) -> dict[str, Any]:
+        return {"key": key, "status": "open" if key == "roles" else "answered"}
+
+    def artifact(self, stage: str) -> dict[str, Any]:
+        return {"columns": [{"column": "hours", "proposed": "measurement"}]}
+
+    def post(self, body: dict[str, Any]) -> Any:
+        return self.c.post("", json=body)
+
+
+def test_the_unsettled_drive_waits_out_the_task_question_recomputing_before_the_roles():
+    """The flaky CI failure (``test_a5``): the roles answer was refused once, "The task question
+    comes before this one and is not answered yet", because the outcome was being read again after
+    the Router had shown the roles open. Every other post of the harness waits for the Router
+    (``_post_when_reached``); the roles answer of the unsettled drive now does too."""
+    drive = _RouterThatHoldsRolesOnce()
+    drive_unsettled(drive, {}, roles={"hours": "exposure"}, stop_before="survey")
+    assert drive.c.posted == [409, 200]
 
 
 def fit_refused_without_a_number(drive: Any, body: dict[str, Any]) -> dict[str, Any]:
