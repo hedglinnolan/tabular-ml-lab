@@ -6776,6 +6776,857 @@
    ],
    "verified_on": "2026-10-09",
    "disagreements": []
+  },
+  {
+   "key": "bland1986agreement",
+   "kind": "article",
+   "cited_as": [
+    "Bland & Altman,? \\(?1986\\b"
+   ],
+   "doi": "10.1016/S0140-6736(86)90837-8",
+   "authors": [
+    "Bland, J. Martin",
+    "Altman, Douglas G."
+   ],
+   "title": "STATISTICAL METHODS FOR ASSESSING AGREEMENT BETWEEN TWO METHODS OF CLINICAL MEASUREMENT",
+   "year": 1986,
+   "venue": "The Lancet",
+   "volume": "327",
+   "issue": "8476",
+   "pages": "307-310",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1986
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": [
+    "'Bland & Altman 1986, 1999': author Bland is not among the record's authors (the registry keeps authors ['Bland, J. Martin', 'Altman, Douglas G.']: Crossref's deposit splits the first author as family name \"Martin Bland\", given \"J.\"; the article and PubMed (through Europe PMC: PMID 2868172, Bland JM, Altman DG) name J. Martin Bland and Douglas G. Altman.)",
+    "'Bland & Altman 1986, Lancet i:307 (doi:10.1016/S0140-6736(86': author Bland is not among the record's authors (the registry keeps authors ['Bland, J. Martin', 'Altman, Douglas G.']: Crossref's deposit splits the first author as family name \"Martin Bland\", given \"J.\"; the article and PubMed (through Europe PMC: PMID 2868172, Bland JM, Altman DG) name J. Martin Bland and Douglas G. Altman.)"
+   ],
+   "overrides": {
+    "fields": {
+     "authors": [
+      "Bland, J. Martin",
+      "Altman, Douglas G."
+     ]
+    },
+    "why": "Crossref's deposit splits the first author as family name \"Martin Bland\", given \"J.\"; the article and PubMed (through Europe PMC: PMID 2868172, Bland JM, Altman DG) name J. Martin Bland and Douglas G. Altman."
+   },
+   "crossref_original": {
+    "authors": [
+     "Martin Bland, J.",
+     "Altman, DouglasG."
+    ]
+   }
+  },
+  {
+   "key": "bland1999measuring",
+   "kind": "article",
+   "cited_as": [
+    "Bland & Altman,? \\(?1999\\b"
+   ],
+   "doi": "10.1177/096228029900800204",
+   "authors": [
+    "Bland, J Martin",
+    "Altman, Douglas G"
+   ],
+   "title": "Measuring agreement in method comparison studies",
+   "year": 1999,
+   "venue": "Statistical Methods in Medical Research",
+   "volume": "8",
+   "issue": "2",
+   "pages": "135-160",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1999
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "bland2007multiple",
+   "kind": "article",
+   "cited_as": [
+    "Bland & Altman,? \\(?2007\\b"
+   ],
+   "doi": "10.1080/10543400701329422",
+   "authors": [
+    "Bland, J. Martin",
+    "Altman, Douglas G."
+   ],
+   "title": "Agreement Between Methods of Measurement with Multiple Observations Per Individual",
+   "year": 2007,
+   "venue": "Journal of Biopharmaceutical Statistics",
+   "volume": "17",
+   "issue": "4",
+   "pages": "571-582",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2007
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "zou2013loa",
+   "kind": "article",
+   "cited_as": [
+    "\\bZou,? \\(?2013\\b"
+   ],
+   "doi": "10.1177/0962280211402548",
+   "authors": [
+    "Zou, GY"
+   ],
+   "title": "Confidence interval estimation for the Bland–Altman limits of agreement with multiple observations per individual",
+   "year": 2013,
+   "venue": "Statistical Methods in Medical Research",
+   "volume": "22",
+   "issue": "6",
+   "pages": "630-642",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2011,
+    2013
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "cattell1966scree",
+   "kind": "article",
+   "cited_as": [
+    "\\bCattell,? \\(?1966\\b"
+   ],
+   "doi": "10.1207/s15327906mbr0102_10",
+   "authors": [
+    "Cattell, Raymond B."
+   ],
+   "title": "The Scree Test For The Number Of Factors",
+   "year": 1966,
+   "venue": "Multivariate Behavioral Research",
+   "volume": "1",
+   "issue": "2",
+   "pages": "245-276",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1966
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "fabrigar1999efa",
+   "kind": "article",
+   "cited_as": [
+    "Fabrigar et al\\.,? \\(?1999\\b"
+   ],
+   "doi": "10.1037/1082-989X.4.3.272",
+   "authors": [
+    "Fabrigar, Leandre R.",
+    "Wegener, Duane T.",
+    "MacCallum, Robert C.",
+    "Strahan, Erin J."
+   ],
+   "title": "Evaluating the use of exploratory factor analysis in psychological research.",
+   "year": 1999,
+   "venue": "Psychological Methods",
+   "volume": "4",
+   "issue": "3",
+   "pages": "272-299",
+   "publisher": "American Psychological Association (APA)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1999
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "fraley2002mclust",
+   "kind": "article",
+   "cited_as": [
+    "Fraley & Raftery,? \\(?2002\\b"
+   ],
+   "doi": "10.1198/016214502760047131",
+   "authors": [
+    "Fraley, Chris",
+    "Raftery, Adrian E"
+   ],
+   "title": "Model-Based Clustering, Discriminant Analysis, and Density Estimation",
+   "year": 2002,
+   "venue": "Journal of the American Statistical Association",
+   "volume": "97",
+   "issue": "458",
+   "pages": "611-631",
+   "publisher": "Informa UK Limited",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2002
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "glorfeld1995parallel",
+   "kind": "article",
+   "cited_as": [
+    "\\bGlorfeld,? \\(?1995\\b"
+   ],
+   "doi": "10.1177/0013164495055003002",
+   "authors": [
+    "Glorfeld, Louis W."
+   ],
+   "title": "An Improvement on Horn's Parallel Analysis Methodology for Selecting the Correct Number of Factors to Retain",
+   "year": 1995,
+   "venue": "Educational and Psychological Measurement",
+   "volume": "55",
+   "issue": "3",
+   "pages": "377-393",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1995
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "gower1971similarity",
+   "kind": "article",
+   "cited_as": [
+    "\\bGower,? \\(?1971\\b"
+   ],
+   "doi": "10.2307/2528823",
+   "authors": [
+    "Gower, J. C."
+   ],
+   "title": "A General Coefficient of Similarity and Some of Its Properties",
+   "year": 1971,
+   "venue": "Biometrics",
+   "volume": "27",
+   "issue": "4",
+   "pages": "857",
+   "publisher": "JSTOR",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1971
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hartigan1979kmeans",
+   "kind": "article",
+   "cited_as": [
+    "Hartigan & Wong,? \\(?1979\\b"
+   ],
+   "doi": "10.2307/2346830",
+   "authors": [
+    "Hartigan, J. A.",
+    "Wong, M. A."
+   ],
+   "title": "Algorithm AS 136: A K-Means Clustering Algorithm",
+   "year": 1979,
+   "venue": "Applied Statistics",
+   "volume": "28",
+   "issue": "1",
+   "pages": "100",
+   "publisher": "JSTOR",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1979
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hennig2007stability",
+   "kind": "article",
+   "cited_as": [
+    "\\bHennig,? \\(?2007\\b"
+   ],
+   "doi": "10.1016/j.csda.2006.11.025",
+   "authors": [
+    "Hennig, Christian"
+   ],
+   "title": "Cluster-wise assessment of cluster stability",
+   "year": 2007,
+   "venue": "Computational Statistics & Data Analysis",
+   "volume": "52",
+   "issue": "1",
+   "pages": "258-271",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2007
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hoffmann2004rrr",
+   "kind": "article",
+   "cited_as": [
+    "Hoffmann et al\\.,? \\(?2004\\b"
+   ],
+   "doi": "10.1093/aje/kwh134",
+   "authors": [
+    "Hoffmann, K."
+   ],
+   "title": "Application of a New Statistical Method to Derive Dietary Patterns in Nutritional Epidemiology",
+   "year": 2004,
+   "venue": "American Journal of Epidemiology",
+   "volume": "159",
+   "issue": "10",
+   "pages": "935-944",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "horn1965parallel",
+   "kind": "article",
+   "cited_as": [
+    "\\bHorn,? \\(?1965\\b"
+   ],
+   "doi": "10.1007/BF02289447",
+   "authors": [
+    "Horn, John L."
+   ],
+   "title": "A Rationale and Test for the Number of Factors in Factor Analysis",
+   "year": 1965,
+   "venue": "Psychometrika",
+   "volume": "30",
+   "issue": "2",
+   "pages": "179-185",
+   "publisher": "Cambridge University Press (CUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1965,
+    2025
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hu2002patterns",
+   "kind": "article",
+   "cited_as": [
+    "\\bHu,? \\(?2002\\b"
+   ],
+   "doi": "10.1097/00041433-200202000-00002",
+   "authors": [
+    "Hu, Frank B."
+   ],
+   "title": "Dietary pattern analysis: a new direction in nutritional epidemiology",
+   "year": 2002,
+   "venue": "Current Opinion in Lipidology",
+   "volume": "13",
+   "issue": "1",
+   "pages": "3-9",
+   "publisher": "Ovid Technologies (Wolters Kluwer Health)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2002
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "huang1998kprototypes",
+   "kind": "article",
+   "cited_as": [
+    "\\bHuang,? \\(?1998\\b"
+   ],
+   "doi": "10.1023/A:1009769707641",
+   "authors": [
+    "Huang, Zhexue"
+   ],
+   "title": "Extensions to the k-Means Algorithm for Clustering Large Data Sets with Categorical Values",
+   "year": 1998,
+   "venue": "Data Mining and Knowledge Discovery",
+   "volume": "2",
+   "issue": "3",
+   "pages": "283-304",
+   "publisher": "Springer Science and Business Media LLC",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1998
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kaiser1958varimax",
+   "kind": "article",
+   "cited_as": [
+    "\\bKaiser,? \\(?1958\\b"
+   ],
+   "doi": "10.1007/BF02289233",
+   "authors": [
+    "Kaiser, Henry F."
+   ],
+   "title": "The Varimax Criterion for Analytic Rotation in Factor Analysis",
+   "year": 1958,
+   "venue": "Psychometrika",
+   "volume": "23",
+   "issue": "3",
+   "pages": "187-200",
+   "publisher": "Cambridge University Press (CUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1958,
+    2025
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kaiser1960computers",
+   "kind": "article",
+   "cited_as": [
+    "\\bKaiser,? \\(?1960\\b"
+   ],
+   "doi": "10.1177/001316446002000116",
+   "authors": [
+    "Kaiser, Henry F."
+   ],
+   "title": "The Application of Electronic Computers to Factor Analysis",
+   "year": 1960,
+   "venue": "Educational and Psychological Measurement",
+   "volume": "20",
+   "issue": "1",
+   "pages": "141-151",
+   "publisher": "SAGE Publications",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1960
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "kaufman1990groups",
+   "kind": "book",
+   "cited_as": [
+    "Kaufman & Rousseeuw,? \\(?1990\\b"
+   ],
+   "doi": "10.1002/9780470316801",
+   "authors": [
+    "Kaufman, Leonard",
+    "Rousseeuw, Peter J."
+   ],
+   "title": "Finding Groups in Data: An Introduction to Cluster Analysis",
+   "year": 1990,
+   "venue": "Wiley Series in Probability and Statistics",
+   "volume": "",
+   "issue": "",
+   "pages": "",
+   "publisher": "Wiley",
+   "crossref_type": "monograph",
+   "years_seen": [
+    1990,
+    2008
+   ],
+   "isbn": "9780471878766",
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "lumley2004survey",
+   "kind": "article",
+   "cited_as": [
+    "\\bLumley,? \\(?2004\\b"
+   ],
+   "doi": "10.18637/jss.v009.i08",
+   "authors": [
+    "Lumley, Thomas"
+   ],
+   "title": "Analysis of Complex Survey Samples",
+   "year": 2004,
+   "venue": "Journal of Statistical Software",
+   "volume": "9",
+   "issue": "8",
+   "pages": "",
+   "publisher": "Foundation for Open Access Statistic",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "newby2004review",
+   "kind": "article",
+   "cited_as": [
+    "Newby & Tucker,? \\(?2004\\b"
+   ],
+   "doi": "10.1301/nr.2004.may.177-203",
+   "authors": [
+    "Newby, P. K.",
+    "Tucker, Katherine L."
+   ],
+   "title": "Empirically Derived Eating Patterns Using Factor or Cluster Analysis: A Review",
+   "year": 2004,
+   "venue": "Nutrition Reviews",
+   "volume": "62",
+   "issue": "5",
+   "pages": "177-203",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2004
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "newby2003bmi",
+   "kind": "article",
+   "cited_as": [
+    "Newby et al\\.,? \\(?2003\\b"
+   ],
+   "doi": "10.1093/ajcn/77.6.1417",
+   "authors": [
+    "Newby, PK",
+    "Muller, Denis",
+    "Hallfrisch, Judith",
+    "Qiao, Ning",
+    "Andres, Reubin",
+    "Tucker, Katherine L"
+   ],
+   "title": "Dietary patterns and changes in body mass index and waist circumference in adults",
+   "year": 2003,
+   "venue": "The American Journal of Clinical Nutrition",
+   "volume": "77",
+   "issue": "6",
+   "pages": "1417-1425",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2003
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "rousseeuw1987silhouettes",
+   "kind": "article",
+   "cited_as": [
+    "\\bRousseeuw,? \\(?1987\\b"
+   ],
+   "doi": "10.1016/0377-0427(87)90125-7",
+   "authors": [
+    "Rousseeuw, Peter J."
+   ],
+   "title": "Silhouettes: A graphical aid to the interpretation and validation of cluster analysis",
+   "year": 1987,
+   "venue": "Journal of Computational and Applied Mathematics",
+   "volume": "20",
+   "issue": "",
+   "pages": "53-65",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1987
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "schwarz1978bic",
+   "kind": "article",
+   "cited_as": [
+    "\\bSchwarz,? \\(?1978\\b"
+   ],
+   "doi": "10.1214/aos/1176344136",
+   "authors": [
+    "Schwarz, Gideon"
+   ],
+   "title": "Estimating the Dimension of a Model",
+   "year": 1978,
+   "venue": "The Annals of Statistics",
+   "volume": "6",
+   "issue": "2",
+   "pages": "",
+   "publisher": "Institute of Mathematical Statistics",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1978
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "scrucca2016mclust",
+   "kind": "article",
+   "cited_as": [
+    "Scrucca et al\\.,? \\(?2016\\b"
+   ],
+   "doi": "10.32614/RJ-2016-021",
+   "authors": [
+    "Scrucca, Luca",
+    "Fop, Michael",
+    "Murphy, T.,Brendan",
+    "Raftery, Adrian,E."
+   ],
+   "title": "mclust 5: Clustering, Classification and Density Estimation Using Gaussian Finite Mixture Models",
+   "year": 2016,
+   "venue": "The R Journal",
+   "volume": "8",
+   "issue": "1",
+   "pages": "289",
+   "publisher": "The R Foundation",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2016
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "tibshirani2001gap",
+   "kind": "article",
+   "cited_as": [
+    "Tibshirani, Walther & Hastie,? \\(?2001\\b"
+   ],
+   "doi": "10.1111/1467-9868.00293",
+   "authors": [
+    "Tibshirani, Robert",
+    "Walther, Guenther",
+    "Hastie, Trevor"
+   ],
+   "title": "Estimating the Number of Clusters in a Data Set Via the Gap Statistic",
+   "year": 2001,
+   "venue": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+   "volume": "63",
+   "issue": "2",
+   "pages": "411-423",
+   "publisher": "Oxford University Press (OUP)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    2001,
+    2002
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "willett1997energy",
+   "kind": "article",
+   "cited_as": [
+    "Willett, Howe & Kushi,? \\(?1997\\b"
+   ],
+   "doi": "10.1093/ajcn/65.4.1220S",
+   "authors": [
+    "Willett, WC",
+    "Howe, GR",
+    "Kushi, LH"
+   ],
+   "title": "Adjustment for total energy intake in epidemiologic studies",
+   "year": 1997,
+   "venue": "The American Journal of Clinical Nutrition",
+   "volume": "65",
+   "issue": "4",
+   "pages": "1220S-1228S",
+   "publisher": "Elsevier BV",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1997
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "zwick1986rules",
+   "kind": "article",
+   "cited_as": [
+    "Zwick & Velicer,? \\(?1986\\b"
+   ],
+   "doi": "10.1037/0033-2909.99.3.432",
+   "authors": [
+    "Zwick, William R.",
+    "Velicer, Wayne F."
+   ],
+   "title": "Comparison of five rules for determining the number of components to retain.",
+   "year": 1986,
+   "venue": "Psychological Bulletin",
+   "volume": "99",
+   "issue": "3",
+   "pages": "432-442",
+   "publisher": "American Psychological Association (APA)",
+   "crossref_type": "journal-article",
+   "years_seen": [
+    1986
+   ],
+   "verified_by": "crossref",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "hartigan1975clustering",
+   "kind": "book",
+   "cited_as": [
+    "\\bHartigan,? \\(?1975\\b"
+   ],
+   "doi": null,
+   "title": "Clustering Algorithms",
+   "year": 1975,
+   "authors": [
+    "Hartigan, John A."
+   ],
+   "publisher": "Wiley",
+   "series": "Wiley Series in Probability and Mathematical Statistics",
+   "isbn": "047135645X",
+   "no_doi": "A 1975 monograph; it has no DOI.",
+   "verified_by": "isbn",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "macqueen1967kmeans",
+   "kind": "proceedings",
+   "cited_as": [
+    "\\bMacQueen,? \\(?1967\\b"
+   ],
+   "doi": null,
+   "title": "Some methods for classification and analysis of multivariate observations",
+   "year": 1967,
+   "authors": [
+    "MacQueen, J."
+   ],
+   "venue": "Proceedings of the Fifth Berkeley Symposium on Mathematical Statistics and Probability",
+   "volume": "1",
+   "pages": "281-297",
+   "publisher": "University of California Press",
+   "url": "https://digitalassets.lib.berkeley.edu/math/ucb/text/math_s5_v1_article-17.pdf",
+   "no_doi": "The Berkeley Symposium proceedings carry no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "verification_note": "The Berkeley library's scan: its first page prints the title and author, and it runs 17 pages (281-297).",
+   "disagreements": []
+  },
+  {
+   "key": "rao1992resampling",
+   "kind": "periodical",
+   "cited_as": [
+    "Rao, Wu & Yue,? \\(?1992\\b"
+   ],
+   "doi": null,
+   "title": "Some recent work on resampling methods for complex surveys",
+   "year": 1992,
+   "authors": [
+    "Rao, J. N. K.",
+    "Wu, C. F. J.",
+    "Yue, K."
+   ],
+   "venue": "Survey Methodology",
+   "volume": "18",
+   "issue": "2",
+   "pages": "209-217",
+   "publisher": "Statistics Canada",
+   "url": "https://www150.statcan.gc.ca/n1/en/catalogue/12-001-X199200214486",
+   "no_doi": "Survey Methodology (Statistics Canada) registers no DOIs.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "r_stats",
+   "kind": "software",
+   "cited_as": [
+    "(?:R )?stats::"
+   ],
+   "doi": null,
+   "title": "R: A Language and Environment for Statistical Computing. Version 4.6.1 (the stats package)",
+   "year": 2026,
+   "authors": [
+    "R Core Team"
+   ],
+   "publisher": "R Foundation for Statistical Computing",
+   "url": "https://www.R-project.org/",
+   "no_doi": "R itself is cited by its URL; it has no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "r_psych",
+   "kind": "software",
+   "cited_as": [
+    "(?:R )?psych::"
+   ],
+   "doi": null,
+   "title": "psych: Procedures for Psychological, Psychometric, and Personality Research. R package version 2.6.9",
+   "year": 2026,
+   "authors": [
+    "Revelle, William"
+   ],
+   "publisher": "Comprehensive R Archive Network (CRAN)",
+   "url": "https://CRAN.R-project.org/package=psych",
+   "no_doi": "An R package on CRAN; CRAN assigns no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
+  },
+  {
+   "key": "r_cluster",
+   "kind": "software",
+   "cited_as": [
+    "(?:R )?cluster::"
+   ],
+   "doi": null,
+   "title": "cluster: Cluster Analysis Basics and Extensions. R package version 2.1.8.2",
+   "year": 2026,
+   "authors": [
+    "Maechler, Martin",
+    "Rousseeuw, Peter",
+    "Struyf, Anja",
+    "Hubert, Mia",
+    "Hornik, Kurt"
+   ],
+   "publisher": "Comprehensive R Archive Network (CRAN)",
+   "url": "https://CRAN.R-project.org/package=cluster",
+   "no_doi": "An R package on CRAN; CRAN assigns no DOI.",
+   "verified_by": "url",
+   "verified_on": "2026-10-09",
+   "disagreements": []
   }
  ]
 }

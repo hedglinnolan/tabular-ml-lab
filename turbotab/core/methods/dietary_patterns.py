@@ -1028,7 +1028,7 @@ def _register_contracts() -> None:
                      condition="a survey weight column",
                      enforced_by=f"{_HERE}:silhouette_widths", id="weighted_widths"),
         ),
-        sources=(ROUSSEEUW, NEWBY_2003, "R stats::kmeans, cluster::silhouette"),
+        sources=(ROUSSEEUW, NEWBY_2003, "R stats::kmeans; R cluster::silhouette"),
         place="Crosswalk D3: engine only; asked by the Describe goal and the stages in D1",
         sentence=f"{_HERE}:methods_sentence", package="PATTERNS"))
 

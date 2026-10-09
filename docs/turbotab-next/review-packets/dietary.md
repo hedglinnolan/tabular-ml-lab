@@ -226,7 +226,7 @@ Every option carries two independent labels (BLUEPRINT North star 5): *customary
 
 - Rousseeuw 1987, J Comput Appl Math 20:53
 - Newby et al. 2003, Am J Clin Nutr 77:1417
-- R stats::kmeans, cluster::silhouette
+- R stats::kmeans; R cluster::silhouette
 
 #### Dietary patterns: how many to keep (`pattern_count`)
 

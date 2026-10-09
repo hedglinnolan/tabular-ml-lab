@@ -64,7 +64,10 @@ def test_a_doi_the_app_spells_out_is_its_record_s_doi(cited):
     reg = C.registry()
     spelled = 0
     for c in cited:
-        for m in re.finditer(r"(?:doi\.org/|doi:\s?)(10\.\d{4,9}/[^\s,;)]+)", c.text):
+        # A DOI may hold a balanced parenthesis (10.1016/S0140-6736(86)90837-8); a closing one
+        # without its opening ends the DOI, as when the DOI itself sits in parentheses.
+        for m in re.finditer(r"(?:doi\.org/|doi:\s?)(10\.\d{4,9}/(?:[^\s,;()]|\([^\s,;()]*\))+)",
+                             c.text):
             keys = C.resolve(c.text) if c.whole else C.cited_keys_at(c, 0)
             assert m.group(1).rstrip(".").lower() in {(reg[k].doi or "").lower() for k in keys}
             spelled += 1
