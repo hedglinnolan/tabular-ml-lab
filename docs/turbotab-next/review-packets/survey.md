@@ -323,7 +323,7 @@ Every other family on the shelf, each in full in the methods reference:
 | Cox proportional hazards (`cox`) | time_to_event | prediction, inference | Each predictor multiplies the hazard by a constant ratio over all of follow-up; effects add on the log scale. | every lens (shared): the methods reference |
 | Screened elastic net (`screened_elastic_net`) | regression, binary | prediction | Only features with a strong marginal association survive; among them, straight-line effects shrunk toward zero. | the metabolomics and genomics packets |
 
-### 1.3 · Shared methods (42)
+### 1.3 · Shared methods (43)
 
 Every lens offers these; their full contracts are in the methods reference.
 
@@ -373,7 +373,7 @@ Every lens offers these; their full contracts are in the methods reference.
 | Agreement between two measurements (Bland–Altman) | `bland_altman` | evaluation | training_fold | not declared |
 | The manuscript bundle and its replay | `manuscript_export` | evaluation | descriptive | not declared |
 
-### 1.4 · Methods another lens reviews in full (19)
+### 1.4 · Methods another lens reviews in full (23)
 
 No method contract is declared for one lens: the app reaches each of these through the data it needs, not through the lens, though some are reached through findings or stages their own lens raises. Each is offered here whenever this lens's data hold what it needs, and is reviewed in full in the packet named.
 
@@ -387,6 +387,10 @@ No method contract is declared for one lens: the app reaches each of these throu
 | Rows read as imputed copies are not repeats | `copies_not_repeats` | the dietary assessment and clinical packets | reshape | rows read as imputed copies (a copy number such as NHANES's _MULT_) |
 | The data's own imputed copies, pooled by Rubin's rules | `imputed_copies_pooled` | the dietary assessment and clinical packets | reshape | the column numbering the copies; the unit the copies belong to |
 | The QC rows leave | `qc_rows_leave` | the metabolomics packet | eligibility | the pooled-QC label |
+| Dietary patterns: how the food groups are made comparable | `pattern_inputs` | the dietary assessment packet | in_fold | the food-group intake columns; total energy, for the energy-adjusted forms |
+| Dietary patterns: foods eaten together | `dietary_patterns` | the dietary assessment packet | in_fold | two or more food-group intake columns; intermediate responses on the pathway, for reduced rank regression; the survey weights, when the rows are a weighted sample |
+| Dietary patterns: how many groups of people | `pattern_clusters` | the dietary assessment packet | in_fold | the standardized food groups; a range of group numbers, or the declared one |
+| Dietary patterns: how many to keep | `pattern_count` | the dietary assessment packet | in_fold | the food groups' correlation matrix; the number read from the scree plot, for the scree rule |
 | D-ratio filter | `d_ratio_filter` | the metabolomics packet | in_fold | pooled-QC standard deviations |
 | Regression calibration from repeated 24-hour recalls | `regression_calibration` | the dietary assessment packet | in_fold | two or more recall days for some participants, combined by the mean; the outcome model's covariates (its adjustment set); the energy model's terms the recalls measure; the survey design or the clusters, for the bootstrap |
 | Omics normalization | `omics_normalization` | the metabolomics and genomics packets | in_fold | an assay block read as raw counts or raw intensities |
@@ -541,6 +545,9 @@ flowchart LR
   n_survey_linear["Survey-weighted linear, logistic and multinomial models"]:::own
   n_survey_ordinal["Survey-weighted proportional-odds model"]:::own
   n_design_based_cv["Design-based cross-validation"]:::own
+  n_dietary_patterns["Dietary patterns: foods eaten together"]:::other
+  n_pattern_clusters["Dietary patterns: how many groups of people"]:::other
+  n_pattern_count["Dietary patterns: how many to keep"]:::other
   n_multiple_imputation_compatible["Multiple imputation compatible with the analysis model"]:::other
   n_regression_calibration["Regression calibration from repeated 24-hour recalls"]:::other
   n_subgroups["Subgroups of similar people (cluster analysis)"]:::other
@@ -574,6 +581,9 @@ flowchart LR
   n_multiclass_substitution["Substitution curves for a multiclass outcome, one per class"]:::other
   n_design_folds(["design_folds"]):::named
   n_no_cv_under_inference(["no_cv_under_inference"]):::named
+  n_dietary_patterns -->|implies| n_survey_population
+  n_pattern_clusters -->|implies| n_survey_population
+  n_pattern_count -->|implies| n_survey_population
   n_multiple_imputation_compatible -->|precedes| n_scales
   n_regression_calibration -->|implies| n_survey_population
   n_subgroups -->|implies| n_survey_population
@@ -625,7 +635,10 @@ The relations, with the sentence the app states when each fires:
 |---|---|---|---|---|---|
 | `design_based_cv` | implies | `design_folds` | `population`; when the surveyed-population answer under prediction | prediction | folds keep whole PSUs together within strata, and every loss, calibration and comparison is survey-weighted, labeled design-based cross-validation |
 | `design_based_cv` | implies | `no_cv_under_inference` | any option | inference | no cross-validated score is shown under inference |
+| `dietary_patterns` | implies | `survey_population` | any option; when a survey weight column | prediction, inference | The correlations, cluster centers and reduced rank regression are weighted by the survey weights, so the patterns are the surveyed population's. |
 | `multiclass_substitution` | implies | `survey_population` | any option; when the survey answer "the surveyed population" | inference | Each class's curve comes from the survey-weighted multinomial fit, averaged with the weights, and its band is Taylor linearization over the survey design; refits on bootstrap resamples of rows are not drawn. |
+| `pattern_clusters` | implies | `survey_population` | any option; when a survey weight column | prediction, inference | The cluster centers are weighted means and the silhouette widths are averaged with the survey weights. |
+| `pattern_count` | implies | `survey_population` | `parallel_analysis`; when a survey weight column | prediction, inference | Parallel analysis draws its random data under the same survey weights as the food groups' correlations. |
 | `regression_calibration` | implies | `survey_population` | any option; when the surveyed-population answer | inference | The calibration and the outcome model are survey-weighted, and PSUs are resampled within strata (Rao & Wu 1988, J Am Stat Assoc 83:231); with no stratum of two PSUs it is blocked and recorded, the sample-only attestation its exit. |
 | `scales` | implies | `a bootstrap that re-estimates the reliability` | any option | prediction, inference | Each bootstrap replicate re-estimates the reliability (the whole factor analysis, the test–retest mean square, or the calibration regression) before it recalibrates. |
 | `scales` | implies | `cluster-aware intervals on grouped rows` | any option | prediction, inference | Rows grouped by a unit or cluster keep it in both intervals: the uncorrected one is the coefficient table's CR2 interval, and the correction's bootstrap resamples whole clusters (ruling 7); too few clusters block the correction with the table's own exits. |

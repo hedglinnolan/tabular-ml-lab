@@ -68,6 +68,10 @@ CONTRACT_LENSES: dict[str, tuple[str, ...]] = {
     "regression_calibration": ("dietary",),
     "multiclass_substitution": ("dietary",),
     "survey_substitution": ("dietary",),
+    "dietary_patterns": ("dietary",),
+    "pattern_inputs": ("dietary",),
+    "pattern_count": ("dietary",),
+    "pattern_clusters": ("dietary",),
     # a complex survey design (NHANES): reviewed in full by the dietary, clinical and survey lenses
     "survey_population": ("dietary", "clinical", "survey"),
     "survey_linear": ("dietary", "clinical", "survey"),

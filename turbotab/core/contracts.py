@@ -260,6 +260,8 @@ DECLARING_MODULES: tuple[str, ...] = (
     "turbotab.core.methods.agreement",
     # D4: subgroups of similar people (cluster analysis), an engine method core
     "turbotab.core.methods.subgroups",
+    # D3, dietary patterns (engine only until D1 asks them)
+    "turbotab.core.methods.dietary_patterns",
 )
 
 
