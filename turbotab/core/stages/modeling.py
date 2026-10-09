@@ -1134,7 +1134,7 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
         if not gaps:
             return TableMissing(info={**base, "n_incomplete_rows": 0, "note": (
                 "No predictor value is missing among the analyzed rows, so nothing was imputed.")})
-        pools = [k for k in keys if hasattr(get_family(k), "inference")]
+        pools = [k for k in keys if get_family(k).inference is not None]
         if not pools:
             return TableMissing(info={**base, "note": "No chosen family has a table to pool."})
         if not any(getattr(get_family(k), "pools_imputations", True) for k in pools):

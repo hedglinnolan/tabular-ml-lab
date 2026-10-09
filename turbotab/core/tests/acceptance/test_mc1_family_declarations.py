@@ -486,3 +486,27 @@ def test_a_tuning_declaration_keeps_structural_settings_out_of_the_search():
     with pytest.raises(ValueError, match=re.escape(
             "the dimension 'depth' needs a quiet term, a source, a scale among")):
         TuningDecl("search", dimensions=(Dimension("depth", "how deep", "", 2, 10, "cubic"),))
+
+
+def test_no_code_probes_what_a_family_adds_by_its_presence():
+    """§1: every family now has ``preprocess``, ``build_for``, ``describe_step``, ``inference`` and
+    ``inference_matrix``, None where it adds nothing, so ``hasattr`` is true of every family and a
+    ``getattr`` default is never used. Code reads the member and tests it against None. (A
+    ``hasattr(family, "inference")`` left behind would treat boosted trees as having a coefficient
+    table, so the fit would pool imputations for it.)"""
+    import ast
+
+    from turbotab.core.models.base import OPTIONAL_MEMBERS
+
+    root = REPO / "turbotab"
+    probes = []
+    for path in sorted([*(root / "core").rglob("*.py"), *(root / "server").rglob("*.py")]):
+        if "tests" in path.relative_to(root).parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id in ("hasattr", "getattr") and len(node.args) >= 2
+                    and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value in OPTIONAL_MEMBERS):
+                probes.append(f"{path.relative_to(root)}:{node.lineno}: {ast.unparse(node)}")
+    assert probes == []
