@@ -24,6 +24,13 @@ Conditional writes (Tier A, same file): a ``set_task`` answers for the column
 it names, so the ``task`` slot holds the latest ``set_task`` for the *current*
 target and is unset while no answer names it. Choosing another target never
 carries one column's task over to the next.
+
+The log's format (V2X_SEAMS, seam guards 1 and 2): each line records the format it was written in
+(``"format"``; a line without one is format 0). On load, a line passes through every migration
+from its format to :data:`LOG_FORMAT`, in order, before it is validated strictly; the file itself
+is never rewritten. A line from a newer format is refused (:class:`LogFormatError`). A recorded
+value is never renamed without such a migration, and a renamed value is kept as a
+:class:`Tombstone`: it is refused for new records and never reused with another meaning.
 """
 from __future__ import annotations
 
@@ -32,9 +39,11 @@ import logging
 import os
 import threading
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, Callable, Iterable, Literal, Mapping, Sequence, Union
+from typing import (Annotated, Any, Callable, Iterable, Literal, Mapping, Sequence, Union,
+                    get_args)
 
 from pydantic import (AwareDatetime, BaseModel, ConfigDict, Discriminator, Field, Tag, TypeAdapter,
                       field_validator, model_validator)
@@ -1403,12 +1412,53 @@ class RespondDiagnostic(_DecisionModel):
     action: DiagnosticAction
 
 
+# ── retired recorded values (V2X_SEAMS rule 3: recorded vocabularies only grow) ─────────────────
+
+@dataclass(frozen=True)
+class Tombstone:
+    """A recorded value that was renamed. Lines written before log format ``since`` hold
+    ``value``, and that format's migration reads it as ``successor``. No new record may hold it,
+    and its vocabulary never takes it back with another meaning
+    (:func:`_tombstones_stay_buried`)."""
+
+    vocabulary: str
+    value: str
+    successor: str
+    since: int
+
+
+TOMBSTONES: tuple[Tombstone, ...] = (
+    Tombstone("causal_learner", "random_forest", "nuisance_forest", since=1),
+    Tombstone("causal_learner", "boosted_trees", "untuned_boosted_trees", since=1),
+)
+_VOCABULARY_WORDS = {"causal_learner": "causal lane learner key"}
+
+
+def retired(vocabulary: str, value: Any) -> Tombstone | None:
+    """The tombstone of ``value`` in ``vocabulary``, or None while the value is not retired."""
+    return next((t for t in TOMBSTONES if t.vocabulary == vocabulary and t.value == value), None)
+
+
+def refuse_retired(vocabulary: str, value: Any) -> Any:
+    """``value`` unchanged, or a ``ValueError`` that names its successor when it is retired."""
+    stone = retired(vocabulary, value)
+    if stone is not None:
+        raise ValueError(
+            f"`{value}` is a retired {_VOCABULARY_WORDS[vocabulary]} and is never reused; the same "
+            f"choice is now `{stone.successor}`")
+    return value
+
+
 # ── The causal lane (V2 definition of done §2; MODELING_SEQUENCE §0 ruling 1 rung (d)) ─────────
 # The answer lives here so the API and the log can parse it; its leash (inference only, after the
 # plan, the assumptions before any estimate, positivity, the survey design) is in
 # ``turbotab/core/causal.py`` and its estimators in ``turbotab/core/models/causal.py``.
 CausalMethod = Literal["none", "dml_plr", "dml_irm", "tmle", "pds_lasso"]
-CausalLearner = Literal["linear", "lasso", "random_forest", "boosted_trees"]
+# The flexible learners are named for what they are here, never by a model family's key: the lane's
+# forest (200 trees, at least 5 rows per leaf) is not the families' forest, and its boosted trees
+# stay at scikit-learn's defaults while the family of that name is tuned (RT-5a). V2X_SEAMS row 9;
+# MODEL_FAMILY_CONTRACT §3.3. The keys they had before log format 1 are tombstones (below).
+CausalLearner = Literal["linear", "lasso", "nuisance_forest", "untuned_boosted_trees"]
 CausalAssumption = Literal["no_unmeasured_confounding", "positivity", "consistency",
                            "time_ordering"]
 CausalPopulation = Literal["all", "exposed"]  # the average effect, or the effect among the exposed
@@ -1436,6 +1486,11 @@ class CausalSpec(_Value):
     sample_only: bool = False
     complete_rows: bool = False
 
+    @field_validator("learner", mode="before")
+    @classmethod
+    def _not_retired(cls, value: Any) -> Any:
+        return refuse_retired("causal_learner", value)
+
 
 class SetCausal(_DecisionModel):
     kind: Literal["set_causal"] = "set_causal"
@@ -1458,6 +1513,31 @@ class SetCausal(_DecisionModel):
         if len(set(value)) != len(value):
             raise ValueError("each assumption may be declared only once")
         return value
+
+    @field_validator("learner", mode="before")
+    @classmethod
+    def _not_retired(cls, value: Any) -> Any:
+        return refuse_retired("causal_learner", value)
+
+
+# Each vocabulary that holds a tombstone, as the decisions record it.
+TOMBSTONE_VOCABULARIES: dict[str, Any] = {"causal_learner": CausalLearner}
+
+
+def _tombstones_stay_buried() -> None:
+    """Refuse to import an engine whose vocabulary took a retired value back, or whose tombstone
+    points at a value it no longer records: an old line would then read with another meaning."""
+    for stone in TOMBSTONES:
+        live = set(get_args(TOMBSTONE_VOCABULARIES[stone.vocabulary]))
+        if stone.value in live:
+            raise RuntimeError(f"the retired {stone.vocabulary} value {stone.value!r} is back in "
+                               "its vocabulary; a retired value is never reused")
+        if stone.successor not in live:
+            raise RuntimeError(f"the {stone.vocabulary} tombstone {stone.value!r} names "
+                               f"{stone.successor!r}, which its vocabulary does not hold")
+
+
+_tombstones_stay_buried()
 
 
 # V2 causal row: a time-varying exposure estimated by g-methods (``turbotab/core/time_varying.py``,
@@ -5187,6 +5267,64 @@ def disclose(text: str | None, *, post_seal: bool, after_estimates: bool) -> str
     return f"{lead}, {body}"
 
 
+# ── the log's format and its migrations (V2X_SEAMS, seam guard 1) ────────────
+
+class LogFormatError(ValueError):
+    """A stored line this engine cannot read: from a newer log format, or with a malformed one."""
+
+
+def _format_1_renames_the_causal_learners(raw: dict[str, Any]) -> dict[str, Any]:
+    """Format 0 → 1: the causal lane's learner keys that were also model families' keys,
+    ``random_forest`` and ``boosted_trees``, read as their successors (:data:`TOMBSTONES` since 1).
+    The same learner is built from either name, so every number fitted from the line is unchanged.
+
+    A ``lock_plan``'s ``plan`` is left as recorded: it quotes the plan as it was declared, and its
+    SHA-256 may have been registered outside the software."""
+    decision = raw.get("decision")
+    if not isinstance(decision, dict) or decision.get("kind") != "set_causal":
+        return raw
+    stone = retired("causal_learner", decision.get("learner"))
+    if stone is None or stone.since != 1:
+        return raw
+    return {**raw, "decision": {**decision, "learner": stone.successor}}
+
+
+# Migration ``n`` reads a format-``n`` line as format ``n + 1``. Each is pure (it returns a new
+# mapping), applied in order, and never edited once released: a later rename is a new migration.
+LOG_MIGRATIONS: tuple[Callable[[dict[str, Any]], dict[str, Any]], ...] = (
+    _format_1_renames_the_causal_learners,
+)
+LOG_FORMAT = len(LOG_MIGRATIONS)  # the format every new line is written in
+LOG_FORMAT_KEY = "format"
+
+
+def read_record(raw: Any, where: str = "a decision record") -> DecisionRecord:
+    """One stored line's JSON as a :class:`DecisionRecord`: its format read (none is format 0),
+    each migration from that format to :data:`LOG_FORMAT` applied in order, then validated
+    strictly. A line from a newer format is refused, never guessed at."""
+    if not isinstance(raw, dict):
+        return DecisionRecord.model_validate(raw)
+    raw = dict(raw)
+    version = raw.pop(LOG_FORMAT_KEY, 0)
+    if not isinstance(version, int) or isinstance(version, bool) or version < 0:
+        raise LogFormatError(f"{where} names the log format {version!r}, which is not a format "
+                             "TurboTab writes.")
+    if version > LOG_FORMAT:
+        raise LogFormatError(
+            f"{where} was written in decision-log format {version}, newer than this TurboTab, "
+            f"which reads formats 0 to {LOG_FORMAT}. Open the project with the TurboTab that wrote "
+            "it, or a later one; nothing was changed.")
+    for migrate in LOG_MIGRATIONS[version:]:
+        raw = migrate(raw)
+    return DecisionRecord.model_validate(raw)
+
+
+def record_line(record: DecisionRecord) -> bytes:
+    """``record`` as the log stores it: one JSON line led by the format it is written in."""
+    body = record.model_dump_json()
+    return f'{{"{LOG_FORMAT_KEY}":{LOG_FORMAT},{body[1:]}\n'.encode("utf-8")
+
+
 # ── the log ──────────────────────────────────────────────────────────────────
 
 class DecisionLog:
@@ -5194,7 +5332,9 @@ class DecisionLog:
 
     Each append is one ``write`` of one line under an exclusive ``flock``,
     followed by ``fsync``. A torn line left by a crash is skipped on read (with
-    a warning) rather than making the project unreadable.
+    a warning) rather than making the project unreadable. Each line records its
+    log format, and reading migrates it in memory (:func:`read_record`); the file
+    is only ever appended to.
     """
 
     def __init__(self, path: str | os.PathLike[str]):
@@ -5253,7 +5393,7 @@ class DecisionLog:
                     after_estimates=after_estimates,
                     decision=decision,
                 )
-                data = (record.model_dump_json() + "\n").encode("utf-8")
+                data = record_line(record)
                 size = os.fstat(fd).st_size
                 if size and os.pread(fd, 1, size - 1) != b"\n":
                     data = b"\n" + data  # never glue onto a torn line
@@ -5286,7 +5426,7 @@ class DecisionLog:
             except json.JSONDecodeError:
                 log.warning("%s:%d is a torn line; skipped", self.path, number)
                 continue
-            records.append(DecisionRecord.model_validate(raw))
+            records.append(read_record(raw, where=f"{self.path}:{number}"))
         records.sort(key=lambda r: r.seq)
         self._cache = (stamp, records)
         return records

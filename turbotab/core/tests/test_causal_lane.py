@@ -173,7 +173,7 @@ def test_incomplete_rows_under_imputation_are_block_and_record():
 
 def test_the_record_names_the_learner_the_estimate_uses():
     completed = d.validate(_set(learner=None, method="dml_irm"), _ctx(_state(), _design(n=1200)))
-    assert completed.learner == "random_forest"
+    assert completed.learner == "nuisance_forest"
     small = d.validate(_set(learner=None, method="dml_irm"), _ctx(_state(), _design(n=300)))
     assert small.learner == "lasso"
 

@@ -73,13 +73,21 @@ import numpy as np
 from scipy import stats
 from sklearn.base import BaseEstimator, ClassifierMixin
 
-Learner = Literal["linear", "lasso", "random_forest", "boosted_trees"]
-LEARNERS: tuple[str, ...] = ("linear", "lasso", "random_forest", "boosted_trees")
+# The recorded keys (``decisions.CausalLearner``). The flexible two are named for this lane, never
+# by a model family's key; their former keys, ``random_forest`` and ``boosted_trees``, are
+# tombstones (``decisions.TOMBSTONES``) that build nothing.
+Learner = Literal["linear", "lasso", "nuisance_forest", "untuned_boosted_trees"]
+LEARNERS: tuple[str, ...] = ("linear", "lasso", "nuisance_forest", "untuned_boosted_trees")
 LEARNER_WORDS: dict[str, str] = {
     "linear": "main-terms linear and logistic regression",
     "lasso": "the cross-validated lasso (L1-penalized linear and logistic regression)",
-    "random_forest": "random forests (200 trees, at least 5 rows per leaf)",
-    "boosted_trees": "histogram gradient boosting (up to 100 trees)",
+    "nuisance_forest": "random forests (200 trees, at least 5 rows per leaf)",
+    "untuned_boosted_trees": "histogram gradient boosting (up to 100 trees)",
+}
+# Each learner's short name in a sentence: the words are read from here, never from the key.
+LEARNER_NAMES: dict[str, str] = {
+    "linear": "main-terms regression", "lasso": "lasso", "nuisance_forest": "random forest",
+    "untuned_boosted_trees": "boosted trees",
 }
 LEVEL = 0.95
 TMLE_ALPHA = 0.9995  # tmle's ``alpha``: Q is bounded to [1 − α, α] on the [0, 1] scale
@@ -399,17 +407,20 @@ def make_learner(name: str, classifier: bool, seed: int = 0) -> Any:
                 alphas=100, eps=1e-4, cv=KFold(5, shuffle=True, random_state=seed),
                 max_iter=50_000, tol=1e-7, random_state=seed))
         return _Sklearn(est, classifier)
-    if name == "random_forest":
+    if name == "nuisance_forest":
         from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
         cls = RandomForestClassifier if classifier else RandomForestRegressor
         return _Sklearn(cls(n_estimators=200, min_samples_leaf=5, random_state=seed, n_jobs=1),
                         classifier)
-    if name == "boosted_trees":
+    if name == "untuned_boosted_trees":  # scikit-learn's defaults, never tuned
         from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 
         cls = HistGradientBoostingClassifier if classifier else HistGradientBoostingRegressor
         return _Sklearn(cls(random_state=seed), classifier)
+    from turbotab.core.decisions import refuse_retired
+
+    refuse_retired("causal_learner", name)  # a retired key names its successor
     raise ValueError(f"Unknown learner {name!r}; the causal lane learns with {', '.join(LEARNERS)}.")
 
 
@@ -1112,7 +1123,8 @@ def trim_rows(propensity: np.ndarray, at: float) -> np.ndarray:
 
 
 __all__ = [
-    "CONTINUOUS_R2_LINE", "POSITIVITY_SHARE", "Design", "Estimate", "LEARNERS", "LEARNER_WORDS",
+    "CONTINUOUS_R2_LINE", "POSITIVITY_SHARE", "Design", "Estimate", "LEARNERS", "LEARNER_NAMES",
+    "LEARNER_WORDS",
     "LassoSelection",
     "Overlap", "Variation", "aggregate", "cross_fit", "dml_irm", "dml_plr", "hc3_ols", "is_binary",
     "kish_ess", "learner_factory", "logistic_fit", "make_learner", "overlap", "pds_lasso",

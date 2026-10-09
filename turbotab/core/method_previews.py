@@ -357,7 +357,7 @@ def usual_intake_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 # preview reads the causal card's main-terms propensity, cross-fitted as ``causal_design`` reads
 # it, and the basis says so: the learner's own is read when the lane runs, which withholds the
 # estimate on its own positivity (``stages.causal.causal_stage``).
-CARD_LEARNERS = ("random_forest", "lasso", "boosted_trees")
+CARD_LEARNERS = ("nuisance_forest", "lasso", "untuned_boosted_trees")
 
 
 def causal_numbers(sctx: Any, spec: Any, *, budget: bool = True) -> dict[str, Any] | None:
@@ -416,10 +416,12 @@ def causal_numbers(sctx: Any, spec: Any, *, budget: bool = True) -> dict[str, An
 
 
 def _causal_basis(found: Mapping[str, Any]) -> str:
-    learner = found["learner"]
+    from turbotab.core.models.causal import LEARNER_NAMES
+
     if found["source"] == "card":
+        learner = LEARNER_NAMES[found["learner"]]
         return (f"Overlap read by the causal card's main-terms logistic propensity, cross-fitted on "
-                f"all {found['n']:,} complete analyzed rows; the {learner.replace('_', ' ')}'s own "
+                f"all {found['n']:,} complete analyzed rows; the {learner}'s own "
                 f"propensity is read when the lane runs, before any estimate. No outcome read.")
     return (f"The estimator's own propensity on all {found['n']:,} complete analyzed rows, its "
             f"learner and folds; no outcome read.")
