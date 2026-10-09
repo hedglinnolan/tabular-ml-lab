@@ -259,9 +259,11 @@ def test_every_fitted_step_sees_only_training_fold_rows(tmp_path, monkeypatch, p
     has coefficients (linear and elastic net, not boosted trees), on training and held-out rows."""
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.impute import SimpleImputer
-    from sklearn.linear_model import ElasticNetCV, LinearRegression
+    from sklearn.linear_model import LinearRegression
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
     import statsmodels.api as sm
+
+    from turbotab.core.models.elastic_net import PooledElasticNetCV as ElasticNetCV  # its own path
 
     frame = mf.nhanes_like(300, seed=7, missing=True)
     paths = mf.ingest_frame(frame, tmp_path)
