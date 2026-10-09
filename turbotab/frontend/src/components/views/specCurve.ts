@@ -6,8 +6,12 @@
  * Sensitivity, never a way to choose: the primary is the reported estimate whatever the others say
  * (BLUEPRINT §11.4). Every specification must estimate the same quantity on the same scale; the
  * view refuses a mix (`scaleKey`).
+ *
+ * The gate: a specification curve is estimates, so it opens only after the lock (FOUNDATION §5
+ * rule 6); shown while the plan is chosen it would invite choosing by the estimate. `sealed`
+ * carries the line saying when it opens, and nothing estimated is drawn before then.
  */
-import { extent, inner, linear, ticksIn, union, type Box, type Domain } from "./scale";
+import { extent, inner, linear, PAD, ticksIn, union, type Box, type Domain } from "./scale";
 
 export interface SpecChoice {
   key: string;
@@ -36,6 +40,11 @@ export interface SpecCurveData {
   specs: Spec[];
   /** draw the no-difference line */
   zero?: boolean;
+  /** the level of every interval, as served (0.95); null when the intervals do not say */
+  level: number | null;
+  /** the gate (FOUNDATION §5 rule 6): before the lock, one line saying when the curve opens, and
+   *  nothing estimated is drawn; null once it is open. Every caller says which. */
+  sealed: string | null;
 }
 
 /** Sorted by estimate, ties by key, so the order is stable. */
@@ -100,7 +109,7 @@ export function specLayout(d: SpecCurveData, width: number, gutter: number): Spe
     x0,
     colW,
     cx: (i) => x0 + (i + 0.5) * colW,
-    y: linear(yd, [curveBottom, TOP]),
+    y: linear(yd, [curveBottom, TOP], PAD),
     yTicks: ticksIn(yd, 5),
     rows,
   };

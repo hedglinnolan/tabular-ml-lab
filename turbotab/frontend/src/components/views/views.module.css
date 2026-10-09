@@ -60,8 +60,11 @@
   pointer-events: none;
 }
 .ring {
+  /* the ring is painted under the fill, so it shows only outside it: the colored disc keeps its
+     full radius (MARK_R, 10 px across) and the 1 px of canvas around it parts it from lines */
   stroke: var(--canvas);
   stroke-width: 2;
+  paint-order: stroke;
 }
 .focusRing {
   fill: none;

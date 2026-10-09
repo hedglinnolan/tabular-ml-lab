@@ -5,8 +5,13 @@
  * The engine serves `Calibration` (turbotab/core/models/performance.py): calibration in the large,
  * the slope, and the lowess curve at up to 40 quantiles. The binned points with intervals are not
  * served yet: `bins` is optional and named as an engine contract item.
+ *
+ * The gate: the calibration horizon is chosen in the Results Confirm sweep, before the held-out
+ * rows open (FOUNDATION §3), so a held-out calibration is never drawn while a choice it would
+ * inform is pointed at (`choosing`).
  */
-import { extent, inner, linear, ticksIn, union, type Box, type Domain } from "./scale";
+import { extent, inner, linear, PAD, ticksIn, union, type Box, type Domain } from "./scale";
+import type { ScoredWhere } from "./decisionCurve";
 
 export interface Interval {
   estimate: number | null;
@@ -41,10 +46,25 @@ export interface CalibrationData {
   /** how the bins were made, quietly */
   binsMethod?: string | null;
   smoother?: string | null;
-  /** the engine's concern, when calibration is flagged */
+  /** the engine's concern, when calibration is flagged: its verdict, said in place of the numbers */
   concern?: string | null;
-  /** where the predictions were scored ("out of fold", "held-out rows") */
-  where?: string | null;
+  /** where the predictions were scored: a held-out calibration refuses `choosing` */
+  where: ScoredWhere;
+  /** the choice being made that this calibration would inform, while it is pointed at ("the
+   *  calibration horizon"); null at rest */
+  choosing?: string | null;
+  /** the gate (FOUNDATION §5 rule 6): before it, one line saying when calibration opens, and
+   *  nothing scored is drawn; null once it is open. Every caller says which. */
+  sealed: string | null;
+}
+
+/** Why this calibration may not be drawn now, or null: held-out scores while a choice they would
+ *  inform is being made. */
+export function calibrationRefusal(d: CalibrationData): string | null {
+  if (d.choosing && d.where === "held_out") {
+    return `${d.choosing[0]!.toUpperCase()}${d.choosing.slice(1)} is being chosen, so calibration is drawn on out-of-fold scores: the held-out rows stay closed until it is fixed.`;
+  }
+  return null;
 }
 
 /** The one domain both axes share: everything drawn, the diagonal spanning it. A risk stays in
@@ -75,8 +95,8 @@ export function calibrationScales(d: CalibrationData, width: number, left: numbe
   return {
     box,
     side,
-    x: linear(dom, [x0, x1]),
-    y: linear(dom, [y1, y0]),
+    x: linear(dom, [x0, x1], PAD),
+    y: linear(dom, [y1, y0], PAD),
     ticks: ticksIn(dom, 5),
   };
 }

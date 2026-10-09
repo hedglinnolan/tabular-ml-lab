@@ -56,37 +56,65 @@ interface Illustrative {
 const ill = illustrative as unknown as Illustrative;
 const ec = ill.exposure_curve;
 
-/** Illustrative: an exposure curve from a spline (gray) against a straight line (indigo). */
+/**
+ * Illustrative, after Fit: an exposure curve under two declared shapes, compared as sensitivity
+ * (two `series`, sage and plum). The shape is a Models-stage choice made before Fit, so it is never
+ * previewed as a "with this choice" flip (FOUNDATION §5 rule 6).
+ */
 export const exposureCurve: CurveData = {
   xLabel: `${ec.exposure} (${ec.unit})`,
   xName: `${ec.exposure} (${ec.unit})`,
   yLabel: `Difference in mean ${ec.outcome} (${ec.outcome_unit}) from ${ec.reference} ${ec.unit}`,
   lines: [
-    { key: "now", label: ec.now.label, role: "now", x: ec.now.x, y: ec.now.y, low: ec.now.low, high: ec.now.high },
-    { key: "choice", label: ec.choice.label, role: "choice", x: ec.choice.x, y: ec.choice.y, low: ec.choice.low, high: ec.choice.high },
+    { key: "spline", label: "A bending curve", role: "series", slot: 1, x: ec.now.x, y: ec.now.y, low: ec.now.low, high: ec.now.high },
+    { key: "linear", label: "A straight line", role: "series", slot: 2, x: ec.choice.x, y: ec.choice.y, low: ec.choice.low, high: ec.choice.high },
   ],
   zero: true,
   rug: ec.rug,
   band: "Bands are 95% intervals.",
-  basis: `Rug: where ${ec.exposure} was observed, at 120 quantiles of ${ec.n.toLocaleString("en-US")} rows.`,
+  basis: `The bending curve is a spline with 4 knots, the points where its bend may change. Rug: where ${ec.exposure} was observed, at 120 quantiles of ${ec.n.toLocaleString("en-US")} rows.`,
+  sealed: null,
 };
 
-export const curveOnePoint: CurveData = { xLabel: "kcal moved", yLabel: "Change in predicted glucose", lines: [{ key: "a", label: "Linear model", role: "now", x: [100], y: [-1.86] }], zero: true };
+export const curveOnePoint: CurveData = { xLabel: "kcal moved", yLabel: "Change in predicted glucose", lines: [{ key: "a", label: "Linear model", role: "now", x: [100], y: [-1.86] }], zero: true, sealed: null };
 
 // ── calibration ──────────────────────────────────────────────────────────────
 
 /** Clinical, Predict: the held-out risks of progression (399 rows). */
-export const calibrationClinical: CalibrationData = calibrationFromEngine(calOf(clinical), { kind: "risk", outcome: "progression", where: "held out" });
+export const calibrationClinical: CalibrationData = calibrationFromEngine(calOf(clinical), { kind: "risk", outcome: "progression", where: "held_out" });
 /** NHANES, Predict: predicted glucose against observed. */
-export const calibrationGlucose: CalibrationData = calibrationFromEngine(calOf(prediction), { kind: "value", outcome: "glucose", where: "out of fold" });
+export const calibrationGlucose: CalibrationData = calibrationFromEngine(calOf(prediction), { kind: "value", outcome: "glucose", where: "out_of_fold" });
 /** Illustrative: an overconfident model, with ten groups of rows and their intervals. */
-export const calibrationBinned: CalibrationData = calibrationFromEngine(ill.calibration, { kind: "risk", outcome: "the outcome", where: "out of fold" });
-export const calibrationOnePoint: CalibrationData = { ...calibrationBinned, curve: [], bins: [ill.calibration.bins[4]!] };
+export const calibrationBinned: CalibrationData = calibrationFromEngine(ill.calibration, { kind: "risk", outcome: "the outcome", where: "out_of_fold" });
+/** Degenerate: one group of 120 rows, its own counts only (no slope or intercept from one group). */
+const oneBin = ill.calibration.bins[4]!;
+export const calibrationOnePoint: CalibrationData = {
+  ...calibrationBinned,
+  n: oneBin.n,
+  observed: oneBin.observed,
+  expected: oneBin.predicted,
+  intercept: { estimate: null },
+  slope: { estimate: null },
+  concern: null,
+  curve: [],
+  bins: [oneBin],
+};
+/** The held-out calibration while the calibration horizon is chosen: refused. */
+export const calibrationChoosing: CalibrationData = { ...calibrationClinical, choosing: "the calibration horizon" };
+/** Before Fit: one line. */
+export const calibrationSealed: CalibrationData = { ...calibrationBinned, sealed: "Calibration opens after Fit, on predictions scored out of fold." };
 
 // ── decision curve ───────────────────────────────────────────────────────────
 
-export const decision: DecisionCurveData = decisionFromEngine(ill.decision_curve);
-export const decisionOnePoint: DecisionCurveData = { ...decision, rows: [decision.rows[20]!] };
+export const decision: DecisionCurveData = decisionFromEngine(ill.decision_curve, { where: "out_of_fold" });
+/** Degenerate: one threshold (0.21), its useful span recomputed for that threshold alone. */
+const oneRow = decision.rows[20]!;
+const beats = (oneRow.models[decision.models[0]!.key] ?? -Infinity) > Math.max(oneRow.treat_all, 0);
+export const decisionOnePoint: DecisionCurveData = { ...decision, rows: [oneRow], useful: beats ? [oneRow.threshold, oneRow.threshold] : null };
+/** A choice that would narrow the threshold range to 0.10–0.30, pointed at, on out-of-fold scores. */
+export const decisionPointed: DecisionCurveData = { ...decision, pointed: { low: 0.1, high: 0.3 } };
+/** The same on held-out scores: refused, since that would choose the range by the held-out score. */
+export const decisionPointedHeldOut: DecisionCurveData = { ...decisionPointed, where: "held_out" };
 
 // ── specification curve: the calm scenario's fitted plans ────────────────────
 
@@ -145,6 +173,9 @@ export function specsFromCalm(fits: Record<string, Fit>): Spec[] {
 export const specCurve: SpecCurveData = {
   estimateLabel: "Difference in mean glucose per g of sugar",
   zero: true,
+  // the fits' served inference: "95% intervals from HC3 heteroskedasticity-robust standard errors"
+  level: 0.95,
+  sealed: null,
   choices: [
     { key: "energy", label: "Calories handled by", options: ENERGY },
     { key: "adjust", label: "Adjusted for", options: ADJUST },
@@ -154,4 +185,5 @@ export const specCurve: SpecCurveData = {
 };
 
 export const specOne: SpecCurveData = { ...specCurve, specs: specCurve.specs.filter((s) => s.primary) };
+export const specSealed: SpecCurveData = { ...specCurve, sealed: "The specification curve opens after Fit locks the plan: seeing the estimates while choosing would invite choosing by them." };
 export const specMixed: SpecCurveData = { ...specCurve, specs: [specCurve.specs[0]!, { ...specCurve.specs[1]!, scaleKey: "per kcal" }] };

@@ -1,12 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { SpecCurveView } from "./SpecCurveView";
+import { SpecCurveView, intervalHead, specLine } from "./SpecCurveView";
 import { CURVE_H, GAP, HEAD_H, ROW_H, TOP, columnAt, mixedScales, sortSpecs, specLayout, type SpecCurveData } from "./specCurve";
-import { specCurve } from "./lab/fixtures";
+import { specCurve, specOne } from "./lab/fixtures";
 
 const d: SpecCurveData = {
   estimateLabel: "Difference per g",
   zero: true,
+  level: 0.95,
+  sealed: null,
   choices: [
     { key: "adj", label: "Adjusted for", options: [{ key: "none", label: "Nothing" }, { key: "full", label: "Everything" }] },
   ],
@@ -26,9 +28,9 @@ describe("the specification curve's layout", () => {
     expect(l.cx(1)).toBe(467.5);
     expect(columnAt(l, 101, 2)).toBe(0);
     expect(columnAt(l, 589, 2)).toBe(1);
-    // the estimate's axis: the intervals and zero
-    expect(l.y(0)).toBe(TOP);
-    expect(l.y(-0.05)).toBe(TOP + CURVE_H);
+    // the estimate's axis: the intervals and zero, inset 8 px off the panel's edges
+    expect(l.y(0)).toBe(TOP + 8);
+    expect(l.y(-0.05)).toBe(TOP + CURVE_H - 8);
     for (const t of l.yTicks) expect(t >= -0.05 && t <= 0).toBe(true);
     // a heading row, then each option
     const start = TOP + CURVE_H + GAP;
@@ -46,21 +48,35 @@ describe("the specification curve's layout", () => {
 });
 
 describe("the specification curve view", () => {
-  it("marks the primary, draws each pick on the shared x, and has a table", () => {
+  it("marks the primary, draws each pick on the shared x, and has a table headed by the served level", () => {
     const { container } = render(<SpecCurveView data={d} />);
     expect(container.querySelectorAll("[data-spec]")).toHaveLength(2);
     expect(container.querySelector('[data-primary="true"]')).toHaveAttribute("data-spec", "a");
     expect(container.textContent).toContain("Primary");
     expect(container.querySelectorAll('[data-option="adj:full"] circle')).toHaveLength(1);
-    const rows = screen.getByTestId("view-table").querySelectorAll("tbody tr");
+    const table = screen.getByTestId("view-table");
+    const rows = table.querySelectorAll("tbody tr");
     expect(rows).toHaveLength(2);
     expect(rows[1]).toHaveTextContent("2 (primary)");
-    expect(container.textContent).toContain("2 of 2 intervals exclude zero.");
+    expect(table.querySelector("thead")).toHaveTextContent("Estimate (95% interval)");
+    expect(intervalHead(null)).toBe("Estimate (interval)");
+  });
+
+  it("never counts intervals that exclude zero, and says one specification as one", () => {
+    expect(specLine(d)).toBe("2 specifications; the primary is the reported estimate, and the others show how far the declared choices move it. Estimates run from −0.04 to −0.02.");
+    expect(specLine(specOne)).toBe("One specification: the primary, which is the reported estimate.");
+    expect(specLine(specCurve)).not.toMatch(/exclude/);
   });
 
   it("draws a single specification", () => {
     const { container } = render(<SpecCurveView data={{ ...d, specs: [d.specs[0]!] }} />);
     expect(container.querySelectorAll("[data-spec]")).toHaveLength(1);
+  });
+
+  it("before the lock says one line and draws no estimate", () => {
+    const { container } = render(<SpecCurveView data={{ ...d, sealed: "The specification curve opens after Fit locks the plan." }} />);
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("opens after Fit");
   });
 
   it("says why in one line when there is nothing, or the scales mix", () => {

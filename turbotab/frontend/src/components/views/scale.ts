@@ -5,7 +5,10 @@
  * - one linear scale per axis, drawn to scale;
  * - a domain is the extent the drawn data reaches (references included), never padded to round
  *   numbers, so every tick names a value the data reaches;
- * - a domain with no width (one point, or every value equal) widens symmetrically around it.
+ * - a domain with no width (one point, or every value equal) widens symmetrically around it so
+ *   it can be drawn, and its one value is its only tick (the widening is never labelled);
+ * - the pixel range is inset by `PAD` from the plot's edges, so a mark at the domain's edge sits
+ *   inside the plot, never on an axis line.
  */
 import { scaleLinear, type ScaleLinear } from "d3-scale";
 
@@ -35,17 +38,30 @@ export function union(...ds: (Domain | null | undefined)[]): Domain | null {
   return extent(ds.flatMap((d) => (d ? [d[0], d[1]] : [])));
 }
 
-/** A linear scale over a domain with width. */
-export function linear(domain: Domain, range: Domain): ScaleLinear<number, number> {
-  return scaleLinear().domain(widen(domain)).range(range);
+/** The inset, in pixels, between a plot's edge and the domain's extreme: a marker (radius 5, ring
+ *  1) and a little air, so extreme marks never sit on an axis line. */
+export const PAD = 8;
+
+/** A pixel range moved `pad` inward at both ends (either orientation). */
+export function insetRange(range: Domain, pad = PAD): Domain {
+  const dir = range[1] >= range[0] ? 1 : -1;
+  if (Math.abs(range[1] - range[0]) <= 2 * pad) return range;
+  return [range[0] + dir * pad, range[1] - dir * pad];
+}
+
+/** A linear scale over a domain with width, onto a pixel range inset by `pad`. */
+export function linear(domain: Domain, range: Domain, pad = 0): ScaleLinear<number, number> {
+  return scaleLinear().domain(widen(domain)).range(insetRange(range, pad));
 }
 
 /**
  * Ticks inside the domain: round values the axis reaches, never beyond it. When the domain is too
- * narrow for a round value inside, its two ends are the ticks.
+ * narrow for a round value inside, its two ends are the ticks; a domain with no width (one value)
+ * has that value as its only tick, never the widening around it.
  */
 export function ticksIn(domain: Domain, count = 5): number[] {
-  const [lo, hi] = widen(domain);
+  const [lo, hi] = domain;
+  if (!(hi > lo)) return [lo];
   const eps = (hi - lo) * 1e-9;
   const t = scaleLinear().domain([lo, hi]).ticks(count).filter((v) => v >= lo - eps && v <= hi + eps);
   return t.length >= 2 ? t : [lo, hi];

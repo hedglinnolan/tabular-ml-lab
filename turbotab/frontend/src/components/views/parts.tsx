@@ -14,10 +14,25 @@ export { fmtNum, fmtTick } from "../stage/format";
 export type Slot = 1 | 2 | 3 | 4 | 5;
 export const slotColor = (slot: Slot) => `var(--cat-${slot})`;
 
-/** Gray is the data now; indigo is exactly what the pointed choice touches; ink is the fit. */
-export const NOW = "var(--data-context)";
+/**
+ * Gray is the data now; indigo is exactly what the pointed choice touches; ink is the fit.
+ *
+ * The data-now gray is drawn a third of the way from `--data-context` toward the canvas ink: the
+ * token alone is about 2:1 on the canvas in light and 2.4:1 in dark, under the 3:1 a meaningful
+ * graphical mark needs. The mix reaches 3.5:1 (light) and 5.2:1 (dark) and stays at least 2.6:1 from
+ * the fit's ink, so the primary (ink, and larger) still stands out. Derived from the tokens, so both themes
+ * follow them.
+ */
+export const NOW = "color-mix(in srgb, var(--data-context) 65%, var(--canvas-ink))";
 export const CHOICE = "var(--data-affected)";
 export const FIT = "var(--data-fit)";
+
+/** A marker's radius. With the canvas ring painted under the fill (`.ring`, paint-order), the
+ *  colored disc is 10 px across, above the 8 px minimum. */
+export const MARK_R = 5;
+
+/** The width of a direct label's text: 12 px Source Sans 3 is under 6.4 px a character. */
+export const CHAR_W = 6.4;
 
 /** The container's width in CSS pixels, so text keeps its set size at any width. */
 export function useWidth(fallback = 600): [React.RefObject<HTMLDivElement | null>, number] {
@@ -165,13 +180,29 @@ export function leftLabelWidth(ticks: number[], fmt: (v: number) => string): num
 /** The left margin the y tick labels need. */
 export const leftFor = (ticks: number[], fmt: (v: number) => string, min = 34) => Math.max(min, Math.ceil(leftLabelWidth(ticks, fmt)) + 12);
 
-/** The tooltip, inside the plot, at a point in the view's own pixels. */
+/** Where the tooltip's center sits so all of it stays inside [0, width]: centred on the point,
+ *  pushed in near either edge by its own measured width. */
+export function tipLeft(x: number, width: number, tipWidth: number, margin = 4): number {
+  const half = tipWidth / 2;
+  if (tipWidth + 2 * margin >= width) return width / 2;
+  return Math.min(Math.max(x, half + margin), width - half - margin);
+}
+
+/** The tooltip, inside the plot, at a point in the view's own pixels. Its width is measured, so a
+ *  wide tooltip near an edge is pushed inside rather than clipped. */
 export function Tip({ at, width, children }: { at: { x: number; y: number } | null; width: number; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [tw, setTw] = useState(180);
+  // Re-measured whenever the content or the point changes; settles in one pass (same width, no set).
+  useLayoutEffect(() => {
+    const w = ref.current?.offsetWidth;
+    if (w && Math.abs(w - tw) > 0.5) setTw(w);
+  }, [at, children, tw]);
   if (!at) return null;
-  const left = Math.min(Math.max(at.x, 90), Math.max(90, width - 90));
+  const left = tipLeft(at.x, width, tw);
   return (
     // Near the top edge the tooltip opens below the point, so it stays inside the view.
-    <div className={s.tip} style={{ left, top: at.y, ...(at.y < 96 ? { transform: "translate(-50%, 14px)" } : null) }} role="status">
+    <div ref={ref} className={s.tip} style={{ left, top: at.y, ...(at.y < 96 ? { transform: "translate(-50%, 14px)" } : null) }} role="status">
       {children}
     </div>
   );

@@ -5,7 +5,7 @@
 import type { ModelCalibration, SubstitutionArtifact } from "../../api/m3-types";
 import type { CalibrationBin, CalibrationData } from "./calibration";
 import type { CurveData, CurveLine } from "./curve";
-import type { DecisionCurveData, DecisionCurveRow } from "./decisionCurve";
+import type { DecisionCurveData, DecisionCurveRow, ScoredWhere } from "./decisionCurve";
 import type { Slot } from "./parts";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -52,9 +52,14 @@ export function curveFromSubstitution(art: SubstitutionArtifact, opts: Substitut
   } else {
     lines = models.slice(0, 5).map((m, i) => lineOf(m, "series", SLOTS[i]));
   }
-  const reported = models.find((m) => m.family === opts.family) ?? models[0];
-  const share = reported?.on_support_fraction ?? [];
-  const stopAt = reported?.stopped_at ?? null;
+  // The support and the stop are drawn for every line, so they come from the one model drawn, or,
+  // when models are compared, only when every model drawn shares them (they read no outcome, so
+  // the same rows give the same support; a model refused at some k would differ).
+  const drawn = opts.family ? models.filter((m) => m.family === opts.family) : models.slice(0, 5);
+  const reported = drawn[0];
+  const same = drawn.every((m) => JSON.stringify(m.on_support_fraction) === JSON.stringify(reported?.on_support_fraction) && m.stopped_at === reported?.stopped_at);
+  const share = same ? (reported?.on_support_fraction ?? []) : [];
+  const stopAt = same ? (reported?.stopped_at ?? null) : null;
   const stopIdx = stopAt === null ? -1 : art.ks.indexOf(stopAt);
   return {
     xLabel: `${unit} moved from ${art.donor} to ${art.recipient}`,
@@ -66,13 +71,14 @@ export function curveFromSubstitution(art: SubstitutionArtifact, opts: Substitut
     stop: stopAt !== null && stopIdx >= 0 ? { x: stopAt, why: `The curve stops at ${stopAt} ${unit}, where ${pct(share[stopIdx] ?? 0)} of rows stay within the range observed.` } : null,
     basis: art.basis,
     band: art.band?.caption ?? null,
+    sealed: null,
   };
 }
 
 /** The engine's calibration of one model's predictions, with the binned points when served. */
 export function calibrationFromEngine(
   cal: ModelCalibration & { bins?: CalibrationBin[] | null; bins_method?: string | null },
-  opts: { kind: "risk" | "value"; outcome: string; where?: string },
+  opts: { kind: "risk" | "value"; outcome: string; where: ScoredWhere; choosing?: string | null; sealed?: string | null },
 ): CalibrationData {
   return {
     kind: opts.kind,
@@ -87,7 +93,9 @@ export function calibrationFromEngine(
     binsMethod: cal.bins_method ?? null,
     smoother: cal.smoother,
     concern: cal.concern,
-    where: opts.where ?? null,
+    where: opts.where,
+    choosing: opts.choosing ?? null,
+    sealed: opts.sealed ?? null,
   };
 }
 
@@ -103,7 +111,8 @@ export interface EngineDecisionCurve {
   n?: number;
 }
 
-export function decisionFromEngine(dc: EngineDecisionCurve, labels: Record<string, string> = dc.labels ?? {}): DecisionCurveData {
+export function decisionFromEngine(dc: EngineDecisionCurve, opts: { where: ScoredWhere; sealed?: string | null; labels?: Record<string, string> }): DecisionCurveData {
+  const labels = opts.labels ?? dc.labels ?? {};
   const keys = Object.keys(dc.rows[0]?.models ?? {});
   // The reported model first, then the others in the engine's order: color follows the entity.
   const ordered = [dc.family, ...keys.filter((k) => k !== dc.family)].filter((k) => keys.includes(k)).slice(0, 5);
@@ -113,6 +122,8 @@ export function decisionFromEngine(dc: EngineDecisionCurve, labels: Record<strin
     low: dc.low,
     high: dc.high,
     useful: dc.useful && dc.useful.length === 2 ? [dc.useful[0]!, dc.useful[1]!] : null,
+    where: opts.where,
+    sealed: opts.sealed ?? null,
     prevalence: dc.prevalence ?? null,
     n: dc.n ?? null,
   };

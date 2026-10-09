@@ -14,7 +14,7 @@ export type { CurveData, CurveLine } from "./curve";
 export { CalibrationView } from "./CalibrationView";
 export type { CalibrationBin, CalibrationData } from "./calibration";
 export { DecisionCurveView } from "./DecisionCurveView";
-export type { DecisionCurveData, DecisionCurveRow } from "./decisionCurve";
+export type { DecisionCurveData, DecisionCurveRow, ScoredWhere } from "./decisionCurve";
 export { SpecCurveView } from "./SpecCurveView";
 export type { Spec, SpecChoice, SpecCurveData } from "./specCurve";
 export { calibrationFromEngine, curveFromSubstitution, decisionFromEngine } from "./adapters";

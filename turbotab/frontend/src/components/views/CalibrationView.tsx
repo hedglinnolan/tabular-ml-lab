@@ -1,27 +1,46 @@
 /**
  * The calibration view (FOUNDATION §5 rule 9): what the model predicted against what was observed,
  * on one shared scale with the 45° line of perfect agreement, the engine's smoothed curve, the
- * grouped rows with their intervals when served, and the slope and intercept said quietly.
+ * grouped rows with their intervals when served, and one quiet paragraph of what they show.
  * One entity (the model), so one ink; the marks differ by shape, and the key names them.
  */
 import { useState } from "react";
-import { calibrationScales, hasCalibration, type CalibrationData } from "./calibration";
-import { Empty, FIT, Legend, Numbers, Tip, TipLines, XAxis, YAxis, fmtNum, fmtTick, leftFor, useWidth, viewStyles as s, type KeyItem } from "./parts";
-import { nearest, pathOf, ticksIn } from "./scale";
+import { calibrationRefusal, calibrationScales, hasCalibration, type CalibrationData } from "./calibration";
+import { Empty, FIT, Legend, MARK_R, Numbers, Tip, TipLines, XAxis, YAxis, fmtNum, fmtTick, leftFor, useWidth, viewStyles as s, type KeyItem } from "./parts";
+import { nearest, pathOf } from "./scale";
 import { plain } from "../../explore/calm-kit/text";
 
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
 
-function interval(i: { estimate: number | null; ci_low?: number | null; ci_high?: number | null }): string {
-  if (i.estimate === null) return "not estimable";
-  const ci = i.ci_low !== null && i.ci_low !== undefined && i.ci_high !== null && i.ci_high !== undefined ? ` (${fmtNum(i.ci_low)} to ${fmtNum(i.ci_high)})` : "";
-  return `${fmtNum(i.estimate)}${ci}`;
+const WHERE = { out_of_fold: "scored out of fold", held_out: "scored on the held-out rows" } as const;
+
+type Iv = CalibrationData["slope"];
+
+/** ", 95% interval 0.547 to 0.76": the level as served, never assumed; "" with no interval. */
+export function intervalOf(i: Iv): string {
+  if (i.ci_low === null || i.ci_low === undefined || i.ci_high === null || i.ci_high === undefined) return "";
+  const lvl = i.level !== null && i.level !== undefined ? `${+(i.level * 100).toFixed(1)}% ` : "";
+  return `, ${lvl}interval ${fmtNum(i.ci_low)} to ${fmtNum(i.ci_high)}`;
 }
 
-/** The slope and intercept in one quiet line, each beside the value perfect agreement has. */
+const avg = (d: CalibrationData, v: number) => (d.kind === "risk" ? `${+(v * 100).toFixed(1)}%` : fmtNum(v));
+
+/**
+ * The one quiet paragraph under the picture. When the engine flags a concern, its verdict is the
+ * paragraph (it carries the numbers, in plain words with the term beside them); otherwise the
+ * numbers are said plainly, each technical name riding beside its meaning (FOUNDATION §2).
+ */
 export function calibrationLine(d: CalibrationData): string {
-  const parts = [`Slope ${interval(d.slope)}, 1 when predictions match`, `intercept ${interval(d.intercept)}, 0 when they match`, `${fmtInt(d.n)} rows${d.where ? `, ${d.where}` : ""}`];
-  return `${parts.join(" · ")}.`;
+  const rows = `${fmtInt(d.n)} rows, ${WHERE[d.where]}.`;
+  if (d.concern) return `${plain(d.concern)} ${rows}`;
+  const parts = [
+    `Predicted ${avg(d, d.expected)} on average against ${avg(d, d.observed)} observed${d.intercept.estimate !== null ? ` (calibration intercept ${fmtNum(d.intercept.estimate)}${intervalOf(d.intercept)}; 0 when they agree)` : ""}.`,
+    d.slope.estimate !== null
+      ? `Outcomes moved ${fmtNum(d.slope.estimate)} times as far as the predictions did (calibration slope${intervalOf(d.slope)}; 1 when they agree, below 1 when predictions are too extreme).`
+      : null,
+    rows,
+  ];
+  return parts.filter(Boolean).join(" ");
 }
 
 export function calibrationLabels(d: CalibrationData): { x: string; y: string } {
@@ -41,9 +60,12 @@ export function CalibrationView({ data, title, why }: { data: CalibrationData | 
   if (!hasCalibration(data)) {
     return <Empty kind="calibration" title={title} why={why ?? "Calibration was not assessed: no predictions were scored against observed outcomes."} />;
   }
+  if (data.sealed) return <Empty kind="calibration" title={title} why={data.sealed} />;
+  const refused = calibrationRefusal(data);
+  if (refused) return <Empty kind="calibration" title={title} why={refused} />;
   const d = data;
   const pre = calibrationScales(d, W, 40)!;
-  const left = leftFor(ticksIn(pre.x.domain() as [number, number]), fmtTick);
+  const left = leftFor(pre.ticks, fmtTick);
   const g = calibrationScales(d, W, left)!;
   const { box, x, y } = g;
   const [lo, hi] = x.domain() as [number, number];
@@ -70,12 +92,12 @@ export function CalibrationView({ data, title, why }: { data: CalibrationData | 
           {bins.map((b, i) => (
             <g key={i} data-mark="bin">
               {b.low !== null && b.high !== null ? <line x1={x(b.predicted)} x2={x(b.predicted)} y1={y(b.low)} y2={y(b.high)} style={{ stroke: FIT }} strokeWidth={1.5} opacity={0.7} /> : null}
-              <circle cx={x(b.predicted)} cy={y(b.observed)} r={4} className={s.ring} style={{ fill: FIT }} />
+              <circle cx={x(b.predicted)} cy={y(b.observed)} r={MARK_R} className={s.ring} style={{ fill: FIT }} />
             </g>
           ))}
           {pts.length > 1 ? <path data-mark="curve" d={pathOf(pts.map((p) => [x(p.x), y(p.y)] as const))} fill="none" style={{ stroke: FIT }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" /> : null}
-          {pts.length === 1 ? <circle data-mark="curve" cx={x(pts[0]!.x)} cy={y(pts[0]!.y)} r={4} className={s.ring} style={{ fill: FIT }} /> : null}
-          {hover?.kind === "curve" ? <circle cx={x(pts[hover.i]!.x)} cy={y(pts[hover.i]!.y)} r={4.5} className={s.ring} style={{ fill: FIT }} pointerEvents="none" /> : null}
+          {pts.length === 1 ? <circle data-mark="curve" cx={x(pts[0]!.x)} cy={y(pts[0]!.y)} r={MARK_R} className={s.ring} style={{ fill: FIT }} /> : null}
+          {hover?.kind === "curve" ? <circle cx={x(pts[hover.i]!.x)} cy={y(pts[hover.i]!.y)} r={MARK_R + 0.5} className={s.ring} style={{ fill: FIT }} pointerEvents="none" /> : null}
           {/* hit targets, larger than the marks */}
           {pts.length > 1 ? (
             <path
@@ -127,7 +149,6 @@ export function CalibrationView({ data, title, why }: { data: CalibrationData | 
       <p className={s.quiet} data-testid="calibration-line">
         {calibrationLine(d)}
       </p>
-      {d.concern ? <p className={s.quiet}>{plain(d.concern)}</p> : null}
       <Numbers
         table={{
           caption: `${labels.y} against ${labels.x}${d.binsMethod ? `; ${d.binsMethod}` : ""}${d.smoother ? `; smoothed by ${d.smoother}` : ""}`,

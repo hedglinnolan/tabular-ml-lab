@@ -5,25 +5,27 @@
  */
 import { useState } from "react";
 import { columnAt, mixedScales, sortSpecs, specLayout, type SpecCurveData } from "./specCurve";
-import { Crosshair, Empty, FIT, NOW, Numbers, Tip, TipLines, YAxis, fmtNum, fmtTick, leftLabelWidth, useWidth, viewStyles as s } from "./parts";
-import { ticksIn, type Box } from "./scale";
+import { Crosshair, Empty, FIT, MARK_R, NOW, Numbers, Tip, TipLines, YAxis, fmtNum, fmtTick, leftLabelWidth, useWidth, viewStyles as s } from "./parts";
+import type { Box } from "./scale";
 
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
 const ci = (lo: number | null, hi: number | null) => (lo === null || hi === null ? "" : ` (${fmtNum(lo)} to ${fmtNum(hi)})`);
 
-/** One quiet line of computed facts: how many, the span, and how many intervals exclude zero. */
+/** The interval's name in the table head: its level as served, never assumed. */
+export const intervalHead = (level: number | null) => (level === null ? "Estimate (interval)" : `Estimate (${+(level * 100).toFixed(1)}% interval)`);
+
+/**
+ * One quiet line of computed facts: how many specifications, and how far the others move the
+ * estimate from the primary. It never counts intervals that exclude zero: that is vote-counting,
+ * and this view is sensitivity, never a way to choose.
+ */
 export function specLine(d: SpecCurveData): string {
+  if (d.specs.length === 1) return "One specification: the primary, which is the reported estimate.";
   const est = d.specs.map((x) => x.estimate);
-  const lo = Math.min(...est);
-  const hi = Math.max(...est);
-  const withCi = d.specs.filter((x) => x.low !== null && x.high !== null);
-  const excl = withCi.filter((x) => x.low! > 0 || x.high! < 0).length;
-  const parts = [
-    `${d.specs.length} specification${d.specs.length === 1 ? "" : "s"}; the primary is the reported estimate, and the others show how far the choices move it.`,
-    d.specs.length > 1 ? `Estimates run from ${fmtNum(lo)} to ${fmtNum(hi)}.` : null,
-    d.zero && withCi.length ? `${excl} of ${withCi.length} intervals exclude zero.` : null,
-  ];
-  return parts.filter(Boolean).join(" ");
+  return [
+    `${d.specs.length} specifications; the primary is the reported estimate, and the others show how far the declared choices move it.`,
+    `Estimates run from ${fmtNum(Math.min(...est))} to ${fmtNum(Math.max(...est))}.`,
+  ].join(" ");
 }
 
 export function SpecCurveView({ data, title, why }: { data: SpecCurveData | null; title?: string; why?: string }) {
@@ -32,6 +34,7 @@ export function SpecCurveView({ data, title, why }: { data: SpecCurveData | null
   if (!data || !data.specs.length) {
     return <Empty kind="spec_curve" title={title} why={why ?? "There is no specification curve: no alternative specification was declared."} />;
   }
+  if (data.sealed) return <Empty kind="spec_curve" title={title} why={data.sealed} />;
   const mixed = mixedScales(data.specs);
   if (mixed) {
     return <Empty kind="spec_curve" title={title} why={`These specifications estimate on different scales (${mixed.join(", ")}), so one axis cannot hold them; each scale needs its own curve.`} />;
@@ -39,11 +42,12 @@ export function SpecCurveView({ data, title, why }: { data: SpecCurveData | null
   const d = { ...data, specs: sortSpecs(data.specs) };
   const pre = specLayout(d, W, 60)!;
   const optionW = Math.max(...d.choices.flatMap((c) => [c.label.length * 6.6, ...c.options.map((o) => 10 + o.label.length * 6.4)]), 0);
-  const gutter = Math.min(Math.round(W * 0.4), Math.ceil(Math.max(leftLabelWidth(ticksIn(pre.y.domain() as [number, number]), fmtTick) + 12, optionW + 16)));
+  const gutter = Math.min(Math.round(W * 0.4), Math.ceil(Math.max(leftLabelWidth(pre.yTicks, fmtTick) + 12, optionW + 16)));
   const l = specLayout(d, W, gutter)!;
   const { box, y, cx, colW } = l;
   const n = d.specs.length;
-  const r = Math.max(4, Math.min(5, colW / 3));
+  // at least 9 px across (the ring is painted under the fill), at most MARK_R
+  const r = Math.max(4.5, Math.min(MARK_R, colW / 3));
   const maxChars = Math.floor((gutter - 16) / 6.4);
   const cut = (t: string) => (t.length > maxChars ? `${t.slice(0, Math.max(1, maxChars - 1))}…` : t);
   const curveBox: Box = { ...box, bottom: box.height - l.curveBottom };
@@ -87,7 +91,7 @@ export function SpecCurveView({ data, title, why }: { data: SpecCurveData | null
                   {cut(row.label)}
                 </text>
                 {d.specs.map((sp, i) =>
-                  sp.picks[row.choice] === row.option ? <circle key={sp.key} cx={cx(i)} cy={row.y} r={4} style={{ fill: sp.primary ? FIT : NOW }} /> : null,
+                  sp.picks[row.choice] === row.option ? <circle key={sp.key} cx={cx(i)} cy={row.y} r={4.5} style={{ fill: sp.primary ? FIT : NOW }} /> : null,
                 )}
               </g>
             ),
@@ -107,7 +111,7 @@ export function SpecCurveView({ data, title, why }: { data: SpecCurveData | null
       <Numbers
         table={{
           caption: `${d.estimateLabel}, in each specification, sorted by estimate`,
-          head: ["Rank", "Estimate (95% CI)", "Rows", ...d.choices.map((c) => c.label)],
+          head: ["Rank", intervalHead(d.level), "Rows", ...d.choices.map((c) => c.label)],
           rows: d.specs.map((sp, i) => ({
             key: sp.key,
             primary: sp.primary,

@@ -1,6 +1,9 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { substitutionChoice, substitutionCompare, substitutionSealed } from "./lab/fixtures";
+import { curveFromSubstitution } from "./adapters";
+import prediction from "../../mocks/fixtures/m3-nhanes-prediction.json";
+import type { SubstitutionArtifact } from "../../api/m3-types";
 import { LabViews, scopedTokens } from "./lab/LabViews";
 import { entries } from "./lab/curves.lab";
 
@@ -17,6 +20,15 @@ describe("the substitution artifact as a curve (captured NHANES Predict)", () =>
       ["Linear model", 1],
       ["Boosted trees", 2],
     ]);
+  });
+
+  it("draws the support and the stop beside compared models only when every model shares them", () => {
+    expect(substitutionCompare.stop?.x).toBe(300); // both models stop at 300 on the same support
+    const art = (prediction as unknown as { artifacts: { substitution: { base: SubstitutionArtifact } } }).artifacts.substitution.base;
+    const differ = { ...art, models: art.models.map((m, i) => (i === 1 ? { ...m, stopped_at: 400 } : m)) };
+    const c = curveFromSubstitution(differ, { outcome: "glucose" });
+    expect(c.stop).toBeNull();
+    expect(c.support).toBeNull();
   });
 
   it("before Fit carries no estimate", () => {
