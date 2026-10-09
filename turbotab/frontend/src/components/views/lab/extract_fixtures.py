@@ -11,7 +11,8 @@ HERE = Path(__file__).resolve().parent
 FIXTURES = HERE.parents[2] / "mocks" / "fixtures"
 OUT = HERE / "fixtures.json"
 
-# Table 1's characteristics: the analysis's own columns, never the outcome.
+# Table 1's characteristics: the analysis's own columns. table1FromProfile (adapters.ts) leaves the
+# outcome out whatever this list says: the profile covers the whole file, not the rows analyzed.
 TABLE1_COLUMNS = ["age", "gender", "bmi", "waist", "kcal", "sugar", "protein", "carb", "fat_total"]
 
 

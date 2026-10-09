@@ -42,12 +42,17 @@ export interface Table1Variable {
 export interface Table1Artifact {
   /** The lens's unit in the plural: "participants", "samples". */
   unit: string;
+  /** The outcome's column when Table 1 lists it, so the view can hold it to its gate (FOUNDATION
+   *  §5 rule 6): the outcome alone opens after Who's in, on the rows analyzed, but the outcome
+   *  beside the groups of what is studied waits for the lock. null when Table 1 leaves it out. */
+  outcome: string | null;
   /** "Overall" first, then the groups of what is studied (Estimate) or of the declared grouping. */
   groups: Table1Group[];
   variables: Table1Variable[];
   /** Whether counts and percents are design-weighted (a survey answer), said in the footnote. */
   weighted: boolean;
-  /** Which rows: "all 21,849 analyzed rows". */
+  /** Which rows, said so the header's n and the footnote describe one population: "all 21,849
+   *  analyzed rows". */
   rows: string;
 }
 
@@ -65,8 +70,10 @@ export type ClaimStrength =
 
 export interface ExhibitEntry {
   key: string;
-  /** Assigned by the manuscript model, in placement order: "Table 2", "Figure 1", "Table S1". */
-  number: string;
+  /** Assigned by the manuscript model, in placement order: "Table 2", "Figure 1", "Table S1";
+   *  null for an exhibit left out of the paper. `numberInPlacementOrder` (adapters.ts) is the
+   *  rule, which the page preview also applies to the placement pointed at. */
+  number: string | null;
   kind: "table" | "figure";
   caption: string;
   placement: Placement;
@@ -84,4 +91,16 @@ export interface ExhibitModel {
   exhibits: ExhibitEntry[];
   /** The chosen wording of each placed exhibit, and the drafted Discussion, by section. */
   text: { results: string[]; discussion: string[] };
+}
+
+// ── the lock, on the effects artifact (rule 6) ───────────────────────────────
+
+/** The plan's lock as the effects artifact should carry it, so a view can check FOUNDATION §5
+ *  rule 6 itself instead of trusting its caller. Until the engine serves it, `gateFromLock`
+ *  (adapters.ts) fails closed on a missing lock. */
+export interface EffectsLock {
+  /** Whether the track's plan is locked (pressing Fit locks it). */
+  locked: boolean;
+  /** The plan lock's id in the decision log, when locked. */
+  plan_lock: string | null;
 }

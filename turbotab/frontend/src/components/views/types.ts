@@ -5,8 +5,10 @@
  * shapes no artifact carries yet are the engine contract items listed beside them.
  */
 
-/** Rule 6's gate: when set, the view draws no estimate and says this one line instead. */
-export type Gate = string | null | undefined;
+/** Rule 6's gate, which every view that can show an estimate must be given: a line, when the gate
+ *  is closed, that the view says instead of any estimate; null only when the gate is open. There
+ *  is no default, so a caller that forgets the gate does not compile rather than failing open. */
+export type Gate = string | null;
 
 // ── table ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +93,8 @@ export interface ForestSeries {
 }
 
 export interface ForestData {
+  /** The header of the row-label column: "Model", "Subgroup", "Exposure". */
+  stub: string;
   /** What one unit on the axis is, in the paper's register: the axis title. */
   measure: string;
   axis: "linear" | "log";
@@ -99,7 +103,8 @@ export interface ForestData {
   /** What either side of the reference means in plain words ("Lower mean glucose"). */
   sides?: [string, string];
   rows: ForestRow[];
-  /** In their fixed order: the comparison palette follows this order, never the rows' rank. */
+  /** In their fixed order: the comparison palette follows this order, never the rows' rank. At
+   *  most five (the palette's size), and every row names one of them when there are two or more. */
   series?: ForestSeries[];
   /** Why there are no rows, said in one line when there are none. */
   empty?: string;
@@ -111,21 +116,25 @@ export type Placement = "results" | "discussion" | "supplement" | "left_out";
 
 export interface PageExhibit {
   key: string;
-  /** "Table 2", "Figure 1". */
-  number: string;
+  /** "Table 2", "Figure 1", "Figure S1", in placement order; null for an exhibit left out of the
+   *  paper, which is listed under "Analyses left out" by its caption alone. */
+  number: string | null;
   kind: "table" | "figure";
   /** The caption, in the paper's register. */
   caption: string;
   placement: Placement;
+  /** The placements the methods floor allows; any placement when absent. */
+  allowed?: Placement[];
   /** Why the exhibit cannot move (the methods floor), when it cannot. */
   fixed?: string;
 }
 
 export interface PageData {
-  /** The exhibit this preview is about. */
-  exhibit: PageExhibit;
-  /** The paper's other placed exhibits, drawn as quiet blocks so the page reads as the paper. */
-  others?: PageExhibit[];
+  /** The key of the exhibit this preview is about. */
+  focus: string;
+  /** Every exhibit of the paper in the exhibit model's order, which is the order numbers follow
+   *  within a section; the others are drawn as quiet blocks so the page reads as the paper. */
+  exhibits: PageExhibit[];
   /** The drafted sentences around it, by section, in the paper's register. */
   text: { results: string[]; discussion: string[] };
 }

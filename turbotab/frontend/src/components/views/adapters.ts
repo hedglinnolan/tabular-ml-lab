@@ -1,16 +1,28 @@
 /**
  * From the engine's artifacts to the views' inputs. Every number passes through unchanged; every
  * sentence is the engine's, with its backticks dropped (the calm budget prints column names as
- * plain text). Table 2 and the forest share one row list, so their rows align by key.
+ * plain text) and its first letter set upper-case, since a sentence that opens on a column name
+ * opened on a backtick. Table 2 and the forest share one row list, so their rows align by key.
  */
 import type { ProfileArtifact } from "../../api/schema";
 import type { EffectsArtifact } from "../../api/m3-types";
 import { fmtInt } from "../stage/format";
-import type { ExhibitModel, Table1Artifact, Table1Summary, Table1Variable } from "./contracts";
-import type { Cell, Footnote, ForestData, ForestRow, PageData, TableData, TableRow } from "./types";
+import type { EffectsLock, ExhibitModel, Table1Artifact, Table1Summary, Table1Variable } from "./contracts";
+import type { Cell, Footnote, ForestData, ForestRow, Gate, PageData, Placement, TableData, TableRow } from "./types";
 
 const plain = (s: string | null | undefined) => (s ?? "").replaceAll("`", "");
 const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+/** An engine sentence as the paper prints it: no backticks, and a capital to open it. */
+export const sentence = (s: string | null | undefined) => cap(plain(s));
+
+/** The line a view says while the plan is not locked (FOUNDATION §5 rule 6). */
+export const LOCK_GATE = "Estimates open when Fit is pressed: the plan is fixed before any estimate is shown.";
+
+/** Rule 6's gate from the lock the effects artifact should carry (an engine contract item). It
+ *  fails closed: no lock on record is a closed gate, never an open one. */
+export function gateFromLock(lock: EffectsLock | null | undefined, line = LOCK_GATE): Gate {
+  return lock?.locked ? null : line;
+}
 const MARKS = "abcdefghijklmnopqrstuvwxyz";
 
 /** The locked primary of the declared sequence (MODELING_SEQUENCE: Model 2 is the reported one). */
@@ -106,8 +118,8 @@ export function table2FromEffects(effects: EffectsArtifact, family = 0, number =
     footnotes.push({ mark, text: `${plain(fit.label)}: adjusted for ${fit.adjusted_for.join(", ")}${note}.` });
   }
   const primary = primaryFit(effects.families[family]!);
-  if (primary?.inference?.caption) footnotes.push({ text: plain(primary.inference.caption) });
-  if (effects.multiplicity) footnotes.push({ text: plain(effects.multiplicity) });
+  if (primary?.inference?.caption) footnotes.push({ text: sentence(primary.inference.caption) });
+  if (effects.multiplicity) footnotes.push({ text: sentence(effects.multiplicity) });
   const body: TableRow[] = [];
   for (const exposure of effects.exposures) {
     if (many) body.push({ kind: "group", key: `g:${exposure}`, label: `Per unit of ${exposure}` });
@@ -145,19 +157,26 @@ export function table2FromEffects(effects: EffectsArtifact, family = 0, number =
   };
 }
 
-/** The forest beside Table 2: the same rows, keys and labels, on one axis. */
+/** The forest beside Table 2: the same rows, keys and labels, on one axis. With several
+ *  exposures, each declared model is a series, in the sequence's order, so a model keeps its color
+ *  from one exposure to the next. */
 export function forestFromEffects(effects: EffectsArtifact, family = 0): ForestData {
+  const many = effects.exposures.length > 1;
   const rows: ForestRow[] = sequenceRows(effects, family).map((r) => ({
     key: r.key,
-    label: effects.exposures.length > 1 ? `${r.exposure} · ${plain(r.fit.label)}` : plain(r.fit.label),
+    label: many ? `${r.exposure} · ${plain(r.fit.label)}` : plain(r.fit.label),
     sub: subOf(r.fit),
     est: r.est,
     lo: r.lo,
     hi: r.hi,
     primary: r.fit.key === PRIMARY,
+    ...(many ? { series: r.fit.key } : {}),
   }));
   const log = effects.scale === "ratio";
+  const sequence = effects.families[family]?.sequence ?? [];
   return {
+    stub: many ? "Exposure and model" : "Model",
+    ...(many ? { series: sequence.map((f) => ({ key: f.key, label: plain(f.label) })) } : {}),
     measure: effects.exposures.length === 1 ? measureOf(effects, effects.exposure, family) : cap(effects.measure_label ?? "Estimate"),
     axis: log ? "log" : "linear",
     reference: log ? 1 : 0,
@@ -169,31 +188,60 @@ export function forestFromEffects(effects: EffectsArtifact, family = 0): ForestD
 
 // ── Table 1 ──────────────────────────────────────────────────────────────────
 
-/** Table 1's overall column from the profile: mean (SD) for a number, n (%) for each level. The
- *  groups of what is studied, and the design weights, wait for the engine's Table 1 (D1b). */
-export function table1FromProfile(profile: ProfileArtifact, opts: { columns: string[]; unit: string; rows: string; n: number }): Table1Artifact {
+export interface Table1FromProfileOptions {
+  /** The characteristics, in Table 1's order. */
+  columns: string[];
+  /** The lens's unit in the plural: "participants". */
+  unit: string;
+  /** The outcome's column: left out, whatever `columns` says, because the profile covers the
+   *  whole file, not the rows analyzed its gate opens on (FOUNDATION §5 rule 6). */
+  outcome: string | null;
+  /** The rows the analysis keeps (the cohort's n_final), to say whether the profile's rows are
+   *  the analyzed ones. */
+  analyzed: number;
+  /** Each column's name in the paper with its unit ("Age, years"), from the codebook; a column
+   *  without one keeps its name. */
+  labels?: Record<string, string>;
+}
+
+/** Table 1's overall column from the profile: mean (SD) for a number, n (%) for each level, with
+ *  the levels past the profile's top values gathered in one row so the percents sum to 100. The
+ *  profile reads every row of the file, so the header's n and the footnote say so, and say when
+ *  Who's in keeps fewer. The groups of what is studied, the design weights and the median for a
+ *  skewed column wait for the engine's Table 1 (D1b). */
+export function table1FromProfile(profile: ProfileArtifact, opts: Table1FromProfileOptions): Table1Artifact {
   const overall = "overall";
+  const n = Math.max(0, ...profile.columns.map((c) => c.n));
   const variables = opts.columns.flatMap((name): Table1Variable[] => {
+    if (name === opts.outcome) return [];
     const c = profile.columns.find((x) => x.name === name);
     if (!c) return [];
+    const label = opts.labels?.[name] ?? name;
     const missing = c.n_missing ? { [overall]: c.n_missing } : undefined;
     if (c.dtype === "categorical" || c.dtype === "boolean") {
-      const n = c.n - c.n_missing;
-      return [
-        {
-          column: name,
-          label: name,
-          levels: (c.top ?? []).map((t) => ({
-            level: String(t.value),
-            summary: { [overall]: { kind: "count_pct" as const, n: t.count, pct: n ? (100 * t.count) / n : null } },
-          })),
-          missing,
-        },
-      ];
+      const present = c.n - c.n_missing;
+      const pct = (k: number) => (present ? (100 * k) / present : null);
+      const top = c.top ?? [];
+      const levels = top.map((t) => ({
+        level: String(t.value),
+        summary: { [overall]: { kind: "count_pct" as const, n: t.count, pct: pct(t.count) } },
+      }));
+      const rest = present - top.reduce((a, t) => a + t.count, 0);
+      const others = Math.max(1, c.n_unique - top.length);
+      if (rest > 0)
+        levels.push({
+          level: `${others} other level${others === 1 ? "" : "s"}`,
+          summary: { [overall]: { kind: "count_pct" as const, n: rest, pct: pct(rest) } },
+        });
+      return [{ column: name, label, levels, missing }];
     }
-    return [{ column: name, label: name, summary: { [overall]: { kind: "mean_sd" as const, mean: c.mean, sd: c.std } }, missing }];
+    return [{ column: name, label, summary: { [overall]: { kind: "mean_sd" as const, mean: c.mean, sd: c.std } }, missing }];
   });
-  return { unit: opts.unit, groups: [{ key: overall, label: "Overall", n: opts.n }], variables, weighted: false, rows: opts.rows };
+  const rows =
+    n === opts.analyzed
+      ? `all ${fmtInt(n)} rows in the file, every one of them analyzed`
+      : `all ${fmtInt(n)} rows in the file, before Who's in; the analysis keeps ${fmtInt(opts.analyzed)}`;
+  return { unit: opts.unit, outcome: null, groups: [{ key: overall, label: "Overall", n }], variables, weighted: false, rows };
 }
 
 function cellOf(s: Table1Summary | undefined): Cell | null {
@@ -203,11 +251,16 @@ function cellOf(s: Table1Summary | undefined): Cell | null {
   return { kind: "count_pct", n: s.n ?? 0, pct: s.pct ?? null };
 }
 
-export function table1FromArtifact(t: Table1Artifact, number = "Table 1"): TableData {
+/** Table 1 as the paper prints it. Under a closed lock (rule 6), the outcome beside the groups of
+ *  what is studied is held out, and a footnote says when it joins; the outcome alone, in the
+ *  overall column, is not an estimate and stays. */
+export function table1FromArtifact(t: Table1Artifact, lock: Gate, number = "Table 1"): TableData {
   const rows: TableRow[] = [];
   let anyMissing = false;
   const kinds = new Set<string>();
+  const held = lock !== null && t.groups.length > 1 ? t.variables.find((v) => v.column === t.outcome) : undefined;
   for (const v of t.variables) {
+    if (v === held) continue;
     if (v.levels) {
       rows.push({ kind: "group", key: v.column, label: `${v.label}, n (%)` });
       for (const l of v.levels) {
@@ -245,6 +298,7 @@ export function table1FromArtifact(t: Table1Artifact, number = "Table 1"): Table
     { text: `Characteristics of ${plain(t.rows)}${t.weighted ? ", with counts and percents weighted by the survey design" : ""}.` },
   ];
   if (anyMissing) footnotes.push({ text: "Percents are of the rows with a value." });
+  if (held) footnotes.push({ text: `${held.label}, the outcome, is shown by group once the plan is locked.` });
   return {
     number,
     title: `Characteristics of the ${t.unit}`,
@@ -258,17 +312,39 @@ export function table1FromArtifact(t: Table1Artifact, number = "Table 1"): Table
 
 // ── the page ─────────────────────────────────────────────────────────────────
 
-/** The page preview of one exhibit of the exhibit model (C7a). */
+/** The exhibit numbers in placement order (C7a's rule): the main text's tables and figures counted
+ *  from 1 through Results then Discussion, the Supplement's from S1, each in the exhibit model's
+ *  order within its section; an exhibit left out of the paper has no number. */
+export function numberInPlacementOrder(exhibits: { key: string; kind: "table" | "figure"; placement: Placement }[]): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  const count = { main: { table: 0, figure: 0 }, supplement: { table: 0, figure: 0 } };
+  const word = { table: "Table", figure: "Figure" };
+  for (const place of ["results", "discussion", "supplement"] as const) {
+    const part = place === "supplement" ? "supplement" : "main";
+    for (const e of exhibits.filter((x) => x.placement === place)) {
+      const k = ++count[part][e.kind];
+      out.set(e.key, `${word[e.kind]} ${part === "supplement" ? "S" : ""}${k}`);
+    }
+  }
+  for (const e of exhibits) if (e.placement === "left_out") out.set(e.key, null);
+  return out;
+}
+
+/** The page preview of one exhibit of the exhibit model (C7a), with every exhibit in the model's
+ *  order and the placements the floor allows each. */
 export function pageFromExhibits(model: ExhibitModel, key: string): PageData | null {
-  const ex = model.exhibits.find((e) => e.key === key);
-  if (!ex) return null;
-  const strip = (e: (typeof model.exhibits)[number]) => ({
-    key: e.key,
-    number: e.number,
-    kind: e.kind,
-    caption: e.caption,
-    placement: e.placement,
-    fixed: e.fixed_reason ?? undefined,
-  });
-  return { exhibit: strip(ex), others: model.exhibits.filter((e) => e.key !== key).map(strip), text: model.text };
+  if (!model.exhibits.some((e) => e.key === key)) return null;
+  return {
+    focus: key,
+    exhibits: model.exhibits.map((e) => ({
+      key: e.key,
+      number: e.number,
+      kind: e.kind,
+      caption: e.caption,
+      placement: e.placement,
+      allowed: e.placement_allowed,
+      fixed: e.fixed_reason ?? undefined,
+    })),
+    text: model.text,
+  };
 }

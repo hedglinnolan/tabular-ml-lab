@@ -14,10 +14,15 @@
  * - Footnotes are quiet: a superscript mark on the row, the note under the table in the muted ink;
  *   notes that apply to the whole table carry no mark.
  * - A table is its own table alternative: real <th scope> cells, readable by a screen reader.
- * - Rows share keys with the forest beside them: pointing at a row lights it in both.
- * - Under a closed gate (rule 6) the table says one line instead of any estimate.
+ * - Rows share keys with the forest beside them: pointing at a row, or focusing it from the
+ *   keyboard, lights it in both.
+ * - A forest set beside the table is a last column of the table itself (`plot`), so its marks sit
+ *   on the table's own rows whatever their height, and the labels and estimates print once.
+ * - Under a closed gate (rule 6) the table says one line instead of any estimate. The gate has no
+ *   default: a caller passes null to say it is open.
  */
 import type { Purpose } from "../stage/purposes";
+import type { ReactNode } from "react";
 import { fmtCell, isNumeric } from "./format";
 import { OneLine } from "./shared";
 import type { Gate, TableData, TableRow } from "./types";
@@ -28,12 +33,26 @@ export const TABLE_PURPOSE: Purpose = {
   answer: "the numbers the paper reports, each with its interval and the rows behind it",
 };
 
+/** A plot drawn as the table's last column: a forest beside its Table 2. */
+export interface TablePlot {
+  /** The column's header: the axis title. */
+  head: ReactNode;
+  /** The column's width in px. */
+  width: number;
+  /** The plot in a row's cell, filling the row's height; a group row gets the grid alone. */
+  cell: (row: TableRow) => ReactNode;
+  /** Under the last row: the axis. */
+  foot: ReactNode;
+}
+
 export interface ExhibitTableProps {
   data: TableData;
-  gate?: Gate;
+  /** Rule 6: the line said instead of any estimate while the gate is closed; null when open. */
+  gate: Gate;
   /** The row pointed at here or in a linked view. */
   lit?: string | null;
   onLit?: (key: string | null) => void;
+  plot?: TablePlot;
 }
 
 /** A column is numeric when every filled cell in it is a count, a summary or a p-value. */
@@ -51,12 +70,20 @@ function Marks({ marks }: { marks?: string[] }) {
   return <span className={v.mark}>{marks.join(",")}</span>;
 }
 
-export function ExhibitTable({ data, gate, lit, onLit }: ExhibitTableProps) {
-  if (gate) return <OneLine view="table" text={gate} />;
+export function ExhibitTable({ data, gate, lit, onLit, plot }: ExhibitTableProps) {
+  if (gate !== null) return <OneLine view="table" text={gate} />;
   if (!data.rows.some((r) => r.kind === "row")) return <OneLine view="table" text={data.empty ?? `${data.number} has no rows yet.`} />;
   const numeric = numericColumns(data);
   const pointer = (r: TableRow) =>
-    onLit && r.kind === "row" ? { onPointerEnter: () => onLit(r.key), onPointerLeave: () => onLit(null) } : {};
+    onLit && r.kind === "row"
+      ? { tabIndex: 0, onPointerEnter: () => onLit(r.key), onPointerLeave: () => onLit(null), onFocus: () => onLit(r.key), onBlur: () => onLit(null) }
+      : {};
+  const plotCell = (r: TableRow) =>
+    plot ? (
+      <td className={v.plotCell} style={{ width: plot.width, minWidth: plot.width }}>
+        <div className={v.plotFill}>{plot.cell(r)}</div>
+      </td>
+    ) : null;
   return (
     <div className={v.view} data-exhibit-view="table">
       <div className={v.wrap}>
@@ -73,6 +100,11 @@ export function ExhibitTable({ data, gate, lit, onLit }: ExhibitTableProps) {
                   {c.sub ? <small>{c.sub}</small> : null}
                 </th>
               ))}
+              {plot ? (
+                <th scope="col" className={v.plotHead} style={{ width: plot.width }}>
+                  {plot.head}
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -83,6 +115,7 @@ export function ExhibitTable({ data, gate, lit, onLit }: ExhibitTableProps) {
                     {r.label}
                     <Marks marks={r.marks} />
                   </th>
+                  {plotCell(r)}
                 </tr>
               ) : (
                 <tr key={r.key} data-row={r.key} data-primary={r.primary ? "true" : undefined} data-lit={lit === r.key ? "true" : undefined} {...pointer(r)}>
@@ -100,10 +133,19 @@ export function ExhibitTable({ data, gate, lit, onLit }: ExhibitTableProps) {
                       </td>
                     );
                   })}
+                  {plotCell(r)}
                 </tr>
               ),
             )}
           </tbody>
+          {plot ? (
+            <tfoot>
+              <tr>
+                <td colSpan={data.columns.length + 1} />
+                <td className={v.plotFoot}>{plot.foot}</td>
+              </tr>
+            </tfoot>
+          ) : null}
         </table>
       </div>
       {data.footnotes.length ? (

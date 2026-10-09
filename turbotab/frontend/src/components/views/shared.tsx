@@ -3,7 +3,7 @@
  * (pointer and keyboard focus alike), the table alternative behind one disclosure, and the
  * container's width so text keeps its set size at any width.
  */
-import { useLayoutEffect, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useRef, useState, type FocusEvent, type PointerEvent, type ReactNode } from "react";
 import v from "./views.module.css";
 
 /** One line saying why there is nothing to draw (FOUNDATION §5 rule 7): never an empty frame. */
@@ -54,19 +54,22 @@ export function TableAlternative({ children, label = "Show as a table" }: { chil
   );
 }
 
-/** The container's width in CSS px (a fallback until it is measured, and in tests). */
-export function useWidth<T extends HTMLElement>(fallback: number): [React.RefObject<T | null>, number] {
-  const ref = useRef<T | null>(null);
+/** The container's width in CSS px (a fallback until it is measured, and in tests). The ref is a
+ *  callback, so the observer attaches whenever the element mounts: a view that first renders its
+ *  one line (a closed gate, no rows) and draws only later is still measured. */
+export function useWidth<T extends HTMLElement>(fallback: number): [(el: T | null) => void, number] {
   const [w, setW] = useState(fallback);
-  useLayoutEffect(() => {
-    const el = ref.current;
+  const observer = useRef<ResizeObserver | null>(null);
+  const ref = useCallback((el: T | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width;
       if (width) setW(Math.max(160, Math.round(width)));
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    observer.current = ro;
   }, []);
   return [ref, w];
 }

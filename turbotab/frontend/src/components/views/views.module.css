@@ -116,7 +116,8 @@
 .forest {
   display: grid;
   grid-template-columns: minmax(120px, max-content) max-content minmax(160px, 1fr);
-  column-gap: 16px;
+  /* no column gap: each cell pads its own right, so a lit row lights end to end */
+  column-gap: 0;
   align-items: stretch;
   font-size: 14.5px;
 }
@@ -124,7 +125,7 @@
   color: var(--canvas-muted);
   font-size: 13.5px;
   font-weight: 600;
-  padding-bottom: 6px;
+  padding: 0 16px 6px 0;
   border-bottom: 1px solid var(--canvas-line);
   align-self: end;
 }
@@ -133,7 +134,11 @@
   flex-direction: column;
   justify-content: center;
   min-width: 0;
+  padding-right: 16px;
   outline-offset: -2px;
+}
+.fcell[data-lit="true"] {
+  background: var(--canvas-line);
 }
 .fcell small {
   color: var(--canvas-muted);
@@ -158,6 +163,43 @@
 .plot svg {
   display: block;
   overflow: visible;
+}
+/* what each side of the reference means: one phrase at each end, wrapping, never dropped */
+.sides {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  color: var(--canvas-muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+  padding-top: 2px;
+}
+.sides span:last-child {
+  margin-left: auto;
+  text-align: right;
+}
+/* the forest as the table's last column: marks on the table's own rows */
+.table td.plotCell {
+  padding: 0;
+  position: relative;
+}
+.plotFill {
+  position: absolute;
+  inset: 0;
+}
+.plotFill svg {
+  display: block;
+  overflow: visible;
+}
+.table th.plotHead {
+  padding-right: 0;
+}
+.table td.plotFoot {
+  padding: 0;
+}
+.table tfoot td {
+  border: 0;
 }
 .axis {
   fill: var(--canvas-muted);
@@ -278,21 +320,6 @@
 }
 .slotCaption b {
   font-weight: 600;
-}
-.thumb {
-  font-size: 10px;
-  overflow: hidden;
-  max-height: 220px;
-  pointer-events: none;
-}
-.thumb > * {
-  zoom: 0.62;
-}
-/* the slot already carries the caption; a thumbnail has no disclosure or notes of its own */
-.thumb caption,
-.thumb details,
-.thumb ul {
-  display: none;
 }
 /* the pointed placement: what the choice touches, in the choice's data color (FOUNDATION §4) */
 .slot[data-touched="true"] {
