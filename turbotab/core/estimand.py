@@ -1477,8 +1477,12 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
         return out
     if stage == "usual_intake":
         # The offer (what Describe's distribution would be, and for whom) stays: it is the card
-        # that asks for it. The distributions wait.
-        out["analyses"] = []
+        # that asks for it. The distributions wait; one refused with no number in it (the survey
+        # question unanswered, say) stays, with its reason and exits, since it asks for an answer.
+        out["analyses"] = [a for a in out.get("analyses") or []
+                           if isinstance(a, Mapping) and a.get("refused")
+                           and not (a.get("percentiles") or a.get("mean") or a.get("share")
+                                    or a.get("day_one") or a.get("mean_of_days"))]
         return out
     for key in ("curves", "families", "models", "estimates", "rows", "fits",
                 "modifications"):  # FORM: the declared modifiers' estimates

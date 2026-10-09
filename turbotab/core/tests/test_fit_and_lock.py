@@ -124,6 +124,22 @@ def test_under_inference_no_estimate_is_served_before_the_plan_is_locked(stage):
     assert fit_press.served(stage, SHOWING[stage], locked, pressed=False) == SHOWING[stage]
 
 
+def test_a_distribution_refused_with_its_question_is_shown_before_the_lock_without_a_number():
+    # A refusal holds no estimate: it is the card saying what to answer (the survey question, with
+    # its exits), which may come before the lock in the Router's order. The estimated one waits.
+    refused = {"nutrient": "protein", "model": "amount_only", "applies": False,
+               "refused": "Answer the survey question first.", "percentiles": {}, "mean": None,
+               "exits": [{"label": "Answer the survey question", "decision": None}],
+               "methods": "No usual-intake distribution was estimated for `protein`."}
+    artifact = {"offer": {"offered": True},
+                "analyses": [refused, *SHOWING["usual_intake"]["analyses"]]}
+    served = fit_press.served("usual_intake", artifact, ProjectState(purpose="inference"),
+                              pressed=True)
+    assert served["analyses"] == [refused]
+    assert not shows_estimates("usual_intake", served)
+    assert served["withheld_for"] == "fit"
+
+
 # ── (b) under Predict, no estimate and no score before Fit ───────────────────
 
 
