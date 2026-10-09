@@ -495,12 +495,15 @@ def design_stage(ctx: StageContext) -> Bundle:
         X = modeling_frame(store, list(dict.fromkeys([*input_columns(predictors, adj),
                                                       *batch_inputs(state)])), design_ids)
         info = {c.name: c for c in store.info().columns}  # every row's summary: as the cohort reads it
-        if (adj is not None and adj.method == "residual_energy_dropped" and not inference
+        if (adj is not None and adj.method == "residual_energy_dropped"
                 and state.target in store.columns):
-            # The gap the energy-dropped residual opens on these rows (audit ME-03). Under
-            # inference both numbers are the outcome model's estimates, which wait for the plan's
-            # lock (calm/FOUNDATION §5 rule 6) where this stage cannot see it: the warning then
-            # says what the form does without them (:data:`DROPPED_ENERGY`).
+            # The gap the energy-dropped residual opens on these rows (audit ME-03). Both numbers
+            # are the outcome model's estimates: under prediction the warning quotes them; under
+            # inference, or with the purpose unanswered (the strictest case), they wait for the
+            # plan's lock (calm/FOUNDATION §5 rule 6), which this stage does not read (a lock
+            # recomputes nothing). The warning then says what the form does without them
+            # (:data:`DROPPED_ENERGY`), and the gap is kept beside the design for the server to
+            # serve in its place once the plan is locked (:func:`design_as_served`).
             y_rows = store.materialize([state.target], design_ids)[state.target]
         # MS7: a batch perfectly confounded with the outcome is refused under both purposes.
         confounded = batch_refusal(state, store, design_ids, task)
@@ -561,9 +564,17 @@ def design_stage(ctx: StageContext) -> Bundle:
                 f"{role}, so each nutrient's coefficient is at fixed total energy (the standard "
                 f"model), not an absolute intake. Give {c} the energy role to choose the energy "
                 f"model, or leave it out for the unadjusted one.")
+    withheld = None
     if y_rows is not None:
-        warnings_list.extend(_residual_gap(state, task, spec, X, matrix, y_rows, info, rows_word))
-    elif inference and adj is not None and adj.method == "residual_energy_dropped":
+        gap = _residual_gap(state, task, spec, X, matrix, y_rows, info, rows_word)
+        if state.purpose == "prediction":
+            warnings_list.extend(gap)
+        else:
+            said = DROPPED_ENERGY.format(E=adj.energy_column)
+            warnings_list.append(said)
+            withheld = {"said": said, "gap": gap} if gap else None
+    elif state.purpose != "prediction" and adj is not None and \
+            adj.method == "residual_energy_dropped":
         warnings_list.append(DROPPED_ENERGY.format(E=adj.energy_column))
 
     ctx.progress(0.8, "Building each model's pipeline")
@@ -591,7 +602,8 @@ def design_stage(ctx: StageContext) -> Bundle:
     return Bundle(
         data=artifact.model_dump(mode="json"),
         frames={"training": pd.DataFrame({"row_id": train_ids.astype(np.int64)})},
-        objects={"pipelines": pipelines, "spec": spec.to_dict(), "nested": nested},
+        objects={"pipelines": pipelines, "spec": spec.to_dict(), "nested": nested,
+                 **({WITHHELD_GAP: withheld} if withheld else {})},
         files=_matrix_file(ctx, matrix),
     )
 
@@ -626,10 +638,31 @@ def _coef(value: float) -> str:
     return f"{value:+.3g}".replace("-", "−")
 
 
-# The energy-dropped residual under inference, said without the outcome model's coefficients (the
-# design stage cannot see the plan's lock, and under inference no estimate appears before it).
+# The energy-dropped residual under inference or an unanswered purpose, said without the outcome
+# model's coefficients (the design stage does not read the plan's lock, and no estimate appears
+# before it); the gap itself is kept in the design's objects under :data:`WITHHELD_GAP`.
 DROPPED_ENERGY = ("{E} left the outcome model: each nutrient's coefficient is the standard model's "
                   "(with {E} kept) only when no covariate correlates with {E}.")
+WITHHELD_GAP = "withheld_gap"
+
+
+def design_as_served(data: Any, objects: Mapping[str, Any] | None, state: Any) -> Any:
+    """The design artifact as a client is served it (audit ME-03). Once the outcome model's
+    estimates may be seen (``consequences.estimates_unseen`` false: the purpose answered as
+    prediction, or the analysis plan locked), the energy-dropped residual's gap the stage kept
+    beside the design (``objects[WITHHELD_GAP]``) takes the place of the line that withheld it;
+    before then, and without a kept gap, ``data`` as it is. ``data`` is never changed in place
+    (the server remembers artifacts)."""
+    from turbotab.core.consequences import estimates_unseen
+
+    held = (objects or {}).get(WITHHELD_GAP)
+    if not held or not isinstance(data, Mapping) or estimates_unseen(state):
+        return data
+    said, gap = held.get("said"), [str(g) for g in held.get("gap") or []]
+    warnings = list(data.get("warnings") or [])
+    if said not in warnings:
+        return data
+    return {**data, "warnings": [g for w in warnings for g in (gap if w == said else [w])]}
 
 
 def _residual_gap(state: Any, task: str, spec: Any, X: pd.DataFrame, matrix: pd.DataFrame,
@@ -2508,6 +2541,13 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             blanks=[c for c in inputs if X_fit[c].isna().any()],
             gaps=[c for c in inputs if c not in (spec.levels or []) and X_fit[c].isna().any()],
             copies=imputed is not None, models=chosen, task=task)
+    if held is None and on_every_row and drawable and survey_design is None:
+        # MS4 (MODELING_SEQUENCE §4): the surveyed population declared and its design refused (a
+        # grouping whose rows span PSUs): the fit reports no coefficient, and no curve is drawn as
+        # these participants' in its place; each is blocked with the table's refusal and exits.
+        from turbotab.core.methods.substitution import design_block
+
+        held = design_block(ctx.state, fit.data)
     if held is not None:
         refused_why, refused_exits, _ = held
         blank = substitution_curve(lambda frame: np.zeros(len(frame)), X, donor=sub.donor,
@@ -3274,5 +3314,6 @@ def _in_outcome_unit(label: str | None, unit: str | None) -> str | None:
     return f"{head}{unit} per {tail}" if unit == "%" else f"{head} {unit} per {tail}"
 
 
-__all__ = ["design_stage", "fit_stage", "pinned_to_full_fit", "read_assignment", "row_ids_of",
-           "shelf_stage", "substitution_pairs", "substitution_stage"]
+__all__ = ["DROPPED_ENERGY", "WITHHELD_GAP", "design_as_served", "design_stage", "fit_stage",
+           "pinned_to_full_fit", "read_assignment", "row_ids_of", "shelf_stage",
+           "substitution_pairs", "substitution_stage"]

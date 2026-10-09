@@ -28,6 +28,7 @@ from turbotab.core.consequences import (
     fmt_count, fmt_value, lineage_of, register_consequence,
 )
 from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState
+from turbotab.core.plan_previews import specifies_the_model
 from turbotab.core.stages.rows import (
     PREDICTOR_ROLES, cohort_flow, cohort_flows, domain_of, draw_split, landmark_of, predictors,
     repair_rules, rule_drops, rule_keep,
@@ -725,10 +726,12 @@ def roles_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     )]
 
 
-register_consequence("set_exclusions", exclusions_views)
-register_consequence("set_missing", missing_views)
+# What enters the outcome model and the rows it is estimated on: beside each, what the surveyed
+# population blocks of that model (MODELING_SEQUENCE §4; ``plan_previews.specifies_the_model``).
+register_consequence("set_exclusions", specifies_the_model(exclusions_views))
+register_consequence("set_missing", specifies_the_model(missing_views))
 register_consequence("set_split", split_views)
-register_consequence("set_roles", roles_views)
+register_consequence("set_roles", specifies_the_model(roles_views))
 
 __all__ = ["exclusions_views", "missing_views", "roles_views", "seal_exits", "sealed_rows",
            "split_views"]
