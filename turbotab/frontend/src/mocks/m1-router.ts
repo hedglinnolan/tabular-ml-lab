@@ -185,6 +185,13 @@ function skipGate(
   }
 }
 
+/** Whether a step that needs `status`'s stage fresh waits on it: only while it is on its way, never
+ *  once it failed or was stopped (turbotab/core/interview.py; the zero-row crash's seal step waited
+ *  for good on a failed fit). */
+export function holdsBack(status: StageStatus | undefined): boolean {
+  return status?.status !== "fresh" && status?.status !== "error" && !status?.cancelled;
+}
+
 /** Stages whose work for the current answers is under way or about to start. */
 export function pendingStages(
   stages: Record<string, StageStatus>,
@@ -325,16 +332,8 @@ export function route(
     }
     const own = NEEDS[key].filter((s) => pending.has(s));
     const fresh = MUST_BE_FRESH[key];
-    const held = fresh ? stages[fresh] : undefined;
     // A fit that failed or was stopped holds nothing back: the step opens and says why.
-    if (
-      fresh &&
-      held?.status !== "fresh" &&
-      held?.status !== "error" &&
-      !held?.cancelled &&
-      !own.includes(fresh)
-    )
-      own.push(fresh);
+    if (fresh && holdsBack(stages[fresh]) && !own.includes(fresh)) own.push(fresh);
     if (first === null) {
       first = key;
       steps.push({

@@ -88,3 +88,118 @@ def test_confirming_the_features_under_complete_cases_is_refused_with_a_fill(cli
     view = wait_for(client, pid, {"cohort": "fresh"}, timeout=180)
     assert client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["n_final"] == measured
     assert not [s for s, st in view["stages"].items() if st["status"] == "error"]
+
+
+# ── the verifier's renal tables, through the server ──────────────────────────
+
+
+def renal_project(client, tmp_path, frame, purpose="prediction"):
+    """``frame`` opened as a project, answered up to the missing-values question with complete
+    cases (the labs' roles confirmed, as a user confirming each one would)."""
+    from turbotab.server.tests.conftest import answer_settled, prepare
+
+    path = tmp_path / "renal.csv"
+    frame.assign(pt_code=[f"P{i:04d}" for i in range(len(frame))]).to_csv(path, index=False)
+    pid = open_by_path(client, path)
+    wait_for(client, pid, {"ingest": "fresh"})
+    for d in ({"kind": "set_lens", "lenses": ["clinical"]},
+              {"kind": "set_target", "column": "egfr_decline"},
+              {"kind": "set_purpose", "purpose": purpose}):
+        prepare(client, pid, d)
+        assert answer_settled(client, pid, None, d).status_code == 200
+    prepare(client, pid, {"kind": "set_missing", "strategy": "complete_case"})
+    return pid
+
+
+def test_a_repair_that_blanks_codes_under_complete_cases_is_refused_over_http(client, tmp_path):
+    """The verifier's renal_s.csv: complete cases keep 10 rows, `sbp` holds 999 in six of them.
+    Treating 999 as missing previewed its 9 changed cells and was recorded (200), and the cohort
+    failed with 4 rows. Its preview and its recording are refused now (409), counted on the values
+    the repair would leave; the fill is accepted, then the repair, and no stage fails."""
+    from turbotab.core.tests.test_row_floor import renal
+
+    pid = renal_project(client, tmp_path, renal())
+    assert post(client, pid, {"kind": "set_missing", "strategy": "complete_case"}).status_code == 200
+    view = wait_for(client, pid, {"findings": "fresh", "working": "fresh", "cohort": "fresh"},
+                    timeout=180)
+    assert client.get(f"/api/projects/{pid}/stages/cohort").json()["artifact"]["n_final"] == 10
+    found = {f["id"]: f for f in
+             client.get(f"/api/projects/{pid}/stages/findings").json()["artifact"]["findings"]}
+    repair = next(o["decision"] for o in found["sentinel_missing__sbp"]["repairs"]
+                  if o["key"] == "set_missing")
+    n_records = len(view["decisions"])
+
+    previewed = client.post(f"/api/projects/{pid}/preview", json=repair)
+    assert previewed.status_code == 409, previewed.text[:600]
+    refused = post(client, pid, repair)
+    assert refused.status_code == 409, refused.text[:600]
+    error = refused.json()["error"]
+    assert error["code"] == "too_few_rows"
+    assert error["message"] == (
+        "Recorded, this answer would leave 4 of the 10 rows analyzed now, and the design needs at "
+        "least 6. Complete cases would remove 6 rows: each of them is blank in `sbp`. Fill the "
+        "blanks instead of complete cases (the missing-values question).")
+    assert len(client.get(f"/api/projects/{pid}").json()["decisions"]) == n_records
+
+    fill = error["exits"][0]["decision"]
+    assert fill["kind"] == "set_missing" and fill["strategy"] == "impute"
+    assert post(client, pid, fill).status_code == 200
+    assert post(client, pid, repair).status_code == 200
+    view = wait_for(client, pid, {"working": "fresh", "cohort": "fresh"}, timeout=180)
+    assert not [s for s, st in view["stages"].items() if st["status"] == "error"]
+
+
+def test_complete_cases_that_leave_one_outcome_value_are_refused_over_http(client, tmp_path):
+    """The verifier's renal_1class.csv: the 12 complete rows all have `egfr_decline` 0. Recorded,
+    the fit crashed with "IndexError: list index out of range" and the seal said "List index out
+    of range.". Complete cases are refused now (preview and record, 409), naming the outcome left
+    one value, with a fill as the way back."""
+    from turbotab.core.tests.test_row_floor import renal
+
+    frame = renal(complete=12)
+    frame.loc[:11, "egfr_decline"] = 0
+    pid = renal_project(client, tmp_path, frame)
+    answer = {"kind": "set_missing", "strategy": "complete_case"}
+    previewed = client.post(f"/api/projects/{pid}/preview", json=answer)
+    assert previewed.status_code == 409, previewed.text[:600]
+    refused = post(client, pid, answer)
+    assert refused.status_code == 409, refused.text[:600]
+    error = refused.json()["error"]
+    assert error["code"] == "one_outcome_value"
+    assert error["message"].startswith(
+        "Recorded, this answer would leave 12 rows, and `egfr_decline` is `0` in every one of them: "
+        "the models need rows with another value of the outcome to learn from. Complete cases "
+        "would remove 108 rows: ")
+    fill = error["exits"][0]["decision"]
+    assert fill["strategy"] == "impute" and post(client, pid, fill).status_code == 200
+
+
+def test_a_sensitivity_analysis_that_keeps_no_row_is_refused_over_http(client, tmp_path):
+    """The verifier's survey case: a sensitivity analysis whose rule keeps no row was accepted
+    (200), and the sensitivity stage then showed scikit-learn's "Found array with 0 sample(s)".
+    Its preview and its recording are refused now (409); leaving the analysis out, or keeping
+    one that keeps enough rows, is accepted."""
+    from turbotab.core.tests.test_row_floor import renal
+
+    pid = renal_project(client, tmp_path, renal(complete=40))
+    assert post(client, pid, {"kind": "set_missing", "strategy": "complete_case"}).status_code == 200
+    nobody = {"label": "centenarians", "rules": [
+        {"column": "age_years", "low": 100, "high": 120, "reason": "the oldest"}]}
+    older = {"label": "over 50", "rules": [
+        {"column": "age_years", "low": 50, "reason": "older adults"}]}
+    answer = {"kind": "set_sensitivity", "analyses": [older, nobody]}
+    previewed = client.post(f"/api/projects/{pid}/preview", json=answer)
+    assert previewed.status_code == 409, previewed.text[:600]
+    refused = post(client, pid, answer)
+    assert refused.status_code == 409, refused.text[:600]
+    error = refused.json()["error"]
+    assert error["code"] == "too_few_rows"
+    assert error["message"] == (
+        "Recorded, this answer would leave the sensitivity analysis “centenarians” no rows, "
+        "against 40 in the primary analysis, and its fit needs at least 6. “`age_years` within "
+        "`100`–`120`” would remove 120 rows. Drop or widen the rule that removes them (the "
+        "sensitivity question).")  # the flow's own order: the rule, then complete cases
+    left = next(e["decision"] for e in error["exits"]
+                if e["label"] == "Leave out the analysis “centenarians”")
+    assert [a["label"] for a in left["analyses"]] == ["over 50"]
+    assert post(client, pid, left).status_code == 200

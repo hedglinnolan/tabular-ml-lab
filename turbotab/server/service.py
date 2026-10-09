@@ -102,6 +102,9 @@ class DecisionContext:
     sealed_scores: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
     # A stage's status now (``StageStatus``): whether the fit an opening needs failed, and why.
     stage: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
+    # A stage's fresh artifact with its files (None when not fresh): the oriented table and the
+    # working table's row map, on which an answer that rewrites values is counted (``row_floor``).
+    bundle: Callable[[str], Any] | None = field(default=None, repr=False, compare=False)
     # The project's folder: a join reads its added files, a codebook import its staged codebook
     # (DATAIN, V2 definition of done §1).
     project_dir: str | None = None
@@ -920,6 +923,7 @@ class ProjectService:
             interview=lambda: self.interview(pid, state, stages, self.log(pid).records()),
             shown=lambda stage: self._shown(pid, stage),
             stage=stages.get,
+            bundle=lambda stage: self._fresh(pid, stage),
             project_dir=str(self.workspace.project_dir(pid)),
         )
 

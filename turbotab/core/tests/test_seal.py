@@ -474,6 +474,25 @@ def test_opening_on_a_failed_fit_says_why_rather_than_to_wait():
     assert waiting.value.code == "fit_not_fresh"
 
 
+def test_a_fit_that_stopped_on_python_s_own_error_is_said_to_be_turbotab_s():
+    """The verifier's single-valued outcome: the fit stopped on "IndexError: list index out of
+    range", and opening the seal was refused with "List index out of range.", which is no reason
+    a reader can act on. Python's own error classes are said to be TurboTab's, the words kept."""
+    from turbotab.core.graph import StageStatus
+
+    state = d.fold(sealed_log())
+    statuses = {"fit": StageStatus(stage="fit", status="error",
+                                   error="IndexError: list index out of range")}
+    with pytest.raises(Refusal) as failed:
+        seal._open_seal_once_on_a_fresh_fit(d.OpenSeal(), {"state": state, "artifact": lambda s: None,
+                                                           "stage": statuses.get})
+    assert failed.value.code == "fit_failed"
+    assert failed.value.message == (
+        "The models were not fitted for the current answers. It stopped on an error inside "
+        "TurboTab that has no plain reason yet (`IndexError: list index out of range`). The "
+        "held-out rows open only on a finished, current fit.")
+
+
 # ── post-seal marking ────────────────────────────────────────────────────────
 
 

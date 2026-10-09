@@ -1575,6 +1575,12 @@ def _revert_keeps_the_seal(decision: Revert, ctx: Any) -> None:
             raise _redraw_refusal(clause, records)
 
 
+# Python's own error classes: a stage that raised one stopped on a fault, not on a reason it put in
+# words (the zero-row crash's single-valued outcome surfaced as "IndexError: list index out of range").
+INTERNAL_ERRORS = ("IndexError", "KeyError", "TypeError", "AttributeError", "ZeroDivisionError",
+                   "AssertionError", "NameError", "UnboundLocalError", "RecursionError")
+
+
 def _fit_failure(ctx: Any) -> str | None:
     """Why the fit will not finish for the current answers, in plain words: the first stage on its
     way that failed (a dependent's error names it, "Needs 'design', which failed."), or that it
@@ -1596,6 +1602,11 @@ def _fit_failure(ctx: Any) -> str | None:
         error = str(getattr(status, "error", None) or "").strip()
         upstream = re.match(r"^Needs '([a-z_]+)', which failed\.?$", error)
         if upstream is None:
+            if error.split(":", 1)[0] in INTERNAL_ERRORS:
+                # Python's own words ("List index out of range.") are no reason a reader can act
+                # on: say it is TurboTab's, and keep the words for whoever fixes it.
+                return (f"It stopped on an error inside TurboTab that has no plain reason yet "
+                        f"(`{error}`).")
             said = re.sub(r"^[A-Z][A-Za-z]+: ", "", error) or "The server gave no reason"
             said = said[:1].upper() + said[1:]
             return said if said.endswith(".") else said + "."
