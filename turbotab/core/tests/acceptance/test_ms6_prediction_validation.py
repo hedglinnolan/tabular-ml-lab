@@ -634,9 +634,12 @@ def test_3_the_winners_own_score_as_the_result_is_refused_with_its_exit(tmp_path
     validate(d.SelectModels(models=["boosted_trees"]), {**ctx, "state": other})
 
     # (1) and (4): a new seed, a new fold count, the nested cross-validation offer: the same rows.
+    # The last two keep the draw and change only the scheme, so they are its own kind (P0.6,
+    # ``set_validation``).
     for split in (SplitSpec(holdout=0.0, seed=2), SplitSpec(holdout=0.0, seed=1, folds=10),
                   SplitSpec(holdout=0.0, seed=1, nested_cv=True)):
-        decision = d.SetSplit(**split.model_dump())
+        decision = (d.SetSplit(**split.model_dump()) if split.seed != 1 else
+                    d.SetValidation(**split.model_dump(exclude={"holdout", "seed"})))
         validate(decision, ctx)  # the families stay, so nothing is refused
         resealed = state.model_copy(update={"split": split})
         with pytest.raises(Refusal) as refused:
@@ -1514,11 +1517,14 @@ def test_3_every_back_door_to_the_winners_own_score_is_closed_through_the_server
     # (1) a new seed and fold count, no rows held out: the same rows, so the comparison stands.
     _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4})
     _refused(client, pid, {"kind": "select_models", "models": ["elastic_net"]}, "compared_families_stay")
-    # (4) the nested cross-validation offer's own decision is a set_split: the same.
-    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4,
-                            "nested_cv": True})
+    # (4) the nested cross-validation offer's own decision is a changed scheme (P0.6,
+    # ``set_validation``; a split that keeps the draw and changes only the scheme is pointed
+    # there): the same rows.
+    _refused(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4,
+                           "nested_cv": True}, "scheme_is_its_own")
+    _accepted(client, pid, {"kind": "set_validation", "folds": 4, "nested_cv": True})
     _refused(client, pid, {"kind": "select_models", "models": ["linear"]}, "compared_families_stay")
-    _accepted(client, pid, {"kind": "set_split", "holdout": 0.0, "seed": 2, "folds": 4})
+    _accepted(client, pid, {"kind": "set_validation", "folds": 4})
     # (2) a revert of the two-family selection cannot unsee its scores.
     error = _refused(client, pid, {"kind": "revert", "decision_id": two}, "compared_families_stay")
     assert error["exits"][0]["decision"]["models"] == ["linear", "elastic_net"]

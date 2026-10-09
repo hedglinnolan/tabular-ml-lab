@@ -1388,12 +1388,14 @@ def rode_along(roles: Mapping[str, str], proposals: Iterable[Mapping[str, Any]])
 
 
 def roles_completion(state: Any, artifact: Any) -> dict[str, Any] | None:
-    """The roles answer TurboTab records itself once every column's role is settled (crosswalk
-    disagreement 1): each proposal the values made high, or the role the person confirmed on its
-    own (``confirm_role``, ``confirm_reading`` or ``confirm_readings``) in Your data. None while any
-    proposal below high is unconfirmed: the Router then holds at the roles and Who's in waits for
-    that column. The person's own roles answer is never replaced: this is only for the step the
-    Router reaches with no roles recorded."""
+    """The roles answer TurboTab records itself once every predictor's role is settled through the
+    person's own confirmations in Your data (``confirm_role``, ``confirm_reading`` or
+    ``confirm_readings``; crosswalk disagreement 1), so its line, "Column roles recorded as you
+    confirmed them in Your data", is true of every column. A reading the values made high is a
+    Confirm line until it is confirmed, never recorded unseen. None while any column waits: the
+    Router then holds at the roles and Who's in waits for that column. The person's own roles
+    answer is never replaced: this is only for the step the Router reaches with no roles
+    recorded."""
     if getattr(state, "roles", None):
         return None
     proposals = proposals_of(artifact)
@@ -1402,16 +1404,13 @@ def roles_completion(state: Any, artifact: Any) -> dict[str, Any] | None:
     target = getattr(state, "target", None)
     roles: dict[str, str] = {}
     for p in proposals:
-        column, proposed = str(p.get("column")), p.get("proposed")
+        column = str(p.get("column"))
         if column == target:
             continue
         own = confirmation(state, "role", column)
-        if own is not None:
-            roles[column] = str(own)
-        elif p.get("confidence") in ATTENTION or not proposed:
+        if own is None:
             return None
-        else:
-            roles[column] = str(proposed)
+        roles[column] = str(own)
     return {"kind": "set_roles", "roles": roles} if roles else None
 
 

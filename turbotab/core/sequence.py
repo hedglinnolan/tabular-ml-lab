@@ -524,17 +524,36 @@ def _answers_in_order(decision: Any, ctx: Any) -> None:
     )
 
 
+# Questions whose card reads earlier answers that no stage it needs reads (``interview.NEEDS``
+# names none for them, since their options are fixed): who is kept when values are blank counts
+# the blanks among the predictors on the rows that reach it, past the outcome, the rows and the
+# eligibility rules (``row_previews.missing_views``); what one row is reads the repeats answers;
+# the modifiers read the effect and its adjustment (``interaction.modification_gate``).
+CARD_READS: dict[str, tuple[str, ...]] = {
+    "missing": ("target", "grain", "roles", "exclusions"),
+    "unit": ("grain", "repeat_kind"),
+    "modification": ("estimand", "adjustment"),
+}
+# "Decide now" opens from First look, which comes after Your data and Your question: while one of
+# their questions is open, nothing is decided early (crosswalk disagreement 20).
+BEFORE_FIRST_LOOK = ("data", "question")
+# The draw stays last (disagreement 20(3)): it reads every answer that decides who is in.
+DRAWN_LAST = ("split",)
+
+
 def card_reads(question: str) -> tuple[str, ...]:
     """The earlier Router questions whose answers a question's card reads: those whose slots the
-    stages it needs (``interview.NEEDS``) read, upstream included (``quest.stage_reads``)."""
+    stages it needs (``interview.NEEDS``) read, upstream included (``quest.stage_reads``), and
+    those its card reads itself (``CARD_READS``)."""
     from turbotab.core.interview import NEEDS, QUESTION_KEYS, SLOT_OF
     from turbotab.core.quest import stage_reads
 
     reads: set[str] = set()
     for stage in NEEDS.get(question, ()):
         reads |= stage_reads(stage)
+    own = set(CARD_READS.get(question, ()))
     earlier = QUESTION_KEYS[:QUESTION_KEYS.index(question)]
-    return tuple(k for k in earlier if SLOT_OF.get(k, k) in reads)
+    return tuple(k for k in earlier if SLOT_OF.get(k, k) in reads or k in own)
 
 
 def _stage_status(ctx: Any, stage: str) -> str | None:
@@ -552,12 +571,34 @@ def _stage_status(ctx: Any, stage: str) -> str | None:
 
 def decide_now_refusal(question: str, steps: Any, ctx: Any) -> Refusal | None:
     """Why "Decide now" cannot answer ``question`` ahead of the Router, or None when it can
-    (crosswalk disagreement 20): only once its card is computed (every stage it needs is fresh)
-    and every earlier question its card reads is answered or set for you. Otherwise it waits, and
-    says for what; the answer's other checks (the seal, the gates) are run as usual."""
-    from turbotab.core.interview import NEEDS
+    (crosswalk disagreement 20): never the draw while an earlier question is open (the draw stays
+    last); never while a question of Your data or Your question is open (Decide now opens from
+    First look); and only once its card is computed (every stage it needs is fresh) and every
+    earlier question its card reads is answered or set for you. Otherwise it waits, and says for
+    what; the answer's other checks (the seal, the gates) are run as usual."""
+    from turbotab.core.interview import NEEDS, QUESTION_KEYS
+    from turbotab.core.quest import QUESTIONS
     from turbotab.core.voice import question_name
 
+    status = {getattr(s, "key", None): getattr(s, "status", None) for s in steps}
+    held = [k for k in QUESTION_KEYS[:QUESTION_KEYS.index(question)]
+            if status.get(k) in ("open", "waiting")]
+    if question in DRAWN_LAST and held:
+        name = question_name(held[0])
+        return Refusal(
+            "not_yet",
+            f"Waiting for {name}: the held-out rows are drawn last, once every answer that decides "
+            f"who is in is recorded, so they cannot be drawn early.",
+            exits=[{"label": f"Answer {name} first", "decision": None}])
+    first_look = next((k for k in held if k in QUESTIONS
+                       and QUESTIONS[k].stage in BEFORE_FIRST_LOOK), None)
+    if first_look is not None:
+        name = question_name(first_look)
+        return Refusal(
+            "not_yet",
+            f"Waiting for {name}: a later question is decided early only from First look, which "
+            f"opens once your data and your question are answered.",
+            exits=[{"label": f"Answer {name} first", "decision": None}])
     computing = [s for s in NEEDS.get(question, ()) if _stage_status(ctx, s) != "fresh"]
     if computing:
         return Refusal(
@@ -565,7 +606,6 @@ def decide_now_refusal(question: str, steps: Any, ctx: Any) -> Refusal | None:
             "Waiting for its card: what it shows on your data is still being computed, so it "
             "cannot be decided early yet.",
             exits=[{"label": "Decide it once its card is shown", "decision": None}])
-    status = {getattr(s, "key", None): getattr(s, "status", None) for s in steps}
     for key in card_reads(question):
         if status.get(key) in ("open", "waiting"):
             name = question_name(key)
@@ -632,5 +672,5 @@ register_validator("set_aggregation", _aggregation_can_order_the_records)
 register_validator("set_aggregation", _aggregation_reads_settled_readings)
 register_validator("set_temporal", _temporal_needs_time_points_as_rows)
 
-__all__ = ["ATTEST", "WRITES_WITHOUT_ANSWERING", "artifact", "card_reads", "decide_now_refusal",
-           "decided_ahead_of", "question_of"]
+__all__ = ["ATTEST", "BEFORE_FIRST_LOOK", "CARD_READS", "DRAWN_LAST", "WRITES_WITHOUT_ANSWERING",
+           "artifact", "card_reads", "decide_now_refusal", "decided_ahead_of", "question_of"]

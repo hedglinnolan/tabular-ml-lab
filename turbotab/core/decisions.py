@@ -1203,7 +1203,11 @@ class SurveySpec(_Value):
 
 
 class SetSurvey(_DecisionModel):
-    """Whose estimate it is under a survey design (``SurveySpec``)."""
+    """Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+    answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+    says whose performance the scores estimate, which is not the estimand inference asks for, so
+    an answer given under one stands only under that one; a record from before the stamp
+    (``None``) stands under either, as it did."""
 
     kind: Literal["set_survey"] = "set_survey"
     estimand: SurveyEstimand
@@ -1213,6 +1217,7 @@ class SetSurvey(_DecisionModel):
     cycle: str | None = None
     four_year_weight: str | None = None
     acknowledged: bool = False
+    goal: Purpose | None = None
 
 
 # ── WP17 (AUDIT_REPORT §5): the declared purpose routes the questions ──────────
@@ -2629,7 +2634,10 @@ register_kind(DismissFinding, "findings", key=lambda d: d.finding_id,
 register_kind(SetFeatureTable, "feature_table",
               value=lambda d: FeatureTableSpec(**d.model_dump(exclude={"kind"})))
 register_kind(SetCategorical, "categorical")
-register_kind(SetSurvey, "survey", value=lambda d: SurveySpec(**d.model_dump(exclude={"kind"})))
+register_kind(SetSurvey, "survey",
+              value=lambda d: SurveySpec(**d.model_dump(exclude={"kind", "goal"})),
+              holds=lambda d, slots: d.goal is None
+              or (d.goal == "prediction") == (slots.get("purpose") == "prediction"))
 register_kind(SetExposureForm, "exposure_forms", key=lambda d: d.column, value=lambda d: d.spec(),
               confirms=lambda d: [("form_domains", d.column, d.domain)])
 # FORM: the form question's one-tap answer writes each column's entry where ``set_exposure_form``

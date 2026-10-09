@@ -478,12 +478,27 @@ def _design_is_settled(decision: Any, ctx: Any) -> None:
                           "decision": {"kind": "set_survey", "estimand": "sample"}}])
 
 
+def _answered_under_its_goal(decision: Any, ctx: Any) -> Any:
+    """The record names the goal it was answered under (crosswalk disagreement 9): under
+    prediction it says whose performance the scores estimate, which is not whose estimate
+    inference reports, so a changed goal asks the question again rather than carrying the answer
+    over (``decisions.SetSurvey``)."""
+    from turbotab.core.decisions import _state
+
+    state = _state(ctx)
+    purpose = getattr(state, "purpose", None) if state is not None else None
+    if purpose is None or decision.goal == purpose:
+        return decision
+    return decision.model_copy(update={"goal": purpose})
+
+
 def _register() -> None:
-    from turbotab.core.decisions import register_validator
+    from turbotab.core.decisions import register_completion, register_validator
 
     for check in (_asked_under_inference, _names_real_columns, _weight_is_a_number,
                   _names_its_units, _pools_cycles_by_the_rule, _design_is_settled):
         register_validator("set_survey", check)
+    register_completion("set_survey", _answered_under_its_goal)
 
 
 _register()

@@ -4,18 +4,19 @@ under Estimate) and the clinical journey (30-day readmission, under Predict).
 The expectations are the crosswalk's (``docs/turbotab-next/crosswalk/CROSSWALK.md``, "Where the
 engine order and the stage order disagree"), independent of the code under test:
 
-* disagreement 1: once every column's role is settled in Your data (proposed high or confirmed on
-  its own), TurboTab records the roles itself when the Router reaches them, and Who's in shows
-  that record For the record; while one is unsettled nothing is recorded;
+* disagreement 1: once every predictor's role is settled through the person's own confirmations
+  in Your data (``confirm_role``, ``confirm_readings``), TurboTab records the roles itself when the
+  Router reaches them, with the answer that settled the last one and never by a read, and Who's in
+  shows that record For the record; while one waits nothing is recorded;
 * disagreement 5: under Estimate TurboTab records the split itself at the end of Who's in, no rows
   held out, For the record (``default:split_under_inference``), and the person can still change
   it; under Predict the split is asked, and a changed validation scheme (``set_validation``) keeps
   the draw: the same held-out rows, and the draw's record;
 * disagreement 9: the survey question is asked under Predict where a design reads;
 * disagreement 10: the design is stated observational, a Confirm line in Your question;
-* disagreement 20: "Decide now" answers a later question early where its card is computed and the
-  answers it reads are in, names what it waits for otherwise, and the record says what it was
-  decided ahead of.
+* disagreement 20: "Decide now" answers a later question early only from First look (after Your
+  data and Your question), where its card is computed and the answers it reads are in, and never
+  the draw, which stays last; otherwise it names what it waits for.
 
 No fitted number may change: the split TurboTab records under Estimate is exactly the one every
 Estimate journey recorded by hand before (no rows held out, seed 0, five folds), so every stage
@@ -23,6 +24,7 @@ reads the same answers.
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -85,38 +87,42 @@ def test_the_nhanes_journey_records_the_roles_and_the_split_for_the_record(clien
 
     drive.decide({"kind": "set_purpose", "purpose": "inference"})
 
-    # The roles (disagreement 1): nothing is recorded while a proposal below high is unconfirmed;
-    # once each is confirmed on its own, TurboTab records the roles as confirmed.
+    # The roles (disagreement 1): nothing is recorded while any column waits for the person's
+    # own confirmation, a reading the values made high among them; once every one is confirmed in
+    # Your data, TurboTab records the roles as confirmed.
     drive.reach("roles")
     proposals = [p for p in drive.artifact("roles")["columns"] if p["column"] != "glucose"]
     attention = [p["column"] for p in proposals if p["confidence"] in ("medium", "low")]
-    assert attention, "the export has columns whose role is read below high confidence"
+    high = [p["column"] for p in proposals if p["confidence"] not in ("medium", "low")]
+    assert attention and high, "the export reads some roles below high confidence, some high"
     assert drive.view()["state"]["roles"] is None and step(drive, "roles")["status"] == "open"
 
-    # Decide now (disagreement 20), with the Router held at the roles. Who is kept when values are
-    # blank reads no card, so it is answered ahead of the roles; the eligibility rules' card reads
-    # the roles, so it waits and says so. Without "Decide now" both wait their turn.
+    # Decide now (disagreement 20), with the Router held at the roles: who is kept when values
+    # are blank counts the blanks among the predictors, and the eligibility rules' card reads the
+    # roles, so each waits and says so. Without "Decide now" both wait their turn.
     url = f"/api/projects/{drive.pid}/decisions"
     missing = {"kind": "set_missing", "strategy": "complete_case"}
     refused = client.post(url, json=missing)
     assert refused.status_code == 409 and refused.json()["error"]["code"] == "not_yet"
-    waits = client.post(url + "?decide_now=true", json={"kind": "set_exclusions", "rules": []})
-    assert waits.status_code == 409, waits.text[:400]
-    assert waits.json()["error"]["code"] == "not_yet"
-    assert waits.json()["error"]["message"].startswith("Waiting for")
-    early = client.post(url + "?decide_now=true", json=missing)
-    assert early.status_code == 200, early.text[:600]
-    record = early.json()["decisions"][-1]
-    assert record["decision"]["kind"] == "set_missing" and record["early"] == "roles"
-    assert record["sentence"].startswith("Decided early, ahead of the column roles: ")
-    assert step(drive, "missing")["status"] == "answered"
-    assert drive.view()["state"]["roles"] is None and step(drive, "roles")["status"] == "open"
+    for body in ({"kind": "set_exclusions", "rules": []}, missing):
+        waits = client.post(url + "?decide_now=true", json=body)
+        assert waits.status_code == 409, waits.text[:400]
+        assert waits.json()["error"]["code"] == "not_yet"
+        assert waits.json()["error"]["message"].startswith("Waiting for the column roles")
     chosen = {c: ROLES.get(c, next(p["proposed"] for p in proposals if p["column"] == c))
               for c in attention}
     r = settle_post(client, drive.pid, {"kind": "confirm_readings", "items": [
         {"reading": "role", "column": c, "value": v} for c, v in chosen.items()]}, drive.truth)
     assert r.status_code == 200, r.text[:600]
-    expected = {p["column"]: chosen.get(p["column"], p["proposed"]) for p in proposals}
+    # The high readings are not confirmed yet: nothing is recorded over them.
+    assert r.json()["state"]["roles"] is None and records_of(drive, "set_roles") == []
+    proposed = {p["column"]: p["proposed"] for p in proposals}
+    r = client.post(url, json={"kind": "confirm_readings", "items": [
+        {"reading": "role", "column": c, "value": proposed[c]} for c in high]})
+    assert r.status_code == 200, r.text[:600]
+    # Recorded with the answer that settled the last column, before any read.
+    expected = {**proposed, **chosen}
+    assert r.json()["state"]["roles"] == expected
     [completed] = records_of(drive, "set_roles")
     assert completed["recorded_by"] == "turbotab"
     assert completed["decision"]["roles"] == expected
@@ -223,3 +229,133 @@ def test_the_survey_question_is_asked_under_predict_where_a_design_reads(client)
     assert r.status_code == 409 and r.json()["error"]["code"] == "not_yet"
     drive.decide(options["sample"]["decision"])
     assert step(drive, "survey")["status"] == "answered"
+
+
+def clinical_until(client: Any, key: str, *, roles: bool = True) -> Drive:
+    """The clinical journey (30-day readmission), answered in order up to ``key``."""
+    path = SAMPLES / "clinical_risk.csv"
+    truth = fixture_truth("clinical_risk.csv")
+    drive = open_project(client, path, Truth({**truth, **{f"role:{c}": r for c, r
+                                                           in CLINICAL_ROLES.items()}},
+                                             fixture=path.name))
+    drive.decide({"kind": "set_lens", "lenses": ["clinical"]})
+    drive.reach("target")
+    drive.decide({"kind": "set_target", "column": "readmit_30d"})
+    drive.answer("task", {"kind": "set_task", "column": "readmit_30d", "task": "binary"})
+    drive.answer("event", {"kind": "set_event", "column": "readmit_30d", "level": "1"})
+    if key == "purpose":
+        drive.reach("purpose")
+        return drive
+    drive.decide({"kind": "set_purpose", "purpose": "prediction"})
+    drive.answer("grain", {"kind": "set_grain", "grain": "one_row_per_unit"})
+    drive.reach("roles")
+    if roles:
+        drive.decide_roles(CLINICAL_ROLES)
+    if key == "roles":
+        return drive
+    drive.answer("exclusions", {"kind": "set_exclusions", "rules": []})
+    drive.answer("missing", {"kind": "set_missing", "strategy": "complete_case"})
+    drive.reach("split")
+    return drive
+
+
+def test_decide_now_never_draws_the_held_out_rows_before_whos_in_is_answered(client):
+    # The verifier's repro: the outcome answered, the goal open.
+    drive = clinical_until(client, "purpose")
+    url = f"/api/projects/{drive.pid}/decisions?decide_now=true"
+    grain = client.post(url, json={"kind": "set_grain", "grain": "one_row_per_unit"})
+    assert grain.status_code == 409, grain.text[:400]
+    assert grain.json()["error"]["message"].startswith("Waiting for the purpose question")
+    draw = client.post(url, json={"kind": "set_split", "holdout": 0.2, "seed": 3})
+    assert draw.status_code == 409, draw.text[:400]
+    assert draw.json()["error"]["code"] == "not_yet"
+    assert "drawn last" in draw.json()["error"]["message"]
+    assert drive.view()["state"]["split"] is None
+    # With the goal and the roles answered, still not before the exclusions and the blanks.
+    drive.decide({"kind": "set_purpose", "purpose": "prediction"})
+    drive.answer("grain", {"kind": "set_grain", "grain": "one_row_per_unit"})
+    drive.reach("roles")
+    drive.decide_roles(CLINICAL_ROLES)
+    draw = client.post(url, json={"kind": "set_split", "holdout": 0.2, "seed": 3})
+    assert draw.status_code == 409 and "drawn last" in draw.json()["error"]["message"]
+    assert drive.view()["state"]["split"] is None
+
+
+def test_decide_now_answers_nothing_before_your_question_is_answered(client):
+    path = SAMPLES / "clinical_risk.csv"
+    drive = open_project(client, path, fixture_truth("clinical_risk.csv"))
+    drive.decide({"kind": "set_lens", "lenses": ["clinical"]})
+    drive.reach("target")
+    url = f"/api/projects/{drive.pid}/decisions?decide_now=true"
+    for body in ({"kind": "set_missing", "strategy": "complete_case"},
+                 {"kind": "set_modification", "modifier": "age"}):
+        r = client.post(url, json=body)
+        assert r.status_code == 409, (body, r.text[:400])
+        assert r.json()["error"]["code"] == "not_yet"
+        assert r.json()["error"]["message"].startswith("Waiting for the outcome")
+    assert drive.view()["state"]["missing"] is None
+
+
+def test_the_roles_are_recorded_for_a_client_that_reads_only_the_quest_log(client):
+    drive = clinical_until(client, "roles", roles=False)
+    proposals = [p for p in drive.artifact("roles")["columns"] if p["column"] != "readmit_30d"]
+    items = [{"reading": "role", "column": p["column"],
+              "value": CLINICAL_ROLES.get(p["column"], p["proposed"])} for p in proposals]
+    url = f"/api/projects/{drive.pid}/decisions"
+    r = settle_post(client, drive.pid, {"kind": "confirm_readings", "items": items}, drive.truth)
+    assert r.status_code == 200, r.text[:600]
+    # Only the quest log is read from here on: the record is made with the answers, not by a read.
+    end = time.monotonic() + 120
+    while True:
+        lines = client.get(f"/api/projects/{drive.pid}/quest").json()
+        found = [l for s in lines["stages"] for l in s["lines"] if l["key"] == "roles_recorded"]
+        if found:
+            break
+        assert time.monotonic() < end, "the roles were never recorded"
+        time.sleep(0.05)
+    records = client.app.state.service.log(drive.pid).records()
+    [completed] = [r for r in records if r.decision.kind == "set_roles"]
+    assert completed.recorded_by == "turbotab"
+    assert found[0]["decision_id"] == completed.id
+    assert completed.decision.roles == {i["column"]: i["value"] for i in items}
+    del url
+
+
+def test_reading_the_project_records_nothing(client):
+    from turbotab.core.decisions import parse_decision
+
+    drive = clinical_until(client, "roles", roles=False)
+    proposals = [p for p in drive.artifact("roles")["columns"] if p["column"] != "readmit_30d"]
+    items = [{"reading": "role", "column": p["column"],
+              "value": CLINICAL_ROLES.get(p["column"], p["proposed"])} for p in proposals]
+    # Every role confirmed, written to the log the way another process would: no answer was posted
+    # here and no stage was recomputed, so nothing has asked for the completion.
+    service = client.app.state.service
+    service.log(drive.pid).append(parse_decision({"kind": "confirm_readings", "items": items}))
+    for _ in range(3):
+        view = drive.view()
+        client.get(f"/api/projects/{drive.pid}/quest")
+    assert view["state"]["roles"] is None
+    assert next(s for s in view["interview"] if s["key"] == "roles")["status"] == "open"
+    assert [r for r in service.log(drive.pid).records() if r.decision.kind == "set_roles"] == []
+    # The next answer the person records brings it.
+    r = drive.post({"kind": "confirm_readings", "items": items[:1]})
+    assert r.status_code == 200, r.text[:400]
+    assert r.json()["state"]["roles"] == {i["column"]: i["value"] for i in items}
+
+
+def test_a_split_that_changes_only_the_scheme_points_to_the_scheme(client):
+    drive = clinical_until(client, "split")
+    drive.decide({"kind": "set_split", "holdout": 0.2, "seed": 3, "folds": 5})
+    [drawn] = records_of(drive, "set_split")
+    r = drive.post({"kind": "set_split", "holdout": 0.2, "seed": 3, "folds": 10})
+    assert r.status_code == 409, r.text[:400]
+    error = r.json()["error"]
+    assert error["code"] == "scheme_is_its_own"
+    [scheme] = [e["decision"] for e in error["exits"] if e["decision"]]
+    assert scheme["kind"] == "set_validation" and scheme["folds"] == 10
+    taken = drive.post(scheme)
+    assert taken.status_code == 200, taken.text[:400]
+    records = client.app.state.service.log(drive.pid).records()
+    assert split_writer(records) == drawn["id"]
+    assert taken.json()["state"]["split"]["folds"] == 10

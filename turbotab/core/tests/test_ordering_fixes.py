@@ -290,7 +290,10 @@ def test_the_roles_are_completed_only_once_every_reading_is_settled():
     assert roles_completion(state, artifact) is None  # `sugar` is read below high, unconfirmed
     confirmed = d.fold([record(1, {"kind": "set_target", "column": "glucose"}),
                         record(2, {"kind": "confirm_reading", "reading": "role",
-                                   "column": "sugar", "value": "covariate"})])
+                                   "column": "sugar", "value": "covariate"}),
+                        record(3, {"kind": "confirm_readings", "items": [
+                            {"reading": "role", "column": "pid", "value": "identifier"},
+                            {"reading": "role", "column": "age", "value": "covariate"}]})])
     assert roles_completion(confirmed, artifact) == {"kind": "set_roles", "roles": {
         "pid": "identifier", "sugar": "covariate", "age": "covariate"}}
     # The person's own roles answer is never replaced.
@@ -355,3 +358,223 @@ def test_decide_now_waits_while_the_card_is_still_being_computed():
                           early_ctx("survey", stale=("proposals",)))
     assert caught.value.code == "not_yet"
     assert caught.value.message.startswith("Waiting for")
+
+
+# ── the verifier's repairs (2026-10-09) ─────────────────────────────────────
+# Each expectation is the crosswalk's: disagreement 20 ("the draw stays last"; "Decide now" from
+# First look, which comes after Your data and Your question; only a card that is computed, and
+# whose earlier answers are in), disagreement 9 (under Predict the survey answer says whose
+# performance the scores estimate, which is not the estimand Estimate asks for), disagreement 1
+# (recorded only once every predictor's role is settled through confirm_role and
+# confirm_readings) and disagreement 5 (a changed scheme is its own kind; the draw's time never
+# moves).
+
+
+@pytest.mark.parametrize("open_at", ["purpose", "grain", "roles", "exclusions", "missing"])
+def test_decide_now_never_draws_the_held_out_rows_early(open_at):
+    from turbotab.core.sequence import _answers_in_order
+
+    with pytest.raises(d.Refusal) as caught:
+        _answers_in_order(parse_decision({"kind": "set_split", "holdout": 0.2, "seed": 3}),
+                          early_ctx(open_at))
+    assert caught.value.code == "not_yet"
+    assert caught.value.message.startswith("Waiting for")
+    assert "last" in caught.value.message
+
+
+@pytest.mark.parametrize("open_at", ["target", "task", "purpose"])
+def test_decide_now_opens_only_after_your_question(open_at):
+    from turbotab.core.sequence import _answers_in_order
+
+    for body in ({"kind": "set_missing", "strategy": "complete_case"},
+                 {"kind": "set_modification", "modifier": "age"}):
+        with pytest.raises(d.Refusal) as caught:
+            _answers_in_order(parse_decision(body), early_ctx(open_at))
+        assert caught.value.code == "not_yet", body
+        assert caught.value.message.startswith("Waiting for"), body
+
+
+@pytest.mark.parametrize("open_at", ["roles", "clusters", "exclusions"])
+def test_decide_now_on_the_missing_values_waits_for_the_rows_and_columns_its_card_counts(open_at):
+    from turbotab.core.sequence import _answers_in_order
+
+    # The card counts the blanks among the predictors (the roles) on the rows that reach it, past
+    # the outcome and the eligibility rules (``row_previews.missing_views``).
+    with pytest.raises(d.Refusal) as caught:
+        _answers_in_order(parse_decision({"kind": "set_missing", "strategy": "complete_case"}),
+                          early_ctx(open_at))
+    assert caught.value.code == "not_yet"
+    assert caught.value.message.startswith("Waiting for")
+
+
+def test_decide_now_answers_the_effect_while_whos_in_is_still_open():
+    from turbotab.core.sequence import _answers_in_order
+
+    # What you study reads the answers up to the grouping; the eligibility rules are not among
+    # them.
+    _answers_in_order(parse_decision({"kind": "set_estimand", "exposure": "sugar",
+                                      "effect": "total", "measure": "mean_difference"}),
+                      early_ctx("exclusions"))
+
+
+def survey_log(*later: dict) -> list[DecisionRecord]:
+    roles = {"SEQN": "identifier", "DR1TKCAL": "covariate", "WTDRD1": "design",
+             "SDMVSTRA": "design", "SDMVPSU": "design"}
+    first = [{"kind": "set_target", "column": "DR1TPROT"},
+             {"kind": "set_purpose", "purpose": "prediction"},
+             {"kind": "set_roles", "roles": roles}]
+    state = d.fold([record(i + 1, b) for i, b in enumerate(first)])
+    answer = d.validate({"kind": "set_survey", "estimand": "sample"}, {"state": state})
+    bodies = [*first, answer.model_dump(mode="json"), *later]
+    return [record(i + 1, b) for i, b in enumerate(bodies)]
+
+
+def test_a_survey_answer_under_predict_says_whose_scores_and_records_the_goal():
+    records = survey_log()
+    assert records[-1].decision.goal == "prediction"
+    assert d.fold(records).survey.estimand == "sample"
+
+
+def test_a_survey_answer_under_predict_does_not_answer_the_estimand_under_estimate():
+    to_inference = survey_log({"kind": "set_purpose", "purpose": "inference"})
+    state = d.fold(to_inference)
+    assert state.survey is None  # the inference table stays blocked until it is asked
+    steps = {s.key: s for s in route(state, FRESH, records=to_inference)}
+    assert steps["survey"].status in ("open", "waiting")  # asked again, not answered
+    # Back under Predict, the scores' answer stands again.
+    back = survey_log({"kind": "set_purpose", "purpose": "inference"},
+                      {"kind": "set_purpose", "purpose": "prediction"})
+    assert d.fold(back).survey.estimand == "sample"
+
+
+def test_a_survey_answer_recorded_before_the_goal_was_stamped_still_loads_and_stands():
+    line = {"id": "s", "seq": 1, "at": "2026-10-01T00:00:00Z",
+            "decision": {"kind": "set_survey", "estimand": "sample"}}
+    old = d.read_record(line)
+    assert old.decision.goal is None
+    records = [record(1, {"kind": "set_purpose", "purpose": "inference"}), old.model_copy(
+        update={"seq": 2})]
+    assert d.fold(records).survey.estimand == "sample"
+
+
+def test_the_roles_are_not_recorded_over_a_reading_nobody_confirmed():
+    from turbotab.core.readings import roles_completion
+
+    artifact = {"columns": [
+        {"column": "pid", "proposed": "identifier", "confidence": "high"},
+        {"column": "sugar", "proposed": "exposure", "confidence": "medium"}]}
+    only_one = d.fold([record(1, {"kind": "set_target", "column": "glucose"}),
+                       record(2, {"kind": "confirm_reading", "reading": "role",
+                                  "column": "sugar", "value": "covariate"})])
+    # `pid` reads high from its values, but nobody confirmed it: "as you confirmed them" would
+    # be false.
+    assert roles_completion(only_one, artifact) is None
+    both = d.fold([record(1, {"kind": "set_target", "column": "glucose"}),
+                   record(2, {"kind": "confirm_readings", "items": [
+                       {"reading": "role", "column": "sugar", "value": "covariate"},
+                       {"reading": "role", "column": "pid", "value": "identifier"}]})])
+    assert roles_completion(both, artifact) == {"kind": "set_roles", "roles": {
+        "pid": "identifier", "sugar": "covariate"}}
+
+
+def test_a_split_that_keeps_the_draw_and_changes_only_the_scheme_is_the_schemes_own_kind():
+    records = split_log()
+    ctx = {"state": d.fold(records), "records": lambda: records}
+    error = refused({"kind": "set_split", "holdout": 0.2, "seed": 7, "folds": 10}, ctx)
+    assert error.code == "scheme_is_its_own"
+    [scheme] = [e["decision"] for e in error.exits if e["decision"]]
+    assert scheme["kind"] == "set_validation" and scheme["folds"] == 10
+    # A new draw, or the same split again, is still the split's.
+    d.validate({"kind": "set_split", "holdout": 0.2, "seed": 8, "folds": 10}, ctx)
+    d.validate({"kind": "set_split", "holdout": 0.2, "seed": 7, "folds": 5}, ctx)
+
+
+def test_the_draws_time_is_its_first_record_however_often_it_is_recorded_again():
+    again = [*split_log(), record(4, {"kind": "set_split", "holdout": 0.2, "seed": 7, "folds": 5})]
+    assert seal.draw_record(again).id == "r3"
+    redrawn = [*again, record(5, {"kind": "set_split", "holdout": 0.2, "seed": 9, "folds": 5})]
+    assert seal.draw_record(redrawn).id == "r5"
+
+
+def line_of(log: quest.QuestLog, key: str) -> quest.QuestLine:
+    return next(l for s in log.stages for l in s.lines if l.key == key)
+
+
+def early_log() -> list[DecisionRecord]:
+    """The NHANES-shaped journey with the effect decided now from First look, ahead of the
+    eligibility rules."""
+    bodies = [{"kind": "set_lens", "lenses": ["clinical"]},
+              {"kind": "set_target", "column": "glucose"},
+              {"kind": "set_task", "column": "glucose", "task": "regression"},
+              {"kind": "set_purpose", "purpose": "inference"},
+              {"kind": "set_grain", "grain": "one_row_per_unit"},
+              {"kind": "set_roles", "roles": ROLES}]
+    out = [record(i + 1, b) for i, b in enumerate(bodies)]
+    effect = record(len(out) + 1, {"kind": "set_estimand", "exposure": "sugar",
+                                   "effect": "total", "measure": "mean_difference"})
+    return [*out, effect.model_copy(update={"early": "exclusions"})]
+
+
+def test_an_answer_decided_now_returns_once_an_answer_it_was_decided_ahead_of_is_recorded():
+    records = early_log()
+    state = d.fold(records)
+    steps = route(state, FRESH, records=records)
+    assert line_of(quest.quest_log(state, records, steps, FRESH), "estimand").changed_since is None
+    later = [*records, record(len(records) + 1, {"kind": "set_exclusions", "rules": [
+        {"column": "age", "low": 20, "high": 80, "reason": "adults"}]})]
+    state = d.fold(later)
+    line = line_of(quest.quest_log(state, later, route(state, FRESH, records=later), FRESH),
+                   "estimand")
+    assert line.changed_since is not None
+    assert line.changed_since.since == "decided"
+    assert line.changed_since.decision_id == later[-1].id
+    assert line.changed_since.reason.startswith("Changed since you decided")
+    # Decided again, in order, it no longer returns.
+    again = [*later, record(len(later) + 1, {"kind": "set_estimand", "exposure": "sugar",
+                                              "effect": "total", "measure": "mean_difference"})]
+    state = d.fold(again)
+    assert line_of(quest.quest_log(state, again, route(state, FRESH, records=again), FRESH),
+                   "estimand").changed_since is None
+
+
+def test_roles_recorded_from_confirmations_return_when_a_proposal_moves_after_them():
+    confirmed = [record(1, {"kind": "confirm_readings", "items": [
+                     {"reading": "role", "column": c, "value": r} for c, r in ROLES.items()]}),
+                 record(2, {"kind": "set_target", "column": "glucose"}),
+                 record(3, {"kind": "set_task", "column": "glucose", "task": "regression"}),
+                 record(4, {"kind": "set_purpose", "purpose": "inference"})]
+    completed = record(5, {"kind": "set_roles", "roles": ROLES}).model_copy(
+        update={"recorded_by": "turbotab"})
+    records = [*confirmed, completed]
+    state = d.fold(records)
+    steps = route(state, FRESH, records=records)
+    same = {"columns": [{"column": c, "proposed": r, "confidence": "high"}
+                        for c, r in ROLES.items()]}
+    log = quest.quest_log(state, records, steps, FRESH, artifacts={"roles": same})
+    assert line_of(log, "roles_recorded").changed_since is None
+    # With the outcome and the goal chosen, `bmi` now reads as studied, not as an adjustment.
+    moved = {"columns": [{**p, "proposed": "exposure"} if p["column"] == "bmi" else p
+                         for p in same["columns"]]}
+    log = quest.quest_log(state, records, steps, FRESH, artifacts={"roles": moved})
+    changed = line_of(log, "roles_recorded").changed_since
+    assert changed is not None and changed.since == "confirmed"
+    assert changed.reason.startswith("Changed since you confirmed")
+    assert "`bmi`" in changed.reason
+
+
+def test_the_survey_answers_sentence_under_predict_speaks_of_the_scores():
+    from turbotab.core import voice
+
+    records = survey_log()
+    state = d.fold(records)
+    said = voice.sentence_for(records[-1].decision, state, None)
+    assert said.startswith("The scores describe how the procedure performs on these participants")
+    assert "estimates" not in said
+    under_inference = d.SetSurvey(estimand="sample", goal="inference")
+    assert voice.sentence_for(under_inference, state, None).startswith(
+        "The estimates describe these participants")
+    weighted = d.SetSurvey(estimand="population", weight="WTDRD1", strata="SDMVSTRA",
+                           psu="SDMVPSU", goal="prediction")
+    said = voice.sentence_for(weighted, state, None)
+    assert said.startswith("The scores estimate performance in the surveyed population")
+    assert "`WTDRD1`" in said and "design-based cross-validation" in said

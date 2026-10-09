@@ -3186,6 +3186,39 @@
         ],
         "title": "CautionExit"
       },
+      "ChangedSince": {
+        "properties": {
+          "since": {
+            "type": "string",
+            "enum": [
+              "decided",
+              "confirmed"
+            ],
+            "title": "Since"
+          },
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "since",
+          "decision_id",
+          "kind",
+          "reason"
+        ],
+        "title": "ChangedSince",
+        "description": "An answer that returns with the reason (crosswalk disagreements 20 and 1): one decided early\n(\"Decide now\") once an answer it was decided ahead of is recorded, so what its card counted\nmay have moved (``decided``); the roles TurboTab recorded from the person's confirmations once\na proposal moves after them (``confirmed``). ``decision_id`` is the later answer."
+      },
       "ChecklistCounts": {
         "properties": {
           "items": {
@@ -10410,6 +10443,16 @@
                 "type": "null"
               }
             ]
+          },
+          "changed_since": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangedSince"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10426,7 +10469,8 @@
           "reason",
           "waiting_for",
           "computing",
-          "reopened_by"
+          "reopened_by",
+          "changed_since"
         ],
         "title": "QuestLine",
         "description": "One line of a stage: a Router question, a declaration or a finding.\n\n``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the\nearlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a\ndefault the engine stated, in the Confirm sweep or For the record)."
@@ -16088,6 +16132,21 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal"
           }
         },
         "additionalProperties": false,
@@ -16097,7 +16156,7 @@
           "estimand"
         ],
         "title": "SetSurvey",
-        "description": "Whose estimate it is under a survey design (``SurveySpec``)."
+        "description": "Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was\nanswered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer\nsays whose performance the scores estimate, which is not the estimand inference asks for, so\nan answer given under one stands only under that one; a record from before the stamp\n(``None``) stands under either, as it did."
       },
       "SetSurvey-Output": {
         "properties": {
@@ -16174,6 +16233,21 @@
             "type": "boolean",
             "title": "Acknowledged",
             "default": false
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "prediction",
+                  "inference"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal"
           }
         },
         "additionalProperties": false,
@@ -16186,10 +16260,11 @@
           "psu",
           "cycle",
           "four_year_weight",
-          "acknowledged"
+          "acknowledged",
+          "goal"
         ],
         "title": "SetSurvey",
-        "description": "Whose estimate it is under a survey design (``SurveySpec``)."
+        "description": "Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was\nanswered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer\nsays whose performance the scores estimate, which is not the estimand inference asks for, so\nan answer given under one stands only under that one; a record from before the stamp\n(``None``) stands under either, as it did."
       },
       "SetTarget": {
         "properties": {
@@ -36481,7 +36556,7 @@
       },
       "SetSurvey": {
         "additionalProperties": false,
-        "description": "Whose estimate it is under a survey design (``SurveySpec``).",
+        "description": "Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was\nanswered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer\nsays whose performance the scores estimate, which is not the estimand inference asks for, so\nan answer given under one stands only under that one; a record from before the stamp\n(``None``) stands under either, as it did.",
         "properties": {
           "kind": {
             "const": "set_survey",
@@ -36561,6 +36636,22 @@
             "default": false,
             "title": "Acknowledged",
             "type": "boolean"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prediction",
+                  "inference"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Goal"
           }
         },
         "required": [
@@ -36571,7 +36662,8 @@
           "psu",
           "cycle",
           "four_year_weight",
-          "acknowledged"
+          "acknowledged",
+          "goal"
         ],
         "title": "SetSurvey",
         "type": "object"

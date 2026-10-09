@@ -2136,27 +2136,41 @@ def _design_counts(d: Any, ctx: Any) -> tuple[int, int, int] | None:
     return int(per.sum()), int(len(per)), int((per == 1).sum())
 
 
+def _weight_words(d: Any) -> str:
+    """How a population answer weights each row (a pooled table's weight divided by its cycles)."""
+    if d.cycle and d.four_year_weight:
+        return (f"weighted by {tick(d.four_year_weight)} on the 1999–2002 rows (doubled, then "
+                f"divided by the number of cycles pooled in {tick(d.cycle)}) and by "
+                f"{tick(d.weight)} on the others (divided by the same number), as NCHS directs "
+                f"for 1999–2000")
+    if d.cycle:
+        return (f"weighted by {tick(d.weight)} divided by the number of cycles pooled in "
+                f"{tick(d.cycle)}")
+    return f"weighted by {tick(d.weight)}"
+
+
 @register_sentence("set_survey")
 def _set_survey(d: Any, state: Any, ctx: Any) -> str:
     from turbotab.core.survey import ATTESTATION, reading_of
 
+    scores = getattr(d, "goal", None) == "prediction"
     if d.estimand == "sample":
         reading = reading_of(state)
         named = [*reading.weights, *reading.strata, *reading.psu]
         unused = (f"; {listing(named, limit=6)} {plural(len(named), 'was', 'were')} recorded and "
                   f"not used") if named else ""
+        if scores:
+            # Under prediction the answer says whose performance the scores estimate (crosswalk
+            # disagreement 9; MODELING_SEQUENCE ruling 13).
+            return (f"The scores describe how the procedure performs on these participants' rows, "
+                    f"not in the surveyed population: unweighted{unused}")
         return (f"The estimates describe these participants, not the surveyed population: "
                 f"{ATTESTATION}{unused}")
-    if d.cycle and d.four_year_weight:
-        weight = (f"weighted by {tick(d.four_year_weight)} on the 1999–2002 rows (doubled, then "
-                  f"divided by the number of cycles pooled in {tick(d.cycle)}) and by "
-                  f"{tick(d.weight)} on the others (divided by the same number), as NCHS directs "
-                  f"for 1999–2000")
-    elif d.cycle:
-        weight = (f"weighted by {tick(d.weight)} divided by the number of cycles pooled in "
-                  f"{tick(d.cycle)}")
-    else:
-        weight = f"weighted by {tick(d.weight)}"
+    if scores:
+        return (f"The scores estimate performance in the surveyed population: each score "
+                f"{_weight_words(d)}, by design-based cross-validation that holds whole PSUs out "
+                f"within strata")
+    weight = _weight_words(d)
     if d.strata and d.psu:
         counts = _design_counts(d, ctx)
         shape = f" ({count(counts[0])} PSUs in {count(counts[1])} strata)" if counts else ""

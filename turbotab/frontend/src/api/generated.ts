@@ -931,6 +931,26 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * ChangedSince
+         * @description An answer that returns with the reason (crosswalk disagreements 20 and 1): one decided early
+         *     ("Decide now") once an answer it was decided ahead of is recorded, so what its card counted
+         *     may have moved (``decided``); the roles TurboTab recorded from the person's confirmations once
+         *     a proposal moves after them (``confirmed``). ``decision_id`` is the later answer.
+         */
+        ChangedSince: {
+            /**
+             * Since
+             * @enum {string}
+             */
+            since: "decided" | "confirmed";
+            /** Decision Id */
+            decision_id: string;
+            /** Kind */
+            kind: string;
+            /** Reason */
+            reason: string;
+        };
         /** ChecklistCounts */
         ChecklistCounts: {
             /** Items */
@@ -3366,6 +3386,7 @@ export interface components {
              */
             computing: string[];
             reopened_by: components["schemas"]["ReopenedBy"] | null;
+            changed_since: components["schemas"]["ChangedSince"] | null;
         };
         /**
          * QuestLog
@@ -5820,7 +5841,11 @@ export interface components {
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         "SetSurvey-Input": {
             /**
@@ -5848,10 +5873,16 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** Goal */
+            goal?: ("prediction" | "inference") | null;
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         "SetSurvey-Output": {
             /**
@@ -5879,6 +5910,8 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /** Goal */
+            goal: ("prediction" | "inference") | null;
         };
         /** SetTarget */
         SetTarget: {
@@ -14061,7 +14094,11 @@ export interface components {
         };
         /**
          * SetSurvey
-         * @description Whose estimate it is under a survey design (``SurveySpec``).
+         * @description Whose estimate it is under a survey design (``SurveySpec``). ``goal``: the goal it was
+         *     answered under, recorded by the server (crosswalk disagreement 9). Under prediction the answer
+         *     says whose performance the scores estimate, which is not the estimand inference asks for, so
+         *     an answer given under one stands only under that one; a record from before the stamp
+         *     (``None``) stands under either, as it did.
          */
         SetSurvey: {
             /**
@@ -14105,6 +14142,11 @@ export interface components {
              * @default false
              */
             acknowledged: boolean;
+            /**
+             * Goal
+             * @default null
+             */
+            goal: ("prediction" | "inference") | null;
         };
         /** SetTemporal */
         SetTemporal: {

@@ -387,15 +387,14 @@ def test_1_until_it_is_answered_the_inference_table_is_blocked(client, tables):
     the table is refused with the reason and the way forward until the question is answered
     (block and record, BLUEPRINT §11.3)."""
     pid = open_project(client, tables["I4"], "LBXCRP", "prediction", DIET_ROLES)
-    # Under prediction the survey question is asked too (P0.6): answered there, then withdrawn
-    # once the purpose is inference, it is open again.
+    # Under prediction the survey question is asked too (P0.6): answered there, it says whose
+    # performance the scores estimate, which is not whose estimate inference reports, so once the
+    # purpose is inference it is asked again, with nothing withdrawn by hand.
     accepted(client, pid, {"kind": "set_survey", "estimand": "sample"})
-    survey_id = next(r["id"] for r in client.get(f"/api/projects/{pid}").json()["decisions"]
-                     if r["decision"]["kind"] == "set_survey")
     finish(client, pid)
     code, body = post(client, pid, {"kind": "set_purpose", "purpose": "inference"})
     assert code == 200, body
-    accepted(client, pid, {"kind": "revert", "decision_id": survey_id})
+    assert body["state"]["survey"] is None
     assert step(client, pid, "survey")["status"] == "open"
     wait_for(client, pid, {"fit": "fresh"}, timeout=240)
     model = linear_model(client, pid)
