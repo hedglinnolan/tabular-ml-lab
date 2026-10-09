@@ -121,8 +121,10 @@ def test_an_unanswered_purpose_reads_every_column_as_analyzed():
 
 def test_every_default_the_quest_log_can_state_has_a_would_change_test():
     # The questions the Router states today (``interview.route``'s skipped gates) that land in a
-    # Confirm, every Confirm declaration and finding, and what the values settled.
-    stated = {"grain", "repeat_kind", "follow_up", "form", "modification", "causal"}
+    # Confirm (the study design, observational until it is answered, among them), every Confirm
+    # declaration and finding (the validation scheme set with the draw under Predict among them),
+    # and what the values settled.
+    stated = {"grain", "repeat_kind", "follow_up", "form", "modification", "causal", "design"}
     assert not {k for k in stated if quest.STATED.get(k) == "For the record"}
     confirms = {d.kind for d in quest.DECLARATIONS if d.place.label == "Confirm"}
     findings = {k for k, p in quest.EXPLORE_FINDINGS.items() if p.label == "Confirm"}

@@ -194,10 +194,18 @@ WOULD_CHANGE: dict[str, WouldChange] = {
     "modification": _modifier_changes,
     "causal": _always("A causal estimator, such as double machine learning, reports its own "
                       "estimate of the effect."),
+    # P0.6 (crosswalk disagreement 10): observational until the design is answered. A trial or a
+    # matched case-control study is analyzed another way (``designs.DESIGNS``), so the estimates
+    # read as observational would not be that design's.
+    "design": _always("A trial or a matched case-control study is analyzed another way, so the "
+                      "estimates here would not be the ones for that design."),
     # The Confirm declarations and findings (``quest.DECLARATIONS``, ``quest.EXPLORE_FINDINGS``).
     "set_multiplicity": _multiplicity_changes,
     "set_levers": _always("An in-fold rule (a spline, a variance filter, an imbalance correction) "
                           "changes what each model is fit on."),
+    # P0.6 (disagreement 5): the scheme set with the draw, under Predict.
+    "set_validation": _always("Another scheme (more folds, repeated folds, the bootstrap) "
+                              "changes the cross-validated scores and how much they vary."),
     "low_variance": _always("Keeping or dropping the near-constant predictors changes the models' "
                             "inputs."),
     # What the values settled (``readings.read_from_data``), Your data's line.

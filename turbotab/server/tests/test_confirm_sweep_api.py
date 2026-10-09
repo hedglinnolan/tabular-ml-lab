@@ -54,11 +54,15 @@ def test_each_stage_sweeps_what_would_change_a_number_and_confirm_all_is_recorde
 
     # ── per stage, the defaults whose alternative would change a number, last ──
     sweeps = {k: s["sweep"] and s["sweep"]["id"] for k, s in stages.items()}
-    assert sweeps == {"data": "other:confirm-sweep:data", "question": None, "first_look": None,
+    assert sweeps == {"data": "other:confirm-sweep:data",
+                      "question": "other:confirm-sweep:question", "first_look": None,
                       "whos_in": "other:confirm-sweep:whos_in", "models": "other:confirm-sweep",
                       "results": None, "writeup": None}
     # Who's in: each SEQN is one person (stated, not asked); Models: no modifier declared, and the
     # primary model alone with the causal estimators one step away.
+    assert confirms(stages["question"]) == ["design"]
+    [design] = [l for l in stages["question"]["lines"] if l["key"] == "design"]
+    assert "trial" in design["would_change"]
     assert confirms(stages["whos_in"]) == ["grain"]
     assert confirms(stages["models"]) == ["modification", "causal"]
     for key in ("whos_in", "models"):
