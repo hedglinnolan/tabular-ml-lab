@@ -30,6 +30,7 @@ import pandas as pd
 import turbotab.core.models  # noqa: F401 - registers the families and their previews
 from turbotab.core.graph import Bundle, StageContext
 from turbotab.core.jobs import Cancelled
+from turbotab.core.row_floor import stage_exits
 from turbotab.core.stages.data import open_store
 
 SUBSTITUTION_ROWS = 5_000
@@ -496,12 +497,15 @@ def design_stage(ctx: StageContext) -> Bundle:
         X = modeling_frame(store, list(dict.fromkeys([*input_columns(predictors, adj),
                                                       *batch_inputs(state)])), design_ids)
         info = {c.name: c for c in store.info().columns}  # every row's summary: as the cohort reads it
-        if (adj is not None and adj.method == "residual_energy_dropped" and not inference
+        if (adj is not None and adj.method == "residual_energy_dropped"
                 and state.target in store.columns):
-            # The gap the energy-dropped residual opens on these rows (audit ME-03). Under
-            # inference both numbers are the outcome model's estimates, which wait for the plan's
-            # lock (calm/FOUNDATION §5 rule 6) where this stage cannot see it: the warning then
-            # says what the form does without them (:data:`DROPPED_ENERGY`).
+            # The gap the energy-dropped residual opens on these rows (audit ME-03). Both numbers
+            # are the outcome model's estimates: under prediction the warning quotes them; under
+            # inference, or with the purpose unanswered (the strictest case), they wait for the
+            # plan's lock (calm/FOUNDATION §5 rule 6), which this stage does not read (a lock
+            # recomputes nothing). The warning then says what the form does without them
+            # (:data:`DROPPED_ENERGY`), and the gap is kept beside the design for the server to
+            # serve in its place once the plan is locked (:func:`design_as_served`).
             y_rows = store.materialize([state.target], design_ids)[state.target]
         # MS7: a batch perfectly confounded with the outcome is refused under both purposes.
         confounded = batch_refusal(state, store, design_ids, task)
@@ -562,9 +566,17 @@ def design_stage(ctx: StageContext) -> Bundle:
                 f"{role}, so each nutrient's coefficient is at fixed total energy (the standard "
                 f"model), not an absolute intake. Give {c} the energy role to choose the energy "
                 f"model, or leave it out for the unadjusted one.")
+    withheld = None
     if y_rows is not None:
-        warnings_list.extend(_residual_gap(state, task, spec, X, matrix, y_rows, info, rows_word))
-    elif inference and adj is not None and adj.method == "residual_energy_dropped":
+        gap = _residual_gap(state, task, spec, X, matrix, y_rows, info, rows_word)
+        if state.purpose == "prediction":
+            warnings_list.extend(gap)
+        else:
+            said = DROPPED_ENERGY.format(E=adj.energy_column)
+            warnings_list.append(said)
+            withheld = {"said": said, "gap": gap} if gap else None
+    elif state.purpose != "prediction" and adj is not None and \
+            adj.method == "residual_energy_dropped":
         warnings_list.append(DROPPED_ENERGY.format(E=adj.energy_column))
 
     ctx.progress(0.8, "Building each model's pipeline")
@@ -592,7 +604,8 @@ def design_stage(ctx: StageContext) -> Bundle:
     return Bundle(
         data=artifact.model_dump(mode="json"),
         frames={"training": pd.DataFrame({"row_id": train_ids.astype(np.int64)})},
-        objects={"pipelines": pipelines, "spec": spec.to_dict(), "nested": nested},
+        objects={"pipelines": pipelines, "spec": spec.to_dict(), "nested": nested,
+                 **({WITHHELD_GAP: withheld} if withheld else {})},
         files=_matrix_file(ctx, matrix),
     )
 
@@ -627,10 +640,31 @@ def _coef(value: float) -> str:
     return f"{value:+.3g}".replace("-", "−")
 
 
-# The energy-dropped residual under inference, said without the outcome model's coefficients (the
-# design stage cannot see the plan's lock, and under inference no estimate appears before it).
+# The energy-dropped residual under inference or an unanswered purpose, said without the outcome
+# model's coefficients (the design stage does not read the plan's lock, and no estimate appears
+# before it); the gap itself is kept in the design's objects under :data:`WITHHELD_GAP`.
 DROPPED_ENERGY = ("{E} left the outcome model: each nutrient's coefficient is the standard model's "
                   "(with {E} kept) only when no covariate correlates with {E}.")
+WITHHELD_GAP = "withheld_gap"
+
+
+def design_as_served(data: Any, objects: Mapping[str, Any] | None, state: Any) -> Any:
+    """The design artifact as a client is served it (audit ME-03). Once the outcome model's
+    estimates may be seen (``consequences.estimates_unseen`` false: the purpose answered as
+    prediction, or the analysis plan locked), the energy-dropped residual's gap the stage kept
+    beside the design (``objects[WITHHELD_GAP]``) takes the place of the line that withheld it;
+    before then, and without a kept gap, ``data`` as it is. ``data`` is never changed in place
+    (the server remembers artifacts)."""
+    from turbotab.core.consequences import estimates_unseen
+
+    held = (objects or {}).get(WITHHELD_GAP)
+    if not held or not isinstance(data, Mapping) or estimates_unseen(state):
+        return data
+    said, gap = held.get("said"), [str(g) for g in held.get("gap") or []]
+    warnings = list(data.get("warnings") or [])
+    if said not in warnings:
+        return data
+    return {**data, "warnings": [g for w in warnings for g in (gap if w == said else [w])]}
 
 
 def _residual_gap(state: Any, task: str, spec: Any, X: pd.DataFrame, matrix: pd.DataFrame,
@@ -1091,7 +1125,7 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                          passive=imputing and task in ("ordinal", "multiclass"),
                          clustered=imputing and clustered)
     if held is not None:
-        return TableMissing(refusal=held[0], exits=held[1])
+        return TableMissing(refusal=held[0], exits=stage_exits(held[1], ctx))
     strategy = answer.get("strategy")
     m = int(answer.get("m") or M_DEFAULT)
     if strategy == "multiple_imputation":
@@ -1157,8 +1191,16 @@ def _missing_for_table(ctx: StageContext, spec: Any, X: pd.DataFrame, y: Any, ta
                 exits.append({"label": "Complete cases, with their assumption stated",
                               "decision": {**answer, "kind": "set_missing",
                                            "strategy": "complete_case"}})
+                # A column with too few values to impute from can be left out, and the copies drawn
+                # without it (where complete cases on it would leave too few rows, the only way).
+                left = [c for c in _leavable(state, getattr(exc, "columns", None) or [])
+                        if c not in (answer.get("drop_columns") or [])]
+                if left:
+                    exits.append({"label": f"Leave {', '.join(f'`{c}`' for c in left)} out",
+                                  "decision": {**answer, "kind": "set_missing", "drop_columns": [
+                                      *(answer.get("drop_columns") or []), *left]}})
             return TableMissing(refusal=f"Multiple imputation cannot run on these data: {exc}",
-                                exits=exits)
+                                exits=stage_exits(exits, ctx))
         return TableMissing(imputations=imputations)
     if strategy == "complete_case":
         if loss is None:
@@ -1220,6 +1262,20 @@ def imputed_copies_column(state: Any) -> str | None:
     return str(rk.implicate_column)
 
 
+def _leavable(state: Any, columns: Sequence[str]) -> list[str]:
+    """Of ``columns``, those an exit may leave out of the analysis: never an exposure (by its role,
+    or the estimand's), whose effect is the table's question."""
+    from turbotab.core.estimand import exposures_of
+
+    roles = getattr(state, "roles", None) or {}
+    spec = getattr(state, "estimand", None)
+    try:
+        declared = set(exposures_of(state, spec)) if spec is not None else set()
+    except Exception:  # noqa: BLE001 - an estimand that names no exposure yet holds none back
+        declared = set()
+    return [c for c in columns if roles.get(c) != "exposure" and c not in declared]
+
+
 def _copies_for_table(ctx: StageContext, spec: Any, frame: pd.DataFrame, implicate: str, y: Any,
                       unit_columns: Sequence[str]) -> tuple[TableMissing, Any]:
     """The data's own imputed copies as the table's completed copies (each with its own outcome),
@@ -1236,13 +1292,22 @@ def _copies_for_table(ctx: StageContext, spec: Any, frame: pd.DataFrame, implica
     answer = spec.missing or (state.missing.model_dump(mode="json") if state.missing else None)
     blanks = [c for c in spec.inputs if c in frame.columns and frame[c].isna().any()]
     if blanks and (answer or {}).get("strategy") != "complete_case":
+        # leaving the blank columns out, where none is an exposure: no blank is left to remove rows
+        leave = blanks if _leavable(state, blanks) == blanks else []
         return TableMissing(
             refusal=(f"The rows are the data's imputed copies, and {', '.join(f'`{c}`' for c in blanks[:3])}"
                      f" still {'has' if len(blanks) == 1 else 'have'} blanks inside them; imputing "
                      f"within each copy (nested imputation) is not built here."),
-            exits=[{"label": "Complete cases within each copy",
+            exits=stage_exits([
+                {"label": "Complete cases within each copy",
+                 "decision": {**(answer or {}), "kind": "set_missing",
+                              "strategy": "complete_case"}},
+                *([{"label": f"Leave {', '.join(f'`{c}`' for c in leave[:3])}"
+                             f"{f' and {len(leave) - 3:,} more' if len(leave) > 3 else ''} out",
                     "decision": {**(answer or {}), "kind": "set_missing",
-                                 "strategy": "complete_case"}}]), INDEPENDENT
+                                 "strategy": "complete_case",
+                                 "drop_columns": [*((answer or {}).get("drop_columns") or []),
+                                                  *leave]}}] if leave else [])], ctx)), INDEPENDENT
     copies = supplied_copies(frame, implicate, unit, list(spec.inputs), y)
     return TableMissing(imputations=copies), INDEPENDENT
 
@@ -2509,8 +2574,16 @@ def substitution_stage(ctx: StageContext) -> dict[str, Any]:
             blanks=[c for c in inputs if X_fit[c].isna().any()],
             gaps=[c for c in inputs if c not in (spec.levels or []) and X_fit[c].isna().any()],
             copies=imputed is not None, models=chosen, task=task)
+    if held is None and on_every_row and drawable and survey_design is None:
+        # MS4 (MODELING_SEQUENCE §4): the surveyed population declared and its design refused (a
+        # grouping whose rows span PSUs): the fit reports no coefficient, and no curve is drawn as
+        # these participants' in its place; each is blocked with the table's refusal and exits.
+        from turbotab.core.methods.substitution import design_block
+
+        held = design_block(ctx.state, fit.data)
     if held is not None:
         refused_why, refused_exits, _ = held
+        refused_exits = stage_exits(refused_exits, ctx)
         blank = substitution_curve(lambda frame: np.zeros(len(frame)), X, donor=sub.donor,
                                    recipient=sub.recipient, kcal_per_unit=kcal_per_unit, ks=ks,
                                    total_kind="variable", nested=nested, total=total_energy,
@@ -3275,5 +3348,6 @@ def _in_outcome_unit(label: str | None, unit: str | None) -> str | None:
     return f"{head}{unit} per {tail}" if unit == "%" else f"{head} {unit} per {tail}"
 
 
-__all__ = ["design_stage", "fit_stage", "pinned_to_full_fit", "read_assignment", "row_ids_of",
-           "shelf_stage", "substitution_pairs", "substitution_stage"]
+__all__ = ["DROPPED_ENERGY", "WITHHELD_GAP", "design_as_served", "design_stage", "fit_stage",
+           "pinned_to_full_fit", "read_assignment", "row_ids_of", "shelf_stage",
+           "substitution_pairs", "substitution_stage"]

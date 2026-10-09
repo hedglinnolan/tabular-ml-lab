@@ -28,6 +28,7 @@ from turbotab.core.consequences import (
     fmt_count, fmt_value, lineage_of, register_consequence,
 )
 from turbotab.core.decisions import ROW_ID, MissingSpec, ProjectState
+from turbotab.core.plan_previews import specifies_the_model
 from turbotab.core.stages.rows import (
     PREDICTOR_ROLES, cohort_flow, cohort_flows, domain_of, draw_split, landmark_of, predictors,
     repair_rules, rule_drops, rule_keep,
@@ -263,7 +264,7 @@ def missing_views(decision: Any, ctx: PreviewContext) -> list[Any]:
             if len(ranked) <= 2:
                 said = ", ".join(f"`{c}` → `{_shown(fills.get(c))}`" for c in ranked)
                 caption = f"No rows leave; blanks are filled: {said}."
-            ctx.caution = _not_asked_caution(ctx, ranked, gaps, fills)
+            ctx.caution = _not_asked_caution(ctx, decision, ranked, gaps, fills)
     if levels and not ranked:  # every blank left is a level: say so rather than "no blanks"
         caption = f"No rows leave: blanks in {_names(levels)} stay as a level of their own."
     views.append(RowFlowView(
@@ -415,12 +416,21 @@ def _shown(value: Any) -> str:
     return str(value)
 
 
-def _not_asked_caution(ctx: PreviewContext, ranked: list[str], gaps: dict[str, int],
-                       fills: dict[str, Any]) -> Any:
+def _not_asked_caution(ctx: PreviewContext, decision: Any, ranked: list[str],
+                       gaps: dict[str, int], fills: dict[str, Any]) -> Any:
     """Filling a column whose blanks mean "not asked" asserts an answer nobody gave
-    (DRIVE_RUBRIC §4): say what it would write, and offer to leave the columns out instead."""
+    (DRIVE_RUBRIC §4): say what it would write, and offer to leave the columns out instead.
+
+    Each exit is offered only where the record accepts it (``row_floor.accepted_exit``, on the
+    record's own context when the server gives it): leaving the columns out with complete cases
+    for the other blanks (the missing-values question's own offer), else, where those complete
+    cases would leave too few rows or one outcome value, leaving them out with the other blanks
+    filled as previewed; and blanks kept as their own level."""
     from turbotab.core.consequences import Caution, CautionExit
     from turbotab.core.decisions import SetMissing
+    from turbotab.core.row_floor import accepted_exit
+
+    record = ctx.settings.get("validation") or {"state": ctx.state}
 
     proposals = ctx.artifact("proposals")
     data = getattr(proposals, "data", proposals)
@@ -437,13 +447,20 @@ def _not_asked_caution(ctx: PreviewContext, ranked: list[str], gaps: dict[str, i
             f"though a blank there likely means the question was not asked.") if one else (
             f"Imputing asserts answers nobody gave: blank {joined}, the most common value, though "
             f"a blank there likely means the question was not asked.")
+    them = "it" if one else "them"
     leave = SetMissing(strategy="complete_case", drop_columns=likely)  # the question's own offer
-    exits = [CautionExit(label=f"Leave {'it' if one else 'them'} out first",
-                         decision=leave.model_dump(mode="json"))]
+    filled = SetMissing(**{**decision.model_dump(exclude={"kind"}), "drop_columns": likely})
+    exits: list[Any] = []
+    for label, way in ((f"Leave {them} out first", leave),
+                       (f"Leave {them} out and fill the other blanks", filled)):
+        if accepted_exit(way, record) is not None:
+            exits.append(CautionExit(label=label, decision=way.model_dump(mode="json")))
+            break
     probe = ctx.state.model_copy(update={"missing": MissingSpec(strategy="impute",
                                                                 categorical="missing_category")})
-    if set(likely) <= set(_level_columns(ctx, probe, likely)):
-        level = SetMissing(strategy="impute", categorical="missing_category")
+    level = SetMissing(strategy="impute", categorical="missing_category")
+    if (set(likely) <= set(_level_columns(ctx, probe, likely))
+            and accepted_exit(level, record) is not None):
         exits.append(CautionExit(label="Keep blanks as their own level",
                                  decision=level.model_dump(mode="json")))
     return Caution(text=text, exits=exits)
@@ -725,10 +742,12 @@ def roles_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     )]
 
 
-register_consequence("set_exclusions", exclusions_views)
-register_consequence("set_missing", missing_views)
+# What enters the outcome model and the rows it is estimated on: beside each, what the surveyed
+# population blocks of that model (MODELING_SEQUENCE §4; ``plan_previews.specifies_the_model``).
+register_consequence("set_exclusions", specifies_the_model(exclusions_views))
+register_consequence("set_missing", specifies_the_model(missing_views))
 register_consequence("set_split", split_views)
-register_consequence("set_roles", roles_views)
+register_consequence("set_roles", specifies_the_model(roles_views))
 
 __all__ = ["exclusions_views", "missing_views", "roles_views", "seal_exits", "sealed_rows",
            "split_views"]

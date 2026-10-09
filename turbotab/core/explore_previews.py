@@ -21,7 +21,9 @@ answer does to the model the user is building, drawn on their own rows in the cl
 
 Each is prediction's choice (refused, or a sensitivity analysis, under inference), so a preview
 reads the training rows' outcome only where the stage does (an inner choice of form, a selection,
-the intercept after shrinkage), never a held-out row (``ctx.training_row_ids``).
+the intercept after shrinkage), never a held-out row (``ctx.training_row_ids``). While the purpose
+is unanswered nothing read from the outcome model is drawn (``consequences.estimates_unseen``:
+the strictest case); the preview says so and names the purpose question, which settles it.
 
 Importing this module registers the builders.
 """
@@ -34,11 +36,11 @@ import pandas as pd
 
 from turbotab.core.consequences import (
     DistributionView, LineageView, Mark, PreviewContext, RelationshipView, RowFlowView, RowStep,
-    after_state, fmt_count, register_consequence,
+    after_state, estimates_unseen, fmt_count, register_consequence,
 )
 from turbotab.core.plan_previews import (
-    Design, caption, drawn, fit_design, histogram, lineage_change, moved, num, points, pool,
-    rows_word, tick, title,
+    Design, cannot_draw, caption, drawn, fit_design, histogram, lineage_change, moved, num, points,
+    pool, prediction_first, rows_word, tick, title,
 )
 
 
@@ -96,6 +98,15 @@ def _pair(decision: Any, ctx: PreviewContext) -> tuple[Any, Design | None, Desig
     return after, fit_design(ctx, ctx.state, ids), then, ids
 
 
+def prediction_only(what: str) -> str:
+    """The line of a prediction answer previewed under inference where the server's refusal is not
+    at hand (its validators need more of the server's context): the purpose question settles it."""
+    from turbotab.core.voice import question_name
+
+    return (f"{what} belongs to prediction: under inference nothing is chosen from the rows the "
+            f"estimates report on, which {question_name('purpose')} settles.")
+
+
 # ── set_levers ───────────────────────────────────────────────────────────────
 
 
@@ -104,14 +115,32 @@ def levers_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     if found is None:
         return []
     after, now, then, _ = found
+    if (decision.forms, decision.variance_filter, decision.imbalance) == ("none", "none", "none"):
+        # No lever chooses anything, under any purpose: the model as declared (never an empty
+        # canvas, calm/FOUNDATION §5 rule 7).
+        return [LineageView(
+            title=title("No lever: every predictor as declared"),
+            caption=caption("Every predictor enters the model as declared; no form, filter or "
+                            "class weighting is chosen in the training folds."),
+            emphasis=[], before=then.lineage, after=then.lineage)]
     if getattr(after, "purpose", None) == "inference":
-        return []
+        # The server refuses a lever under inference (``levers_not_inference``): its words.
+        return cannot_draw(decision, ctx, prediction_only("A lever"))
     task = str(after.task or "regression")
     outcome = _outcome(ctx, after, then.matrix.index)
     y, keep = outcome if outcome is not None else (None, None)
     views: list[Any] = []
-    lineage, steps = explored(then, task, y, keep)
-    before = explored(now, task, y, keep)[0] if now is not None else None
+    # Inner cross-validation chooses each predictor's bends by the outcome model's fit: with the
+    # purpose unanswered it is not drawn (the rule's knots and the filter read the predictors only).
+    inner = "inner_cv" in (getattr(decision, "forms", None),
+                           getattr(getattr(ctx.state, "levers", None), "forms", None))
+    steps: list[Any] = []
+    if inner and estimates_unseen(ctx.state):
+        ctx.read["note"] = prediction_first("Inner cross-validation chooses each predictor's bends "
+                                            "from the outcome model")
+    else:
+        lineage, steps = explored(then, task, y, keep)
+        before = explored(now, task, y, keep)[0] if now is not None else None
     if steps:
         arrive, leave = lineage_change(before, lineage)
         parts = []
@@ -178,7 +207,20 @@ def selection_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         return []
     after, now, then, _ = found
     label = LABELS.get(decision.method, "Selection")
-    if getattr(after, "purpose", None) == "inference" or decision.sensitivity:
+    inference = getattr(after, "purpose", None) == "inference"
+    if decision.method == "none" and not decision.sensitivity and (
+            inference or estimates_unseen(ctx.state)):
+        # Nothing is selected, and under inference nothing runs beside the declared model either;
+        # with the purpose unanswered what a selection would keep is not read (the strictest case).
+        return [LineageView(
+            title=title("No selection: every term enters"),
+            caption=caption("Every candidate predictor enters the model as the design builds "
+                            "it."), emphasis=[], before=then.lineage, after=then.lineage)]
+    if inference and not decision.sensitivity:
+        # The server refuses selecting the reported model under inference, and offers the labeled
+        # sensitivity analysis (``selection_not_for_inference``): its words and its exit.
+        return cannot_draw(decision, ctx, prediction_only("Selecting the reported model"))
+    if inference or decision.sensitivity:
         # The declared model is the reported one; the selection runs beside it as a labeled
         # sensitivity analysis whose tests are estimates, withheld until the plan is answered.
         return [LineageView(
@@ -186,6 +228,11 @@ def selection_views(decision: Any, ctx: PreviewContext) -> list[Any]:
             caption=caption(f"Every declared term stays; a labeled sensitivity analysis runs "
                             f"beside it: {label}."),
             emphasis=[], before=then.lineage, after=then.lineage)]
+    if estimates_unseen(ctx.state):
+        # The purpose unanswered: what a selection keeps is read from the outcome model.
+        ctx.read["note"] = prediction_first("Which columns the selection keeps is read from the "
+                                            "outcome model")
+        return []
     task = str(after.task or "regression")
     outcome = _outcome(ctx, after, then.matrix.index)
     if outcome is None:
@@ -260,13 +307,19 @@ def intended_use_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core.stages.evaluation import _reported
 
     after = after_state(decision, ctx)
+    if getattr(after, "purpose", None) == "inference":  # the server refuses it (``not_prediction``)
+        return cannot_draw(decision, ctx, prediction_only("An intended use"))
     ids = pool(ctx)
-    if ids is None or getattr(after, "purpose", None) == "inference":
+    if ids is None:
         return []
     views: list[Any] = []
     fit = ctx.artifact("fit")
     task = str(after.task or "regression")
-    if decision.use == "decision_support" and task == "binary" and fit is not None:
+    unseen = estimates_unseen(ctx.state)  # the fitted model's risks wait for the purpose
+    if unseen and decision.use == "decision_support":
+        ctx.read["note"] = prediction_first("The fitted model's risks, where the thresholds fall, "
+                                            "are read from the outcome model")
+    if decision.use == "decision_support" and task == "binary" and fit is not None and not unseen:
         found = _fitted(ctx, _reported(fit.data or {}))
         X = _inputs(ctx, found[0], ids) if found is not None else None
         if found is not None and X is not None:
@@ -333,8 +386,8 @@ def intended_use_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         if found_view is not None:
             views.append(found_view)
     if not views:
-        ctx.read["note"] = ("The decision curve is drawn on a yes/no outcome's out-of-fold risks "
-                            "once the models are fitted.")
+        ctx.read.setdefault("note", "The decision curve is drawn on a yes/no outcome's out-of-fold "
+                                    "risks once the models are fitted.")
     return views
 
 
@@ -346,8 +399,16 @@ def updating_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     from turbotab.core.models.linear import model_matrix
 
     after = after_state(decision, ctx)
+    if getattr(after, "purpose", None) == "inference":  # the server refuses it (``not_prediction``)
+        return cannot_draw(decision, ctx, prediction_only("Updating the model"))
     ids = pool(ctx)
-    if ids is None or getattr(after, "purpose", None) == "inference":
+    if ids is None:
+        return []
+    if estimates_unseen(ctx.state):
+        ctx.read["note"] = prediction_first(
+            "The calibration slope that shrinks the coefficients is read from the outcome model"
+            if decision.method != "none" else
+            "No updating: each prediction stays as fitted, read from the outcome model")
         return []
     found = _fitted(ctx, "linear")
     if found is None:

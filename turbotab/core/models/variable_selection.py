@@ -305,20 +305,23 @@ def complementary_pairs(Z: np.ndarray, y: np.ndarray, *, q: int, pairs: int,
 
 def elastic_net_support(Z: np.ndarray, y: np.ndarray, task: str, cv: Any, seed: int) -> np.ndarray:
     """The columns an elastic net (mixing 0.5, its penalty by inner cross-validation) keeps. The
-    penalty is chosen as the elastic-net family chooses it (``elastic_net.PooledElasticNetCV``), at
-    its tolerance on a narrow matrix and scikit-learn's on a wide one (``wide.WIDE_TOL``)."""
+    penalty is chosen as the elastic-net family chooses it (``elastic_net.PooledElasticNetCV`` and
+    ``PooledLogisticRegressionCV``: the exact path, the pooled inner loss rounded), with
+    coordinate descent at its tolerance on a matrix too wide for the exact path and scikit-learn's
+    on a wide one (``wide.WIDE_TOL``). A yes/no outcome's penalty was chosen by accuracy (scikit-
+    learn's default score), which is not a proper score; it is the log loss now, as the family's."""
     import warnings
 
-    from sklearn.linear_model import LogisticRegressionCV
-
-    from turbotab.core.models.elastic_net import SOLVER_MAX_ITER, SOLVER_TOL, PooledElasticNetCV
+    from turbotab.core.models.elastic_net import (SOLVER_MAX_ITER, SOLVER_TOL, PooledElasticNetCV,
+                                                  PooledLogisticRegressionCV)
     from turbotab.core.models.wide import WIDE_TOL, is_wide
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if task == "binary":
-            model = LogisticRegressionCV(Cs=10, penalty="elasticnet", solver="saga", l1_ratios=[0.5],
-                                         cv=cv, max_iter=5000, random_state=seed)
+            model = PooledLogisticRegressionCV(Cs=10, l1_ratios=[0.5], solver="saga", cv=cv,
+                                               scoring="neg_log_loss", max_iter=5000,
+                                               random_state=seed, use_legacy_attributes=False)
             model.fit(Z, y.astype(int))
             return np.abs(model.coef_[0]) > 1e-10
         wide = is_wide(*np.shape(Z))

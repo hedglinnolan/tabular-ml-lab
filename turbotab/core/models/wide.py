@@ -13,10 +13,11 @@ cost and not the answer:
 
 The tolerance stays sklearn's (:data:`WIDE_TOL`, with :data:`WIDE_MAX_ITER` sweeps): a looser one
 (1e-3) is ~5× faster again, but it moves the chosen penalty a grid step or more and changes which
-genes are kept. The narrow fit's 10⁻¹² (``elastic_net.SOLVER_TOL``) is below single precision's
-resolution, so it would never stop. The choice is the narrow fit's rule (the pooled inner loss,
+genes are kept. The narrow fit's exact path (``exact_path``) solves a linear system per step,
+which does not reach these widths. The choice is the narrow fit's rule (the pooled inner loss,
 rounded); losses computed in single precision carry its rounding (about 10⁻⁷), so a wide fit's
-penalty is not promised to be the same on every platform. Narrow matrices keep every default.
+penalty is not promised to be the same on every platform. Narrow matrices, and wide ones the exact
+path reaches (``elastic_net.EXACT_MAX_COLUMNS`` columns or fewer), keep the exact path.
 """
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ from typing import Any
 
 import numpy as np
 
-from turbotab.core.models.elastic_net import PooledElasticNetCV
+from turbotab.core.models.elastic_net import EXACT_MAX_COLUMNS, PooledElasticNetCV
 
 MAX_THREADS = 4
 WIDE_TOL = 1e-4  # scikit-learn's own
@@ -42,7 +43,10 @@ def fit_threads() -> int:
 
 
 class Float32ElasticNetCV(PooledElasticNetCV):
-    """:class:`PooledElasticNetCV` computed in single precision; everything else is the same."""
+    """:class:`PooledElasticNetCV` computed in single precision by coordinate descent (the exact
+    path's linear solves do not reach 20,000 columns); the choice is the same."""
+
+    exact = False
 
     def fit(self, X: Any, y: Any, sample_weight: Any = None, **params: Any) -> "Float32ElasticNetCV":
         X = X.astype(np.float32) if hasattr(X, "astype") else np.asarray(X, dtype=np.float32)
@@ -51,8 +55,9 @@ class Float32ElasticNetCV(PooledElasticNetCV):
 
 def for_wide(model: Any, n_rows: int, n_features: int) -> Any:
     """``model`` (a PooledElasticNetCV) as it should fit a matrix of this shape: itself when
-    narrow."""
-    if not is_wide(n_rows, n_features) or type(model) is not PooledElasticNetCV:
+    narrow, or when the exact path reaches its columns."""
+    if (not is_wide(n_rows, n_features) or int(n_features) <= EXACT_MAX_COLUMNS
+            or type(model) is not PooledElasticNetCV):
         return model
     wide = Float32ElasticNetCV(**model.get_params())
     return wide.set_params(n_jobs=model.n_jobs or fit_threads(), tol=WIDE_TOL,

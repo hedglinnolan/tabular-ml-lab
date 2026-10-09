@@ -353,16 +353,16 @@ def test_3b_elastic_nets_inner_cv_receives_the_same_splitter(clinical, last_visi
     """Every elastic-net fit (each outer fold and the refit) tunes its penalty on inner splits that
     forward-chain by whole subject: no subject on both sides, and every subject it learns from has
     its last visit no later than any subject it is scored on."""
-    from sklearn.linear_model import LogisticRegressionCV
+    from turbotab.core.models.elastic_net import PooledLogisticRegressionCV
 
     seen = []
-    original = LogisticRegressionCV.fit
+    original = PooledLogisticRegressionCV.fit
 
     def spy(self, X, y, *a, **k):
         seen.append((np.asarray(X.index), self.cv))
         return original(self, X, y, *a, **k)
 
-    monkeypatch.setattr(LogisticRegressionCV, "fit", spy)
+    monkeypatch.setattr(PooledLogisticRegressionCV, "fit", spy)
     _, _, split, _ = _stages(clinical, _clinical_state(models=["elastic_net"]), fit=True)
     subjects = clinical.frame(["subject_id"])["subject_id"]
     assert len(seen) == split.data["folds"] + 1

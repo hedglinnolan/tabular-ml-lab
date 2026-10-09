@@ -1013,10 +1013,13 @@ def cannot_run(tmp_path_factory):
 
 def test_3_imputation_that_cannot_run_blocks_one_curve_per_class_and_one_curve_alike(cannot_run):
     """With `age` recorded once (counted here: one observed value, so no imputation model can be
-    fit for it), multiple imputation cannot run; the table is blocked with complete cases as its
-    exit, and every family's curves take that refusal and exit, word for word, for the multiclass
-    outcome and for the yes/no outcome (the one-curve path the multiclass path inherits from).
-    With `bmi` blank on every row (counted here) the same holds, under its own refusal."""
+    fit for it), multiple imputation cannot run; the table is blocked, and every family's curves
+    take that refusal and its exits, word for word, for the multiclass outcome and for the yes/no
+    outcome (the one-curve path the multiclass path inherits from). With `bmi` blank on every row
+    (counted here) the same holds, under its own refusal. Complete cases were the exit; they would
+    keep one row and no row, which the record refuses (``row_floor``), so they are not offered
+    (the engine residue's verifier: every exit offered must be accepted). Leaving the column out,
+    the copies drawn without it, is offered instead."""
     frame = cannot_run["frame"]
     assert int(frame["age"].notna().sum()) == 1
     assert int(cannot_run["blank"]["bmi"].notna().sum()) == 0
@@ -1029,8 +1032,10 @@ def test_3_imputation_that_cannot_run_blocks_one_curve_per_class_and_one_curve_a
         table = next(m for m in out["fit"].data["models"] if m["family"] == "linear")["inference"]
         assert table["refused"] == refused, name
         exits = table["exits"]
-        assert [e["label"] for e in exits] == [COMPLETE_CASES]
-        assert exits[0]["decision"]["strategy"] == "complete_case"
+        column = "bmi" if name == "all_blank" else "age"
+        assert [e["label"] for e in exits] == [f"Leave `{column}` out"], name
+        assert exits[0]["decision"]["strategy"] == "multiple_imputation"
+        assert exits[0]["decision"]["drop_columns"] == [column]
         assert_held(out, refused, exits, HELD_NOTE, n_families=2)
 
 

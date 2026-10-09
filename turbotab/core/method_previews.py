@@ -45,7 +45,7 @@ from turbotab.core.consequences import (
 )
 from turbotab.core.plan_previews import (
     ask, block_and_record, caption, fit_design, frame_label, histogram, lineage_change, names, num,
-    points, pool, shared_edges, tick, title, whole,
+    points, pool, shared_edges, specifies_the_model, tick, title, whole,
 )
 
 TABLE_ROWS = 6
@@ -653,6 +653,8 @@ def time_varying_views(decision: Any, ctx: PreviewContext) -> list[Any]:
 
 IMPUTED_LAMBDA = ("Blanks among the model's inputs: the calibration runs inside each imputed copy "
                   "when the stage runs, so λ is not drawn here.")
+SINGLE_FILL = ("Blanks among the model's inputs: the missing-values answer decides the rows the "
+               "calibration reads, so λ is drawn when the stage runs on them.")
 
 
 def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
@@ -674,16 +676,18 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     from turbotab.core.methods.calibration import CalibrationRefused, Recalls, calibrate
     from turbotab.core.models.linear import model_matrix
     from turbotab.core.models.pipeline import DesignSpec, modeling_frame
-    from turbotab.core.stages.calibration import (_nonlinear, analysis_design, combine_rule,
-                                                  day_rows, error_prone, recall_matrix)
+    from turbotab.core.stages.calibration import (NO_LINEAR, NONE_ERROR_PRONE, _nonlinear,
+                                                  analysis_design, combine_rule, day_rows,
+                                                  error_prone, recall_matrix)
     from turbotab.core.stages.data import open_store
+    from turbotab.core.voice import listing
 
     spec_me = after.measurement_error
     design = sctx.inputs["design"]
     pipelines = design.objects["pipelines"]
     adj = after.energy_adjustment
     if "linear" not in (after.models or []) or "linear" not in pipelines:
-        return None
+        return {"withheld": NO_LINEAR}
     spec = DesignSpec.from_dict(design.objects["spec"])
     energy = adj.energy_column if adj is not None and adj.method != "none" else None
     rows = sctx.inputs["cohort"].frames["rows"]["row_id"].to_numpy(dtype=np.int64)
@@ -695,10 +699,11 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     if X_all.isna().to_numpy().any() and not complete_case:
         # Multiple imputation: the stage calibrates each copy. A single fill: the stage's own
         # missing-data handling for the inference table decides, so nothing is drawn here.
-        return {"withheld": IMPUTED_LAMBDA} if strategy == "multiple_imputation" else None
+        return {"withheld": IMPUTED_LAMBDA if strategy == "multiple_imputation" else SINGLE_FILL}
     _, survey, in_domain, weights_all = analysis_design(sctx, after, frame.index)
     if survey is not None and survey.refusal:
-        return None
+        # The stage refuses with the design's own words and exits (block and record, §4).
+        return {"refused": str(survey.refusal), "exits": list(survey.exits or [])}
     raw_columns = list(dict.fromkeys([*spec.inputs, *([energy] if energy else [])]))
     days = day_rows(sctx, raw_columns, rows)
     day_unit = days.pop("__unit").to_numpy(dtype=np.int64)
@@ -717,12 +722,20 @@ def calibration_numbers(sctx: Any, after: Any) -> dict[str, Any] | None:
     first = _Fitted(clone(template)[:-1].fit(X_all))  # the transform steps only: outcome-free
     columns = [str(c) for c in model_matrix(first, X_all).columns]
     items = error_prone(first, columns, spec.roles, energy)
-    if not items or any(_nonlinear(columns, i["feature"]) for i in items):
-        return None
+    if not items:
+        return {"withheld": NONE_ERROR_PRONE}
+    shaped = [i["feature"] for i in items if _nonlinear(columns, i["feature"])]
+    if shaped:  # the stage's refusal, shortened to the preview's one line
+        return {"withheld": f"{listing(shaped)} {'has' if len(shaped) == 1 else 'have'} a declared "
+                            f"spline or quintiles, and regression calibration here corrects a "
+                            f"linear term."}
     working = dict(getattr(sctx.inputs["working"], "data", sctx.inputs["working"]))
     raw = list(dict.fromkeys(c for i in items for c in i["inputs"]))
-    if any(combine_rule(after, working, c) != "mean" for c in raw):
-        return None
+    other = [c for c in raw if combine_rule(after, working, c) != "mean"]
+    if other:  # as the stage says it
+        return {"withheld": f"{listing(other)} {'was' if len(other) == 1 else 'were'} not combined "
+                            f"by the mean of the recalls, so the error is a single day's: combine "
+                            f"by the mean to calibrate."}
     features = [i["feature"] for i in items]
     wanted = set(spec_me.exposures)
     named = [i for i in items if i["source"] in wanted or i["feature"] in wanted]
@@ -779,19 +792,52 @@ def measurement_error_views(decision: Any, ctx: PreviewContext) -> list[Any]:
         ctx.read["note"] = ("The energy-adjusted exposures stay as each person's mean of recalls, "
                             "uncorrected.")
         return []
+    from turbotab.core.consequences import Caution, CautionExit
+    from turbotab.core.plan_previews import cannot_draw, inference_first, rows_not_ready
+    from turbotab.core.stages.calibration import unread_refusal
+
+    def refuse(reason: str, exits: Sequence[Mapping[str, Any]]) -> list[Any]:
+        """The stage's refusal, as it records it: its exits that record a decision as the caution's
+        controls, else the reason as the one line."""
+        doors = [CautionExit(label=str(e["label"]), decision=dict(e["decision"]))
+                 for e in exits if e.get("decision")]
+        if doors and ctx.caution is None:
+            ctx.caution = Caution(text=reason, exits=doors)
+        else:
+            ctx.read["note"] = reason
+        return []
+
     after = after_state(decision, ctx)
     if getattr(after, "purpose", None) != "inference":
-        return []
+        return cannot_draw(decision, ctx, inference_first("Regression calibration is declared"))
+    # What the calibration stage refuses before it reads a row (no repeated recalls; time points;
+    # declared under another adjustment set), said as the stage records it (never an empty canvas).
+    working = ctx.artifact("working")
+    working = getattr(working, "data", working)
+    if isinstance(working, Mapping):
+        structure = ctx.artifact("structure")
+        unread = unread_refusal(after, working, getattr(structure, "data", structure))
+        if unread is not None:
+            return refuse(unread["reason"], unread.get("exits") or [])
     sctx = stage_context(ctx, after, ("oriented", "findings", "structure", "working", "cohort",
                                       "design", "target_info"))
     if sctx is None:
+        ctx.read["note"] = rows_not_ready(ctx)
         return []
-    found = calibration_numbers(sctx, after)
-    if found is not None and found.get("withheld"):
+    found = calibration_numbers(sctx, after) or {}
+    if found.get("refused"):
+        return refuse(found["refused"], found.get("exits") or [])
+    if found.get("withheld"):
         ctx.read["note"] = found["withheld"]
         return []
-    good = [e for e in (found or {}).get("exposures", []) if e.get("lambda") is not None]
+    good = [e for e in found.get("exposures", []) if e.get("lambda") is not None]
     if not good:
+        # The calibration itself refused on these recalls (no one with two, a covariance that is
+        # not positive): its own words, as the stage records them.
+        ctx.read["note"] = next((str(e["refused"]) for e in found.get("exposures", [])
+                                 if e.get("refused")),
+                                "The model's columns are being read again after the last answer; "
+                                "λ is drawn once they are.")
         return []
     e = good[0]
     ctx.read["calibration"] = {x["feature"]: x["lambda"] for x in good}
@@ -935,7 +981,7 @@ register_consequence("set_usual_intake", usual_intake_views)
 register_consequence("set_causal", causal_views)
 register_consequence("set_time_varying", time_varying_views)
 register_consequence("set_measurement_error", measurement_error_views)
-register_consequence("set_batch", batch_views)
+register_consequence("set_batch", specifies_the_model(batch_views))
 
 __all__ = ["batch_share", "calibration_numbers", "causal_numbers", "lane_weights",
            "quantile_histogram", "scale_numbers"]
