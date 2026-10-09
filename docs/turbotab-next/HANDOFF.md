@@ -40,7 +40,7 @@ The release track also landed: the legacy app is retired, with its references in
   - what is left out of the results section goes to the supplement and stays in the record.
 
   This keeps the curation from becoming selective reporting.
-- `calm/FOUNDATION.md` §3 and §6 still describe the Q&A card as the baseline, and must be updated.
+- `calm/FOUNDATION.md` was rewritten for the quest log on 2026-10-08 (merged with the calm kit at 0fc1d57c). BLUEPRINT §11 and §11.4 still describe the older objective list by guideline section; follow FOUNDATION where they differ.
 
 The magic is designed in `understanding/UNDERSTANDING_LAYER.md`: 367 threads in 17 families, with sentinels and a coverage test. It is **not built yet**; about one thread in five has engine pieces.
 
