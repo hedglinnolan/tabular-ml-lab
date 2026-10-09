@@ -60,6 +60,12 @@ def wait_for(client: TestClient, pid: str, want: dict[str, str], timeout: float 
         stages = view["stages"]
         if all(stages[name]["status"] == status for name, status in want.items()):
             return view
+        if any(stages[name].get("held") == "fit" for name, status in want.items()
+               if status == "fresh"):
+            # A fit the scheduler holds for Fit waits for the press, as the user gives it (P0.8).
+            from turbotab.core.tests.acceptance.server_drive import press_fit
+
+            press_fit(client, pid)
         for name, status in want.items():
             if status != "error" and stages[name]["status"] == "error":
                 pytest.fail(f"{name} failed: {stages[name]['error']}")
@@ -94,6 +100,10 @@ def dietary(client) -> str:
 
 
 def _artifact(client: TestClient, pid: str, stage: str) -> dict:
+    from turbotab.core.tests.acceptance.server_drive import estimate_stage, press_fit
+
+    if estimate_stage(stage):
+        press_fit(client, pid)  # served only after Fit (P0.8), as the user opens Results
     return client.get(f"/api/projects/{pid}/stages/{stage}").json().get("artifact") or {}
 
 

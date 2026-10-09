@@ -23,7 +23,8 @@ Each is prediction's choice (refused, or a sensitivity analysis, under inference
 reads the training rows' outcome only where the stage does (an inner choice of form, a selection,
 the intercept after shrinkage), never a held-out row (``ctx.training_row_ids``). While the purpose
 is unanswered nothing read from the outcome model is drawn (``consequences.estimates_unseen``:
-the strictest case); the preview says so and names the purpose question, which settles it.
+the strictest case); the preview says so and names the purpose question, which settles it. Under
+prediction nothing is drawn from it before Fit is pressed (SIZING P0.8), and the preview says so.
 
 Importing this module registers the builders.
 """
@@ -135,9 +136,9 @@ def levers_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     inner = "inner_cv" in (getattr(decision, "forms", None),
                            getattr(getattr(ctx.state, "levers", None), "forms", None))
     steps: list[Any] = []
-    if inner and estimates_unseen(ctx.state):
+    if inner and estimates_unseen(ctx.state, ctx.fit_pressed):
         ctx.read["note"] = prediction_first("Inner cross-validation chooses each predictor's bends "
-                                            "from the outcome model")
+                                            "from the outcome model", ctx.state)
     else:
         lineage, steps = explored(then, task, y, keep)
         before = explored(now, task, y, keep)[0] if now is not None else None
@@ -209,7 +210,7 @@ def selection_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     label = LABELS.get(decision.method, "Selection")
     inference = getattr(after, "purpose", None) == "inference"
     if decision.method == "none" and not decision.sensitivity and (
-            inference or estimates_unseen(ctx.state)):
+            inference or estimates_unseen(ctx.state, ctx.fit_pressed)):
         # Nothing is selected, and under inference nothing runs beside the declared model either;
         # with the purpose unanswered what a selection would keep is not read (the strictest case).
         return [LineageView(
@@ -228,10 +229,10 @@ def selection_views(decision: Any, ctx: PreviewContext) -> list[Any]:
             caption=caption(f"Every declared term stays; a labeled sensitivity analysis runs "
                             f"beside it: {label}."),
             emphasis=[], before=then.lineage, after=then.lineage)]
-    if estimates_unseen(ctx.state):
+    if estimates_unseen(ctx.state, ctx.fit_pressed):
         # The purpose unanswered: what a selection keeps is read from the outcome model.
         ctx.read["note"] = prediction_first("Which columns the selection keeps is read from the "
-                                            "outcome model")
+                                            "outcome model", ctx.state)
         return []
     task = str(after.task or "regression")
     outcome = _outcome(ctx, after, then.matrix.index)
@@ -315,10 +316,10 @@ def intended_use_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     views: list[Any] = []
     fit = ctx.artifact("fit")
     task = str(after.task or "regression")
-    unseen = estimates_unseen(ctx.state)  # the fitted model's risks wait for the purpose
+    unseen = estimates_unseen(ctx.state, ctx.fit_pressed)  # the fitted model's risks wait for the purpose
     if unseen and decision.use == "decision_support":
         ctx.read["note"] = prediction_first("The fitted model's risks, where the thresholds fall, "
-                                            "are read from the outcome model")
+                                            "are read from the outcome model", ctx.state)
     if decision.use == "decision_support" and task == "binary" and fit is not None and not unseen:
         found = _fitted(ctx, _reported(fit.data or {}))
         X = _inputs(ctx, found[0], ids) if found is not None else None
@@ -404,11 +405,11 @@ def updating_views(decision: Any, ctx: PreviewContext) -> list[Any]:
     ids = pool(ctx)
     if ids is None:
         return []
-    if estimates_unseen(ctx.state):
+    if estimates_unseen(ctx.state, ctx.fit_pressed):
         ctx.read["note"] = prediction_first(
             "The calibration slope that shrinks the coefficients is read from the outcome model"
             if decision.method != "none" else
-            "No updating: each prediction stays as fitted, read from the outcome model")
+            "No updating: each prediction stays as fitted, read from the outcome model", ctx.state)
         return []
     found = _fitted(ctx, "linear")
     if found is None:

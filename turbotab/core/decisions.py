@@ -1784,11 +1784,14 @@ class Reseal(_DecisionModel):
 class LockPlan(_DecisionModel):
     """The inference analysis-plan lock (audit WP16, RO-12; MODELING_SEQUENCE §1 row 12).
 
-    Recorded by the server when inference estimates are first displayed (or by the user, before
-    that): the plan in force then is what was declared in the software before any estimate was
-    displayed, and every later decision is marked as made after the estimates were seen. ``plan``
+    Recorded by the server when Fit is pressed (SIZING P0.8; before P0.8, when inference
+    estimates were first displayed), never posted by a client: the plan in force then is what was
+    declared in the software before any estimate was displayed, and every later decision is marked
+    as made after the estimates were seen. ``plan``
     (every slot the estimates read, as it stood) and ``digest`` (its SHA-256) are filled by the
-    server. The lock is never undone.
+    server. A client never undoes it; the server withdraws it (a revert it records itself) only
+    while no estimate has been served under it, on Cancel or a change to the plan
+    (calm/FOUNDATION §7), and the next press of Fit records a new one.
     """
 
     kind: Literal["lock_plan"] = "lock_plan"
@@ -2068,7 +2071,8 @@ class ProjectState(BaseModel):
     # Whether the current outcome's seal is open: its latest opening stands and no re-seal came
     # after it (audit WP16, RO-05). None for a new outcome's seal, or after a re-seal.
     seal_opened: bool | None = None
-    # The inference analysis plan was locked when its estimates were first displayed (RO-12).
+    # The inference analysis plan was locked, when Fit was pressed, before its estimates were
+    # displayed (RO-12; P0.8).
     plan_locked: bool | None = None
     findings: dict[str, FindingDisposition] | None = None  # finding id -> its disposition
     # WP1 (audit §5): what values mean
@@ -5354,6 +5358,7 @@ class DecisionLog:
         decision: Any,
         note: str | None = None,
         sentence: Callable[[Any, ProjectState], str | None] | None = None,
+        after_estimates: bool | None = None,
     ) -> DecisionRecord:
         """Append ``decision``; ``sentence(decision, state_before)`` authors the record's sentence.
 
@@ -5361,6 +5366,9 @@ class DecisionLog:
         record. A sentence that fails is logged and left unset: the answer is still recorded.
         The record is marked, and its sentence led, by what had been seen when it was made: held-out
         scores (``post_seal``) and the inference estimates (``after_estimates``; :func:`disclose`).
+        ``after_estimates``: whether the estimates had been seen, as the server knows it (False
+        under a lock no estimate has been shown under; SIZING P0.8); None, whether the plan was
+        locked before this record.
         """
         decision = parse_decision(decision)
         with self._lock:
@@ -5380,7 +5388,9 @@ class DecisionLog:
                     except Exception:  # noqa: BLE001 - a missing sentence never loses an answer
                         log.exception("no sentence for a %s decision", decision.kind)
                         text = None
-                post_seal, after_estimates = opened_ever(existing), bool(before.plan_locked)
+                post_seal = opened_ever(existing)
+                if after_estimates is None:
+                    after_estimates = bool(before.plan_locked)
                 if isinstance(text, str):
                     text = disclose(text, post_seal=post_seal, after_estimates=after_estimates)
                 record = DecisionRecord(

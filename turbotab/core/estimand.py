@@ -1403,17 +1403,21 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
     """``artifact`` with every estimate removed and the reason first: the coefficient tables, their
     tests and intervals; curves; refits. Under inference the outcome model's fit statistics wait
     too (:data:`SCORES_WITHHELD`); under prediction (a follow-up question unanswered) they stay,
-    since there they are the result."""
+    since there they are the result, unless the gate withholds scores too (``scores``: before Fit
+    is pressed, or with no purpose; ``fit_press.serving_gate``). ``withheld_for`` names what it
+    waits for: the question, or ``fit``."""
     if not isinstance(artifact, dict):
         return artifact
     out = dict(artifact)
     reason = str(gate["reason"])
     out["withheld"] = reason
+    out["withheld_for"] = gate.get("question")
     inference = gate.get("purpose") == "inference"
+    scores = inference or bool(gate.get("scores"))
     if stage == "fit":
         models = []
         for m in out.get("models") or []:
-            m = without_scores(m) if inference else dict(m)
+            m = without_scores(m) if scores else dict(m)
             info = m.get("inference") or {}
             if info.get("refused") and not m.get("coefficients"):
                 # Already refused with its own reason and exits (an unanswered survey question, a
@@ -1427,7 +1431,7 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
                              *(m.get("concerns") or [])]
             models.append(m)
         out["models"] = models
-        if inference:
+        if scores:
             for key in FIT_SCORES:
                 if key in out:
                     out[key] = None
@@ -1448,6 +1452,28 @@ def withhold(stage: str, artifact: Any, gate: Mapping[str, Any]) -> Any:
                 sc["not_corrected"] = reason
             scales.append(sc)
         out["scales"] = scales
+        return out
+    if stage == "evaluation":
+        out["estimates"] = None  # inference: the selection sensitivity's tests
+        if scores:
+            # Before Fit (or with no purpose) the benchmark's, the decision curve's, the subgroups',
+            # the shrinkage's and the design-based and internal-external scores wait too, and the
+            # sentences that quote them.
+            for key in ("benchmark", "interpretable", "decision_curve", "shrinkage", "inclusion",
+                        "design_based"):
+                out[key] = None
+            out["subgroups"], out["internal_external"], out["sentences"] = [], [], []
+            out["scores_shown"] = False
+        return out
+    if stage == "calibration":
+        # The calibrated and uncorrected coefficients, their contrasts and the attenuation matrix
+        # they come from; what was calibrated, and how, stays.
+        out["exposures"], out["contrasts"], out["attenuation"] = [], [], None
+        return out
+    if stage == "usual_intake":
+        # The offer (what Describe's distribution would be, and for whom) stays: it is the card
+        # that asks for it. The distributions wait.
+        out["analyses"] = []
         return out
     for key in ("curves", "families", "models", "estimates", "rows", "fits",
                 "modifications"):  # FORM: the declared modifiers' estimates

@@ -9,14 +9,21 @@ problem is there can be a large number of potential comparisons when the details
 are highly contingent on data". The forks they name (§1.2): "choices of control variables in a
 regression, transformations, and data coding and excluding rules".
 
-So the plan is locked the first time inference estimates are displayed:
+So the plan is locked before any inference estimate is displayed:
 
-* **When.** The server records ``lock_plan`` the first time a client is served an estimate under
-  inference: a coefficient or an inference table in the fit, a substitution curve, a sensitivity
-  analysis's estimate, a calibrated one or the "further adjusted for" model's
-  (:func:`shows_estimates`). A refusal, or an estimate withheld until the exposure, its effect and
-  the adjustment set are answered (WP17), shows nothing and locks nothing. A user may also record
-  it earlier. It is recorded once and never undone.
+* **When.** The server records ``lock_plan`` when Fit is pressed (SIZING P0.8; ``fit_press``),
+  once the questions the estimates rest on are answered (WP17); no estimate stage is served before
+  it (a coefficient or an inference table in the fit, a substitution curve, a sensitivity
+  analysis's estimate, a calibrated one, the "further adjusted for" model's, Describe's
+  usual-intake distribution: :func:`shows_estimates`). A client never posts it. Logs written before
+  P0.8 recorded it the first time an estimate was served, which was likewise before that estimate
+  was displayed.
+* **Withdrawn only while nothing was shown** (calm/FOUNDATION §7). Cancel before any estimate is
+  served withdraws the lock, and so does a change to the plan made then: the lock says the plan
+  was declared before any estimate was shown, and none was. The server records the withdrawal as a
+  revert of the lock, so the record keeps the withdrawn lock with its time and fingerprint, and the
+  next press of Fit records a new one (:func:`current_lock`). Once an estimate has been served the
+  lock stands: a client never reverts it.
 * **What.** The plan is every slot the estimates read, as it stood (:func:`plan_of`): the outcome,
   the exposures and the adjustment set (the roles), the exclusions, the missing-data plan, the
   energy model, the exposure forms, the families, the secondaries, and the data coding (repairs,
@@ -113,6 +120,17 @@ def _when(at: Any) -> str | None:
     return at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def current_lock(records: Sequence[Any]) -> Any:
+    """The lock in force: the newest ``lock_plan`` record not withdrawn (reverted), or None."""
+    ordered = sorted(records, key=lambda r: r.seq)
+    try:
+        withdrawn = decisions.reverted(ordered)
+    except Refusal:
+        withdrawn = {}
+    return next((r for r in reversed(ordered)
+                 if r.decision.kind == "lock_plan" and r.id not in withdrawn), None)
+
+
 def plan_document(records: Sequence[Any]) -> PlanExport:
     """The analysis plan as the decision log holds it, a pure function of the records (no clock is
     read): once locked, the plan the lock recorded and the lock's own time; before, the plan in
@@ -121,12 +139,14 @@ def plan_document(records: Sequence[Any]) -> PlanExport:
     from turbotab.core.provenance import in_force
 
     ordered = sorted(records, key=lambda r: r.seq)
-    lock = next((r for r in ordered if r.decision.kind == "lock_plan"), None)
+    lock = current_lock(ordered)
     if lock is not None:
         plan = dict(lock.decision.plan or {})
         held = [r for r in ordered if r.seq < lock.seq]
         status, at, through = "locked", lock.at, lock.seq
-        later = [r for r in ordered if r.seq > lock.seq and r.sentence]
+        # Each later decision made after an estimate was shown (one made while nothing had been
+        # shown under the lock is not marked so; ``ProjectService.decide``).
+        later = [r for r in ordered if r.seq > lock.seq and r.after_estimates and r.sentence]
     else:
         plan = plan_of(decisions.fold(ordered))
         held, later = ordered, []
@@ -155,7 +175,7 @@ def plan_text(content: Mapping[str, Any], sha: str) -> str:
     later = len(content.get("after_estimates") or [])
     if content.get("status") == "locked":
         lead = (f"This is the analysis plan as declared in TurboTab before any estimate was "
-                f"displayed; it was locked when the first estimate was shown, on {when}.")
+                f"displayed; it was locked on {when}, before the first estimate was shown.")
         tail = (f" {later:,} decision{'s were' if later != 1 else ' was'} made after the estimates "
                 f"were seen, listed with it and marked so in the methods." if later else
                 " No decision has been made since the estimates were seen.")
@@ -237,6 +257,9 @@ def shows_estimates(stage: str, artifact: Any) -> bool:
     if stage == "evaluation":  # wave 2, EXPLORE: under inference, the selection sensitivity's tests
         estimates = artifact.get("estimates")
         return isinstance(estimates, Mapping) and bool(estimates.get("path"))
+    if stage == "usual_intake":  # Describe: a usual-intake distribution, its mean or percentiles
+        return any(a.get("mean") is not None or a.get("percentiles") or a.get("share") is not None
+                   for a in artifact.get("analyses") or [] if isinstance(a, Mapping))
     return False
 
 
@@ -271,8 +294,8 @@ def _locked_once_under_inference(decision: Any, ctx: Any) -> None:
     if state.plan_locked:
         raise Refusal(
             "plan_already_locked",
-            "The analysis plan was locked when the estimates were first displayed; every change "
-            "since is marked as made after the estimates were seen.",
+            "The analysis plan is already locked, before the estimates were displayed; every "
+            "change since is marked as made after the estimates were seen.",
         )
     if state.purpose != "inference":
         raise Refusal(
@@ -308,5 +331,5 @@ decisions.register_validator("lock_plan", _locked_once_under_inference)
 decisions.register_completion("lock_plan", _the_lock_records_the_plan)
 decisions.register_validator("revert", _the_lock_stays, first=True)
 
-__all__ = ["ESTIMATE_STAGES", "NEVER_SAID", "PlanExport", "canonical", "digest", "plan_document",
-           "plan_export", "plan_of", "plan_slots", "plan_text", "shows_estimates"]
+__all__ = ["ESTIMATE_STAGES", "NEVER_SAID", "PlanExport", "canonical", "current_lock", "digest",
+           "plan_document", "plan_export", "plan_of", "plan_slots", "plan_text", "shows_estimates"]

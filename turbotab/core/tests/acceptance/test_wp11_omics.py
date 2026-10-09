@@ -50,6 +50,7 @@ from turbotab.core.stages.modeling import design_stage, fit_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance.references import cr2_by_definition
 from turbotab.server.tests.conftest import make_client, prepare, wait_for
+from turbotab.core.tests.acceptance.server_drive import served
 
 FDR = 0.05
 
@@ -207,7 +208,7 @@ def findings(client, pid: str) -> list[dict]:
 
 
 def artifact(client, pid: str, stage: str) -> dict:
-    return client.get(f"/api/projects/{pid}/stages/{stage}").json()["artifact"]
+    return served(client, pid, stage)
 
 
 def training_rows(client, pid: str, *, held_out_too: bool = False) -> np.ndarray:

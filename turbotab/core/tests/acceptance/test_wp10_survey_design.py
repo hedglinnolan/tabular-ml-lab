@@ -59,6 +59,7 @@ from scipy import stats
 from turbotab.core.survey import ATTESTATION, read_design
 from turbotab.core.tests.acceptance import survey_references as ref
 from turbotab.server.tests.conftest import make_client, prepare, wait_for
+from turbotab.core.tests.acceptance.server_drive import served
 
 T975 = 0.975
 
@@ -278,7 +279,7 @@ def finish(client, pid: str, *, rules: list | None = None, holdout: float = 0.2)
 
 
 def linear_model(client, pid: str) -> dict:
-    fit = client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
+    fit = served(client, pid, "fit")
     return next(m for m in fit["models"] if m["family"] == "linear")
 
 

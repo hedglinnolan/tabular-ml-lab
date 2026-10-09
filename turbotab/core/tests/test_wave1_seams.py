@@ -21,6 +21,7 @@ from turbotab.core.decisions import EnergyAdjustment, SplitSpec
 from turbotab.core.stages.modeling import design_stage, fit_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance import references as ref
+from turbotab.core.tests.acceptance.server_drive import served
 
 
 
@@ -776,7 +777,7 @@ def test_sensitivity_analyses_of_a_surveyed_population_are_design_based_domains(
         w10.accepted(client, pid, {"kind": "set_sensitivity",
                                    "analyses": [{"label": "1,500–2,700 kcal", "rules": [rule]}]})
         wait_for(client, pid, {"fit": "fresh", "sensitivity": "fresh"}, timeout=240)
-        sensitivity = client.get(f"/api/projects/{pid}/stages/sensitivity").json()["artifact"]
+        sensitivity = served(client, pid, "sensitivity")
         primary_fit = w10.linear_model(client, pid)
 
     fits = sensitivity["families"][0]["fits"]

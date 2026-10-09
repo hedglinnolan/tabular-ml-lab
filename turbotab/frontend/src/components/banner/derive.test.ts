@@ -19,6 +19,7 @@ const status = (stage: string, key: string, s: StageStatus["status"] = "fresh"):
   progress: null,
   updated_at: "2026-10-01T12:00:00Z",
   cancelled: false,
+  held: null,
 });
 
 function result<A>(stage: string, key: string, artifact: A, fresh = true): StageResult<A> {
@@ -142,6 +143,7 @@ const fit: FitArtifact = {
   levels: null,
   batch_figure: null,
   withheld: null,
+  withheld_for: null,
   estimand: null,
   primary_metric: "r2",
   metric_labels: { r2: "R²", rmse: "RMSE" },

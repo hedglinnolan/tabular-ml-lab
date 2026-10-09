@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, Response
 from starlette.concurrency import run_in_threadpool
 
+from turbotab.core.fit_press import FitLock
 from turbotab.core.plan_lock import PlanExport
 from turbotab.core.provenance import MethodsText
 from turbotab.core.quest import QuestLog
@@ -121,6 +122,36 @@ def quest(request: Request, pid: str) -> QuestLog:
     (``within``), why, in plain words. ``version`` changes when the shape or the meaning of this
     log does."""
     return get_service(request).quest(pid)
+
+
+@router.post(
+    "/projects/{pid}/fit",
+    response_model=FitLock,
+    responses={409: refusal("Nothing to fit yet, or a question the estimates rest on is open"),
+               404: refusal("No such project")},
+)
+def press_fit(request: Request, pid: str) -> FitLock:
+    """Fit, pressed on the analysis flowchart (SIZING P0.8; RECIPES_AND_TUNING §4.4): a job
+    command, not a decision. It releases a fit the scheduler holds (one expected to take over
+    about 2 minutes) and opens Results. Under Estimate and Describe it locks the analysis plan, the
+    system's ``lock_plan`` record, once; no estimate is served before it. Under Predict nothing
+    locks, and no score or estimate is served before it. Refused while nothing is chosen to fit or
+    a question the estimates rest on is open. Returns the lock as the quest log shows it."""
+    return get_service(request).press_fit(pid)
+
+
+@router.post(
+    "/projects/{pid}/fit/cancel",
+    response_model=FitLock,
+    responses={404: refusal("No such project")},
+)
+def cancel_fit(request: Request, pid: str) -> FitLock:
+    """Cancel, where Fit was on the analysis flowchart (calm/FOUNDATION §7): the estimates' work
+    still running stops. Before any estimate is served the press is withdrawn, and under Estimate
+    and Describe the plan's lock with it (kept in the record as withdrawn), so Fit is asked for
+    again; once an estimate has been served the lock stands. Returns the lock as the quest log
+    shows it."""
+    return get_service(request).cancel_fit(pid)
 
 
 @router.get(

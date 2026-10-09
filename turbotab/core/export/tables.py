@@ -516,6 +516,10 @@ def performance(fit: Mapping[str, Any]) -> list[Table]:
                          "role": RESULT})
     caption = result.get("sentence") or "No result is declared."
     unseen = UNSEEN_RESULT if basis in SCORED_BASES else None
+    if fit.get("withheld_for") == "fit":
+        # Before Fit is pressed the fit is served without its scores or its result (P0.8): the
+        # result is not quoted, not absent.
+        caption = unseen = UNSEEN_RESULT
     survey = unweighted(fit)
     if survey is not None:
         for row in rows:

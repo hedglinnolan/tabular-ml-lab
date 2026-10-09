@@ -152,6 +152,7 @@ export class MockServer {
       progress: null,
       updated_at: null,
       cancelled: false,
+      held: null,
     });
     const p: MockProject = {
       summary: {
@@ -354,6 +355,7 @@ export class MockServer {
         job_id: null,
         progress: null,
         cancelled: false,
+        held: null,
       };
       if (missing.length) {
         next = { ...base, status: "blocked", fresh: false, missing };

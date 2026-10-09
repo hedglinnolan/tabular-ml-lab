@@ -559,6 +559,9 @@ class FitArtifact(_Model):
     # Set by the server (WP17): why every estimate is withheld while a question it rests on is
     # unanswered; else, under inference, the declared estimand the table is captioned from.
     withheld: str | None = None
+    # What it waits for (set by the server with ``withheld``): the question's key, ``fit`` until Fit
+    # is pressed (P0.8), or ``purpose`` while no goal is chosen.
+    withheld_for: str | None = None
     estimand: EstimandAnnotation | None = None
     # MS6 (MODELING_SEQUENCE ruling 4): the customary headline reported beside the strictly proper
     # primary, and the tension in one line (north star 5).

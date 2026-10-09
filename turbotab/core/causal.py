@@ -198,7 +198,8 @@ RELATIONS: dict[str, Any] = {r.name: r for r in (
               "(E-value; robustness value), computed by ESTIMAND's "
               "``models.effects.unmeasured_confounding``."),
     _relation("plan_lock", "implies", "the first causal estimate shown", "lock_plan",
-              "The first causal estimate displayed locks the analysis plan, as any estimate does."),
+              "No causal estimate is displayed before the analysis plan is locked, which pressing "
+              "Fit records, as for any estimate."),
     # Wave 2a: an exposure that changes within units is the time-varying lane's (g-methods); these
     # estimators adjust for a point exposure's confounders only, as standard regression does.
     _relation("time_varying_exposure", "conflicts", "the exposure changes over time within units",

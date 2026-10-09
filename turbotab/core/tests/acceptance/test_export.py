@@ -204,7 +204,7 @@ def inference(tmp_path_factory) -> dict[str, Any]:
         _wait_fresh(drive, ("cohort", "design", "fit", "effects"))
         seen["refused_plan_open"] = _export(drive)  # every result computed, none yet shown
         seen["locked_before"] = drive.view()["state"].get("plan_locked")
-        seen["effects_served"] = drive.artifact("effects")  # the first estimate shown: the lock
+        seen["effects_served"] = drive.artifact("effects")  # Fit pressed to show it: the lock
         seen["fit_served"] = drive.artifact("fit")
         # After the lock: Model 1 declared (age, sex and energy; NUTRITION_PACK §08), recorded as
         # made after the estimates were seen.
@@ -781,7 +781,7 @@ def test_5_the_export_refuses_while_the_plan_is_open(inference):
     error = r.json()["error"]
     assert error["code"] == "plan_open"
     assert error["message"].startswith("The analysis plan is still open")
-    assert error["exits"] == [{"label": "Show the estimates; the first one shown locks the plan",
+    assert error["exits"] == [{"label": "Press Fit on the analysis flowchart; it locks the plan",
                                "decision": None}]
     assert inference["view"]["state"]["plan_locked"] is True
 
@@ -969,6 +969,7 @@ def diet(tmp_path_factory) -> dict[str, Any]:
         drive.answer("energy_adjustment", {"kind": "set_energy_adjustment", "method": "none"})
         drive.answer("models", {"kind": "select_models", "models": ["linear", "elastic_net"]})
         _wait_fresh(drive, ("cohort", "design", "fit"))
+        assert drive.press_fit()  # Results opens on Fit (P0.8): the scores, the held-out rows sealed
         seen["prediction_refused"] = _export(drive)
         exits = seen["prediction_refused"].json()["error"]["exits"]
         opening = next(e["decision"] for e in exits

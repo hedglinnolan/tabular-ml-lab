@@ -95,6 +95,18 @@ def unanswered(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def predicted(tmp_path_factory):
+    """The walk's two tables, run through the stage graph with the purpose answered as prediction:
+    with it unanswered no estimate stage computes (every one requires the purpose; guarantee test
+    2 of EXTERNAL_AUDIT_2026-10-09), so the positive control computes its fit as prediction."""
+    pair = pair_of(tmp_path_factory.mktemp("leash2_predicted"), L.walk_table,
+                   L.walk_state(purpose="prediction"))
+    yield pair
+    for project in pair:
+        project.close()
+
+
+@pytest.fixture(scope="module")
 def unanswered_binary(tmp_path_factory):
     pair = pair_of(tmp_path_factory.mktemp("leash2_unanswered_binary"), binary_table,
                    binary_state(purpose=None))
@@ -135,11 +147,11 @@ def test_1_a_yes_no_outcome_with_the_purpose_unanswered_shows_none_either(unansw
     assert differing(unanswered_binary, binary_state(purpose=None), BINARY_WALK) == []
 
 
-def test_1_answered_as_prediction_the_walk_sees_the_estimates_it_may_show(unanswered):
+def test_1_answered_as_prediction_the_walk_sees_the_estimates_it_may_show(predicted):
     """The positive control: under prediction the energy-dropped residual quotes the outcome
     model's coefficients, shrinkage its calibration slope and the elastic net what it keeps, so
     the two tables' previews differ, and the detector sees it."""
-    found = differing(unanswered, L.walk_state(purpose="prediction"),
+    found = differing(predicted, L.walk_state(purpose="prediction"),
                       [L.DROPPED, d.SetUpdating(method="shrinkage"),
                        d.SetSelection(method="elastic_net")])
     assert [x.split(" ")[0] for x in found] == ["set_energy_adjustment", "set_updating",

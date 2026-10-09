@@ -57,6 +57,7 @@ from turbotab.core.stages.rows import split_stage
 from turbotab.core.tests import modeling_fixtures as mf
 from turbotab.core.tests.acceptance import references as ref
 from turbotab.core.tests.acceptance.server_drive import answer_plan
+from turbotab.core.tests.acceptance.server_drive import release, served
 
 
 def _clusters(codes: Any, column: str = "pid") -> Clusters:
@@ -519,8 +520,9 @@ class _Drive:
         end = time.monotonic() + timeout
         while True:
             status = self.view()["stages"][stage]
+            release(self.c, self.pid, status)
             if status["status"] == "fresh":
-                return self.c.get(f"/api/projects/{self.pid}/stages/{stage}").json()["artifact"]
+                return served(self.c, self.pid, stage)
             assert status["status"] != "error", status
             assert time.monotonic() < end, f"{stage} never fresh: {status}"
             time.sleep(0.05)

@@ -232,7 +232,7 @@ def test_a_no_estimate_before_the_estimand_and_the_display_after_it(diet):
     assert "as a marginal risk difference per unit of `protein_g`" in fit["estimand"]["caption"]
     assert fit["estimand"]["caption"].count("whose conditional odds ratio is shown beside it") == 1
     assert diet["effects"]["measure"] == "risk_difference"
-    assert diet["view"]["state"]["plan_locked"] is True  # the first estimate shown locked the plan
+    assert diet["view"]["state"]["plan_locked"] is True  # Fit, pressed to show it, locked the plan
 
 
 def test_a_the_results_show_the_exposure_only_with_the_adjustment_terms_apart(diet):

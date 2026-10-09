@@ -400,7 +400,7 @@ def energy_adjustment_preview(decision: Any, ctx: PreviewContext) -> list[Any]:
     # The gap is the outcome model's own coefficients: under inference it waits for the lock, as
     # every estimate does (calm/FOUNDATION §5 rule 6); the option still says energy leaves.
     gap = (_residual_gap(ctx, state, frame, predictors, after_adj, out_name)
-           if dropped and not problem and not estimates_unseen(state) else None)
+           if dropped and not problem and not estimates_unseen(state, ctx.fit_pressed) else None)
     if problem:
         caption = fit_words(problem, CAPTION_WORDS)
     elif gap is not None:  # the gap is this option's own consequence, whatever is on record now

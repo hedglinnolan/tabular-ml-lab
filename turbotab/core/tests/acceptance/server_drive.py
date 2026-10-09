@@ -18,6 +18,39 @@ from turbotab.core.graph import artifact_dir
 from turbotab.core.tests.truths import Truth, answer_refusal, asked  # noqa: F401 - re-exported
 
 
+def press_fit(client: Any, pid: str) -> bool:
+    """Fit, pressed as the user does on the analysis flowchart (SIZING P0.8): no estimate stage is
+    served before it (under Estimate and Describe it locks the plan). True when it was taken; False
+    when it was refused because there is nothing to fit yet or a question the estimates rest on is
+    open, so the estimates stay withheld, as WP17 withholds them."""
+    r = client.post(f"/api/projects/{pid}/fit")
+    if r.status_code == 409 and r.json()["error"]["code"] == "fit_not_yet":
+        return False
+    assert r.status_code == 200, r.text[:600]
+    return True
+
+
+def estimate_stage(stage: str) -> bool:
+    from turbotab.core.estimand import ESTIMATE_STAGES
+
+    return stage in ESTIMATE_STAGES
+
+
+def release(client: Any, pid: str, status: dict[str, Any]) -> None:
+    """A stage the scheduler holds for Fit (its estimate exceeds about 2 minutes) is released as
+    the user releases it: by pressing Fit (RECIPES_AND_TUNING §4.4)."""
+    if status.get("held") == "fit":
+        press_fit(client, pid)
+
+
+def served(client: Any, pid: str, stage: str) -> Any:
+    """A stage's artifact as the user reads it: an estimate stage's after Fit is pressed, as the
+    user opens Results (P0.8)."""
+    if estimate_stage(stage):
+        press_fit(client, pid)
+    return client.get(f"/api/projects/{pid}/stages/{stage}").json()["artifact"]
+
+
 @contextmanager
 def local_server(home: Path) -> Iterator[Any]:
     from fastapi.testclient import TestClient
@@ -185,6 +218,7 @@ def answer_forms(drive: Any) -> None:
         if step["status"] != "open" or not asked(ask.get("exits") or []):
             break
         if hasattr(drive, "form_asks"):
+            # Whether a fit had been computed by then (not served: Fit waits for the form).
             fit = drive.c.get(f"/api/projects/{drive.pid}/stages/fit").json()
             drive.form_asks.append({"ask": ask, "fit_artifact": bool(fit.get("artifact"))})
         for decision in answers({"exits": ask["exits"]}, drive.truth):
@@ -385,10 +419,18 @@ class Drive:
                 self.decide({"kind": "set_outcome_order", "column": target,
                              "levels": question.get("proposed_order") or question.get("levels")})
 
+    def press_fit(self) -> bool:
+        return press_fit(self.c, self.pid)
+
     def artifact(self, stage: str, timeout: float = 240.0) -> dict[str, Any]:
+        """The stage's artifact once fresh. An estimate stage's is served only after Fit (P0.8),
+        so Fit is pressed first, as the user opens Results."""
+        if estimate_stage(stage):
+            self.press_fit()
         end = time.monotonic() + timeout
         while True:
             status = self.view()["stages"][stage]
+            release(self.c, self.pid, status)
             if status["status"] == "fresh":
                 return self.c.get(f"/api/projects/{self.pid}/stages/{stage}").json()["artifact"]
             assert status["status"] != "error", status

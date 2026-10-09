@@ -226,7 +226,7 @@ def test_the_gate_names_each_thing_missing_with_a_way_forward(tmp_path):
     assert caught.value.code == "unanswered_questions"
     assert [e["label"] for e in caught.value.exits][:2] == [
         "Answer the missing-values question",
-        "Show the estimates; the first one shown locks the plan"]
+        "Press Fit on the analysis flowchart; it locks the plan"]
     changed = _source(log.records())
     changed.inputs = [InputFile(role="table", name="t.csv", path="/x/t.csv", bytes=1, sha256="a",
                                 changed=True)]

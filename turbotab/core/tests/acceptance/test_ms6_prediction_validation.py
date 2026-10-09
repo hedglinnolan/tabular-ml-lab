@@ -45,6 +45,7 @@ from turbotab.core.stages.seal import seal_plan_stage
 from turbotab.core.stages.target import target_info_stage
 from turbotab.core.tests.acceptance import references_ms6 as ref
 from turbotab.core.tests.stage_harness import Ingested
+from turbotab.core.tests.acceptance.server_drive import served
 
 needs_r = pytest.mark.skipif(ref.RSCRIPT is None, reason="Rscript is not installed")
 
@@ -1433,7 +1434,7 @@ def _served_fit(client, pid: str) -> dict:
     from turbotab.server.tests.conftest import wait_for
 
     wait_for(client, pid, {"fit": "fresh"}, timeout=600)
-    return client.get(f"/api/projects/{pid}/stages/fit").json()["artifact"]
+    return served(client, pid, "fit")
 
 
 def _opened(client, folder, frame: pd.DataFrame, name: str) -> str:

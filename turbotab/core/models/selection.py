@@ -627,6 +627,9 @@ def _openable_fit(ctx: Any) -> Mapping[str, Any] | None:
     state = _ctx(ctx, "state")
     if state is None or getattr(state, "seal_opened", None):
         return None
+    gate = _ctx(ctx, "fit_gate")
+    if callable(gate) and gate() is not None:
+        return None  # no score is quoted before Fit (SIZING P0.8): the seal's validator says why
     split = getattr(state, "split", None)
     if split is None or float(getattr(split, "holdout", 0) or 0) == 0:
         return None
@@ -697,6 +700,23 @@ def _the_only_family_is_the_final_one(decision: Any, ctx: Any) -> Any:
     fitted = [str(m["family"]) for m in fit.get("models") or [] if m.get("family")]
     # Every other field the server fills (the seal's scores at the opening, audit WP16) is kept.
     return decision.model_copy(update={"family": fitted[0]}) if len(fitted) == 1 else decision
+
+
+# The refusals that quote each fitted family's cross-validated score in their exits.
+QUOTING = ("final_model_needed", "not_a_fitted_family")
+
+
+def quoted_in(refusal: Any) -> list[str]:
+    """The families whose cross-validated scores ``refusal`` quotes (its exits that name a final
+    model with its CV score): a client that read them has seen those scores (MS6)."""
+    if getattr(refusal, "code", None) not in QUOTING:
+        return []
+    out = []
+    for e in getattr(refusal, "exits", None) or []:
+        d = e.get("decision") if isinstance(e, Mapping) else None
+        if isinstance(d, Mapping) and d.get("family") and "(CV " in str(e.get("label") or ""):
+            out.append(str(d["family"]))
+    return out
 
 
 decisions.register_validator("open_seal", _a_final_model_is_declared)
@@ -1092,7 +1112,8 @@ def interpretable_cost(task: str, metric: str, oof: OutOfFold, interpretable: st
 
 
 __all__ = ["DeclaredResult", "FLEXIBLE_REASON", "LOWER_IS_BETTER", "METHOD", "NO_COST",
-           "OutOfFold", "SEEN_FILE", "SELECTION_NOT_NESTED", "SampleSize", "SampleSizeCriterion",
-           "compared_families", "declared_family", "declared_result", "explained_in", "family_name",
-           "interpretable_cost", "is_flexible", "mark_final", "note_seen", "pooled_score",
-           "read_seen", "scored_in", "seen_for", "selection_optimism", "shelf_order", "vouch"]
+           "OutOfFold", "QUOTING", "SEEN_FILE", "SELECTION_NOT_NESTED", "SampleSize",
+           "SampleSizeCriterion", "compared_families", "declared_family", "declared_result",
+           "explained_in", "family_name", "interpretable_cost", "is_flexible", "mark_final",
+           "note_seen", "pooled_score", "quoted_in", "read_seen", "scored_in", "seen_for",
+           "selection_optimism", "shelf_order", "vouch"]
