@@ -1,0 +1,59 @@
+.page {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  color: var(--ink);
+  font-family: var(--font);
+}
+.header h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+  font-weight: 600;
+}
+.header p {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 14px;
+}
+.nav a {
+  color: var(--muted);
+}
+.entry {
+  margin-top: 36px;
+}
+.entry h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.meta {
+  margin: 2px 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.meta span {
+  color: var(--faint);
+}
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 16px;
+}
+.theme {
+  min-width: 0;
+  background: var(--canvas);
+  color: var(--canvas-ink);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+}
+.themeName {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--canvas-muted);
+  font-size: 12px;
+}
