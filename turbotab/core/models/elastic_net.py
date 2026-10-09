@@ -204,6 +204,12 @@ class PooledLogisticRegressionCV(LogisticRegressionCV):
     Where the exact path does not apply (class weights, a sparse matrix, more than
     :data:`EXACT_MAX_COEFFICIENTS` coefficients) scikit-learn computes the paths with its solver
     (``saga``) at the given tolerance, and only the choice changes, as above.
+
+    More than two classes under a pure lasso (mix 1.0) have no unique coefficients: one number
+    added to a feature's coefficient in every class changes no probability, and no penalty while
+    it stays between that feature's two middle coefficients. Whichever solver ran, each feature is
+    reported at the middle of that interval (``exact_path.middle_of_ties``), so the reported
+    coefficients do not follow the last bit of the data.
     """
 
     def fit(self, X: Any, y: Any, sample_weight: Any = None, **params: Any
@@ -283,14 +289,18 @@ class PooledLogisticRegressionCV(LogisticRegressionCV):
         self.pooled_loss_ = -(scores * weight[:, None, None]).sum(axis=0) / weight.sum()
         m, c = np.unravel_index(lowest_rounded(self.pooled_loss_), self.pooled_loss_.shape)
         C, mix = float(np.asarray(self.Cs_)[c]), float(np.asarray(self.l1_ratios_)[m])
-        if C == float(self.C_) and mix == float(self.l1_ratio_):
-            return self
-        model = LogisticRegression(C=C, l1_ratio=mix, solver=self.solver, tol=self.tol,
-                                   max_iter=self.max_iter, random_state=self.random_state,
-                                   fit_intercept=self.fit_intercept, class_weight=self.class_weight)
-        model.fit(X, y, sample_weight=sample_weight)
-        self.C_, self.l1_ratio_ = C, mix
-        self.coef_, self.intercept_ = model.coef_, model.intercept_
+        if C != float(self.C_) or mix != float(self.l1_ratio_):
+            model = LogisticRegression(C=C, l1_ratio=mix, solver=self.solver, tol=self.tol,
+                                       max_iter=self.max_iter, random_state=self.random_state,
+                                       fit_intercept=self.fit_intercept,
+                                       class_weight=self.class_weight)
+            model.fit(X, y, sample_weight=sample_weight)
+            self.C_, self.l1_ratio_ = C, mix
+            self.coef_, self.intercept_ = model.coef_, model.intercept_
+        if len(self.classes_) > 2 and mix == 1.0:
+            from turbotab.core.models.exact_path import middle_of_ties
+
+            self.coef_ = middle_of_ties(self.coef_)  # as the exact path reports a pure lasso
         return self
 
 

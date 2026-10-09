@@ -26,7 +26,10 @@ objective. It stops in finitely many steps at the exact minimizer, whatever the 
   replaced by its second-order expansion, exact Hessian included, that penalized quadratic solved
   by feature-sign search, then a backtracking line search on the true objective. Near the solution
   the full step is taken and the convergence is quadratic, so a full step smaller than 10⁻¹⁰ of
-  the largest coefficient is the last: what remains is rounding.
+  the largest coefficient is the last: what remains is rounding. The Hessian, the cost of a step
+  with many classes (one block per pair of classes), is formed only on the coordinates a step can
+  move (nonzero, or a gradient within half the penalty), and kept for the steps after a full step
+  below 10⁻³: their gradient is fresh, so they stop where a fresh Hessian would.
 
 It costs about what scikit-learn's defaults did, timed at one thread over a whole inner
 cross-validation: least squares on the NHANES-like 400 × 27, 0.15 s (coordinate descent at 10⁻⁴,
@@ -39,7 +42,8 @@ two classes have one row of coefficients (the second's logit), more have one row
 last intercept held at 0 while solving (one number added to every intercept changes no
 probability) and the intercepts then centered. A direction the quadratic cannot see (a multinomial
 lasso's feature nonzero for every class, or columns that repeat one another under a pure lasso) is
-followed until a coefficient reaches zero, since the penalty falls along it.
+followed until a coefficient reaches zero, since the penalty falls along it. A multinomial pure
+lasso's coefficients are then reported at the middle of their tied set (:func:`middle_of_ties`).
 """
 from __future__ import annotations
 
@@ -53,6 +57,8 @@ MAX_NEWTON = 100     # proximal Newton steps for one penalty (quadratic converge
 STEP_TOL = 1e-10     # a full Newton step this small, relative to the largest coefficient, is the last
 NULL_EIGEN = 1e-12   # eigenvalues below this share of the largest are a flat direction
 ARMIJO = 1e-4
+WORK_MARGIN = 0.5    # a zero coefficient whose gradient reaches half the penalty joins a Newton step
+REUSE_STEP = 1e-3    # after a full Newton step this small, relative, the next keeps its Hessian
 
 
 def _warn(what: str) -> None:
@@ -64,14 +70,15 @@ def _warn(what: str) -> None:
 # ── the penalized quadratic ──────────────────────────────────────────────────
 
 
-def _solve_active(A: np.ndarray, r: np.ndarray, z: np.ndarray, definite: bool
-                  ) -> tuple[np.ndarray, bool]:
+def _solve_active(A: np.ndarray, r: np.ndarray, z: np.ndarray, definite: bool,
+                  probe: bool = False) -> tuple[np.ndarray | None, bool]:
     """The minimizer of ½zᵀAz − rᵀz (A positive semidefinite) or, along a flat direction of A
     that ``r`` descends, that direction: ``(point or direction, is_direction)``.
 
     A Cholesky solve when A is known definite (a ridge part) or its factor shows no pivot at the
     flat threshold (a singular A has one at rounding, or fails); else the eigen-decomposition,
-    ten to forty times dearer, which finds the flat directions."""
+    ten to forty times dearer, which finds the flat directions. A ``probe`` stops before it:
+    ``(None, False)``."""
     from scipy.linalg import LinAlgError, cho_factor, cho_solve
 
     try:
@@ -82,6 +89,8 @@ def _solve_active(A: np.ndarray, r: np.ndarray, z: np.ndarray, definite: bool
             return cho_solve(factor, r, check_finite=False), False
     except LinAlgError:
         pass
+    if probe:
+        return None, False
     vals, vecs = np.linalg.eigh(A)
     top = float(np.max(np.abs(vals))) if len(vals) else 0.0
     flat = vals <= NULL_EIGEN * max(top, np.finfo(float).tiny)
@@ -98,11 +107,25 @@ def _solve_active(A: np.ndarray, r: np.ndarray, z: np.ndarray, definite: bool
 
 
 def feature_sign(A: np.ndarray, c: np.ndarray, gamma: float, penalized: np.ndarray,
-                 z0: np.ndarray, definite: bool) -> tuple[np.ndarray, bool]:
+                 z0: np.ndarray, definite: bool, groups: np.ndarray | None = None,
+                 flat_size: int = 0) -> tuple[np.ndarray, bool]:
     """``argmin ½zᵀAz − cᵀz + γ Σ_{penalized} |z_j|`` exactly, started at ``z0`` (Lee et al. 2007,
     feature-sign search, with the unpenalized coordinates always held): ``(z, settled)``;
     ``definite``: A is known positive definite (a ridge part), so its Cholesky factor needs no
-    check for a flat direction."""
+    check for a flat direction.
+
+    **Activation.** Lee et al. activate one zero coordinate at a time, the one whose gradient most
+    exceeds the penalty; its new value then has the sign it joined with (a Schur-complement
+    argument), so the step lowers the objective. Here every such coordinate joins at once, by one
+    linear solve, and the batch stands only where each of them moves the way its sign says; those
+    that do not leave it and the rest are solved again, down to the largest alone, which is Lee et
+    al.'s step. Either way the objective falls at every step and the search ends at the same exact
+    minimizer, in fewer linear solves: over the family's whole inner cross-validation, a fifth as
+    many with eight classes (3,000 × 70), a quarter with four (1,000 × 150), two thirds with three
+    (2,000 × 19) or with least squares (120 × 100). ``groups`` (−1: none) and ``flat_size``: a
+    group of ``flat_size`` coordinates held together is a flat direction of A (a multinomial's
+    coefficients on one feature under a pure lasso), which a batch does not complete; its solve
+    would need the eigen-decomposition."""
     m = len(c)
     z = np.array(z0, dtype=float)
     if gamma <= 0.0:
@@ -110,6 +133,7 @@ def feature_sign(A: np.ndarray, c: np.ndarray, gamma: float, penalized: np.ndarr
         return (z if direction else point), True
     sign = np.where(penalized, np.sign(z), 0.0)
     held = ~penalized | (z != 0.0)
+    joined = np.empty(0, dtype=np.int64)  # activated together, the largest excess first
     step_due = True
     for _ in range(50 * m + 200):
         if step_due:
@@ -118,8 +142,22 @@ def feature_sign(A: np.ndarray, c: np.ndarray, gamma: float, penalized: np.ndarr
             if not len(a):
                 continue
             Aa, ca, za, pen = A[np.ix_(a, a)], c[a], z[a], penalized[a]
-            target, direction = _solve_active(Aa, ca - gamma * sign[a], za, definite)
-            d = target if direction else target - za
+            target, direction = _solve_active(Aa, ca - gamma * sign[a], za, definite,
+                                              probe=len(joined) > 1)
+            if target is None:  # the batch made A singular: the largest alone
+                wrong = joined[1:]
+            else:
+                d = target if direction else target - za
+                wrong = joined[np.sign(d[np.searchsorted(a, joined)]) != sign[joined]]
+                if len(wrong) == len(joined):
+                    wrong = joined[1:]
+            if len(joined) > 1 and len(wrong):
+                held[wrong] = False
+                sign[wrong] = 0.0
+                joined = joined[~np.isin(joined, wrong)]
+                step_due = True
+                continue
+            joined = joined[:0]
             with np.errstate(divide="ignore", invalid="ignore"):
                 cross = -za / d
             crossing = pen & (za != 0.0) & (np.sign(za) == -np.sign(d)) & (cross > 0.0)
@@ -149,14 +187,34 @@ def feature_sign(A: np.ndarray, c: np.ndarray, gamma: float, penalized: np.ndarr
         if not idle.any():
             return z, True
         excess = np.where(idle, np.abs(grad) - gamma, -np.inf)
-        j = int(np.argmax(excess))
         # a gradient past the penalty by no more than rounding is no reason to move
-        if excess[j] <= 1e-9 * gamma + 1e-13 * max(1.0, float(np.max(np.abs(c)))):
+        over = np.flatnonzero(excess > 1e-9 * gamma + 1e-13 * max(1.0, float(np.max(np.abs(c)))))
+        if not len(over):
             return z, True
-        held[j] = True
-        sign[j] = -np.sign(grad[j])
+        joined = over[np.argsort(-excess[over], kind="stable")]
+        if groups is not None and len(joined) > 1:
+            joined = _short_of_flat(joined, groups, held, flat_size)
+        held[joined] = True
+        sign[joined] = -np.sign(grad[joined])
         step_due = True
     return z, False
+
+
+def _short_of_flat(joined: np.ndarray, groups: np.ndarray, held: np.ndarray, flat_size: int
+                   ) -> np.ndarray:
+    """``joined`` (in order) less any coordinate that would hold a whole group: ``flat_size``
+    coordinates of one group. The first of them stays if none other is left."""
+    room = np.bincount(groups[held & (groups >= 0)], minlength=int(groups.max()) + 1)
+    room = flat_size - 1 - room
+    keep = []
+    for i in joined:
+        g = int(groups[i])
+        if g < 0:
+            keep.append(int(i))
+        elif room[g] > 0:
+            room[g] -= 1
+            keep.append(int(i))
+    return np.asarray(keep or [int(joined[0])], dtype=np.int64)
 
 
 # ── least squares ────────────────────────────────────────────────────────────
@@ -235,9 +293,11 @@ class _Logistic:
         self.penalized = np.zeros(self.m, dtype=bool)
         self.penalized[: self.rows * self.p] = True
         self.Z = np.hstack([self.X, np.ones((self.n, 1))]) if self.fit_intercept else self.X
-        q = self.Z.shape[1]
-        self.order = np.asarray([k * q + j for k in range(self.rows) for j in range(self.p)]
-                                + [k * q + self.p for k in range(self.n_free)], dtype=np.int64)
+        # each coordinate of θ: its row of coefficients (its class) and its column of Z
+        self.row_of = np.concatenate([np.repeat(np.arange(self.rows), self.p),
+                                      np.arange(self.n_free)]).astype(np.int64)
+        self.column_of = np.concatenate([np.tile(np.arange(self.p), self.rows),
+                                         np.full(self.n_free, self.p)]).astype(np.int64)
 
     def unpack(self, theta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """θ = [the coefficients row by row, the free intercepts] as ``(W, b)``."""
@@ -256,22 +316,40 @@ class _Logistic:
             return float(self.w @ (np.logaddexp(0.0, e) - self.Y[:, 1] * e))
         return float(self.w @ (logsumexp(eta, axis=1) - eta[np.arange(self.n), self.codes]))
 
-    def gradient_hessian(self, eta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        Z, q = self.Z, self.Z.shape[1]
+    def probabilities(self, eta: np.ndarray) -> np.ndarray:
+        """Each row's probability of the second class (two classes), or of each class."""
         if self.binary:
-            prob = expit(eta[:, 0])
-            g = Z.T @ (self.w * (prob - self.Y[:, 1]))
-            H = (Z * (self.w * prob * (1.0 - prob))[:, None]).T @ Z
-        else:
-            P = np.exp(eta - logsumexp(eta, axis=1, keepdims=True))
-            g = (Z.T @ ((P - self.Y) * self.w[:, None])).T.ravel()  # class k: g[k*q:(k+1)*q]
-            H = np.empty((self.K * q, self.K * q))
-            for k in range(self.K):
-                for j in range(k, self.K):
-                    block = (Z * (self.w * P[:, k] * ((k == j) - P[:, j]))[:, None]).T @ Z
-                    H[k * q:(k + 1) * q, j * q:(j + 1) * q] = block
-                    H[j * q:(j + 1) * q, k * q:(k + 1) * q] = block.T
-        return g[self.order], H[np.ix_(self.order, self.order)]
+            return expit(eta[:, 0])
+        return np.exp(eta - logsumexp(eta, axis=1, keepdims=True))
+
+    def gradient(self, P: np.ndarray) -> np.ndarray:
+        """The weighted mean log loss's gradient in θ."""
+        if self.binary:
+            return ((self.w * (P - self.Y[:, 1])) @ self.Z)[self.column_of]
+        G = ((P - self.Y) * self.w[:, None]).T @ self.Z  # classes × columns of Z
+        return G[self.row_of, self.column_of]
+
+    def hessian(self, P: np.ndarray, work: np.ndarray) -> np.ndarray:
+        """Its Hessian on the coordinates ``work`` only: for classes, the block of rows k and l is
+        Zᵀ diag(wᵢ pᵢₖ(δₖₗ − pᵢₗ)) Z on those coordinates' columns."""
+        rows, columns = self.row_of[work], self.column_of[work]
+        if self.binary:
+            Zw = self.Z[:, columns]
+            return (Zw * (self.w * P * (1.0 - P))[:, None]).T @ Zw
+        H = np.empty((len(work), len(work)))
+        members = [np.flatnonzero(rows == k) for k in range(self.K)]
+        parts = [self.Z[:, columns[at]] for at in members]
+        for k in range(self.K):
+            if not len(members[k]):
+                continue
+            for l in range(k, self.K):
+                if not len(members[l]):
+                    continue
+                block = (parts[k] * (self.w * P[:, k] * ((k == l) - P[:, l]))[:, None]).T @ parts[l]
+                H[np.ix_(members[k], members[l])] = block
+                if l != k:
+                    H[np.ix_(members[l], members[k])] = block.T
+        return H
 
     def start(self) -> np.ndarray:
         """No coefficient, and the null model's intercepts (the weighted class shares)."""
@@ -286,28 +364,52 @@ class _Logistic:
 def _logistic_solve(problem: _Logistic, lam: float, l1_ratio: float, theta: np.ndarray
                     ) -> tuple[np.ndarray, int, bool]:
     """The penalized fit at ``λ`` (the penalty per unit of weight), mix ``ρ``, started at
-    ``theta``: ``(θ, Newton steps, converged)``."""
+    ``theta``: ``(θ, Newton steps, converged)``.
+
+    Each Newton step works on the coordinates that are unpenalized or nonzero, or whose gradient
+    comes within :data:`WORK_MARGIN` of the penalty; the others stay at zero for that step, and the
+    Hessian is formed on the working coordinates only. A coordinate left out satisfies its
+    optimality condition at the point the step starts from, so the last step, which moves nothing,
+    ends at a point that satisfies every condition."""
     gamma, ridge = lam * l1_ratio, lam * (1.0 - l1_ratio)
     pen = problem.penalized
-    shift = np.diag(np.where(pen, ridge, 0.0))
 
     def objective(t: np.ndarray, eta: np.ndarray) -> float:
         coef = t[pen]
         return problem.loss(eta) + gamma * float(np.abs(coef).sum()) + 0.5 * ridge * float(coef @ coef)
 
+    # a multinomial's coefficients on one feature, all held: a flat direction under a pure lasso
+    groups = problem.column_of if not problem.binary and ridge == 0.0 else None
     eta = problem.scores(theta)
     value = objective(theta, eta)
+    kept: tuple[np.ndarray, np.ndarray] | None = None  # the last Hessian, while it may serve
     for step in range(1, MAX_NEWTON + 1):
-        g, H = problem.gradient_hessian(eta)
-        g = g + ridge * np.where(pen, theta, 0.0)
-        A = H + shift
-        z, settled = feature_sign(A, A @ theta - g, gamma, pen, theta, ridge > 0.0)
+        P = problem.probabilities(eta)
+        g = problem.gradient(P) + ridge * np.where(pen, theta, 0.0)
+        work = np.flatnonzero(~pen | (theta != 0.0) | (np.abs(g) > (1.0 - WORK_MARGIN) * gamma))
+        stale = kept is not None and np.array_equal(kept[0], work)
+        if stale:
+            A = kept[1]
+        else:
+            A = problem.hessian(P, work)
+            if ridge > 0.0:
+                A[np.diag_indices_from(A)] += np.where(pen[work], ridge, 0.0)
+        start = theta[work]
+        found, settled = feature_sign(
+            A, A @ start - g[work], gamma, pen[work], start, ridge > 0.0,
+            groups=None if groups is None else np.where(pen[work], groups[work], -1),
+            flat_size=problem.K)
+        z = np.zeros_like(theta)
+        z[work] = found
         d = z - theta
         scale = max(1.0, float(np.max(np.abs(theta))))
         decrease = float(g @ d) + gamma * float(np.abs(z[pen]).sum() - np.abs(theta[pen]).sum())
-        if settled and (float(np.max(np.abs(d))) <= STEP_TOL * scale
-                        or decrease >= -4 * np.finfo(float).eps * max(1.0, abs(value))):
-            return z, step, True  # the last Newton step: what remains is rounding
+        # The last Newton step: what remains is rounding. A step whose decrease is lost in the
+        # objective's rounding ends it too, but only on a fresh Hessian, where the point it
+        # reaches is as far again below the step as the step is small (quadratic convergence).
+        if settled and (float(np.max(np.abs(d))) <= STEP_TOL * scale or (
+                not stale and decrease >= -4 * np.finfo(float).eps * max(1.0, abs(value)))):
+            return z, step, True
         t = 1.0
         while True:
             trial = theta + t * d
@@ -316,8 +418,29 @@ def _logistic_solve(problem: _Logistic, lam: float, l1_ratio: float, theta: np.n
             if v <= value + ARMIJO * t * decrease or t < 1e-10:
                 break
             t *= 0.5
+        # After a full step this small the Hessian barely moves, and the next steps keep it.
+        # Their gradient is fresh, so where they stop (a step below STEP_TOL) is where a fresh
+        # Hessian would stop; only the rate changes, from quadratic to linear at a rate set by
+        # how far the point has moved since the Hessian was formed.
+        small = t == 1.0 and float(np.max(np.abs(d))) <= REUSE_STEP * scale
+        kept = (work, A) if small else None
         theta, eta, value = trial, eta_t, v
     return theta, MAX_NEWTON, False
+
+
+def middle_of_ties(W: np.ndarray) -> np.ndarray:
+    """A multinomial pure lasso's coefficients (one row per class) at the middle of their tied set.
+
+    The probabilities depend only on differences between classes, so one number added to every
+    class's coefficient on a feature changes no prediction, and the lasso penalty on that feature,
+    ``Σₖ |Wₖⱼ + v|``, is lowest for any ``v`` between minus its two middle coefficients: one point
+    with an odd number of classes (a solution's median is already zero), an interval with an even
+    number. Every point of the interval is a solution, and which one a solver stops at follows
+    its rounding (the verifier's NHANES-like quartiles: 0.265 apart under a one-ulp change).
+    Each feature is moved to the middle, where its coefficients' median is zero: the same point
+    whatever solution it starts from, and no worse a fit or penalty (the median minimizes it)."""
+    W = np.asarray(W, dtype=float)
+    return W - np.median(W, axis=0)
 
 
 def logistic_path(X: np.ndarray, codes: np.ndarray, n_classes: int, Cs: Sequence[float],
@@ -341,6 +464,8 @@ def logistic_path(X: np.ndarray, codes: np.ndarray, n_classes: int, Cs: Sequence
         W, b = problem.unpack(theta)
         if not problem.binary and problem.fit_intercept:
             b = b - b.mean()
+        if not problem.binary and float(l1_ratio) == 1.0:
+            W = middle_of_ties(W)  # a pure lasso's tie, resolved in its middle
         out.append((W.copy(), b.copy()))
     if not every:
         _warn("logistic path")
@@ -358,4 +483,5 @@ def log_loss_rows(X: np.ndarray, codes: np.ndarray, coef: np.ndarray, intercept:
     return logsumexp(eta, axis=1) - eta[np.arange(len(codes)), codes]
 
 
-__all__ = ["alpha_grid", "feature_sign", "gaussian_path", "log_loss_rows", "logistic_path"]
+__all__ = ["alpha_grid", "feature_sign", "gaussian_path", "log_loss_rows", "logistic_path",
+           "middle_of_ties"]

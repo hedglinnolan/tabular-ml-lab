@@ -253,7 +253,7 @@ def test_a_table_with_nearly_as_many_columns_as_rows_is_solved_exactly_and_quick
 
 def _logistic_table(classes: int, seed: int = 0, n: int = 300, p: int = 10):
     """Correlated predictors, three of them real, an outcome drawn from a logistic model (two
-    classes, or ordered thirds of a latent score), and five inner folds of unequal size."""
+    classes, or equal ordered shares of a latent score), and five inner folds of unequal size."""
     rng = np.random.default_rng(seed)
     Z = rng.normal(size=(n, p))
     X = Z + 0.6 * Z[:, [0]]
@@ -262,7 +262,7 @@ def _logistic_table(classes: int, seed: int = 0, n: int = 300, p: int = 10):
         y = (rng.random(n) < 1 / (1 + np.exp(-score))).astype(int)
     else:
         latent = score + rng.logistic(size=n)
-        y = np.digitize(latent, np.quantile(latent, [1 / 3, 2 / 3]))
+        y = np.digitize(latent, np.quantile(latent, np.arange(1, classes) / classes))
     X = (X - X.mean(axis=0)) / X.std(axis=0)  # as the family's pipeline scales its columns
     sizes = np.round(np.asarray(FOLD_SIZES) * n / sum(FOLD_SIZES)).astype(int)
     tests = np.split(rng.permutation(n), np.cumsum(sizes)[:-1])
@@ -522,3 +522,183 @@ def test_the_selection_steps_yes_no_penalty_is_the_familys_choice_on_the_log_los
     kept = elastic_net_support(X, y.astype(float), "binary", folds, seed=0)
     assert kept.tolist() == (np.abs(W[0]) > 1e-10).tolist()
     assert 0 < int(kept.sum()) < X.shape[1]
+
+
+# ── four classes under a pure lasso: one point of a tied set ─────────────────
+
+
+def _lasso_objective(X, y, W, b, C):
+    """scikit-learn's penalized multinomial objective at mix 1.0: ``C Σ ℓᵢ + ‖W‖₁``."""
+    return C * float(_logistic_loss_rows(X, y, W, b).sum()) + float(np.abs(W).sum())
+
+
+def _nhanes_quartiles(seed: int, toward: float | None = None):
+    """The NHANES-like table's glucose in quartiles from every other column, through the family's
+    pipeline step and inner folds; ``toward``: every value moved one unit in the last place."""
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    from turbotab.core.models.elastic_net import ELASTIC_NET
+    from turbotab.core.models.inner_cv import fit_pipeline
+    from turbotab.core.tests import modeling_fixtures as mf
+
+    frame = mf.nhanes_like(400, seed=seed)
+    X = frame.drop(columns=["SEQN", "cycle_begin_year", "glucose", "gender"]).astype(float)
+    X["male"] = (frame["gender"] == "male").astype(float)
+    if toward is not None:
+        X = X.apply(lambda column: np.nextafter(column.to_numpy(), toward))
+    g = frame["glucose"].to_numpy()
+    y = np.digitize(g, np.quantile(g, [0.25, 0.5, 0.75]))
+    pipe = Pipeline([("scale", StandardScaler()),
+                     ("model", ELASTIC_NET.build("multiclass", "prediction", len(y), X.shape[1]))
+                     ]).set_output(transform="pandas")  # as the fit stage builds it
+    return fit_pipeline(pipe, X, y, seed=0), X, y
+
+
+@pytest.mark.parametrize("seed", [707, 708])
+def test_four_classes_under_a_pure_lasso_report_the_middle_of_their_tied_set(seed):
+    """A multinomial's probabilities depend only on the differences between classes, so one number
+    added to a feature's coefficient in every class changes no prediction; under a pure lasso, with
+    an even number of classes, it changes no penalty either while it stays between the feature's
+    two middle coefficients. Every point of that interval is a solution. The verifier's NHANES-like
+    glucose quartiles (seeds 707 to 712, the family's own folds, every value moved one unit in the
+    last place) found the exact path stopping where the last bit put it: the same C, mix and
+    probabilities, but coefficients 0.265 apart, two to four of them zero on one side and not on
+    the other ('male [1]' 0.0 against −0.162 and 'male [2]' 0.162 against 0.0), the class
+    intercepts shifted by 1.40. Each feature is now reported at the middle of its interval (its
+    coefficients' median is zero), whichever the bits: the same coefficients and intercepts to
+    10⁻⁹ of the largest, and the same zeros."""
+    from turbotab.core.models.elastic_net import ELASTIC_NET
+
+    fits = [_nhanes_quartiles(seed, toward) for toward in (None, np.inf, -np.inf)]
+    (pipe, X, y), *others = fits
+    model = pipe[-1]
+    assert model.l1_ratio_ == 1.0  # the tie this test is about
+    coef = np.asarray(model.coef_)
+    scale = float(np.max(np.abs(coef)))
+    rows = ELASTIC_NET.coefficients(pipe, X, y, task="multiclass", purpose="prediction")
+    for other_pipe, other_X, _ in others:
+        other = other_pipe[-1]
+        assert (other.C_, other.l1_ratio_) == (model.C_, model.l1_ratio_)
+        assert np.max(np.abs(other.coef_ - coef)) <= 1e-9 * scale
+        assert np.max(np.abs(other.intercept_ - model.intercept_)) <= 1e-9 * max(scale, 1.0)
+        assert np.array_equal(other.coef_ == 0, coef == 0)
+        again = ELASTIC_NET.coefficients(other_pipe, other_X, y, task="multiclass",
+                                         purpose="prediction")
+        assert [r["feature"] for r in again] == [r["feature"] for r in rows]
+        worst = max(abs(a["estimate"] - b["estimate"]) for a, b in zip(again, rows))
+        assert worst <= 1e-8 * max(abs(r["estimate"]) for r in rows), worst
+    assert np.max(np.abs(np.median(coef, axis=0))) <= 1e-12 * scale  # the middle
+
+
+def test_the_middle_of_the_tied_set_is_the_problems_and_not_the_solvers():
+    """The fixed-fold table with four classes (seed 10, which the exact path chose a pure lasso
+    for): every value moved one unit in the last place either way, or the columns permuted, gives
+    the same coefficients to 10⁻¹¹ of the largest (they moved by 0.015 before). The reported point
+    is an optimum: its objective, ``C Σ ℓᵢ + ‖W‖₁``, is not above that of scikit-learn's own
+    ``saga`` run to 10⁻¹⁰, an independent solver; and ``saga``'s coefficients, each feature moved
+    to the middle of its interval the same way, are the reported ones to 10⁻⁶."""
+    from sklearn.base import clone
+    from sklearn.linear_model import LogisticRegression
+
+    from turbotab.core.models.elastic_net import ELASTIC_NET
+
+    X, y, folds = _logistic_table(4, seed=10)
+    proto = ELASTIC_NET.build("multiclass", "prediction", len(y), X.shape[1]).set_params(cv=folds)
+    rng = np.random.default_rng(4)
+    nudged = np.where(rng.random(X.shape) < 0.5, np.nextafter(X, np.inf), np.nextafter(X, -np.inf))
+    cols = rng.permutation(X.shape[1])
+    base, *others = [clone(proto).fit(matrix, y) for matrix in (X, nudged, X[:, cols])]
+    assert base.l1_ratio_ == 1.0
+    scale = float(np.max(np.abs(base.coef_)))
+    for i, other in enumerate(others):
+        assert (other.C_, other.l1_ratio_) == (base.C_, base.l1_ratio_), i
+        coef = other.coef_[:, np.argsort(cols)] if i == 1 else other.coef_
+        assert np.max(np.abs(coef - base.coef_)) <= 1e-11 * scale, i
+        assert np.array_equal(coef == 0, base.coef_ == 0), i
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        saga = LogisticRegression(C=base.C_, l1_ratio=1.0, solver="saga", tol=1e-10,
+                                  max_iter=200_000, random_state=0).fit(X, y)
+    ours = _lasso_objective(X, y, base.coef_, base.intercept_, base.C_)
+    theirs = _lasso_objective(X, y, saga.coef_, saga.intercept_, base.C_)
+    assert ours <= theirs * (1 + 1e-12), (ours, theirs)
+    middle = saga.coef_ - np.median(saga.coef_, axis=0)
+    assert np.max(np.abs(middle - base.coef_)) <= 1e-6 * scale
+
+
+def test_a_pure_lasso_too_wide_for_the_exact_path_is_reported_at_the_same_middle():
+    """Four classes × 151 columns (604 coefficients) go to scikit-learn's ``saga``
+    (``EXACT_MAX_COEFFICIENTS``), whose pure lasso stops anywhere in the tied set too. Its
+    coefficients are moved to the middle as the exact path's are: they are scikit-learn's own
+    ``LogisticRegressionCV`` fit on the same folds, each feature less its median, and its
+    probabilities to 10⁻¹²."""
+    from scipy.special import softmax
+    from sklearn.linear_model import LogisticRegressionCV
+
+    from turbotab.core.models.elastic_net import EXACT_MAX_COEFFICIENTS, PooledLogisticRegressionCV
+
+    X, y, folds = _logistic_table(4, seed=10, n=240, p=151)
+    assert 4 * X.shape[1] > EXACT_MAX_COEFFICIENTS
+    settings = dict(Cs=[0.05, 0.2], l1_ratios=[1.0], solver="saga", cv=folds,
+                    scoring="neg_log_loss", max_iter=1000, tol=1e-3, random_state=0,
+                    use_legacy_attributes=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = PooledLogisticRegressionCV(**settings).fit(X, y)
+        given = LogisticRegressionCV(**settings).fit(X, y)
+    assert model.C_ == given.C_  # the same refit, so the same solution before the move
+    raw = np.asarray(given.coef_)
+    assert np.max(np.abs(np.median(raw, axis=0))) > 1e-3  # saga stopped off the middle
+    assert np.allclose(model.coef_, raw - np.median(raw, axis=0), rtol=0, atol=1e-15)
+    moved = softmax(X @ np.asarray(model.coef_).T + model.intercept_, axis=1)
+    assert np.max(np.abs(moved - given.predict_proba(X))) <= 1e-12
+
+
+def test_many_classes_cost_fewer_solves_and_smaller_hessians_than_one_at_a_time(monkeypatch):
+    """The verifier's cost finding: with many classes the exact path was slower than ``saga``
+    (3,000 × 70, eight classes: 35.8 s against 17.1 s at one thread), its time in the full
+    Hessian of every Newton step (one block per pair of classes) and in feature-sign search
+    activating one coefficient per linear solve. Counted, so the guard does not depend on the
+    machine: on 600 × 30 with eight classes, over the family's whole inner cross-validation,
+    one-at-a-time activation took 4,657 linear solves and the full Hessians 1.59 × 10¹⁰ entries.
+    Activating together takes at most 2,500 solves now, and the Hessians, formed on the
+    coordinates a step can move and kept for the last steps, at most 60% of the entries (44% when
+    this was written); the curve stays exact (the tests above)."""
+    import turbotab.core.models.exact_path as ep
+    from turbotab.core.models.elastic_net import ELASTIC_NET
+
+    rng = np.random.default_rng(0)
+    n, p, K = 600, 30, 8
+    Z = rng.normal(size=(n, p))
+    X = Z + 0.5 * Z[:, [0]] + 0.3 * Z[:, [1]]
+    X = (X - X.mean(axis=0)) / X.std(axis=0)
+    eta = X[:, :8] @ rng.normal(0, 0.5, (K, 8)).T
+    P = np.exp(eta - eta.max(axis=1, keepdims=True))
+    P /= P.sum(axis=1, keepdims=True)
+    y = np.array([rng.choice(K, p=row) for row in P])
+
+    counted = {"solves": 0, "formed": 0, "full": 0}
+    solve_active, solve = ep._solve_active, ep._logistic_solve
+    hessian = getattr(ep._Logistic, "hessian", None)
+
+    def counting_solve_active(*args, **kwargs):
+        counted["solves"] += 1
+        return solve_active(*args, **kwargs)
+
+    def counting_hessian(self, P, work):
+        counted["formed"] += self.n * len(work) ** 2
+        return hessian(self, P, work)
+
+    def counting_solve(problem, lam, l1_ratio, theta):
+        out = solve(problem, lam, l1_ratio, theta)
+        counted["full"] += out[1] * problem.n * problem.m ** 2  # a full Hessian every step
+        return out
+
+    monkeypatch.setattr(ep, "_solve_active", counting_solve_active)
+    monkeypatch.setattr(ep._Logistic, "hessian", counting_hessian, raising=False)
+    monkeypatch.setattr(ep, "_logistic_solve", counting_solve)
+    ELASTIC_NET.build("multiclass", "prediction", n, p).fit(X, y)
+    assert counted["solves"] <= 2_500, counted
+    assert counted["formed"] <= 0.6 * counted["full"], counted
