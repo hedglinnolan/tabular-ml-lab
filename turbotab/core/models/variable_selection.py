@@ -304,10 +304,15 @@ def complementary_pairs(Z: np.ndarray, y: np.ndarray, *, q: int, pairs: int,
 
 
 def elastic_net_support(Z: np.ndarray, y: np.ndarray, task: str, cv: Any, seed: int) -> np.ndarray:
-    """The columns an elastic net (mixing 0.5, its penalty by inner cross-validation) keeps."""
+    """The columns an elastic net (mixing 0.5, its penalty by inner cross-validation) keeps. The
+    penalty is chosen as the elastic-net family chooses it (``elastic_net.PooledElasticNetCV``), at
+    its tolerance on a narrow matrix and scikit-learn's on a wide one (``wide.WIDE_TOL``)."""
     import warnings
 
-    from sklearn.linear_model import ElasticNetCV, LogisticRegressionCV
+    from sklearn.linear_model import LogisticRegressionCV
+
+    from turbotab.core.models.elastic_net import SOLVER_MAX_ITER, SOLVER_TOL, PooledElasticNetCV
+    from turbotab.core.models.wide import WIDE_TOL, is_wide
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -316,7 +321,10 @@ def elastic_net_support(Z: np.ndarray, y: np.ndarray, task: str, cv: Any, seed: 
                                          cv=cv, max_iter=5000, random_state=seed)
             model.fit(Z, y.astype(int))
             return np.abs(model.coef_[0]) > 1e-10
-        model = ElasticNetCV(l1_ratio=0.5, cv=cv, random_state=seed, max_iter=10000)
+        wide = is_wide(*np.shape(Z))
+        model = PooledElasticNetCV(l1_ratio=0.5, cv=cv, random_state=seed,
+                                   max_iter=10000 if wide else SOLVER_MAX_ITER,
+                                   tol=WIDE_TOL if wide else SOLVER_TOL)
         model.fit(Z, y)
         return np.abs(model.coef_) > 1e-10
 
