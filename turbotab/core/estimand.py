@@ -1317,11 +1317,22 @@ HOLDS: dict[str, tuple[str, ...]] = {
 # ``explain`` (EXPLAIN): explanations of the outcome models are not estimates, but they show what
 # each model learned from the outcome, so under inference they wait and lock as estimates do.
 # ``evaluation`` (EXPLORE): under inference only the declared selection sensitivity analysis (its
-# pooled Wald tests are estimates); no cross-validated score is shown.
-ESTIMATE_STAGES = ("fit", "substitution", "sensitivity", "calibration", "secondary", "scales",
-                   "effects", "causal", "time_varying", "explain",
-                   # FORM: each declared modifier's effects, RERI and ratio of ratios
-                   "modification", "evaluation")
+# pooled Wald tests are estimates); no cross-validated score is shown; ``modification`` (FORM):
+# each declared modifier's effects, RERI and ratio of ratios.
+#
+# ``ESTIMATE_STAGES`` is read from the stage graph, where each of these stages declares that it
+# serves an estimate (``Stage.serves``; V2X_SEAMS seam guard 7), the first time it is asked for:
+# the stages import this module, so the graph cannot be read while it loads.
+
+
+def __getattr__(name: str) -> Any:
+    if name == "ESTIMATE_STAGES":
+        from turbotab.core.stages import ESTIMATE, build_graph
+
+        stages = tuple(s.name for s in build_graph().stages() if s.serves == ESTIMATE)
+        globals()[name] = stages
+        return stages
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def served_gate(state: Any, steps: Sequence[Any]) -> dict[str, Any] | None:

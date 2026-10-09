@@ -147,6 +147,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{pid}/quest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Quest
+         * @description The quest log's seven stages, in order (SIZING P0.4): each stage's lines under Decide,
+         *     Confirm and For the record, with "Waiting for" on a line whose earlier answers are missing;
+         *     progress as answered over required, null for a stage not reached; and, when an answer decided
+         *     in another stage asked its questions again or left its results out of date, why, in plain
+         *     words. ``version`` changes when the shape or the meaning of this log does.
+         */
+        get: operations["quest_api_projects__pid__quest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{pid}/methods": {
         parameters: {
             query?: never;
@@ -3051,6 +3075,13 @@ export interface components {
             note: string | null;
             caution: components["schemas"]["Caution"] | null;
         };
+        /** Progress */
+        Progress: {
+            /** Answered */
+            answered: number;
+            /** Required */
+            required: number;
+        };
         /**
          * ProjectState
          * @description The fold of the decision log. Later milestones add slots as fields.
@@ -3224,6 +3255,96 @@ export interface components {
             interview: components["schemas"]["InterviewStep"][];
         };
         /**
+         * QuestLine
+         * @description One line of a stage: a Router question, a declaration or a finding.
+         *
+         *     ``status``: ``answered``; ``open`` (answerable now); ``waiting`` (``waiting_for`` names the
+         *     earlier answers it needs, ``computing`` the results its card waits for); ``set_for_you`` (a
+         *     default the engine stated, in the Confirm sweep or For the record).
+         */
+        QuestLine: {
+            /** Id */
+            id: string;
+            /** Key */
+            key: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "question" | "declaration" | "finding";
+            /**
+             * Label
+             * @enum {string}
+             */
+            label: "Decide" | "Confirm" | "For the record";
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "open" | "waiting" | "set_for_you";
+            /** Counted */
+            counted: boolean;
+            /** Order */
+            order: number;
+            /** Decision Id */
+            decision_id: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Waiting For
+             * @default []
+             */
+            waiting_for: components["schemas"]["Waiting"][];
+            /**
+             * Computing
+             * @default []
+             */
+            computing: string[];
+            reopened_by: components["schemas"]["ReopenedBy"] | null;
+        };
+        /**
+         * QuestLog
+         * @description The seven stages, each with its lines, progress and reopen reasons; ``kinds`` places every
+         *     decision kind (a methods sentence's "change" link opens its stage, disagreement 19; a revert
+         *     sits with the record it undoes).
+         */
+        QuestLog: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Stages */
+            stages: components["schemas"]["QuestStage"][];
+            /** Kinds */
+            kinds: {
+                [key: string]: string;
+            };
+        };
+        /** QuestStage */
+        QuestStage: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Reached */
+            reached: boolean;
+            progress: components["schemas"]["Progress"] | null;
+            sweep: components["schemas"]["Sweep"] | null;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["QuestLine"][];
+            /**
+             * Reopened
+             * @default []
+             */
+            reopened: components["schemas"]["Reopened"][];
+        };
+        /**
          * RangeByLevel
          * @description Different plausible ranges per level of another column (e.g. by sex).
          */
@@ -3354,6 +3475,43 @@ export interface components {
             r_after: number | null;
             /** Story */
             story: components["schemas"]["RelationshipFrame"][];
+        };
+        /**
+         * Reopened
+         * @description Why a stage dropped back: an answer decided in another stage asked its questions again or
+         *     left its results computed for other answers.
+         */
+        Reopened: {
+            /** Changed In */
+            changed_in: string;
+            /** Decision Id */
+            decision_id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Questions
+             * @default []
+             */
+            questions: string[];
+            /**
+             * Results
+             * @default []
+             */
+            results: string[];
+            /** Sentence */
+            sentence: string;
+        };
+        /**
+         * ReopenedBy
+         * @description The record whose change asked a line again, and the stage it was decided in.
+         */
+        ReopenedBy: {
+            /** Decision Id */
+            decision_id: string;
+            /** Kind */
+            kind: string;
+            /** Stage */
+            stage: string;
         };
         /** RepeatSpec */
         RepeatSpec: {
@@ -6093,6 +6251,16 @@ export interface components {
             acknowledged: boolean;
         };
         /**
+         * Sweep
+         * @description The stage's one Confirm sweep: how many defaults it holds, and whether each is answered.
+         */
+        Sweep: {
+            /** Lines */
+            lines: number;
+            /** Answered */
+            answered: boolean;
+        };
+        /**
          * TableFocusView
          * @description The working table narrowed to the columns this choice touches (≤ 12 shown, ≤ 8 rows).
          */
@@ -6386,6 +6554,18 @@ export interface components {
                     [key: string]: string;
                 };
             } | null;
+        };
+        /**
+         * Waiting
+         * @description A question a line waits for: its key, its stage and how the app names it.
+         */
+        Waiting: {
+            /** Key */
+            key: string;
+            /** Stage */
+            stage: string;
+            /** Name */
+            name: string;
         };
         /**
          * Where
@@ -15575,6 +15755,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadingsCard"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Refusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quest_api_projects__pid__quest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestLog"];
                 };
             };
             /** @description No such project */

@@ -87,6 +87,10 @@ class Stage:
     requires: tuple[str, ...] = ()
     # What a job chip calls this work, in plain language; not part of the key.
     label: str | None = None
+    # What it serves that a gate withholds (``"estimate"``: withheld while a question the estimate
+    # rests on is open, and the first one served locks the plan); not part of the key. The gate
+    # lists are derived from it, never kept by hand (V2X_SEAMS rule 6).
+    serves: str | None = None
 
     def __post_init__(self) -> None:
         for attr in ("deps", "reads", "requires"):  # accept lists, store tuples

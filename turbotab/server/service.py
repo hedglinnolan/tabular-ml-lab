@@ -13,6 +13,7 @@ import tempfile
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable
@@ -31,9 +32,11 @@ from turbotab.core.graph import (
     artifact_dir,
     latest_key,
     read_artifact,
+    read_meta,
 )
 from turbotab.core.interview import InterviewStep, route
 from turbotab.core.jobs import PRELOAD, JobRunner, JobView
+from turbotab.core.quest import QuestLog, quest_log
 from turbotab.core.stages import GRAPH_FACTORY
 from turbotab.core.workspace import ProjectMeta, Workspace
 from turbotab.server.errors import ApiError
@@ -835,6 +838,31 @@ class ProjectService:
                                   (("roles", "roles"), ("target_info", "target_info"),
                                    ("proposals", "proposals"))})
         return {"read_from_data": items, "sentence": read_from_values_sentence(items)}
+
+    def quest(self, pid: str) -> QuestLog:
+        """The quest log's seven stages (SIZING P0.4; ``turbotab/core/quest.py``): each stage's
+        lines, progress and why it reopened. A result counts as out of date when its stage is not
+        fresh and an older artifact exists; the reason reads when that artifact was computed."""
+        self.workspace.get(pid)
+        stages = self.engine.status(pid)
+        records = self.log(pid).records()
+        state = decisions.fold(records)
+        steps = self.interview(pid, state, stages, records)
+        findings = self._serve(pid, "findings", self._shown(pid, "findings"), None)
+        ingest = stages["ingest"]
+        columns = (self._table_facts(pid, stages, ingest.key).columns
+                   if ingest.status == "fresh" and ingest.key else None)
+        cache = self.workspace.cache_dir(pid)
+        shown_at: dict[str, datetime | None] = {}
+        for name, status in stages.items():
+            if status.status == "fresh":
+                continue
+            older = latest_key(cache, name, exclude=status.key)
+            if older is not None:
+                made = read_meta(cache, name, older).get("created_at")
+                shown_at[name] = datetime.fromisoformat(made) if made else None
+        return quest_log(state, records, steps, stages, findings=findings, columns=columns,
+                         shown_at=shown_at)
 
     def _store_or_none(self, pid: str) -> Any:
         try:
